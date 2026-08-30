@@ -16,4 +16,5 @@ abstract final class SettingsKeys {
   static const String lastActiveProfile = 'last_active_profile';
   static const String relockEnabled = 'relock_enabled';
   static const String webModalAcknowledged = 'web_modal_acknowledged';
+  static const String firstRunNoticeShown = 'first_run_notice_shown';
 }

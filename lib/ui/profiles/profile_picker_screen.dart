@@ -1,0 +1,115 @@
+/// Profile picker (home when no valid active profile): active profiles by
+/// sort order, tap to make active; rename/archive from the row menu; archived
+/// profiles live in a collapsed section at the bottom with one-tap unarchive.
+library;
+
+import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/ui/profiles/profile_controller.dart';
+import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
+import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:provider/provider.dart';
+
+String formatCreatedDate(DateTime utc) {
+  final local = utc.toLocal();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${local.year}-${two(local.month)}-${two(local.day)} '
+      '${two(local.hour)}:${two(local.minute)}';
+}
+
+class ProfilePickerScreen extends StatelessWidget {
+  const ProfilePickerScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<ProfileController>();
+    final active = controller.activeProfiles;
+    final archived = controller.archivedProfiles;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profiles'),
+        actions: [
+          IconButton(
+            tooltip: 'Add profile',
+            icon: const Icon(Icons.person_add),
+            onPressed: () => _addProfile(context),
+          ),
+        ],
+      ),
+      body: ListView(
+        children: [
+          for (final profile in active)
+            ListTile(
+              title: Text(profile.displayName),
+              subtitle: Text('Created ${formatCreatedDate(profile.createdAt)}'),
+              onTap: () => controller.selectProfile(profile.id),
+              trailing: PopupMenuButton<String>(
+                tooltip: 'Profile actions',
+                onSelected: (action) =>
+                    _onRowAction(context, profile, action),
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'rename', child: Text('Rename')),
+                  PopupMenuItem(value: 'archive', child: Text('Archive')),
+                ],
+              ),
+            ),
+          if (archived.isNotEmpty)
+            ExpansionTile(
+              key: const Key('archived-section'),
+              title: Text('Archived (${archived.length})'),
+              children: [
+                for (final profile in archived)
+                  ListTile(
+                    title: Text(profile.displayName),
+                    subtitle:
+                        Text('Created ${formatCreatedDate(profile.createdAt)}'),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ProfileDetailScreen(
+                          profile: profile,
+                          readOnly: true,
+                        ),
+                      ),
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Unarchive',
+                      icon: const Icon(Icons.unarchive),
+                      onPressed: () =>
+                          controller.unarchiveProfile(profile.id),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addProfile(BuildContext context) async {
+    final controller = context.read<ProfileController>();
+    final result = await showProfileEditDialog(context);
+    if (result == null) return;
+    await controller.createProfile(
+      displayName: result.displayName,
+      isMinor: result.isMinor,
+    );
+  }
+
+  Future<void> _onRowAction(
+      BuildContext context, Profile profile, String action) async {
+    final controller = context.read<ProfileController>();
+    if (action == 'rename') {
+      final result = await showProfileEditDialog(context, existing: profile);
+      if (result == null) return;
+      await controller.renameProfile(
+        profile,
+        displayName: result.displayName,
+        isMinor: result.isMinor,
+      );
+    } else if (action == 'archive') {
+      if (await confirmArchiveProfile(context, profile)) {
+        await controller.archiveProfile(profile.id);
+      }
+    }
+  }
+}
