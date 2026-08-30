@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/ui/logging/month_calendar.dart';
 
 const String kNoticeText =
     'Data lives only on this device. If the device is lost or reset, the '
@@ -70,6 +71,20 @@ Future<void> seedTwoProfiles(LunarLogDatabase db,
   if (extra != null) await extra(a.id, b.id);
 }
 
+/// Navigates the U5 calendar back to an earlier month by tapping the
+/// previous-month arrow until the month label appears (the app's "today" is
+/// the real device date, so the tap count is computed dynamically).
+Future<void> showMonth(WidgetTester tester, int year, int month) async {
+  final label = '${kMonthNames[month - 1]} $year';
+  var guard = 0;
+  while (find.text(label).evaluate().isEmpty) {
+    expect(guard++, lessThan(1200), reason: 'month never reached: $label');
+    await tester.tap(find.byTooltip('Previous month'));
+    await tester.pumpAndSettle();
+  }
+  expect(find.text(label), findsOneWidget);
+}
+
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
@@ -111,7 +126,8 @@ void main() {
 
       await tester.tap(find.text('Luna'));
       await tester.pumpAndSettle();
-      expect(find.text('No days logged yet.'), findsOneWidget);
+      expect(find.byType(MonthCalendar), findsOneWidget,
+          reason: 'empty history shows the calendar with no markers');
       await disposeApp(tester, db);
     });
 
@@ -133,7 +149,7 @@ void main() {
       expect(find.text('Profiles'), findsNothing,
           reason: 'valid stored last-active opens the profile (R4)');
       expect(find.text('Luna'), findsOneWidget);
-      expect(find.text('No days logged yet.'), findsOneWidget);
+      expect(find.byType(MonthCalendar), findsOneWidget);
       await disposeApp(tester, db);
     });
 
@@ -169,18 +185,20 @@ void main() {
 
       await tester.tap(find.text('Alice'));
       await tester.pumpAndSettle();
-      expect(find.text('2026-03-01'), findsOneWidget);
-      expect(find.text('2026-03-02'), findsOneWidget);
-      expect(find.text('2026-04-10'), findsNothing,
+      await showMonth(tester, 2026, 3);
+      expect(find.byKey(const ValueKey('bleed-2026-03-01')), findsOneWidget);
+      expect(find.byKey(const ValueKey('bleed-2026-03-02')), findsOneWidget);
+      expect(find.byKey(const ValueKey('bleed-2026-04-10')), findsNothing,
           reason: 'no cross-profile leakage');
 
       await tester.tap(find.byTooltip('Switch profile'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Barb'));
       await tester.pumpAndSettle();
-      expect(find.text('2026-04-10'), findsOneWidget);
-      expect(find.text('2026-03-01'), findsNothing);
-      expect(find.text('2026-03-02'), findsNothing);
+      await showMonth(tester, 2026, 4);
+      expect(find.byKey(const ValueKey('bleed-2026-04-10')), findsOneWidget);
+      expect(find.byKey(const ValueKey('bleed-2026-03-01')), findsNothing);
+      expect(find.byKey(const ValueKey('bleed-2026-03-02')), findsNothing);
       await disposeApp(tester, db);
     });
   });
@@ -238,10 +256,20 @@ void main() {
       await tester.tap(find.text('Alice'));
       await tester.pumpAndSettle();
       expect(find.text('Alice (archived)'), findsOneWidget);
-      expect(find.text('2026-03-01'), findsOneWidget);
-      expect(find.text('Unarchive'), findsOneWidget);
       expect(find.byTooltip('Switch profile'), findsNothing,
           reason: 'read-only view');
+
+      await showMonth(tester, 2026, 3);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-03-01')));
+      await tester.pumpAndSettle();
+      expect(find.text('2026-03-01'), findsOneWidget,
+          reason: 'entry viewable in the read-only day sheet');
+      expect(find.byKey(const ValueKey('save-button')), findsNothing,
+          reason: 'no logging affordances for archived profiles');
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unarchive'), findsOneWidget);
 
       await tester.tap(find.text('Unarchive'));
       await tester.pumpAndSettle();
