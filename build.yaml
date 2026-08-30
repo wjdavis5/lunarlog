@@ -1,0 +1,9 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # Store DateTime columns as ISO 8601 (UTC) text rather than unix-second
+          # integers, so updated_at keeps microsecond precision for LWW sync
+          # ordering (settled data model: updated_at never regresses).
+          store_date_time_values_as_text: true

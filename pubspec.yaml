@@ -34,6 +34,10 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  drift: ^2.34.3
+  sqlite3: ^3.5.2
+  flutter_secure_storage: ^11.0.0
+  meta: ^1.18.3
 
 dev_dependencies:
   flutter_test:
@@ -45,6 +49,17 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  drift_dev: ^2.34.5
+  build_runner: ^2.16.0
+
+# Instructs package:sqlite3's native build hook to bundle SQLCipher instead of
+# plain SQLite (https://github.com/simolus3/sqlite3.dart/blob/main/sqlite3/doc/hook.md).
+# This is the encryption step: the app applies `PRAGMA key` at open time
+# (see lib/data/db/native_db.dart).
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
