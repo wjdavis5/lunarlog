@@ -26,6 +26,9 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- U7: why the app requests Face ID (device-credential gate). -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Lunarlog uses Face ID to unlock your data.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

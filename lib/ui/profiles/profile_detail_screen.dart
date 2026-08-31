@@ -21,11 +21,16 @@ class ProfileDetailScreen extends StatefulWidget {
     super.key,
     required this.profile,
     this.readOnly = false,
+    this.initiallyShowOverview = false,
     this.todayProvider = LocalDate.today,
   });
 
   final Profile profile;
   final bool readOnly;
+
+  /// Opens on the Overview tab instead of the Calendar — used by the U7
+  /// launch payload seam (notification tap → firing profile's overview).
+  final bool initiallyShowOverview;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -35,7 +40,23 @@ class ProfileDetailScreen extends StatefulWidget {
 }
 
 class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
-  _DetailTab _tab = _DetailTab.calendar;
+  late _DetailTab _tab = widget.initiallyShowOverview
+      ? _DetailTab.overview
+      : _DetailTab.calendar;
+
+  @override
+  void didUpdateWidget(ProfileDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The widget is recreated in place when the active profile changes (the
+    // home gate swaps it at the same tree position), so this State survives.
+    // Normal profile switches keep the operator's current tab; only the U7
+    // launch payload (initiallyShowOverview) forces the new profile open on
+    // its overview.
+    if (widget.profile.id != oldWidget.profile.id &&
+        widget.initiallyShowOverview) {
+      _tab = _DetailTab.overview;
+    }
+  }
 
   Future<void> _unarchive() async {
     final controller = context.read<ProfileController>();

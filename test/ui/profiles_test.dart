@@ -1,5 +1,6 @@
 /// Widget tests for U4: profile creation, switching, first-run gate,
-/// archive/unarchive, last-active fallback and the startup error surface.
+/// archive/unarchive, and last-active fallback. The startup error surface
+/// moved to U7's fail-closed screen (test/ui/gate_test.dart).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -411,17 +412,6 @@ void main() {
       expect(find.text('Profiles'), findsOneWidget);
       expect(find.text('Alice'), findsOneWidget);
       await disposeApp(tester, db);
-    });
-  });
-
-  group('startup error surface', () {
-    testWidgets('basic error widget renders the failure (full fail-closed '
-        'treatment is a later unit)', (tester) async {
-      await tester.pumpWidget(
-          StartupErrorApp(error: Exception('boom: quarantined')));
-
-      expect(find.textContaining('could not start'), findsOneWidget);
-      expect(find.textContaining('boom: quarantined'), findsOneWidget);
     });
   });
 }

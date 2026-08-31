@@ -1,6 +1,10 @@
 /// App composition root: constructs the drift-backed repositories over the
 /// opened database and provides them plus the profile controller (KTD4).
-/// This is the only lib/ui-adjacent file that touches `lib/data` types.
+/// This is the only lib/ui-adjacent file that touches `lib/data` types
+/// (besides `lib/app_lifecycle.dart`, which is composition-root territory).
+///
+/// The gate shell and fail-closed startup handling live in
+/// `lib/app_lifecycle.dart` (U7).
 library;
 
 import 'package:flutter/material.dart';
@@ -57,39 +61,6 @@ class LunarLogApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00696F)),
         ),
         home: const ProfileHomeGate(),
-      ),
-    );
-  }
-}
-
-/// Basic startup failure surface for U4: DB-open/quarantine/key errors from
-/// U2's factory land here instead of crashing silently. The full fail-closed
-/// treatment (recovery guidance, blocking UI) is U7's.
-class StartupErrorApp extends StatelessWidget {
-  const StartupErrorApp({super.key, required this.error});
-
-  final Object error;
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'lunarlog',
-      home: Scaffold(
-        appBar: AppBar(title: const Text('lunarlog could not start')),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Something went wrong while opening local data. '
-                'Nothing on this device was changed.',
-              ),
-              const SizedBox(height: 16),
-              SelectableText(error.toString()),
-            ],
-          ),
-        ),
       ),
     );
   }

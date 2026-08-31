@@ -62,3 +62,11 @@ Part of the home lab; the canonical inventory lives in the lab root's
   encryption-at-rest guarantee; do not treat the PWA as a secure data store.
 - No backup or export in v1 — losing the device loses the data.
 - No fertility features, by design; do not add them.
+- App-switcher snapshots are suppressed by an opaque Flutter cover whenever
+  the app is not resumed, plus FLAG_SECURE on Android (a tiny platform
+  channel in `MainActivity.kt`); iOS has no Flutter-level FLAG_SECURE
+  equivalent, so the cover is the only mechanism there.
+- iOS: the database file is not explicitly excluded from iCloud backups
+  (skipped in U7 — it needs AppDelegate work on the Mac; the keychain-stored
+  key is already device-only, and Android covers the equivalent with
+  `allowBackup="false"`).

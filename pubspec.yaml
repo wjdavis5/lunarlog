@@ -37,12 +37,15 @@ dependencies:
   drift: ^2.34.3
   sqlite3: ^3.5.2
   flutter_secure_storage: ^11.0.0
+  local_auth: ^2.3.0
   meta: ^1.18.3
   provider: ^6.1.2
   path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

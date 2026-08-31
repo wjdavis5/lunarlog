@@ -8,6 +8,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
 String formatCreatedDate(DateTime utc) {
@@ -29,6 +30,14 @@ class ProfilePickerScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Profiles'),
         actions: [
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                  builder: (_) => const SettingsScreen()),
+            ),
+          ),
           IconButton(
             tooltip: 'Add profile',
             icon: const Icon(Icons.person_add),
