@@ -5,6 +5,9 @@ library;
 
 import 'app_gate.dart';
 
+/// Web factory (see `gate.dart` conditional export).
+AppGate defaultAppGate() => WebAppGate();
+
 class WebAppGate implements AppGate {
   @override
   bool get requiresUnlock => false;

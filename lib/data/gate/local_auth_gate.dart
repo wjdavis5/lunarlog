@@ -10,6 +10,10 @@ import 'package:local_auth/local_auth.dart';
 
 import 'app_gate.dart';
 
+/// Native factory: the shell imports `gate.dart` and calls this without
+/// branching on platform.
+AppGate defaultAppGate() => LocalAuthAppGate();
+
 class LocalAuthAppGate implements AppGate {
   LocalAuthAppGate({LocalAuthentication? localAuth})
       : _localAuth = localAuth ?? LocalAuthentication();
