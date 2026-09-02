@@ -1,15 +1,23 @@
 /// First-run flow (F1): with zero profiles the gate forces profile creation
 /// before anything else — no skip. A one-time-per-install key-loss notice
 /// precedes the name form (persisted via [SettingsKeys.firstRunNoticeShown]).
+/// On the web build, the one-time development acknowledgment (KTD9) comes
+/// before even that.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
 class FirstRunScreen extends StatefulWidget {
-  const FirstRunScreen({super.key});
+  const FirstRunScreen({super.key, this.isWebBuild = kIsWeb});
+
+  /// KTD9 web guardrail; injectable so host tests can exercise it.
+  final bool isWebBuild;
 
   @override
   State<FirstRunScreen> createState() => _FirstRunScreenState();
@@ -19,12 +27,35 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   bool _noticePending = true;
+  bool _webAckPending = false;
   bool _isMinor = false;
 
   @override
   void initState() {
     super.initState();
     _noticePending = !context.read<ProfileController>().firstRunNoticeShown;
+    if (widget.isWebBuild) {
+      _checkWebAcknowledgment();
+    }
+  }
+
+  Future<void> _checkWebAcknowledgment() async {
+    final store = context.read<SettingsStore>();
+    final acknowledged =
+        await store.get(SettingsKeys.webModalAcknowledged) == 'true';
+    if (!mounted) return;
+    if (acknowledged) return;
+    setState(() => _webAckPending = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showWebFirstRunAcknowledgment(
+        context,
+        alreadyAcknowledged: false,
+        onAcknowledged: () =>
+            store.set(SettingsKeys.webModalAcknowledged, 'true'),
+      );
+      if (mounted) setState(() => _webAckPending = false);
+    });
   }
 
   @override
@@ -52,6 +83,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_webAckPending) {
+      // The blocking acknowledgment dialog is up; keep a data-free scaffold
+      // underneath it.
+      return const Scaffold(body: SizedBox.expand());
+    }
     if (_noticePending) {
       return Scaffold(
         body: Center(

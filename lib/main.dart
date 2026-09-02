@@ -4,10 +4,12 @@
 /// fail-closed screen (never a wipe).
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_lifecycle.dart';
 import 'data/gate/gate.dart';
+import 'data/notifications/notification_scheduler.dart';
 import 'startup/startup.dart';
 
 Future<void> main() async {
@@ -15,5 +17,8 @@ Future<void> main() async {
   runApp(LunarLogRoot(
     gate: defaultAppGate(),
     dbOpener: () async => (await buildDbFactory()).open(),
+    // KTD7/KTD9: reminders are a native-only surface; web gets the no-op.
+    scheduler:
+        kIsWeb ? NoopReminderScheduler() : FlutterLocalNotificationsScheduler(),
   ));
 }

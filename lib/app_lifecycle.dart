@@ -32,6 +32,7 @@ import 'package:flutter/services.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
+import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/gate/lock_screen.dart';
@@ -265,6 +266,7 @@ class LunarLogRoot extends StatefulWidget {
     required this.gate,
     required this.dbOpener,
     this.launchProfileId,
+    this.scheduler,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
   });
@@ -276,6 +278,9 @@ class LunarLogRoot extends StatefulWidget {
 
   /// Initial launch payload for the seam (U8 sets this for real).
   final String? launchProfileId;
+
+  /// Reminder scheduler (U8); null disables reminders entirely.
+  final ReminderScheduler? scheduler;
 
   final Duration inactivityTimeout;
   final InactivityTimerFactory inactivityTimerFactory;
@@ -353,7 +358,7 @@ class _LunarLogRootState extends State<LunarLogRoot> {
     if (_error != null) {
       content = FailClosedApp(error: _error!);
     } else if (_db != null) {
-      content = LunarLogApp(db: _db!);
+      content = LunarLogApp(db: _db!, scheduler: widget.scheduler);
     } else if (_gate.locked) {
       // Behind the lock before the first unlock: a static, data-free
       // placeholder — nothing renders, not even a spinner.

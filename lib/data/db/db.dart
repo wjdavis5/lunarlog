@@ -57,4 +57,15 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// path preserves rows and sync columns.
   @visibleForTesting
   Future<void> onUpgradeSteps(Migrator m, int from, int to) async {}
+
+  /// Hard-deletes every row in every table — the web build's wipe-local-
+  /// data action (KTD9). This is a wipe, not a sync-domain soft delete:
+  /// tombstones go too. The web store is the only intended caller.
+  Future<void> wipeAllData() async {
+    await transaction(() async {
+      await delete(dayEntries).go();
+      await delete(profiles).go();
+      await delete(appSettings).go();
+    });
+  }
 }

@@ -8,6 +8,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -59,7 +60,9 @@ class _OverviewPanelState extends State<OverviewPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final availability = context.watch<NotificationAvailability>();
+    final availability = context
+        .watch<NotificationPermissionState>()
+        .value;
     return StreamBuilder<CyclePrediction>(
       stream: _predictions,
       builder: (context, snapshot) {

@@ -9,6 +9,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
@@ -107,7 +108,9 @@ class Harness {
         Provider<CyclePredictionService>.value(
           value: CyclePredictionService(entries),
         ),
-        Provider<NotificationAvailability>.value(value: availability),
+        ChangeNotifierProvider<NotificationPermissionState>.value(
+          value: NotificationPermissionState(availability),
+        ),
         ChangeNotifierProvider(
           create: (_) => ProfileController(
             profilesRepository: profiles,
