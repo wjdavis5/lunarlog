@@ -31,8 +31,27 @@ flutter build web --release     # installable web build
 flutter build ios --release --no-codesign   # unsigned; requires macOS
 ```
 
-iOS device builds happen on the lab Mac per the project plan; this Windows box
-covers Android, web, and tests.
+### iOS build, sign & deploy (Mac)
+
+On `Williams-Mini` (or any macOS build machine with Xcode and Apple Team ID `5273C9R3V4`):
+
+```bash
+# 1. Fetch dependencies
+flutter pub get
+
+# 2. Build unsigned archive
+flutter build ipa --release --no-codesign
+# Or via xcodebuild:
+xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+
+# 3. Export signed IPA using ExportOptions.plist
+xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ios/ipa
+
+# 4. Deploy to connected physical device
+xcrun devicectl device install app --device <device-id> build/ios/ipa/lunarlog.ipa
+# or via flutter:
+flutter install -d <device-id>
+```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs analyze +
 test + a release web build on ubuntu, a debug APK on ubuntu, and an unsigned
@@ -50,6 +69,11 @@ Part of the home lab; the canonical inventory lives in the lab root's
 
 ## Verified
 
+- 2026-09-02, Flutter 3.47.2 stable on Windows: `flutter analyze` clean (0 issues);
+  `flutter test` 162/162 unit & widget tests passed across domain, data, gate,
+  notifications, profiles, logging, and overview suites; `ios/Runner.xcodeproj`
+  configured with `PRODUCT_BUNDLE_IDENTIFIER = com.wjdavis5.lunarlog`,
+  `DEVELOPMENT_TEAM = 5273C9R3V4`, `ExportOptions.plist`, and `PrivacyInfo.xcprivacy`.
 - 2026-08-30, Flutter 3.47.2 stable on Windows: `flutter doctor -v` all green
   (Android SDK 36.0.0, all licenses accepted, Chrome present); `flutter
   analyze` clean; `flutter test` 1/1 passed; `flutter build apk --debug` and

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		lunarlog is a local-first, fully offline cycle tracker. It makes no
+		network calls, tracks no users, uses no analytics or crash reporting SDKs,
+		and collects no data off-device.
+
+		Required-reason API usage is declared by underlying Flutter plugins
+		(e.g., flutter_secure_storage, shared_preferences, local_auth).
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+</dict>
+</plist>
