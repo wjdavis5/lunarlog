@@ -57,6 +57,11 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs analyze +
 test + a release web build on ubuntu, a debug APK on ubuntu, and an unsigned
 iOS build on macOS, for pushes and PRs to `main`.
 
+Automated Android release to Google Play is handled by
+[`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml),
+supporting automatic internal track publishing and manual dispatch for alpha,
+beta, and production.
+
 ## Config & credentials
 
 Remote backend: Supabase Cloud (`dleexnnevuuddcgcpztq`).

@@ -39,7 +39,13 @@ Credentials and environment variables live in:
   - `DATABASE_URL`
 - **Mac Mini Build Machine:** `~/git/lunarlog/.env` on `Williams-Mini` (`192.168.0.9`).
 - **CI / GitHub Actions:** Repository secrets configured on `wjdavis5/lunarlog`:
-  `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `DATABASE_URL`.
+  - Supabase: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `DATABASE_URL`.
+  - Android Play Store:
+    - `ANDROID_KEYSTORE_BASE64`: Base64-encoded release `.jks`/`.keystore`.
+    - `ANDROID_KEYSTORE_PASSWORD`: Keystore password.
+    - `ANDROID_KEY_ALIAS`: Signing key alias.
+    - `ANDROID_KEY_PASSWORD`: Key password.
+    - `PLAY_STORE_JSON_KEY`: Google Play Developer service account credentials JSON.
 - **The Rule:** Never paste, print, or commit raw secret values into files, commits, or pull requests.
 
 ## Development & Build Workflow
@@ -48,6 +54,11 @@ Credentials and environment variables live in:
 - **Dependency Management:** `flutter pub get`
 - **Linter:** `flutter analyze`
 - **Tests:** `flutter test`
+- **Android Play Store Release Workflow:**
+  - Automated via [`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml).
+  - Triggers on push to `main` (uploads to `internal` track) or manually via `workflow_dispatch` with target track (`internal`, `alpha`, `beta`, `production`).
+  - Automatically resolves monotonic build numbers from GitHub run count offset (`$(( github.run_number + 1000 ))`).
+  - Generates both signed `.aab` (uploaded to Google Play) and `.apk` (saved as run artifact).
 - **iOS Device Builds:** Run on the lab Mac Mini (`Williams-Mini`, `192.168.0.9`, SSH user `williamdavis` via lab key `ha_vm_ed25519`):
   ```bash
   flutter build ipa --release --no-codesign
