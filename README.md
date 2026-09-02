@@ -59,8 +59,10 @@ iOS build on macOS, for pushes and PRs to `main`.
 
 ## Config & credentials
 
-None. v1 is fully offline with no accounts, services, or keys — no `.env` is
-needed.
+Remote backend: Supabase Cloud (`dleexnnevuuddcgcpztq`).
+Credentials live in `.env` (gitignored; `.env.example` provides the template)
+and GitHub repository secrets. Never commit credential values.
+Details on backend setup and MCP integration live in [`AGENTS.md`](AGENTS.md).
 
 ## Lab context
 
@@ -69,6 +71,10 @@ Part of the home lab; the canonical inventory lives in the lab root's
 
 ## Verified
 
+- 2026-09-02, Flutter 3.47.2 stable on Williams-Mini (macOS arm64, Xcode 26.6):
+  `flutter analyze` clean (0 issues); `flutter test` 162/162 tests passed;
+  `flutter build ipa --release --no-codesign` built `Runner.xcarchive` (179.9MB);
+  `flutter build ios --release --no-codesign` built `Runner.app` (20.3MB).
 - 2026-09-02, Flutter 3.47.2 stable on Windows: `flutter analyze` clean (0 issues);
   `flutter test` 162/162 unit & widget tests passed across domain, data, gate,
   notifications, profiles, logging, and overview suites; `ios/Runner.xcodeproj`
