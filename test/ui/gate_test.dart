@@ -30,6 +30,7 @@ import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
+import '../support/fake_settings_store.dart';
 import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
 
@@ -124,44 +125,6 @@ class FakeInactivityTimers {
   }
 
   bool get anyActive => created.any((timer) => timer.active);
-}
-
-/// Minimal in-memory [SettingsStore] for controller-level tests that need
-/// the relock toggle without standing up a database.
-class FakeSettingsStore implements SettingsStore {
-  FakeSettingsStore([Map<String, String>? seed]) : _values = {...?seed};
-
-  final Map<String, String> _values;
-  final _controllers = <String, StreamController<String?>>{};
-
-  @override
-  Future<String?> get(String key) async => _values[key];
-
-  @override
-  Future<void> set(String key, String value) async {
-    _values[key] = value;
-    _controllers[key]?.add(value);
-  }
-
-  @override
-  Stream<String?> watch(String key) {
-    final controller = _controllers.putIfAbsent(
-        key, () => StreamController<String?>.broadcast());
-    return controller.stream.startWith(_values[key]);
-  }
-
-  void close() {
-    for (final controller in _controllers.values) {
-      controller.close();
-    }
-  }
-}
-
-extension _StartWith on Stream<String?> {
-  Stream<String?> startWith(String? value) async* {
-    yield value;
-    yield* this;
-  }
 }
 
 class Harness {
@@ -414,12 +377,21 @@ void main() {
   });
 
   group('the system-UI window and its bound (#65 U1; KTD2, KTD5, KTD9)', () {
-    /// A controller with fake timers, unlocked and ready for a window.
+    /// The window deadline defaults to the same two minutes as the
+    /// inactivity timeout, so firing by delay would fire both and a broken
+    /// deadline would still look locked. These tests give it a distinct
+    /// duration to isolate the mechanism they are named for.
+    const windowDeadline = Duration(seconds: 90);
+
+    /// A controller with fake timers, ready for a window.
     (GateController, FakeGate, FakeInactivityTimers) unlockedRig() {
       final gate = FakeGate(requiresUnlock: true);
       final timers = FakeInactivityTimers();
       final controller = GateController(
-          gate: gate, inactivityTimerFactory: timers.factory);
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
       return (controller, gate, timers);
     }
 
@@ -491,7 +463,17 @@ void main() {
       controller.noteActivity();
       expect(controller.locked, isFalse);
 
-      timers.fireWithDelay(kDefaultInactivityTimeout);
+      // Both timers are armed at distinct delays, so firing only the
+      // window deadline proves the lock came from it rather than from the
+      // inactivity countdown the resumes and input just re-armed.
+      expect(timers.created.any((t) => t.delay == windowDeadline && t.active),
+          isTrue);
+      expect(
+          timers.created
+              .any((t) => t.delay == kDefaultInactivityTimeout && t.active),
+          isTrue);
+
+      timers.fireWithDelay(windowDeadline);
 
       expect(controller.locked, isTrue,
           reason: 'the window deadline is not extended by resumes or input');
@@ -523,13 +505,50 @@ void main() {
       controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
       expect(controller.locked, isFalse);
 
-      timers.fireWithDelay(kDefaultInactivityTimeout);
+      timers.fireWithDelay(windowDeadline);
 
       expect(controller.locked, isTrue,
           reason: 'the toggle governs foreground inactivity, not the bound '
               'on system UI the app put on screen itself');
       picker.complete();
       await ceremony;
+    });
+
+    testWidgets('a granted unlock with the operator still away ends up '
+        'unlocked but covered, and the inactivity rule takes it from there',
+        (tester) async {
+      // KTD1's deliberate asymmetry: unlock() does not replay a departure
+      // the way reauthenticate() does, because the credential is what
+      // opens the app. Pinning where that actually lands.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      addTearDown(controller.dispose);
+
+      gate.grantNext = true;
+      gate.onPrompt = () {
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        controller.didChangeAppLifecycleState(AppLifecycleState.hidden);
+        controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      };
+      await controller.unlock();
+      expect(controller.locked, isFalse,
+          reason: 'the credential decides (KTD1)');
+
+      // The operator never comes back; the settling tail expires.
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+
+      expect(controller.locked, isFalse,
+          reason: 'no replay on the unlock path, by design');
+      expect(controller.obscured, isTrue,
+          reason: 'nothing is visible while the app is away (R5)');
+      timers.fireWithDelay(kDefaultInactivityTimeout);
+      expect(controller.locked, isTrue,
+          reason: 'the ordinary inactivity rule is what re-locks it');
     });
 
     testWidgets('the cover is reconciled when a window closes, never '

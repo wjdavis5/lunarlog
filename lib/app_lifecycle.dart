@@ -244,13 +244,19 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void _openSystemUiWindow() {
-    _systemUiWindows++;
-    if (_systemUiWindows > 1) return;
-    _departedDuringWindow = false;
+  /// Drops the settling tail and the departure it was waiting to absorb.
+  /// Every path that ends a window's life goes through here.
+  void _cancelSettleTail() {
     _settling = false;
     _settleTimer?.cancel();
     _settleTimer = null;
+    _departedDuringWindow = false;
+  }
+
+  void _openSystemUiWindow() {
+    _systemUiWindows++;
+    if (_systemUiWindows > 1) return;
+    _cancelSettleTail();
     _systemUiTimer?.cancel();
     _systemUiTimer =
         inactivityTimerFactory(systemUiDeadline, _systemUiDeadlineExpired);
@@ -267,29 +273,36 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
       // platform reporting a departure, so there is no trailing report to
       // wait for. Skipping the tail here is what keeps an ordinary unlock
       // from leaving the app briefly un-lockable.
-      _settling = false;
-      _settlingFinished(force: true);
+      _reconcileWindowClose();
       return;
     }
     _settling = true;
     _settleTimer?.cancel();
-    _settleTimer = inactivityTimerFactory(settleTimeout, _settlingFinished);
+    _settleTimer = inactivityTimerFactory(settleTimeout, _onSettleTimeout);
   }
 
-  /// End of the settling tail: the cover is reconciled against the
+  /// The settle timer fired. Guarded because a cancelled-but-already-queued
+  /// timer, or a window reopened during the tail, must not reconcile twice.
+  void _onSettleTimeout() {
+    if (!_settling) return;
+    _reconcileWindowClose();
+  }
+
+  /// End of a window's life: the cover is reconciled against the
   /// lifecycle (KTD9 — never assigned blind, or a grant landing off-screen
   /// uncovers data and a closing window strands an opaque cover with no
   /// lock screen behind it), and [reauthenticate]'s narrowed replay fires
   /// if the operator is still away (KTD4).
-  void _settlingFinished({bool force = false}) {
-    if (!_settling && !force) return;
-    _settling = false;
-    _settleTimer?.cancel();
-    _settleTimer = null;
-    _departedDuringWindow = false;
+  void _reconcileWindowClose() {
+    _cancelSettleTail();
+    final wasObscured = _obscured;
     _obscured = !_resumed;
     _armInactivity();
-    notifyListeners();
+    // The cover is the only thing a listener can observe here, and the
+    // common case — an ordinary prompt that came and went with the app in
+    // the foreground throughout — leaves it unchanged. Notifying anyway
+    // would rebuild the whole shell on every unlock for nothing.
+    if (_obscured != wasObscured) notifyListeners();
   }
 
   /// [reauthenticate]'s narrowed replay (KTD4): the operator is still away
@@ -299,10 +312,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// transitions, and there is nothing to wait for when the operator has
   /// not come back.
   void _replayDeparture() {
-    _settling = false;
-    _settleTimer?.cancel();
-    _settleTimer = null;
-    _departedDuringWindow = false;
+    _cancelSettleTail();
     _obscured = true;
     lock();
   }
@@ -313,10 +323,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   void _systemUiDeadlineExpired() {
     _systemUiTimer = null;
     _systemUiWindows = 0;
-    _settling = false;
-    _settleTimer?.cancel();
-    _settleTimer = null;
-    _departedDuringWindow = false;
+    _cancelSettleTail();
     _obscured = !_resumed;
     lock();
   }
@@ -437,12 +444,17 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// peek it can be the only departure signal delivered, so narrowing it
   /// would under-lock.
   void _departed() {
-    _obscured = true;
     if (_suppressingLock) {
+      // A multi-step departure (Android's credential fallback reports
+      // inactive -> hidden -> paused for one prompt) reaches here three
+      // times; only the first changes anything.
+      final changed = !_obscured || !_departedDuringWindow;
+      _obscured = true;
       _departedDuringWindow = true;
-      notifyListeners();
+      if (changed) notifyListeners();
       return;
     }
+    _obscured = true;
     lock();
   }
 
