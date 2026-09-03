@@ -208,21 +208,25 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// authenticator, an interruption, or while another prompt is up.
   ///
   /// Runs under the same `_authenticating` flag as [unlock] so the prompt's
-  /// own `inactive` report does not trip the re-lock, but it never changes
-  /// the lock state itself: a granted check does not unlock and a declined
+  /// own `inactive` report does not trip the re-lock, and the outcome never
+  /// changes the lock state: a granted check does not unlock and a declined
   /// one does not lock (the caller simply cancels its action, like a
-  /// dismissed picker). Nothing listens for a lock-state change here, so it
-  /// does not notify.
+  /// dismissed picker). A departure the flag suppressed is replayed after
+  /// the prompt, exactly as [unlock] fails closed, so backgrounding during
+  /// the check still covers and re-locks on gated platforms.
   Future<bool> reauthenticate() async {
     if (_authenticating) return false;
     _authenticating = true;
     _lifecycleDuringAuth = false;
+    var interrupted = false;
     try {
       final granted = await _gate.requestAccess();
-      return granted && !_lifecycleDuringAuth;
+      interrupted = _lifecycleDuringAuth;
+      return granted && !interrupted;
     } finally {
       _authenticating = false;
       _lifecycleDuringAuth = false;
+      if (interrupted) _departed();
     }
   }
 

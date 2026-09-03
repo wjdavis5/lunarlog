@@ -284,6 +284,29 @@ void main() {
       gate.grantNext = true;
       expect(await controller.reauthenticate(), isTrue);
     });
+
+    testWidgets('an interrupted prompt on a gated platform replays the '
+        'departure: covered and re-locked, like unlock', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      final hold = Completer<bool>();
+      gate.holdNext = hold;
+      final pending = controller.reauthenticate();
+      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(controller.locked, isFalse,
+          reason: 'no re-lock while the prompt is still up');
+      hold.complete(true);
+      expect(await pending, isFalse);
+      expect(controller.locked, isTrue,
+          reason: 'the suppressed departure is replayed after the prompt');
+      expect(controller.obscured, isTrue);
+      expect(controller.authenticating, isFalse);
+    });
   });
 
   group('cold start gates first (F3, AE4)', () {
