@@ -76,16 +76,20 @@ class DayEntry {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is DayEntry &&
-          other.id == id &&
-          other.profileId == profileId &&
-          other.localDate == localDate &&
-          other.tz == tz &&
-          other.flow == flow &&
-          listEquals(other.tags, tags) &&
-          other.note == note &&
-          other.updatedAt == updatedAt &&
-          other.deletedAt == deletedAt;
+      other is DayEntry && _sameIdentity(other) && _sameContent(other);
+
+  // Split from a single ==, per-field chain (quality gate: McCabe
+  // complexity) into an identity half and a content half — same fields,
+  // same order, no behavior change.
+  bool _sameIdentity(DayEntry other) =>
+      other.id == id && other.profileId == profileId && other.localDate == localDate && other.tz == tz;
+
+  bool _sameContent(DayEntry other) =>
+      other.flow == flow &&
+      listEquals(other.tags, tags) &&
+      other.note == note &&
+      other.updatedAt == updatedAt &&
+      other.deletedAt == deletedAt;
 
   @override
   int get hashCode => Object.hash(
