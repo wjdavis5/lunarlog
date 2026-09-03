@@ -1,7 +1,9 @@
 /// U4 (KTD8, KTD9, R1–R3): [SupabaseAuthService] over a fake gateway and a
 /// fake link source — link classification, the PKCE exchange it drives
 /// itself, the recovery latch set before any widget exists, typed failure
-/// mapping with no provider text, and the native Apple flow.
+/// mapping with no provider text, and the native Apple flow. The native
+/// Google flow (#2 U2; KTD1, KTD8; AE1, AE2) runs over a fake
+/// [GoogleSignInClient] so no test touches the plugin.
 library;
 
 import 'dart:async';
@@ -10,8 +12,10 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:lunarlog/data/auth/auth_gateway.dart';
 import 'package:lunarlog/data/auth/auth_link_classifier.dart';
+import 'package:lunarlog/data/auth/google_sign_in_client.dart';
 import 'package:lunarlog/data/auth/supabase_auth_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -56,8 +60,12 @@ class FakeAuthGateway implements AuthGateway {
   final signInCalls = <({String email, String password})>[];
   final resetCalls = <({String email, String? redirect})>[];
   final updateUserCalls = <UserAttributes>[];
-  final idTokenCalls =
-      <({OAuthProvider provider, String idToken, String? nonce})>[];
+  final idTokenCalls = <({
+    OAuthProvider provider,
+    String idToken,
+    String? accessToken,
+    String? nonce,
+  })>[];
   final signOutCalls = <SignOutScope>[];
 
   void _maybeThrow() {
@@ -152,11 +160,17 @@ class FakeAuthGateway implements AuthGateway {
   Future<AuthResponse> signInWithIdToken({
     required OAuthProvider provider,
     required String idToken,
+    String? accessToken,
     String? nonce,
   }) async {
-    idTokenCalls.add((provider: provider, idToken: idToken, nonce: nonce));
+    idTokenCalls.add((
+      provider: provider,
+      idToken: idToken,
+      accessToken: accessToken,
+      nonce: nonce,
+    ));
     _maybeThrow();
-    session = makeSession('apple');
+    session = makeSession(provider.name);
     emit(AuthChangeEvent.signedIn);
     return AuthResponse(session: session);
   }
@@ -167,6 +181,49 @@ class FakeAuthGateway implements AuthGateway {
     _maybeThrow();
     session = null;
     emit(AuthChangeEvent.signedOut, reason: SignOutReason.userInitiated);
+  }
+}
+
+/// Records `initialize` arguments and returns a configured credential or
+/// throws a configured error from `authenticate`, standing in for the
+/// `google_sign_in` plugin (#2 U2; KTD1).
+class FakeGoogleSignInClient implements GoogleSignInClient {
+  FakeGoogleSignInClient({
+    this.credential = const GoogleCredential(idToken: 'google-id-token'),
+    this.authenticateError,
+  });
+
+  GoogleCredential? credential;
+  Object? authenticateError;
+
+  final initializeCalls = <({
+    String? iosClientId,
+    String webClientId,
+    String hashedNonce,
+  })>[];
+  int authenticateCalls = 0;
+
+  @override
+  Future<void> initialize({
+    required String? iosClientId,
+    required String webClientId,
+    required String hashedNonce,
+  }) async {
+    initializeCalls.add((
+      iosClientId: iosClientId,
+      webClientId: webClientId,
+      hashedNonce: hashedNonce,
+    ));
+  }
+
+  @override
+  Future<GoogleCredential> authenticate() async {
+    authenticateCalls++;
+    final error = authenticateError;
+    if (error != null) throw error;
+    final result = credential;
+    if (result == null) throw StateError('no credential configured');
+    return result;
   }
 }
 
@@ -208,6 +265,8 @@ void main() {
   Future<SupabaseAuthService> started({
     bool appleAvailable = false,
     AppleCredentialRequest? requestAppleCredential,
+    bool googleAvailable = false,
+    GoogleSignInClient? googleClient,
     String Function()? generateNonce,
   }) async {
     final service = SupabaseAuthService(
@@ -218,6 +277,11 @@ void main() {
           requestAppleCredential ?? (({required hashedNonce}) async {
             throw StateError('not expected');
           }),
+      googleAvailable: googleAvailable,
+      googleClient: googleClient ??
+          FakeGoogleSignInClient(
+            authenticateError: StateError('not expected'),
+          ),
       generateNonce: generateNonce ?? generateRawNonce,
     );
     addTearDown(service.dispose);
@@ -775,6 +839,206 @@ void main() {
       expect(a, isNot(b));
       expect(a.length, greaterThanOrEqualTo(32));
       expect(RegExp(r'^[A-Za-z0-9\-_]+$').hasMatch(a), isTrue);
+    });
+  });
+
+  group('Google Sign-In (#2 U2; KTD1, KTD8)', () {
+    String hashed(String raw) => sha256.convert(utf8.encode(raw)).toString();
+
+    test('when unavailable it throws UnsupportedError before touching the '
+        'client and leaves state signedOut', () async {
+      final client = FakeGoogleSignInClient();
+      final service =
+          await started(googleAvailable: false, googleClient: client);
+      await expectLater(
+          service.signInWithGoogleNative(), throwsUnsupportedError);
+      expect(client.initializeCalls, isEmpty);
+      expect(client.authenticateCalls, 0);
+      expect(service.state, AuthSessionState.signedOut);
+      expect(gateway.idTokenCalls, isEmpty);
+    });
+
+    test('AE1: the client is initialized with the SHA-256 of the raw nonce '
+        'sent to Supabase; a second call reuses the nonce and does not '
+        're-initialize', () async {
+      final client = FakeGoogleSignInClient();
+      final nonces = <String>['raw-nonce-1', 'raw-nonce-2'];
+      final service = await started(
+        googleAvailable: true,
+        googleClient: client,
+        generateNonce: () => nonces.removeAt(0),
+      );
+
+      final first = await service.signInWithGoogleNative();
+      await settle();
+      expect(first, isA<GoogleSignInSession>());
+      expect((first as GoogleSignInSession).user.id, 'google');
+      expect(service.state, AuthSessionState.signedIn);
+      expect(client.initializeCalls, hasLength(1));
+      expect(client.initializeCalls.single.hashedNonce, hashed('raw-nonce-1'));
+      final call = gateway.idTokenCalls.single;
+      expect(call.provider, OAuthProvider.google);
+      expect(call.idToken, 'google-id-token');
+      expect(call.nonce, 'raw-nonce-1');
+      expect(hashed(call.nonce!), client.initializeCalls.single.hashedNonce);
+
+      final second = await service.signInWithGoogleNative();
+      expect(second, isA<GoogleSignInSession>());
+      expect(client.initializeCalls, hasLength(1),
+          reason: 'initialize runs once per process');
+      expect(client.authenticateCalls, 2);
+      expect(gateway.idTokenCalls, hasLength(2));
+      expect(gateway.idTokenCalls.last.nonce, 'raw-nonce-1');
+      expect(nonces, ['raw-nonce-2'], reason: 'only one nonce is minted');
+    });
+
+    test('AE2: a cancelled picker returns cancelled with no state change '
+        'and no failure', () async {
+      final client = FakeGoogleSignInClient(
+        authenticateError: const GoogleSignInException(
+          code: GoogleSignInExceptionCode.canceled,
+          description: 'user canceled',
+        ),
+      );
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      final seen = <AuthSessionState>[];
+      service.states.listen(seen.add);
+      final result = await service.signInWithGoogleNative();
+      await settle();
+      expect(result, const GoogleSignInCancelled());
+      expect(seen, isEmpty);
+      expect(service.state, AuthSessionState.signedOut);
+      expect(service.pendingLinkFailure, isNull);
+      expect(gateway.idTokenCalls, isEmpty);
+    });
+
+    for (final code in [
+      GoogleSignInExceptionCode.providerConfigurationError,
+      GoogleSignInExceptionCode.uiUnavailable,
+      GoogleSignInExceptionCode.unknownError,
+    ]) {
+      test('$code maps to providerUnavailable with no provider text',
+          () async {
+        final client = FakeGoogleSignInClient(
+          authenticateError: GoogleSignInException(
+            code: code,
+            description: 'secret-description user@example.com',
+          ),
+        );
+        final service =
+            await started(googleAvailable: true, googleClient: client);
+        final error = await service
+            .signInWithGoogleNative()
+            .then<Object?>((_) => null, onError: (Object e) => e);
+        expect(error, isA<AuthProviderUnavailableFailure>());
+        expect(error.toString(), isNot(contains('secret-description')));
+        expect(error.toString(), isNot(contains('example.com')));
+        expect(service.state, AuthSessionState.signedOut);
+        expect(gateway.idTokenCalls, isEmpty);
+      });
+    }
+
+    test('any other client exception maps to unknown', () async {
+      final client =
+          FakeGoogleSignInClient(authenticateError: StateError('boom'));
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      final error = await service
+          .signInWithGoogleNative()
+          .then<Object?>((_) => null, onError: (Object e) => e);
+      expect(error, isA<AuthUnknownFailure>());
+      expect(error.toString(), isNot(contains('boom')));
+      expect(gateway.idTokenCalls, isEmpty);
+    });
+
+    test('a credential without an ID token is an unknown failure', () async {
+      final client = FakeGoogleSignInClient(
+        credential: const GoogleCredential(idToken: null, accessToken: 'at'),
+      );
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      await expectLater(service.signInWithGoogleNative(),
+          throwsA(isA<AuthUnknownFailure>()));
+      expect(gateway.idTokenCalls, isEmpty);
+      expect(service.state, AuthSessionState.signedOut);
+    });
+
+    test('the access token is forwarded when present and omitted when null',
+        () async {
+      final client = FakeGoogleSignInClient(
+        credential: const GoogleCredential(
+            idToken: 'google-id-token', accessToken: 'google-access-token'),
+      );
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      await service.signInWithGoogleNative();
+      expect(gateway.idTokenCalls.single.accessToken, 'google-access-token');
+
+      client.credential = const GoogleCredential(idToken: 'google-id-token');
+      await service.signInWithGoogleNative();
+      expect(gateway.idTokenCalls.last.accessToken, isNull);
+    });
+
+    test('a Supabase signup_disabled rejection is signUpClosed', () async {
+      final client = FakeGoogleSignInClient();
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      gateway.nextError = const AuthApiException(
+          'Signups not allowed for this instance',
+          statusCode: '422',
+          code: 'signup_disabled');
+      final error = await service
+          .signInWithGoogleNative()
+          .then<Object?>((_) => null, onError: (Object e) => e);
+      expect(error, isA<AuthSignUpClosedFailure>());
+      expect(error.toString(), isNot(contains('Signups')));
+      expect(service.state, AuthSessionState.signedOut);
+    });
+
+    test('a Supabase rejection of the token is unknown', () async {
+      final client = FakeGoogleSignInClient();
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      gateway.nextError = const AuthApiException('Bad ID token',
+          statusCode: '400', code: 'bad_jwt');
+      await expectLater(service.signInWithGoogleNative(),
+          throwsA(isA<AuthUnknownFailure>()));
+    });
+  });
+
+  group('new failure kinds (#2 U2; KTD4, R13, R14)', () {
+    test('mapAuthError maps signup_disabled and identity_already_exists',
+        () {
+      expect(
+          mapAuthError(const AuthApiException('Signups not allowed',
+              code: 'signup_disabled')),
+          isA<AuthSignUpClosedFailure>());
+      expect(
+          mapAuthError(const AuthApiException('Identity is already linked',
+              code: 'identity_already_exists')),
+          isA<AuthIdentityTakenFailure>());
+    });
+
+    test('every new failure is fieldless, equal by type, and text-free', () {
+      const failures = <AuthFailure>[
+        AuthFailure.expiredLink(),
+        AuthFailure.invalidCode(),
+        AuthFailure.providerUnavailable(),
+        AuthFailure.identityTaken(),
+        AuthFailure.signUpClosed(),
+      ];
+      expect(failures.map((f) => f.runtimeType).toSet(), hasLength(5));
+      expect(const AuthFailure.expiredLink(), const AuthFailure.expiredLink());
+      expect(const AuthFailure.expiredLink(),
+          isNot(const AuthFailure.invalidCode()));
+      for (final failure in failures) {
+        final text = failure.toString();
+        expect(text, startsWith('AuthFailure.'));
+        expect(text, isNot(contains('@')));
+        expect(text.toLowerCase(), isNot(contains('token')));
+        expect(text, isNot(contains(' ')));
+      }
     });
   });
 }

@@ -9,6 +9,10 @@
 ///
 /// Every provider error is reduced to a typed [AuthFailure]; raw messages,
 /// link `error_description`s, and emails never leave this file.
+///
+/// Native Google Sign-In (#2 U2; KTD1, KTD8) runs through the injected
+/// [GoogleSignInClient] with one hashed nonce per process (#2 AS2); log
+/// lines carry only a runtime type or an exception-code name (#2 KTD7).
 library;
 
 import 'dart:async';
@@ -18,9 +22,13 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart'
+    show GoogleSignInException, GoogleSignInExceptionCode;
 import 'package:http/http.dart' as http;
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/auth/auth_gateway.dart';
 import 'package:lunarlog/data/auth/auth_link_classifier.dart';
+import 'package:lunarlog/data/auth/google_sign_in_client.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
@@ -69,6 +77,12 @@ AuthFailure mapAuthError(Object error) {
         return const AuthFailure.wrongPassword();
       case 'weak_password':
         return const AuthFailure.weakPassword();
+      case 'signup_disabled':
+        // Sign-ups closed: a first Google, Apple, or passwordless sign-in
+        // for an unknown person (#2 KTD3).
+        return const AuthFailure.signUpClosed();
+      case 'identity_already_exists':
+        return const AuthFailure.identityTaken();
     }
     // Older GoTrue servers send no code for a bad login, only the message.
     if (error.statusCode == '400' &&
@@ -93,18 +107,30 @@ class SupabaseAuthService implements AuthService {
     String? redirectTo,
     bool? appleAvailable,
     this._requestAppleCredential = defaultAppleCredentialRequest,
+    bool? googleAvailable,
+    GoogleSignInClient? googleClient,
     this._generateNonce = generateRawNonce,
   })  : _redirectTo =
             redirectTo ?? resolveAuthRedirectUrl(isWeb: kIsWeb, base: Uri.base),
         _appleAvailable = appleAvailable ??
-            (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+            (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS),
+        _googleAvailable = googleAvailable ?? (!kIsWeb && AppConfig.hasGoogle),
+        _googleClient = googleClient ?? PluginGoogleSignInClient();
 
   final AuthGateway _gateway;
   final AuthLinkSource _links;
   final String _redirectTo;
   final bool _appleAvailable;
   final AppleCredentialRequest _requestAppleCredential;
+  final bool _googleAvailable;
+  final GoogleSignInClient _googleClient;
   final String Function() _generateNonce;
+
+  /// The per-process Google nonce pair (#2 AS2): minted on the first
+  /// Google call, the hash given to the client once, the raw value sent to
+  /// Supabase with every Google ID token. In memory only, never logged.
+  ({String raw, String hashed})? _googleNonce;
+  bool _googleInitialized = false;
 
   final StreamController<AuthSessionState> _states =
       StreamController<AuthSessionState>.broadcast();
@@ -359,6 +385,57 @@ class SupabaseAuthService implements AuthService {
       }
     }
     return AppleSignInSession(_toUser(session.user)!);
+  }
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogleNative() async {
+    if (!_googleAvailable) {
+      throw UnsupportedError(
+          'Google Sign-In needs client ids and a native platform');
+    }
+    final nonce = _googleNonce ??= _mintGoogleNonce();
+    final GoogleCredential credential;
+    try {
+      if (!_googleInitialized) {
+        await _googleClient.initialize(
+          iosClientId: AppConfig.googleIosClientId,
+          webClientId: AppConfig.googleWebClientId,
+          hashedNonce: nonce.hashed,
+        );
+        _googleInitialized = true;
+      }
+      credential = await _googleClient.authenticate();
+    } on GoogleSignInException catch (error) {
+      if (error.code == GoogleSignInExceptionCode.canceled) {
+        return const GoogleSignInCancelled();
+      }
+      // Every other code, including "no credentials" reported as
+      // unknownError on Android (#2 KTD8). The description is never logged.
+      debugPrint('lunarlog auth: google sign-in failed (${error.code.name})');
+      throw const AuthFailure.providerUnavailable();
+    } catch (error) {
+      debugPrint('lunarlog auth: google sign-in failed (${error.runtimeType})');
+      throw const AuthFailure.unknown();
+    }
+    final idToken = credential.idToken;
+    if (idToken == null) throw const AuthFailure.unknown();
+    final session = await _guard(() async {
+      final response = await _gateway.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: credential.accessToken,
+        nonce: nonce.raw,
+      );
+      final session = response.session;
+      if (session == null) throw const AuthFailure.unknown();
+      return session;
+    });
+    return GoogleSignInSession(_toUser(session.user)!);
+  }
+
+  ({String raw, String hashed}) _mintGoogleNonce() {
+    final raw = _generateNonce();
+    return (raw: raw, hashed: sha256.convert(utf8.encode(raw)).toString());
   }
 
   @override

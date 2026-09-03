@@ -2,6 +2,8 @@
 /// the slice of `GoTrueClient` it calls and the deep-link source. Both are
 /// interfaces so the service's link handling and event mapping are
 /// unit-testable with fakes; `SupabaseClient` itself is not fakeable.
+/// `signInWithIdToken` carries the optional Google access token
+/// (#2 U2; KTD1).
 library;
 
 import 'package:app_links/app_links.dart';
@@ -28,9 +30,12 @@ abstract interface class AuthGateway {
 
   Future<UserResponse> updateUser(UserAttributes attributes);
 
+  /// [accessToken] is required by the provider only when the ID token
+  /// carries `at_hash` (Google on iOS, #2 AS3).
   Future<AuthResponse> signInWithIdToken({
     required OAuthProvider provider,
     required String idToken,
+    String? accessToken,
     String? nonce,
   });
 
@@ -85,11 +90,13 @@ class GoTrueAuthGateway implements AuthGateway {
   Future<AuthResponse> signInWithIdToken({
     required OAuthProvider provider,
     required String idToken,
+    String? accessToken,
     String? nonce,
   }) =>
       _auth.signInWithIdToken(
         provider: provider,
         idToken: idToken,
+        accessToken: accessToken,
         nonce: nonce,
       );
 

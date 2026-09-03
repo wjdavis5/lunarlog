@@ -7,6 +7,10 @@
 ///
 /// Used two ways: pushed from Settings (pops on success) and embedded as
 /// the first-run account step ([embedded], with "Not now").
+///
+/// [authFailureCopy] is the single, exhaustive copy table for every
+/// [AuthFailure], including the provider, link, code, identity, and
+/// closed-sign-up kinds (#2 U2; KTD4, R14).
 library;
 
 import 'package:flutter/foundation.dart';
@@ -28,6 +32,16 @@ String authFailureCopy(AuthFailure failure) => switch (failure) {
       AuthNetworkFailure() =>
         'Could not reach the server. Check your connection and try again.',
       AuthUnknownFailure() => 'Something went wrong. Please try again.',
+      AuthProviderUnavailableFailure() =>
+        "Google Sign-In isn't available on this device. Use email instead.",
+      AuthExpiredLinkFailure() =>
+        'That sign-in link is no longer valid. Request a new one.',
+      AuthInvalidCodeFailure() =>
+        'That code was not accepted. Check it or request a new email.',
+      AuthIdentityTakenFailure() =>
+        'That sign-in method already belongs to another account.',
+      AuthSignUpClosedFailure() =>
+        'New accounts for this app are set up by the account owner.',
     };
 
 class SignInScreen extends StatefulWidget {

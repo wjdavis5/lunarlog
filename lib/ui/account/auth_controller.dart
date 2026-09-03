@@ -2,6 +2,7 @@
 /// [AuthService], shaped like `ProfileController` over its repository.
 /// Provided by `LunarLogApp` only when the build has an auth service; an
 /// unconfigured build provides nothing and shows no account section.
+/// Delegates native Google Sign-In like Apple (#2 U2).
 library;
 
 import 'dart:async';
@@ -76,6 +77,9 @@ class AuthController extends ChangeNotifier {
 
   Future<AppleSignInResult> signInWithAppleNative() =>
       _service.signInWithAppleNative();
+
+  Future<GoogleSignInResult> signInWithGoogleNative() =>
+      _service.signInWithGoogleNative();
 
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local}) =>
       _service.signOut(scope: scope);

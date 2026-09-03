@@ -1,6 +1,7 @@
 /// Hand-written [AuthService] fake (KTD6, the `FakeGate` convention): a
 /// controllable state stream plus call recorders, so widget and controller
-/// tests never touch a Supabase client.
+/// tests never touch a Supabase client. Google Sign-In mirrors the Apple
+/// knobs (#2 U2).
 library;
 
 import 'dart:async';
@@ -35,11 +36,19 @@ class FakeAuthService implements AuthService {
   /// What [signInWithAppleNative] returns.
   AppleSignInResult appleResult = const AppleSignInCancelled();
 
+  /// What [signInWithGoogleNative] returns (#2 U2).
+  GoogleSignInResult googleResult =
+      const GoogleSignInSession(AuthUser(id: 'user-google'));
+
   /// When set, every mutating call throws it once.
   AuthFailure? nextFailure;
 
   /// Throw [UnsupportedError] from [signInWithAppleNative] (non-iOS).
   bool appleUnsupported = false;
+
+  /// Throw [UnsupportedError] from [signInWithGoogleNative] (no client ids,
+  /// or web).
+  bool googleUnsupported = false;
 
   /// When set, every mutating call waits for it before completing, so a
   /// widget test can observe the pending state (U6). Complete it to let
@@ -52,6 +61,7 @@ class FakeAuthService implements AuthService {
   final updatePasswordCalls = <String>[];
   final signOutCalls = <AuthSignOutScope>[];
   int appleCalls = 0;
+  int googleCalls = 0;
   int recoveryConsumed = 0;
   int linkFailureConsumed = 0;
 
@@ -159,6 +169,20 @@ class FakeAuthService implements AuthService {
     await _maybeThrow();
     final result = appleResult;
     if (result is AppleSignInSession) {
+      emit(AuthSessionState.signedIn, user: result.user);
+    }
+    return result;
+  }
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogleNative() async {
+    if (googleUnsupported) {
+      throw UnsupportedError('Google Sign-In is not available in this build');
+    }
+    googleCalls++;
+    await _maybeThrow();
+    final result = googleResult;
+    if (result is GoogleSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
