@@ -24,6 +24,11 @@ sealed class RemoteRow {
   DateTime? get deletedAt;
   SyncTable get table;
 
+  /// The server-assigned `server_version` (KTD2): the pull cursor the
+  /// engine advances to the page's maximum. `0` when unknown — a row built
+  /// locally (tests) or decoded from a payload without the column.
+  int get serverVersion;
+
   bool get isTombstone => deletedAt != null;
 }
 
@@ -37,6 +42,7 @@ final class RemoteProfileRow extends RemoteRow {
     required this.createdAt,
     required this.updatedAt,
     required this.deletedAt,
+    this.serverVersion = 0,
   });
 
   @override
@@ -50,6 +56,8 @@ final class RemoteProfileRow extends RemoteRow {
   final DateTime updatedAt;
   @override
   final DateTime? deletedAt;
+  @override
+  final int serverVersion;
 
   @override
   SyncTable get table => SyncTable.profiles;
@@ -66,6 +74,7 @@ final class RemoteDayEntryRow extends RemoteRow {
     required this.note,
     required this.updatedAt,
     required this.deletedAt,
+    this.serverVersion = 0,
   });
 
   @override
@@ -82,6 +91,8 @@ final class RemoteDayEntryRow extends RemoteRow {
   final DateTime updatedAt;
   @override
   final DateTime? deletedAt;
+  @override
+  final int serverVersion;
 
   @override
   SyncTable get table => SyncTable.dayEntries;
