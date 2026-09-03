@@ -92,6 +92,8 @@ class FakeAuthGateway implements AuthGateway {
   /// paths.
   String? fixedUserId;
 
+  Completer<void>? getSessionFromUrlGate;
+
   final getSessionFromUrlCalls = <Uri>[];
   final signUpCalls = <({String email, String password, String? redirect})>[];
   final signInCalls = <({String email, String password})>[];
@@ -135,6 +137,7 @@ class FakeAuthGateway implements AuthGateway {
   @override
   Future<AuthSessionUrlResponse> getSessionFromUrl(Uri uri) async {
     getSessionFromUrlCalls.add(uri);
+    await getSessionFromUrlGate?.future;
     _maybeThrow();
     final params = uri.queryParameters;
     if (params.containsKey('error_description') ||
@@ -461,6 +464,28 @@ void main() {
   });
 
   group('deep links (KTD8)', () {
+    test('start() completes immediately on cold start with initial link without awaiting network exchange', () async {
+      final gate = Completer<void>();
+      gateway.getSessionFromUrlGate = gate;
+      gateway.codeVerifier = 'verifier';
+      links.initial = Uri.parse('$callback?code=abc');
+
+      var startedCompleted = false;
+      final serviceFuture = started().then((s) {
+        startedCompleted = true;
+        return s;
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(startedCompleted, isTrue, reason: 'start() must not await getSessionFromUrl');
+      final service = await serviceFuture;
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      expect(service.state, AuthSessionState.signedOut);
+
+      gate.complete();
+      await settle();
+      expect(service.state, AuthSessionState.signedIn);
+    });
+
     test('a recovery link with a stored verifier is exchanged and latches '
         'recovery before any subscriber exists', () async {
       gateway.codeVerifier = 'verifier/passwordRecovery';

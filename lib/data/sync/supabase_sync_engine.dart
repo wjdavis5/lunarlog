@@ -199,7 +199,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     _writeSub = db
         .tableUpdates(TableUpdateQuery.onAllTables([db.profiles, db.dayEntries]))
         .listen((_) => _onLocalWrite());
-    _periodicTimer = _periodicTimerFactory(_periodicInterval, requestSync);
+    _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
+      _rejected.clear();
+      requestSync();
+    });
     requestSync();
   }
 
@@ -339,11 +342,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// it was gated, paused, aborted or failed.
   ///
   /// Split into this orchestrator plus `_passesGateAndAuthChecks`/
-  /// `_resolveBinding`/`_reconcileIfDue`/`_logRetryIfNeeded`/
-  /// `_syncErrorKindForTransportError` — same sequencing, same conditions,
-  /// no behavior change; the try/catch shape (and its own decision points)
-  /// stays here since that's the error-handling architecture, not
-  /// extractable work.
+  /// `_resolveBinding`/`_reconcileDueBeforePush`/`_reconcileIfDue`/
+  /// `_logRetryIfNeeded`/`_syncErrorKindForTransportError` — same
+  /// sequencing, same conditions, no behavior change; the try/catch shape
+  /// (and its own decision points) stays here since that's the
+  /// error-handling architecture, not extractable work.
   Future<bool> _cycle() async {
     try {
       if (!await _passesGateAndAuthChecks()) return false;
@@ -365,14 +368,18 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       _emit(_snapshot.copyWith(
           phase: _phase(SyncPhase.pushing), boundUserId: uid));
 
+      // Computed (and, when due, acted on by clearing _rejected) before the
+      // push so a previously-rejected row is retried once the reconcile
+      // that follows re-evaluates it.
+      final reconcileDueBeforePush = _reconcileDueBeforePush(bindNow, state);
+
       final resolvedSeen = await _push(uid);
       final pullRetry = await _pullIncremental(uid);
       state = await _storage.readSyncState();
       final reconcileRetry = await _reconcileIfDue(
         uid: uid,
-        bindNow: bindNow,
+        reconcileDueBeforePush: reconcileDueBeforePush,
         resolvedSeen: resolvedSeen,
-        state: state,
       );
       _logRetryIfNeeded(pullRetry: pullRetry, reconcileRetry: reconcileRetry);
 
@@ -459,22 +466,32 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return (state: state, bindNow: false);
   }
 
-  /// [_cycle]'s reconcile-due decision and dispatch, split out verbatim.
-  /// Returns whether the reconcile (if it ran) hit a retryable apply
-  /// failure.
-  Future<bool> _reconcileIfDue({
-    required String uid,
-    required bool bindNow,
-    required bool resolvedSeen,
-    required SyncStateRow state,
-  }) async {
+  /// Whether a full reconcile is due, based on state from *before* this
+  /// cycle's push: a fresh bind, no prior full pull, or the last one is
+  /// stale (KTD2). When due, also clears [_rejected] (a previously-rejected
+  /// row is retried once the reconcile that follows re-evaluates it) —
+  /// this must run before the push, so it lives here rather than in
+  /// [_reconcileIfDue], which only sees post-push state.
+  bool _reconcileDueBeforePush(bool bindNow, SyncStateRow state) {
     final now = _clock().toUtc();
     final lastFull = state.lastFullPullAt?.toUtc();
-    final reconcileDue = bindNow ||
-        resolvedSeen ||
+    final due = bindNow ||
         lastFull == null ||
         now.difference(lastFull) > kSyncFullPullInterval;
-    if (!reconcileDue) return false;
+    if (due) _rejected.clear();
+    return due;
+  }
+
+  /// [_cycle]'s reconcile dispatch, split out verbatim. Due either because
+  /// [_reconcileDueBeforePush] already said so, or because the push saw a
+  /// resolved row ([resolvedSeen]). Returns whether the reconcile (if it
+  /// ran) hit a retryable apply failure.
+  Future<bool> _reconcileIfDue({
+    required String uid,
+    required bool reconcileDueBeforePush,
+    required bool resolvedSeen,
+  }) async {
+    if (!reconcileDueBeforePush && !resolvedSeen) return false;
     final reconcileRetry = await _reconcile(uid);
     if (!reconcileRetry) {
       await _updateState(
@@ -641,17 +658,40 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   Future<void> _applyPushResult(List<_PushItem> batch, PushResult result) async {
     final rejected = result.rejectedIds.toSet();
+    final acceptedProfileIds = <String>{};
     for (final item in batch) {
       if (rejected.contains(item.id)) {
         _rejected[item.id] = item.localRev;
         continue;
       }
       _rejected.remove(item.id);
+      if (item.table == SyncTable.profiles) {
+        acceptedProfileIds.add(item.id);
+      }
       await _storage.markPushed(
           table: item.table, id: item.id, localRevAtPush: item.localRev);
     }
+    if (acceptedProfileIds.isNotEmpty) {
+      await _unrejectEntriesOf(acceptedProfileIds, rejected);
+    }
     if (result.resolved.isNotEmpty) {
       await _storage.applyResolved(result.resolved);
+    }
+  }
+
+  /// A day entry rejected alongside its profile is un-rejected once that
+  /// profile is accepted (and the entry itself wasn't [rejected]), so it is
+  /// retried on the next push instead of waiting for its own local edit.
+  Future<void> _unrejectEntriesOf(
+    Set<String> acceptedProfileIds,
+    Set<String> rejected,
+  ) async {
+    final dirty = await _storage.readDirtyDayEntries();
+    for (final entry in dirty) {
+      if (acceptedProfileIds.contains(entry.profileId) &&
+          !rejected.contains(entry.id)) {
+        _rejected.remove(entry.id);
+      }
     }
   }
 

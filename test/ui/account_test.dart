@@ -1417,6 +1417,29 @@ void main() {
       expect(find.text(kNoticeText), findsOneWidget);
       await h.dispose();
     });
+
+    testWidgets('Sign out everywhere when global sign out fails still runs '
+        'reset and shows snackbar', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn();
+      h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+      await h.openSettings();
+      await h.settle();
+
+      h.auth.nextFailure = const AuthNetworkFailure();
+
+      await tester.tap(key('account-sign-out-everywhere'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-sign-out-everywhere-confirm'));
+      await h.settle();
+
+      expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+      expect(h.resets, 1);
+      expect(find.textContaining('Other devices were not signed out.'),
+          findsOneWidget);
+      await h.dispose();
+    });
   });
 
   group('no auth service', () {

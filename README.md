@@ -15,6 +15,8 @@ an installable web PWA used for iteration only. The app holds sensitive health
 data, including minors'; this repo stays private and must never contain real
 personal or health data.
 
+**Privacy Policy:** Read our full [Privacy Policy](PRIVACY.md).
+
 **Status:** dev project, not deployed. Release is gated (see Known limitations).
 
 ## Build / run
