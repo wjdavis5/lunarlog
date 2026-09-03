@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LunarLog Privacy Policy</title>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1c1c1e;
+      --muted: #636366;
+      --border: #e5e5ea;
+      --card: #f2f2f7;
+      --accent: #d32f2f;
+      --link: #007aff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121214;
+        --fg: #f2f2f7;
+        --muted: #8e8e93;
+        --border: #2c2c2e;
+        --card: #1c1c1e;
+        --accent: #ff453a;
+        --link: #0a84ff;
+      }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--fg);
+      line-height: 1.65;
+      padding: 2rem 1rem;
+      margin: 0;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h2 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.01em;
+    }
+    h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+    p, li {
+      font-size: 1rem;
+      color: var(--fg);
+    }
+    ul {
+      padding-left: 1.5rem;
+      margin: 0.5rem 0;
+    }
+    li {
+      margin-bottom: 0.4rem;
+    }
+    a {
+      color: var(--link);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .table-container {
+      overflow-x: auto;
+      margin: 1.5rem 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      background: var(--card);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      font-weight: 600;
+      background: var(--border);
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .highlight-card {
+      background: var(--card);
+      border-left: 4px solid var(--accent);
+      padding: 1rem 1.25rem;
+      border-radius: 4px;
+      margin: 1.5rem 0;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>LunarLog Privacy Policy</h1>
+    <div class="meta">
+      <strong>Effective Date:</strong> September 3, 2026 &bull; 
+      <strong>Last Updated:</strong> September 3, 2026
+    </div>
+
+    <div class="highlight-card">
+      <strong>Privacy First:</strong> LunarLog is a local-first menstrual cycle tracker. Your records stay encrypted on your device. Cloud sync is strictly optional, and we never display advertisements, monetize health information, or share data with data brokers.
+    </div>
+
+    <h2>1. Core Principles</h2>
+    <ul>
+      <li><strong>Local-First &amp; Offline:</strong> LunarLog operates fully offline without an account. All cycle entries, symptoms, and profiles remain on your hardware.</li>
+      <li><strong>Encrypted at Rest:</strong> Device storage is encrypted using SQLCipher (AES-256) and secured behind device biometric or passcode authentication.</li>
+      <li><strong>No Advertising or Tracking:</strong> We do not show ads, sell data, or participate in cross-app tracking networks.</li>
+      <li><strong>No Fertility Prediction:</strong> LunarLog deliberately omits fertility prediction, conception algorithms, or ovulation forecasting features.</li>
+      <li><strong>Scrubbed Telemetry:</strong> Diagnostic crash logs (Sentry) are scrubbed on-device prior to transmission, stripping all health details, notes, dates, and identities.</li>
+    </ul>
+
+    <h2>2. Information We Collect &amp; Process</h2>
+    <h3>A. Health &amp; Cycle Information (Local &amp; Optional Cloud Sync)</h3>
+    <p>When logging entries, you may record cycle dates, flow intensity (spotting, light, medium, heavy), custom notes, and profile settings. This data resides exclusively on your local device unless you explicitly opt in to cloud synchronization.</p>
+
+    <h3>B. Account &amp; Authentication Information (Optional)</h3>
+    <p>Creating an account is completely optional. If enabled via Supabase Auth, we process your email address and authentication provider identifiers (such as Apple Sign-In or Google Sign-In tokens). Existing local records are only uploaded after your explicit confirmation.</p>
+
+    <h3>C. Technical &amp; Diagnostic Data</h3>
+    <p>Error reports are stripped of health information, dates, notes, and personal identifiers before upload. Crash data is anonymous and used solely to ensure app stability.</p>
+
+    <h2>3. How We Use Information</h2>
+    <p>Information is used exclusively for:</p>
+    <ul>
+      <li>Delivering core cycle logging and profile management functionality.</li>
+      <li>Synchronizing your encrypted entries across your devices when you choose to log in.</li>
+      <li>Maintaining app security and troubleshooting software crashes.</li>
+    </ul>
+
+    <h2>4. Third-Party Service Providers</h2>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Purpose</th>
+            <th>Data Processed</th>
+            <th>Security</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Supabase</strong></td>
+            <td>Cloud authentication and database sync (optional)</td>
+            <td>Account email, encrypted cycle entries, auth tokens</td>
+            <td>TLS 1.3 in transit, AES-256 at rest, PostgreSQL Row-Level Security</td>
+          </tr>
+          <tr>
+            <td><strong>Sentry</strong></td>
+            <td>Crash diagnostics and error monitoring</td>
+            <td>Anonymized stack traces and system architecture (health &amp; identity stripped)</td>
+            <td>Client-side scrubbed; 90-day retention</td>
+          </tr>
+          <tr>
+            <td><strong>Apple / Google</strong></td>
+            <td>Optional identity providers</td>
+            <td>OAuth tokens and basic account identifier</td>
+            <td>Managed under Apple and Google privacy policies</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>5. Minors' Privacy &amp; Family Profiles</h2>
+    <p>LunarLog allows adult operators to manage cycle profiles for family members, including minors (<code>is_minor</code>). Adult operators act as the custodian of the device and account. We do not knowingly solicit or collect data directly from children, and minor profiles receive identical end-to-end encryption protections.</p>
+
+    <h2>6. Security Protections</h2>
+    <ul>
+      <li><strong>SQLCipher AES-256:</strong> Local database is fully encrypted at rest.</li>
+      <li><strong>Biometric Protection:</strong> Requires Face ID, Touch ID, or device passcode to unlock.</li>
+      <li><strong>Inactivity Relocking:</strong> Automatically locks the app after inactivity and upon backgrounding.</li>
+      <li><strong>Screen Obfuscation:</strong> Privacy cover obscures sensitive screens in the app switcher.</li>
+      <li><strong>Transport Security:</strong> Strict HTTPS with modern TLS for all network exchanges.</li>
+    </ul>
+
+    <h2>7. Data Retention &amp; Deletion Rights</h2>
+    <ul>
+      <li><strong>Local Deletion:</strong> Entries and profiles can be deleted at any time directly in the app.</li>
+      <li><strong>Sign Out &amp; Wipe:</strong> Signing out offers immediate local database disposal.</li>
+      <li><strong>Account &amp; Cloud Deletion:</strong> You can request immediate and complete deletion of your account and all synced cloud records at any time by contacting us or via in-app settings.</li>
+    </ul>
+
+    <h2>8. Legal Compliance &amp; Rights</h2>
+    <p>Under GDPR, CCPA, and applicable data privacy regulations, you have the right to access, rectify, port, or erase your personal data, or withdraw consent for cloud features. To exercise your rights, email <a href="mailto:will@wjdavis5.net">will@wjdavis5.net</a>.</p>
+
+    <h2>9. App Store &amp; Play Store Declarations</h2>
+    <ul>
+      <li><strong>Tracking:</strong> No data is used for tracking purposes.</li>
+      <li><strong>Linked Data:</strong> Email Address and Health data are linked to the account only when cloud sync is active.</li>
+      <li><strong>Non-Linked Data:</strong> Crash diagnostics are anonymous and not linked to user identity.</li>
+    </ul>
+
+    <h2>10. Contact Us</h2>
+    <p>For questions or requests concerning your privacy, contact:</p>
+    <p>
+      <strong>William Davis</strong><br>
+      Email: <a href="mailto:will@wjdavis5.net">will@wjdavis5.net</a><br>
+      GitHub: <a href="https://github.com/wjdavis5/lunarlog">https://github.com/wjdavis5/lunarlog</a><br>
+      Source: <a href="https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md">PRIVACY.md</a>
+    </p>
+
+    <footer>
+      &copy; 2026 LunarLog. All rights reserved.
+    </footer>
+  </div>
+</body>
+</html>
