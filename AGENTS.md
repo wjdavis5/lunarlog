@@ -86,6 +86,7 @@ Credentials and environment variables live in:
 
 ## Development & Build Workflow
 
+- **Worktree Isolation (Strict Requirement):** All new work, feature branches, PR reviews, and code changes MUST be performed in isolated git worktrees under `.worktrees/` (e.g. `.worktrees/pr-<n>` or `.worktrees/<branch-name>`). Never check out PR branches or make scratch changes in the primary checkout directory to avoid clobbering in-flight work.
 - **Flutter SDK:** Flutter 3.47.2 stable / Dart 3.13.2.
 - **Dependency Management:** `flutter pub get`
 - **Linter:** `flutter analyze`
