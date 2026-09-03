@@ -38,6 +38,7 @@ dart_defines.json
 .pub/
 /build/
 /coverage/
+/mutation-test-report/
 
 # Symbolication related
 app.*.symbols

@@ -42,6 +42,35 @@ flutter build ios --release --no-codesign   # unsigned; requires macOS
 Without `--dart-define`s the app is a purely local build: no account section,
 no sync, no crash reporting. See "Config & credentials".
 
+### Quality gates
+
+```powershell
+dart run tool/quality_gate.dart     # 90% coverage floor + per-method CRAP gate (also runs in CI)
+dart run tool/mutation_gate.dart    # mutation score for changed files (local only, no CI gate)
+dart run tool/mutation_gate.dart --full   # every non-excluded lib/ file; no time budget
+```
+
+`quality_gate.dart` runs `flutter test --coverage`, filters `coverage/lcov.info`
+through the reviewed exclusion list (`tool/quality/exclusions.dart` —
+generated code plus platform adapters that can't run under `flutter test`,
+e.g. `PluginGoogleSignInClient`), then checks total line coverage (floor
+90%) and CRAP per method (`comp² × (1 − cov/100)³ + comp`, gate at 10),
+printing both reports either way. `flutter test` alone is unaffected and
+stays fast for iteration — the gates run only through this script (and the
+CI step that calls it).
+
+`mutation_gate.dart` wraps the `mutation_test` package: by default it
+mutates only files changed against `origin/main` (including uncommitted
+changes); when every changed file has a directly mirrored test file
+(`lib/a/b.dart` → `test/a/b_test.dart` — true for most of `lib/domain/`),
+it scopes the test command to just those files, which is what keeps a
+typical run to roughly a minute or two. A change without a direct mirror
+(most `lib/ui/`/`lib/data/` files, tested through broader per-feature
+suites) falls back to the full test suite per mutant — slower, but never
+silently mis-scoped. Reports the mutation score and surviving mutants per
+file; nothing here gates CI, and the score isn't tracked automatically —
+note it in the PR description if it's worth recording.
+
 ### Supabase local stack (database tests)
 
 The remote schema, RLS policies, and the `sync_push` RPC live in
