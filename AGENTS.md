@@ -31,15 +31,23 @@ The remote backend is hosted on Supabase Cloud.
 ## Config & Credential Locations
 
 Credentials and environment variables live in:
-- **Local Dev:** `.env` in the repository root (gitignored). See `.env.example` for the required keys:
+- **App configuration (build-time dart-defines):** the app reads its client-side configuration from `lib/config.dart` (`AppConfig`) via `const String.fromEnvironment`. Keys:
+  - `SUPABASE_URL` - project URL.
+  - `SUPABASE_PUBLISHABLE_KEY` - the `sb_publishable_...` key. In CI this is fed from the existing `secrets.SUPABASE_ANON_KEY` repository secret (kept under its old name; it already holds the publishable key) and mapped to `--dart-define=SUPABASE_PUBLISHABLE_KEY=...`.
+  - `SENTRY_DSN` - empty disables crash reporting.
+  - `LUNARLOG_WEB_SYNC` - the literal `true` opts a web build into account sign-in and sync; never set in CI.
+  - Empty means unconfigured (`AppConfig.hasSupabase` / `hasSentry` are false); every workflow build must succeed with empty defines.
+  - **Local run:** copy `dart_defines.example.json` to `dart_defines.json` (gitignored, client-safe values only) and run `flutter run --dart-define-from-file=dart_defines.json`.
+- **Server-side only (CLI / database):** `.env` in the repository root (gitignored) - the app never reads it. See `.env.example` for the required keys:
   - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_PUBLISHABLE_KEY`
   - `SUPABASE_PROJECT_REF`
   - `DATABASE_PASSWORD`
   - `DATABASE_URL`
-- **Local Development:** `.env` at repo root (gitignored).
 - **CI / GitHub Actions:** Repository secrets configured on `wjdavis5/lunarlog`:
-  - Supabase: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `DATABASE_URL`.
+  - Supabase: `SUPABASE_URL`, `SUPABASE_ANON_KEY` (holds the publishable key; see above), `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `DATABASE_URL`.
+  - Sentry: `SENTRY_DSN`.
+  - The three client-safe values (`SUPABASE_URL`, `SUPABASE_ANON_KEY` -> `SUPABASE_PUBLISHABLE_KEY`, `SENTRY_DSN`) are passed as `--dart-define` flags to every `flutter build` in `ci.yml`, `ios-release.yml`, and `play-store-release.yml`; on forks they resolve to empty strings.
   - iOS App Store & TestFlight:
     - `ASC_KEY_ID`: App Store Connect API key ID.
     - `ASC_ISSUER_ID`: App Store Connect API issuer ID.

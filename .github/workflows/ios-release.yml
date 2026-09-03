@@ -16,6 +16,10 @@ name: iOS Release
 #   IOS_DIST_CERT_P12_BASE64      base64 of the Apple Distribution .p12
 #   IOS_DIST_CERT_PASSWORD        password protecting that .p12
 #   IOS_PROVISION_PROFILE_BASE64  base64 of the App Store .mobileprovision
+#   SUPABASE_URL                  Supabase project URL (client-safe)
+#   SUPABASE_ANON_KEY             Supabase publishable key (client-safe);
+#                                 passed as SUPABASE_PUBLISHABLE_KEY
+#   SENTRY_DSN                    Sentry DSN (client-safe; empty disables)
 
 on:
   push:
@@ -189,7 +193,10 @@ jobs:
         run: |
           flutter build ios --release --no-codesign \
             --build-name=${{ steps.version.outputs.marketing }} \
-            --build-number=${{ steps.version.outputs.build }}
+            --build-number=${{ steps.version.outputs.build }} \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 
       - name: Install CocoaPods dependencies (if present)
         run: |

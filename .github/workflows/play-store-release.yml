@@ -14,6 +14,10 @@ name: Play Store Release
 #   ANDROID_KEY_ALIAS             Alias of the signing key
 #   ANDROID_KEY_PASSWORD          Password for the key
 #   PLAY_STORE_JSON_KEY           Google Play Console Service Account JSON credentials
+#   SUPABASE_URL                  Supabase project URL (client-safe)
+#   SUPABASE_ANON_KEY             Supabase publishable key (client-safe);
+#                                 passed as SUPABASE_PUBLISHABLE_KEY
+#   SENTRY_DSN                    Sentry DSN (client-safe; empty disables)
 
 on:
   workflow_dispatch:
@@ -138,13 +142,19 @@ jobs:
         run: |
           flutter build appbundle --release \
             --build-name=${{ steps.version.outputs.marketing }} \
-            --build-number=${{ steps.version.outputs.build }}
+            --build-number=${{ steps.version.outputs.build }} \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 
       - name: Build release APK
         run: |
           flutter build apk --release \
             --build-name=${{ steps.version.outputs.marketing }} \
-            --build-number=${{ steps.version.outputs.build }}
+            --build-number=${{ steps.version.outputs.build }} \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 
       - name: Verify build outputs
         run: |

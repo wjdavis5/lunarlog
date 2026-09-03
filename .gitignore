@@ -15,6 +15,9 @@ migrate_working_dir/
 .env.*
 !.env.example
 
+# Local --dart-define file (client-safe values only; see dart_defines.example.json)
+dart_defines.json
+
 # IntelliJ related
 *.iml
 *.ipr
