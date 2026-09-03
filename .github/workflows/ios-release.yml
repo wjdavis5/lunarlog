@@ -114,6 +114,16 @@ jobs:
             echo "Version unchanged ($current); uploading to TestFlight only."
           fi
 
+      - name: Install the App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s' "$ASC_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
       - name: Configure signing keychain
         env:
           CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
@@ -267,10 +277,11 @@ jobs:
           set -euo pipefail
           fastlane ios submit
 
-      - name: Remove the signing keychain
+      - name: Clean up signing material and secrets
         if: always()
         run: |
           set -euo pipefail
+          rm -rf ~/.appstoreconnect/private_keys
           if [ -n "${SIGNING_KEYCHAIN:-}" ] && [ -f "$SIGNING_KEYCHAIN" ]; then
             security delete-keychain "$SIGNING_KEYCHAIN"
             echo "Signing keychain removed."
