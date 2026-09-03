@@ -17,10 +17,19 @@ import 'package:lunarlog/data/db/errors.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sync/sync_transport.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
+import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
+
+import '../support/fake_auth_service.dart';
+import '../support/fake_sync_engine.dart';
+import '../support/fake_sync_transport.dart';
 
 class FakeGate implements AppGate {
   FakeGate({this.grantNext = true, this.requiresUnlock = true});
@@ -95,6 +104,9 @@ class Harness {
     bool grant = true,
     String? launchProfileId,
     Duration inactivityTimeout = kDefaultInactivityTimeout,
+    AuthService? authService,
+    SyncTransport? syncTransport,
+    SyncEngineBuilder syncEngineBuilder = defaultSyncEngineBuilder,
   }) async {
     await pendingSeed;
     // The binding's lifecycle state persists across tests in a suite; every
@@ -112,6 +124,9 @@ class Harness {
       launchProfileId: launchProfileId,
       inactivityTimeout: inactivityTimeout,
       inactivityTimerFactory: timers.factory,
+      authService: authService,
+      syncTransport: syncTransport,
+      syncEngineBuilder: syncEngineBuilder,
     ));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -509,6 +524,124 @@ void main() {
       expect(find.byType(SelectableText), findsOneWidget,
           reason: 'operator-facing diagnostics are copyable');
       await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
+  group('sync engine wiring (U5, KTD11)', () {
+    testWidgets('null collaborators build nothing: no builder call, no '
+        'SyncStatusController, the tree is the pre-U5 one', (tester) async {
+      var builderCalls = 0;
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) {
+          builderCalls++;
+          return FakeSyncEngine();
+        },
+      );
+      expect(find.text('Alice'), findsOneWidget);
+      expect(builderCalls, 0);
+      expect(
+          tester
+              .element(find.byType(ProfileHomeGate))
+              .read<SyncStatusController?>(),
+          isNull);
+      await harness.dispose();
+    });
+
+    testWidgets('the engine is built and started only after the first '
+        'unlock, provided as a SyncStatusController, and disposed before the '
+        'database closes', (tester) async {
+      final engine = FakeSyncEngine();
+      var builderCalls = 0;
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) {
+          builderCalls++;
+          expect(identical(db, harness.db), isTrue);
+          expect(identical(authService, auth), isTrue);
+          expect(gate.unlocked, isTrue,
+              reason: 'built after the credential was accepted');
+          return engine;
+        },
+      );
+      expect(lockScreen, findsOneWidget);
+      expect(builderCalls, 0, reason: 'nothing before the first unlock');
+      expect(engine.startCalls, 0);
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      expect(builderCalls, 1);
+      expect(engine.startCalls, 1);
+      final controller = tester
+          .element(find.byType(ProfileHomeGate))
+          .read<SyncStatusController?>();
+      expect(controller, isNotNull);
+      expect(controller!.snapshot, SyncSnapshot.initial);
+      engine.emitPhase(SyncPhase.pulling);
+      await tester.pump();
+      expect(controller.phase, SyncPhase.pulling);
+
+      // Re-lock and unlock again: still the same single engine.
+      await harness.background(AppLifecycleState.paused);
+      await harness.background(AppLifecycleState.resumed);
+      await harness.unlockViaButton();
+      expect(builderCalls, 1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(engine.disposeCalls, 1,
+          reason: 'root disposal disposes the engine before the DB closes');
+      await harness.db.close();
+    });
+
+    testWidgets('the default builder wires a real SupabaseSyncEngine: '
+        'transport calls only after unlock; its timers die with the root',
+        (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final harness = Harness(tester);
+      await harness.pump(
+          grant: false, authService: auth, syncTransport: transport);
+      expect(transport.pullCount, 0);
+      expect(transport.pushCount, 0);
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+      expect(transport.pullCount, greaterThanOrEqualTo(2),
+          reason: 'empty database binds silently and pulls both tables');
+      final controller = tester
+          .element(find.byType(ProfileHomeGate))
+          .read<SyncStatusController?>();
+      expect(controller, isNotNull);
+      expect(controller!.snapshot.boundUserId, 'u1');
+      expect(controller.phase, SyncPhase.idle);
+
+      // Root disposal cancels the periodic timer; a leaked one would fail
+      // this test as a pending timer.
+      await harness.dispose();
     });
   });
 

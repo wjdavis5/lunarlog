@@ -21,7 +21,9 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/overview/notification_availability.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
@@ -34,6 +36,8 @@ class LunarLogApp extends StatefulWidget {
     required this.db,
     this.scheduler,
     this.authService,
+    this.syncEngine,
+    this.onTeardown,
     this.showWebBanner = kIsWeb,
   });
 
@@ -47,6 +51,16 @@ class LunarLogApp extends StatefulWidget {
   /// provided to the subtree; when null nothing account-related is
   /// provided and the tree is exactly the pre-U4 one.
   final AuthService? authService;
+
+  /// Cloud sync engine (U5), owned by `LunarLogRoot`. When present a
+  /// [SyncStatusController] is provided to the subtree; when null nothing
+  /// sync-related is provided.
+  final SyncEngine? syncEngine;
+
+  /// Receives this widget's asynchronous teardown (the reminder
+  /// coordinator's disposal) when it unmounts, so the root can await it
+  /// before closing the database (KTD16 prep).
+  final void Function(Future<void> teardown)? onTeardown;
 
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
@@ -94,7 +108,14 @@ class _LunarLogAppState extends State<LunarLogApp> {
 
   @override
   void dispose() {
-    unawaited(_coordinator?.dispose());
+    final teardown = _coordinator?.dispose() ?? Future<void>.value();
+    _coordinator = null;
+    final onTeardown = widget.onTeardown;
+    if (onTeardown != null) {
+      onTeardown(teardown);
+    } else {
+      unawaited(teardown);
+    }
     _permissionState.dispose();
     super.dispose();
   }
@@ -102,11 +123,16 @@ class _LunarLogAppState extends State<LunarLogApp> {
   @override
   Widget build(BuildContext context) {
     final authService = widget.authService;
+    final syncEngine = widget.syncEngine;
     return MultiProvider(
       providers: [
         if (authService != null)
           ChangeNotifierProvider<AuthController>(
             create: (_) => AuthController(authService: authService),
+          ),
+        if (syncEngine != null)
+          ChangeNotifierProvider<SyncStatusController>(
+            create: (_) => SyncStatusController(engine: syncEngine),
           ),
         Provider<ProfilesRepository>.value(
           value: DriftProfilesRepository(widget.db.storage),

@@ -6,10 +6,13 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'app_lifecycle.dart';
 import 'data/gate/gate.dart';
 import 'data/notifications/notification_scheduler.dart';
+import 'data/sync/supabase_sync_transport.dart';
+import 'data/sync/sync_transport.dart';
 import 'domain/auth/auth_service.dart';
 import 'startup/startup.dart';
 import 'startup/supabase_bootstrap.dart';
@@ -26,6 +29,13 @@ Future<void> main() async {
   } catch (error) {
     debugPrint('lunarlog: supabase bootstrap failed (${error.runtimeType})');
   }
+  // Cloud sync (U5/U10): the transport exists only when the bootstrap
+  // produced a service (`AppConfig.hasSupabase` and initialization
+  // succeeded); `LunarLogRoot` builds the engine after the database opens
+  // and only when both collaborators are present (KTD11).
+  final SyncTransport? syncTransport = authService == null
+      ? null
+      : SupabaseSyncTransport(Supabase.instance.client);
   runApp(LunarLogRoot(
     gate: defaultAppGate(),
     dbOpener: () async => (await buildDbFactory()).open(),
@@ -33,5 +43,6 @@ Future<void> main() async {
     scheduler:
         kIsWeb ? NoopReminderScheduler() : FlutterLocalNotificationsScheduler(),
     authService: authService,
+    syncTransport: syncTransport,
   ));
 }
