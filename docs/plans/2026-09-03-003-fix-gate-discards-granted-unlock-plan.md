@@ -16,7 +16,7 @@ execution: code
 - **Objective:** Make a device credential the system accepted actually open the app (issue #65), and stop the Google and Apple sign-in ceremonies from re-locking the app mid-flow. The posture does move, deliberately and in one bounded place: while the app's own system UI is on screen, a lifecycle departure no longer locks. Everywhere else it is unchanged, content stays covered throughout, and the window's deadline bounds the exception.
 - **Authority:** Issue #65 for the defect; this plan's Product Contract for behavior and its Key Technical Decisions for mechanism; `AGENTS.md` for conventions and the worktree rule. Where this plan contradicts the re-lock behavior recorded in `docs/plans/2026-09-03-001-feat-social-logins-plan.md` (its KTD5 and its "System pickers trip the gate's re-lock" risk) and in `docs/ops/supabase-go-live.md`, this plan wins and those documents are corrected as part of the work.
 - **Execution profile:** Standard plan, high risk (the credential gate is the only thing standing between a found phone and minors' health data). Work in the `.worktrees/fix-gate-system-ui-relock` worktree on branch `fix/gate-system-ui-relock`. Code doc comments cite this plan's IDs with a `#65` prefix, for example `(#65 U1; KTD1)`, so they never collide with the `#1` and `#2` plan IDs already cited across `lib/`.
-- **Stop conditions:** Stop and surface a blocker if any change would make a *declined* credential open the app, if the existing `backgrounding re-locks (R7)` test group in `test/ui/gate_test.dart` cannot stay green unmodified, if any existing assertion beyond the single KTD8 `re-authentication for linking` case has to change (KTD7, KTD8), or if removing the departure latch turns out to be load-bearing for a behavior this plan has not accounted for.
+- **Stop conditions:** Stop and surface a blocker if any change would make a *declined* credential open the app, if the existing `backgrounding re-locks (R7)` test group in `test/ui/gate_test.dart` cannot stay green unmodified, if any existing assertion has to change (KTD7, KTD8), or if removing the departure latch turns out to be load-bearing for a behavior this plan has not accounted for.
 - **Tail ownership:** The invoking pipeline owns commit, review, and PR. On-device confirmation on an iPhone (and an Android device for the passcode-fallback case) is human follow-up recorded in the Verification Contract.
 
 ---
@@ -159,7 +159,13 @@ None. No dashboard configuration, no migration, no new package.
 
 - KTD7. **The posture outside the window is untouched, and the existing tests are the proof.** The `didChangeAppLifecycleState` switch keeps sending `inactive`, `hidden`, and `paused` to `_departed()`. `test/ui/gate_test.dart`'s `backgrounding re-locks (R7)` group and its integration-test counterpart must pass **unmodified**; needing to edit them is a signal the change went further than intended and is a stop condition. Governs R7, R8.
 
-- KTD8. **Exactly one existing test encodes the defective contract and is rewritten, not deleted.** The `re-authentication for linking` group in `test/ui/gate_test.dart` contains one case asserting that an interrupted prompt returns **false** — that is KTD4's behavior in reverse and cannot survive it; it is rewritten to assert that a granted prompt returns true and never changes `locked`, whatever the lifecycle reported. Its sibling, "an interrupted prompt on a gated platform replays the departure: covered and re-locked", **survives unchanged** under KTD4's narrowed replay, which is a deliberate check on the design: a change that also broke that case would be suppressing more than intended. The rewrite is called out by name in the PR description, because silently flipping a security assertion is exactly the change a reviewer must see. If the implementation needs any second existing assertion to change, that is a stop condition under KTD7.
+- KTD8. **No existing assertion changes — corrected during review.** This decision originally said one `re-authentication for linking` case had to be rewritten, then implementation found the same contract asserted in two. Review resolved it better than either: detecting interruption as *"is the operator still away when the prompt is down"* rather than *"did any lifecycle event arrive"* restores the original contract exactly. `reauthenticate()` returns `granted && !interrupted` again, so both existing cases pass **unmodified** — the prompt's own `inactive`-then-`resumed` is no longer an interruption, while a real walk-away still is. KTD7's stop condition therefore never fired, and the canary those two cases provide is intact.
+
+- KTD10. **An absorbed departure is answered fail-closed when the window's life ends.** Review found the first implementation had a hole big enough to be worse than the behaviour it replaced: `_closeSystemUiWindow` cancelled the toggle-independent deadline as soon as the awaited action returned, and the only thing left was `_armInactivity()` — which arms *nothing* when the operator has turned the relock toggle off, and which every `resumed` and pointer event restarts when they have not. A genuine backgrounding during any ceremony therefore left the app unlocked with no bound at all, and the next foreground lifted the cover onto profile data with no credential. The pre-change code locked on that path. So `_reconcileWindowClose` now asks one question — was a departure absorbed, and is the operator still away? — and locks if so, on every path including `unlock()`. The credential still decides whether the app *may* open (KTD1); it does not decide that an operator who walked away comes back to it open. Governs R6, R7.
+
+- KTD11. **A decision that supersedes an in-flight prompt invalidates its answer.** The window deadline can fire while a credential request is still outstanding. Without a guard, that request resolving `true` afterwards would re-open the session the gate just closed and hand the sync engine an unlocked edge on a grant nobody re-verified. `GateController` carries a generation counter, bumped when the deadline fires; `unlock()` and `reauthenticate()` capture it before awaiting and discard a result that crosses a bump. The deadline also clears `_authenticating` and both methods notify on every edge of it, because the lock screen renders its Unlock button from that flag — leaving it set behind a fresh lock screen is the same dead end this plan exists to remove. Governs R1, R6.
+
+- KTD12. **The foreground idle countdown is suspended for a window's duration.** `lock()` has no suppression check, so a countdown already near its deadline when a ceremony starts would lock the app mid-prompt — and no pointer events arrive while system UI is on screen, so nothing can refresh it. The window cancels it on open and `_reconcileWindowClose` re-arms it, which is also the correct semantics: foreground idle time does not accrue while the operator is working through a prompt the app raised. Governs R4.
 
 ### High-Level Technical Design
 
@@ -386,7 +392,7 @@ U3's red run comes **first** — author the issue-#65 cases against the unmodifi
 | Gate | Command or check | Applies to | Done signal |
 |---|---|---|---|
 | Static analysis | `flutter analyze` | all units | 0 issues |
-| Unit and widget tests | `flutter test` | U1–U3 | all pass; no existing test deleted, and none weakened beyond the single KTD8 rewrite |
+| Unit and widget tests | `flutter test` | U1–U3 | all pass; no existing test deleted or weakened |
 | Posture unchanged | the `backgrounding re-locks (R7)` group and its integration counterpart | U1 | pass **with no edits to those tests** |
 | Quality gates | `dart run tool/quality_gate.dart` | U1–U3 | coverage floor and per-method CRAP gate pass |
 | Mutation check | `dart run tool/mutation_gate.dart` | U1 | no surviving mutant in the departure/window logic |
@@ -403,11 +409,11 @@ U3's red run comes **first** — author the issue-#65 cases against the unmodifi
 
 **Global**
 
-- Every Verification Contract gate passes; no existing test deleted, and the only rewritten assertion is the single KTD8 case.
+- Every Verification Contract gate passes; no existing test is deleted **or rewritten** (KTD8).
 - `_lifecycleDuringAuth` no longer exists anywhere in `lib/`.
 - No declined credential can open the app — asserted by test, in both `unlock()` and `reauthenticate()`.
 - No window can outlive its deadline, and no code path leaves the cover stranded — both asserted by test.
-- The PR references issue #65, states the security exchange in AS2 plainly, and calls out the one rewritten security assertion by name, so the reviewer weighs both deliberately rather than inheriting them.
+- The PR references issue #65 and states the security exchange in AS2 plainly, so the reviewer weighs it deliberately rather than inheriting it.
 - Abandoned experiments and dead code from the implementation run are removed from the diff.
 
 **Per unit**

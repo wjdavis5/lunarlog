@@ -159,6 +159,15 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   int _systemUiWindows = 0;
   bool _settling = false;
   bool _departedDuringWindow = false;
+  bool _disposed = false;
+
+  /// Bumped whenever the gate makes a decision that supersedes an
+  /// in-flight credential request — currently only the window deadline
+  /// firing. A request that resolves across a bump is stale: honouring it
+  /// would silently re-open a session the gate already committed to
+  /// closing, and would hand the sync engine an unlocked edge on a grant
+  /// nobody re-verified.
+  int _generation = 0;
   InactivityTimer? _systemUiTimer;
   InactivityTimer? _settleTimer;
 
@@ -257,12 +266,20 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _systemUiWindows++;
     if (_systemUiWindows > 1) return;
     _cancelSettleTail();
+    // Suspend the foreground idle countdown for the window's duration. It
+    // reaches `lock()`, which has no suppression check, so a countdown
+    // already near its deadline would otherwise lock the app mid-ceremony
+    // — and no pointer events arrive while system UI is up, so
+    // `noteActivity` cannot refresh it. `_reconcileWindowClose` re-arms it.
+    _inactivityTimer?.cancel();
+    _inactivityTimer = null;
     _systemUiTimer?.cancel();
     _systemUiTimer =
         inactivityTimerFactory(systemUiDeadline, _systemUiDeadlineExpired);
   }
 
   void _closeSystemUiWindow() {
+    if (_disposed) return;
     if (_systemUiWindows == 0) return;
     _systemUiWindows--;
     if (_systemUiWindows > 0) return;
@@ -284,17 +301,31 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// The settle timer fired. Guarded because a cancelled-but-already-queued
   /// timer, or a window reopened during the tail, must not reconcile twice.
   void _onSettleTimeout() {
-    if (!_settling) return;
+    if (_disposed || !_settling) return;
     _reconcileWindowClose();
   }
 
   /// End of a window's life: the cover is reconciled against the
-  /// lifecycle (KTD9 — never assigned blind, or a grant landing off-screen
+  /// lifecycle (#65 KTD9 — never assigned blind, or a grant landing off-screen
   /// uncovers data and a closing window strands an opaque cover with no
   /// lock screen behind it), and [reauthenticate]'s narrowed replay fires
-  /// if the operator is still away (KTD4).
+  /// if the operator is still away (#65 KTD4).
   void _reconcileWindowClose() {
+    // The departure this window absorbed is answered here, and the answer
+    // is fail-closed: if the operator has not come back by the time the
+    // system UI is down, the departure takes effect. Anything softer is a
+    // hole — cancelling the window deadline (above) and leaning on
+    // `_armInactivity` would leave a device the operator walked away from
+    // unlocked, and with the relock toggle off it would arm nothing at
+    // all. That is strictly weaker than the behaviour this change
+    // replaced, which locked on every departure.
+    final unanswered = _departedDuringWindow && !_resumed;
     _cancelSettleTail();
+    if (unanswered) {
+      _obscured = true;
+      lock();
+      return;
+    }
     final wasObscured = _obscured;
     _obscured = !_resumed;
     _armInactivity();
@@ -305,7 +336,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     if (_obscured != wasObscured) notifyListeners();
   }
 
-  /// [reauthenticate]'s narrowed replay (KTD4): the operator is still away
+  /// [reauthenticate]'s narrowed replay (#65 KTD4): the operator is still away
   /// now that the prompt is down, so the departure the window suppressed
   /// takes effect. Runs immediately rather than waiting out the settling
   /// tail — the tail exists to absorb a *returning* app's trailing
@@ -317,13 +348,19 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     lock();
   }
 
-  /// The window outstayed its bound (KTD5). Lock unconditionally — this is
+  /// The window outstayed its bound (#65 KTD5). Lock unconditionally — this is
   /// the whole guarantee behind suppressing the lock in the first place,
   /// so it ignores the relock toggle, pointer activity, and nesting.
   void _systemUiDeadlineExpired() {
     _systemUiTimer = null;
     _systemUiWindows = 0;
+    _generation++;
     _cancelSettleTail();
+    // Release the prompt too. A credential request that never returns is
+    // exactly why this deadline exists, and leaving the flag set would
+    // leave the operator on a lock screen whose Unlock button is disabled
+    // forever — the same dead end this change set out to remove.
+    _authenticating = false;
     _obscured = !_resumed;
     lock();
   }
@@ -340,18 +377,29 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     if (!_locked || _authenticating) return;
     _authenticating = true;
     notifyListeners();
-    final granted = await duringSystemUi(_gate.requestAccess);
-    _authenticating = false;
-    if (granted) {
-      _denied = false;
-      _locked = false;
-      _armInactivity();
-    } else {
-      _denied = true;
+    final generation = _generation;
+    try {
+      final granted = await duringSystemUi(_gate.requestAccess);
+      if (_disposed || generation != _generation) {
+        // The window deadline already locked while this request hung.
+        // Honouring the answer now would re-open the session behind it.
+        return;
+      }
+      if (granted) {
+        _denied = false;
+        _locked = false;
+        _armInactivity();
+      } else {
+        _denied = true;
+      }
+      // The cover is not cleared here: it is reconciled against the
+      // lifecycle when the window settles (#65 KTD9).
+    } finally {
+      // Without this a throwing authenticator leaves the flag set and the
+      // re-entrancy guard turns every later Unlock tap into a no-op.
+      _authenticating = false;
+      notifyListeners();
     }
-    // The cover is not cleared here: it is reconciled against the
-    // lifecycle when the window settles (KTD9).
-    notifyListeners();
   }
 
   /// A fresh device-credential check for a sensitive action while the app
@@ -377,12 +425,20 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> reauthenticate() async {
     if (_authenticating) return false;
     _authenticating = true;
+    notifyListeners();
+    final generation = _generation;
     try {
       final granted = await duringSystemUi(_gate.requestAccess);
-      if (_departedDuringWindow && !_resumed) _replayDeparture();
-      return granted;
+      if (_disposed || generation != _generation) return false;
+      final interrupted = _departedDuringWindow && !_resumed;
+      if (interrupted) _replayDeparture();
+      // A caller that acts on `true` must not act after the app re-locked
+      // underneath it, or "Add Google" launches its picker over the lock
+      // screen and links while the operator is away.
+      return granted && !interrupted;
     } finally {
       _authenticating = false;
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -394,7 +450,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     if (_gate.requiresUnlock) {
       _locked = true;
     } else {
-      _obscured = true;
+      // Un-gated (web): there is no lock screen to dismiss a cover with,
+      // so only cover when the app is actually away.
+      _obscured = !_resumed;
     }
     notifyListeners();
   }
@@ -408,7 +466,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Note this never touches the system-UI window's deadline: pointer
   /// activity refreshes foreground idle time, and must not extend the
-  /// bound on an open window (KTD5).
+  /// bound on an open window (#65 KTD5).
   void _armInactivity() {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
@@ -460,6 +518,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    // Set first: a `duringSystemUi` action still in flight will run its
+    // close path when it finally resolves, and without this it would arm
+    // fresh timers nothing will ever cancel and notify a disposed
+    // ChangeNotifier.
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _inactivityTimer?.cancel();
     _systemUiTimer?.cancel();

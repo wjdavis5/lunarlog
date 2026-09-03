@@ -320,12 +320,19 @@ household member's.
       raises its notification-permission alert immediately after the first
       unlock and that still re-locks the app. It is the deferred follow-up
       recorded in `docs/plans/2026-09-03-003-fix-gate-discards-granted-unlock-plan.md`.
-- [ ] **The lock suppression is bounded.** Start a Google sign-in, leave
-      the app while the picker is up, wait past the two-minute window
-      deadline, and return: the lock screen is showing. Repeat, returning
-      to the app every minute — the deadline still fires on schedule
-      rather than being reset by the resumes. Repeat once more with
-      "Relock after inactivity" turned **off**: it still fires.
+- [ ] **The lock suppression is bounded — check both halves.**
+      *(a) Leave and come back after the prompt closes.* Start a Google
+      sign-in, leave the app while the picker is up, let the picker
+      finish or dismiss while you are still away, then return: the lock
+      screen is showing. Repeat with "Relock after inactivity" turned
+      **off** — it must still lock. This is the case that was wrong in
+      the first implementation, so check it deliberately.
+      *(b) Leave the prompt open.* Start a Google sign-in, leave the app
+      with the picker still up, wait past the two-minute window deadline,
+      and return: the lock screen is showing. Repeat, returning to the app
+      every minute — the deadline still fires on schedule rather than
+      being reset by the resumes. Repeat once more with the toggle
+      **off**: it still fires.
 - [ ] **Google button branding (#2 KTD6).** Screenshot the sign-in screen on
       iOS and Android and compare to Google's light-theme branding spec:
       unmodified "G" mark on a white pad, white fill, `#747775` stroke,

@@ -514,12 +514,16 @@ void main() {
       await ceremony;
     });
 
-    testWidgets('a granted unlock with the operator still away ends up '
-        'unlocked but covered, and the inactivity rule takes it from there',
-        (tester) async {
-      // KTD1's deliberate asymmetry: unlock() does not replay a departure
-      // the way reauthenticate() does, because the credential is what
-      // opens the app. Pinning where that actually lands.
+    // A plain `test`: the settings watch delivers over real async, which a
+    // `testWidgets` fake-async zone would never advance without pumping.
+    test('a granted unlock with the operator still away fails '
+        'closed, whatever the relock toggle says', () async {
+      // The window absorbed a real departure. The credential decides
+      // whether the app *may* open (KTD1), but an operator who walked away
+      // and never came back must not find it open: the departure is
+      // answered fail-closed when the window settles. Leaning on the
+      // inactivity timer here was a hole — it arms nothing when the relock
+      // toggle is off, and every resume restarts it.
       final gate = FakeGate(requiresUnlock: true);
       final timers = FakeInactivityTimers();
       final controller = GateController(
@@ -535,20 +539,54 @@ void main() {
         controller.didChangeAppLifecycleState(AppLifecycleState.hidden);
         controller.didChangeAppLifecycleState(AppLifecycleState.paused);
       };
+      final settings =
+          FakeSettingsStore({SettingsKeys.relockEnabled: 'false'});
+      addTearDown(settings.close);
+      controller.attachSettings(settings);
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.relockEnabled, isFalse,
+          reason: 'the configuration with no inactivity fallback at all');
+
       await controller.unlock();
       expect(controller.locked, isFalse,
-          reason: 'the credential decides (KTD1)');
+          reason: 'the credential was accepted (KTD1)');
 
       // The operator never comes back; the settling tail expires.
       timers.fireWithDelay(kSystemUiSettleTimeout);
 
-      expect(controller.locked, isFalse,
-          reason: 'no replay on the unlock path, by design');
-      expect(controller.obscured, isTrue,
-          reason: 'nothing is visible while the app is away (R5)');
-      timers.fireWithDelay(kDefaultInactivityTimeout);
       expect(controller.locked, isTrue,
-          reason: 'the ordinary inactivity rule is what re-locks it');
+          reason: 'the absorbed departure is answered, not waived');
+      expect(controller.obscured, isTrue);
+    });
+
+    test('a departure absorbed during a provider ceremony still locks when '
+        'the operator never returns', () async {
+      // The sign-in screen's pickers have no credential result to lean on
+      // at all, so this is the path with the least protection.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(controller.locked, isFalse, reason: 'suppressed while up');
+      picker.complete();
+      await ceremony;
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+
+      expect(controller.locked, isTrue);
+      expect(controller.obscured, isTrue);
     });
 
     testWidgets('the cover is reconciled when a window closes, never '
@@ -622,12 +660,7 @@ void main() {
       expect(controller.locked, isTrue);
     });
 
-    // Rewritten for #65 (KTD4, KTD8): this used to assert that an
-    // interrupted prompt returns false. The prompt reports `inactive`
-    // itself, so that fired on every single call and silently cancelled
-    // "Add Google". The credential's own result is now what the caller is
-    // told; re-locking is a separate concern, asserted by its sibling.
-    testWidgets('reports the credential even when the prompt reports its own '
+    testWidgets('returns false when the prompt is interrupted by a '
         'lifecycle change, without re-locking mid-prompt', (tester) async {
       final gate = FakeGate(requiresUnlock: false);
       // Fake timers: a closing system-UI window re-arms the inactivity
@@ -646,8 +679,7 @@ void main() {
       // The system prompt itself reports `inactive`.
       controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
       hold.complete(true);
-      expect(await pending, isTrue,
-          reason: 'the system accepted the credential');
+      expect(await pending, isFalse);
       expect(controller.authenticating, isFalse);
       expect(controller.locked, isFalse);
 
@@ -672,9 +704,7 @@ void main() {
       expect(controller.locked, isFalse,
           reason: 'no re-lock while the prompt is still up');
       hold.complete(true);
-      expect(await pending, isTrue,
-          reason: '#65 KTD4: the credential was accepted, and that is what '
-              'the caller is told; the departure is replayed separately');
+      expect(await pending, isFalse);
       expect(controller.locked, isTrue,
           reason: 'the suppressed departure is replayed after the prompt');
       expect(controller.obscured, isTrue);

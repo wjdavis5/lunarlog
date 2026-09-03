@@ -248,9 +248,11 @@ Part of the home lab; the canonical inventory lives in the lab root's
   flutter/flutter#146734; Android's passcode fallback really does
   background the activity), and treating them as departures made the app
   impossible to unlock at all (issue #65). Content stays covered for the
-  whole window, and it locks unconditionally after two minutes — ignoring
-  the inactivity toggle. The first-run notification-permission prompt is
-  not yet covered by this and still re-locks.
+  whole window; a departure the window absorbed is answered fail-closed
+  the moment the system UI comes down, and a window left open locks after
+  two minutes regardless of the inactivity toggle. The first-run
+  notification-permission prompt is not yet covered by this and still
+  re-locks.
 - iOS: the database file is not explicitly excluded from iCloud backups
   (skipped in U7 — it needs AppDelegate work on the Mac; the keychain-stored
   key is already device-only, and Android covers the equivalent with
