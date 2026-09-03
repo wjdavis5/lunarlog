@@ -589,6 +589,59 @@ void main() {
       expect(controller.obscured, isTrue);
     });
 
+    test('an action that throws still closes the window, and the next '
+        'departure locks normally', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      await expectLater(
+        controller.duringSystemUi(() async => throw StateError('picker')),
+        throwsStateError,
+      );
+      expect(controller.systemUiActive, isFalse,
+          reason: 'the finally still closed the window');
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isTrue,
+          reason: 'a leaked window would have suppressed this');
+    });
+
+    test('a window closing after dispose arms nothing and notifies nobody',
+        () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      controller.dispose();
+
+      // The ceremony outlives the controller, as a provider future can
+      // outlive the widget tree.
+      picker.complete();
+      await ceremony;
+
+      expect(timers.anyActive, isFalse,
+          reason: 'no timer armed on a disposed controller for dispose() to '
+              'have missed');
+    });
+
     testWidgets('the cover is reconciled when a window closes, never '
         'stranded and never lifted while the app is away', (tester) async {
       final (controller, gate, timers) = unlockedRig();
