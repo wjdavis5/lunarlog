@@ -48,6 +48,7 @@ import 'package:lunarlog/startup/startup.dart' as startup;
 import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 /// Platform channel used to set Android FLAG_SECURE (snapshot/screenshot
 /// suppression at the window level). Best effort — see
@@ -414,7 +415,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
       _gate.attachSettings(DriftSettingsStore(db.storage));
       _startSyncEngine(db);
     } catch (error, stackTrace) {
-      debugPrint('lunarlog startup failed: $error\n$stackTrace');
+      // U7 (KTD12): the message can embed a database path or SQL; log the
+      // type only and let Sentry (a no-op without a DSN) keep the scrubbed
+      // exception and stack.
+      debugPrint('lunarlog startup failed: ${error.runtimeType}');
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
       _error = error;
     } finally {
       _opening = false;

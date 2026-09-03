@@ -50,6 +50,8 @@ dependencies:
   http: ^1.6.0
   sign_in_with_apple: ^8.2.0
   crypto: ^3.0.7
+  # U7: crash reporting (KTD12). Inert unless SENTRY_DSN is defined.
+  sentry_flutter: ^9.28.0
 
 dev_dependencies:
   flutter_test:
