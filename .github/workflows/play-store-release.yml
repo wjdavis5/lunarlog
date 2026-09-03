@@ -16,8 +16,6 @@ name: Play Store Release
 #   PLAY_STORE_JSON_KEY           Google Play Console Service Account JSON credentials
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       track:
