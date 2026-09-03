@@ -7,16 +7,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/sync/local_row_counts.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:provider/provider.dart';
-
-/// Row counts of the two synced tables, tombstones included. Structurally
-/// the record `LunarLogStorage.countAllRows` returns; the app provides
-/// that method as the [LocalRowCounter] so no drift type crosses into
-/// `lib/ui`.
-typedef LocalRowCounts = ({int profiles, int dayEntries});
-
-typedef LocalRowCounter = Future<LocalRowCounts> Function();
 
 String _plural(int n, String one, String many) => '$n ${n == 1 ? one : many}';
 

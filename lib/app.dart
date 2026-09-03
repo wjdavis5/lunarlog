@@ -24,7 +24,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
-import 'package:lunarlog/ui/account/upload_consent_screen.dart'
+import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;
 import 'package:lunarlog/ui/overview/notification_availability.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';

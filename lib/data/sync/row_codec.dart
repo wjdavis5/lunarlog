@@ -18,6 +18,7 @@ library;
 
 import '../db/db.dart';
 import '../db/tables.dart';
+import '../db/ulid.dart';
 import 'remote_rows.dart';
 
 /// A JSON object as `dart:convert` produces and consumes it.
@@ -64,15 +65,12 @@ class RowCodecError implements Exception {
       'RowCodecError(${kind.name}: ${syncTableName(table)}.$field)';
 }
 
-final RegExp _ulid = RegExp(r'^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}$');
 final RegExp _isoDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
 /// Postgres text rendering: `2026-09-01 10:00:00.123456+00` (space
 /// separator, offset without minutes) — normalised before `DateTime.parse`.
 final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 
-/// Whether [value] has the ULID shape the server's CHECK enforces.
-bool isUlid(String value) => _ulid.hasMatch(value);
 
 /// Remote table name for [table] (`profiles` / `day_entries`).
 String syncTableName(SyncTable table) => switch (table) {
@@ -126,7 +124,7 @@ DateTime decodeTimestamp(
 /// The `p_profiles` element for [row]. Emits exactly the keys `sync_push`
 /// accepts; `dirty` and `local_rev` are device-local and never leave.
 JsonRow encodeProfile(Profile row) {
-  if (!isUlid(row.id)) {
+  if (!isValidUlid(row.id)) {
     throw const RowCodecError(RowCodecErrorKind.invalidId,
         table: SyncTable.profiles, field: 'id');
   }
@@ -145,11 +143,11 @@ JsonRow encodeProfile(Profile row) {
 /// The `p_day_entries` element for [row]. No `created_at` (server-only).
 JsonRow encodeDayEntry(DayEntry row) {
   const table = SyncTable.dayEntries;
-  if (!isUlid(row.id)) {
+  if (!isValidUlid(row.id)) {
     throw const RowCodecError(RowCodecErrorKind.invalidId,
         table: table, field: 'id');
   }
-  if (!isUlid(row.profileId)) {
+  if (!isValidUlid(row.profileId)) {
     throw const RowCodecError(RowCodecErrorKind.invalidId,
         table: table, field: 'profile_id');
   }
@@ -292,7 +290,7 @@ class _Reader {
 
   String ulid(String field) {
     final value = string(field);
-    if (!isUlid(value)) _fail(RowCodecErrorKind.invalidId, field);
+    if (!isValidUlid(value)) _fail(RowCodecErrorKind.invalidId, field);
     return value;
   }
 

@@ -385,8 +385,8 @@ void main() {
       );
     });
 
-    test('monotonic updated_at: a clock running backwards never regresses the '
-        'stored updated_at', () async {
+    test('monotonic updated_at: a clock running backwards stamps the edit '
+        'one millisecond after the stored updated_at', () async {
       final profile =
           await storage.upsertProfile(displayName: 'P', isMinor: false);
       final entry = await storage.upsertDayEntry(
@@ -413,10 +413,11 @@ void main() {
           localDate: '2026-05-01',
           tz: 'UTC',
           flow: FlowLevel.none);
-      expect(regressed.updatedAt, edited.updatedAt,
-          reason: 'updated_at must never regress');
+      expect(regressed.updatedAt,
+          edited.updatedAt.add(const Duration(milliseconds: 1)),
+          reason: 'updated_at must strictly increase on a local edit');
       expect(regressed.flow, FlowLevel.none,
-          reason: 'content is still written; only the timestamp is clamped');
+          reason: 'content is still written; only the timestamp is bumped');
     });
 
     test('upsert with an explicitly older updated_at does not regress the '
@@ -436,8 +437,46 @@ void main() {
           tz: 'UTC',
           flow: FlowLevel.medium,
           updatedAt: stale);
-      expect(imported.updatedAt, entry.updatedAt,
-          reason: 'sync import with a stale timestamp must not regress');
+      expect(imported.updatedAt,
+          entry.updatedAt.add(const Duration(milliseconds: 1)),
+          reason: 'a stale explicit timestamp still lands strictly after');
+    });
+
+    test('payload limits: an 81-character display_name and a 2001-character '
+        'note are rejected before anything is written', () async {
+      await expectLater(
+        storage.upsertProfile(displayName: 'a' * 81, isMinor: false),
+        throwsArgumentError,
+      );
+      expect(await storage.getProfiles(includeTombstones: true), isEmpty);
+
+      final profile = await storage.upsertProfile(
+          displayName: 'b' * 80, isMinor: false);
+      expect(profile.displayName.length, 80, reason: '80 is the limit');
+      await expectLater(
+        storage.upsertProfile(
+            id: profile.id, displayName: 'c' * 81, isMinor: false),
+        throwsArgumentError,
+      );
+      expect((await storage.getProfiles()).single.displayName, 'b' * 80);
+
+      await expectLater(
+        storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-05-03',
+            tz: 'UTC',
+            flow: FlowLevel.light,
+            note: 'n' * 2001),
+        throwsArgumentError,
+      );
+      expect(await storage.getDayEntries(profileId: profile.id), isEmpty);
+      final entry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-05-03',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          note: 'n' * 2000);
+      expect(entry.note!.length, 2000);
     });
 
     test('soft delete then re-create for the same profile+date: new ULID row '
@@ -516,9 +555,10 @@ void main() {
       expect(still.updatedAt, tombstone.updatedAt);
     });
 
-    test('characterization: the clamp applies to soft deletes and profile '
-        'edits too — a regressed clock never lowers updated_at, and a '
-        'tombstone stamps deleted_at with the clamped value', () async {
+    test('characterization: the strict bump applies to soft deletes and '
+        'profile edits too — a regressed clock lands 1ms after the stored '
+        'updated_at, and a tombstone stamps deleted_at with that value',
+        () async {
       final profile =
           await storage.upsertProfile(displayName: 'P', isMinor: false);
       final entry = await storage.upsertDayEntry(
@@ -534,18 +574,19 @@ void main() {
       final tombstone = (await storage.getDayEntries(
               profileId: profile.id, includeTombstones: true))
           .single;
-      expect(tombstone.updatedAt, stored);
-      expect(tombstone.deletedAt, stored);
+      const ms = Duration(milliseconds: 1);
+      expect(tombstone.updatedAt, stored.add(ms));
+      expect(tombstone.deletedAt, stored.add(ms));
 
       final edited = await storage.upsertProfile(
           id: profile.id, displayName: 'P2', isMinor: false);
-      expect(edited.updatedAt, profile.updatedAt);
+      expect(edited.updatedAt, profile.updatedAt.add(ms));
       expect(edited.displayName, 'P2');
 
       await storage.softDeleteProfile(profile.id);
       final gone = (await storage.getProfiles(includeTombstones: true)).single;
-      expect(gone.updatedAt, profile.updatedAt);
-      expect(gone.deletedAt, profile.updatedAt);
+      expect(gone.updatedAt, edited.updatedAt.add(ms));
+      expect(gone.deletedAt, edited.updatedAt.add(ms));
     });
 
     test('profiles can be archived and tombstoned; watchProfiles filters '

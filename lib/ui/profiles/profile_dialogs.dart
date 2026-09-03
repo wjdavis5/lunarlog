@@ -6,11 +6,18 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 
+/// Shared profile-name validation: non-blank, and no longer than the
+/// server accepts ([kMaxDisplayNameLength], mirrored from its CHECK).
 String? validateProfileName(String? value) {
   if (value == null || value.trim().isEmpty) {
     return 'Name cannot be empty';
+  }
+  if (value.trim().length > kMaxDisplayNameLength) {
+    return 'Name is too long ($kMaxDisplayNameLength characters max)';
   }
   return null;
 }
@@ -67,6 +74,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
               controller: _name,
               autofocus: true,
               decoration: const InputDecoration(labelText: 'Name'),
+              maxLength: kMaxDisplayNameLength,
+              maxLengthEnforcement: MaxLengthEnforcement.enforced,
               validator: validateProfileName,
             ),
             CheckboxListTile(

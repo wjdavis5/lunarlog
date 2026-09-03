@@ -36,6 +36,20 @@ String formatRelative(DateTime then, DateTime now) {
 /// first: the web build's off state; an unconfirmed sign-up; an auth
 /// error; a wrong account; pending upload consent; a running cycle;
 /// rejected rows; then the resting states.
+bool _isSignedIn(AuthSessionState? authState) =>
+    authState == AuthSessionState.signedIn ||
+    authState == AuthSessionState.passwordRecovery;
+
+/// Whether the tile should show the "waiting for email confirmation" state:
+/// a sign-up is pending on this device and no session has arrived (AS10).
+bool isAwaitingConfirmation({
+  required AuthSessionState? authState,
+  required String? awaitingConfirmationEmail,
+}) =>
+    !_isSignedIn(authState) &&
+    awaitingConfirmationEmail != null &&
+    awaitingConfirmationEmail.isNotEmpty;
+
 String syncStatusCopy({
   required SyncSnapshot? snapshot,
   required AuthSessionState? authState,
@@ -44,13 +58,12 @@ String syncStatusCopy({
   bool webSyncOff = false,
 }) {
   if (webSyncOff) return kWebSyncOffCopy;
-  final signedIn = authState == AuthSessionState.signedIn ||
-      authState == AuthSessionState.passwordRecovery;
-  if (!signedIn &&
-      awaitingConfirmationEmail != null &&
-      awaitingConfirmationEmail.isNotEmpty) {
+  if (isAwaitingConfirmation(
+      authState: authState,
+      awaitingConfirmationEmail: awaitingConfirmationEmail)) {
     return kAwaitingConfirmationCopy;
   }
+  final signedIn = _isSignedIn(authState);
   if (snapshot == null) return 'Sync is not available in this build';
   if (snapshot.phase == SyncPhase.error) {
     return switch (snapshot.lastError) {
@@ -89,9 +102,13 @@ bool isSyncRunning(SyncSnapshot? snapshot) => switch (snapshot?.phase) {
       _ => false,
     };
 
-IconData _iconFor(SyncSnapshot? snapshot, String copy) {
-  if (copy == kWebSyncOffCopy) return Icons.cloud_off_outlined;
-  if (copy == kAwaitingConfirmationCopy) return Icons.mark_email_unread_outlined;
+IconData _iconFor(
+  SyncSnapshot? snapshot, {
+  bool webSyncOff = false,
+  bool awaitingConfirmation = false,
+}) {
+  if (webSyncOff) return Icons.cloud_off_outlined;
+  if (awaitingConfirmation) return Icons.mark_email_unread_outlined;
   if (snapshot == null) return Icons.cloud_off_outlined;
   return switch (snapshot.phase) {
     SyncPhase.error => Icons.cloud_off_outlined,
@@ -150,7 +167,14 @@ class SyncStatusTile extends StatelessWidget {
                   height: 24,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Icon(_iconFor(snapshot, copy)),
+              : Icon(_iconFor(
+                  snapshot,
+                  webSyncOff: webSyncOff,
+                  awaitingConfirmation: isAwaitingConfirmation(
+                    authState: auth?.state,
+                    awaitingConfirmationEmail: awaitingSnapshot.data,
+                  ),
+                )),
           title: Text(copy),
           onTap: pendingConsent
               ? () => Navigator.of(context).push(
@@ -189,7 +213,7 @@ class SyncStatusGlyph extends StatelessWidget {
     return IconButton(
       key: const ValueKey('sync-status-glyph'),
       tooltip: copy,
-      icon: Icon(_iconFor(sync.snapshot, copy)),
+      icon: Icon(_iconFor(sync.snapshot)),
       onPressed: onPressed,
     );
   }

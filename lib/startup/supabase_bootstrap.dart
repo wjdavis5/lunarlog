@@ -41,6 +41,14 @@ Future<AuthService?> bootstrapSupabase({http.Client? httpClient}) async {
     publishableKey: AppConfig.supabasePublishableKey,
     httpClient: httpClient,
     authOptions: authOptions,
+    // Every PostgREST call (the `sync_push` RPC and the pull selects) gets
+    // a per-attempt timeout, so a stalled connection cannot hang a sync
+    // cycle forever. The resulting `TimeoutException` is mapped by
+    // `mapSyncTransportError` to `SyncTransportError.network()`, which the
+    // engine retries with backoff.
+    postgrestOptions: const PostgrestClientOptions(
+      requestTimeout: Duration(seconds: 20),
+    ),
   );
 
   final service = SupabaseAuthService(

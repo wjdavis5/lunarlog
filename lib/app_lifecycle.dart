@@ -490,11 +490,13 @@ class LunarLogRootState extends State<LunarLogRoot> {
   /// closing database; await that subtree's asynchronous teardown; wipe
   /// (web) and close the database; on native delete the file and its
   /// siblings *then* the key, so a crash in between can never leave a keyed
-  /// file that would quarantine the next open; reopen through `dbOpener`
-  /// (which mints a fresh key) and start a fresh engine; finally sign the
-  /// session out locally and on the server — best effort, last, so its
-  /// failure never skips a local step (the local session is removed by the
-  /// service regardless of the server's answer).
+  /// file that would quarantine the next open; sign the session out locally
+  /// and on the server — best effort, so its failure never skips a local
+  /// step (the local session is removed by the service regardless of the
+  /// server's answer) — *before* the reopen, so the fresh database's first
+  /// sync cycle never sees the account being signed out and binds to it;
+  /// finally reopen through `dbOpener` (which mints a fresh key) and start
+  /// a fresh engine.
   ///
   /// A second call while one is running is ignored. A local step failing
   /// fails closed: the root shows the fail-closed screen rather than
@@ -525,7 +527,6 @@ class LunarLogRootState extends State<LunarLogRoot> {
         if (mounted) setState(() {});
         return;
       }
-      if (mounted) await _openDatabase();
       final auth = widget.authService;
       if (auth != null) {
         try {
@@ -535,6 +536,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
               'lunarlog reset: server sign-out failed (${error.runtimeType})');
         }
       }
+      if (mounted) await _openDatabase();
     } finally {
       _resetting = false;
     }

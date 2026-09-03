@@ -182,8 +182,8 @@ void main() {
     });
 
     test('AE11: markPushed clears dirty only when local_rev is unchanged; '
-        'an edit with an unchanged updated_at still bumps local_rev',
-        () async {
+        'an edit at the same clock instant bumps local_rev and lands 1ms '
+        'after the stored updated_at', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final e = await storage.upsertDayEntry(
           profileId: p.id,
@@ -192,13 +192,15 @@ void main() {
           flow: FlowLevel.light);
       final revAtPush = e.localRev;
 
-      // Push in flight; the clock has not advanced, so updated_at stays put.
+      // Push in flight; the clock has not advanced, so the edit is stamped
+      // strictly after the stored value (never equal — the server would
+      // decline an equal timestamp and revert the edit).
       final edited = await storage.upsertDayEntry(
           profileId: p.id,
           localDate: '2026-01-15',
           tz: 'UTC',
           flow: FlowLevel.heavy);
-      expect(edited.updatedAt, e.updatedAt);
+      expect(edited.updatedAt, e.updatedAt.add(const Duration(milliseconds: 1)));
       expect(edited.localRev, revAtPush + 1);
 
       final cleared = await storage.markPushed(
@@ -558,7 +560,8 @@ void main() {
 
   group('clock offset', () {
     test('a +5 minute offset stamps local writes ahead of the test clock and '
-        'the clamp still never regresses', () async {
+        'a later write behind the stored value still lands strictly after',
+        () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final e = await storage.upsertDayEntry(
           profileId: p.id,
@@ -580,12 +583,13 @@ void main() {
       // Offset dropped: the raw clock is now behind the stored value.
       storage.setClockOffset(Duration.zero);
       clock.now = t0.add(const Duration(seconds: 2));
-      final clamped = await storage.upsertDayEntry(
+      final bumped = await storage.upsertDayEntry(
           profileId: p.id,
           localDate: '2026-01-15',
           tz: 'UTC',
           flow: FlowLevel.none);
-      expect(clamped.updatedAt, shifted.updatedAt);
+      expect(bumped.updatedAt,
+          shifted.updatedAt.add(const Duration(milliseconds: 1)));
 
       // Profiles and deletes use the same clock.
       storage.setClockOffset(const Duration(minutes: 5));
@@ -593,6 +597,43 @@ void main() {
       expect((await profileById(p.id)).updatedAt,
           t0.add(const Duration(minutes: 5, seconds: 2)));
       expect(storage.clockOffset, const Duration(minutes: 5));
+    });
+  });
+
+  group('local edit after a remote apply', () {
+    test('a local edit with the clock 1s behind the applied remote row is '
+        'stamped remote + 1ms and stays dirty, never equal to the server '
+        'copy', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final remoteAt = t0.add(const Duration(minutes: 10));
+      const rid = 'remote-entry-1';
+      await storage.applyRemoteDayEntry(remoteEntry(rid,
+          profileId: p.id, localDate: '2026-01-20', updatedAt: remoteAt));
+      var row = await entryById(p.id, rid);
+      expect(row.updatedAt, remoteAt);
+      expect(row.dirty, isFalse);
+
+      clock.now = remoteAt.subtract(const Duration(seconds: 1));
+      final edited = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-20',
+          tz: 'UTC',
+          flow: FlowLevel.heavy);
+      expect(edited.id, rid);
+      expect(edited.updatedAt, remoteAt.add(const Duration(milliseconds: 1)));
+      expect(edited.dirty, isTrue);
+      expect(edited.flow, FlowLevel.heavy);
+
+      // The stored row agrees, and a re-apply of the same remote copy
+      // (equal to what the server holds) no longer wins.
+      row = await entryById(p.id, rid);
+      expect(row.updatedAt, remoteAt.add(const Duration(milliseconds: 1)));
+      expect(row.dirty, isTrue);
+      expect(
+          await storage.applyRemoteDayEntry(remoteEntry(rid,
+              profileId: p.id, localDate: '2026-01-20', updatedAt: remoteAt)),
+          isFalse);
+      expect((await entryById(p.id, rid)).flow, FlowLevel.heavy);
     });
   });
 

@@ -2,11 +2,17 @@
 /// repositories and the sync engine build on this).
 ///
 /// Invariants enforced here (settled data model, KTD4, KTD5):
-/// * `updated_at` never regresses on-device: every local write clamps the
-///   new timestamp to `max(incoming, stored)`. Remote applies compare
-///   *before* writing (LWW per id; the remote copy wins ties) and only ever
-///   write a timestamp that is at least the stored one, so the clamp holds
-///   for them by construction.
+/// * `updated_at` strictly increases on local edits: a local write stamps
+///   the clock when it is later than the stored value, otherwise the stored
+///   value plus one millisecond — never equal, because the server declines
+///   an edit stamped equal to the copy it already holds (the remote wins
+///   ties) and would revert it. Remote applies compare *before* writing
+///   (LWW per id; the remote copy wins ties) and only ever write a
+///   timestamp that is at least the stored one, so `updated_at` never
+///   regresses for them by construction.
+/// * Payload limits mirror the server's CHECK constraints
+///   (`lib/domain/limits.dart`): a local write past them throws rather than
+///   persisting a row the server would reject forever.
 /// * The storage clock is the injected clock plus [clockOffset]
 ///   (`server_now - device_now`, learned by the sync engine), so a device
 ///   whose clock trails the server does not lose every LWW race.
@@ -23,12 +29,16 @@
 library;
 
 import 'package:drift/drift.dart';
+import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/sync/local_row_counts.dart';
 
 import '../sync/conflict_rules.dart';
 import '../sync/remote_rows.dart';
 import 'db.dart';
 import 'tables.dart';
 import 'ulid.dart';
+
+export 'package:lunarlog/domain/sync/local_row_counts.dart' show LocalRowCounts;
 
 export '../sync/remote_rows.dart'
     show RemoteDayEntryRow, RemoteProfileRow, RemoteRow, RetryableSyncApplyError, SyncTable;
@@ -52,12 +62,35 @@ void _validateLocalDate(String localDate) {
   }
 }
 
-/// Returns [next] clamped so it is never earlier than [floor].
+/// Returns [next] clamped so it is never earlier than [floor] (device-local
+/// settings, which are not synced and need no strict bump).
 DateTime _notBefore(DateTime next, DateTime floor) =>
     next.toUtc().isBefore(floor.toUtc()) ? floor.toUtc() : next.toUtc();
 
-/// Local row counts per synced table (tombstones included).
-typedef LocalRowCounts = ({int profiles, int dayEntries});
+/// The `updated_at` for a local edit of a synced row stored at [stored]:
+/// [next] when it is strictly later, otherwise [stored] plus one
+/// millisecond (milliseconds, not microseconds, so the bump survives web's
+/// millisecond `DateTime` precision). Never equal to [stored]: an edit
+/// stamped equal to the server's copy is declined and reverted.
+DateTime _afterStored(DateTime next, DateTime stored) {
+  final n = next.toUtc();
+  final s = stored.toUtc();
+  return n.isAfter(s) ? n : s.add(const Duration(milliseconds: 1));
+}
+
+void _validateDisplayName(String displayName) {
+  if (displayName.length > kMaxDisplayNameLength) {
+    throw ArgumentError.value(displayName.length, 'displayName',
+        'must be at most $kMaxDisplayNameLength characters');
+  }
+}
+
+void _validateNote(String? note) {
+  if (note != null && note.length > kMaxNoteLength) {
+    throw ArgumentError.value(
+        note.length, 'note', 'must be at most $kMaxNoteLength characters');
+  }
+}
 
 /// The `sync_state` row as read when none has been written yet.
 const SyncStateRow kDefaultSyncState = SyncStateRow(
@@ -95,7 +128,9 @@ class LunarLogStorage {
   /// Creates or updates a profile keyed by [id] (a fresh ULID is generated
   /// when omitted). A newer write to a tombstoned profile revives it
   /// (`deleted_at` cleared) — under LWW a newer non-delete must win.
-  /// Marks the row dirty and bumps `local_rev`.
+  /// Marks the row dirty and bumps `local_rev`. An update stamps
+  /// `updated_at` strictly after the stored value. Throws [ArgumentError]
+  /// for a [displayName] over [kMaxDisplayNameLength].
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
@@ -104,7 +139,9 @@ class LunarLogStorage {
     DateTime? archivedAt,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) {
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateDisplayName(displayName);
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
       Profile? existing;
@@ -133,7 +170,7 @@ class LunarLogStorage {
           isMinor: Value(isMinor),
           sortOrder: Value(sortOrder),
           archivedAt: Value(archivedAt),
-          updatedAt: Value(_notBefore(now, existing.updatedAt)),
+          updatedAt: Value(_afterStored(now, existing.updatedAt)),
           deletedAt: const Value(null),
           dirty: const Value(true),
           localRev: Value(existing.localRev + 1),
@@ -151,7 +188,7 @@ class LunarLogStorage {
     await db.transaction(() async {
       final existing = await _profileOrNull(id);
       if (existing == null || existing.deletedAt != null) return;
-      final at = _notBefore(_now(), existing.updatedAt);
+      final at = _afterStored(_now(), existing.updatedAt);
       await (db.update(db.profiles)..where((t) => t.id.equals(id))).write(
         ProfilesCompanion(
           displayName: const Value(''),
@@ -196,12 +233,14 @@ class LunarLogStorage {
   /// Creates or updates the *live* day entry for (profileId, localDate).
   ///
   /// * If a live entry exists, it is updated in place (same ULID) with
-  ///   `updated_at = max(now, stored)` (monotonic).
+  ///   `updated_at` strictly after the stored value (`now` when later,
+  ///   otherwise `stored + 1ms`).
   /// * If none exists (including when only a tombstone exists for that date),
   ///   a new row with a fresh ULID is inserted. The old tombstone remains in
   ///   full-fidelity reads for sync; the new ULID row wins UI reads.
   ///
-  /// Marks the row dirty and bumps `local_rev`.
+  /// Marks the row dirty and bumps `local_rev`. Throws [ArgumentError] for
+  /// a [note] over [kMaxNoteLength].
   Future<DayEntry> upsertDayEntry({
     required String profileId,
     required String localDate,
@@ -214,6 +253,7 @@ class LunarLogStorage {
     // Async so validation failures surface as failed futures, not sync
     // throws, for callers awaiting the result.
     _validateLocalDate(localDate);
+    _validateNote(note);
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
       final live = await _liveDayEntry(profileId, localDate);
@@ -238,7 +278,7 @@ class LunarLogStorage {
           flow: Value(flow),
           tags: Value(tags),
           note: Value(note),
-          updatedAt: Value(_notBefore(now, live.updatedAt)),
+          updatedAt: Value(_afterStored(now, live.updatedAt)),
           deletedAt: const Value(null),
           dirty: const Value(true),
           localRev: Value(live.localRev + 1),
@@ -263,7 +303,7 @@ class LunarLogStorage {
     await db.transaction(() async {
       final live = await _liveDayEntry(profileId, localDate);
       if (live == null) return;
-      final at = _notBefore(_now(), live.updatedAt);
+      final at = _afterStored(_now(), live.updatedAt);
       final rowId = live.id;
       await (db.update(db.dayEntries)..where((t) => t.id.equals(rowId))).write(
         DayEntriesCompanion(
@@ -413,18 +453,18 @@ class LunarLogStorage {
   /// Row counts, live and tombstoned, of both synced tables — what the
   /// upload-consent step shows before the first push (R14, AS4).
   Future<LocalRowCounts> countAllRows() async {
-    final p = await _count(db.profiles, db.profiles.id);
-    final d = await _count(db.dayEntries, db.dayEntries.id);
+    final [p, d] = await Future.wait([
+      _count(db.profiles, db.profiles.id),
+      _count(db.dayEntries, db.dayEntries.id),
+    ]);
     return (profiles: p, dayEntries: d);
   }
 
   /// True only when both synced tables hold no row of any kind — a
   /// tombstone-only database is not empty (it has deletions to push).
   Future<bool> isEmpty() async {
-    final p = await _count(db.profiles, db.profiles.id);
-    if (p > 0) return false;
-    final d = await _count(db.dayEntries, db.dayEntries.id);
-    return d == 0;
+    final counts = await countAllRows();
+    return counts.profiles == 0 && counts.dayEntries == 0;
   }
 
   // ---------------------------------------------------- sync: remote applies
@@ -480,6 +520,22 @@ class LunarLogStorage {
             SyncStateCompanion(cursorDayEntries: Value(newCursor)),
         },
       );
+    });
+  }
+
+  /// Applies one full-reconcile page (rows of one or both tables) in ONE
+  /// transaction without touching any cursor (KTD2). Same per-row rules as
+  /// [applyRemoteProfile] / [applyRemoteDayEntry]; profiles first. A
+  /// throwing row rolls the page back — callers that need per-row
+  /// independence fall back to the single-row applies.
+  Future<void> applyRemoteRows(List<RemoteRow> rows) async {
+    await db.transaction(() async {
+      for (final row in rows.whereType<RemoteProfileRow>()) {
+        await _applyProfile(row, onlyExisting: false);
+      }
+      for (final row in rows.whereType<RemoteDayEntryRow>()) {
+        await _applyDayEntry(row, onlyExisting: false);
+      }
     });
   }
 

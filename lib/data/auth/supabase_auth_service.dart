@@ -25,11 +25,8 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
-/// Custom-scheme callback for confirmation and reset emails on native
-/// (KTD8). Registered in `AndroidManifest.xml` and `Info.plist`.
-const String kAuthCallbackScheme = 'lunarlog';
-const String kAuthCallbackHost = 'auth-callback';
-const String kAuthCallbackUrl = '$kAuthCallbackScheme://$kAuthCallbackHost';
+export 'package:lunarlog/data/auth/auth_link_classifier.dart'
+    show kAuthCallbackHost, kAuthCallbackScheme, kAuthCallbackUrl;
 
 /// `emailRedirectTo` / `redirectTo` for the provider's emails: the custom
 /// scheme on native, the page origin on web (AS9).
@@ -147,28 +144,40 @@ class SupabaseAuthService implements AuthService {
 
   /// Classifies and, for a callback, exchanges [uri]. Public so tests (and
   /// the link observer) drive it directly. A link seen twice — app_links
-  /// replays the launch link on its stream — is handled once.
+  /// replays the launch link on its stream — is handled once, except that
+  /// an exchange which failed transiently (network) leaves the link
+  /// retryable.
   Future<void> handleLink(Uri uri) async {
     final link = classifyAuthLink(uri);
     if (link is AuthLinkIgnored) return;
     final key = uri.toString();
     if (key == _lastHandledLink) return;
-    _lastHandledLink = key;
     switch (link) {
       case AuthLinkIgnored():
         return;
       case AuthLinkError():
+        _lastHandledLink = key;
         // Never call getSessionFromUrl: gotrue would throw an AuthException
         // whose message *is* the error_description.
         _surfaceLinkFailure(const AuthFailure.unknown());
       case AuthLinkCallback(:final recovery):
+        // Latched before the exchange so the stream replay of the launch
+        // link cannot start a second exchange while this one is in flight.
+        _lastHandledLink = key;
         try {
           final response = await _gateway.getSessionFromUrl(uri);
           if (recovery || _isRecoveryType(response.redirectType)) {
             _latchRecovery();
           }
         } catch (error) {
-          _surfaceLinkFailure(mapAuthError(error));
+          final failure = mapAuthError(error);
+          // A transient failure un-latches the link so the same link can
+          // be exchanged again; a definitive one (expired code, missing
+          // verifier) stays latched so the replay does not surface it twice.
+          if (failure is AuthNetworkFailure && _lastHandledLink == key) {
+            _lastHandledLink = null;
+          }
+          _surfaceLinkFailure(failure);
         }
     }
   }

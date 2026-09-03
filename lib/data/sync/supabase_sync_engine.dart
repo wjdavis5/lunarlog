@@ -299,15 +299,21 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   Future<bool> _hasPushableDirty() async {
     final profiles = await _storage.readDirtyProfiles();
-    for (final p in profiles) {
-      if (_rejected[p.id] != p.localRev) return true;
+    if (_pushable(profiles, (p) => p.id, (p) => p.localRev).isNotEmpty) {
+      return true;
     }
     final entries = await _storage.readDirtyDayEntries();
-    for (final e in entries) {
-      if (_rejected[e.id] != e.localRev) return true;
-    }
-    return false;
+    return _pushable(entries, (e) => e.id, (e) => e.localRev).isNotEmpty;
   }
+
+  /// Dirty rows the server has not rejected at their current `local_rev`
+  /// (a later local write bumps the rev and makes the row pushable again).
+  Iterable<T> _pushable<T>(
+    List<T> rows,
+    String Function(T) id,
+    int Function(T) localRev,
+  ) =>
+      rows.where((row) => _rejected[id(row)] != localRev(row));
 
   // ------------------------------------------------------------------- loop
 
@@ -353,6 +359,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       var bindNow = false;
       if (state.boundUserId == null) {
         if (await _storage.isEmpty()) {
+          // The session may have vanished during the awaits above (a device
+          // reset signs out while the fresh database opens): never bind an
+          // empty database to an account that is no longer confirmed.
+          _checkpoint(uid);
           state = await _bind(state, uid);
           bindNow = true;
           _restoring = true;
@@ -508,21 +518,21 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// Pushes every pushable dirty row, profiles first, in batches. Returns
   /// whether any batch answered with resolved rows (a reconcile trigger).
   Future<bool> _push(String uid) async {
-    final profiles = <_PushItem>[];
-    for (final row in await _storage.readDirtyProfiles()) {
-      if (_rejected[row.id] == row.localRev) continue;
-      profiles.add(_PushItem(
-          SyncTable.profiles, row.id, row.localRev, encodeProfile(row)));
-    }
-    final entries = <_PushItem>[];
-    for (final row in await _storage.readDirtyDayEntries()) {
-      if (_rejected[row.id] == row.localRev) continue;
-      entries.add(_PushItem(
-          SyncTable.dayEntries, row.id, row.localRev, encodeDayEntry(row)));
-    }
+    final profiles = [
+      for (final row in _pushable(
+          await _storage.readDirtyProfiles(), (p) => p.id, (p) => p.localRev))
+        _PushItem(SyncTable.profiles, row.id, row.localRev, encodeProfile(row)),
+    ];
+    final entries = [
+      for (final row in _pushable(await _storage.readDirtyDayEntries(),
+          (e) => e.id, (e) => e.localRev))
+        _PushItem(
+            SyncTable.dayEntries, row.id, row.localRev, encodeDayEntry(row)),
+    ];
     if (profiles.isEmpty && entries.isEmpty) return false;
 
     var resolvedSeen = false;
+    Duration? lastOffset;
     for (final batch in _chunk(profiles, entries)) {
       _checkpoint(uid);
       final PushResult result;
@@ -555,10 +565,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         await _storage.applyResolved(result.resolved);
         resolvedSeen = true;
       }
+      // The in-memory offset takes effect immediately (it stamps the next
+      // local writes); the persisted copy is written once after the loop.
       final offset = result.serverNow.toUtc().difference(_clock().toUtc());
       _storage.setClockOffset(offset);
-      await _updateState((s) =>
-          s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));
+      lastOffset = offset;
+    }
+    if (lastOffset != null) {
+      final ms = lastOffset.inMilliseconds;
+      await _updateState((s) => s.copyWith(serverClockOffsetMs: Value(ms)));
     }
     return resolvedSeen;
   }
@@ -630,21 +645,37 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         final page = await _transport.pullPage(
             table: table, afterVersion: after, limit: _pageSize);
         if (page.isEmpty) break;
-        for (final row in page) {
-          try {
-            switch (row) {
-              case RemoteProfileRow():
-                await _storage.applyRemoteProfile(row);
-              case RemoteDayEntryRow():
-                await _storage.applyRemoteDayEntry(row);
-            }
-          } on RetryableSyncApplyError {
-            retry = true;
-          }
-        }
+        if (await _applyReconcilePage(page)) retry = true;
         final next = _maxVersion(page, after);
         if (page.length < _pageSize || next <= after) break;
         after = next;
+      }
+    }
+    return retry;
+  }
+
+  /// Applies a reconcile page in one transaction; when a row hits a
+  /// retryable apply failure the page is re-applied row by row so every
+  /// other row still lands (the per-row semantics of the single-row
+  /// applies). Returns whether any row was left for the next cycle.
+  Future<bool> _applyReconcilePage(List<RemoteRow> page) async {
+    try {
+      await _storage.applyRemoteRows(page);
+      return false;
+    } on RetryableSyncApplyError {
+      // Fall through to per-row application.
+    }
+    var retry = false;
+    for (final row in page) {
+      try {
+        switch (row) {
+          case RemoteProfileRow():
+            await _storage.applyRemoteProfile(row);
+          case RemoteDayEntryRow():
+            await _storage.applyRemoteDayEntry(row);
+        }
+      } on RetryableSyncApplyError {
+        retry = true;
       }
     }
     return retry;

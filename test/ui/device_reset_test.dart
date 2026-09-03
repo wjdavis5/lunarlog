@@ -1,7 +1,8 @@
 /// U6 / KTD16 / AE10: `LunarLogRoot.resetDevice()` is one ordered
 /// operation — engine disposed, app tree unmounted, database closed, file
-/// deleted before key, reopened through `dbOpener` (fresh key), and the
-/// server sign-out last and best-effort. The database, engine, file and
+/// deleted before key, the best-effort server sign-out, and only then the
+/// reopen through `dbOpener` (fresh key) so the new database never binds to
+/// the account being signed out. The database, engine, file and
 /// key primitives are all recorders so the order is asserted literally.
 library;
 
@@ -137,7 +138,7 @@ void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
   testWidgets('native reset: engine dispose → unmount → close → delete file '
-      '→ delete key → reopen → best-effort server sign-out; the tree lands '
+      '→ delete key → best-effort server sign-out → reopen; the tree lands '
       'on first-run', (tester) async {
     final h = ResetHarness(tester);
     h.auth.emit(AuthSessionState.signedIn,
@@ -161,8 +162,8 @@ void main() {
       'close',
       'delete-file',
       'delete-key',
-      'open',
       'signOut',
+      'open',
     ]);
     expect(h.dbs.length, 2, reason: 'reopened through dbOpener');
     expect(h.engines.length, 2, reason: 'a fresh engine over the new database');
@@ -172,6 +173,10 @@ void main() {
     expect(find.text(kNoticeText), findsOneWidget,
         reason: 'AE10: first-run, never the fail-closed screen');
     expect(find.text('Alice'), findsNothing);
+    expect(h.auth.state, AuthSessionState.signedOut);
+    expect((await h.dbs.last.storage.readSyncState()).boundUserId, isNull,
+        reason: 'a reset that ends signed out leaves the fresh database '
+            'unbound');
     await h.dispose();
   });
 
@@ -193,8 +198,8 @@ void main() {
       'close',
       'delete-file',
       'delete-key',
-      'open',
       'signOut',
+      'open',
     ]);
     expect(h.auth.signOutCalls, [AuthSignOutScope.local]);
     expect(find.text(kNoticeText), findsOneWidget);
@@ -221,8 +226,8 @@ void main() {
       'engine.dispose:done',
       'wipe',
       'close',
-      'open',
       'signOut',
+      'open',
     ], reason: 'wipeAllData runs on the old database before it closes');
     expect(find.text(kNoticeText), findsOneWidget);
     await h.dispose();

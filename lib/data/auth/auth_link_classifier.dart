@@ -2,7 +2,19 @@
 /// parameter *names* (query and fragment) so nothing here ever holds an
 /// `error_description` value; the result types are fieldless except for
 /// the recovery flag.
+///
+/// The app is PKCE-only: a link is exchanged only when it carries a `code`.
+/// Implicit-flow tokens (`access_token` / `refresh_token`) in a link would
+/// install whatever session the link's author minted, so they classify as
+/// an error and are never handed to the provider.
 library;
+
+/// Custom-scheme callback for confirmation and reset emails on native
+/// (KTD8). Registered in `AndroidManifest.xml` and `Info.plist`. A link on
+/// this scheme is honoured only on [kAuthCallbackHost].
+const String kAuthCallbackScheme = 'lunarlog';
+const String kAuthCallbackHost = 'auth-callback';
+const String kAuthCallbackUrl = '$kAuthCallbackScheme://$kAuthCallbackHost';
 
 sealed class AuthLink {
   const AuthLink();
@@ -23,7 +35,9 @@ final class AuthLinkIgnored extends AuthLink {
 }
 
 /// The provider redirected with `error` / `error_code` /
-/// `error_description` (expired or reused link). Never exchanged.
+/// `error_description` (expired or reused link), or the link carried
+/// implicit-flow tokens (`access_token` / `refresh_token`), which a
+/// PKCE-only client never installs. Never exchanged.
 final class AuthLinkError extends AuthLink {
   const AuthLinkError();
 
@@ -37,7 +51,8 @@ final class AuthLinkError extends AuthLink {
   String toString() => 'AuthLink.error';
 }
 
-/// Carries a PKCE `code` (or implicit `access_token`) to exchange.
+/// Carries a PKCE `code` to exchange — PKCE code only; a link with implicit
+/// tokens is an [AuthLinkError].
 final class AuthLinkCallback extends AuthLink {
   const AuthLinkCallback({required this.recovery});
 
@@ -56,6 +71,12 @@ final class AuthLinkCallback extends AuthLink {
 }
 
 AuthLink classifyAuthLink(Uri uri) {
+  // On the custom scheme only the registered host is this app's callback;
+  // any other host is not ours. (Web callbacks arrive on the page origin,
+  // so an https link is classified on its parameters alone.)
+  if (uri.scheme == kAuthCallbackScheme && uri.host != kAuthCallbackHost) {
+    return const AuthLinkIgnored();
+  }
   final params = <String, String>{
     ..._safeSplit(uri.fragment),
     ...uri.queryParameters,
@@ -65,7 +86,11 @@ AuthLink classifyAuthLink(Uri uri) {
       params.containsKey('error_description')) {
     return const AuthLinkError();
   }
-  if (params.containsKey('code') || params.containsKey('access_token')) {
+  if (params.containsKey('access_token') ||
+      params.containsKey('refresh_token')) {
+    return const AuthLinkError();
+  }
+  if (params.containsKey('code')) {
     return AuthLinkCallback(recovery: params['type'] == 'recovery');
   }
   return const AuthLinkIgnored();

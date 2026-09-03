@@ -81,6 +81,7 @@ class FakeAuthGateway implements AuthGateway {
   @override
   Future<AuthSessionUrlResponse> getSessionFromUrl(Uri uri) async {
     getSessionFromUrlCalls.add(uri);
+    _maybeThrow();
     final params = uri.queryParameters;
     if (params.containsKey('error_description') ||
         params.containsKey('error')) {
@@ -231,8 +232,30 @@ void main() {
       expect(
           classifyAuthLink(Uri.parse('$callback?code=abc&type=recovery')),
           const AuthLinkCallback(recovery: true));
+      // Implicit-flow tokens are never a callback, recovery or not.
       expect(classifyAuthLink(Uri.parse('$callback#access_token=x&type=recovery')),
-          const AuthLinkCallback(recovery: true));
+          const AuthLinkError());
+    });
+
+    test('implicit access_token / refresh_token fragments are an error, '
+        'never a callback (PKCE only)', () {
+      expect(
+          classifyAuthLink(Uri.parse(
+              '$callback#access_token=x&refresh_token=y&type=recovery')),
+          const AuthLinkError());
+      expect(classifyAuthLink(Uri.parse('$callback?refresh_token=y')),
+          const AuthLinkError());
+      expect(
+          classifyAuthLink(Uri.parse('$callback?code=abc&access_token=x')),
+          const AuthLinkError(),
+          reason: 'a token alongside a code still poisons the link');
+    });
+
+    test('a custom-scheme link on another host is ignored', () {
+      expect(classifyAuthLink(Uri.parse('lunarlog://other?code=x')),
+          const AuthLinkIgnored());
+      expect(classifyAuthLink(Uri.parse('lunarlog://other#access_token=x')),
+          const AuthLinkIgnored());
     });
 
     test('error parameters classify as an error and carry no text', () {
@@ -344,12 +367,76 @@ void main() {
       expect(service.pendingLinkFailure, isNull);
     });
 
+    test('a link carrying implicit tokens never reaches getSessionFromUrl '
+        'and surfaces a typed failure', () async {
+      gateway.codeVerifier = 'verifier';
+      final service = await started();
+      final failures = <AuthFailure>[];
+      service.linkFailures.listen(failures.add);
+      await service.handleLink(Uri.parse(
+          '$callback#access_token=attacker&refresh_token=r&type=recovery'));
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, isEmpty);
+      expect(service.state, AuthSessionState.signedOut);
+      expect(service.currentUserId, isNull);
+      expect(service.pendingRecovery, isFalse);
+      expect(service.pendingLinkFailure, isA<AuthUnknownFailure>());
+      expect(failures, hasLength(1));
+      expect(failures.single.toString(), isNot(contains('attacker')));
+    });
+
     test('links without auth parameters are ignored', () async {
       final service = await started();
       await service.handleLink(Uri.parse(callback));
       await service.handleLink(Uri.parse('https://example.com/?x=1'));
       expect(gateway.getSessionFromUrlCalls, isEmpty);
       expect(service.pendingLinkFailure, isNull);
+    });
+
+    test('a custom-scheme link on another host is ignored, code or not',
+        () async {
+      gateway.codeVerifier = 'verifier';
+      final service = await started();
+      await service.handleLink(Uri.parse('lunarlog://other?code=x'));
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, isEmpty);
+      expect(service.pendingLinkFailure, isNull);
+      expect(service.state, AuthSessionState.signedOut);
+    });
+
+    test('an exchange that fails on the network leaves the link retryable; '
+        'the same link is exchanged again', () async {
+      gateway.codeVerifier = 'verifier';
+      final service = await started();
+      final failures = <AuthFailure>[];
+      service.linkFailures.listen(failures.add);
+      final uri = Uri.parse('$callback?code=abc');
+
+      gateway.nextError = AuthRetryableFetchException();
+      await service.handleLink(uri);
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      expect(failures.single, isA<AuthNetworkFailure>());
+      expect(service.state, AuthSessionState.signedOut);
+
+      await service.handleLink(uri);
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(2));
+      expect(service.state, AuthSessionState.signedIn);
+      expect(service.currentUserId, 'linked');
+    });
+
+    test('a definitive exchange failure stays latched: the stream replay of '
+        'the same link is not exchanged again', () async {
+      final uri = Uri.parse('$callback?code=abc');
+      links.initial = uri;
+      final service = await started(); // no verifier: definitive failure
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      links.controller.add(uri);
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      expect(service.pendingLinkFailure, isA<AuthUnknownFailure>());
     });
 
     test('the initial link replayed on the stream is exchanged only once',

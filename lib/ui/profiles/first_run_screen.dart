@@ -15,6 +15,8 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -212,6 +214,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 controller: _nameController,
                 autofocus: true,
                 decoration: const InputDecoration(labelText: 'Name'),
+                maxLength: kMaxDisplayNameLength,
+                maxLengthEnforcement: MaxLengthEnforcement.enforced,
                 validator: validateProfileName,
               ),
               CheckboxListTile(

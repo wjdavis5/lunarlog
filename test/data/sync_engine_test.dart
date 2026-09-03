@@ -139,16 +139,33 @@ RemoteDayEntryRow remoteEntry(
       serverVersion: serverVersion,
     );
 
+/// Storage whose `isEmpty` runs [beforeIsEmpty] first, so a test can change
+/// the session in the middle of the engine's bind decision.
+class HookedStorage extends LunarLogStorage {
+  HookedStorage(super.db, {super.clock});
+
+  Future<void> Function()? beforeIsEmpty;
+
+  @override
+  Future<bool> isEmpty() async {
+    await beforeIsEmpty?.call();
+    return super.isEmpty();
+  }
+}
+
 class Rig {
   Rig({
     AuthSessionState authState = AuthSessionState.signedIn,
     String? uid = uidA,
     int batchSize = PushBatch.maxRows,
     int pageSize = 500,
+    LunarLogStorage Function(LunarLogDatabase db, DateTime Function() clock)?
+        storageFactory,
   }) {
     db = LunarLogDatabase(NativeDatabase.memory());
     clock = FixedClock(t0);
-    storage = LunarLogStorage(db, clock: clock.call);
+    storage = storageFactory?.call(db, clock.call) ??
+        LunarLogStorage(db, clock: clock.call);
     transport = FakeSyncTransport(serverClock: () => clock.now);
     auth = FakeAuthService();
     if (uid != null) {
@@ -855,6 +872,27 @@ void main() {
       // A later cycle is a plain one, not restoring.
       rig.seen.clear();
       await rig.sync();
+      expect(rig.seen.map((s) => s.phase),
+          isNot(contains(SyncPhase.restoring)));
+    });
+
+    test('a session that vanishes while the bind decision is pending never '
+        'binds the empty database', () async {
+      final rig = Rig(
+          storageFactory: (db, clock) => HookedStorage(db, clock: clock));
+      addTearDown(rig.dispose);
+      (rig.storage as HookedStorage).beforeIsEmpty = () async {
+        // The device reset signs out while the fresh database opens.
+        rig.auth.emit(AuthSessionState.signedOut);
+      };
+
+      await rig.start();
+
+      expect((await rig.state()).boundUserId, isNull);
+      expect(rig.transport.pullCount, 0);
+      expect(rig.transport.pushCount, 0);
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+      expect(rig.engine.snapshot.boundUserId, isNull);
       expect(rig.seen.map((s) => s.phase),
           isNot(contains(SyncPhase.restoring)));
     });
