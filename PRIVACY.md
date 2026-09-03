@@ -84,7 +84,7 @@ LunarLog is intended to be operated by a parent, legal guardian, or adult indivi
 We implement rigorous technical safeguards to ensure the security and confidentiality of your data:
 - **Device Encryption:** SQLite database encrypted using SQLCipher with AES-256 encryption.
 - **Biometric Security:** Biometric authentication (Face ID / Touch ID / Android Biometrics) required to unlock the app.
-- **Inactivity Timeout:** Configurable automatic relocking after inactivity, plus immediate locking upon backgrounding.
+- **Inactivity Timeout:** Configurable automatic relocking after inactivity, plus immediate locking upon backgrounding. The one exception is while a sign-in or unlock prompt the app itself opened is on screen: the system reports those the same way it reports you leaving, so locking is deferred for their duration — the app's contents stay masked throughout, and the app relocks after two minutes regardless of the inactivity setting.
 - **Screen Obfuscation:** App switcher and lock screen previews are masked to prevent unauthorized viewing.
 - **Transport Security:** All network transmissions use HTTPS with modern TLS (TLS 1.2/1.3) and strong cipher suites.
 - **Database Row-Level Security:** Cloud database tables enforce PostgreSQL Row-Level Security (RLS) ensuring each user can only read and write their own rows.

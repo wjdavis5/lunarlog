@@ -303,12 +303,29 @@ household member's.
       or emulator without Google Play Services (or with no Google account),
       tap the Google button: the copy names email sign-in as the
       alternative; no crash and no provider error text.
-- [ ] **Post-unlock state after the Google picker and the Apple sheet.**
-      Both system UIs send the app `inactive`, which the gate treats as
-      departure, so the lock screen can show while the picker is up and the
-      sign-in completes behind it. After unlocking, the sign-in screen has
+- [ ] **Unlock after a re-lock (issue #65).** Lock the app (background it,
+      or wait out the inactivity timeout), tap Unlock, and pass Face ID /
+      biometrics: the lock screen goes away and profile data is on screen.
+      Repeat with the **device passcode fallback** rather than biometrics —
+      on Android that path launches a separate activity, so it exercises a
+      genuine background rather than a focus loss.
+- [ ] **No lock screen during the Google picker or the Apple sheet.**
+      Start each sign-in, and each add-a-method action, from an unlocked
+      app: no lock screen appears at any point, and the sign-in screen has
       completed (or the methods line has updated) exactly once, with no
-      duplicate consent or mismatch screen.
+      duplicate consent or mismatch screen. The app's content is covered
+      (not visible) in the app switcher throughout, and no black cover is
+      left behind once the ceremony ends.
+      *Known exception, not a regression:* on a **fresh install**, iOS
+      raises its notification-permission alert immediately after the first
+      unlock and that still re-locks the app. It is the deferred follow-up
+      recorded in `docs/plans/2026-09-03-003-fix-gate-discards-granted-unlock-plan.md`.
+- [ ] **The lock suppression is bounded.** Start a Google sign-in, leave
+      the app while the picker is up, wait past the two-minute window
+      deadline, and return: the lock screen is showing. Repeat, returning
+      to the app every minute — the deadline still fires on schedule
+      rather than being reset by the resumes. Repeat once more with
+      "Relock after inactivity" turned **off**: it still fires.
 - [ ] **Google button branding (#2 KTD6).** Screenshot the sign-in screen on
       iOS and Android and compare to Google's light-theme branding spec:
       unmodified "G" mark on a white pad, white fill, `#747775` stroke,

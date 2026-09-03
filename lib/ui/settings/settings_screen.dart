@@ -52,7 +52,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Relock after inactivity'),
             subtitle: const Text(
               'Locks the app after 2 minutes without input. '
-              'Backgrounding always relocks.',
+              'Backgrounding relocks immediately, except while a sign-in '
+              'or unlock prompt this app opened is on screen — those are '
+              'covered and relock after 2 minutes either way.',
             ),
             value: _relock,
             onChanged: _loaded
