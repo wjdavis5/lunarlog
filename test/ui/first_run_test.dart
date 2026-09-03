@@ -69,10 +69,17 @@ class Harness {
     await tester.pump();
   }
 
+  /// Order matters (matches `disposeApp` in test/ui/profiles_test.dart):
+  /// unmounting cancels the drift-watch streams the widget tree owns, and
+  /// [profiles] (constructed outside the tree and injected via `.value`,
+  /// so Provider never auto-disposes it) has its own stream to cancel too
+  /// — both schedule zero-duration cleanup timers that must be drained by
+  /// a real pump *before* `db.close()`, or close() waits on a
+  /// cancellation that never gets a chance to run.
   Future<void> dispose() async {
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(milliseconds: 100));
     profiles.dispose();
+    await tester.pump(const Duration(milliseconds: 100));
     await db.close();
   }
 }
