@@ -16,10 +16,12 @@ import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/overview/notification_availability.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
@@ -31,6 +33,7 @@ class LunarLogApp extends StatefulWidget {
     super.key,
     required this.db,
     this.scheduler,
+    this.authService,
     this.showWebBanner = kIsWeb,
   });
 
@@ -39,6 +42,11 @@ class LunarLogApp extends StatefulWidget {
   /// Reminder scheduler; defaults to the flutter_local_notifications
   /// implementation on native platforms and the no-op on web (KTD9).
   final ReminderScheduler? scheduler;
+
+  /// Account auth service (U4). When present an [AuthController] is
+  /// provided to the subtree; when null nothing account-related is
+  /// provided and the tree is exactly the pre-U4 one.
+  final AuthService? authService;
 
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
@@ -93,8 +101,13 @@ class _LunarLogAppState extends State<LunarLogApp> {
 
   @override
   Widget build(BuildContext context) {
+    final authService = widget.authService;
     return MultiProvider(
       providers: [
+        if (authService != null)
+          ChangeNotifierProvider<AuthController>(
+            create: (_) => AuthController(authService: authService),
+          ),
         Provider<ProfilesRepository>.value(
           value: DriftProfilesRepository(widget.db.storage),
         ),

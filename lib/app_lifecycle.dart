@@ -34,6 +34,7 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
@@ -267,6 +268,7 @@ class LunarLogRoot extends StatefulWidget {
     required this.dbOpener,
     this.launchProfileId,
     this.scheduler,
+    this.authService,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
   });
@@ -281,6 +283,11 @@ class LunarLogRoot extends StatefulWidget {
 
   /// Reminder scheduler (U8); null disables reminders entirely.
   final ReminderScheduler? scheduler;
+
+  /// Account auth service (U4), started by the bootstrap before the first
+  /// frame; null when the build has no Supabase configuration (KTD11), in
+  /// which case no account UI is provided at all.
+  final AuthService? authService;
 
   final Duration inactivityTimeout;
   final InactivityTimerFactory inactivityTimerFactory;
@@ -358,7 +365,11 @@ class _LunarLogRootState extends State<LunarLogRoot> {
     if (_error != null) {
       content = FailClosedApp(error: _error!);
     } else if (_db != null) {
-      content = LunarLogApp(db: _db!, scheduler: widget.scheduler);
+      content = LunarLogApp(
+        db: _db!,
+        scheduler: widget.scheduler,
+        authService: widget.authService,
+      );
     } else if (_gate.locked) {
       // Behind the lock before the first unlock: a static, data-free
       // placeholder — nothing renders, not even a spinner.
