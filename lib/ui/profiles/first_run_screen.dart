@@ -93,16 +93,23 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     if (!mounted) return;
     if (acknowledged) return;
     setState(() => _webAckPending = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      await showWebFirstRunAcknowledgment(
-        context,
-        alreadyAcknowledged: false,
-        onAcknowledged: () =>
-            store.set(SettingsKeys.webModalAcknowledged, 'true'),
-      );
-      if (mounted) setState(() => _webAckPending = false);
-    });
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _showWebAcknowledgmentDialog(store));
+  }
+
+  /// The blocking dialog itself, split out of [_checkWebAcknowledgment] so
+  /// each half stays small: shown post-frame (over the data-free scaffold
+  /// [build] renders while [_webAckPending]), then clears that flag once
+  /// dismissed.
+  Future<void> _showWebAcknowledgmentDialog(SettingsStore store) async {
+    if (!mounted) return;
+    await showWebFirstRunAcknowledgment(
+      context,
+      alreadyAcknowledged: false,
+      onAcknowledged: () =>
+          store.set(SettingsKeys.webModalAcknowledged, 'true'),
+    );
+    if (mounted) setState(() => _webAckPending = false);
   }
 
   @override
@@ -129,29 +136,35 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     });
   }
 
+  /// Phases where the restoring wait ends immediately, regardless of
+  /// [_sawRestoring]: the home gate renders its own screen for each of
+  /// these above this one, so there is nothing left here to guard. Keep in
+  /// sync with [SyncPhase] — every phase not listed here and not
+  /// [SyncPhase.restoring] falls through to the bound-user check in
+  /// [_restoreDoneForPhase].
+  static const Set<SyncPhase> _restoreImmediatelyDonePhases = {
+    SyncPhase.error,
+    SyncPhase.awaitingUploadConsent,
+    SyncPhase.accountMismatch,
+  };
+
   /// Whether the restoring step is over: the engine reported an error, or
   /// it left `restoring` after having been there (or after binding), or
   /// the session went away.
   bool _restoreDone(SyncStatusController? sync, AuthController? auth) {
     if (sync == null) return true;
     if (auth != null && !_hasSession(auth.state)) return true;
-    final snapshot = sync.snapshot;
-    switch (snapshot.phase) {
-      case SyncPhase.restoring:
-        _sawRestoring = true;
-        return false;
-      case SyncPhase.error:
-        return true;
-      case SyncPhase.awaitingUploadConsent:
-      case SyncPhase.accountMismatch:
-        // The home gate renders those screens above this one.
-        return true;
-      case SyncPhase.idle:
-      case SyncPhase.paused:
-      case SyncPhase.pushing:
-      case SyncPhase.pulling:
-        return _sawRestoring || snapshot.boundUserId != null;
+    return _restoreDoneForPhase(sync.snapshot);
+  }
+
+  bool _restoreDoneForPhase(SyncSnapshot snapshot) {
+    final phase = snapshot.phase;
+    if (phase == SyncPhase.restoring) {
+      _sawRestoring = true;
+      return false;
     }
+    if (_restoreImmediatelyDonePhases.contains(phase)) return true;
+    return _sawRestoring || snapshot.boundUserId != null;
   }
 
   Future<void> _create() async {
