@@ -93,7 +93,8 @@ Credentials and environment variables live in:
 - **Flutter SDK:** Flutter 3.47.2 stable / Dart 3.13.2.
 - **Dependency Management:** `flutter pub get`
 - **Linter:** `flutter analyze`
-- **Tests:** `flutter test` (377 tests as of 2026-09-03) and the pgTAP suite (see "Migration Flow").
+- **Tests:** `flutter test` and the pgTAP suite (see "Migration Flow").
+- **Quality gates:** `dart run tool/quality_gate.dart` — 90% total line-coverage floor and a per-method CRAP gate (`comp² × (1 − cov/100)³ + comp`, gate at 10), both from one `flutter test --coverage` run filtered through `tool/quality/exclusions.dart`'s reviewed exclusion list (generated code plus platform adapters that can't run under `flutter test`); also the CI `check` job's step right after `flutter test`. `dart run tool/mutation_gate.dart` (`--full` for the whole `lib/`) is local-only mutation testing via the `mutation_test` package, scoped to changed files' test coverage when a direct test mirror exists; see README "Quality gates" for detail. `flutter test` alone is unaffected and stays the fast iteration loop.
 - **Codegen:** after any Drift schema change, `dart run build_runner build --delete-conflicting-outputs` and commit `lib/data/db/db.g.dart`.
 - **Android build note:** `flutter build apk` prints a Gradle warning that `sentry_flutter` 9.28.0 applies the Kotlin Gradle Plugin itself. It is upstream and harmless today; a future Flutter release may reject it, so re-check after every Flutter or `sentry_flutter` upgrade.
 - **Device checklist:** auth links, Apple and Google Sign-In, magic links and emailed codes, adding a sign-in method, two-device sync convergence, lock-mid-sync, and the sign-out reset cannot be covered by `flutter test`; they are verified by hand on iPhone and Android builds with a throwaway account per [`docs/ops/supabase-go-live.md`](docs/ops/supabase-go-live.md) ("Device checklist"). Use fabricated profiles only — never real family data.

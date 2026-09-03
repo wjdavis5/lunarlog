@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  mutation_test reference config (plan U6, R8/R9) for a manual, whole-repo
+  invocation: `dart run mutation_test --rules mutation_test.xml -b
+  lib/**.dart` (see README "Quality gates"). `tool/mutation_gate.dart` --
+  the recommended entrypoint -- does NOT read this file; it generates its
+  own temporary --rules document per run with the same <exclude> block
+  plus a <command> scoped to the changed files' test coverage when
+  possible (see that file's doc comment for why: a fixed `flutter test`
+  command here would always run the whole suite per mutant, defeating the
+  "a few minutes" local-run target).
+
+  <exclude> mirrors tool/quality/exclusions.dart's reviewed list (KTD4) --
+  the same platform-adapter/generated files the coverage and CRAP gates
+  don't hold to a floor aren't mutated either.
+-->
+<mutations version="1.2">
+  <exclude>
+    <directory>**/*.g.dart</directory>
+    <directory>lib/data/auth/google_sign_in_client.dart</directory>
+    <directory>lib/data/auth/auth_gateway.dart</directory>
+    <directory>lib/data/db/key_store.dart</directory>
+    <directory>lib/data/notifications/notification_scheduler.dart</directory>
+  </exclude>
+  <commands>
+    <command group="test" expected-return="0" working-directory=".">flutter test</command>
+  </commands>
+</mutations>

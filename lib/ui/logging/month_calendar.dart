@@ -194,6 +194,62 @@ class _MonthCalendarState extends State<MonthCalendar> {
     ];
   }
 
+  /// Per-cell derived state: whether the day has a logged bleed, whether it
+  /// has symptom-only data (tags/note without a bleed), whether it's after
+  /// today (dimmed, locked), and whether it can be tapped open.
+  ({bool bleed, bool symptomOnly, bool isFuture, bool selectable})
+      _dayCellFlags(
+    DayEntry? entry,
+    LocalDate date,
+    LocalDate today,
+  ) {
+    final bleed = entry != null && isBleed(entry.flow);
+    final symptomOnly = entry != null &&
+        !bleed &&
+        (entry.tags.isNotEmpty || entry.note != null);
+    final isFuture = date.isAfter(today);
+    final selectable = !isFuture && (!widget.readOnly || entry != null);
+    return (
+      bleed: bleed,
+      symptomOnly: symptomOnly,
+      isFuture: isFuture,
+      selectable: selectable,
+    );
+  }
+
+  /// The day-number circle's fill/border: solid primary fill for a bleed
+  /// day, otherwise a thin primary ring when the cell is today.
+  BoxDecoration _dayCellDecoration(bool bleed, bool isToday, ThemeData theme) {
+    return BoxDecoration(
+      shape: BoxShape.circle,
+      color: bleed ? theme.colorScheme.primary : null,
+      border: isToday && !bleed
+          ? Border.all(color: theme.colorScheme.primary, width: 1.5)
+          : null,
+    );
+  }
+
+  /// The day-number text style: on-primary text over a bleed day's solid
+  /// fill, otherwise the ambient text style.
+  TextStyle? _dayCellLabelStyle(bool bleed, ThemeData theme) {
+    return bleed ? TextStyle(color: theme.colorScheme.onPrimary) : null;
+  }
+
+  /// The small secondary dot marking a symptom-only day (tags/note without
+  /// a bleed), or nothing.
+  Widget? _dayCellSymptomDot(bool symptomOnly, ThemeData theme, String iso) {
+    if (!symptomOnly) return null;
+    return Container(
+      key: ValueKey('symptom-dot-$iso'),
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.colorScheme.tertiary,
+      ),
+    );
+  }
+
   Widget _dayCell(
     LocalDate date,
     Map<String, DayEntry> byIso,
@@ -202,13 +258,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
   ) {
     final iso = date.iso;
     final entry = byIso[iso];
-    final bleed = entry != null && isBleed(entry.flow);
-    final symptomOnly = entry != null &&
-        !bleed &&
-        (entry.tags.isNotEmpty || entry.note != null);
-    final isFuture = date.isAfter(today);
-    final selectable =
-        !isFuture && (!widget.readOnly || entry != null);
+    final flags = _dayCellFlags(entry, date, today);
+    final bleed = flags.bleed;
+    final isFuture = flags.isFuture;
+    final selectable = flags.selectable;
     return InkWell(
       key: ValueKey('day-cell-$iso'),
       onTap: selectable ? () => _openDay(date, entry) : null,
@@ -221,35 +274,17 @@ class _MonthCalendarState extends State<MonthCalendar> {
               key: bleed ? ValueKey('bleed-$iso') : null,
               width: 34,
               height: 34,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: bleed ? theme.colorScheme.primary : null,
-                border: date == today && !bleed
-                    ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-                    : null,
-              ),
+              decoration: _dayCellDecoration(bleed, date == today, theme),
               alignment: Alignment.center,
               child: Text(
                 '${date.day}',
-                style: bleed
-                    ? TextStyle(color: theme.colorScheme.onPrimary)
-                    : null,
+                style: _dayCellLabelStyle(bleed, theme),
               ),
             ),
             const SizedBox(height: 2),
             SizedBox(
               height: 6,
-              child: symptomOnly
-                  ? Container(
-                      key: ValueKey('symptom-dot-$iso'),
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.colorScheme.tertiary,
-                      ),
-                    )
-                  : null,
+              child: _dayCellSymptomDot(flags.symptomOnly, theme, iso),
             ),
           ],
         ),

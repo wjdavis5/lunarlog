@@ -92,6 +92,26 @@ void main() {
     expect(plan.length, kMaxPendingReminders);
   });
 
+  test('PlannedReminder equality and hashCode are field-wise', () {
+    final a = PlannedReminder(
+      profileId: 'p1',
+      fireOn: today,
+      kind: ReminderKind.upcoming,
+    );
+    final same = PlannedReminder(
+      profileId: 'p1',
+      fireOn: today,
+      kind: ReminderKind.upcoming,
+    );
+    expect(a, same);
+    expect(a.hashCode, same.hashCode);
+    expect(a, isNot(PlannedReminder(profileId: 'p2', fireOn: today, kind: ReminderKind.upcoming)));
+    expect(a, isNot(PlannedReminder(profileId: 'p1', fireOn: today.addDays(1), kind: ReminderKind.upcoming)));
+    expect(a, isNot(PlannedReminder(profileId: 'p1', fireOn: today, kind: ReminderKind.late)));
+    // ignore: unrelated_type_equality_checks
+    expect(a == 'not a PlannedReminder', isFalse);
+  });
+
   test('sorted by fire date', () {
     final plan = planReminders(
       today: today,

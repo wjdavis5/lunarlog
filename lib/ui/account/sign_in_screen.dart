@@ -321,6 +321,196 @@ class _SignInScreenState extends State<SignInScreen> {
         _signedIn();
       });
 
+  /// The first-run explainer above everything else, embedded mode only
+  /// (#2 U6).
+  List<Widget> _buildEmbeddedIntro() => [
+        if (widget.embedded)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: Text(
+              'An account keeps a copy of this device\'s data so it can be '
+              'restored on another device. You can also keep everything on '
+              'this device only.',
+            ),
+          ),
+      ];
+
+  /// Providers first: Apple above Google on iOS (KTD6, R12), then a
+  /// divider when at least one provider button rendered.
+  List<Widget> _buildProviderButtons() => [
+        if (_showApple) ...[
+          SignInWithAppleButton(
+            key: const ValueKey('auth-apple'),
+            onPressed: _apple,
+            style: SignInWithAppleButtonStyle.black,
+            height: 44,
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (_showGoogle) ...[
+          GoogleSignInButton(
+            key: const ValueKey('auth-google'),
+            onPressed: _busy ? null : _google,
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (_showApple || _showGoogle)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(child: Divider()),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('or'),
+                ),
+                Expanded(child: Divider()),
+              ],
+            ),
+          ),
+      ];
+
+  Widget _buildEmailField() => TextField(
+        key: const ValueKey('auth-email'),
+        controller: _email,
+        enabled: !_busy,
+        keyboardType: TextInputType.emailAddress,
+        autocorrect: false,
+        decoration: const InputDecoration(labelText: 'Email'),
+      );
+
+  Widget _buildPasswordField() => TextField(
+        key: const ValueKey('auth-password'),
+        controller: _password,
+        enabled: !_busy,
+        obscureText: true,
+        decoration: InputDecoration(
+          labelText: 'Password',
+          helperText: _createMode
+              ? 'At least $kMinPasswordLength characters'
+              : null,
+        ),
+      );
+
+  /// The generic auth-error and info banners (R18: never the email or
+  /// provider text).
+  List<Widget> _buildStatusMessages(BuildContext context) => [
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _error!,
+            key: const ValueKey('auth-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
+        if (_info != null) ...[
+          const SizedBox(height: 12),
+          Text(_info!, key: const ValueKey('auth-info')),
+        ],
+      ];
+
+  /// The `auth-pending` spinner shown while any action is in flight.
+  List<Widget> _buildPendingIndicator() => [
+        if (_busy)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: SizedBox(
+                key: ValueKey('auth-pending'),
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+      ];
+
+  /// The mode-specific primary button: create account or sign in.
+  List<Widget> _buildPrimaryActionButton() => [
+        if (_createMode)
+          FilledButton(
+            key: const ValueKey('auth-create-account'),
+            onPressed: _busy ? null : _createAccount,
+            child: const Text('Create account'),
+          )
+        else
+          FilledButton(
+            key: const ValueKey('auth-sign-in'),
+            onPressed: _busy ? null : _signIn,
+            child: const Text('Sign in'),
+          ),
+      ];
+
+  /// Passwordless entry (#2 U4; KTD3, KTD6, KTD8): the link button, and,
+  /// once revealed, the emailed-code field and its verify button.
+  List<Widget> _buildMagicLinkSection() => [
+        OutlinedButton(
+          key: const ValueKey('auth-magic-link'),
+          onPressed: _busy ? null : _sendMagicLink,
+          child: const Text('Email me a sign-in link'),
+        ),
+        if (_codeVisible) ...[
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('auth-code'),
+            controller: _code,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            maxLength: 10,
+            autocorrect: false,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Code from the email',
+              helperText: 'Enter the code from the sign-in email',
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.tonal(
+            key: const ValueKey('auth-verify-code'),
+            onPressed: _busy || !_codeValid ? null : _verifyCode,
+            child: const Text('Sign in with code'),
+          ),
+        ],
+      ];
+
+  /// The create/sign-in mode toggle, plus "Forgot password" in sign-in
+  /// mode only.
+  List<Widget> _buildModeAndForgotSection() => [
+        TextButton(
+          key: const ValueKey('auth-mode-toggle'),
+          onPressed: _busy
+              ? null
+              : () => setState(() {
+                    _createMode = !_createMode;
+                    _error = null;
+                    _info = null;
+                  }),
+          child: Text(_createMode
+              ? 'I already have an account'
+              : 'Create an account instead'),
+        ),
+        if (!_createMode)
+          TextButton(
+            key: const ValueKey('auth-forgot-password'),
+            onPressed: _busy ? null : _forgotPassword,
+            child: const Text('Forgot password'),
+          ),
+      ];
+
+  /// The first-run "Not now" skip action, embedded mode only.
+  List<Widget> _buildEmbeddedFooter() => [
+        if (widget.embedded) ...[
+          const Divider(height: 32),
+          TextButton(
+            key: const ValueKey('first-run-not-now'),
+            onPressed: _busy ? null : widget.onNotNow,
+            child: const Text('Not now'),
+          ),
+        ],
+      ];
+
   @override
   Widget build(BuildContext context) {
     final title = _createMode ? 'Create an account' : 'Sign in';
@@ -332,162 +522,20 @@ class _SignInScreenState extends State<SignInScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (widget.embedded)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16),
-              child: Text(
-                'An account keeps a copy of this device\'s data so it can be '
-                'restored on another device. You can also keep everything on '
-                'this device only.',
-              ),
-            ),
-          // Providers first: Apple above Google on iOS (KTD6, R12).
-          if (_showApple) ...[
-            SignInWithAppleButton(
-              key: const ValueKey('auth-apple'),
-              onPressed: _apple,
-              style: SignInWithAppleButtonStyle.black,
-              height: 44,
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (_showGoogle) ...[
-            GoogleSignInButton(
-              key: const ValueKey('auth-google'),
-              onPressed: _busy ? null : _google,
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (_showApple || _showGoogle)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(child: Divider()),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('or'),
-                  ),
-                  Expanded(child: Divider()),
-                ],
-              ),
-            ),
-          TextField(
-            key: const ValueKey('auth-email'),
-            controller: _email,
-            enabled: !_busy,
-            keyboardType: TextInputType.emailAddress,
-            autocorrect: false,
-            decoration: const InputDecoration(labelText: 'Email'),
-          ),
+          ..._buildEmbeddedIntro(),
+          ..._buildProviderButtons(),
+          _buildEmailField(),
           const SizedBox(height: 8),
-          TextField(
-            key: const ValueKey('auth-password'),
-            controller: _password,
-            enabled: !_busy,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              helperText: _createMode
-                  ? 'At least $kMinPasswordLength characters'
-                  : null,
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              key: const ValueKey('auth-error'),
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ],
-          if (_info != null) ...[
-            const SizedBox(height: 12),
-            Text(_info!, key: const ValueKey('auth-info')),
-          ],
+          _buildPasswordField(),
+          ..._buildStatusMessages(context),
           const SizedBox(height: 16),
-          if (_busy)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: 12),
-                child: SizedBox(
-                  key: ValueKey('auth-pending'),
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-          if (_createMode)
-            FilledButton(
-              key: const ValueKey('auth-create-account'),
-              onPressed: _busy ? null : _createAccount,
-              child: const Text('Create account'),
-            )
-          else
-            FilledButton(
-              key: const ValueKey('auth-sign-in'),
-              onPressed: _busy ? null : _signIn,
-              child: const Text('Sign in'),
-            ),
+          ..._buildPendingIndicator(),
+          ..._buildPrimaryActionButton(),
           const SizedBox(height: 8),
-          OutlinedButton(
-            key: const ValueKey('auth-magic-link'),
-            onPressed: _busy ? null : _sendMagicLink,
-            child: const Text('Email me a sign-in link'),
-          ),
-          if (_codeVisible) ...[
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('auth-code'),
-              controller: _code,
-              enabled: !_busy,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              maxLength: 10,
-              autocorrect: false,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Code from the email',
-                helperText: 'Enter the code from the sign-in email',
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 8),
-            FilledButton.tonal(
-              key: const ValueKey('auth-verify-code'),
-              onPressed: _busy || !_codeValid ? null : _verifyCode,
-              child: const Text('Sign in with code'),
-            ),
-          ],
+          ..._buildMagicLinkSection(),
           const SizedBox(height: 8),
-          TextButton(
-            key: const ValueKey('auth-mode-toggle'),
-            onPressed: _busy
-                ? null
-                : () => setState(() {
-                      _createMode = !_createMode;
-                      _error = null;
-                      _info = null;
-                    }),
-            child: Text(_createMode
-                ? 'I already have an account'
-                : 'Create an account instead'),
-          ),
-          if (!_createMode)
-            TextButton(
-              key: const ValueKey('auth-forgot-password'),
-              onPressed: _busy ? null : _forgotPassword,
-              child: const Text('Forgot password'),
-            ),
-          if (widget.embedded) ...[
-            const Divider(height: 32),
-            TextButton(
-              key: const ValueKey('first-run-not-now'),
-              onPressed: _busy ? null : widget.onNotNow,
-              child: const Text('Not now'),
-            ),
-          ],
+          ..._buildModeAndForgotSection(),
+          ..._buildEmbeddedFooter(),
         ],
       ),
     );

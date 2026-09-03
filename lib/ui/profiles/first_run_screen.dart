@@ -93,16 +93,23 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     if (!mounted) return;
     if (acknowledged) return;
     setState(() => _webAckPending = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      await showWebFirstRunAcknowledgment(
-        context,
-        alreadyAcknowledged: false,
-        onAcknowledged: () =>
-            store.set(SettingsKeys.webModalAcknowledged, 'true'),
-      );
-      if (mounted) setState(() => _webAckPending = false);
-    });
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _showWebAcknowledgmentDialog(store));
+  }
+
+  /// The blocking dialog itself, split out of [_checkWebAcknowledgment] so
+  /// each half stays small: shown post-frame (over the data-free scaffold
+  /// [build] renders while [_webAckPending]), then clears that flag once
+  /// dismissed.
+  Future<void> _showWebAcknowledgmentDialog(SettingsStore store) async {
+    if (!mounted) return;
+    await showWebFirstRunAcknowledgment(
+      context,
+      alreadyAcknowledged: false,
+      onAcknowledged: () =>
+          store.set(SettingsKeys.webModalAcknowledged, 'true'),
+    );
+    if (mounted) setState(() => _webAckPending = false);
   }
 
   @override
@@ -135,23 +142,34 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   bool _restoreDone(SyncStatusController? sync, AuthController? auth) {
     if (sync == null) return true;
     if (auth != null && !_hasSession(auth.state)) return true;
-    final snapshot = sync.snapshot;
-    switch (snapshot.phase) {
-      case SyncPhase.restoring:
-        _sawRestoring = true;
-        return false;
-      case SyncPhase.error:
-        return true;
-      case SyncPhase.awaitingUploadConsent:
-      case SyncPhase.accountMismatch:
-        // The home gate renders those screens above this one.
-        return true;
-      case SyncPhase.idle:
-      case SyncPhase.paused:
-      case SyncPhase.pushing:
-      case SyncPhase.pulling:
-        return _sawRestoring || snapshot.boundUserId != null;
-    }
+    return _restoreDoneForPhase(sync.snapshot);
+  }
+
+  /// A switch *expression* (not an if-chain): every [SyncPhase] value is
+  /// named explicitly (no `_` wildcard), so adding a new phase without
+  /// updating this method is a compile error, not a silently-wrong result.
+  /// `error`, `awaitingUploadConsent` and `accountMismatch` end the wait
+  /// immediately — the home gate renders its own screen for each of these
+  /// above this one, so there is nothing left here to guard.
+  bool _restoreDoneForPhase(SyncSnapshot snapshot) =>
+      switch (snapshot.phase) {
+        SyncPhase.restoring => _markSawRestoringAndReturnFalse(),
+        SyncPhase.error ||
+        SyncPhase.awaitingUploadConsent ||
+        SyncPhase.accountMismatch =>
+          true,
+        SyncPhase.idle ||
+        SyncPhase.paused ||
+        SyncPhase.pushing ||
+        SyncPhase.pulling =>
+          _sawRestoring || snapshot.boundUserId != null,
+      };
+
+  /// The `restoring` arm's side effect, pulled out since switch-expression
+  /// arms must be single expressions.
+  bool _markSawRestoringAndReturnFalse() {
+    _sawRestoring = true;
+    return false;
   }
 
   Future<void> _create() async {

@@ -82,35 +82,62 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    // AE8: the recovery latch is honored only once the device gate is
-    // open (no gate provided means an un-gated harness).
+    return _recoveryScreen(auth, gate) ??
+        _syncPhaseScreen(sync) ??
+        _profileScreen(controller);
+  }
+
+  /// AE8: the recovery latch is honored only once the device gate is open
+  /// (no gate provided means an un-gated harness). Returns null when
+  /// recovery isn't showing, so [build] falls through to the next check.
+  Widget? _recoveryScreen(AuthController? auth, GateController? gate) {
     if (auth != null &&
         auth.pendingRecovery &&
         (gate == null || gate.unlocked)) {
       return const PasswordRecoveryScreen();
     }
-    if (sync != null) {
-      final phase = sync.phase;
-      if (phase != SyncPhase.awaitingUploadConsent) _consentDeclined = false;
-      switch (phase) {
-        case SyncPhase.accountMismatch:
-          return const AccountMismatchScreen();
-        case SyncPhase.awaitingUploadConsent:
-          if (!_consentDeclined) {
-            return UploadConsentScreen(
-              onNotNow: () => setState(() => _consentDeclined = true),
-            );
-          }
-        case SyncPhase.restoring:
-          return const RestoringScreen();
-        case SyncPhase.idle:
-        case SyncPhase.pushing:
-        case SyncPhase.pulling:
-        case SyncPhase.paused:
-        case SyncPhase.error:
-          break;
-      }
-    }
+    return null;
+  }
+
+  /// The U6 sync-status screens (account mismatch, upload consent,
+  /// restoring). Returns null when the current phase has no screen of its
+  /// own, so [build] falls through to the profile decision.
+  Widget? _syncPhaseScreen(SyncStatusController? sync) {
+    if (sync == null) return null;
+    final phase = sync.phase;
+    if (phase != SyncPhase.awaitingUploadConsent) _consentDeclined = false;
+    return _screenForSyncPhase(phase);
+  }
+
+  /// Maps a single sync phase to its screen. `idle`, `pushing`, `pulling`,
+  /// `paused` and `error` have none — same as the other phases once
+  /// `awaitingUploadConsent` has already been declined this session.
+  ///
+  /// A switch *expression* (not an if-chain): every [SyncPhase] value is
+  /// named explicitly (no `_` wildcard), so adding a new phase without
+  /// updating this method is a compile error, not a silently-null screen.
+  Widget? _screenForSyncPhase(SyncPhase phase) => switch (phase) {
+        SyncPhase.accountMismatch => const AccountMismatchScreen(),
+        SyncPhase.awaitingUploadConsent =>
+          _consentDeclined ? null : _uploadConsentScreen(),
+        SyncPhase.restoring => const RestoringScreen(),
+        SyncPhase.idle ||
+        SyncPhase.paused ||
+        SyncPhase.pushing ||
+        SyncPhase.pulling ||
+        SyncPhase.error =>
+          null,
+      };
+
+  Widget _uploadConsentScreen() {
+    return UploadConsentScreen(
+      onNotNow: () => setState(() => _consentDeclined = true),
+    );
+  }
+
+  /// The base home decision once loading, recovery and sync-status screens
+  /// are all out of the way: first-run, the picker, or the active profile.
+  Widget _profileScreen(ProfileController controller) {
     if (controller.needsFirstRun) {
       return const FirstRunScreen();
     }

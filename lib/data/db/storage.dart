@@ -619,51 +619,18 @@ class LunarLogStorage {
   Future<bool> _applyDayEntry(RemoteDayEntryRow remote,
       {required bool onlyExisting}) async {
     final local = await _dayEntryOrNull(remote.id);
-    if (local == null && onlyExisting) return false;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: local.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
+    if (_shouldSkipDayEntryApply(
+        local: local, onlyExisting: onlyExisting, remote: remote)) {
       return false;
     }
     // Referential integrity is checked up front so the failure is a typed,
     // retryable one rather than a raw constraint exception from sqlite.
-    if (await _profileOrNull(remote.profileId) == null) {
-      throw RetryableSyncApplyError(
-          'day entry ${remote.id} references a profile not held locally');
-    }
+    await _ensureDayEntryProfileExists(remote);
 
     var updatedAt = remote.updatedAt.toUtc();
     var deletedAt = remote.deletedAt?.toUtc();
     if (deletedAt == null) {
-      // Same-date rule against every other live local row for this date.
-      final incoming = DayEntryCandidate(id: remote.id, updatedAt: updatedAt);
-      final others = (await _liveDayEntries(remote.profileId, remote.localDate))
-          .where((row) => row.id != remote.id);
-      for (final other in others) {
-        final winner = sameDateWinner(
-          incoming,
-          DayEntryCandidate(id: other.id, updatedAt: other.updatedAt),
-        )!;
-        if (winner.id == remote.id) {
-          // Local loser: tombstone with the winner's timestamp, dirty so the
-          // resolution is pushed.
-          await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
-              .write(DayEntriesCompanion(
-            note: const Value(null),
-            tags: const Value(<String>[]),
-            updatedAt: Value(updatedAt),
-            deletedAt: Value(updatedAt),
-            dirty: const Value(true),
-            localRev: Value(other.localRev + 1),
-          ));
-        } else {
-          // Remote loser: store it as a tombstone stamped with the local
-          // winner's timestamp (>= remote.updatedAt by the rule).
-          updatedAt = other.updatedAt.toUtc();
-          deletedAt = updatedAt;
-        }
-      }
+      (updatedAt, deletedAt) = await _resolveSameDateConflicts(remote, updatedAt);
     }
     final tombstone = deletedAt != null;
     if (local == null) {
@@ -673,8 +640,8 @@ class LunarLogStorage {
             localDate: remote.localDate,
             tz: remote.tz,
             flow: remote.flow,
-            tags: Value(tombstone ? const <String>[] : remote.tags),
-            note: Value(tombstone ? null : remote.note),
+            tags: Value(_dayEntryTags(tombstone, remote)),
+            note: Value(_dayEntryNote(tombstone, remote)),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
@@ -688,14 +655,91 @@ class LunarLogStorage {
       localDate: Value(remote.localDate),
       tz: Value(remote.tz),
       flow: Value(remote.flow),
-      tags: Value(tombstone ? const <String>[] : remote.tags),
-      note: Value(tombstone ? null : remote.note),
+      tags: Value(_dayEntryTags(tombstone, remote)),
+      note: Value(_dayEntryNote(tombstone, remote)),
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),
       dirty: const Value(false),
     ));
     return true;
   }
+
+  /// Whether [_applyDayEntry] should no-op without writing anything:
+  /// [onlyExisting] with no local row held, or the per-id rule (KTD5) says
+  /// the local copy is not beaten by [remote] and stays as-is.
+  bool _shouldSkipDayEntryApply({
+    required DayEntry? local,
+    required bool onlyExisting,
+    required RemoteDayEntryRow remote,
+  }) {
+    if (local == null && onlyExisting) return true;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Throws [RetryableSyncApplyError] when [remote]'s profile is not held
+  /// locally yet, checked up front so the failure is a typed, retryable one
+  /// rather than a raw constraint exception from sqlite.
+  Future<void> _ensureDayEntryProfileExists(RemoteDayEntryRow remote) async {
+    if (await _profileOrNull(remote.profileId) == null) {
+      throw RetryableSyncApplyError(
+          'day entry ${remote.id} references a profile not held locally');
+    }
+  }
+
+  /// Runs the same-date rule against every other live local row for
+  /// [remote]'s (profile, date), starting from [updatedAt] (only called
+  /// while [remote] itself is not already a tombstone). A local loser is
+  /// tombstoned in place with the winner's timestamp and marked dirty so
+  /// the resolution is pushed; a remote loser makes [remote] itself the
+  /// tombstone, stamped with the local winner's timestamp (>=
+  /// `remote.updatedAt` by the rule). Returns the `updated_at` /
+  /// `deleted_at` pair [remote] should be written with.
+  Future<(DateTime, DateTime?)> _resolveSameDateConflicts(
+      RemoteDayEntryRow remote, DateTime updatedAt) async {
+    DateTime? deletedAt;
+    final incoming = DayEntryCandidate(id: remote.id, updatedAt: updatedAt);
+    final others = (await _liveDayEntries(remote.profileId, remote.localDate))
+        .where((row) => row.id != remote.id);
+    for (final other in others) {
+      final winner = sameDateWinner(
+        incoming,
+        DayEntryCandidate(id: other.id, updatedAt: other.updatedAt),
+      )!;
+      if (winner.id == remote.id) {
+        // Local loser: tombstone with the winner's timestamp, dirty so the
+        // resolution is pushed.
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
+            .write(DayEntriesCompanion(
+          note: const Value(null),
+          tags: const Value(<String>[]),
+          updatedAt: Value(updatedAt),
+          deletedAt: Value(updatedAt),
+          dirty: const Value(true),
+          localRev: Value(other.localRev + 1),
+        ));
+      } else {
+        // Remote loser: store it as a tombstone stamped with the local
+        // winner's timestamp (>= remote.updatedAt by the rule).
+        updatedAt = other.updatedAt.toUtc();
+        deletedAt = updatedAt;
+      }
+    }
+    return (updatedAt, deletedAt);
+  }
+
+  /// The `tags` to write for a day entry row: cleared for a tombstone.
+  List<String> _dayEntryTags(bool tombstone, RemoteDayEntryRow remote) =>
+      tombstone ? const <String>[] : remote.tags;
+
+  /// The `note` to write for a day entry row: cleared for a tombstone.
+  String? _dayEntryNote(bool tombstone, RemoteDayEntryRow remote) =>
+      tombstone ? null : remote.note;
 
   Future<void> _ensureSyncStateRow() async {
     await db.into(db.syncState).insert(
