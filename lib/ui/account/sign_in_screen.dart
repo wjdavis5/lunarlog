@@ -364,6 +364,39 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
       ];
 
+  List<Widget> _buildModeAndForgotSection() => [
+        TextButton(
+          key: const ValueKey('auth-mode-toggle'),
+          onPressed: _busy
+              ? null
+              : () => setState(() {
+                    _createMode = !_createMode;
+                    _error = null;
+                    _info = null;
+                  }),
+          child: Text(_createMode
+              ? 'I already have an account'
+              : 'Create an account instead'),
+        ),
+        if (!_createMode)
+          TextButton(
+            key: const ValueKey('auth-forgot-password'),
+            onPressed: _busy ? null : _forgotPassword,
+            child: const Text('Forgot password'),
+          ),
+      ];
+
+  List<Widget> _buildEmbeddedFooter() => [
+        if (widget.embedded) ...[
+          const Divider(height: 32),
+          TextButton(
+            key: const ValueKey('first-run-not-now'),
+            onPressed: _busy ? null : widget.onNotNow,
+            child: const Text('Not now'),
+          ),
+        ],
+      ];
+
   @override
   Widget build(BuildContext context) {
     final title = _createMode ? 'Create an account' : 'Sign in';
