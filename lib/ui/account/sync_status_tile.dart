@@ -62,10 +62,10 @@ bool isAwaitingConfirmation({
 bool isAwaitingMagicLink({
   required AuthSessionState? authState,
   required String? awaitingMagicLinkEmail,
-}) =>
-    isAwaitingConfirmation(
-        authState: authState,
-        awaitingConfirmationEmail: awaitingMagicLinkEmail);
+}) => isAwaitingConfirmation(
+  authState: authState,
+  awaitingConfirmationEmail: awaitingMagicLinkEmail,
+);
 
 String syncStatusCopy({
   required SyncSnapshot? snapshot,
@@ -77,25 +77,53 @@ String syncStatusCopy({
 }) {
   if (webSyncOff) return kWebSyncOffCopy;
   if (isAwaitingConfirmation(
-      authState: authState,
-      awaitingConfirmationEmail: awaitingConfirmationEmail)) {
+    authState: authState,
+    awaitingConfirmationEmail: awaitingConfirmationEmail,
+  )) {
     return kAwaitingConfirmationCopy;
   }
   if (isAwaitingMagicLink(
-      authState: authState, awaitingMagicLinkEmail: awaitingMagicLinkEmail)) {
+    authState: authState,
+    awaitingMagicLinkEmail: awaitingMagicLinkEmail,
+  )) {
     return kAwaitingMagicLinkCopy;
   }
-  final signedIn = _isSignedIn(authState);
   if (snapshot == null) return 'Sync is not available in this build';
-  if (snapshot.phase == SyncPhase.error) {
-    return switch (snapshot.lastError) {
-      SyncErrorKind.auth => kSignInAgainCopy,
-      SyncErrorKind.network => 'Could not reach the server — will retry',
-      SyncErrorKind.other || SyncErrorKind.none => 'Sync failed — will retry',
-    };
-  }
+  return _snapshotCopy(
+    snapshot: snapshot,
+    authState: authState,
+    signedIn: _isSignedIn(authState),
+    now: now,
+  );
+}
+
+/// The copy once the web-off / awaiting-confirmation / awaiting-magic-link
+/// / no-snapshot tiers (handled by [syncStatusCopy]) are ruled out.
+String _snapshotCopy({
+  required SyncSnapshot snapshot,
+  required AuthSessionState? authState,
+  required bool signedIn,
+  required DateTime now,
+}) {
+  if (snapshot.phase == SyncPhase.error) return _errorCopy(snapshot.lastError);
   if (authState == AuthSessionState.expired) return kSignInAgainCopy;
-  switch (snapshot.phase) {
+  final phaseCopy = _fixedPhaseCopy(snapshot.phase);
+  if (phaseCopy != null) return phaseCopy;
+  return _restingStateCopy(snapshot: snapshot, signedIn: signedIn, now: now);
+}
+
+/// Copy for a sync-engine failure, keyed by [SyncSnapshot.lastError].
+String _errorCopy(SyncErrorKind lastError) => switch (lastError) {
+  SyncErrorKind.auth => kSignInAgainCopy,
+  SyncErrorKind.network => 'Could not reach the server — will retry',
+  SyncErrorKind.other || SyncErrorKind.none => 'Sync failed — will retry',
+};
+
+/// Copy fixed by [phase] alone, or `null` to fall through to
+/// [_restingStateCopy]'s checks (covers `paused`, `idle` and `error` —
+/// `error` is unreachable here, already handled by [_snapshotCopy]).
+String? _fixedPhaseCopy(SyncPhase phase) {
+  switch (phase) {
     case SyncPhase.accountMismatch:
       return 'Signed in as a different account';
     case SyncPhase.awaitingUploadConsent:
@@ -107,8 +135,17 @@ String syncStatusCopy({
     case SyncPhase.paused:
     case SyncPhase.idle:
     case SyncPhase.error:
-      break;
+      return null;
   }
+}
+
+/// The resting-state tiers: rejected rows, signed-out, paused, then the
+/// last-synced copy.
+String _restingStateCopy({
+  required SyncSnapshot snapshot,
+  required bool signedIn,
+  required DateTime now,
+}) {
   if (snapshot.rejectedCount > 0) return kRejectedCopy;
   if (!signedIn) return 'Not signed in';
   if (snapshot.phase == SyncPhase.paused) return 'Sync paused';
@@ -120,9 +157,9 @@ String syncStatusCopy({
 /// Whether the copy describes a running cycle (drives spinners and the
 /// "Sync now" enablement).
 bool isSyncRunning(SyncSnapshot? snapshot) => switch (snapshot?.phase) {
-      SyncPhase.restoring || SyncPhase.pushing || SyncPhase.pulling => true,
-      _ => false,
-    };
+  SyncPhase.restoring || SyncPhase.pushing || SyncPhase.pulling => true,
+  _ => false,
+};
 
 IconData _iconFor(
   SyncSnapshot? snapshot, {
@@ -138,11 +175,12 @@ IconData _iconFor(
     SyncPhase.awaitingUploadConsent => Icons.cloud_upload_outlined,
     SyncPhase.restoring ||
     SyncPhase.pushing ||
-    SyncPhase.pulling =>
-      Icons.cloud_sync_outlined,
+    SyncPhase.pulling => Icons.cloud_sync_outlined,
     SyncPhase.paused => Icons.pause_circle_outline,
     SyncPhase.idle =>
-      snapshot.rejectedCount > 0 ? Icons.warning_amber_outlined : Icons.cloud_done_outlined,
+      snapshot.rejectedCount > 0
+          ? Icons.warning_amber_outlined
+          : Icons.cloud_done_outlined,
   };
 }
 
@@ -207,7 +245,8 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
           );
           final pendingConsent =
               snapshot?.phase == SyncPhase.awaitingUploadConsent;
-          final awaitingEmail = isAwaitingConfirmation(
+          final awaitingEmail =
+              isAwaitingConfirmation(
                 authState: auth?.state,
                 awaitingConfirmationEmail: awaitingSnapshot.data,
               ) ||
@@ -223,20 +262,22 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
                     height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(_iconFor(
-                    snapshot,
-                    webSyncOff: webSyncOff,
-                    awaitingConfirmation: awaitingEmail,
-                  )),
+                : Icon(
+                    _iconFor(
+                      snapshot,
+                      webSyncOff: webSyncOff,
+                      awaitingConfirmation: awaitingEmail,
+                    ),
+                  ),
             title: Text(copy),
             onTap: pendingConsent
                 ? () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (routeContext) => UploadConsentScreen(
-                          onNotNow: () => Navigator.of(routeContext).pop(),
-                        ),
+                    MaterialPageRoute<void>(
+                      builder: (routeContext) => UploadConsentScreen(
+                        onNotNow: () => Navigator.of(routeContext).pop(),
                       ),
-                    )
+                    ),
+                  )
                 : null,
           );
         },

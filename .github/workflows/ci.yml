@@ -39,6 +39,13 @@ jobs:
       - name: Test
         run: flutter test
 
+      - name: Quality gates (coverage floor + CRAP)
+        # Re-runs with --coverage (the plain Test step above stays a fast
+        # flutter-test-only signal per R11): 90% total line coverage floor
+        # and the per-method CRAP gate, both from one filtered lcov.info.
+        # See tool/quality_gate.dart and AGENTS.md "Quality gates".
+        run: dart run tool/quality_gate.dart
+
       - name: Build web (release)
         # The defines resolve to empty strings on forks and PRs without
         # secrets; the app treats empty as "unconfigured", so the build
