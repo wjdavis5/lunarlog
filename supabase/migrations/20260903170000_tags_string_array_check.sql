@@ -136,37 +136,37 @@ begin
        where id = v_id and user_id = v_uid
        for update;
 
-      if found then
+      if not found then
+        insert into public.profiles
+          (id, display_name, is_minor, sort_order, archived_at, created_at, updated_at, deleted_at)
+        values
+          (v_id, v_display_name, v_is_minor, v_sort_order, v_archived_at, v_created_at, v_updated_at, v_deleted_at);
+      else
         v_accept := v_updated_at > v_stored_profile.updated_at
           or (v_updated_at = v_stored_profile.updated_at
               and v_deleted_at is not null
               and v_stored_profile.deleted_at is null);
-        if not v_accept then
-          if not (v_updated_at = v_stored_profile.updated_at
-                  and v_deleted_at is not null
-                  and v_stored_profile.deleted_at is not null) then
-            -- declined: hand back the server copy
-            v_resolved := v_resolved
-              || (to_jsonb(v_stored_profile) || jsonb_build_object('table', 'profiles'));
-          end if;
-          continue;
+        if v_accept then
+          update public.profiles
+             set display_name = v_display_name,
+                 is_minor = v_is_minor,
+                 sort_order = v_sort_order,
+                 archived_at = v_archived_at,
+                 created_at = v_created_at,
+                 updated_at = v_updated_at,
+                 deleted_at = v_deleted_at
+           where id = v_id and user_id = v_uid;
+        elsif v_updated_at = v_stored_profile.updated_at
+              and v_deleted_at is not null
+              and v_stored_profile.deleted_at is not null then
+          -- identical tombstone already stored: no-op, nothing to converge
+          null;
+        else
+          -- declined (older, or equal-and-live): hand back the server copy
+          v_resolved := v_resolved
+            || (to_jsonb(v_stored_profile) || jsonb_build_object('table', 'profiles'));
         end if;
       end if;
-
-      insert into public.profiles (
-        id, user_id, display_name, is_minor, sort_order,
-        archived_at, created_at, updated_at, deleted_at
-      ) values (
-        v_id, v_uid, v_display_name, v_is_minor, v_sort_order,
-        v_archived_at, v_created_at, v_updated_at, v_deleted_at
-      ) on conflict (id, user_id) do update set
-        display_name = excluded.display_name,
-        is_minor = excluded.is_minor,
-        sort_order = excluded.sort_order,
-        archived_at = excluded.archived_at,
-        created_at = excluded.created_at,
-        updated_at = excluded.updated_at,
-        deleted_at = excluded.deleted_at;
     exception
       when sqlstate '40P01' or sqlstate '40001' or sqlstate '55P03' then
         raise;
@@ -176,11 +176,14 @@ begin
   end loop;
 
   -- -------------------------------------------------------------------------
-  -- day_entries
+  -- day entries
   -- -------------------------------------------------------------------------
   for v_row in select value from jsonb_array_elements(p_day_entries) loop
+    -- per-row state the branches below test for
+    v_stored := null;
+    v_other := null;
+    v_incoming_wins := null;
     begin
-      v_incoming_wins := null;
       if jsonb_typeof(v_row) <> 'object' then
         raise exception 'row is not an object';
       end if;
@@ -217,9 +220,8 @@ begin
         v_note := null;
       else
         v_tags := coalesce(v_row -> 'tags', '[]'::jsonb);
-        -- Issue #40: Validate tags array element types (must all be strings)
         if not public.is_valid_tags_array(v_tags) then
-          raise exception 'tags is not an array of strings';
+          raise exception 'tags must be an array of strings (max 32)';
         end if;
         v_note := v_row ->> 'note';
       end if;
@@ -267,24 +269,26 @@ begin
                    updated_at = v_updated_at,
                    note = null,
                    tags = '[]'::jsonb
-             where id = v_other.id
-               and user_id = v_uid;
+             where id = v_other.id and user_id = v_uid
+             returning * into v_other;
+            v_resolved := v_resolved
+              || (to_jsonb(v_other) || jsonb_build_object('table', 'day_entries'));
           else
-            v_deleted_at := v_updated_at;
-            v_note := null;
+            -- the incoming row loses: store it as a tombstone at the winner's time
+            v_deleted_at := v_other.updated_at;
+            v_updated_at := v_other.updated_at;
             v_tags := '[]'::jsonb;
+            v_note := null;
           end if;
         end if;
       end if;
 
       if v_stored.id is null then
-        insert into public.day_entries (
-          id, user_id, profile_id, local_date, tz, flow, tags, note,
-          updated_at, deleted_at
-        ) values (
-          v_id, v_uid, v_profile_id, v_local_date, v_tz, v_flow, v_tags, v_note,
-          v_updated_at, v_deleted_at
-        ) returning * into v_stored;
+        insert into public.day_entries
+          (id, profile_id, local_date, tz, flow, tags, note, updated_at, deleted_at)
+        values
+          (v_id, v_profile_id, v_local_date, v_tz, v_flow, v_tags, v_note, v_updated_at, v_deleted_at)
+        returning * into v_stored;
       else
         update public.day_entries
            set profile_id = v_profile_id,
