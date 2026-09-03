@@ -103,6 +103,7 @@ flutter:
   # #2 U1: sign-in button branding assets (the Google "G" logo lands in U4).
   assets:
     - assets/branding/
+    - assets/icon_pack/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
