@@ -23,6 +23,7 @@ class ProfileDetailScreen extends StatefulWidget {
     this.readOnly = false,
     this.initiallyShowOverview = false,
     this.todayProvider = LocalDate.today,
+    this.timezoneProvider,
   });
 
   final Profile profile;
@@ -34,6 +35,10 @@ class ProfileDetailScreen extends StatefulWidget {
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
+
+  /// Provider for the resolved IANA time zone identifier (paired with #38).
+  /// Passed to [MonthCalendar].
+  final String Function()? timezoneProvider;
 
   @override
   State<ProfileDetailScreen> createState() => _ProfileDetailScreenState();
@@ -118,6 +123,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     profileId: widget.profile.id,
                     readOnly: widget.readOnly,
                     todayProvider: widget.todayProvider,
+                    timezoneProvider: widget.timezoneProvider,
                   ),
           ),
         ],

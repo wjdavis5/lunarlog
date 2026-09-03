@@ -36,7 +36,9 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   Future<NotificationAvailability> initialize({
     void Function(String profileId)? onLaunchFromNotification,
   }) async {
-    tzdata.initializeTimeZones();
+    if (tz.timeZoneDatabase.locations.isEmpty) {
+      tzdata.initializeTimeZones();
+    }
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwin = DarwinInitializationSettings(
       requestAlertPermission: true,

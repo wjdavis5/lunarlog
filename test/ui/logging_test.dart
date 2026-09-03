@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/tags.dart';
+import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -60,6 +61,7 @@ Future<Harness> pumpLogging(
   bool readOnly = false,
   DayEntriesRepository? entryRepositoryOverride,
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
+  String Function()? timezoneProvider,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -94,6 +96,7 @@ Future<Harness> pumpLogging(
           profile: profile,
           readOnly: readOnly,
           todayProvider: () => kToday,
+          timezoneProvider: timezoneProvider,
         ),
       ),
     ),
@@ -175,6 +178,8 @@ void main() {
       expect(saved!.flow, FlowLevel.medium);
       expect(saved.tags, unorderedEquals(['cramps', 'fatigue']));
       expect(saved.note, 'rough day');
+      expect(isValidIanaTimeZone(saved.tz), isTrue,
+          reason: 'persists canonical IANA timezone identifier');
       expect(find.byKey(const ValueKey('bleed-2026-08-30')), findsOneWidget,
           reason: 'stream recompute re-rendered the calendar marker');
 
@@ -291,6 +296,68 @@ void main() {
       final rowsForDate =
           fullFidelity.where((row) => row.localDate == '2026-08-30').toList();
       expect(rowsForDate, hasLength(1));
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('saving day entry populates canonical IANA timezone and '
+        'respects injected timezoneProvider seam', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        timezoneProvider: () => 'America/New_York',
+      );
+
+      final todayCell = find.byKey(const ValueKey('day-cell-2026-08-30'));
+      await tester.tap(todayCell);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Light'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.tz, 'America/New_York');
+      expect(isValidIanaTimeZone(saved.tz), isTrue);
+
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('editing existing entry updates legacy abbreviation to canonical IANA timezone',
+        (tester) async {
+      final h = await pumpLogging(
+        tester,
+        timezoneProvider: () => 'America/Chicago',
+        seed: (db, profileId) async {
+          // Simulate an existing entry previously written with platform abbreviation 'EDT'.
+          await DriftDayEntriesRepository(db.storage).save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'EDT',
+              flow: FlowLevel.medium,
+              tags: const [],
+              updatedAt: DateTime.utc(2026, 8, 30),
+            ),
+          );
+        },
+      );
+
+      final todayCell = find.byKey(const ValueKey('day-cell-2026-08-30'));
+      await tester.tap(todayCell);
+      await tester.pumpAndSettle();
+
+      // Change flow to heavy and save
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.heavy);
+      expect(saved.tz, 'America/Chicago');
+      expect(isValidIanaTimeZone(saved.tz), isTrue);
+
       await disposeLogging(tester, h);
     });
 
