@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
+import 'package:lunarlog/domain/util/timezone.dart';
 
 String flowLabel(FlowLevel flow) {
   final name = flow.name;
@@ -37,6 +38,7 @@ class DaySheet extends StatefulWidget {
     required this.today,
     this.existing,
     this.readOnly = false,
+    this.timezoneProvider,
   });
 
   final DayEntriesRepository repository;
@@ -49,6 +51,10 @@ class DaySheet extends StatefulWidget {
   /// The current live entry for (profileId, date), or null for a new log.
   final DayEntry? existing;
   final bool readOnly;
+
+  /// Provider for the resolved IANA time zone identifier (paired with #38).
+  /// Defaults to [resolveCurrentTimeZone] if not specified.
+  final String Function()? timezoneProvider;
 
   @override
   State<DaySheet> createState() => _DaySheetState();
@@ -83,12 +89,13 @@ class _DaySheetState extends State<DaySheet> {
       _saveFailed = false;
     });
     final note = _noteController.text.trim();
+    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
     try {
       await widget.repository.save(DayEntry(
         id: widget.existing?.id ?? '',
         profileId: widget.profileId,
         localDate: widget.date,
-        tz: DateTime.now().timeZoneName,
+        tz: tz,
         flow: _flow,
         tags: _tags.toList(),
         note: note.isEmpty ? null : note,

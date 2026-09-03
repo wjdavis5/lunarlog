@@ -41,6 +41,7 @@ class MonthCalendar extends StatefulWidget {
     required this.profileId,
     this.readOnly = false,
     this.todayProvider = LocalDate.today,
+    this.timezoneProvider,
   });
 
   final String profileId;
@@ -48,6 +49,10 @@ class MonthCalendar extends StatefulWidget {
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
+
+  /// Provider for the resolved IANA time zone identifier (paired with #38).
+  /// Passed to [DaySheet].
+  final String Function()? timezoneProvider;
 
   @override
   State<MonthCalendar> createState() => _MonthCalendarState();
@@ -102,6 +107,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         existing: entry,
         today: widget.todayProvider(),
         readOnly: widget.readOnly,
+        timezoneProvider: widget.timezoneProvider,
       ),
     );
   }
