@@ -98,32 +98,24 @@ end_of_record
     });
   });
 
-  group('filteredCoverageFromFile against this repo\'s real lcov.info', () {
-    test('parses cleanly end-to-end and matches the measured baseline', () {
-      final lcovFile = File('coverage/lcov.info');
-      if (!lcovFile.existsSync()) {
-        markTestSkipped(
-          'coverage/lcov.info not present — run `flutter test --coverage` first',
-        );
-        return;
-      }
+  group('filteredCoverageFromFile', () {
+    test('reads a real lcov file from disk end-to-end via a fixture', () {
+      // Not asserted against this repo's live coverage/lcov.info: that file
+      // is only written *after* `flutter test --coverage` finishes, so
+      // reading it *during* a run of that same command (as this test file
+      // does when invoked by tool/quality_gate.dart or CI) sees a stale or
+      // absent file — a self-referential race, not a real assertion. The
+      // baseline itself is measured and verified separately by running
+      // `dart run tool/quality_gate.dart` directly and reading its printed
+      // report (see the plan's KTD1/U1 and the PR description).
+      final dir = Directory.systemTemp.createTempSync('coverage_filter_test_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final lcovFile = File('${dir.path}${Platform.pathSeparator}lcov.info')
+        ..writeAsStringSync(_fixtureLcov);
       final filtered = filteredCoverageFromFile(lcovFile);
-      expect(filtered, isNotEmpty);
-      // None of the five reviewed exclusions should survive filtering.
-      for (final path in filtered.keys) {
-        expect(isExcluded(path), isFalse);
-      }
-      var totalLf = 0;
-      var totalLh = 0;
-      for (final f in filtered.values) {
-        totalLf += f.lf;
-        totalLh += f.lh;
-      }
-      // Sanity band around the ~91.8% baseline measured during planning —
-      // this will move as U5 adds tests, so the assertion is a wide band,
-      // not an exact pin.
-      final percent = totalLh / totalLf * 100;
-      expect(percent, greaterThan(85));
+      expect(filtered.keys, ['lib/domain/models/profile.dart']);
+      expect(filtered['lib/domain/models/profile.dart']!.percent,
+          closeTo(66.7, 0.1));
     });
   });
 }
