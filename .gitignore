@@ -61,3 +61,6 @@ app.*.map.json
 *.jks
 *.keystore
 key.properties
+
+# Worktrees
+.worktrees/
