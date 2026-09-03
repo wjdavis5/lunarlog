@@ -30,6 +30,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -219,9 +220,19 @@ class _SignInScreenState extends State<SignInScreen> {
         }
       });
 
+  /// Runs [action] inside the gate's system-UI window when a gate is in
+  /// scope (#65 U2; KTD6), so the provider's own picker cannot re-lock the
+  /// app mid-sign-in and leave the operator at the lock screen. The gate is
+  /// read nullably: the standalone and first-run harnesses mount this
+  /// screen without one, and there is nothing to suppress there anyway.
+  Future<T> _duringProviderUi<T>(Future<T> Function() action) {
+    final gate = context.read<GateController?>();
+    return gate == null ? action() : gate.duringSystemUi(action);
+  }
+
   Future<void> _apple() => _run(() async {
         final auth = context.read<AuthController>();
-        final result = await auth.signInWithAppleNative();
+        final result = await _duringProviderUi(auth.signInWithAppleNative);
         switch (result) {
           case AppleSignInSession():
             _signedIn();
@@ -235,7 +246,7 @@ class _SignInScreenState extends State<SignInScreen> {
   /// AE2); every other failure carries its copy through [_run].
   Future<void> _google() => _run(() async {
         final auth = context.read<AuthController>();
-        final result = await auth.signInWithGoogleNative();
+        final result = await _duringProviderUi(auth.signInWithGoogleNative);
         switch (result) {
           case GoogleSignInSession():
             _signedIn();

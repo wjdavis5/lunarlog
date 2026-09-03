@@ -126,6 +126,44 @@ class FakeInactivityTimers {
   bool get anyActive => created.any((timer) => timer.active);
 }
 
+/// Minimal in-memory [SettingsStore] for controller-level tests that need
+/// the relock toggle without standing up a database.
+class FakeSettingsStore implements SettingsStore {
+  FakeSettingsStore([Map<String, String>? seed]) : _values = {...?seed};
+
+  final Map<String, String> _values;
+  final _controllers = <String, StreamController<String?>>{};
+
+  @override
+  Future<String?> get(String key) async => _values[key];
+
+  @override
+  Future<void> set(String key, String value) async {
+    _values[key] = value;
+    _controllers[key]?.add(value);
+  }
+
+  @override
+  Stream<String?> watch(String key) {
+    final controller = _controllers.putIfAbsent(
+        key, () => StreamController<String?>.broadcast());
+    return controller.stream.startWith(_values[key]);
+  }
+
+  void close() {
+    for (final controller in _controllers.values) {
+      controller.close();
+    }
+  }
+}
+
+extension _StartWith on Stream<String?> {
+  Stream<String?> startWith(String? value) async* {
+    yield value;
+    yield* this;
+  }
+}
+
 class Harness {
   Harness(this.tester, {Future<void> Function(LunarLogDatabase db)? seed})
       : db = LunarLogDatabase(NativeDatabase.memory()) {
@@ -375,6 +413,156 @@ void main() {
     });
   });
 
+  group('the system-UI window and its bound (#65 U1; KTD2, KTD5, KTD9)', () {
+    /// A controller with fake timers, unlocked and ready for a window.
+    (GateController, FakeGate, FakeInactivityTimers) unlockedRig() {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      return (controller, gate, timers);
+    }
+
+    testWidgets('a departure inside a window covers but does not lock; the '
+        'same departure outside one locks', (tester) async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+
+      expect(controller.locked, isFalse,
+          reason: 'the app put this system UI on screen itself');
+      expect(controller.obscured, isTrue,
+          reason: 'the window suppresses the lock, never the cover');
+
+      picker.complete();
+      await ceremony;
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.systemUiActive, isFalse);
+
+      // Same event, no window: the policy outside is unchanged.
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isTrue);
+    });
+
+    testWidgets('nesting: an inner window closing does not restore locking '
+        'while the outer one is open', (tester) async {
+      final (controller, gate, _) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final outer = Completer<void>();
+      final outerDone = controller.duringSystemUi(() async {
+        // The credential prompt nests inside the provider ceremony, as
+        // "Add Google" does.
+        await controller.duringSystemUi(() async {});
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        expect(controller.locked, isFalse,
+            reason: 'the outer window is still open');
+        await outer.future;
+      });
+      outer.complete();
+      await outerDone;
+      expect(controller.systemUiActive, isTrue,
+          reason: 'the outer window saw a departure, so it settles');
+    });
+
+    testWidgets('the deadline locks the app however long the operator was '
+        'away, and whatever else happened', (tester) async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      // Everything that would reset the inactivity countdown: a
+      // background-and-return cycle, and pointer activity.
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      controller.noteActivity();
+      expect(controller.locked, isFalse);
+
+      timers.fireWithDelay(kDefaultInactivityTimeout);
+
+      expect(controller.locked, isTrue,
+          reason: 'the window deadline is not extended by resumes or input');
+      picker.complete();
+      await ceremony;
+    });
+
+    // A plain `test`: the settings watch delivers over real async, which a
+    // `testWidgets` fake-async zone would never advance without pumping,
+    // and this case needs no widget tree.
+    test('the deadline still fires with the relock toggle off', () async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final settings =
+          FakeSettingsStore({SettingsKeys.relockEnabled: 'false'});
+      addTearDown(settings.close);
+      controller.attachSettings(settings);
+      // One event-loop turn for the seeded value to reach the listener;
+      // pumpEventQueue would never return against a broadcast stream that
+      // stays open for the life of the store.
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.relockEnabled, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isFalse);
+
+      timers.fireWithDelay(kDefaultInactivityTimeout);
+
+      expect(controller.locked, isTrue,
+          reason: 'the toggle governs foreground inactivity, not the bound '
+              'on system UI the app put on screen itself');
+      picker.complete();
+      await ceremony;
+    });
+
+    testWidgets('the cover is reconciled when a window closes, never '
+        'stranded and never lifted while the app is away', (tester) async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      // Closes while the app is back: the cover is lifted, not stranded
+      // behind a window with no lock screen.
+      var picker = Completer<void>();
+      var ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      picker.complete();
+      await ceremony;
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.obscured, isFalse);
+      expect(controller.locked, isFalse);
+
+      // Closes while the app is still away: the cover stays up.
+      picker = Completer<void>();
+      ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      picker.complete();
+      await ceremony;
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.obscured, isTrue,
+          reason: 'R5: covered whenever the app is not resumed');
+    });
+  });
+
   group('re-authentication for linking (#2 U5; KTD5)', () {
     testWidgets('returns false without prompting while an unlock is in '
         'progress; otherwise reports the credential and never changes '
@@ -491,6 +679,33 @@ void main() {
       expect(find.text('Barb'), findsNothing);
       expect(harness.dbOpenerCalls, 0,
           reason: 'AE4: declined credential never decrypts — DB never opened');
+      await harness.dispose();
+    });
+
+    testWidgets('issue #65 end to end: the prompt reporting its own focus '
+        'loss still unlocks into the data', (tester) async {
+      // The field defect through the whole tree: Face ID succeeds and the
+      // lock screen used to stay up with no error, because the prompt's
+      // own `inactive` report was read as the operator leaving.
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(grant: false);
+      expect(lockScreen, findsOneWidget);
+
+      harness.gate.grantNext = true;
+      harness.gate.onPrompt = () => tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await harness.unlockViaButton();
+      await harness.background(AppLifecycleState.resumed);
+
+      expect(lockScreen, findsNothing,
+          reason: 'the system accepted the credential; that decides');
+      expect(deniedMessage, findsNothing, reason: 'nothing was declined');
+      expect(privacyCover, findsNothing,
+          reason: 'the cover is reconciled once the app is back (KTD9)');
+      expect(find.text('Alice'), findsOneWidget);
+      expect(harness.dbOpenerCalls, 1);
       await harness.dispose();
     });
 
