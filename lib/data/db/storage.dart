@@ -56,6 +56,9 @@ void _validateLocalDate(String localDate) {
 DateTime _notBefore(DateTime next, DateTime floor) =>
     next.toUtc().isBefore(floor.toUtc()) ? floor.toUtc() : next.toUtc();
 
+/// Local row counts per synced table (tombstones included).
+typedef LocalRowCounts = ({int profiles, int dayEntries});
+
 /// The `sync_state` row as read when none has been written yet.
 const SyncStateRow kDefaultSyncState = SyncStateRow(
   id: 1,
@@ -405,6 +408,14 @@ class LunarLogStorage {
             localRev: db.dayEntries.localRev + const Constant(1),
           ));
     });
+  }
+
+  /// Row counts, live and tombstoned, of both synced tables — what the
+  /// upload-consent step shows before the first push (R14, AS4).
+  Future<LocalRowCounts> countAllRows() async {
+    final p = await _count(db.profiles, db.profiles.id);
+    final d = await _count(db.dayEntries, db.dayEntries.id);
+    return (profiles: p, dayEntries: d);
   }
 
   /// True only when both synced tables hold no row of any kind — a

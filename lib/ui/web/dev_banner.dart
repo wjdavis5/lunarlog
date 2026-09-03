@@ -6,14 +6,36 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/config.dart';
+
+/// Banner copy for the default web build (no account, no sync).
+const String kWebBannerCopy = 'Development build — not for real data.';
+
+/// Banner copy when the build opted into web sync (AS9, U6 Approach 11):
+/// a signed-in browser holds the account's rows and a bearer token.
+const String kWebBannerSyncCopy = 'Development build — this browser holds '
+    'your synced family data unencrypted. Not for real data.';
 
 /// Persistent, non-dismissible banner for the web build. [onWipe] performs
-/// the actual erase (the app passes the database wipe); it is always behind
-/// a confirmation dialog that names the consequence.
+/// the actual erase (the app passes the device reset, KTD16); it is always
+/// behind a confirmation dialog that names the consequence.
 class WebDevBanner extends StatelessWidget {
-  const WebDevBanner({super.key, required this.onWipe});
+  const WebDevBanner({
+    super.key,
+    required this.onWipe,
+    this.webSyncEnabled = AppConfig.webSyncEnabled,
+    this.navigatorKey,
+  });
 
   final Future<void> Function() onWipe;
+
+  /// The app's navigator, for the confirmation dialog: the banner sits in
+  /// `MaterialApp.builder`, *above* the navigator, so its own context has
+  /// none. Optional — a banner mounted below a navigator uses that.
+  final GlobalKey<NavigatorState>? navigatorKey;
+
+  /// Whether the build compiled with `LUNARLOG_WEB_SYNC=true`; injectable.
+  final bool webSyncEnabled;
 
   @visibleForTesting
   static const Key wipeButtonKey = Key('web-wipe-local-data');
@@ -26,11 +48,11 @@ class WebDevBanner extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'Development build — not for real data.',
-                key: ValueKey('web-dev-banner'),
-                style: TextStyle(fontWeight: FontWeight.w600),
+                webSyncEnabled ? kWebBannerSyncCopy : kWebBannerCopy,
+                key: const ValueKey('web-dev-banner'),
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
             TextButton(
@@ -45,12 +67,19 @@ class WebDevBanner extends StatelessWidget {
   }
 
   Future<void> _confirmWipe(BuildContext context) async {
+    final dialogContext = Navigator.maybeOf(context) != null
+        ? context
+        : (navigatorKey?.currentContext ?? context);
     final confirmed = await showDialog<bool>(
-      context: context,
+      context: dialogContext,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Erase all local data?'),
-        content: const Text(
-          'Erases all data stored in this browser. This cannot be undone.',
+        content: Text(
+          webSyncEnabled
+              ? 'Erases all data stored in this browser and signs out. '
+                  'This cannot be undone here; data already in your account '
+                  'stays there.'
+              : 'Erases all data stored in this browser. This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -68,7 +97,7 @@ class WebDevBanner extends StatelessWidget {
     if (confirmed != true) return;
     await onWipe();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       const SnackBar(content: Text('All local data erased.')),
     );
   }
@@ -82,18 +111,28 @@ class WebGuardrails extends StatelessWidget {
     required this.showBanner,
     required this.onWipe,
     required this.child,
+    this.webSyncEnabled = AppConfig.webSyncEnabled,
+    this.navigatorKey,
   });
 
   final bool showBanner;
   final Future<void> Function() onWipe;
   final Widget child;
+  final bool webSyncEnabled;
+
+  /// See [WebDevBanner.navigatorKey].
+  final GlobalKey<NavigatorState>? navigatorKey;
 
   @override
   Widget build(BuildContext context) {
     if (!showBanner) return child;
     return Column(
       children: [
-        WebDevBanner(onWipe: onWipe),
+        WebDevBanner(
+          onWipe: onWipe,
+          webSyncEnabled: webSyncEnabled,
+          navigatorKey: navigatorKey,
+        ),
         Expanded(child: child),
       ],
     );

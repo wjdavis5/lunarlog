@@ -19,8 +19,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 
 const String kNoticeText =
-    'Data lives only on this device. If the device is lost or reset, the '
-    'history cannot be recovered — there is no backup in v1.';
+    'Data stays on this device unless you sign in to sync it to your account.';
 
 Future<LunarLogDatabase> pumpApp(
   WidgetTester tester, {

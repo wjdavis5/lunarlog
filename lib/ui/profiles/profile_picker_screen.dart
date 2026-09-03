@@ -1,10 +1,14 @@
 /// Profile picker (home when no valid active profile): active profiles by
 /// sort order, tap to make active; rename/archive from the row menu; archived
 /// profiles live in a collapsed section at the bottom with one-tap unarchive.
+/// The app bar carries the sync status glyph when the build has a sync
+/// engine (U6); tapping it opens Settings.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/ui/account/sync_status_controller.dart';
+import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
@@ -26,17 +30,19 @@ class ProfilePickerScreen extends StatelessWidget {
     final controller = context.watch<ProfileController>();
     final active = controller.activeProfiles;
     final archived = controller.archivedProfiles;
+    final hasSync = Provider.of<SyncStatusController?>(context) != null;
+    void openSettings() => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+        );
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profiles'),
         actions: [
+          if (hasSync) SyncStatusGlyph(onPressed: openSettings),
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                  builder: (_) => const SettingsScreen()),
-            ),
+            onPressed: openSettings,
           ),
           IconButton(
             tooltip: 'Add profile',

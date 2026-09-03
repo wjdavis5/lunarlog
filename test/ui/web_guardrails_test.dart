@@ -2,11 +2,69 @@
 /// guarded wipe, one-time blocking first-profile acknowledgment.
 library;
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/app.dart';
+import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/ui/web/dev_banner.dart';
 
+const String kSyncedBannerCopy = 'Development build — this browser holds '
+    'your synced family data unencrypted. Not for real data.';
+
 void main() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
+  testWidgets('the app wires the wipe to the device reset callback (KTD16)',
+      (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    var resets = 0;
+    await tester.pumpWidget(LunarLogApp(
+      db: db,
+      showWebBanner: true,
+      resetDevice: () async {
+        resets++;
+        await db.wipeAllData();
+      },
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(WebDevBanner.wipeButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('web-wipe-confirm')));
+    await tester.pumpAndSettle();
+    expect(resets, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
+    await db.close();
+  });
+
+  testWidgets('banner copy: sync off (the default) never mentions sync; '
+      'sync on names the exposure', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: WebGuardrails(
+        showBanner: true,
+        onWipe: () async {},
+        child: const Scaffold(body: Text('content')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Development build — not for real data.'),
+        findsOneWidget);
+    expect(find.textContaining('sync'), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+      home: WebGuardrails(
+        showBanner: true,
+        webSyncEnabled: true,
+        onWipe: () async {},
+        child: const Scaffold(body: Text('content')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text(kSyncedBannerCopy), findsOneWidget);
+  });
+
   testWidgets('banner renders when shown, absent when not', (tester) async {
     var wipes = 0;
     await tester.pumpWidget(

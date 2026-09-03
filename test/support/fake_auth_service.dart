@@ -41,6 +41,11 @@ class FakeAuthService implements AuthService {
   /// Throw [UnsupportedError] from [signInWithAppleNative] (non-iOS).
   bool appleUnsupported = false;
 
+  /// When set, every mutating call waits for it before completing, so a
+  /// widget test can observe the pending state (U6). Complete it to let
+  /// the call through.
+  Completer<void>? hold;
+
   final signUpCalls = <({String email, String password})>[];
   final signInCalls = <({String email, String password})>[];
   final passwordResetCalls = <String>[];
@@ -101,7 +106,9 @@ class FakeAuthService implements AuthService {
     linkFailureConsumed++;
   }
 
-  void _maybeThrow() {
+  Future<void> _maybeThrow() async {
+    final gate = hold;
+    if (gate != null) await gate.future;
     final failure = nextFailure;
     if (failure != null) {
       nextFailure = null;
@@ -115,7 +122,7 @@ class FakeAuthService implements AuthService {
     required String password,
   }) async {
     signUpCalls.add((email: email, password: password));
-    _maybeThrow();
+    await _maybeThrow();
     return signUpResult ?? SignUpAwaitingConfirmation(email);
   }
 
@@ -125,7 +132,7 @@ class FakeAuthService implements AuthService {
     required String password,
   }) async {
     signInCalls.add((email: email, password: password));
-    _maybeThrow();
+    await _maybeThrow();
     final user = AuthUser(id: 'user-$email', email: email);
     emit(AuthSessionState.signedIn, user: user);
     return user;
@@ -134,13 +141,13 @@ class FakeAuthService implements AuthService {
   @override
   Future<void> sendPasswordReset(String email) async {
     passwordResetCalls.add(email);
-    _maybeThrow();
+    await _maybeThrow();
   }
 
   @override
   Future<void> updatePassword(String newPassword) async {
     updatePasswordCalls.add(newPassword);
-    _maybeThrow();
+    await _maybeThrow();
   }
 
   @override
@@ -149,7 +156,7 @@ class FakeAuthService implements AuthService {
       throw UnsupportedError('Apple Sign-In is available on iOS only');
     }
     appleCalls++;
-    _maybeThrow();
+    await _maybeThrow();
     final result = appleResult;
     if (result is AppleSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
@@ -162,7 +169,7 @@ class FakeAuthService implements AuthService {
     AuthSignOutScope scope = AuthSignOutScope.local,
   }) async {
     signOutCalls.add(scope);
-    _maybeThrow();
+    await _maybeThrow();
     emit(AuthSessionState.signedOut);
   }
 

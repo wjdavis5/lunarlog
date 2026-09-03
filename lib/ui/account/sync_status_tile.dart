@@ -1,0 +1,196 @@
+/// Sync status surfaces (U6, Approach 7): one copy function, the Settings
+/// tile ([SyncStatusTile]) and the picker's app-bar glyph
+/// ([SyncStatusGlyph]). Nothing here carries health content — phases,
+/// counts and a relative time only (R18).
+library;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:lunarlog/config.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/sync_status_controller.dart';
+import 'package:lunarlog/ui/account/upload_consent_screen.dart';
+import 'package:provider/provider.dart';
+
+const String kSyncingCopy = 'Syncing…';
+const String kUploadPendingCopy = 'Upload pending — tap to review';
+const String kWebSyncOffCopy = 'Sync is off in this web build';
+const String kSignInAgainCopy = 'Sign in again to sync';
+const String kRejectedCopy = 'Some entries could not be uploaded';
+const String kAwaitingConfirmationCopy =
+    'Waiting for email confirmation — open the link on this device';
+
+/// "just now", "5 min ago", "3 h ago", "2 d ago".
+String formatRelative(DateTime then, DateTime now) {
+  final delta = now.toUtc().difference(then.toUtc());
+  if (delta < const Duration(minutes: 1)) return 'just now';
+  if (delta < const Duration(hours: 1)) return '${delta.inMinutes} min ago';
+  if (delta < const Duration(days: 1)) return '${delta.inHours} h ago';
+  return '${delta.inDays} d ago';
+}
+
+/// The one line the tile and the glyph show. Precedence, most urgent
+/// first: the web build's off state; an unconfirmed sign-up; an auth
+/// error; a wrong account; pending upload consent; a running cycle;
+/// rejected rows; then the resting states.
+String syncStatusCopy({
+  required SyncSnapshot? snapshot,
+  required AuthSessionState? authState,
+  String? awaitingConfirmationEmail,
+  required DateTime now,
+  bool webSyncOff = false,
+}) {
+  if (webSyncOff) return kWebSyncOffCopy;
+  final signedIn = authState == AuthSessionState.signedIn ||
+      authState == AuthSessionState.passwordRecovery;
+  if (!signedIn &&
+      awaitingConfirmationEmail != null &&
+      awaitingConfirmationEmail.isNotEmpty) {
+    return kAwaitingConfirmationCopy;
+  }
+  if (snapshot == null) return 'Sync is not available in this build';
+  if (snapshot.phase == SyncPhase.error) {
+    return switch (snapshot.lastError) {
+      SyncErrorKind.auth => kSignInAgainCopy,
+      SyncErrorKind.network => 'Could not reach the server — will retry',
+      SyncErrorKind.other || SyncErrorKind.none => 'Sync failed — will retry',
+    };
+  }
+  if (authState == AuthSessionState.expired) return kSignInAgainCopy;
+  switch (snapshot.phase) {
+    case SyncPhase.accountMismatch:
+      return 'Signed in as a different account';
+    case SyncPhase.awaitingUploadConsent:
+      return kUploadPendingCopy;
+    case SyncPhase.restoring:
+    case SyncPhase.pushing:
+    case SyncPhase.pulling:
+      return kSyncingCopy;
+    case SyncPhase.paused:
+    case SyncPhase.idle:
+    case SyncPhase.error:
+      break;
+  }
+  if (snapshot.rejectedCount > 0) return kRejectedCopy;
+  if (!signedIn) return 'Not signed in';
+  if (snapshot.phase == SyncPhase.paused) return 'Sync paused';
+  final last = snapshot.lastSyncAt;
+  if (last == null) return 'Not synced yet';
+  return 'Up to date · ${formatRelative(last, now)}';
+}
+
+/// Whether the copy describes a running cycle (drives spinners and the
+/// "Sync now" enablement).
+bool isSyncRunning(SyncSnapshot? snapshot) => switch (snapshot?.phase) {
+      SyncPhase.restoring || SyncPhase.pushing || SyncPhase.pulling => true,
+      _ => false,
+    };
+
+IconData _iconFor(SyncSnapshot? snapshot, String copy) {
+  if (copy == kWebSyncOffCopy) return Icons.cloud_off_outlined;
+  if (copy == kAwaitingConfirmationCopy) return Icons.mark_email_unread_outlined;
+  if (snapshot == null) return Icons.cloud_off_outlined;
+  return switch (snapshot.phase) {
+    SyncPhase.error => Icons.cloud_off_outlined,
+    SyncPhase.accountMismatch => Icons.no_accounts_outlined,
+    SyncPhase.awaitingUploadConsent => Icons.cloud_upload_outlined,
+    SyncPhase.restoring ||
+    SyncPhase.pushing ||
+    SyncPhase.pulling =>
+      Icons.cloud_sync_outlined,
+    SyncPhase.paused => Icons.pause_circle_outline,
+    SyncPhase.idle =>
+      snapshot.rejectedCount > 0 ? Icons.warning_amber_outlined : Icons.cloud_done_outlined,
+  };
+}
+
+/// Settings tile (`sync-status`). Reads the nullable controllers from the
+/// tree; watches [SettingsKeys.awaitingConfirmationEmail]. Tappable while
+/// upload consent is pending: reopens the consent screen (AS4).
+class SyncStatusTile extends StatelessWidget {
+  const SyncStatusTile({
+    super.key,
+    this.now,
+    this.webSyncOff = kIsWeb && !AppConfig.webSyncEnabled,
+  });
+
+  /// Clock for the relative time; injectable for tests.
+  final DateTime Function()? now;
+
+  /// AS9: the web build without the define renders the off copy.
+  final bool webSyncOff;
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = Provider.of<SyncStatusController?>(context);
+    final auth = Provider.of<AuthController?>(context);
+    final settings = Provider.of<SettingsStore?>(context, listen: false);
+    final awaiting = settings?.watch(SettingsKeys.awaitingConfirmationEmail);
+    return StreamBuilder<String?>(
+      stream: awaiting,
+      builder: (context, awaitingSnapshot) {
+        final snapshot = sync?.snapshot;
+        final copy = syncStatusCopy(
+          snapshot: snapshot,
+          authState: auth?.state,
+          awaitingConfirmationEmail: awaitingSnapshot.data,
+          now: (now ?? DateTime.now)(),
+          webSyncOff: webSyncOff,
+        );
+        final pendingConsent =
+            snapshot?.phase == SyncPhase.awaitingUploadConsent;
+        return ListTile(
+          key: const ValueKey('sync-status'),
+          leading: isSyncRunning(snapshot)
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(_iconFor(snapshot, copy)),
+          title: Text(copy),
+          onTap: pendingConsent
+              ? () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (routeContext) => UploadConsentScreen(
+                        onNotNow: () => Navigator.of(routeContext).pop(),
+                      ),
+                    ),
+                  )
+              : null,
+        );
+      },
+    );
+  }
+}
+
+/// App-bar glyph for the profile picker: the status as a tooltip, tapping
+/// runs [onPressed] (the picker opens Settings). Renders nothing without a
+/// [SyncStatusController] — the caller decides, this is a safety net.
+class SyncStatusGlyph extends StatelessWidget {
+  const SyncStatusGlyph({super.key, required this.onPressed, this.now});
+
+  final VoidCallback onPressed;
+  final DateTime Function()? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = Provider.of<SyncStatusController?>(context);
+    if (sync == null) return const SizedBox.shrink();
+    final auth = Provider.of<AuthController?>(context);
+    final copy = syncStatusCopy(
+      snapshot: sync.snapshot,
+      authState: auth?.state,
+      now: (now ?? DateTime.now)(),
+    );
+    return IconButton(
+      key: const ValueKey('sync-status-glyph'),
+      tooltip: copy,
+      icon: Icon(_iconFor(sync.snapshot, copy)),
+      onPressed: onPressed,
+    );
+  }
+}

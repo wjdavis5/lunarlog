@@ -51,6 +51,35 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ------------------------------------------------------------ actions
+  // Thin delegations so screens depend on this notifier only (KTD6). Each
+  // throws the service's typed [AuthFailure]; state changes arrive through
+  // [states] and notify listeners.
+
+  Future<AuthUser> signInWithPassword({
+    required String email,
+    required String password,
+  }) =>
+      _service.signInWithPassword(email: email, password: password);
+
+  Future<SignUpResult> signUp({
+    required String email,
+    required String password,
+  }) =>
+      _service.signUp(email: email, password: password);
+
+  Future<void> sendPasswordReset(String email) =>
+      _service.sendPasswordReset(email);
+
+  Future<void> updatePassword(String newPassword) =>
+      _service.updatePassword(newPassword);
+
+  Future<AppleSignInResult> signInWithAppleNative() =>
+      _service.signInWithAppleNative();
+
+  Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local}) =>
+      _service.signOut(scope: scope);
+
   void _onState(AuthSessionState next) {
     if (next == _state) return;
     _state = next;
