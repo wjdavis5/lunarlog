@@ -24,10 +24,10 @@ abstract interface class ReminderScheduler {
 }
 
 class FlutterLocalNotificationsScheduler implements ReminderScheduler {
-  FlutterLocalNotificationsScheduler();
+  FlutterLocalNotificationsScheduler({FlutterLocalNotificationsPlugin? plugin})
+      : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin;
   bool _initialized = false;
 
   static const String _channelId = 'lunarlog_reminders';
@@ -77,11 +77,28 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       onLaunchFromNotification?.call(payload);
     }
 
-    final androidEnabled = await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.areNotificationsEnabled();
-    final enabled = androidEnabled ?? true;
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    final macosPlugin = _plugin.resolvePlatformSpecificImplementation<
+        MacOSFlutterLocalNotificationsPlugin>();
+
+    bool enabled = true;
+    if (androidPlugin != null) {
+      enabled = await androidPlugin.areNotificationsEnabled() ?? true;
+    } else if (iosPlugin != null) {
+      final options = await iosPlugin.checkPermissions();
+      if (options != null) {
+        enabled = options.isEnabled;
+      }
+    } else if (macosPlugin != null) {
+      final options = await macosPlugin.checkPermissions();
+      if (options != null) {
+        enabled = options.isEnabled;
+      }
+    }
+
     return enabled
         ? NotificationAvailability.available
         : NotificationAvailability.denied;

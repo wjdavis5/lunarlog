@@ -222,6 +222,7 @@ class SupabaseAuthService implements AuthService {
   }) async {
     try {
       final response = await _gateway.getSessionFromUrl(uri);
+      _pendingLinkFailure = null;
       if (recovery || _isRecoveryType(response.redirectType)) {
         _latchRecovery();
       }

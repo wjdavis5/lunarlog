@@ -629,6 +629,8 @@ void main() {
       expect(gateway.getSessionFromUrlCalls, hasLength(2));
       expect(service.state, AuthSessionState.signedIn);
       expect(service.currentUserId, 'linked');
+      expect(service.pendingLinkFailure, isNull,
+          reason: 'successful exchange resets prior pending link failure (Issue #24)');
     });
 
     test('a definitive exchange failure stays latched: the stream replay of '
