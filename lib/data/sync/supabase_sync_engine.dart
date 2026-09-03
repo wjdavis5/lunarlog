@@ -41,6 +41,7 @@ import '../../domain/sync/sync_engine.dart';
 import '../db/db.dart';
 import '../db/storage.dart';
 import '../db/ulid.dart';
+import 'remote_rows.dart';
 import 'row_codec.dart';
 import 'sync_transport.dart';
 
@@ -790,6 +791,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
             await _storage.applyRemoteProfile(row);
           case RemoteDayEntryRow():
             await _storage.applyRemoteDayEntry(row);
+          case QuarantinedRemoteRow():
+            // Quarantined row (Issue #40): ignore payload during reconcile.
+            break;
         }
       } on RetryableSyncApplyError {
         retry = true;

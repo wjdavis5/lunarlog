@@ -55,6 +55,7 @@ dependencies:
   # #2 U1: native Google Sign-In (KTD1/KTD2). 7.x is the Credential Manager
   # migration; never invoked unless AppConfig.hasGoogle.
   google_sign_in: ^7.2.0
+  flutter_timezone: ^5.1.0
 
 dev_dependencies:
   flutter_test:

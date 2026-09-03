@@ -509,6 +509,9 @@ class LunarLogStorage {
             await _applyProfile(row, onlyExisting: false);
           case RemoteDayEntryRow():
             await _applyDayEntry(row, onlyExisting: false);
+          case QuarantinedRemoteRow():
+            // Quarantined row (Issue #40): ignore payload, cursor still advances.
+            break;
         }
       }
       await _ensureSyncStateRow();

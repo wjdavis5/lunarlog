@@ -67,11 +67,24 @@ class SupabaseSyncTransport implements SyncTransport {
     } catch (error) {
       throw mapSyncTransportError(error);
     }
-    try {
-      return [for (final row in data) decodeRemoteRow(table, row)];
-    } on RowCodecError {
-      throw const SyncTransportError.other();
+    final rows = <RemoteRow>[];
+    for (final row in data) {
+      try {
+        rows.add(decodeRemoteRow(table, row));
+      } on RowCodecError catch (e) {
+        // Quarantine corrupted/undecodable row so cursor can advance (Issue #40)
+        final version = (row[_versionColumn] as num?)?.toInt() ?? 0;
+        final id = row['id'] as String? ?? '';
+        rows.add(QuarantinedRemoteRow(
+          id: id,
+          table: table,
+          serverVersion: version,
+          reason: e.toString(),
+          raw: row,
+        ));
+      }
     }
+    return rows;
   }
 
   PushResult _decodePushResult(Object? data) {

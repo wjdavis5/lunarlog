@@ -5,10 +5,41 @@
 library;
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/ui/overview/notification_availability.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+
+typedef LocalTimeZoneProvider = Future<String> Function();
+
+/// Computes the exact [tz.TZDateTime] for a morning reminder on [fireOn]
+/// in the given [location] (default 9:00 AM local civil time).
+tz.TZDateTime calculateReminderFireAt({
+  required LocalDate fireOn,
+  required tz.Location location,
+  int hour = 9,
+}) {
+  return tz.TZDateTime(
+    location,
+    fireOn.year,
+    fireOn.month,
+    fireOn.day,
+    hour,
+  );
+}
+
+/// Resolves the host device's IANA time zone identifier via platform channels.
+/// Falls back to 'UTC' if unavailable.
+Future<String> defaultLocalTimeZoneProvider() async {
+  try {
+    final info = await FlutterTimezone.getLocalTimezone();
+    return info.identifier;
+  } catch (_) {
+    return 'UTC';
+  }
+}
 
 abstract interface class ReminderScheduler {
   /// Initializes the plugin, requests permission, and reports whether
@@ -24,10 +55,17 @@ abstract interface class ReminderScheduler {
 }
 
 class FlutterLocalNotificationsScheduler implements ReminderScheduler {
-  FlutterLocalNotificationsScheduler();
+  FlutterLocalNotificationsScheduler({
+    FlutterLocalNotificationsPlugin? plugin,
+    LocalTimeZoneProvider? localTimeZoneProvider,
+    this.locationProvider,
+  })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
+        _localTimeZoneProvider =
+            localTimeZoneProvider ?? defaultLocalTimeZoneProvider;
 
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin;
+  final LocalTimeZoneProvider _localTimeZoneProvider;
+  final tz.Location Function()? locationProvider;
   bool _initialized = false;
 
   static const String _channelId = 'lunarlog_reminders';
@@ -38,6 +76,13 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   }) async {
     if (tz.timeZoneDatabase.locations.isEmpty) {
       tzdata.initializeTimeZones();
+    }
+    try {
+      final tzName = await _localTimeZoneProvider();
+      final loc = tz.getLocation(tzName);
+      tz.setLocalLocation(loc);
+    } catch (_) {
+      // Fallback: tz.local remains UTC or previously initialized location.
     }
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwin = DarwinInitializationSettings(
@@ -93,12 +138,11 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   Future<void> rescheduleAll(List<PlannedReminder> reminders) async {
     if (!_initialized) return;
     await _plugin.cancelAllPendingNotifications();
+    final loc = locationProvider?.call() ?? tz.local;
     for (final (index, reminder) in reminders.indexed) {
-      final fireAt = tz.TZDateTime.local(
-        reminder.fireOn.year,
-        reminder.fireOn.month,
-        reminder.fireOn.day,
-        9, // Morning reminder, local civil time.
+      final fireAt = calculateReminderFireAt(
+        fireOn: reminder.fireOn,
+        location: loc,
       );
       await _plugin.zonedSchedule(
         id: index,

@@ -639,6 +639,61 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets('first-run sign-in whose bind-time restore encounters an error '
+        'renders RestoreErrorScreen with a Retry action instead of the name form (Issue #39)',
+        (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump();
+      await tester.tap(find.text('I understand'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+      await tester.tap(key('auth-sign-in'));
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+
+      // Restore failed with a network or other sync error on empty-but-bound database:
+      h.engine.emitPhase(
+        SyncPhase.error,
+        boundUserId: 'user-a@b.c',
+        lastError: SyncErrorKind.network,
+      );
+      await h.settle();
+
+      // Must show RestoreErrorScreen, NOT the Create profile form!
+      expect(key('restoring'), findsNothing);
+      expect(key('restore-error'), findsOneWidget);
+      expect(find.text('Unable to restore data'), findsOneWidget);
+      expect(find.text('Create a profile'), findsNothing);
+      expect(key('restore-retry-button'), findsOneWidget);
+
+      // Tapping Retry calls requestSync on the engine
+      await tester.tap(key('restore-retry-button'));
+      await pumpFew(tester);
+      expect(h.engine.requestSyncCalls, 1);
+
+      // Transition back to restoring, then restore completes with profile:
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+      expect(key('restore-error'), findsNothing);
+
+      await AccountHarness.seedOneProfile(h.db);
+      h.engine.emitPhase(
+        SyncPhase.idle,
+        lastSyncAt: DateTime.now().toUtc(),
+        boundUserId: 'user-a@b.c',
+      );
+      await h.settle();
+      expect(find.text('Profiles'), findsOneWidget);
+      expect(find.text('Alice'), findsOneWidget);
+
+      await h.dispose();
+    });
+
     testWidgets('the embedded account step advances to restoring when a '
         'session arrives without any tap, and the name form never appears '
         'for an account that holds a profile (#2 U3; R8)', (tester) async {
