@@ -15,7 +15,8 @@ an installable web PWA used for iteration only. The app holds sensitive health
 data, including minors'; this repo stays private and must never contain real
 personal or health data.
 
-**Privacy Policy:** Read our full [Privacy Policy](PRIVACY.md).
+**Privacy Policy:** Read our full [Privacy Policy](PRIVACY.md).  
+**License:** [PolyForm Noncommercial 1.0.0](LICENSE) (Free for personal/noncommercial use; commercial resale prohibited).
 
 **Status:** dev project, not deployed. Release is gated (see Known limitations).
 
@@ -216,3 +217,9 @@ Part of the home lab; the canonical inventory lives in the lab root's
   key is already device-only, and Android covers the equivalent with
   `allowBackup="false"`). The Supabase session and PKCE verifier are stored
   with `first_unlock_this_device` and never travel in a backup.
+
+## License
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).  
+You are free to view, modify, and run this software for noncommercial personal and family use. Commercial use, reproduction, distribution, or resale is strictly prohibited without a separate commercial license from the author.
+
