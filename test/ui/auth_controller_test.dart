@@ -123,6 +123,52 @@ void main() {
     expect(c.pendingLinkFailure, isA<AuthNetworkFailure>());
   });
 
+  test('delegates passwordless send and verify to the service (#2 U7)',
+      () async {
+    final c = controller();
+    await c.sendMagicLink(email: 'a@b.c', createAccount: false);
+    await c.sendMagicLink(email: 'n@b.c', createAccount: true);
+    expect(service.magicLinkCalls, [
+      (email: 'a@b.c', createAccount: false),
+      (email: 'n@b.c', createAccount: true),
+    ]);
+    expect(c.state, AuthSessionState.signedOut);
+
+    final user = await c.verifyEmailCode(email: 'a@b.c', code: '12345678');
+    await Future<void>.delayed(Duration.zero);
+    expect(service.codeCalls, [(email: 'a@b.c', code: '12345678')]);
+    expect(user.email, 'a@b.c');
+    expect(c.state, AuthSessionState.signedIn);
+    expect(c.currentUser, user);
+
+    service.nextFailure = const AuthFailure.invalidCode();
+    await expectLater(c.verifyEmailCode(email: 'a@b.c', code: '0'),
+        throwsA(isA<AuthInvalidCodeFailure>()));
+  });
+
+  test('exposes providers and delegates linkGoogle / linkApple (#2 U8)',
+      () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email']));
+    final c = controller();
+    expect(c.currentUser?.providers, ['email']);
+
+    final linked = await c.linkGoogle();
+    expect(linked.providers, ['email', 'google']);
+    expect(c.currentUser?.providers, ['email', 'google']);
+    expect(service.linkCalls, ['google']);
+
+    service.appleUnsupported = true;
+    await expectLater(c.linkApple(), throwsUnsupportedError);
+    service.appleUnsupported = false;
+
+    service.nextFailure = const AuthFailure.identityTaken();
+    await expectLater(
+        c.linkApple(), throwsA(const AuthFailure.identityTaken()));
+    expect(service.linkCalls, ['google', 'apple']);
+    expect(c.currentUser?.providers, ['email', 'google']);
+  });
+
   test('stops listening after dispose', () async {
     final c = AuthController(authService: service);
     var notifications = 0;

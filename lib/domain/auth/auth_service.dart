@@ -6,8 +6,15 @@
 /// Failures are *typed* ([AuthFailure]) and carry no provider text, no
 /// error description from a link, and no email — the UI chooses its own
 /// copy and nothing here can leak into a crash report (R18).
+///
+/// Native Google Sign-In and the failure kinds for provider, link, code,
+/// identity, and closed sign-ups come from the social-logins plan
+/// (#2 U2; KTD1, KTD4, KTD8); passwordless email — a sign-in link plus the
+/// code from the same email — from (#2 U7; KTD3, KTD4); the account's
+/// sign-in methods and in-app linking of a second one from (#2 U8; KTD5).
 library;
 
+import 'package:lunarlog/domain/util/list_equals.dart';
 import 'package:meta/meta.dart';
 
 /// The session as the app sees it.
@@ -35,9 +42,17 @@ enum AuthSignOutScope {
   global,
 }
 
+/// Supabase identity provider ids as they appear in [AuthUser.providers]
+/// (#2 U8, U5). Domain strings, deliberately not a Supabase enum.
+abstract final class AuthProviders {
+  static const String email = 'email';
+  static const String google = 'google';
+  static const String apple = 'apple';
+}
+
 @immutable
 class AuthUser {
-  const AuthUser({required this.id, this.email});
+  const AuthUser({required this.id, this.email, this.providers = const []});
 
   /// The provider's stable user id (`auth.users.id`).
   final String id;
@@ -46,12 +61,20 @@ class AuthUser {
   /// provider may withhold it).
   final String? email;
 
-  @override
-  bool operator ==(Object other) =>
-      other is AuthUser && other.id == id && other.email == email;
+  /// The account's sign-in methods by provider name (`email`, `google`,
+  /// `apple`), in the order the provider reports them and without
+  /// duplicates (#2 U8; KTD5, R9). Empty when the provider reported none.
+  final List<String> providers;
 
   @override
-  int get hashCode => Object.hash(id, email);
+  bool operator ==(Object other) =>
+      other is AuthUser &&
+      other.id == id &&
+      other.email == email &&
+      listEquals(other.providers, providers);
+
+  @override
+  int get hashCode => Object.hash(id, email, Object.hashAll(providers));
 
   @override
   String toString() => 'AuthUser($id)';
@@ -120,6 +143,35 @@ final class AppleSignInCancelled extends AppleSignInResult {
   String toString() => 'AppleSignInCancelled';
 }
 
+/// Outcome of [AuthService.signInWithGoogleNative] (#2 U2; KTD1).
+sealed class GoogleSignInResult {
+  const GoogleSignInResult();
+}
+
+final class GoogleSignInSession extends GoogleSignInResult {
+  const GoogleSignInSession(this.user);
+
+  final AuthUser user;
+
+  @override
+  String toString() => 'GoogleSignInSession($user)';
+}
+
+/// The operator dismissed the Google picker: not a failure (#2 KTD8, AE2).
+@immutable
+final class GoogleSignInCancelled extends GoogleSignInResult {
+  const GoogleSignInCancelled();
+
+  @override
+  bool operator ==(Object other) => other is GoogleSignInCancelled;
+
+  @override
+  int get hashCode => (GoogleSignInCancelled).hashCode;
+
+  @override
+  String toString() => 'GoogleSignInCancelled';
+}
+
 /// Typed failure thrown by every [AuthService] operation and surfaced for
 /// rejected links. Deliberately fieldless: no message, no code, no email.
 @immutable
@@ -133,6 +185,17 @@ sealed class AuthFailure implements Exception {
   const factory AuthFailure.network() = AuthNetworkFailure;
 
   const factory AuthFailure.unknown() = AuthUnknownFailure;
+
+  const factory AuthFailure.expiredLink() = AuthExpiredLinkFailure;
+
+  const factory AuthFailure.invalidCode() = AuthInvalidCodeFailure;
+
+  const factory AuthFailure.providerUnavailable() =
+      AuthProviderUnavailableFailure;
+
+  const factory AuthFailure.identityTaken() = AuthIdentityTakenFailure;
+
+  const factory AuthFailure.signUpClosed() = AuthSignUpClosedFailure;
 
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
@@ -165,12 +228,56 @@ final class AuthNetworkFailure extends AuthFailure {
   String toString() => 'AuthFailure.network';
 }
 
-/// Everything else, including rejected or expired links.
+/// Everything else (a rejected link is [AuthExpiredLinkFailure]).
 final class AuthUnknownFailure extends AuthFailure {
   const AuthUnknownFailure();
 
   @override
   String toString() => 'AuthFailure.unknown';
+}
+
+/// A sign-in link that was rejected, expired, reused, or opened on a device
+/// other than the one that requested it (#2 KTD4, R7).
+final class AuthExpiredLinkFailure extends AuthFailure {
+  const AuthExpiredLinkFailure();
+
+  @override
+  String toString() => 'AuthFailure.expiredLink';
+}
+
+/// A wrong or expired emailed code (#2 KTD4).
+final class AuthInvalidCodeFailure extends AuthFailure {
+  const AuthInvalidCodeFailure();
+
+  @override
+  String toString() => 'AuthFailure.invalidCode';
+}
+
+/// The native provider could not sign in for any reason other than
+/// cancellation: no credentials, no Play Services, misconfiguration
+/// (#2 KTD8, R3).
+final class AuthProviderUnavailableFailure extends AuthFailure {
+  const AuthProviderUnavailableFailure();
+
+  @override
+  String toString() => 'AuthFailure.providerUnavailable';
+}
+
+/// The identity already belongs to another account (#2 KTD4).
+final class AuthIdentityTakenFailure extends AuthFailure {
+  const AuthIdentityTakenFailure();
+
+  @override
+  String toString() => 'AuthFailure.identityTaken';
+}
+
+/// Sign-ups are closed for the project; new accounts are created by the
+/// account owner (#2 KTD3).
+final class AuthSignUpClosedFailure extends AuthFailure {
+  const AuthSignUpClosedFailure();
+
+  @override
+  String toString() => 'AuthFailure.signUpClosed';
 }
 
 /// The account seam. Constructed before the first frame by the bootstrap
@@ -206,6 +313,52 @@ abstract interface class AuthService {
   /// is dismissed; throws [AuthFailure] otherwise.
   Future<AppleSignInResult> signInWithAppleNative();
 
+  /// Native Google Sign-In through the platform picker (iOS and Android,
+  /// #2 KTD1). Throws [UnsupportedError] on every other platform and when
+  /// the build carries no Google client ids; returns
+  /// [GoogleSignInCancelled] when the picker is dismissed; throws
+  /// [AuthFailure] otherwise ([AuthProviderUnavailableFailure] for any
+  /// provider-side failure, #2 KTD8).
+  Future<GoogleSignInResult> signInWithGoogleNative();
+
+  /// Sends a sign-in email carrying a link (to open on this device, R5)
+  /// and a code (#2 KTD3). With [createAccount] false an unknown email
+  /// completes exactly like a known one — no account is created and no
+  /// failure is thrown (R6, AE3); with it true a new account is created,
+  /// or [AuthSignUpClosedFailure] is thrown while sign-ups are closed.
+  /// Throws [AuthFailure].
+  Future<void> sendMagicLink({
+    required String email,
+    required bool createAccount,
+  });
+
+  /// Verifies the code from the sign-in email and establishes the session
+  /// (the `signedIn` state arrives through [states] as for a password
+  /// sign-in). Throws [AuthInvalidCodeFailure] for a wrong or expired code
+  /// (#2 KTD4), [AuthFailure] otherwise.
+  Future<AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  });
+
+  /// Adds Google as a sign-in method for the *current* account through the
+  /// same native picker and nonce discipline as
+  /// [signInWithGoogleNative] (#2 U8; KTD5, R10). Requires [state] to be
+  /// [AuthSessionState.signedIn] — otherwise throws [AuthUnknownFailure]
+  /// before touching the platform. Throws [UnsupportedError] where Google
+  /// is unavailable. A dismissed picker returns the current user unchanged;
+  /// an identity that already belongs to another account throws
+  /// [AuthIdentityTakenFailure]. Returns the user with fresh [AuthUser
+  /// .providers]; the device-credential check before linking is the
+  /// caller's concern.
+  Future<AuthUser> linkGoogle();
+
+  /// Adds Apple as a sign-in method for the current account through the
+  /// native dialog with a hashed nonce, as [signInWithAppleNative] does
+  /// (#2 U8; KTD5, AS6). Same preconditions and outcomes as [linkGoogle];
+  /// iOS only ([UnsupportedError] elsewhere).
+  Future<AuthUser> linkApple();
+
   /// Throws [AuthFailure]; a [AuthSignOutScope.local] failure still leaves
   /// no session on this device.
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local});
@@ -231,8 +384,10 @@ abstract interface class AuthService {
 
   void consumeRecovery();
 
-  /// A rejected incoming link (expired, tampered, no matching verifier)
-  /// held until [consumeLinkFailure]; never carries the link's text.
+  /// A rejected incoming link (expired, reused, tampered, or opened on a
+  /// device with no matching verifier: [AuthExpiredLinkFailure]; a
+  /// transient [AuthNetworkFailure] leaves the link retryable) held until
+  /// [consumeLinkFailure]; never carries the link's text.
   AuthFailure? get pendingLinkFailure;
 
   /// Emits each rejected link's failure as it happens (the latched value in

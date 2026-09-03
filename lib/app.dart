@@ -125,14 +125,16 @@ class _LunarLogAppState extends State<LunarLogApp> {
   }
 
   /// AS10: a signed-in session (the confirmation link opened on this
-  /// device) retires the device-local "awaiting confirmation" note.
+  /// device) retires the device-local "awaiting confirmation" note, and
+  /// the passwordless "sign-in email sent" note with it (#2 U4; KTD3).
   void _onAuthChanged() {
     if (_authController?.signedIn ?? false) _clearAwaitingConfirmation();
   }
 
   void _clearAwaitingConfirmation() {
-    unawaited(DriftSettingsStore(widget.db.storage)
-        .set(SettingsKeys.awaitingConfirmationEmail, ''));
+    final settings = DriftSettingsStore(widget.db.storage);
+    unawaited(settings.set(SettingsKeys.awaitingConfirmationEmail, ''));
+    unawaited(settings.set(SettingsKeys.awaitingMagicLinkEmail, ''));
   }
 
   @override

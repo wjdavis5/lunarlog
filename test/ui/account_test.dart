@@ -27,11 +27,15 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
+import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart'
+    show SignInWithAppleButton;
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_engine.dart';
@@ -279,6 +283,300 @@ void main() {
     });
   });
 
+  group('provider buttons and passwordless entry (#2 U4; AE2, AE8, R12)', () {
+    testWidgets('showGoogle: false and the null default (empty config on a '
+        'non-web platform) render no Google button; true renders it (AE8)',
+        (tester) async {
+      await pumpStandalone(tester, showGoogle: false);
+      expect(key('auth-google'), findsNothing);
+
+      await pumpStandalone(tester);
+      expect(key('auth-google'), findsNothing,
+          reason: 'AppConfig.hasGoogle is false without client ids');
+
+      final semantics = tester.ensureSemantics();
+      await pumpStandalone(tester, showGoogle: true);
+      expect(key('auth-google'), findsOneWidget);
+      expect(find.bySemanticsLabel('Sign in with Google'), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('on iOS with both shown, the Apple button is the package '
+        'widget, precedes Google, is at least as tall, and both precede the '
+        'email form (R12)', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await pumpStandalone(tester, showApple: true, showGoogle: true);
+      expect(tester.widget(key('auth-apple')), isA<SignInWithAppleButton>());
+      final apple = tester.getTopLeft(key('auth-apple')).dy;
+      final google = tester.getTopLeft(key('auth-google')).dy;
+      final email = tester.getTopLeft(key('auth-email')).dy;
+      expect(apple, lessThan(google));
+      expect(google, lessThan(email));
+      expect(tester.getSize(key('auth-apple')).height,
+          greaterThanOrEqualTo(tester.getSize(key('auth-google')).height));
+      // Restored inside the body: the binding verifies it before tearDown.
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('a dismissed Google picker returns with no error, no '
+        'spinner, and an editable form (AE2); providerUnavailable shows the '
+        'email alternative under auth-error', (tester) async {
+      final s = await pumpStandalone(tester, showGoogle: true);
+      s.auth.googleResult = const GoogleSignInCancelled();
+      await tester.tap(key('auth-google'));
+      await tester.pumpAndSettle();
+      expect(s.auth.googleCalls, 1);
+      expect(key('auth-error'), findsNothing);
+      expect(key('auth-pending'), findsNothing);
+      expect(tester.widget<TextField>(key('auth-email')).enabled, isTrue);
+      expect(s.controller.signedIn, isFalse);
+
+      s.auth.nextFailure = const AuthFailure.providerUnavailable();
+      await tester.tap(key('auth-google'));
+      await tester.pumpAndSettle();
+      expect(s.auth.googleCalls, 2);
+      final copy = tester.widget<Text>(key('auth-error')).data!;
+      expect(copy, contains('email'));
+      expect(copy, isNot(contains('@')));
+    });
+
+    testWidgets('a Google session completes the screen exactly once',
+        (tester) async {
+      var completions = 0;
+      final s = await pumpStandalone(tester,
+          showGoogle: true, embedded: true, onSignedIn: () => completions++);
+      await tester.tap(key('auth-google'));
+      await tester.pumpAndSettle();
+      expect(s.auth.googleCalls, 1);
+      expect(completions, 1);
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('"Email me a sign-in link" sends for the trimmed email in '
+        'the current mode, persists the pending email, reveals the code '
+        'field, and the tile reads the sign-in email copy until a session '
+        'arrives, which clears the key', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      await h.openSettings();
+      await tester.tap(key('account-sign-in'));
+      await tester.pumpAndSettle();
+      expect(key('auth-code'), findsNothing);
+      expect(key('auth-verify-code'), findsNothing);
+
+      await tester.enterText(key('auth-email'), '  a@b.c ');
+      await tester.ensureVisible(key('auth-magic-link'));
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(h.auth.magicLinkCalls.single,
+          (email: 'a@b.c', createAccount: false));
+      final store = DriftSettingsStore(h.db.storage);
+      expect(await store.get(SettingsKeys.awaitingMagicLinkEmail), 'a@b.c');
+      expect(key('auth-code'), findsOneWidget);
+      expect(key('auth-verify-code'), findsOneWidget);
+      expect(key('auth-error'), findsNothing);
+      final info = tester.widget<Text>(key('auth-info')).data!;
+      expect(info, contains('sign-in link'));
+      expect(info, isNot(contains('@')));
+
+      // Create mode asks for an account.
+      await tester.ensureVisible(key('auth-mode-toggle'));
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(key('auth-magic-link'));
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(h.auth.magicLinkCalls.last,
+          (email: 'a@b.c', createAccount: true));
+      expect(h.auth.magicLinkCalls, hasLength(2));
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      await h.settle();
+      expect(find.text(kAwaitingMagicLinkCopy), findsOneWidget);
+      expect(kAwaitingMagicLinkCopy, isNot(contains('@')));
+
+      // The link (or code) produced a session: the key and the copy clear.
+      h.signIn();
+      await h.settle();
+      expect(find.text(kAwaitingMagicLinkCopy), findsNothing);
+      expect(await store.get(SettingsKeys.awaitingMagicLinkEmail),
+          anyOf(isNull, isEmpty));
+      await h.dispose();
+    });
+
+    testWidgets('an empty email does not send a link', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.ensureVisible(key('auth-magic-link'));
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(s.auth.magicLinkCalls, isEmpty);
+      expect(key('auth-code'), findsNothing);
+      expect(key('auth-error'), findsOneWidget);
+      expect(tester.widget<Text>(key('auth-error')).data,
+          isNot(contains('@')));
+    });
+
+    testWidgets('a pending sign-in email pre-fills the email and shows the '
+        'code field with no new request; 5 digits leave the code button '
+        'disabled with no call, 6 and 8 digits enable it, letters are '
+        'dropped; invalidCode shows its copy; a verified code completes '
+        'once', (tester) async {
+      var completions = 0;
+      final s = await pumpStandalone(
+        tester,
+        embedded: true,
+        onSignedIn: () => completions++,
+        seed: {SettingsKeys.awaitingMagicLinkEmail: 'a@b.c'},
+      );
+      expect(
+          tester.widget<TextField>(key('auth-email')).controller!.text,
+          'a@b.c');
+      expect(key('auth-code'), findsOneWidget);
+      expect(s.auth.magicLinkCalls, isEmpty);
+
+      await tester.ensureVisible(key('auth-verify-code'));
+      await tester.enterText(key('auth-code'), '12345');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNull);
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls, isEmpty);
+
+      await tester.enterText(key('auth-code'), '12ab34');
+      await tester.pump();
+      expect(tester.widget<TextField>(key('auth-code')).controller!.text,
+          '1234');
+      expect(tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNull);
+
+      await tester.enterText(key('auth-code'), '12345678');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNotNull);
+      s.auth.nextFailure = const AuthFailure.invalidCode();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls.single, (email: 'a@b.c', code: '12345678'));
+      final copy = tester.widget<Text>(key('auth-error')).data!;
+      expect(copy, contains('code'));
+      expect(copy, isNot(contains('@')));
+      expect(completions, 0);
+
+      await tester.enterText(key('auth-code'), '123456');
+      await tester.pump();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls.last, (email: 'a@b.c', code: '123456'));
+      expect(completions, 1);
+      expect(key('auth-error'), findsNothing);
+    });
+  });
+
+  group('link-delivered sessions on the sign-in screen (#2 U3; AE5, R8)', () {
+    testWidgets('the pushed screen pops when a session arrives without any '
+        'tap and Settings beneath shows the account', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      await h.openSettings();
+      await tester.tap(key('account-sign-in'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SignInScreen), findsOneWidget);
+
+      // A magic link exchanged elsewhere in the app: only the session
+      // event reaches the screen.
+      h.signIn();
+      await tester.pumpAndSettle();
+      expect(find.byType(SignInScreen), findsNothing);
+      expect(find.byType(SettingsScreen), findsOneWidget,
+          reason: 'exactly one pop: Settings is still the top route');
+      expect(find.text('Signed in as a@b.c'), findsOneWidget);
+      expect(h.auth.signInCalls, isEmpty);
+      await h.dispose();
+    });
+
+    testWidgets('a password sign-in whose session event fires before the '
+        'call returns pops once and leaves the route beneath untouched',
+        (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      await h.openSettings();
+      await tester.tap(key('account-sign-in'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.enterText(key('auth-password'), 'correct horse battery');
+      h.auth.hold = Completer<void>();
+      await tester.tap(key('auth-sign-in'));
+      await tester.pump();
+      expect(key('auth-pending'), findsOneWidget);
+
+      // gotrue's onAuthStateChange lands before signInWithPassword returns.
+      h.signIn(id: 'user-a@b.c');
+      await tester.pump();
+      h.auth.hold!.complete();
+      h.auth.hold = null;
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SignInScreen), findsNothing);
+      expect(find.byType(SettingsScreen), findsOneWidget,
+          reason: 'a second pop would have removed Settings too');
+      expect(find.text('Profiles'), findsNothing,
+          reason: 'the picker under Settings must not be exposed');
+      expect(find.text('Signed in as a@b.c'), findsOneWidget);
+      expect(h.auth.signInCalls.single.email, 'a@b.c');
+      await h.dispose();
+    });
+
+    testWidgets('a screen opened while already signed in does not complete '
+        'on its initial state, nor on a non-transition notify; only a '
+        'signed-out → signed-in transition completes it, once',
+        (tester) async {
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth.dispose);
+      final controller = AuthController(authService: auth);
+      addTearDown(controller.dispose);
+      var completions = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthController>.value(value: controller),
+            Provider<SettingsStore>.value(value: _NoopSettings()),
+          ],
+          child: SignInScreen(
+            embedded: true,
+            onSignedIn: () => completions++,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(completions, 0, reason: 'initial state is not a transition');
+
+      // A controller notify that is not a session transition.
+      auth.emitLinkFailure(const AuthFailure.network());
+      await tester.pumpAndSettle();
+      expect(completions, 0);
+
+      auth.emit(AuthSessionState.signedOut);
+      await tester.pumpAndSettle();
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1', email: 'a@b.c'));
+      await tester.pumpAndSettle();
+      expect(completions, 1);
+
+      // A duplicate emission after completion changes nothing.
+      auth.emit(AuthSessionState.signedOut);
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1', email: 'a@b.c'));
+      await tester.pumpAndSettle();
+      expect(completions, 1, reason: 'completes exactly once');
+    });
+  });
+
   group('password recovery (AE8, F4)', () {
     testWidgets('latched recovery renders nothing while locked; after unlock '
         'the recovery screen shows before any profile screen; saving calls '
@@ -397,6 +695,36 @@ void main() {
           reason: 'the tile explains the sync state beside the form');
       await h.dispose();
     });
+
+    testWidgets('the embedded account step advances to restoring when a '
+        'session arrives without any tap, and the name form never appears '
+        'for an account that holds a profile (#2 U3; R8)', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump();
+      await tester.tap(find.text('I understand'));
+      await tester.pumpAndSettle();
+      expect(key('auth-email'), findsOneWidget, reason: 'account step');
+
+      // A magic link opened on this device: only the session event.
+      h.signIn(email: 'a@b.c');
+      await pumpFew(tester);
+      expect(key('auth-email'), findsNothing);
+      expect(key('restoring'), findsOneWidget);
+      expect(find.text('Create profile'), findsNothing);
+      expect(h.auth.signInCalls, isEmpty);
+
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'u1');
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+      await AccountHarness.seedOneProfile(h.db);
+      h.engine.emitPhase(SyncPhase.idle,
+          lastSyncAt: DateTime.now().toUtc(), boundUserId: 'u1');
+      await h.settle();
+      expect(find.text('Profiles'), findsOneWidget);
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Create profile'), findsNothing);
+      await h.dispose();
+    });
   });
 
   group('account mismatch (AE5, F7)', () {
@@ -411,6 +739,10 @@ void main() {
       expect(key('mismatch-switch-account'), findsOneWidget);
       expect(key('mismatch-remove-data'), findsOneWidget);
       expect(find.textContaining('Hide My Email'), findsOneWidget);
+      expect(find.textContaining('different Google account'), findsOneWidget,
+          reason: '#2 U5 (AE7): the Google case is named too');
+      expect(find.textContaining('Nothing has been uploaded or changed'),
+          findsOneWidget);
       expect(find.text('Alice'), findsNothing);
 
       await tester.tap(key('mismatch-switch-account'));
@@ -437,6 +769,124 @@ void main() {
       await h.settle();
       expect(find.text(kNoticeText), findsOneWidget, reason: 'first-run');
       await h.dispose();
+    });
+  });
+
+  group('sign-in methods and adding one (#2 U5; AE6, R9, R10)', () {
+    testWidgets('providers [email] renders the methods subtitle and the '
+        'add-Google action; [email, google] hides it', (tester) async {
+      await pumpSection(tester, providers: ['email'], showAddGoogle: true);
+      expect(find.text('Signed in as a@b.c'), findsOneWidget);
+      expect(find.text('Sign-in methods: Email'), findsOneWidget);
+      expect(key('account-add-google'), findsOneWidget);
+      expect(key('account-add-apple'), findsNothing,
+          reason: 'no iOS override on the test platform');
+      expect(key('account-link-error'), findsNothing);
+
+      await pumpSection(tester,
+          providers: ['email', 'google'], showAddGoogle: true);
+      expect(find.text('Sign-in methods: Email, Google'), findsOneWidget);
+      expect(key('account-add-google'), findsNothing);
+    });
+
+    testWidgets('the null Google default hides the action in an '
+        'unconfigured build; an empty providers list omits the subtitle',
+        (tester) async {
+      await pumpSection(tester, providers: ['email']);
+      expect(key('account-add-google'), findsNothing);
+      await pumpSection(tester, providers: []);
+      expect(find.textContaining('Sign-in methods'), findsNothing);
+    });
+
+    testWidgets('account-add-apple renders only with the iOS override and '
+        'when apple is absent', (tester) async {
+      await pumpSection(tester, providers: ['email'], showAddApple: true);
+      expect(key('account-add-apple'), findsOneWidget);
+      await pumpSection(tester,
+          providers: ['email', 'apple'], showAddApple: true);
+      expect(find.text('Sign-in methods: Email, Apple'), findsOneWidget);
+      expect(key('account-add-apple'), findsNothing);
+    });
+
+    testWidgets('AE6: a granted re-auth calls linkGoogle and the subtitle '
+        'gains Google', (tester) async {
+      final s = await pumpSection(tester,
+          providers: ['email'], showAddGoogle: true);
+      await tester.tap(key('account-add-google'));
+      await tester.pumpAndSettle();
+      expect(s.gate.requests, 1, reason: 'the device credential came first');
+      expect(s.auth.linkCalls, ['google']);
+      expect(find.text('Sign-in methods: Email, Google'), findsOneWidget);
+      expect(key('account-add-google'), findsNothing);
+      expect(key('account-link-error'), findsNothing);
+    });
+
+    testWidgets('AE6: a declined re-auth never calls linkGoogle and shows '
+        'no copy', (tester) async {
+      final s = await pumpSection(tester,
+          providers: ['email'], showAddGoogle: true, grantReauth: false);
+      await tester.tap(key('account-add-google'));
+      await tester.pumpAndSettle();
+      expect(s.gate.requests, 1);
+      expect(s.auth.linkCalls, isEmpty);
+      expect(key('account-link-error'), findsNothing);
+      expect(find.text('Sign-in methods: Email'), findsOneWidget);
+      expect(key('account-add-google'), findsOneWidget);
+    });
+
+    testWidgets('AE6: identityTaken shows its copy in account-link-error '
+        'and leaves the subtitle unchanged', (tester) async {
+      final s = await pumpSection(tester,
+          providers: ['email'], showAddGoogle: true);
+      s.auth.nextFailure = const AuthFailure.identityTaken();
+      await tester.tap(key('account-add-google'));
+      await tester.pumpAndSettle();
+      expect(s.auth.linkCalls, ['google']);
+      expect(key('account-link-error'), findsOneWidget);
+      expect(
+          find.descendant(
+              of: key('account-link-error'),
+              matching: find.text(
+                  authFailureCopy(const AuthFailure.identityTaken())),
+              matchRoot: true),
+          findsOneWidget);
+      expect(find.text('Sign-in methods: Email'), findsOneWidget);
+      expect(key('account-add-google'), findsOneWidget);
+    });
+
+    testWidgets('AE6: a second tap while the first link call is held does '
+        'not call linkGoogle again', (tester) async {
+      final s = await pumpSection(tester,
+          providers: ['email'], showAddGoogle: true);
+      s.auth.hold = Completer<void>();
+      await tester.tap(key('account-add-google'));
+      await pumpFew(tester);
+      expect(s.auth.linkCalls, ['google']);
+      expect(
+          find.descendant(
+              of: key('account-add-google'),
+              matching: find.byType(CircularProgressIndicator)),
+          findsOneWidget);
+      await tester.tap(key('account-add-google'));
+      await pumpFew(tester);
+      expect(s.auth.linkCalls, ['google'], reason: 'busy: no second call');
+      expect(s.gate.requests, 1, reason: 'busy: no second prompt');
+
+      s.auth.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Sign-in methods: Email, Google'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('the Apple action links through the same re-auth path',
+        (tester) async {
+      final s = await pumpSection(tester,
+          providers: ['email'], showAddApple: true);
+      await tester.tap(key('account-add-apple'));
+      await tester.pumpAndSettle();
+      expect(s.gate.requests, 1);
+      expect(s.auth.linkCalls, ['apple']);
+      expect(find.text('Sign-in methods: Email, Apple'), findsOneWidget);
     });
   });
 
@@ -665,6 +1115,117 @@ void main() {
       await db.close();
     });
   });
+}
+
+/// A standalone [AccountSection] over a fake service and a real
+/// [GateController] whose [FakeGate] answers the re-auth prompt (#2 U5;
+/// KTD5), so the linking scenarios pump the section without the app.
+class StandaloneSection {
+  StandaloneSection(this.auth, this.controller, this.gate);
+  final FakeAuthService auth;
+  final AuthController controller;
+  final FakeGate gate;
+}
+
+Future<StandaloneSection> pumpSection(
+  WidgetTester tester, {
+  List<String> providers = const ['email'],
+  bool? showAddGoogle,
+  bool? showAddApple,
+  bool grantReauth = true,
+}) async {
+  final auth = FakeAuthService();
+  addTearDown(auth.dispose);
+  auth.emit(AuthSessionState.signedIn,
+      user: AuthUser(id: 'u1', email: 'a@b.c'));
+  auth.providers = providers;
+  final controller = AuthController(authService: auth);
+  addTearDown(controller.dispose);
+  final gate = FakeGate(grantNext: grantReauth);
+  final gateController = GateController(gate: gate);
+  addTearDown(gateController.dispose);
+  await tester.pumpWidget(MaterialApp(
+    home: MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthController>.value(value: controller),
+        ChangeNotifierProvider<GateController>.value(value: gateController),
+        Provider<SettingsStore>.value(value: _NoopSettings()),
+      ],
+      child: Scaffold(
+        body: AccountSection(
+          showAddGoogle: showAddGoogle,
+          showAddApple: showAddApple,
+        ),
+      ),
+    ),
+  ));
+  await tester.pumpAndSettle();
+  return StandaloneSection(auth, controller, gate);
+}
+
+/// A standalone [SignInScreen] over a fake service and an in-memory
+/// settings store (#2 U4): the harness builds the screen without provider
+/// overrides, so the Google and pending-email scenarios pump it directly.
+class StandaloneSignIn {
+  StandaloneSignIn(this.auth, this.controller, this.settings);
+  final FakeAuthService auth;
+  final AuthController controller;
+  final MemorySettings settings;
+}
+
+Future<StandaloneSignIn> pumpStandalone(
+  WidgetTester tester, {
+  bool? showApple,
+  bool? showGoogle,
+  bool embedded = false,
+  VoidCallback? onSignedIn,
+  Map<String, String>? seed,
+}) async {
+  final auth = FakeAuthService();
+  addTearDown(auth.dispose);
+  final controller = AuthController(authService: auth);
+  addTearDown(controller.dispose);
+  final settings = MemorySettings(seed);
+  await tester.pumpWidget(MaterialApp(
+    home: MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthController>.value(value: controller),
+        Provider<SettingsStore>.value(value: settings),
+      ],
+      child: SignInScreen(
+        showApple: showApple,
+        showGoogle: showGoogle,
+        embedded: embedded,
+        onSignedIn: onSignedIn,
+      ),
+    ),
+  ));
+  await tester.pumpAndSettle();
+  return StandaloneSignIn(auth, controller, settings);
+}
+
+class MemorySettings implements SettingsStore {
+  MemorySettings([Map<String, String>? seed]) : values = {...?seed};
+
+  final Map<String, String> values;
+  final _changes = StreamController<String>.broadcast();
+
+  @override
+  Future<String?> get(String key) async => values[key];
+
+  @override
+  Future<void> set(String key, String value) async {
+    values[key] = value;
+    _changes.add(key);
+  }
+
+  @override
+  Stream<String?> watch(String key) async* {
+    yield values[key];
+    await for (final changed in _changes.stream) {
+      if (changed == key) yield values[key];
+    }
+  }
 }
 
 class _NoopSettings implements SettingsStore {

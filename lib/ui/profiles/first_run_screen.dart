@@ -11,6 +11,12 @@
 /// re-evaluate: profiles from the account skip the name form entirely
 /// (F3, AE13); zero profiles fall through to it with the status tile
 /// explaining why.
+///
+/// A first run that *starts* with a session (a cold-start link exchanged
+/// before this screen existed) and has a [SyncStatusController] enters the
+/// same restoring wait from `initState` instead of the name form, so the
+/// bind-time pull is never skipped (#2 U3; KTD4, R8). The single
+/// [_onSignedIn] path is unchanged and there is no build-time exit.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -63,6 +69,14 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     _noticePending = !context.read<ProfileController>().firstRunNoticeShown;
     final auth = context.read<AuthController?>();
     _accountPending = auth != null && !_hasSession(auth.state);
+    // Cold-start link session (#2 U3): wait for the restore like a
+    // sign-in made here would; without an engine there is nothing to
+    // restore from.
+    if (auth != null &&
+        auth.signedIn &&
+        context.read<SyncStatusController?>() != null) {
+      _awaitingRestore = true;
+    }
     if (widget.isWebBuild) {
       _checkWebAcknowledgment();
     }

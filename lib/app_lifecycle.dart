@@ -201,6 +201,35 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// A fresh device-credential check for a sensitive action while the app
+  /// is already unlocked — adding a sign-in method (#2 U5; KTD5). Returns
+  /// true only when the credential was accepted and the app stayed in the
+  /// foreground for the whole prompt; false for a decline, an unavailable
+  /// authenticator, an interruption, or while another prompt is up.
+  ///
+  /// Runs under the same `_authenticating` flag as [unlock] so the prompt's
+  /// own `inactive` report does not trip the re-lock, and the outcome never
+  /// changes the lock state: a granted check does not unlock and a declined
+  /// one does not lock (the caller simply cancels its action, like a
+  /// dismissed picker). A departure the flag suppressed is replayed after
+  /// the prompt, exactly as [unlock] fails closed, so backgrounding during
+  /// the check still covers and re-locks on gated platforms.
+  Future<bool> reauthenticate() async {
+    if (_authenticating) return false;
+    _authenticating = true;
+    _lifecycleDuringAuth = false;
+    var interrupted = false;
+    try {
+      final granted = await _gate.requestAccess();
+      interrupted = _lifecycleDuringAuth;
+      return granted && !interrupted;
+    } finally {
+      _authenticating = false;
+      _lifecycleDuringAuth = false;
+      if (interrupted) _departed();
+    }
+  }
+
   /// Re-lock now. Backgrounding always calls this; on un-gated platforms it
   /// only sets the cover flag.
   void lock() {

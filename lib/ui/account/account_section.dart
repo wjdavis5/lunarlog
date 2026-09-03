@@ -4,10 +4,26 @@
 /// sync status tile, "Sync now", "Sign out" and "Sign out everywhere".
 /// Both sign-outs end in the one device reset (KTD16); the plain one warns
 /// first when unsynced rows (tombstones included) exist.
+///
+/// Sign-in methods and adding one (#2 U5; KTD5, R9, R10, F5): the
+/// identity tile's subtitle lists the account's methods from
+/// [AuthUser.providers]; "Add Google" (`account-add-google`, only when the
+/// build has Google and the method is absent) and "Add Apple"
+/// (`account-add-apple`, iOS only, same rule) first run
+/// [GateController.reauthenticate] — a declined, unavailable, or
+/// interrupted device credential cancels silently with no provider call
+/// and no copy, like a dismissed picker — then link through the
+/// controller with the tapped tile disabled behind a spinner. Success
+/// re-reads `currentUser.providers` in `setState` (a same-state
+/// `userUpdated` does not notify); a failure renders its generic copy in
+/// `account-link-error` beneath the identity tile (R14).
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:lunarlog/app_lifecycle.dart' show DeviceResetCallback;
+import 'package:lunarlog/app_lifecycle.dart'
+    show DeviceResetCallback, GateController;
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
@@ -18,8 +34,41 @@ import 'package:provider/provider.dart';
 const String kSignOutConsequenceCopy =
     'This removes the data from this device. It stays in your account.';
 
-class AccountSection extends StatelessWidget {
-  const AccountSection({super.key});
+/// Human label for a Supabase identity provider id (#2 U5; R9). Known ids
+/// map to their brand names; anything else is capitalized as-is.
+String providerLabel(String provider) => switch (provider) {
+      AuthProviders.email => 'Email',
+      AuthProviders.google => 'Google',
+      AuthProviders.apple => 'Apple',
+      '' => '',
+      _ => provider[0].toUpperCase() + provider.substring(1),
+    };
+
+class AccountSection extends StatefulWidget {
+  const AccountSection({super.key, this.showAddGoogle, this.showAddApple});
+
+  /// Whether "Add Google" may render; null means [AppConfig.hasGoogle]
+  /// (#2 U5). Injectable so tests exercise the action without defines.
+  final bool? showAddGoogle;
+
+  /// Whether "Add Apple" may render; null means "iOS, not web" (#2 U5).
+  final bool? showAddApple;
+
+  @override
+  State<AccountSection> createState() => _AccountSectionState();
+}
+
+class _AccountSectionState extends State<AccountSection> {
+  /// The provider whose link call is in flight, or null. One action at a
+  /// time: the tapped tile is disabled and a second tap does nothing.
+  String? _linking;
+  String? _linkError;
+
+  bool get _canAddGoogle => widget.showAddGoogle ?? AppConfig.hasGoogle;
+
+  bool get _canAddApple =>
+      widget.showAddApple ??
+      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +78,9 @@ class AccountSection extends StatelessWidget {
     final signedIn = auth.state == AuthSessionState.signedIn ||
         auth.state == AuthSessionState.passwordRecovery;
     final theme = Theme.of(context);
+    final user = auth.currentUser;
+    final providers = user?.providers ?? const <String>[];
+    final linkError = _linkError;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -36,15 +88,44 @@ class AccountSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
           child: Text('Account', style: theme.textTheme.titleSmall),
         ),
-        if (signedIn)
+        if (signedIn) ...[
           ListTile(
             key: const ValueKey('account-identity'),
             leading: const Icon(Icons.person_outline),
-            title: Text(auth.currentUser?.email == null
+            title: Text(user?.email == null
                 ? 'Signed in'
-                : 'Signed in as ${auth.currentUser!.email}'),
-          )
-        else
+                : 'Signed in as ${user!.email}'),
+            subtitle: providers.isEmpty
+                ? null
+                : Text('Sign-in methods: '
+                    '${providers.map(providerLabel).join(', ')}'),
+          ),
+          if (linkError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                linkError,
+                key: const ValueKey('account-link-error'),
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+          if (_canAddApple && !providers.contains(AuthProviders.apple))
+            _addMethodTile(
+              key: 'account-add-apple',
+              provider: AuthProviders.apple,
+              icon: Icons.apple,
+              label: 'Add Apple',
+              onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
+            ),
+          if (_canAddGoogle && !providers.contains(AuthProviders.google))
+            _addMethodTile(
+              key: 'account-add-google',
+              provider: AuthProviders.google,
+              icon: Icons.add_link,
+              label: 'Add Google',
+              onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
+            ),
+        ] else
           ListTile(
             key: const ValueKey('account-sign-in'),
             leading: const Icon(Icons.login),
@@ -83,6 +164,63 @@ class AccountSection extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  ListTile _addMethodTile({
+    required String key,
+    required String provider,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final busy = _linking == provider;
+    return ListTile(
+      key: ValueKey(key),
+      leading: Icon(icon),
+      title: Text(label),
+      subtitle: const Text('Sign in to this account another way.'),
+      enabled: _linking == null,
+      trailing: busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
+      onTap: _linking == null ? onTap : null,
+    );
+  }
+
+  /// F5: device credential first (KTD5), then the provider picker through
+  /// the controller. A declined or interrupted credential cancels with no
+  /// provider call and no copy.
+  Future<void> _addMethod(
+      String provider, Future<AuthUser> Function() link) async {
+    if (_linking != null) return;
+    final gate = context.read<GateController?>();
+    if (gate == null) {
+      debugPrint('lunarlog account: no gate to re-authenticate with');
+      return;
+    }
+    setState(() => _linkError = null);
+    final granted = await gate.reauthenticate();
+    if (!granted || !mounted) return;
+    setState(() => _linking = provider);
+    try {
+      await link();
+      // The controller does not notify on a same-state user update; the
+      // rebuild below re-reads `currentUser.providers`.
+    } on AuthFailure catch (failure) {
+      if (mounted) setState(() => _linkError = authFailureCopy(failure));
+    } catch (error) {
+      debugPrint('lunarlog account: link failed (${error.runtimeType})');
+      if (mounted) {
+        setState(
+            () => _linkError = authFailureCopy(const AuthFailure.unknown()));
+      }
+    } finally {
+      if (mounted) setState(() => _linking = null);
+    }
   }
 
   /// Runs the reset from the app's root route: the Settings route is

@@ -7,6 +7,7 @@
 /// Pure Dart with no drift/Flutter imports (R14/R16).
 library;
 
+import '../util/list_equals.dart';
 import 'flow_level.dart';
 import 'local_date.dart';
 
@@ -81,7 +82,7 @@ class DayEntry {
           other.localDate == localDate &&
           other.tz == tz &&
           other.flow == flow &&
-          _listEquals(other.tags, tags) &&
+          listEquals(other.tags, tags) &&
           other.note == note &&
           other.updatedAt == updatedAt &&
           other.deletedAt == deletedAt;
@@ -104,12 +105,4 @@ class DayEntry {
       'DayEntry($profileId ${localDate.iso} ${flow.name}'
       '${note == null ? '' : ' note'}'
       '${deletedAt == null ? '' : ' [tombstoned]'})';
-}
-
-bool _listEquals(List<String> a, List<String> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

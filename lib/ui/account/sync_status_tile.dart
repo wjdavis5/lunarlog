@@ -23,6 +23,11 @@ const String kRejectedCopy = 'Some entries could not be uploaded';
 const String kAwaitingConfirmationCopy =
     'Waiting for email confirmation — open the link on this device';
 
+/// A passwordless sign-in email is out and no session has arrived yet
+/// (#2 U4; KTD3): same tier as the confirmation copy.
+const String kAwaitingMagicLinkCopy =
+    'Sign-in email sent — open the link on this device or enter the code';
+
 /// "just now", "5 min ago", "3 h ago", "2 d ago".
 String formatRelative(DateTime then, DateTime now) {
   final delta = now.toUtc().difference(then.toUtc());
@@ -33,9 +38,10 @@ String formatRelative(DateTime then, DateTime now) {
 }
 
 /// The one line the tile and the glyph show. Precedence, most urgent
-/// first: the web build's off state; an unconfirmed sign-up; an auth
-/// error; a wrong account; pending upload consent; a running cycle;
-/// rejected rows; then the resting states.
+/// first: the web build's off state; an unconfirmed sign-up; a pending
+/// passwordless sign-in email (#2 U4); an auth error; a wrong account;
+/// pending upload consent; a running cycle; rejected rows; then the
+/// resting states.
 bool _isSignedIn(AuthSessionState? authState) =>
     authState == AuthSessionState.signedIn ||
     authState == AuthSessionState.passwordRecovery;
@@ -50,10 +56,22 @@ bool isAwaitingConfirmation({
     awaitingConfirmationEmail != null &&
     awaitingConfirmationEmail.isNotEmpty;
 
+/// Whether the tile should show the "sign-in email sent" state: a
+/// passwordless request is pending on this device and no session has
+/// arrived (#2 U4; KTD3). Same rule as [isAwaitingConfirmation].
+bool isAwaitingMagicLink({
+  required AuthSessionState? authState,
+  required String? awaitingMagicLinkEmail,
+}) =>
+    isAwaitingConfirmation(
+        authState: authState,
+        awaitingConfirmationEmail: awaitingMagicLinkEmail);
+
 String syncStatusCopy({
   required SyncSnapshot? snapshot,
   required AuthSessionState? authState,
   String? awaitingConfirmationEmail,
+  String? awaitingMagicLinkEmail,
   required DateTime now,
   bool webSyncOff = false,
 }) {
@@ -62,6 +80,10 @@ String syncStatusCopy({
       authState: authState,
       awaitingConfirmationEmail: awaitingConfirmationEmail)) {
     return kAwaitingConfirmationCopy;
+  }
+  if (isAwaitingMagicLink(
+      authState: authState, awaitingMagicLinkEmail: awaitingMagicLinkEmail)) {
+    return kAwaitingMagicLinkCopy;
   }
   final signedIn = _isSignedIn(authState);
   if (snapshot == null) return 'Sync is not available in this build';
@@ -125,9 +147,10 @@ IconData _iconFor(
 }
 
 /// Settings tile (`sync-status`). Reads the nullable controllers from the
-/// tree; watches [SettingsKeys.awaitingConfirmationEmail]. Tappable while
-/// upload consent is pending: reopens the consent screen (AS4).
-class SyncStatusTile extends StatelessWidget {
+/// tree; watches [SettingsKeys.awaitingConfirmationEmail] and
+/// [SettingsKeys.awaitingMagicLinkEmail] (#2 U4). Tappable while upload
+/// consent is pending: reopens the consent screen (AS4).
+class SyncStatusTile extends StatefulWidget {
   const SyncStatusTile({
     super.key,
     this.now,
@@ -141,52 +164,83 @@ class SyncStatusTile extends StatelessWidget {
   final bool webSyncOff;
 
   @override
+  State<SyncStatusTile> createState() => _SyncStatusTileState();
+}
+
+class _SyncStatusTileState extends State<SyncStatusTile> {
+  /// The two settings watches are created once per [SettingsStore] instance
+  /// rather than on every build: each `watch` opens a live database query,
+  /// and the tile rebuilds on every sync-progress notification.
+  SettingsStore? _settings;
+  Stream<String?>? _awaiting;
+  Stream<String?>? _awaitingLink;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<SettingsStore?>(context, listen: false);
+    if (identical(settings, _settings)) return;
+    _settings = settings;
+    _awaiting = settings?.watch(SettingsKeys.awaitingConfirmationEmail);
+    _awaitingLink = settings?.watch(SettingsKeys.awaitingMagicLinkEmail);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final sync = Provider.of<SyncStatusController?>(context);
     final auth = Provider.of<AuthController?>(context);
-    final settings = Provider.of<SettingsStore?>(context, listen: false);
-    final awaiting = settings?.watch(SettingsKeys.awaitingConfirmationEmail);
+    final now = widget.now;
+    final webSyncOff = widget.webSyncOff;
     return StreamBuilder<String?>(
-      stream: awaiting,
-      builder: (context, awaitingSnapshot) {
-        final snapshot = sync?.snapshot;
-        final copy = syncStatusCopy(
-          snapshot: snapshot,
-          authState: auth?.state,
-          awaitingConfirmationEmail: awaitingSnapshot.data,
-          now: (now ?? DateTime.now)(),
-          webSyncOff: webSyncOff,
-        );
-        final pendingConsent =
-            snapshot?.phase == SyncPhase.awaitingUploadConsent;
-        return ListTile(
-          key: const ValueKey('sync-status'),
-          leading: isSyncRunning(snapshot)
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(_iconFor(
-                  snapshot,
-                  webSyncOff: webSyncOff,
-                  awaitingConfirmation: isAwaitingConfirmation(
-                    authState: auth?.state,
-                    awaitingConfirmationEmail: awaitingSnapshot.data,
-                  ),
-                )),
-          title: Text(copy),
-          onTap: pendingConsent
-              ? () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (routeContext) => UploadConsentScreen(
-                        onNotNow: () => Navigator.of(routeContext).pop(),
-                      ),
-                    ),
+      stream: _awaiting,
+      builder: (context, awaitingSnapshot) => StreamBuilder<String?>(
+        stream: _awaitingLink,
+        builder: (context, linkSnapshot) {
+          final snapshot = sync?.snapshot;
+          final copy = syncStatusCopy(
+            snapshot: snapshot,
+            authState: auth?.state,
+            awaitingConfirmationEmail: awaitingSnapshot.data,
+            awaitingMagicLinkEmail: linkSnapshot.data,
+            now: (now ?? DateTime.now)(),
+            webSyncOff: webSyncOff,
+          );
+          final pendingConsent =
+              snapshot?.phase == SyncPhase.awaitingUploadConsent;
+          final awaitingEmail = isAwaitingConfirmation(
+                authState: auth?.state,
+                awaitingConfirmationEmail: awaitingSnapshot.data,
+              ) ||
+              isAwaitingMagicLink(
+                authState: auth?.state,
+                awaitingMagicLinkEmail: linkSnapshot.data,
+              );
+          return ListTile(
+            key: const ValueKey('sync-status'),
+            leading: isSyncRunning(snapshot)
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
-              : null,
-        );
-      },
+                : Icon(_iconFor(
+                    snapshot,
+                    webSyncOff: webSyncOff,
+                    awaitingConfirmation: awaitingEmail,
+                  )),
+            title: Text(copy),
+            onTap: pendingConsent
+                ? () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (routeContext) => UploadConsentScreen(
+                          onNotNow: () => Navigator.of(routeContext).pop(),
+                        ),
+                      ),
+                    )
+                : null,
+          );
+        },
+      ),
     );
   }
 }

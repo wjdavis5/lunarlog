@@ -1,6 +1,7 @@
 /// Wrong account on a bound device (U6; R15, F7, AE5). The engine refuses
 /// to run; this screen explains why (naming the Apple "Hide My Email"
-/// case) and offers the non-destructive exit first: "Switch account" is
+/// case and the different-Google-account case, #2 U5; R11, AE7) and
+/// offers the non-destructive exit first: "Switch account" is
 /// `signOut(scope: local)` and nothing else — the data stays. "Remove this
 /// device's data" is the one destructive path (`resetDevice`, KTD16),
 /// behind a confirmation.
@@ -87,9 +88,10 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'This happens with a second account, or with Sign in with Apple '
-            'when "Hide My Email" created a new account instead of using your '
-            'existing one. Nothing has been uploaded or changed.',
+            'This device is set up for a different account. This happens '
+            "when Apple's Hide My Email created a new account, or when you "
+            'chose a different Google account. Nothing has been uploaded or '
+            'changed.',
           ),
           const SizedBox(height: 24),
           FilledButton(

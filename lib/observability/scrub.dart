@@ -29,7 +29,16 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 /// `local_date`, `display_name`), account identity (`email`), the Supabase
 /// realtime/RPC payload names that wrap whole rows (`record`, `old_record`,
 /// `p_day_entries`, `p_profiles`), and the two request headers that carry
-/// credentials (`authorization`, `apikey`).
+/// credentials (`authorization`, `apikey`). Identity payloads (#2 U6; KTD7):
+/// the gotrue user and session fields, the Google and Apple token, code, and
+/// nonce names, and the profile claims (name parts, picture, hosted domain)
+/// that a sign-in flow could put in a breadcrumb.
+///
+/// Bare words such as `name`, `token`, `user`, `sub`, and `session` are
+/// deliberately absent: [_mentionsDenyListedKey] drops any message that
+/// mentions a listed key, and those words appear in ordinary Drift, gotrue,
+/// and HTTP messages. A `session` breadcrumb is already covered by the token
+/// keys nested inside it.
 const List<String> sentryDenyListedKeys = [
   'note',
   'tags',
@@ -42,6 +51,28 @@ const List<String> sentryDenyListedKeys = [
   'p_profiles',
   'authorization',
   'apikey',
+  // Identity payloads (#2 U6; KTD7).
+  'identities',
+  'identity_data',
+  'id_token',
+  'identity_token',
+  'access_token',
+  'refresh_token',
+  'provider_token',
+  'provider_refresh_token',
+  'authorization_code',
+  'server_auth_code',
+  'token_hash',
+  'code_verifier',
+  'nonce',
+  'full_name',
+  'given_name',
+  'family_name',
+  'picture',
+  'avatar_url',
+  'photo_url',
+  'hd',
+  'user_metadata',
 ];
 
 /// Exception type-name fragments that mark an exception as coming from the
@@ -49,6 +80,9 @@ const List<String> sentryDenyListedKeys = [
 /// responses. Matched case-insensitively against [SentryException.type]. An
 /// exception is also treated as data-layer when any stack frame points into
 /// `lib/data` ([_dataLayerPathMarkers]), whatever its type name.
+/// `googlesignin` (#2 U6; KTD7) reduces a `GoogleSignInException` that escapes
+/// the KTD8 mapping to its type: its message can carry the account or a token
+/// fragment.
 const List<String> sentryDataLayerTypeMarkers = [
   'sqlite',
   'drift',
@@ -60,6 +94,7 @@ const List<String> sentryDataLayerTypeMarkers = [
   'synctransport',
   'database',
   'encryption',
+  'googlesignin',
 ];
 
 const List<String> _dataLayerPathMarkers = [

@@ -52,6 +52,9 @@ dependencies:
   crypto: ^3.0.7
   # U7: crash reporting (KTD12). Inert unless SENTRY_DSN is defined.
   sentry_flutter: ^9.28.0
+  # #2 U1: native Google Sign-In (KTD1/KTD2). 7.x is the Credential Manager
+  # migration; never invoked unless AppConfig.hasGoogle.
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:
@@ -92,6 +95,9 @@ flutter:
   # assets:
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
+  # #2 U1: sign-in button branding assets (the Google "G" logo lands in U4).
+  assets:
+    - assets/branding/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -23,4 +23,10 @@ abstract final class SettingsKeys {
   /// string) once a signed-in session arrives.
   static const String awaitingConfirmationEmail =
       'awaiting_confirmation_email';
+
+  /// Email that asked for a passwordless sign-in link whose link or code
+  /// has not produced a session on this device yet (#2 U4; KTD3). Same
+  /// lifecycle as [awaitingConfirmationEmail]: device-local; cleared (set
+  /// to the empty string) once a signed-in session arrives.
+  static const String awaitingMagicLinkEmail = 'awaiting_magic_link_email';
 }
