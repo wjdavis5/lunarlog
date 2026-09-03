@@ -186,6 +186,17 @@ jobs:
           echo "PROVISIONING_PROFILE_NAME=$name" >> "$GITHUB_ENV"
           echo "Installed profile '$name' ($uuid)"
 
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build
+            ios/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
       - name: Get dependencies
         run: flutter pub get
 
