@@ -18,6 +18,12 @@ abstract interface class DbKeyStore {
   /// Throws [CorruptDatabaseKeyError] if a persisted key exists but is
   /// malformed.
   Future<String> getOrCreateDbKey();
+
+  /// Forgets the persisted key so the next [getOrCreateDbKey] mints a fresh
+  /// one. A device-reset primitive (KTD16): the caller must delete the
+  /// database file *before* this, because a keyed file left behind would
+  /// quarantine on the next open. Does nothing when no key is stored.
+  Future<void> deleteKey();
 }
 
 class SecureDbKeyStore implements DbKeyStore {
@@ -41,6 +47,9 @@ class SecureDbKeyStore implements DbKeyStore {
     await _storage.write(key: storageKey, value: key);
     return key;
   }
+
+  @override
+  Future<void> deleteKey() => _storage.delete(key: storageKey);
 
   /// Random 32 bytes as 64 lowercase hex characters (SQLCipher raw key
   /// material, applied via `PRAGMA key = "x'…'"`).

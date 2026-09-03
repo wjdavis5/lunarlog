@@ -21,17 +21,21 @@ const String kLiveDayEntryIndexSql =
     'CREATE UNIQUE INDEX IF NOT EXISTS uq_day_entries_profile_date_live '
     'ON day_entries (profile_id, local_date) WHERE deleted_at IS NULL';
 
-@DriftDatabase(tables: [Profiles, DayEntries, AppSettings])
+@DriftDatabase(tables: [Profiles, DayEntries, AppSettings, SyncState])
 class LunarLogDatabase extends _$LunarLogDatabase {
   LunarLogDatabase(super.executor);
 
   /// Storage-level API (upserts with monotonic updated_at, tombstone
-  /// soft-deletes, UI and full-fidelity reads). Domain repositories (U3)
-  /// build on top of this.
+  /// soft-deletes, UI and full-fidelity reads, and the sync API). Domain
+  /// repositories build on top of this.
   late final LunarLogStorage storage = LunarLogStorage(this);
 
+  /// Schema history:
+  /// * 1 — profiles, day_entries, app_settings, live-entry partial index.
+  /// * 2 — `dirty` + `local_rev` on profiles and day_entries; `sync_state`
+  ///   singleton (KTD4).
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -46,26 +50,56 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         },
       );
 
-  /// Step-by-step migration steps. Override together with [schemaVersion]
-  /// when bumping the schema, e.g.:
+  /// Test seam: awaited after each DDL step of an upgrade with a label for
+  /// the step just completed (`profiles.dirty`, `profiles.local_rev`,
+  /// `day_entries.dirty`, `day_entries.local_rev`, `sync_state`). A hook
+  /// that throws proves the transaction wrapper rolls the whole upgrade
+  /// back. Must be set before the first query. Null in production.
+  @visibleForTesting
+  Future<void> Function(String completedStep)? migrationStepHook;
+
+  /// Step-by-step migration steps, one `if (from < n)` block per version.
   ///
-  ///     if (from < 2) {
-  ///       await m.addColumn(dayEntries, dayEntries.newColumn);
-  ///     }
+  /// Drift 2.34.3 does **not** wrap `onUpgrade` in a transaction: the
+  /// runner (`drift/src/runtime/executor/helpers/engines.dart`,
+  /// `_runMigrations`) calls `beforeOpen` directly and only writes the new
+  /// `user_version` after it returns. Without the explicit `transaction()`
+  /// below, a failure after the first `addColumn` would leave
+  /// `user_version = 1` with half-applied DDL, and the next open would fail
+  /// again on the already-present column — quarantining the install
+  /// forever. With it, a failing step rolls everything back and the next
+  /// launch retries from a clean v1.
   ///
   /// Kept as a separate overridable method so tests can prove the migration
   /// path preserves rows and sync columns.
   @visibleForTesting
-  Future<void> onUpgradeSteps(Migrator m, int from, int to) async {}
+  Future<void> onUpgradeSteps(Migrator m, int from, int to) async {
+    if (from < 2) {
+      await transaction(() async {
+        await m.addColumn(profiles, profiles.dirty);
+        await migrationStepHook?.call('profiles.dirty');
+        await m.addColumn(profiles, profiles.localRev);
+        await migrationStepHook?.call('profiles.local_rev');
+        await m.addColumn(dayEntries, dayEntries.dirty);
+        await migrationStepHook?.call('day_entries.dirty');
+        await m.addColumn(dayEntries, dayEntries.localRev);
+        await migrationStepHook?.call('day_entries.local_rev');
+        await m.createTable(syncState);
+        await migrationStepHook?.call('sync_state');
+      });
+    }
+  }
 
-  /// Hard-deletes every row in every table — the web build's wipe-local-
-  /// data action (KTD9). This is a wipe, not a sync-domain soft delete:
-  /// tombstones go too. The web store is the only intended caller.
+  /// Hard-deletes every row in every table, the `sync_state` row included —
+  /// the web build's wipe-local-data action and the web half of device
+  /// reset (KTD16). This is a wipe, not a sync-domain soft delete:
+  /// tombstones go too. Native device reset deletes the file instead.
   Future<void> wipeAllData() async {
     await transaction(() async {
       await delete(dayEntries).go();
       await delete(profiles).go();
       await delete(appSettings).go();
+      await delete(syncState).go();
     });
   }
 }
