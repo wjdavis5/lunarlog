@@ -170,7 +170,7 @@ class SupabaseAuthService implements AuthService {
       debugPrint('lunarlog auth: initial link unavailable '
           '(${error.runtimeType})');
     }
-    if (initial != null) await handleLink(initial);
+    if (initial != null) unawaited(handleLink(initial));
   }
 
   /// Classifies and, for a callback, exchanges [uri]. Public so tests (and

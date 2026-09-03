@@ -375,6 +375,9 @@ void main() {
 
   group('mapSyncTransportError', () {
     test('classifies every known failure', () {
+      expect(
+          mapSyncTransportError(AuthRetryableFetchException()),
+          isA<SyncTransportNetworkError>());
       expect(mapSyncTransportError(const AuthException('x')),
           isA<SyncTransportAuthError>());
       expect(

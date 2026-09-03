@@ -121,6 +121,9 @@ const Set<int> _transientStatuses = {408, 425, 429};
 ///   client bug) → [SyncTransportError.other].
 SyncTransportError mapSyncTransportError(Object error) {
   if (error is SyncTransportError) return error;
+  if (error is AuthRetryableFetchException) {
+    return const SyncTransportError.network();
+  }
   if (error is AuthException) return const SyncTransportError.auth();
   if (error is PostgrestException) return _mapPostgrest(error);
   if (error is IOException ||

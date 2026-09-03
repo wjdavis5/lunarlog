@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(82);
+select plan(83);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -388,6 +388,17 @@ select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb
   'authenticated can execute sync_push');
 select is((select prosecdef from pg_proc where proname = 'sync_push' and pronamespace = 'public'::regnamespace),
   false, 'sync_push is security invoker');
+
+-- ---------------------------------------------------------------------------
+-- advisory transaction lock (Issue #14)
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('user_a');
+select public.sync_push('[]'::jsonb, '[]'::jsonb);
+select ok(exists(
+  select 1 from pg_locks
+  where locktype = 'advisory'
+    and objid = hashtext(tests.get_supabase_uid('user_a')::text)
+), 'sync_push acquires advisory transaction lock for the user');
 
 select * from finish();
 rollback;

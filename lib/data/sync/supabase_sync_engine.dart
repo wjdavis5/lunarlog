@@ -199,7 +199,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     _writeSub = db
         .tableUpdates(TableUpdateQuery.onAllTables([db.profiles, db.dayEntries]))
         .listen((_) => _onLocalWrite());
-    _periodicTimer = _periodicTimerFactory(_periodicInterval, requestSync);
+    _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
+      _rejected.clear();
+      requestSync();
+    });
     requestSync();
   }
 
@@ -379,15 +382,19 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       _emit(_snapshot.copyWith(
           phase: _phase(SyncPhase.pushing), boundUserId: uid));
 
+      final now = _clock().toUtc();
+      final lastFull = state.lastFullPullAt?.toUtc();
+      final reconcileDueBeforePush = bindNow ||
+          lastFull == null ||
+          now.difference(lastFull) > kSyncFullPullInterval;
+      if (reconcileDueBeforePush) {
+        _rejected.clear();
+      }
+
       final resolvedSeen = await _push(uid);
       final pullRetry = await _pullIncremental(uid);
       state = await _storage.readSyncState();
-      final now = _clock().toUtc();
-      final lastFull = state.lastFullPullAt?.toUtc();
-      final reconcileDue = bindNow ||
-          resolvedSeen ||
-          lastFull == null ||
-          now.difference(lastFull) > kSyncFullPullInterval;
+      final reconcileDue = reconcileDueBeforePush || resolvedSeen;
       var reconcileRetry = false;
       if (reconcileDue) {
         reconcileRetry = await _reconcile(uid);
@@ -552,14 +559,27 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         continue;
       }
       final rejected = result.rejectedIds.toSet();
+      final acceptedProfileIds = <String>{};
       for (final item in batch) {
         if (rejected.contains(item.id)) {
           _rejected[item.id] = item.localRev;
           continue;
         }
         _rejected.remove(item.id);
+        if (item.table == SyncTable.profiles) {
+          acceptedProfileIds.add(item.id);
+        }
         await _storage.markPushed(
             table: item.table, id: item.id, localRevAtPush: item.localRev);
+      }
+      if (acceptedProfileIds.isNotEmpty) {
+        final dirty = await _storage.readDirtyDayEntries();
+        for (final entry in dirty) {
+          if (acceptedProfileIds.contains(entry.profileId) &&
+              !rejected.contains(entry.id)) {
+            _rejected.remove(entry.id);
+          }
+        }
       }
       if (result.resolved.isNotEmpty) {
         await _storage.applyResolved(result.resolved);
