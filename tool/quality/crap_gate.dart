@@ -100,6 +100,16 @@ class _ComplexityVisitor extends RecursiveAstVisitor<void> {
   }
 
   @override
+  void visitSwitchExpressionCase(SwitchExpressionCase node) {
+    // The arm of a switch *expression* (`switch (x) { a => ..., b => ... }`)
+    // — a distinct AST node from SwitchCase/SwitchPatternCase (which cover
+    // switch *statements*). Without this override, a method whose branching
+    // is expressed as a switch expression is silently undercounted.
+    decisionPoints++;
+    super.visitSwitchExpressionCase(node);
+  }
+
+  @override
   void visitCatchClause(CatchClause node) {
     decisionPoints++;
     super.visitCatchClause(node);

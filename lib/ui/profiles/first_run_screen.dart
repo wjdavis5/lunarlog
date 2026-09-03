@@ -136,18 +136,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     });
   }
 
-  /// Phases where the restoring wait ends immediately, regardless of
-  /// [_sawRestoring]: the home gate renders its own screen for each of
-  /// these above this one, so there is nothing left here to guard. Keep in
-  /// sync with [SyncPhase] — every phase not listed here and not
-  /// [SyncPhase.restoring] falls through to the bound-user check in
-  /// [_restoreDoneForPhase].
-  static const Set<SyncPhase> _restoreImmediatelyDonePhases = {
-    SyncPhase.error,
-    SyncPhase.awaitingUploadConsent,
-    SyncPhase.accountMismatch,
-  };
-
   /// Whether the restoring step is over: the engine reported an error, or
   /// it left `restoring` after having been there (or after binding), or
   /// the session went away.
@@ -157,14 +145,31 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     return _restoreDoneForPhase(sync.snapshot);
   }
 
-  bool _restoreDoneForPhase(SyncSnapshot snapshot) {
-    final phase = snapshot.phase;
-    if (phase == SyncPhase.restoring) {
-      _sawRestoring = true;
-      return false;
-    }
-    if (_restoreImmediatelyDonePhases.contains(phase)) return true;
-    return _sawRestoring || snapshot.boundUserId != null;
+  /// A switch *expression* (not an if-chain): every [SyncPhase] value is
+  /// named explicitly (no `_` wildcard), so adding a new phase without
+  /// updating this method is a compile error, not a silently-wrong result.
+  /// `error`, `awaitingUploadConsent` and `accountMismatch` end the wait
+  /// immediately — the home gate renders its own screen for each of these
+  /// above this one, so there is nothing left here to guard.
+  bool _restoreDoneForPhase(SyncSnapshot snapshot) =>
+      switch (snapshot.phase) {
+        SyncPhase.restoring => _markSawRestoringAndReturnFalse(),
+        SyncPhase.error ||
+        SyncPhase.awaitingUploadConsent ||
+        SyncPhase.accountMismatch =>
+          true,
+        SyncPhase.idle ||
+        SyncPhase.paused ||
+        SyncPhase.pushing ||
+        SyncPhase.pulling =>
+          _sawRestoring || snapshot.boundUserId != null,
+      };
+
+  /// The `restoring` arm's side effect, pulled out since switch-expression
+  /// arms must be single expressions.
+  bool _markSawRestoringAndReturnFalse() {
+    _sawRestoring = true;
+    return false;
   }
 
   Future<void> _create() async {

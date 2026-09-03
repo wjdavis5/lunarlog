@@ -166,10 +166,25 @@ IconData _iconFor(
   bool webSyncOff = false,
   bool awaitingConfirmation = false,
 }) {
+  final override = _iconOverride(webSyncOff, awaitingConfirmation, snapshot);
+  if (override != null) return override;
+  return _iconForPhase(snapshot!.phase, snapshot.rejectedCount);
+}
+
+/// The three cases where the phase-based icon never applies: split out of
+/// [_iconFor] verbatim — same conditions, no behavior change.
+IconData? _iconOverride(
+  bool webSyncOff,
+  bool awaitingConfirmation,
+  SyncSnapshot? snapshot,
+) {
   if (webSyncOff) return Icons.cloud_off_outlined;
   if (awaitingConfirmation) return Icons.mark_email_unread_outlined;
   if (snapshot == null) return Icons.cloud_off_outlined;
-  return switch (snapshot.phase) {
+  return null;
+}
+
+IconData _iconForPhase(SyncPhase phase, int rejectedCount) => switch (phase) {
     SyncPhase.error => Icons.cloud_off_outlined,
     SyncPhase.accountMismatch => Icons.no_accounts_outlined,
     SyncPhase.awaitingUploadConsent => Icons.cloud_upload_outlined,
@@ -178,11 +193,10 @@ IconData _iconFor(
     SyncPhase.pulling => Icons.cloud_sync_outlined,
     SyncPhase.paused => Icons.pause_circle_outline,
     SyncPhase.idle =>
-      snapshot.rejectedCount > 0
+      rejectedCount > 0
           ? Icons.warning_amber_outlined
           : Icons.cloud_done_outlined,
   };
-}
 
 /// Settings tile (`sync-status`). Reads the nullable controllers from the
 /// tree; watches [SettingsKeys.awaitingConfirmationEmail] and

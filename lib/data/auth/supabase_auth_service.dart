@@ -73,9 +73,8 @@ String generateRawNonce([int bytes = 32]) {
 /// Reduces any error thrown by the provider to a typed, fieldless
 /// [AuthFailure]. Pure; exported for tests.
 ///
-/// Split (quality gate: McCabe complexity) into this dispatcher plus
-/// [_mapGoTrueAuthException] and [_isNetworkShapedError] — same checks,
-/// same order, no behavior change.
+/// Split into this dispatcher plus [_mapGoTrueAuthException] and
+/// [_isNetworkShapedError] — same checks, same order, no behavior change.
 AuthFailure mapAuthError(Object error) {
   if (error is AuthFailure) return error;
   if (error is AuthWeakPasswordException) return const AuthFailure.weakPassword();
@@ -192,9 +191,9 @@ class SupabaseAuthService implements AuthService {
   /// `flow_state_expired`, `bad_code_verifier`), or opened on a device
   /// with no verifier (gotrue's code-less "Code verifier could not be
   /// found") — surface as one generic [AuthExpiredLinkFailure] (R7).
-  /// Split (quality gate: McCabe complexity) into this dispatcher plus
-  /// [_exchangeAuthLink]/[_handleAuthLinkExchangeError] — same sequencing,
-  /// same conditions, no behavior change.
+  /// Split into this dispatcher plus [_exchangeAuthLink]/
+  /// [_handleAuthLinkExchangeError] — same sequencing, same conditions, no
+  /// behavior change.
   Future<void> handleLink(Uri uri) async {
     final link = classifyAuthLink(uri);
     if (link is AuthLinkIgnored) return;
@@ -270,8 +269,8 @@ class SupabaseAuthService implements AuthService {
     }
   }
 
-  /// Split out of [_onAuthState] verbatim (quality gate: McCabe
-  /// complexity) — same conditions, no behavior change.
+  /// Split out of [_onAuthState] verbatim — same conditions, no behavior
+  /// change.
   void _handleSignedOutEvent(SignOutReason? reason) {
     // A session that vanished cannot complete a recovery.
     _pendingRecovery = false;

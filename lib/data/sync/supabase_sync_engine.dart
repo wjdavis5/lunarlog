@@ -338,11 +338,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// One cycle. Returns true when it ran to completion (idle), false when
   /// it was gated, paused, aborted or failed.
   ///
-  /// Split (quality gate: McCabe complexity) into this orchestrator plus
-  /// `_passesGateAndAuthChecks`/`_resolveBinding`/`_reconcileIfDue`/
-  /// `_logRetryIfNeeded` — same sequencing, same conditions, no behavior
-  /// change; the try/catch shape (and its own decision points) stays here
-  /// since that's the error-handling architecture, not extractable work.
+  /// Split into this orchestrator plus `_passesGateAndAuthChecks`/
+  /// `_resolveBinding`/`_reconcileIfDue`/`_logRetryIfNeeded`/
+  /// `_syncErrorKindForTransportError` — same sequencing, same conditions,
+  /// no behavior change; the try/catch shape (and its own decision points)
+  /// stays here since that's the error-handling architecture, not
+  /// extractable work.
   Future<bool> _cycle() async {
     try {
       if (!await _passesGateAndAuthChecks()) return false;
@@ -402,12 +403,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       }
       return false;
     } on SyncTransportError catch (error) {
-      await _fail(switch (error) {
-        SyncTransportAuthError() => SyncErrorKind.auth,
-        SyncTransportNetworkError() => SyncErrorKind.network,
-        SyncTransportRejectedError() => SyncErrorKind.other,
-        SyncTransportOtherError() => SyncErrorKind.other,
-      });
+      await _fail(_syncErrorKindForTransportError(error));
       return false;
     } catch (error) {
       debugPrint('lunarlog sync: cycle failed (${error.runtimeType})');
@@ -420,7 +416,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   /// The two early-out checks at the top of [_cycle]: the gate must be
   /// unlocked and the session must not be expired. Split out of [_cycle]
-  /// verbatim (quality gate).
+  /// verbatim.
   Future<bool> _passesGateAndAuthChecks() async {
     if (!_gateUnlocked()) {
       _emit(_snapshot.copyWith(phase: SyncPhase.paused));
@@ -433,8 +429,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return true;
   }
 
-  /// [_cycle]'s bind/mismatch decision, split out verbatim (quality gate).
-  /// Returns the (possibly bound) state and whether binding happened just
+  /// [_cycle]'s bind/mismatch decision, split out verbatim. Returns the
+  /// (possibly bound) state and whether binding happened just
   /// now, or `null` when [_cycle] should emit-and-return-false (already
   /// emitted by this method before returning null).
   Future<({SyncStateRow state, bool bindNow})?> _resolveBinding(
@@ -463,9 +459,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return (state: state, bindNow: false);
   }
 
-  /// [_cycle]'s reconcile-due decision and dispatch, split out verbatim
-  /// (quality gate). Returns whether the reconcile (if it ran) hit a
-  /// retryable apply failure.
+  /// [_cycle]'s reconcile-due decision and dispatch, split out verbatim.
+  /// Returns whether the reconcile (if it ran) hit a retryable apply
+  /// failure.
   Future<bool> _reconcileIfDue({
     required String uid,
     required bool bindNow,
@@ -493,6 +489,16 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           'retrying next cycle');
     }
   }
+
+  /// [_cycle]'s transport-error mapping, split out verbatim — same
+  /// mapping, no behavior change.
+  SyncErrorKind _syncErrorKindForTransportError(SyncTransportError error) =>
+      switch (error) {
+        SyncTransportAuthError() => SyncErrorKind.auth,
+        SyncTransportNetworkError() => SyncErrorKind.network,
+        SyncTransportRejectedError() => SyncErrorKind.other,
+        SyncTransportOtherError() => SyncErrorKind.other,
+      };
 
   String? _confirmedUid() =>
       _auth.state == AuthSessionState.signedIn ? _auth.currentUserId : null;
@@ -596,9 +602,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   }
 
   /// One push batch's request/response handling, split out of [_push]
-  /// verbatim (quality gate) — same sequencing, same conditions. `offset ==
-  /// null` means the batch hit [SyncTransportRejectedError] (no server
-  /// clock reading to take).
+  /// verbatim — same sequencing, same conditions. `offset == null` means
+  /// the batch hit [SyncTransportRejectedError] (no server clock reading
+  /// to take).
   Future<({bool resolvedSeen, Duration? offset})> _pushBatch(
     String uid,
     List<_PushItem> batch,

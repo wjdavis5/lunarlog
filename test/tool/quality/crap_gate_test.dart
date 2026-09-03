@@ -155,5 +155,36 @@ class TwoMethods {
       expect(result.offenders.single.methodName, 'TwoMethods.riskyB');
       expect(result.offenders.single.coveragePercent, 0.0);
     });
+
+    test('a switch *expression* counts one decision point per arm, same as a switch statement', () {
+      // Regression test: SwitchExpressionCase is a distinct AST node from
+      // SwitchCase/SwitchPatternCase (which only cover switch statements).
+      // Without visitSwitchExpressionCase, this method's complexity would
+      // be undercounted as 1 instead of 5, and at 0% coverage it would
+      // wrongly pass (CRAP 1) instead of failing (CRAP 30).
+      final source = '''
+class Labeler {
+  String label(int x) => switch (x) {
+        1 => 'one',
+        2 => 'two',
+        3 => 'three',
+        4 => 'four',
+        _ => 'other',
+      };
+}
+''';
+      final dir = _fixtureLibDir('labeler.dart', source);
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      final daHits = {for (var line = 2; line <= 8; line++) line: 0};
+      final coverage = _coverageFor('lib/labeler.dart', daHits);
+
+      final result = evaluateCrapGate(coverage, libDir: dir);
+      // complexity = 1 (base) + 5 (one per arm, including the `_` default)
+      // = 6; at 0% coverage: CRAP = 36*1 + 6 = 42.
+      expect(result.offenders, hasLength(1));
+      expect(result.offenders.single.complexity, 6);
+      expect(result.offenders.single.crapScore, closeTo(42.0, 0.01));
+    });
   });
 }

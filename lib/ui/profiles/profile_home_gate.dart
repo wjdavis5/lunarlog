@@ -112,18 +112,22 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// Maps a single sync phase to its screen. `idle`, `pushing`, `pulling`,
   /// `paused` and `error` have none — same as the other phases once
   /// `awaitingUploadConsent` has already been declined this session.
-  Widget? _screenForSyncPhase(SyncPhase phase) {
-    if (phase == SyncPhase.accountMismatch) {
-      return const AccountMismatchScreen();
-    }
-    if (phase == SyncPhase.awaitingUploadConsent) {
-      return _consentDeclined ? null : _uploadConsentScreen();
-    }
-    if (phase == SyncPhase.restoring) {
-      return const RestoringScreen();
-    }
-    return null;
-  }
+  ///
+  /// A switch *expression* (not an if-chain): every [SyncPhase] value is
+  /// named explicitly (no `_` wildcard), so adding a new phase without
+  /// updating this method is a compile error, not a silently-null screen.
+  Widget? _screenForSyncPhase(SyncPhase phase) => switch (phase) {
+        SyncPhase.accountMismatch => const AccountMismatchScreen(),
+        SyncPhase.awaitingUploadConsent =>
+          _consentDeclined ? null : _uploadConsentScreen(),
+        SyncPhase.restoring => const RestoringScreen(),
+        SyncPhase.idle ||
+        SyncPhase.paused ||
+        SyncPhase.pushing ||
+        SyncPhase.pulling ||
+        SyncPhase.error =>
+          null,
+      };
 
   Widget _uploadConsentScreen() {
     return UploadConsentScreen(
