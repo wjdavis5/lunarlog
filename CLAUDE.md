@@ -12,5 +12,6 @@
   - `flutter pub get`
   - `flutter analyze`
   - `flutter test`
+  - `dart run tool/quality_gate.dart` (90% coverage floor + per-method CRAP gate, CI-enforced) and `dart run tool/mutation_gate.dart` (local-only mutation testing) — see AGENTS.md's "Quality gates" section
 - **iOS Device Build:** Target macOS build machine (Xcode 26+).
 - **Docs:** Full details live in [`AGENTS.md`](AGENTS.md) and [`README.md`](README.md).

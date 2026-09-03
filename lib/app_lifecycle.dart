@@ -536,38 +536,64 @@ class LunarLogRootState extends State<LunarLogRoot> {
     try {
       await _disposeSyncEngine();
       final db = _db;
-      if (db != null) {
-        if (mounted) setState(() => _db = null);
-        await WidgetsBinding.instance.endOfFrame;
-      }
+      await _detachDatabaseFromTree(db);
       await _awaitAppTeardown();
-      try {
-        if (db != null) {
-          if (widget.isWeb) await db.wipeAllData();
-          await db.close();
-        }
-        if (!widget.isWeb) {
-          await widget.deleteLocalDatabase();
-          await widget.deleteDbKey();
-        }
-      } catch (error, stackTrace) {
-        debugPrint('lunarlog reset failed: $error\n$stackTrace');
-        _error = error;
-        if (mounted) setState(() {});
-        return;
-      }
-      final auth = widget.authService;
-      if (auth != null) {
-        try {
-          await auth.signOut(scope: AuthSignOutScope.local);
-        } catch (error) {
-          debugPrint(
-              'lunarlog reset: server sign-out failed (${error.runtimeType})');
-        }
-      }
+      final deleted = await _deleteDatabaseAndKey(db);
+      if (!deleted) return;
+      await _signOutLocally();
       if (mounted) await _openDatabase();
     } finally {
       _resetting = false;
+    }
+  }
+
+  /// Drops [db] from the tree (if it was open) and awaits a frame so
+  /// [LunarLogApp] and everything under it has unmounted and nothing can
+  /// query the closing database. First step of [resetDevice] after the
+  /// sync engine is disposed.
+  Future<void> _detachDatabaseFromTree(LunarLogDatabase? db) async {
+    if (db == null) return;
+    if (mounted) setState(() => _db = null);
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  /// Wipes (web) and closes [db], then on native deletes the database file
+  /// and its siblings *then* the key, so a crash in between can never leave
+  /// a keyed file that would quarantine the next open. Returns whether the
+  /// step succeeded; on failure it records `_error` (fail-closed) and the
+  /// caller must stop [resetDevice] before sign-out and reopen.
+  Future<bool> _deleteDatabaseAndKey(LunarLogDatabase? db) async {
+    try {
+      if (db != null) {
+        if (widget.isWeb) await db.wipeAllData();
+        await db.close();
+      }
+      if (!widget.isWeb) {
+        await widget.deleteLocalDatabase();
+        await widget.deleteDbKey();
+      }
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('lunarlog reset failed: $error\n$stackTrace');
+      _error = error;
+      if (mounted) setState(() {});
+      return false;
+    }
+  }
+
+  /// Best-effort local + server sign-out, run *before* the reopen so the
+  /// fresh database's first sync cycle never sees the account being signed
+  /// out and binds to it. A server-side failure never skips the local step
+  /// (the local session is removed by the service regardless of the
+  /// server's answer), so it is only logged, never rethrown.
+  Future<void> _signOutLocally() async {
+    final auth = widget.authService;
+    if (auth == null) return;
+    try {
+      await auth.signOut(scope: AuthSignOutScope.local);
+    } catch (error) {
+      debugPrint(
+          'lunarlog reset: server sign-out failed (${error.runtimeType})');
     }
   }
 

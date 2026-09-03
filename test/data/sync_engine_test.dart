@@ -470,6 +470,35 @@ void main() {
       expect(rig.engine.snapshot.rejectedCount, 0);
     });
 
+    test('SyncTransportError.rejected (a transport with no per-row results) '
+        'marks the whole batch rejected, not a cycle failure, and is not '
+        're-pushed until edited again', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p = await rig.storage.upsertProfile(
+          displayName: 'A', isMinor: false);
+      final e = await rig.storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      rig.transport.nextPushError = SyncTransportError.rejected([p.id, e.id]);
+
+      await rig.start();
+      expect(rig.transport.pushes, hasLength(1),
+          reason: 'the batch is recorded before the transport throws');
+      expect((await rig.profile(p.id)).dirty, isTrue);
+      expect((await rig.entry(p.id, e.id)).dirty, isTrue);
+      expect(rig.engine.snapshot.phase, SyncPhase.idle,
+          reason: 'a whole-batch rejection is not a cycle failure');
+      expect(rig.engine.snapshot.rejectedCount, 2);
+
+      await rig.sync();
+      expect(rig.transport.pushes, hasLength(1),
+          reason: 'both rejected rows are excluded from the next push');
+    });
+
     test('rejected day entries are un-rejected and re-sent when their parent '
         'profile is accepted', () async {
       final rig = Rig();
@@ -736,6 +765,36 @@ void main() {
       await rig.sync();
       expect((await rig.state()).cursorDayEntries, 10);
       expect(await rig.storage.getDayEntries(profileId: pA), hasLength(1));
+    });
+
+    test('a full-reconcile page that fails as a batch falls back to '
+        'per-row application, and a row still left orphaned defers the '
+        'next full-pull stamp (retried next cycle)', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      final staleFullPull = t0.subtract(const Duration(hours: 25));
+      await rig.bind(uidA, lastFullPullAt: staleFullPull);
+      final pA = ulidN(1);
+      final orphan = remoteEntry(ulidN(10),
+          profileId: pA, localDate: '2026-01-01', updatedAt: t0,
+          serverVersion: 10);
+      // Incremental dayEntries gets nothing; the reconcile dayEntries call
+      // (which starts over from version 0, same as incremental here) gets
+      // the orphan — `applyRemoteRows` fails the whole page as one
+      // transaction, `_applyReconcilePage` falls back to applying rows one
+      // by one, and the entry alone still fails (its profile page was
+      // never supplied), so it is left for the next cycle.
+      rig.transport.scriptPage(SyncTable.dayEntries, const []);
+      rig.transport.scriptPage(SyncTable.dayEntries, [orphan]);
+
+      await rig.start();
+
+      expect(rig.engine.snapshot.phase, SyncPhase.idle,
+          reason: 'a retryable apply failure is not a cycle failure');
+      expect(await rig.storage.getDayEntries(profileId: pA), isEmpty);
+      expect((await rig.state()).lastFullPullAt?.toUtc(), staleFullPull,
+          reason: 'reconcile is retried, so the full-pull stamp does not '
+              'advance yet');
     });
   });
 
