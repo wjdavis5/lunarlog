@@ -17,26 +17,19 @@
 /// counts; a screen opened while already signed in does not auto-complete.
 ///
 /// [authFailureCopy] is the single, exhaustive copy table for every
-/// [AuthFailure], including the provider, link, code, identity, and
-/// closed-sign-up kinds (#2 U2; KTD4, R14).
+/// [AuthFailure], including the provider, identity, and closed-sign-up kinds
+/// (#2 U2; KTD4, R14).
 ///
-/// Provider buttons and passwordless entry (#2 U4; KTD3, KTD6, KTD8): the
-/// providers render above the email form — Apple (the package's HIG
-/// widget, iOS only) first, then Google (the branded widget, only when
-/// [AppConfig.hasGoogle] or [showGoogle] says so) — and a dismissed
-/// picker is not a failure. "Email me a sign-in link" sends the link for
-/// the typed email in the current mode, remembers the email under
-/// [SettingsKeys.awaitingMagicLinkEmail], and reveals a code field whose
-/// button stays disabled until it holds 6 to 10 digits (AS5). A pending
-/// email found on open pre-fills the form and reveals the field without a
-/// new request, so a code already in the inbox survives a restart.
+/// Provider buttons (#2 U4; KTD6, KTD8): the providers render above the
+/// email form — Apple (the package's HIG widget, iOS only) first, then
+/// Google (the branded widget, only when [AppConfig.hasGoogle] or
+/// [showGoogle] says so) — and a dismissed picker is not a failure.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -45,10 +38,6 @@ import 'package:lunarlog/ui/account/google_sign_in_button.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart'
     show SignInWithAppleButton, SignInWithAppleButtonStyle;
-
-/// The emailed code is 6 to 10 digits (AS5: `otp_length` 8 in production,
-/// Supabase's default 6 elsewhere).
-final RegExp _kCodePattern = RegExp(r'^\d{6,10}$');
 
 /// Client-side minimum for a new password (the project's hosted rule).
 const int kMinPasswordLength = 12;
@@ -105,15 +94,10 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final _code = TextEditingController();
   bool _createMode = false;
   bool _busy = false;
   String? _error;
   String? _info;
-
-  /// The emailed-code field shows after a link is requested, or when a
-  /// pending email was found on open (#2 U4; KTD3).
-  bool _codeVisible = false;
 
   /// The controller this state listens to for link-delivered sessions
   /// (#2 U3; KTD4).
@@ -131,28 +115,6 @@ class _SignInScreenState extends State<SignInScreen> {
 
   bool get _showGoogle => widget.showGoogle ?? AppConfig.hasGoogle;
 
-  bool get _codeValid => _kCodePattern.hasMatch(_code.text);
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_restorePendingEmail());
-  }
-
-  /// A sign-in email requested earlier on this device and not yet
-  /// redeemed: pre-fill the email and show the code field, no new request
-  /// (#2 U4; KTD3).
-  Future<void> _restorePendingEmail() async {
-    final pending = await context
-        .read<SettingsStore>()
-        .get(SettingsKeys.awaitingMagicLinkEmail);
-    if (!mounted || pending == null || pending.isEmpty) return;
-    setState(() {
-      if (_email.text.isEmpty) _email.text = pending;
-      _codeVisible = true;
-    });
-  }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -169,7 +131,6 @@ class _SignInScreenState extends State<SignInScreen> {
     _auth = null;
     _email.dispose();
     _password.dispose();
-    _code.dispose();
     super.dispose();
   }
 
@@ -281,44 +242,6 @@ class _SignInScreenState extends State<SignInScreen> {
           case GoogleSignInCancelled():
             break;
         }
-      });
-
-  /// Requests a sign-in link for the typed email in the current mode
-  /// (#2 U4; KTD3, R5, R6), remembers the email for the tile and a
-  /// restart, and reveals the code field.
-  Future<void> _sendMagicLink() async {
-    final email = _email.text.trim();
-    if (email.isEmpty) {
-      setState(() {
-        _error = 'Enter your email first.';
-        _info = null;
-      });
-      return;
-    }
-    await _run(() async {
-      final auth = context.read<AuthController>();
-      final settings = context.read<SettingsStore>();
-      await auth.sendMagicLink(email: email, createAccount: _createMode);
-      await settings.set(SettingsKeys.awaitingMagicLinkEmail, email);
-      if (mounted) {
-        setState(() {
-          _codeVisible = true;
-          _info = 'Check your email for a sign-in link and code. Open the '
-              'link on this device, or enter the code below.';
-        });
-      }
-    });
-  }
-
-  /// Verifies the emailed code for the typed email (#2 U4; KTD3, R5).
-  /// The button guards the 6–10 digit rule, so this only runs the call.
-  Future<void> _verifyCode() => _run(() async {
-        final auth = context.read<AuthController>();
-        await auth.verifyEmailCode(
-          email: _email.text.trim(),
-          code: _code.text,
-        );
-        _signedIn();
       });
 
   /// The first-run explainer above everything else, embedded mode only
@@ -441,76 +364,6 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
       ];
 
-  /// Passwordless entry (#2 U4; KTD3, KTD6, KTD8): the link button, and,
-  /// once revealed, the emailed-code field and its verify button.
-  List<Widget> _buildMagicLinkSection() => [
-        OutlinedButton(
-          key: const ValueKey('auth-magic-link'),
-          onPressed: _busy ? null : _sendMagicLink,
-          child: const Text('Email me a sign-in link'),
-        ),
-        if (_codeVisible) ...[
-          const SizedBox(height: 12),
-          TextField(
-            key: const ValueKey('auth-code'),
-            controller: _code,
-            enabled: !_busy,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            maxLength: 10,
-            autocorrect: false,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: 'Code from the email',
-              helperText: 'Enter the code from the sign-in email',
-              counterText: '',
-            ),
-          ),
-          const SizedBox(height: 8),
-          FilledButton.tonal(
-            key: const ValueKey('auth-verify-code'),
-            onPressed: _busy || !_codeValid ? null : _verifyCode,
-            child: const Text('Sign in with code'),
-          ),
-        ],
-      ];
-
-  /// The create/sign-in mode toggle, plus "Forgot password" in sign-in
-  /// mode only.
-  List<Widget> _buildModeAndForgotSection() => [
-        TextButton(
-          key: const ValueKey('auth-mode-toggle'),
-          onPressed: _busy
-              ? null
-              : () => setState(() {
-                    _createMode = !_createMode;
-                    _error = null;
-                    _info = null;
-                  }),
-          child: Text(_createMode
-              ? 'I already have an account'
-              : 'Create an account instead'),
-        ),
-        if (!_createMode)
-          TextButton(
-            key: const ValueKey('auth-forgot-password'),
-            onPressed: _busy ? null : _forgotPassword,
-            child: const Text('Forgot password'),
-          ),
-      ];
-
-  /// The first-run "Not now" skip action, embedded mode only.
-  List<Widget> _buildEmbeddedFooter() => [
-        if (widget.embedded) ...[
-          const Divider(height: 32),
-          TextButton(
-            key: const ValueKey('first-run-not-now'),
-            onPressed: _busy ? null : widget.onNotNow,
-            child: const Text('Not now'),
-          ),
-        ],
-      ];
-
   @override
   Widget build(BuildContext context) {
     final title = _createMode ? 'Create an account' : 'Sign in';
@@ -531,8 +384,6 @@ class _SignInScreenState extends State<SignInScreen> {
           const SizedBox(height: 16),
           ..._buildPendingIndicator(),
           ..._buildPrimaryActionButton(),
-          const SizedBox(height: 8),
-          ..._buildMagicLinkSection(),
           const SizedBox(height: 8),
           ..._buildModeAndForgotSection(),
           ..._buildEmbeddedFooter(),
