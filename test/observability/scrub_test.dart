@@ -212,6 +212,62 @@ void main() {
       expect(out.message?.params, isNull);
     });
 
+    test('U6/KTD7: extra carrying user_metadata is removed', () {
+      final out = scrubEvent(SentryEvent(
+        // ignore: deprecated_member_use
+        extra: {
+          'user_metadata': {'full_name': 'Piper Davis', 'picture': 'https://p'},
+          'harmless': 'x',
+        },
+      ))!;
+      // ignore: deprecated_member_use
+      expect(out.extra, isNull);
+      final json = _json(out);
+      expect(json, isNot(contains('user_metadata')));
+      expect(json, isNot(contains('Piper Davis')));
+      expect(json, isNot(contains('harmless')));
+    });
+
+    test('U6/KTD7: the bare words user, name, and session do not scrub a '
+        'message', () {
+      const text = 'session refresh failed: user name lookup timed out';
+      final out = scrubEvent(SentryEvent(
+        logger: 'auth.session',
+        message: SentryMessage(text),
+      ))!;
+      expect(out.message?.formatted, text);
+      expect(out.logger, 'auth.session');
+    });
+
+    test('U6/KTD7: a message mentioning id_token or refresh_token is '
+        'scrubbed', () {
+      for (final text in [
+        'id_token expired',
+        'refreshToken rotated',
+        'auth.nonce mismatch',
+      ]) {
+        final out = scrubEvent(SentryEvent(message: SentryMessage(text)))!;
+        expect(out.message?.formatted, '[scrubbed]', reason: text);
+      }
+    });
+
+    test('U6/KTD7: GoogleSignInException reduces to its type name', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'GoogleSignInException',
+          value: 'GoogleSignInException(code: canceled, account $_email)',
+          stackTrace: SentryStackTrace(frames: [
+            SentryStackFrame(absPath: 'package:lunarlog/ui/sign_in.dart'),
+          ]),
+        ),
+      ]))!;
+      final ex = out.exceptions!.single;
+      expect(ex.type, 'GoogleSignInException');
+      expect(ex.value, 'GoogleSignInException');
+      expect(ex.stackTrace, isNotNull);
+      expect(_json(out), isNot(contains(_email)));
+    });
+
     test('event tags lose deny-listed keys but keep the rest', () {
       final out = scrubEvent(_fullEvent())!;
       expect(out.tags, {'environment': 'development'});
@@ -326,6 +382,63 @@ void main() {
       }
     });
 
+    test('U6/KTD7: identity payload keys drop the breadcrumb at any depth',
+        () {
+      for (final key in [
+        'identities',
+        'identity_data',
+        'idToken',
+        'id_token',
+        'identity_token',
+        'access_token',
+        'accessToken',
+        'refresh_token',
+        'provider_token',
+        'provider_refresh_token',
+        'authorization_code',
+        'serverAuthCode',
+        'server_auth_code',
+        'token_hash',
+        'code_verifier',
+        'nonce',
+        'full_name',
+        'given_name',
+        'family_name',
+        'picture',
+        'avatar_url',
+        'photo_url',
+        'hd',
+        'user_metadata',
+        'userMetadata',
+      ]) {
+        expect(
+          scrubBreadcrumb(Breadcrumb(category: 'auth', data: {key: 'v'})),
+          isNull,
+          reason: 'top-level $key',
+        );
+        expect(
+          scrubBreadcrumb(Breadcrumb(category: 'auth', data: {
+            'session': {
+              'user': {key: 'v'}
+            }
+          })),
+          isNull,
+          reason: 'nested $key',
+        );
+      }
+    });
+
+    test('U6/KTD7: an auth breadcrumb with only allowed keys passes', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'auth',
+        message: 'sign-in finished',
+        data: {'provider': 'google', 'code': 'canceled', 'user': 'present'},
+      ))!;
+      expect(out.category, 'auth');
+      expect(out.data,
+          {'provider': 'google', 'code': 'canceled', 'user': 'present'});
+    });
+
     test('an ordinary breadcrumb passes through unchanged', () {
       final out = scrubBreadcrumb(Breadcrumb(
         category: 'app.lifecycle',
@@ -346,6 +459,28 @@ void main() {
       expect(isDenyListedKey('Authorization'), isTrue);
       expect(isDenyListedKey('status_code'), isFalse);
       expect(isDenyListedKey('url'), isFalse);
+      for (final key in [
+        'identities',
+        'identityData',
+        'id_token',
+        'idToken',
+        'refresh_token',
+        'providerRefreshToken',
+        'authorization_code',
+        'token_hash',
+        'code_verifier',
+        'nonce',
+        'fullName',
+        'avatar_url',
+        'hd',
+        'user_metadata',
+      ]) {
+        expect(isDenyListedKey(key), isTrue, reason: key);
+      }
+      // KTD7: bare words stay out so ordinary messages are not scrubbed.
+      for (final word in ['name', 'token', 'user', 'sub', 'session', 'id']) {
+        expect(isDenyListedKey(word), isFalse, reason: word);
+      }
     });
   });
 
