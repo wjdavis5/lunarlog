@@ -33,6 +33,8 @@ import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart'
+    show SignInWithAppleButton;
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_engine.dart';
@@ -277,6 +279,197 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(key('auth-apple'), findsOneWidget);
+    });
+  });
+
+  group('provider buttons and passwordless entry (#2 U4; AE2, AE8, R12)', () {
+    testWidgets('showGoogle: false and the null default (empty config on a '
+        'non-web platform) render no Google button; true renders it (AE8)',
+        (tester) async {
+      await pumpStandalone(tester, showGoogle: false);
+      expect(key('auth-google'), findsNothing);
+
+      await pumpStandalone(tester);
+      expect(key('auth-google'), findsNothing,
+          reason: 'AppConfig.hasGoogle is false without client ids');
+
+      final semantics = tester.ensureSemantics();
+      await pumpStandalone(tester, showGoogle: true);
+      expect(key('auth-google'), findsOneWidget);
+      expect(find.bySemanticsLabel('Sign in with Google'), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('on iOS with both shown, the Apple button is the package '
+        'widget, precedes Google, is at least as tall, and both precede the '
+        'email form (R12)', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await pumpStandalone(tester, showApple: true, showGoogle: true);
+      expect(tester.widget(key('auth-apple')), isA<SignInWithAppleButton>());
+      final apple = tester.getTopLeft(key('auth-apple')).dy;
+      final google = tester.getTopLeft(key('auth-google')).dy;
+      final email = tester.getTopLeft(key('auth-email')).dy;
+      expect(apple, lessThan(google));
+      expect(google, lessThan(email));
+      expect(tester.getSize(key('auth-apple')).height,
+          greaterThanOrEqualTo(tester.getSize(key('auth-google')).height));
+      // Restored inside the body: the binding verifies it before tearDown.
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('a dismissed Google picker returns with no error, no '
+        'spinner, and an editable form (AE2); providerUnavailable shows the '
+        'email alternative under auth-error', (tester) async {
+      final s = await pumpStandalone(tester, showGoogle: true);
+      s.auth.googleResult = const GoogleSignInCancelled();
+      await tester.tap(key('auth-google'));
+      await tester.pumpAndSettle();
+      expect(s.auth.googleCalls, 1);
+      expect(key('auth-error'), findsNothing);
+      expect(key('auth-pending'), findsNothing);
+      expect(tester.widget<TextField>(key('auth-email')).enabled, isTrue);
+      expect(s.controller.signedIn, isFalse);
+
+      s.auth.nextFailure = const AuthFailure.providerUnavailable();
+      await tester.tap(key('auth-google'));
+      await tester.pumpAndSettle();
+      expect(s.auth.googleCalls, 2);
+      final copy = tester.widget<Text>(key('auth-error')).data!;
+      expect(copy, contains('email'));
+      expect(copy, isNot(contains('@')));
+    });
+
+    testWidgets('a Google session completes the screen exactly once',
+        (tester) async {
+      var completions = 0;
+      final s = await pumpStandalone(tester,
+          showGoogle: true, embedded: true, onSignedIn: () => completions++);
+      await tester.tap(key('auth-google'));
+      await tester.pumpAndSettle();
+      expect(s.auth.googleCalls, 1);
+      expect(completions, 1);
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('"Email me a sign-in link" sends for the trimmed email in '
+        'the current mode, persists the pending email, reveals the code '
+        'field, and the tile reads the sign-in email copy until a session '
+        'arrives, which clears the key', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      await h.openSettings();
+      await tester.tap(key('account-sign-in'));
+      await tester.pumpAndSettle();
+      expect(key('auth-code'), findsNothing);
+      expect(key('auth-verify-code'), findsNothing);
+
+      await tester.enterText(key('auth-email'), '  a@b.c ');
+      await tester.ensureVisible(key('auth-magic-link'));
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(h.auth.magicLinkCalls.single,
+          (email: 'a@b.c', createAccount: false));
+      final store = DriftSettingsStore(h.db.storage);
+      expect(await store.get(SettingsKeys.awaitingMagicLinkEmail), 'a@b.c');
+      expect(key('auth-code'), findsOneWidget);
+      expect(key('auth-verify-code'), findsOneWidget);
+      expect(key('auth-error'), findsNothing);
+      final info = tester.widget<Text>(key('auth-info')).data!;
+      expect(info, contains('sign-in link'));
+      expect(info, isNot(contains('@')));
+
+      // Create mode asks for an account.
+      await tester.ensureVisible(key('auth-mode-toggle'));
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(key('auth-magic-link'));
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(h.auth.magicLinkCalls.last,
+          (email: 'a@b.c', createAccount: true));
+      expect(h.auth.magicLinkCalls, hasLength(2));
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      await h.settle();
+      expect(find.text(kAwaitingMagicLinkCopy), findsOneWidget);
+      expect(kAwaitingMagicLinkCopy, isNot(contains('@')));
+
+      // The link (or code) produced a session: the key and the copy clear.
+      h.signIn();
+      await h.settle();
+      expect(find.text(kAwaitingMagicLinkCopy), findsNothing);
+      expect(await store.get(SettingsKeys.awaitingMagicLinkEmail),
+          anyOf(isNull, isEmpty));
+      await h.dispose();
+    });
+
+    testWidgets('an empty email does not send a link', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.ensureVisible(key('auth-magic-link'));
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(s.auth.magicLinkCalls, isEmpty);
+      expect(key('auth-code'), findsNothing);
+      expect(key('auth-error'), findsOneWidget);
+      expect(tester.widget<Text>(key('auth-error')).data,
+          isNot(contains('@')));
+    });
+
+    testWidgets('a pending sign-in email pre-fills the email and shows the '
+        'code field with no new request; 5 digits leave the code button '
+        'disabled with no call, 6 and 8 digits enable it, letters are '
+        'dropped; invalidCode shows its copy; a verified code completes '
+        'once', (tester) async {
+      var completions = 0;
+      final s = await pumpStandalone(
+        tester,
+        embedded: true,
+        onSignedIn: () => completions++,
+        seed: {SettingsKeys.awaitingMagicLinkEmail: 'a@b.c'},
+      );
+      expect(
+          tester.widget<TextField>(key('auth-email')).controller!.text,
+          'a@b.c');
+      expect(key('auth-code'), findsOneWidget);
+      expect(s.auth.magicLinkCalls, isEmpty);
+
+      await tester.ensureVisible(key('auth-verify-code'));
+      await tester.enterText(key('auth-code'), '12345');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNull);
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls, isEmpty);
+
+      await tester.enterText(key('auth-code'), '12ab34');
+      await tester.pump();
+      expect(tester.widget<TextField>(key('auth-code')).controller!.text,
+          '1234');
+      expect(tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNull);
+
+      await tester.enterText(key('auth-code'), '12345678');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNotNull);
+      s.auth.nextFailure = const AuthFailure.invalidCode();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls.single, (email: 'a@b.c', code: '12345678'));
+      final copy = tester.widget<Text>(key('auth-error')).data!;
+      expect(copy, contains('code'));
+      expect(copy, isNot(contains('@')));
+      expect(completions, 0);
+
+      await tester.enterText(key('auth-code'), '123456');
+      await tester.pump();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls.last, (email: 'a@b.c', code: '123456'));
+      expect(completions, 1);
+      expect(key('auth-error'), findsNothing);
     });
   });
 
@@ -799,6 +992,71 @@ void main() {
       await db.close();
     });
   });
+}
+
+/// A standalone [SignInScreen] over a fake service and an in-memory
+/// settings store (#2 U4): the harness builds the screen without provider
+/// overrides, so the Google and pending-email scenarios pump it directly.
+class StandaloneSignIn {
+  StandaloneSignIn(this.auth, this.controller, this.settings);
+  final FakeAuthService auth;
+  final AuthController controller;
+  final MemorySettings settings;
+}
+
+Future<StandaloneSignIn> pumpStandalone(
+  WidgetTester tester, {
+  bool? showApple,
+  bool? showGoogle,
+  bool embedded = false,
+  VoidCallback? onSignedIn,
+  Map<String, String>? seed,
+}) async {
+  final auth = FakeAuthService();
+  addTearDown(auth.dispose);
+  final controller = AuthController(authService: auth);
+  addTearDown(controller.dispose);
+  final settings = MemorySettings(seed);
+  await tester.pumpWidget(MaterialApp(
+    home: MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthController>.value(value: controller),
+        Provider<SettingsStore>.value(value: settings),
+      ],
+      child: SignInScreen(
+        showApple: showApple,
+        showGoogle: showGoogle,
+        embedded: embedded,
+        onSignedIn: onSignedIn,
+      ),
+    ),
+  ));
+  await tester.pumpAndSettle();
+  return StandaloneSignIn(auth, controller, settings);
+}
+
+class MemorySettings implements SettingsStore {
+  MemorySettings([Map<String, String>? seed]) : values = {...?seed};
+
+  final Map<String, String> values;
+  final _changes = StreamController<String>.broadcast();
+
+  @override
+  Future<String?> get(String key) async => values[key];
+
+  @override
+  Future<void> set(String key, String value) async {
+    values[key] = value;
+    _changes.add(key);
+  }
+
+  @override
+  Stream<String?> watch(String key) async* {
+    yield values[key];
+    await for (final changed in _changes.stream) {
+      if (changed == key) yield values[key];
+    }
+  }
 }
 
 class _NoopSettings implements SettingsStore {
