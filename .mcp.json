@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "supabase": {
-      "serverUrl": "https://mcp.supabase.com/mcp?project_ref=dleexnnevuuddcgcpztq&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching"
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=dleexnnevuuddcgcpztq&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching"
     }
   }
 }
