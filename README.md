@@ -91,8 +91,8 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs analyze +
 test + a release web build on ubuntu, the pgTAP database tests against a
 local Supabase stack (`db-tests` job), a debug APK on ubuntu, and an unsigned
 iOS build on macOS, for pushes and PRs to `main`. Every build passes the
-Supabase and Sentry `--dart-define`s from repository secrets; on forks they
-resolve to empty and the build must still succeed.
+Supabase, Sentry, and Google `--dart-define`s from repository secrets; on
+forks they resolve to empty and the build must still succeed.
 
 Database migrations are pushed to the cloud project by
 [`.github/workflows/supabase-migrate.yml`](.github/workflows/supabase-migrate.yml)
@@ -103,6 +103,25 @@ Store review (primary) is handled by
 (mirrored from `taxiGame`). Automated Android release to Google Play is handled
 by [`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml).
 
+## Accounts
+
+The account is optional and lives in Supabase Auth. Sign-in methods:
+email/password, Google (iOS and Android, native picker), Apple (iOS), and
+passwordless email — a sign-in link opened on the requesting device or the
+code from the same email typed into the app. Web builds have no Google
+button (`google_sign_in_web` cannot supply an ID token), and accounts are
+off on web anyway unless `LUNARLOG_WEB_SYNC=true`. A signed-in operator can
+see which methods the account has in the account section and add Google
+(or Apple on iOS) to it after a fresh device-credential check; methods
+cannot be removed in-app. Once the household is onboarded, sign-ups are
+closed in the dashboard and every create path says accounts are set up by
+the account owner. Passkeys are deferred (Supabase passkeys are beta and
+need an HTTPS relying-party domain the app does not yet have). The Google
+button is hidden in any build without both `GOOGLE_*` defines. Plans:
+[`docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md`](docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md)
+and
+[`docs/plans/2026-09-03-001-feat-social-logins-plan.md`](docs/plans/2026-09-03-001-feat-social-logins-plan.md).
+
 ## Config & credentials
 
 Remote backend: Supabase Cloud (`dleexnnevuuddcgcpztq`); crash reporting:
@@ -110,15 +129,19 @@ Sentry. Configuration reaches the app in exactly one way and the tooling in
 another:
 
 - **App (client-side, build time):** `lib/config.dart` (`AppConfig`) reads
-  `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SENTRY_DSN`, and
-  `LUNARLOG_WEB_SYNC` via `--dart-define`. Empty means unconfigured. For local
-  runs copy `dart_defines.example.json` to `dart_defines.json` (gitignored;
-  client-safe values only — the publishable key and DSN are designed to ship
-  inside the binary) and pass `--dart-define-from-file=dart_defines.json`.
+  `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SENTRY_DSN`,
+  `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, and `LUNARLOG_WEB_SYNC`
+  via `--dart-define`. Empty means unconfigured. For local runs copy
+  `dart_defines.example.json` to `dart_defines.json` (gitignored;
+  client-safe values only — the publishable key, DSN, and Google client ids
+  are designed to ship inside the binary) and pass
+  `--dart-define-from-file=dart_defines.json`. The iOS reversed Google
+  client id is committed as a URL scheme in `ios/Runner/Info.plist` once the
+  ids exist.
 - **Tooling (server-side only):** `.env` (gitignored; `.env.example` is the
   template) feeds the Supabase CLI and direct database access — project ref,
   database password, `DATABASE_URL`. The app never reads it.
-- **CI:** GitHub repository secrets on `wjdavis5/lunarlog` supply the three
+- **CI:** GitHub repository secrets on `wjdavis5/lunarlog` supply the five
   client-safe defines to every workflow build; the `production` environment
   holds the migration credentials (`SUPABASE_ACCESS_TOKEN`,
   `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF`) behind a required reviewer.

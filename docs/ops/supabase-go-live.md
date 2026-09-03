@@ -2,7 +2,10 @@
 
 Operational record for the account + cloud-sync feature
 ([plan](../plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md),
-branch `feat/supabase-auth-cloud-sync`). Tick items here as they are done;
+branch `feat/supabase-auth-cloud-sync`) and its social-logins follow-up
+([plan](../plans/2026-09-03-001-feat-social-logins-plan.md), branch
+`feat/social-logins`; its IDs are cited with a `#2` prefix). Tick items here
+as they are done;
 the "Not yet run" section is the honest list of what has not been exercised.
 Never record a credential value in this file.
 
@@ -42,6 +45,84 @@ JWT are CLI defaults) and says nothing about the cloud project.
       (Authentication → URL Configuration). Both the confirmation and the
       reset email link through it (`ios/Runner/Info.plist` `CFBundleURLSchemes`
       and the Android `VIEW` intent filter register the scheme).
+
+### Social logins and passwordless (issue #2)
+
+Prerequisites for Google Sign-In, passwordless email, and adding a second
+sign-in method ([plan](../plans/2026-09-03-001-feat-social-logins-plan.md)).
+Until the client ids are set, `AppConfig.hasGoogle` is false and no Google
+button renders, so the app can ship ahead of the Google Cloud work;
+passwordless email depends on custom SMTP above like every other email.
+
+- [ ] Google Cloud OAuth clients (APIs & Services → Credentials) in one
+      project: a **Web** client, an **iOS** client (bundle id
+      `com.wjdavis5.lunarlog`), and one **Android** client per signing key —
+      the debug keystore, the release keystore, and the Play App Signing key
+      (Play Console → App integrity) — each with the package name and that
+      key's SHA-1. A wrong or missing SHA-1 raises no error: the Android
+      picker closes as if the operator cancelled (#2 KTD8), so a "cancel" on
+      a fresh build is the first thing to suspect. A device with no Google
+      account is likewise not separately detectable; it shows the
+      email-alternative copy.
+- [ ] Supabase Google provider enabled (Authentication → Providers → Google)
+      with the **Web and iOS client ids** in the authorized client id list.
+      Those two are the token audiences (Web on Android, iOS on iOS); the
+      Android client id is never an audience and is not listed. "Skip nonce
+      check" stays **OFF**: the app initializes Google with a hashed nonce
+      and passes the raw one to `signInWithIdToken` (#2 AS2); turning the
+      check off would let any captured ID token for either client id become
+      a session.
+- [ ] "Manual linking" **ON** (Authentication → Providers → "Allow manual
+      linking"). The account section's "Add Google" / "Add Apple" actions
+      call `linkIdentityWithIdToken`, which the server refuses while this is
+      off.
+- [ ] Email templates (Authentication → Email Templates): **both** the
+      *Magic Link* and the *Confirm signup* templates carry `{{ .Token }}`
+      beside the link, plus a line saying the code and the link must never
+      be shared with anyone, even family. Existing users get the Magic Link
+      template; new users requested through `signInWithOtp` get the Confirm
+      signup template. The in-app code field therefore works only after both
+      are changed (#2 AS4); until then the link path alone works and the code
+      field is still shown.
+- [ ] Email OTP expiry **600 seconds** and OTP length **8** (Authentication →
+      Providers → Email). The expiry setting governs every emailed link —
+      confirmation, recovery, email change, and magic link — so the #1 flows
+      tighten too. The app has no resend button: an expired confirmation
+      link means signing up again; an expired reset or sign-in link means
+      requesting a new one (#2 AS5).
+- [ ] Sign-ups closed once the household's accounts exist: turn off "Allow
+      new users to sign up" (Authentication → Sign In / Providers), or keep
+      it on behind a `before_user_created` auth hook that rejects any email
+      not on a household allow-list. That allow-list lives **only** in a
+      table in the Supabase project, populated from the dashboard SQL editor
+      — never in a tracked migration, under `docs/`, or in a secret. Open
+      sign-ups let anyone holding the publishable key create accounts and
+      burn the project-wide 30 OTP sends per hour, denying the household its
+      links (#2 KTD3). With sign-ups closed, every create path — passwordless
+      create mode, a first Google or Apple sign-in (Hide My Email included) —
+      shows "New accounts for this app are set up by the account owner".
+      **Onboarding a new household member after closure:** reopen sign-ups
+      briefly (or add the address to the allow-list), have them create the
+      account on their device, then close again. A Hide My Email identity is
+      attached afterwards from the account section ("Add Apple"), never by a
+      fresh sign-up.
+- [ ] `ios/Runner/Info.plist` gains a `CFBundleURLTypes` entry whose scheme
+      is the **reversed iOS client id**
+      (`com.googleusercontent.apps.<iOS client id>`), in the same change
+      that sets the client ids (#2 KTD2). No placeholder scheme ships before
+      then. OAuth client ids and the reversed id are client-safe and are the
+      only Google values that may be committed.
+- [ ] `GOOGLE_IOS_CLIENT_ID` and `GOOGLE_WEB_CLIENT_ID` set as repository
+      secrets on `wjdavis5/lunarlog` and as the same keys in the local
+      `dart_defines.json`. Client-safe values, but still secrets, so forks
+      build with them empty (no Google button); every workflow build must
+      succeed either way.
+- [ ] **Admin recovery for a rogue linked identity** (someone attached their
+      Google or Apple identity to the operator's account from an unlocked
+      device or with an exfiltrated token; there is no in-app unlink):
+      Authentication → Users → the user → delete that identity from the
+      user, then revoke every session for that user from the same page. The
+      operator signs in again with a remaining method.
 
 ### Sentry
 
@@ -158,6 +239,82 @@ observation; record the date and build number next to it when it passes.
       `email`, `record`, or `p_day_entries` keys and HTTP URLs are truncated at
       `?`.
 
+### Social logins and passwordless (issue #2)
+
+Run on an iPhone build **and** an Android build (debug keystore SHA-1
+registered), with the go-live section above completed and a throwaway
+account. Every Google item needs a throwaway Google account too, not a
+household member's.
+
+- [ ] **Google sign-in on a fresh device (#2 F1, AE2).** On a first-run
+      device tap "Sign in with Google": the native picker appears, no browser
+      tab. Choosing an account signs in and the first-run flow continues as
+      after an email sign-in. Dismissing the picker returns to the screen
+      with no error and no spinner.
+- [ ] **Google same-email auto-link (#2 F2).** On a device bound to an
+      email/password account, sign in with Google using the same verified
+      address: no "Different account" screen, the same data, and the account
+      section's methods line reads Email and Google.
+- [ ] **Google different-account mismatch (#2 F2, AE7).** On a device bound
+      to account A, sign in with a Google account whose address differs: the
+      "Different account" screen appears and its copy names the Google case
+      as well as Hide My Email; "Switch account" leaves A's data intact and
+      no sync runs.
+- [ ] **Google sign-in with sign-ups closed (#2 KTD3).** With "Allow new
+      users to sign up" off, sign in with a Google account that has no
+      Supabase user: the screen shows "New accounts for this app are set up
+      by the account owner", not the generic failure copy.
+- [ ] **iOS Google sign-in, no consent prompt (#2 AS3).** On iPhone the
+      sign-in completes with no consent or scope prompt after the picker and
+      Supabase accepts the token (iOS tokens carry `at_hash`, so the silent
+      access-token read must succeed). A failure here is a plan stop
+      condition, not something to fix with a prompting read.
+- [ ] **Add a method, re-auth declined (#2 F5, AE6).** Signed in with
+      email/password, tap "Add Google" in the account section and cancel the
+      device-credential prompt: no Google picker, no error, no change.
+- [ ] **Add a method, re-auth granted (#2 F5, AE6).** Same, but pass the
+      prompt and pick a Google account with a different address: the methods
+      line updates to Email and Google and the data is unchanged (same
+      `auth.uid()`). Repeat on iOS with "Add Apple".
+- [ ] **Magic link on this device (#2 F3, AE5).** In sign-in mode tap "Email
+      me a sign-in link": the status tile and the sign-in screen show "check
+      your email" with a code field. Open the link on this device: a session
+      arrives, the pushed sign-in screen pops without a tap, and the pending
+      email clears.
+- [ ] **Link opened on another lunarlog install (#2 F4, R7).** Request a
+      link on device 1 and open it on device 2 (another lunarlog install):
+      device 2 shows the device-credential gate first, then one generic
+      "no longer valid" message after unlock, and is not signed in; device 1
+      stays signed out with its code field still usable.
+- [ ] **Expired link (#2 F4, AE4).** With the app killed, open a sign-in
+      link after the 600-second expiry: the gate shows first; after unlock
+      the home screen shows "That sign-in link is no longer valid. Request a
+      new one." exactly once, and not again on the next unlock.
+- [ ] **Confirmation and reset links after expiry (#2 AS5).** Open a
+      confirmation link and a reset link after 600 seconds: each shows the
+      same generic link message after unlock and nothing else. Recovery is
+      signing up again / requesting a new reset (there is no resend button).
+- [ ] **Code entry (#2 F3, AS4).** Type the 8-digit code from a magic-link
+      email (existing user) and, in create-account mode with sign-ups open,
+      from a confirmation email (new user): both sign in without opening the
+      link. A wrong or stale code shows the generic invalid-code copy with no
+      email in it.
+- [ ] **Android without Play Services (#2 R3, KTD8).** On an Android device
+      or emulator without Google Play Services (or with no Google account),
+      tap the Google button: the copy names email sign-in as the
+      alternative; no crash and no provider error text.
+- [ ] **Post-unlock state after the Google picker and the Apple sheet.**
+      Both system UIs send the app `inactive`, which the gate treats as
+      departure, so the lock screen can show while the picker is up and the
+      sign-in completes behind it. After unlocking, the sign-in screen has
+      completed (or the methods line has updated) exactly once, with no
+      duplicate consent or mismatch screen.
+- [ ] **Google button branding (#2 KTD6).** Screenshot the sign-in screen on
+      iOS and Android and compare to Google's light-theme branding spec:
+      unmodified "G" mark on a white pad, white fill, `#747775` stroke,
+      `#1F1F1F` "Sign in with Google", 40 dp height. On iOS the Apple button
+      comes first and is at least as large.
+
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows
@@ -172,6 +329,13 @@ is a gate before go-live.
   entitlements file, and the whole device checklist above.
 - Sentry smoke test (no DSN configured yet).
 - Provisioning profile regeneration with the Sign in with Apple capability.
+- The whole "Social logins and passwordless (issue #2)" go-live section
+  (Google Cloud clients, Supabase Google provider, manual linking, both
+  email templates, OTP expiry and length, sign-up closure, the Info.plist
+  scheme, the `GOOGLE_*` secrets) and every issue #2 device-checklist item
+  — none configured or exercised as of 2026-09-03.
+- Android device runs for issue #2 (Google picker, Play-Services-less
+  device): no Android device or emulator in the implementation environment.
 
 What **was** run (2026-09-03, Windows): `flutter analyze` clean; `flutter
 test` 377/377; `flutter build web --release` and `flutter build apk --debug`;
@@ -227,3 +391,15 @@ pgTAP tests.
   auth settings via `supabase config push`; iCloud backup exclusion and the
   `ThisDeviceOnly` key-class migration; `https` App Links; new-device sign-in
   email notice.
+- **Deferred from the social-logins plan** (issue #2, Scope Boundaries):
+  **passkeys** — Supabase passkeys are beta and the Dart API is
+  `@experimental`; a native flow needs the `passkeys` plugin, a relying-party
+  id on an HTTPS domain the app owns serving `apple-app-site-association`
+  and `assetlinks.json`, and that rp id is immutable once a passkey is
+  enrolled, so file it only after the `https` App Links domain above exists.
+  **Unlinking a sign-in method** — needs a second identity and a
+  re-authentication story; until then the account keeps every method it has
+  and the dashboard recovery in the go-live section is the only removal.
+  Also Google Sign-In on web (`google_sign_in_web` offers only its rendered
+  button) and security-notification emails for a linked identity or changed
+  password once custom SMTP exists (issue #18).
