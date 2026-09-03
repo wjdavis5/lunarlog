@@ -70,6 +70,11 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.5
   build_runner: ^2.16.0
+  # Quality gates (tool/quality_gate.dart, tool/mutation_gate.dart — see
+  # AGENTS.md "Quality gates"): analyzer powers the CRAP gate's cyclomatic
+  # complexity walk; mutation_test powers the local (non-CI) mutation run.
+  analyzer: ^14.3.0
+  mutation_test: ^1.8.0
 
 # Instructs package:sqlite3's native build hook to bundle SQLCipher instead of
 # plain SQLite (https://github.com/simolus3/sqlite3.dart/blob/main/sqlite3/doc/hook.md).
