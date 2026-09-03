@@ -14,6 +14,7 @@
 /// sign-in methods and in-app linking of a second one from (#2 U8; KTD5).
 library;
 
+import 'package:lunarlog/domain/util/list_equals.dart';
 import 'package:meta/meta.dart';
 
 /// The session as the app sees it.
@@ -41,6 +42,14 @@ enum AuthSignOutScope {
   global,
 }
 
+/// Supabase identity provider ids as they appear in [AuthUser.providers]
+/// (#2 U8, U5). Domain strings, deliberately not a Supabase enum.
+abstract final class AuthProviders {
+  static const String email = 'email';
+  static const String google = 'google';
+  static const String apple = 'apple';
+}
+
 @immutable
 class AuthUser {
   const AuthUser({required this.id, this.email, this.providers = const []});
@@ -62,19 +71,10 @@ class AuthUser {
       other is AuthUser &&
       other.id == id &&
       other.email == email &&
-      _sameProviders(other.providers, providers);
+      listEquals(other.providers, providers);
 
   @override
   int get hashCode => Object.hash(id, email, Object.hashAll(providers));
-
-  static bool _sameProviders(List<String> a, List<String> b) {
-    if (identical(a, b)) return true;
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
 
   @override
   String toString() => 'AuthUser($id)';

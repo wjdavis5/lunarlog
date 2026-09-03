@@ -37,9 +37,9 @@ const String kSignOutConsequenceCopy =
 /// Human label for a Supabase identity provider id (#2 U5; R9). Known ids
 /// map to their brand names; anything else is capitalized as-is.
 String providerLabel(String provider) => switch (provider) {
-      'email' => 'Email',
-      'google' => 'Google',
-      'apple' => 'Apple',
+      AuthProviders.email => 'Email',
+      AuthProviders.google => 'Google',
+      AuthProviders.apple => 'Apple',
       '' => '',
       _ => provider[0].toUpperCase() + provider.substring(1),
     };
@@ -78,7 +78,8 @@ class _AccountSectionState extends State<AccountSection> {
     final signedIn = auth.state == AuthSessionState.signedIn ||
         auth.state == AuthSessionState.passwordRecovery;
     final theme = Theme.of(context);
-    final providers = auth.currentUser?.providers ?? const <String>[];
+    final user = auth.currentUser;
+    final providers = user?.providers ?? const <String>[];
     final linkError = _linkError;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -91,9 +92,9 @@ class _AccountSectionState extends State<AccountSection> {
           ListTile(
             key: const ValueKey('account-identity'),
             leading: const Icon(Icons.person_outline),
-            title: Text(auth.currentUser?.email == null
+            title: Text(user?.email == null
                 ? 'Signed in'
-                : 'Signed in as ${auth.currentUser!.email}'),
+                : 'Signed in as ${user!.email}'),
             subtitle: providers.isEmpty
                 ? null
                 : Text('Sign-in methods: '
@@ -108,21 +109,21 @@ class _AccountSectionState extends State<AccountSection> {
                 style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
-          if (_canAddApple && !providers.contains('apple'))
+          if (_canAddApple && !providers.contains(AuthProviders.apple))
             _addMethodTile(
               key: 'account-add-apple',
-              provider: 'apple',
+              provider: AuthProviders.apple,
               icon: Icons.apple,
               label: 'Add Apple',
-              onTap: () => _addMethod('apple', auth.linkApple),
+              onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
             ),
-          if (_canAddGoogle && !providers.contains('google'))
+          if (_canAddGoogle && !providers.contains(AuthProviders.google))
             _addMethodTile(
               key: 'account-add-google',
-              provider: 'google',
+              provider: AuthProviders.google,
               icon: Icons.add_link,
               label: 'Add Google',
-              onTap: () => _addMethod('google', auth.linkGoogle),
+              onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
             ),
         ] else
           ListTile(

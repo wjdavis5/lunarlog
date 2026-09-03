@@ -150,7 +150,7 @@ IconData _iconFor(
 /// tree; watches [SettingsKeys.awaitingConfirmationEmail] and
 /// [SettingsKeys.awaitingMagicLinkEmail] (#2 U4). Tappable while upload
 /// consent is pending: reopens the consent screen (AS4).
-class SyncStatusTile extends StatelessWidget {
+class SyncStatusTile extends StatefulWidget {
   const SyncStatusTile({
     super.key,
     this.now,
@@ -164,16 +164,37 @@ class SyncStatusTile extends StatelessWidget {
   final bool webSyncOff;
 
   @override
+  State<SyncStatusTile> createState() => _SyncStatusTileState();
+}
+
+class _SyncStatusTileState extends State<SyncStatusTile> {
+  /// The two settings watches are created once per [SettingsStore] instance
+  /// rather than on every build: each `watch` opens a live database query,
+  /// and the tile rebuilds on every sync-progress notification.
+  SettingsStore? _settings;
+  Stream<String?>? _awaiting;
+  Stream<String?>? _awaitingLink;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<SettingsStore?>(context, listen: false);
+    if (identical(settings, _settings)) return;
+    _settings = settings;
+    _awaiting = settings?.watch(SettingsKeys.awaitingConfirmationEmail);
+    _awaitingLink = settings?.watch(SettingsKeys.awaitingMagicLinkEmail);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final sync = Provider.of<SyncStatusController?>(context);
     final auth = Provider.of<AuthController?>(context);
-    final settings = Provider.of<SettingsStore?>(context, listen: false);
-    final awaiting = settings?.watch(SettingsKeys.awaitingConfirmationEmail);
-    final awaitingLink = settings?.watch(SettingsKeys.awaitingMagicLinkEmail);
+    final now = widget.now;
+    final webSyncOff = widget.webSyncOff;
     return StreamBuilder<String?>(
-      stream: awaiting,
+      stream: _awaiting,
       builder: (context, awaitingSnapshot) => StreamBuilder<String?>(
-        stream: awaitingLink,
+        stream: _awaitingLink,
         builder: (context, linkSnapshot) {
           final snapshot = sync?.snapshot;
           final copy = syncStatusCopy(

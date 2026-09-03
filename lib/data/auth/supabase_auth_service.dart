@@ -365,16 +365,11 @@ class SupabaseAuthService implements AuthService {
     if (credential == null) return const AppleSignInCancelled();
     final idToken = credential.identityToken;
     if (idToken == null) throw const AuthFailure.unknown();
-    final session = await _guard(() async {
-      final response = await _gateway.signInWithIdToken(
-        provider: OAuthProvider.apple,
-        idToken: idToken,
-        nonce: rawNonce,
-      );
-      final session = response.session;
-      if (session == null) throw const AuthFailure.unknown();
-      return session;
-    });
+    final session = await _exchangeIdTokenForSession(
+      provider: OAuthProvider.apple,
+      idToken: idToken,
+      nonce: rawNonce,
+    );
     // Apple sends the name only with the *first* credential; keep it.
     final fullName = [credential.givenName, credential.familyName]
         .whereType<String>()
@@ -404,7 +399,7 @@ class SupabaseAuthService implements AuthService {
   /// follow one nonce discipline (#2 AS6).
   Future<AuthorizationCredentialAppleID?> _requestAppleCredentialFor(
       String rawNonce) async {
-    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+    final hashedNonce = _hashNonce(rawNonce);
     try {
       return await _requestAppleCredential(hashedNonce: hashedNonce);
     } on SignInWithAppleAuthorizationException catch (error) {
@@ -423,19 +418,40 @@ class SupabaseAuthService implements AuthService {
     if (credential == null) return const GoogleSignInCancelled();
     final idToken = credential.idToken;
     if (idToken == null) throw const AuthFailure.unknown();
-    final session = await _guard(() async {
-      final response = await _gateway.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: credential.accessToken,
-        nonce: nonce.raw,
-      );
-      final session = response.session;
-      if (session == null) throw const AuthFailure.unknown();
-      return session;
-    });
+    final session = await _exchangeIdTokenForSession(
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: credential.accessToken,
+      nonce: nonce.raw,
+    );
     return GoogleSignInSession(_toUser(session.user)!);
   }
+
+  /// Exchanges a provider ID token for a session through [_guard], so every
+  /// provider error becomes a typed [AuthFailure]; a response without a
+  /// session is [AuthUnknownFailure]. Shared by the Apple and Google flows.
+  Future<Session> _exchangeIdTokenForSession({
+    required OAuthProvider provider,
+    required String idToken,
+    String? accessToken,
+    required String nonce,
+  }) =>
+      _guard(() async {
+        final response = await _gateway.signInWithIdToken(
+          provider: provider,
+          idToken: idToken,
+          accessToken: accessToken,
+          nonce: nonce,
+        );
+        final session = response.session;
+        if (session == null) throw const AuthFailure.unknown();
+        return session;
+      });
+
+  /// SHA-256 hex of a raw nonce: what the native SDKs receive while Supabase
+  /// gets the raw value (KTD9, #2 KTD1).
+  static String _hashNonce(String raw) =>
+      sha256.convert(utf8.encode(raw)).toString();
 
   void _requireGoogle() {
     if (!_googleAvailable) {
@@ -474,7 +490,7 @@ class SupabaseAuthService implements AuthService {
 
   ({String raw, String hashed}) _mintGoogleNonce() {
     final raw = _generateNonce();
-    return (raw: raw, hashed: sha256.convert(utf8.encode(raw)).toString());
+    return (raw: raw, hashed: _hashNonce(raw));
   }
 
   /// Links Google to the current account (#2 U8; KTD5, R10): the same
