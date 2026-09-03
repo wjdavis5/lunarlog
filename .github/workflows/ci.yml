@@ -120,6 +120,17 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build
+            ios/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
       - name: Get dependencies
         run: flutter pub get
 
