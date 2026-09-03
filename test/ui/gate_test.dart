@@ -44,12 +44,27 @@ class FakeGate implements AppGate {
   /// (#2 U5; KTD5). Consumed by that request.
   Completer<bool>? holdNext;
 
+  /// Fired from inside [requestAccess], before it answers: the real system
+  /// credential prompt reports its own lifecycle transition while it is up
+  /// (iOS sends `inactive` for Face ID; Android's passcode fallback
+  /// launches a separate activity and sends `paused`). Reproducing *that*
+  /// — rather than a lifecycle event next to the prompt — is what issue #65
+  /// needs (#65 U3).
+  ///
+  /// Report transitions from here with
+  /// `controller.didChangeAppLifecycleState(...)` or
+  /// `tester.binding.handleAppLifecycleStateChanged(...)` directly; never
+  /// the pumping [transitionTo] driver, which trips a `TestAsyncUtils`
+  /// guarded-function conflict when called from inside an awaited prompt.
+  void Function()? onPrompt;
+
   @override
   bool requiresUnlock;
 
   @override
   Future<bool> requestAccess() async {
     requests++;
+    onPrompt?.call();
     final hold = holdNext;
     if (hold != null) {
       holdNext = null;
@@ -60,8 +75,13 @@ class FakeGate implements AppGate {
 }
 
 class FakeInactivityTimer implements InactivityTimer {
-  FakeInactivityTimer(this._onTimeout);
+  FakeInactivityTimer(this.delay, this._onTimeout);
 
+  /// The delay this timer was created with. The controller now creates
+  /// three kinds through one factory — the inactivity countdown, the
+  /// system-UI window deadline, and the settling tail (#65 U1) — and their
+  /// durations are what tell them apart.
+  final Duration delay;
   final void Function() _onTimeout;
   bool active = true;
 
@@ -79,9 +99,18 @@ class FakeInactivityTimers {
   final created = <FakeInactivityTimer>[];
 
   InactivityTimer create(Duration delay, VoidCallback onTimeout) {
-    final timer = FakeInactivityTimer(onTimeout);
+    final timer = FakeInactivityTimer(delay, onTimeout);
     created.add(timer);
     return timer;
+  }
+
+  /// Fires every active timer created with [delay]; the others are left
+  /// armed, so a test can expire the window deadline without also
+  /// expiring the inactivity countdown, or vice versa.
+  void fireWithDelay(Duration delay) {
+    for (final timer in List.of(created)) {
+      if (timer.delay == delay) timer.fire();
+    }
   }
 
   InactivityTimerFactory get factory => create;
@@ -222,6 +251,130 @@ void main() {
         reason: 'auto-relock default ON (fail closed)');
   });
 
+  group('the credential decides, not the lifecycle (#65 U1; KTD1, KTD2a)',
+      () {
+    testWidgets('a granted credential unlocks even though the prompt '
+        'reported inactive while it was up (issue #65)', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      expect(controller.locked, isTrue);
+
+      gate.grantNext = true;
+      // iOS reports `inactive` for the Face ID prompt itself.
+      gate.onPrompt =
+          () => controller.didChangeAppLifecycleState(
+              AppLifecycleState.inactive);
+
+      await controller.unlock();
+
+      expect(controller.locked, isFalse,
+          reason: 'the system accepted the credential; that decides');
+      expect(controller.lastAttemptDenied, isFalse,
+          reason: 'nothing was declined, so no denial message');
+    });
+
+    testWidgets('a granted credential unlocks even though the prompt '
+        'reported hidden then paused while it was up', (tester) async {
+      // Android's device-credential fallback launches a separate activity
+      // through KeyguardManager, genuinely backgrounding the app.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+
+      gate.grantNext = true;
+      gate.onPrompt = () {
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        controller.didChangeAppLifecycleState(AppLifecycleState.hidden);
+        controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      };
+
+      await controller.unlock();
+
+      expect(controller.locked, isFalse);
+      expect(controller.lastAttemptDenied, isFalse);
+    });
+
+    testWidgets('a departure delivered after the credential result does not '
+        're-lock the app', (tester) async {
+      // The prompt's dismissal can report `inactive` after the result has
+      // already been handed back; `lock()` never sets the denial flag, so
+      // this produces the same screen as a discarded grant.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+
+      gate.grantNext = true;
+      gate.onPrompt =
+          () => controller.didChangeAppLifecycleState(
+              AppLifecycleState.inactive);
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+      expect(controller.systemUiActive, isTrue,
+          reason: 'the window saw a departure, so it settles rather than '
+              'closing with the credential result');
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+
+      expect(controller.locked, isFalse,
+          reason: 'still settling; this is the same prompt dismissing');
+      expect(controller.obscured, isTrue,
+          reason: 'covered regardless — the window never suppresses that');
+    });
+
+    testWidgets('a declined credential still leaves the app locked with the '
+        'denial message, whatever the lifecycle reported', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+
+      gate.grantNext = false;
+      gate.onPrompt =
+          () => controller.didChangeAppLifecycleState(
+              AppLifecycleState.inactive);
+
+      await controller.unlock();
+
+      expect(controller.locked, isTrue);
+      expect(controller.lastAttemptDenied, isTrue);
+    });
+
+    testWidgets('reauthenticate reports a granted credential even though the '
+        'prompt reported inactive while it was up', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      gate.grantNext = true;
+      // The real sequence: the prompt reports `inactive` as it appears and
+      // the app is back by the time the credential is answered.
+      gate.onPrompt = () {
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      };
+
+      expect(await controller.reauthenticate(), isTrue,
+          reason: 'the add-a-method action must not be cancelled by the '
+              'credential prompt reporting its own focus loss');
+      expect(controller.locked, isFalse,
+          reason: 'the operator is back, so nothing is replayed and a '
+              're-auth never changes the lock state itself');
+    });
+  });
+
   group('re-authentication for linking (#2 U5; KTD5)', () {
     testWidgets('returns false without prompting while an unlock is in '
         'progress; otherwise reports the credential and never changes '
@@ -262,10 +415,20 @@ void main() {
       expect(controller.locked, isTrue);
     });
 
-    testWidgets('returns false when the prompt is interrupted by a '
+    // Rewritten for #65 (KTD4, KTD8): this used to assert that an
+    // interrupted prompt returns false. The prompt reports `inactive`
+    // itself, so that fired on every single call and silently cancelled
+    // "Add Google". The credential's own result is now what the caller is
+    // told; re-locking is a separate concern, asserted by its sibling.
+    testWidgets('reports the credential even when the prompt reports its own '
         'lifecycle change, without re-locking mid-prompt', (tester) async {
       final gate = FakeGate(requiresUnlock: false);
-      final controller = GateController(gate: gate);
+      // Fake timers: a closing system-UI window re-arms the inactivity
+      // countdown (#65 U1), which would otherwise leave a real 2-minute
+      // Timer pending past the end of the test.
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
       addTearDown(controller.dispose);
       expect(controller.locked, isFalse);
 
@@ -276,7 +439,8 @@ void main() {
       // The system prompt itself reports `inactive`.
       controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
       hold.complete(true);
-      expect(await pending, isFalse);
+      expect(await pending, isTrue,
+          reason: 'the system accepted the credential');
       expect(controller.authenticating, isFalse);
       expect(controller.locked, isFalse);
 
@@ -301,7 +465,9 @@ void main() {
       expect(controller.locked, isFalse,
           reason: 'no re-lock while the prompt is still up');
       hold.complete(true);
-      expect(await pending, isFalse);
+      expect(await pending, isTrue,
+          reason: '#65 KTD4: the credential was accepted, and that is what '
+              'the caller is told; the departure is replayed separately');
       expect(controller.locked, isTrue,
           reason: 'the suppressed departure is replayed after the prompt');
       expect(controller.obscured, isTrue);
