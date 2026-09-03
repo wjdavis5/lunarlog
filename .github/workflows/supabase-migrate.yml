@@ -1,0 +1,50 @@
+name: Supabase migrate
+
+# Pushes the tracked migrations under supabase/migrations to the cloud
+# project (KTD14). Runs only when supabase/** changes on main, inside the
+# `production` GitHub environment, which must be configured with a required
+# reviewer and the environment-scoped secrets SUPABASE_ACCESS_TOKEN,
+# SUPABASE_DB_PASSWORD, and SUPABASE_PROJECT_REF. Before approving a run,
+# check the Supabase MCP `get_advisors` output for security or RLS findings
+# (there is no CLI equivalent).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+  workflow_dispatch:
+
+concurrency:
+  # Migrations must apply in order; never cancel one mid-push.
+  group: supabase-migrate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Push migrations
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          # Pinned to the version the migrations and tests were written against.
+          version: 2.116.0
+
+      - name: Link project
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: List pending migrations
+        run: supabase db push --dry-run
+
+      - name: Push migrations
+        run: supabase db push

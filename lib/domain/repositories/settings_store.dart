@@ -17,4 +17,10 @@ abstract final class SettingsKeys {
   static const String relockEnabled = 'relock_enabled';
   static const String webModalAcknowledged = 'web_modal_acknowledged';
   static const String firstRunNoticeShown = 'first_run_notice_shown';
+
+  /// Email of a sign-up whose confirmation link has not been opened on
+  /// this device yet (AS10). Device-local; cleared (set to the empty
+  /// string) once a signed-in session arrives.
+  static const String awaitingConfirmationEmail =
+      'awaiting_confirmation_email';
 }

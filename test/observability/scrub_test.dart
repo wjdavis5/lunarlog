@@ -1,0 +1,419 @@
+// U7 (KTD12, R17-R19, AE7): the Sentry privacy floor as pure functions.
+//
+// Every event test serializes the scrubbed event with `toJson()` and asserts
+// the forbidden substrings are absent from the whole payload, not just from
+// the field they were planted in: a note that survived by moving somewhere
+// unexpected still fails the test.
+
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/observability/scrub.dart';
+import 'package:lunarlog/observability/sentry_bootstrap.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+const _note = 'private note about cramps';
+const _sql = "INSERT INTO day_entries (note) VALUES ('$_note')";
+const _email = 'kid@example.com';
+const _query = 'profile_id=eq.01HZY8PQ9K3M2N4R5T6V7W8X9Y';
+const _url = 'https://x.supabase.co/rest/v1/day_entries?$_query';
+const _bearer = 'Bearer eyJhbGciOiJIUzI1NiJ9.secret';
+const _apikey = 'sb_publishable_abc123';
+
+String _json(SentryEvent event) => jsonEncode(event.toJson());
+
+SentryStackTrace _dataLayerStack() => SentryStackTrace(frames: [
+      SentryStackFrame(
+        absPath: 'package:lunarlog/data/db/native_db.dart',
+        function: 'openEncrypted',
+        lineNo: 42,
+      ),
+      SentryStackFrame(
+        absPath: 'package:lunarlog/app_lifecycle.dart',
+        function: '_openDatabase',
+      ),
+    ]);
+
+SentryEvent _fullEvent() => SentryEvent(
+      logger: 'day_entries.note',
+      serverName: 'wills-iphone',
+      message: SentryMessage('saved note $_note', params: [_note]),
+      exceptions: [
+        SentryException(
+          type: 'SqliteException',
+          value: 'SqliteException(19): constraint failed, $_sql',
+          stackTrace: _dataLayerStack(),
+        ),
+      ],
+      // ignore: deprecated_member_use
+      extra: {'note': _note, 'harmless': 'x'},
+      tags: {'note': _note, 'environment': 'development'},
+      user: SentryUser(id: 'user-1', email: _email),
+      contexts: Contexts(
+        device: SentryDevice(name: 'Wills iPhone', model: 'iPhone15,2'),
+        operatingSystem: SentryOperatingSystem(name: 'iOS', version: '18.0'),
+        runtimes: [SentryRuntime(name: 'Dart', version: '3.13')],
+        app: SentryApp(name: 'lunarlog', version: '1.0.0', build: '1'),
+      )..['profile'] = {'display_name': 'Piper', 'id': 'p1'},
+      request: SentryRequest(
+        url: _url,
+        method: 'POST',
+        queryString: _query,
+        headers: {'Authorization': _bearer, 'apikey': _apikey},
+        data: {'note': _note, 'local_date': '2026-09-02'},
+      ),
+      breadcrumbs: [
+        Breadcrumb(category: 'navigation', data: {'to': '/entry/2026-09-02'}),
+        Breadcrumb(category: 'ui.click', data: {'email': _email}),
+      ],
+    );
+
+void main() {
+  group('scrubEvent', () {
+    test('AE7: SqliteException with SQL + note becomes the type name only',
+        () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'SqliteException',
+          value: 'SqliteException(19): constraint failed, $_sql',
+          stackTrace: _dataLayerStack(),
+        ),
+      ]))!;
+      final ex = out.exceptions!.single;
+      expect(ex.type, 'SqliteException');
+      expect(ex.value, 'SqliteException');
+      expect(ex.stackTrace, isNotNull, reason: 'stack survives (AE7)');
+      expect(ex.stackTrace!.frames, hasLength(2));
+      final json = _json(out);
+      expect(json, isNot(contains(_note)));
+      expect(json, isNot(contains('INSERT INTO')));
+      expect(json, isNot(contains('day_entries')));
+    });
+
+    test('PostgrestException and AuthException reduce to their type names',
+        () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'PostgrestException',
+          value: 'details: row note=$_note',
+        ),
+        SentryException(
+          type: 'AuthException',
+          value: 'Invalid login for $_email',
+        ),
+      ]))!;
+      expect(out.exceptions!.map((e) => e.value),
+          ['PostgrestException', 'AuthException']);
+      final json = _json(out);
+      expect(json, isNot(contains(_note)));
+      expect(json, isNot(contains(_email)));
+    });
+
+    test('an exception raised from lib/data is reduced even with a neutral '
+        'type name', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'StateError',
+          value: 'Bad state: $_note',
+          stackTrace: _dataLayerStack(),
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'StateError');
+      expect(_json(out), isNot(contains(_note)));
+    });
+
+    test('an exception from outside lib/data keeps its message', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'FlutterError',
+          value: 'RenderFlex overflowed by 12 pixels',
+          stackTrace: SentryStackTrace(frames: [
+            SentryStackFrame(absPath: 'package:flutter/src/rendering/flex.dart'),
+          ]),
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value,
+          'RenderFlex overflowed by 12 pixels');
+    });
+
+    test('request keeps the path, loses query, headers, and data', () {
+      final out = scrubEvent(SentryEvent(
+        request: SentryRequest(
+          url: _url,
+          method: 'POST',
+          queryString: _query,
+          headers: {'Authorization': _bearer, 'apikey': _apikey},
+          data: {'note': _note},
+        ),
+      ))!;
+      final request = out.request!;
+      expect(request.url, 'https://x.supabase.co/rest/v1/day_entries');
+      expect(request.method, 'POST');
+      expect(request.headers, isEmpty);
+      expect(request.data, isNull);
+      expect(request.queryString, isNull);
+      final json = _json(out);
+      expect(json, isNot(contains(_query)));
+      expect(json, isNot(contains('01HZY8')));
+      expect(json, isNot(contains(_bearer)));
+      expect(json, isNot(contains(_apikey)));
+      expect(json, isNot(contains('Authorization')));
+      expect(json, isNot(contains('apikey')));
+      expect(json, isNot(contains(_note)));
+    });
+
+    test('extra, device name, and custom contexts go; os/runtime/app.version '
+        'survive', () {
+      final out = scrubEvent(_fullEvent())!;
+      // ignore: deprecated_member_use
+      expect(out.extra, isNull);
+      expect(out.contexts.device, isNull);
+      expect(out.contexts['profile'], isNull);
+      expect(out.contexts.operatingSystem?.name, 'iOS');
+      expect(out.contexts.operatingSystem?.version, '18.0');
+      expect(out.contexts.runtimes.single.name, 'Dart');
+      expect(out.contexts.app?.version, '1.0.0');
+      expect(out.contexts.app?.name, isNull);
+      final json = _json(out);
+      expect(json, isNot(contains('Wills iPhone')));
+      expect(json, isNot(contains('iPhone15,2')));
+      expect(json, isNot(contains('Piper')));
+      expect(json, isNot(contains('display_name')));
+      expect(json, isNot(contains('wills-iphone')));
+      expect(json, contains('"os"'));
+      expect(json, contains('"runtime"'));
+      expect(json, contains('"1.0.0"'));
+    });
+
+    test('user is null even when set upstream', () {
+      final out = scrubEvent(_fullEvent())!;
+      expect(out.user, isNull);
+      final json = _json(out);
+      expect(json, isNot(contains(_email)));
+      expect(json, isNot(contains('user-1')));
+    });
+
+    test('message and logger carrying deny-listed keys are scrubbed', () {
+      final out = scrubEvent(_fullEvent())!;
+      expect(out.logger, isNull);
+      expect(out.message?.params, isNull);
+      final json = _json(out);
+      expect(json, isNot(contains(_note)));
+      expect(json, isNot(contains('day_entries.note')));
+    });
+
+    test('a message without deny-listed content survives, params dropped', () {
+      final out = scrubEvent(SentryEvent(
+        logger: 'startup',
+        message: SentryMessage('database opened in %d ms', params: [12]),
+      ))!;
+      expect(out.logger, 'startup');
+      expect(out.message?.formatted, 'database opened in %d ms');
+      expect(out.message?.params, isNull);
+    });
+
+    test('event tags lose deny-listed keys but keep the rest', () {
+      final out = scrubEvent(_fullEvent())!;
+      expect(out.tags, {'environment': 'development'});
+    });
+
+    test('attached breadcrumbs are re-scrubbed', () {
+      final out = scrubEvent(_fullEvent())!;
+      expect(out.breadcrumbs, hasLength(1));
+      expect(out.breadcrumbs!.single.category, 'navigation');
+      expect(out.breadcrumbs!.single.data, isNull);
+      expect(_json(out), isNot(contains(_email)));
+    });
+
+    test('the whole serialized full event carries none of the planted values',
+        () {
+      final json = _json(scrubEvent(_fullEvent())!);
+      for (final forbidden in [
+        _note,
+        _email,
+        _query,
+        _bearer,
+        _apikey,
+        'INSERT INTO',
+        'Wills iPhone',
+        'Piper',
+        'user-1',
+        'wills-iphone',
+        '/entry/2026-09-02',
+      ]) {
+        expect(json, isNot(contains(forbidden)), reason: forbidden);
+      }
+    });
+  });
+
+  group('scrubBreadcrumb', () {
+    test('null in, null out', () {
+      expect(scrubBreadcrumb(null), isNull);
+    });
+
+    test('navigation breadcrumb loses its data', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        message: 'route',
+        data: {'from': '/', 'to': '/entry/2026-09-02'},
+      ))!;
+      expect(out.category, 'navigation');
+      expect(out.message, 'route');
+      expect(out.data, isNull);
+    });
+
+    test('http breadcrumb URL is truncated at ? and query fields dropped', () {
+      final out = scrubBreadcrumb(Breadcrumb.http(
+        url: Uri.parse(_url),
+        method: 'GET',
+        statusCode: 200,
+        httpQuery: _query,
+        httpFragment: 'frag',
+      ))!;
+      expect(out.data!['url'], 'https://x.supabase.co/rest/v1/day_entries');
+      expect(out.data!['method'], 'GET');
+      expect(out.data!['status_code'], 200);
+      expect(out.data!.containsKey('http.query'), isFalse);
+      expect(out.data!.containsKey('http.fragment'), isFalse);
+      expect(jsonEncode(out.toJson()), isNot(contains('01HZY8')));
+    });
+
+    test('breadcrumb whose data contains email is dropped', () {
+      expect(
+        scrubBreadcrumb(
+            Breadcrumb(category: 'auth', data: {'email': _email})),
+        isNull,
+      );
+    });
+
+    test('breadcrumb whose data contains record is dropped', () {
+      expect(
+        scrubBreadcrumb(
+            Breadcrumb(category: 'sync', data: {'record': {'id': 1}})),
+        isNull,
+      );
+    });
+
+    test('deny-listed keys are found at any depth and in either case', () {
+      for (final key in [
+        'note',
+        'tags',
+        'display_name',
+        'displayName',
+        'local_date',
+        'localDate',
+        'old_record',
+        'oldRecord',
+        'p_day_entries',
+        'pDayEntries',
+        'p_profiles',
+        'Authorization',
+        'authorization',
+        'apikey',
+        'APIKEY',
+      ]) {
+        expect(
+          scrubBreadcrumb(Breadcrumb(category: 'x', data: {
+            'outer': {
+              'list': [
+                {'inner': {key: 'v'}}
+              ]
+            }
+          })),
+          isNull,
+          reason: key,
+        );
+      }
+    });
+
+    test('an ordinary breadcrumb passes through unchanged', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'app.lifecycle',
+        message: 'resumed',
+        data: {'state': 'resumed'},
+      ))!;
+      expect(out.category, 'app.lifecycle');
+      expect(out.data, {'state': 'resumed'});
+    });
+  });
+
+  group('sentryDenyListedKeys', () {
+    test('matches both cases of every documented key', () {
+      expect(isDenyListedKey('display_name'), isTrue);
+      expect(isDenyListedKey('displayName'), isTrue);
+      expect(isDenyListedKey('p_day_entries'), isTrue);
+      expect(isDenyListedKey('pDayEntries'), isTrue);
+      expect(isDenyListedKey('Authorization'), isTrue);
+      expect(isDenyListedKey('status_code'), isFalse);
+      expect(isDenyListedKey('url'), isFalse);
+    });
+  });
+
+  group('runWithSentry', () {
+    test('empty DSN runs the app without calling init', () async {
+      var initCalls = 0;
+      var appRuns = 0;
+      await runWithSentry(
+        dsn: '',
+        init: (config, {appRunner}) async {
+          initCalls++;
+        },
+        appRunner: () async => appRuns++,
+      );
+      expect(initCalls, 0);
+      expect(appRuns, 1);
+    });
+
+    test('with a DSN, init is called with the KTD12 privacy floor and the '
+        'app runner is handed through', () async {
+      const dsn = 'https://public@o0.ingest.sentry.io/1';
+      SentryFlutterOptions? seen;
+      AppRunner? seenRunner;
+      var appRuns = 0;
+      await runWithSentry(
+        dsn: dsn,
+        init: (config, {appRunner}) async {
+          final options = SentryFlutterOptions(dsn: dsn);
+          await config(options);
+          seen = options;
+          seenRunner = appRunner;
+        },
+        appRunner: () async => appRuns++,
+      );
+      expect(appRuns, 0, reason: 'runWithSentry hands the runner to init');
+      expect(seenRunner, isNotNull);
+      await seenRunner!();
+      expect(appRuns, 1);
+
+      final o = seen!;
+      expect(o.dsn, dsn);
+      expect(o.environment, anyOf('production', 'development'));
+      expect(o.sendDefaultPii, isFalse);
+      expect(o.attachScreenshot, isFalse);
+      // ignore: experimental_member_use
+      expect(o.attachViewHierarchy, isFalse);
+      expect(o.replay.sessionSampleRate, anyOf(isNull, 0.0));
+      expect(o.replay.onErrorSampleRate, anyOf(isNull, 0.0));
+      expect(o.enableUserInteractionBreadcrumbs, isFalse);
+      expect(o.enableUserInteractionTracing, isFalse);
+      expect(o.tracesSampleRate, anyOf(isNull, 0.0));
+      // ignore: experimental_member_use
+      expect(o.profilesSampleRate, anyOf(isNull, 0.0));
+      expect(o.sampleRate, 1.0);
+      expect(o.enableAutoSessionTracking, isTrue);
+      expect(o.maxRequestBodySize, MaxRequestBodySize.never);
+      expect(o.beforeSend, isNotNull);
+      expect(o.beforeBreadcrumb, isNotNull);
+
+      // The wired callbacks are the scrubbers.
+      final scrubbed = await o.beforeSend!(_fullEvent(), Hint());
+      expect(scrubbed!.user, isNull);
+      expect(_json(scrubbed), isNot(contains(_note)));
+      expect(
+        o.beforeBreadcrumb!(
+            Breadcrumb(category: 'x', data: {'email': _email}), Hint()),
+        isNull,
+      );
+    });
+  });
+}

@@ -1,11 +1,14 @@
-/// Settings screen (U7 v1): exactly one control — the inactivity
-/// auto-relock toggle (default on, fixed 2-minute timeout), persisted via
-/// [SettingsKeys.relockEnabled]. Backgrounding always re-locks regardless
-/// of this toggle. Reachable from the profile picker.
+/// Settings screen: the inactivity auto-relock toggle (default on, fixed
+/// 2-minute timeout, persisted via [SettingsKeys.relockEnabled];
+/// backgrounding always re-locks regardless) and, when the build provides
+/// an [AuthController], the Account section (U6). Reachable from the
+/// profile picker.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/ui/account/account_section.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -35,10 +38,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasAccount = Provider.of<AuthController?>(context) != null;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          if (hasAccount) ...[
+            const AccountSection(),
+            const Divider(),
+          ],
           SwitchListTile(
             key: const ValueKey('relock-toggle'),
             title: const Text('Relock after inactivity'),

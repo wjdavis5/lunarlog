@@ -40,7 +40,41 @@ jobs:
         run: flutter test
 
       - name: Build web (release)
-        run: flutter build web --release
+        # The defines resolve to empty strings on forks and PRs without
+        # secrets; the app treats empty as "unconfigured", so the build
+        # must succeed either way. LUNARLOG_WEB_SYNC is never set in CI.
+        run: |
+          flutter build web --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+
+  db-tests:
+    name: Database tests (pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          # Pinned to the version the migrations and tests were written against.
+          version: 2.116.0
+
+      - name: Start local Supabase (database-only services)
+        # pgTAP only needs Postgres; skip the services that would otherwise
+        # pull images and consume runner time. Migrations are applied on start.
+        run: |
+          supabase start \
+            -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Run pgTAP tests
+        # Proves RLS isolation, privileges, constraints, and sync_push (R9).
+        run: supabase test db --local
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
 
   android:
     name: Build Android (debug APK)
@@ -64,7 +98,11 @@ jobs:
         run: flutter pub get
 
       - name: Build debug APK
-        run: flutter build apk --debug
+        run: |
+          flutter build apk --debug \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 
   ios:
     name: Build iOS (unsigned)
@@ -84,4 +122,8 @@ jobs:
       - name: Build iOS (unsigned)
         # Unsigned: a PR from a fork cannot read signing secrets, and this
         # only needs to prove the app still compiles for a device.
-        run: flutter build ios --release --no-codesign
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}

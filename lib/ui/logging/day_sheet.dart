@@ -8,6 +8,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -249,6 +251,9 @@ class _DaySheetState extends State<DaySheet> {
                 alignLabelWithHint: true,
               ),
               maxLines: 3,
+              // Mirrors the server CHECK; a longer note is rejected forever.
+              maxLength: kMaxNoteLength,
+              maxLengthEnforcement: MaxLengthEnforcement.enforced,
             ),
           ),
           if (_saveFailed)

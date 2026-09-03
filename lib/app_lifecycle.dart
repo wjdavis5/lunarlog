@@ -18,6 +18,10 @@
 ///   set by the shell before content shows; U8 wires real notification
 ///   taps into it, and the profile home consumes it only after the gate
 ///   opens (routes to the firing profile's overview).
+/// * Device reset (KTD16): [LunarLogRootState.resetDevice] is the one
+///   destructive path — sign-out, "sign out everywhere", the mismatch
+///   screen's "remove this device's data" and the web wipe all call it
+///   through the [DeviceResetCallback] provided to the tree.
 ///
 /// This file is composition-root territory (like `main.dart`): it is
 /// allowed to touch `lib/data` types to wire the drift settings store into
@@ -31,13 +35,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
+import 'package:lunarlog/data/sync/sync_transport.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/startup/startup.dart' as startup;
 import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 /// Platform channel used to set Android FLAG_SECURE (snapshot/screenshot
 /// suppression at the window level). Best effort — see
@@ -256,10 +267,46 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   }
 }
 
+/// Builds the sync engine over an opened database (KTD11). The default
+/// constructs [SupabaseSyncEngine]; tests inject a recorder.
+typedef SyncEngineBuilder = SyncEngine Function({
+  required LunarLogDatabase db,
+  required AuthService authService,
+  required SyncTransport transport,
+  required GateController gate,
+});
+
+SyncEngine defaultSyncEngineBuilder({
+  required LunarLogDatabase db,
+  required AuthService authService,
+  required SyncTransport transport,
+  required GateController gate,
+}) =>
+    SupabaseSyncEngine(
+      storage: db.storage,
+      transport: transport,
+      auth: authService,
+      gate: gate,
+      gateUnlocked: () => gate.unlocked,
+    );
+
+/// The device reset (KTD16) as the widget tree sees it: provided by
+/// [LunarLogRoot] so any screen can call `context.read<DeviceResetCallback?>()`
+/// without knowing the root. Null in harnesses that mount `LunarLogApp`
+/// directly without passing one.
+typedef DeviceResetCallback = Future<void> Function();
+
+/// Default native key deletion for [LunarLogRoot.deleteDbKey].
+Future<void> defaultDeleteDbKey() => SecureDbKeyStore().deleteKey();
+
 /// App root and state machine: locked → (credential) → database open →
 /// app; or locked forever on repeated declines; or fail-closed screen on
 /// any open/quarantine/key failure. The database is opened only after the
 /// first successful authentication on gated platforms (AE4).
+///
+/// Also owns the sync engine's lifecycle (KTD11): built right after the
+/// database opens when both [authService] and [syncTransport] are present,
+/// awaited-disposed before the database can close.
 class LunarLogRoot extends StatefulWidget {
   const LunarLogRoot({
     super.key,
@@ -267,6 +314,12 @@ class LunarLogRoot extends StatefulWidget {
     required this.dbOpener,
     this.launchProfileId,
     this.scheduler,
+    this.authService,
+    this.syncTransport,
+    this.syncEngineBuilder = defaultSyncEngineBuilder,
+    this.deleteLocalDatabase = startup.deleteLocalDatabase,
+    this.deleteDbKey = defaultDeleteDbKey,
+    this.isWeb = kIsWeb,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
   });
@@ -282,19 +335,50 @@ class LunarLogRoot extends StatefulWidget {
   /// Reminder scheduler (U8); null disables reminders entirely.
   final ReminderScheduler? scheduler;
 
+  /// Account auth service (U4), started by the bootstrap before the first
+  /// frame; null when the build has no Supabase configuration (KTD11), in
+  /// which case no account UI is provided at all.
+  final AuthService? authService;
+
+  /// Cloud sync transport (U10); null together with [authService] when the
+  /// build has no Supabase configuration. The engine is built only when
+  /// both are present (KTD11).
+  final SyncTransport? syncTransport;
+
+  /// Test seam: how the engine is built once the database is open.
+  @visibleForTesting
+  final SyncEngineBuilder syncEngineBuilder;
+
+  /// Device-reset primitives (KTD16), injectable for tests. On native the
+  /// defaults delete this install's database file (and siblings) and then
+  /// its key; on web ([isWeb]) neither runs and the database is wiped
+  /// table by table instead.
+  final Future<void> Function() deleteLocalDatabase;
+  final Future<void> Function() deleteDbKey;
+  final bool isWeb;
+
   final Duration inactivityTimeout;
   final InactivityTimerFactory inactivityTimerFactory;
 
   @override
-  State<LunarLogRoot> createState() => _LunarLogRootState();
+  State<LunarLogRoot> createState() => LunarLogRootState();
 }
 
-class _LunarLogRootState extends State<LunarLogRoot> {
+/// Public so [resetDevice] is documented API; tests reach it through the
+/// provided [DeviceResetCallback] rather than the state object.
+class LunarLogRootState extends State<LunarLogRoot> {
   late final GateController _gate;
   LunarLogDatabase? _db;
+  SyncEngine? _syncEngine;
+
+  /// The app subtree's teardown (reminder coordinator disposal), captured
+  /// when [LunarLogApp] unmounts so a device reset (KTD16) can await it
+  /// before closing the database.
+  Future<void>? _appTeardown;
   Object? _error;
   bool _opening = false;
   bool _firstUnlockAttempted = false;
+  bool _resetting = false;
 
   @override
   void initState() {
@@ -329,8 +413,13 @@ class _LunarLogRootState extends State<LunarLogRoot> {
       final db = await widget.dbOpener();
       _db = db;
       _gate.attachSettings(DriftSettingsStore(db.storage));
+      _startSyncEngine(db);
     } catch (error, stackTrace) {
-      debugPrint('lunarlog startup failed: $error\n$stackTrace');
+      // U7 (KTD12): the message can embed a database path or SQL; log the
+      // type only and let Sentry (a no-op without a DSN) keep the scrubbed
+      // exception and stack.
+      debugPrint('lunarlog startup failed: ${error.runtimeType}');
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
       _error = error;
     } finally {
       _opening = false;
@@ -338,16 +427,127 @@ class _LunarLogRootState extends State<LunarLogRoot> {
     }
   }
 
+  /// KTD11: the engine exists only when the build has both collaborators;
+  /// null collaborators build nothing, so harnesses without them are
+  /// untouched.
+  void _startSyncEngine(LunarLogDatabase db) {
+    final authService = widget.authService;
+    final transport = widget.syncTransport;
+    if (authService == null || transport == null || _syncEngine != null) {
+      return;
+    }
+    if (!mounted) return;
+    final engine = widget.syncEngineBuilder(
+      db: db,
+      authService: authService,
+      transport: transport,
+      gate: _gate,
+    );
+    _syncEngine = engine;
+    engine.start();
+  }
+
+  /// Stops the engine and waits for its in-flight batch or page, so the
+  /// database can be closed afterwards (KTD11). The first step of a device
+  /// reset (KTD16): call it, unmount the app, await [_awaitAppTeardown],
+  /// then close the database.
+  Future<void> _disposeSyncEngine() async {
+    final engine = _syncEngine;
+    _syncEngine = null;
+    await engine?.dispose();
+  }
+
+  /// Waits for the unmounted app subtree's asynchronous teardown (the
+  /// reminder coordinator), if one was captured.
+  Future<void> _awaitAppTeardown() async {
+    final teardown = _appTeardown;
+    _appTeardown = null;
+    await teardown;
+  }
+
+  /// Ordered teardown on root disposal: engine first (it is the only thing
+  /// that queries the database on its own), then the app subtree's
+  /// asynchronous disposal, which the framework already unmounted.
+  Future<void> _teardown() async {
+    await _disposeSyncEngine();
+    await _awaitAppTeardown();
+  }
+
   void _onGateChanged() {
     // AE4: nothing touches the database until a credential was accepted.
-    if (_gate.unlocked && _db == null && _error == null) {
+    // During a reset the database is deliberately closed; the reset itself
+    // reopens it once the file and key are gone (KTD16).
+    if (_gate.unlocked && _db == null && _error == null && !_resetting) {
       unawaited(_openDatabase());
     }
     if (mounted) setState(() {});
   }
 
+  /// KTD16: the one destructive path. In order: await the engine's
+  /// disposal; drop the database from the tree and await a frame so
+  /// [LunarLogApp] (its coordinator, controllers, repository streams and
+  /// the gate's settings watch) has unmounted and nothing can query the
+  /// closing database; await that subtree's asynchronous teardown; wipe
+  /// (web) and close the database; on native delete the file and its
+  /// siblings *then* the key, so a crash in between can never leave a keyed
+  /// file that would quarantine the next open; sign the session out locally
+  /// and on the server — best effort, so its failure never skips a local
+  /// step (the local session is removed by the service regardless of the
+  /// server's answer) — *before* the reopen, so the fresh database's first
+  /// sync cycle never sees the account being signed out and binds to it;
+  /// finally reopen through `dbOpener` (which mints a fresh key) and start
+  /// a fresh engine.
+  ///
+  /// A second call while one is running is ignored. A local step failing
+  /// fails closed: the root shows the fail-closed screen rather than
+  /// reopening over a half-reset install.
+  Future<void> resetDevice() async {
+    if (_resetting) return;
+    _resetting = true;
+    try {
+      await _disposeSyncEngine();
+      final db = _db;
+      if (db != null) {
+        if (mounted) setState(() => _db = null);
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      await _awaitAppTeardown();
+      try {
+        if (db != null) {
+          if (widget.isWeb) await db.wipeAllData();
+          await db.close();
+        }
+        if (!widget.isWeb) {
+          await widget.deleteLocalDatabase();
+          await widget.deleteDbKey();
+        }
+      } catch (error, stackTrace) {
+        debugPrint('lunarlog reset failed: $error\n$stackTrace');
+        _error = error;
+        if (mounted) setState(() {});
+        return;
+      }
+      final auth = widget.authService;
+      if (auth != null) {
+        try {
+          await auth.signOut(scope: AuthSignOutScope.local);
+        } catch (error) {
+          debugPrint(
+              'lunarlog reset: server sign-out failed (${error.runtimeType})');
+        }
+      }
+      if (mounted) await _openDatabase();
+    } finally {
+      _resetting = false;
+    }
+  }
+
   @override
   void dispose() {
+    // The engine detaches from the gate synchronously (before its first
+    // await), so this ordering keeps the listener removal ahead of the
+    // controller's disposal; the rest of the teardown completes on its own.
+    unawaited(_teardown());
     _gate.dispose();
     super.dispose();
   }
@@ -358,7 +558,13 @@ class _LunarLogRootState extends State<LunarLogRoot> {
     if (_error != null) {
       content = FailClosedApp(error: _error!);
     } else if (_db != null) {
-      content = LunarLogApp(db: _db!, scheduler: widget.scheduler);
+      content = LunarLogApp(
+        db: _db!,
+        scheduler: widget.scheduler,
+        authService: widget.authService,
+        syncEngine: _syncEngine,
+        onTeardown: (done) => _appTeardown = done,
+      );
     } else if (_gate.locked) {
       // Behind the lock before the first unlock: a static, data-free
       // placeholder — nothing renders, not even a spinner.
@@ -373,9 +579,13 @@ class _LunarLogRootState extends State<LunarLogRoot> {
     // the real app, where runApp() has no Directionality ancestor either.
     return ChangeNotifierProvider<GateController>.value(
       value: _gate,
-      child: Directionality(
-        textDirection: TextDirection.ltr,
-        child: GateShell(controller: _gate, child: content),
+      child: Provider<DeviceResetCallback>.value(
+        value: resetDevice,
+        updateShouldNotify: (_, _) => false,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: GateShell(controller: _gate, child: content),
+        ),
       ),
     );
   }

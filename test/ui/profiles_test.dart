@@ -17,10 +17,10 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 
 const String kNoticeText =
-    'Data lives only on this device. If the device is lost or reset, the '
-    'history cannot be recovered — there is no backup in v1.';
+    'Data stays on this device unless you sign in to sync it to your account.';
 
 Future<LunarLogDatabase> pumpApp(
   WidgetTester tester, {
@@ -343,6 +343,40 @@ void main() {
           reason: 'duplicate names allowed');
       expect(find.textContaining('Created '), findsNWidgets(2),
           reason: 'disambiguated by creation date');
+      await disposeApp(tester, db);
+    });
+
+    test('validateProfileName rejects a trimmed name over 80 characters '
+        'and accepts exactly 80', () {
+      expect(validateProfileName('a' * 81), isNotNull);
+      expect(validateProfileName('  ${'a' * 81}  '), isNotNull);
+      expect(validateProfileName('a' * 80), isNull);
+      expect(validateProfileName('  ${'a' * 80}  '), isNull,
+          reason: 'surrounding whitespace is not counted');
+    });
+
+    testWidgets('the name field caps input at 80 characters so an '
+        '81-character paste creates an 80-character profile', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Seed', isMinor: false);
+      });
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), 'x' * 81);
+      await tester.pumpAndSettle();
+      final field = tester.widget<TextFormField>(find.byType(TextFormField));
+      expect(field.controller!.text.length, 80);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      final names = (await db.storage.getProfiles())
+          .map((p) => p.displayName)
+          .toList();
+      expect(names, containsAll(['Seed', 'x' * 80]));
+      expect(names, hasLength(2));
       await disposeApp(tester, db);
     });
 

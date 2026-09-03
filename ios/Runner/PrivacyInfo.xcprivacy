@@ -3,19 +3,66 @@
 <plist version="1.0">
 <dict>
 	<!--
-		lunarlog is a local-first, fully offline cycle tracker. It makes no
-		network calls, tracks no users, uses no analytics or crash reporting SDKs,
-		and collects no data off-device.
+		lunarlog is a local-first cycle tracker with an optional account. Two
+		parties receive data off-device, both only for app functionality:
 
-		Required-reason API usage is declared by underlying Flutter plugins
-		(e.g., flutter_secure_storage, shared_preferences, local_auth).
+		- Supabase (account sign-in and cross-device sync): the account email
+		  and the encrypted-at-rest cycle entries the operator chooses to sync.
+		  Both are linked to the account (Email Address, Health).
+		- Sentry (crash reporting via the sentry_flutter SDK): crash and error
+		  events reduced to an allowlist before upload (no user, device name,
+		  request query, header, body, note, tag, date, or profile name); see
+		  lib/observability/scrub.dart. Not linked to identity (Crash Data).
+
+		No tracking, no advertising, no analytics beyond crash reports.
+
+		Required-reason API usage is declared by the underlying Flutter plugins
+		(e.g., flutter_secure_storage, shared_preferences, local_auth,
+		sentry_flutter) in their own privacy manifests.
 	-->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeHealth</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCrashData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array/>
 </dict>

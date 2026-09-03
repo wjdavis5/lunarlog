@@ -1,7 +1,6 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart'
-    show Migrator, Variable, driftRuntimeOptions;
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
@@ -21,6 +20,7 @@ class RecordingKeyStore implements DbKeyStore {
 
   final String? presetKey;
   int calls = 0;
+  int deletes = 0;
 
   @override
   Future<String> getOrCreateDbKey() async {
@@ -30,6 +30,129 @@ class RecordingKeyStore implements DbKeyStore {
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
   }
+
+  @override
+  Future<void> deleteKey() async {
+    deletes++;
+  }
+}
+
+/// The exact schema-v1 DDL as drift generated it for the committed v1
+/// `db.g.dart` (dumped from `sqlite_master` before the v2 change). Tests
+/// execute it raw so the migration is exercised against a real v1 file, not
+/// against whatever the current data classes would create.
+const List<String> kV1Ddl = [
+  'CREATE TABLE "profiles" ("id" TEXT NOT NULL, "display_name" TEXT NOT NULL, '
+      '"is_minor" INTEGER NOT NULL CHECK ("is_minor" IN (0, 1)), '
+      '"sort_order" INTEGER NOT NULL DEFAULT 0, "archived_at" TEXT NULL, '
+      '"created_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, '
+      '"deleted_at" TEXT NULL, PRIMARY KEY ("id"))',
+  'CREATE TABLE "day_entries" ("id" TEXT NOT NULL, '
+      '"profile_id" TEXT NOT NULL REFERENCES profiles (id), '
+      '"local_date" TEXT NOT NULL, "tz" TEXT NOT NULL, "flow" TEXT NOT NULL, '
+      '"tags" TEXT NOT NULL DEFAULT \'[]\', "note" TEXT NULL, '
+      '"updated_at" TEXT NOT NULL, "deleted_at" TEXT NULL, PRIMARY KEY ("id"))',
+  'CREATE TABLE "app_settings" ("key" TEXT NOT NULL, "value" TEXT NOT NULL, '
+      '"updated_at" TEXT NOT NULL, PRIMARY KEY ("key"))',
+  'CREATE UNIQUE INDEX uq_day_entries_profile_date_live ON day_entries '
+      '(profile_id, local_date) WHERE deleted_at IS NULL',
+];
+
+const String kV1ProfileId = '01JV1PROFILE00000000000000';
+const String kV1EntryId = '01JV1ENTRY000000000000000A';
+const String kV1TombstoneId = '01JV1ENTRY000000000000000B';
+const String kV1Stamp = '2026-07-01T09:00:00.000000Z';
+
+/// Executes the v1 DDL plus a small fixture (one profile, one live entry,
+/// one tombstone, one setting) on a raw sqlite3 handle and stamps
+/// `user_version = 1`.
+void seedV1(sqlite3.Database raw) {
+  for (final ddl in kV1Ddl) {
+    raw.execute(ddl);
+  }
+  raw.execute(
+      "INSERT INTO profiles (id, display_name, is_minor, sort_order, archived_at, "
+      "created_at, updated_at, deleted_at) VALUES "
+      "('$kV1ProfileId', 'Migrated', 1, 0, NULL, '$kV1Stamp', '$kV1Stamp', NULL)");
+  raw.execute(
+      "INSERT INTO day_entries (id, profile_id, local_date, tz, flow, tags, note, "
+      "updated_at, deleted_at) VALUES "
+      "('$kV1EntryId', '$kV1ProfileId', '2026-07-01', 'UTC', 'medium', "
+      "'[\"migrating\"]', 'keep me', '$kV1Stamp', NULL)");
+  raw.execute(
+      "INSERT INTO day_entries (id, profile_id, local_date, tz, flow, tags, note, "
+      "updated_at, deleted_at) VALUES "
+      "('$kV1TombstoneId', '$kV1ProfileId', '2026-06-30', 'UTC', 'light', "
+      "'[]', NULL, '$kV1Stamp', '$kV1Stamp')");
+  raw.execute(
+      "INSERT INTO app_settings (key, value, updated_at) VALUES ('k', 'v', '$kV1Stamp')");
+  raw.execute('PRAGMA user_version = 1');
+}
+
+/// Column names of [table] via `PRAGMA table_info`.
+Future<Set<String>> columnsOf(LunarLogDatabase db, String table) async {
+  final rows = await db.customSelect('PRAGMA table_info($table)').get();
+  return rows.map((r) => r.read<String>('name')).toSet();
+}
+
+Future<int> userVersion(LunarLogDatabase db) async =>
+    (await db.customSelect('PRAGMA user_version').get())
+        .first
+        .read<int>('user_version');
+
+/// Asserts everything the v1 fixture held survived the v2 upgrade with the
+/// new sync columns at their defaults.
+Future<void> expectUpgradedV2(LunarLogDatabase db) async {
+  expect(await userVersion(db), 2);
+  expect(await columnsOf(db, 'profiles'),
+      containsAll(['dirty', 'local_rev']));
+  expect(await columnsOf(db, 'day_entries'),
+      containsAll(['dirty', 'local_rev']));
+
+  final stamp = DateTime.parse(kV1Stamp);
+  final profile =
+      (await db.storage.getProfiles(includeTombstones: true)).single;
+  expect(profile.id, kV1ProfileId);
+  expect(profile.displayName, 'Migrated');
+  expect(profile.isMinor, isTrue);
+  expect(profile.createdAt, stamp);
+  expect(profile.updatedAt, stamp);
+  expect(profile.dirty, isFalse);
+  expect(profile.localRev, 0);
+
+  final entries = await db.storage
+      .getDayEntries(profileId: kV1ProfileId, includeTombstones: true);
+  expect(entries.map((e) => e.id).toSet(), {kV1EntryId, kV1TombstoneId});
+  final live = entries.firstWhere((e) => e.id == kV1EntryId);
+  expect(live.tags, ['migrating']);
+  expect(live.note, 'keep me');
+  expect(live.updatedAt, stamp);
+  expect(live.deletedAt, isNull);
+  expect(live.dirty, isFalse);
+  expect(live.localRev, 0);
+  final tomb = entries.firstWhere((e) => e.id == kV1TombstoneId);
+  expect(tomb.deletedAt, stamp);
+  expect(tomb.dirty, isFalse);
+  expect(tomb.localRev, 0);
+
+  expect(await db.storage.getSetting('k'), 'v');
+
+  final state = await db.storage.readSyncState();
+  expect(state.boundUserId, isNull);
+  expect(state.deviceId, '');
+  expect(state.cursorProfiles, 0);
+  expect(state.cursorDayEntries, 0);
+  final stateRows =
+      await db.customSelect('SELECT COUNT(*) AS n FROM sync_state').getSingle();
+  expect(stateRows.data['n'], 0,
+      reason: 'the upgrade creates the table, not a row; defaults are read');
+
+  // The partial unique index survived (it is not recreated by the upgrade).
+  final index = await db
+      .customSelect("SELECT name FROM sqlite_master WHERE type = 'index' "
+          "AND name = 'uq_day_entries_profile_date_live'")
+      .get();
+  expect(index, hasLength(1));
 }
 
 class FixedClock {
@@ -81,14 +204,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 1 and database opens with the expected tables',
+    test('schema version is 2 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 1);
-
-      final userVersion = (await db.customSelect('PRAGMA user_version').get())
-          .first
-          .data['user_version'];
-      expect(userVersion, 1);
+      expect(db.schemaVersion, 2);
+      expect(await userVersion(db), 2);
 
       final tables = (await db
               .customSelect(
@@ -97,7 +216,11 @@ void main() {
               .get())
           .map((row) => row.read<String>('name'))
           .toSet();
-      expect(tables, containsAll(['profiles', 'day_entries', 'app_settings']));
+      expect(tables,
+          containsAll(['profiles', 'day_entries', 'app_settings', 'sync_state']));
+      expect(await columnsOf(db, 'profiles'), containsAll(['dirty', 'local_rev']));
+      expect(
+          await columnsOf(db, 'day_entries'), containsAll(['dirty', 'local_rev']));
     });
 
     test('partial unique index enforces one live entry per profile+date, '
@@ -262,8 +385,8 @@ void main() {
       );
     });
 
-    test('monotonic updated_at: a clock running backwards never regresses the '
-        'stored updated_at', () async {
+    test('monotonic updated_at: a clock running backwards stamps the edit '
+        'one millisecond after the stored updated_at', () async {
       final profile =
           await storage.upsertProfile(displayName: 'P', isMinor: false);
       final entry = await storage.upsertDayEntry(
@@ -290,10 +413,11 @@ void main() {
           localDate: '2026-05-01',
           tz: 'UTC',
           flow: FlowLevel.none);
-      expect(regressed.updatedAt, edited.updatedAt,
-          reason: 'updated_at must never regress');
+      expect(regressed.updatedAt,
+          edited.updatedAt.add(const Duration(milliseconds: 1)),
+          reason: 'updated_at must strictly increase on a local edit');
       expect(regressed.flow, FlowLevel.none,
-          reason: 'content is still written; only the timestamp is clamped');
+          reason: 'content is still written; only the timestamp is bumped');
     });
 
     test('upsert with an explicitly older updated_at does not regress the '
@@ -313,8 +437,46 @@ void main() {
           tz: 'UTC',
           flow: FlowLevel.medium,
           updatedAt: stale);
-      expect(imported.updatedAt, entry.updatedAt,
-          reason: 'sync import with a stale timestamp must not regress');
+      expect(imported.updatedAt,
+          entry.updatedAt.add(const Duration(milliseconds: 1)),
+          reason: 'a stale explicit timestamp still lands strictly after');
+    });
+
+    test('payload limits: an 81-character display_name and a 2001-character '
+        'note are rejected before anything is written', () async {
+      await expectLater(
+        storage.upsertProfile(displayName: 'a' * 81, isMinor: false),
+        throwsArgumentError,
+      );
+      expect(await storage.getProfiles(includeTombstones: true), isEmpty);
+
+      final profile = await storage.upsertProfile(
+          displayName: 'b' * 80, isMinor: false);
+      expect(profile.displayName.length, 80, reason: '80 is the limit');
+      await expectLater(
+        storage.upsertProfile(
+            id: profile.id, displayName: 'c' * 81, isMinor: false),
+        throwsArgumentError,
+      );
+      expect((await storage.getProfiles()).single.displayName, 'b' * 80);
+
+      await expectLater(
+        storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-05-03',
+            tz: 'UTC',
+            flow: FlowLevel.light,
+            note: 'n' * 2001),
+        throwsArgumentError,
+      );
+      expect(await storage.getDayEntries(profileId: profile.id), isEmpty);
+      final entry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-05-03',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          note: 'n' * 2000);
+      expect(entry.note!.length, 2000);
     });
 
     test('soft delete then re-create for the same profile+date: new ULID row '
@@ -393,6 +555,40 @@ void main() {
       expect(still.updatedAt, tombstone.updatedAt);
     });
 
+    test('characterization: the strict bump applies to soft deletes and '
+        'profile edits too — a regressed clock lands 1ms after the stored '
+        'updated_at, and a tombstone stamps deleted_at with that value',
+        () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final entry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-03',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      final stored = entry.updatedAt;
+
+      clock.now = stored.subtract(const Duration(days: 1));
+      await storage.softDeleteDayEntry(
+          profileId: profile.id, localDate: '2026-06-03');
+      final tombstone = (await storage.getDayEntries(
+              profileId: profile.id, includeTombstones: true))
+          .single;
+      const ms = Duration(milliseconds: 1);
+      expect(tombstone.updatedAt, stored.add(ms));
+      expect(tombstone.deletedAt, stored.add(ms));
+
+      final edited = await storage.upsertProfile(
+          id: profile.id, displayName: 'P2', isMinor: false);
+      expect(edited.updatedAt, profile.updatedAt.add(ms));
+      expect(edited.displayName, 'P2');
+
+      await storage.softDeleteProfile(profile.id);
+      final gone = (await storage.getProfiles(includeTombstones: true)).single;
+      expect(gone.updatedAt, edited.updatedAt.add(ms));
+      expect(gone.deletedAt, edited.updatedAt.add(ms));
+    });
+
     test('profiles can be archived and tombstoned; watchProfiles filters '
         'tombstones for UI reads', () async {
       final a = await storage.upsertProfile(
@@ -456,58 +652,115 @@ void main() {
   });
 
   group('migrations', () {
-    test('v1 to v2 (test migration adding a column) preserves rows and sync '
-        'columns', () async {
-      final dir = await freshTempDir('migration');
-      final file = File('${dir.path}${Platform.pathSeparator}db.sqlite');
+    test('a real v1 fixture (raw DDL, in memory) upgrades to v2 with every '
+        'row intact, dirty = false, local_rev = 0 and default sync_state',
+        () async {
+      final raw = sqlite3.sqlite3.openInMemory();
+      seedV1(raw);
+      final db = LunarLogDatabase(NativeDatabase.opened(raw));
+      addTearDown(() => db.close());
+      await expectUpgradedV2(db);
 
-      final t0 = DateTime.utc(2026, 7, 1, 9);
-      {
-        final clock = FixedClock(t0);
-        final v1 = LunarLogDatabase(NativeDatabase(file));
-        final storage = LunarLogStorage(v1, clock: clock.call);
-        final profile =
-            await storage.upsertProfile(displayName: 'M', isMinor: true);
-        final entry = await storage.upsertDayEntry(
-            profileId: profile.id,
-            localDate: '2026-07-01',
-            tz: 'UTC',
-            flow: FlowLevel.medium,
-            tags: const ['migrating']);
-        await storage.setSetting(key: 'k', value: 'v');
-        await v1.close();
+      // The upgraded database is fully usable: local writes and sync
+      // applies work against the migrated rows.
+      final edited = await db.storage.upsertDayEntry(
+          profileId: kV1ProfileId,
+          localDate: '2026-07-01',
+          tz: 'UTC',
+          flow: FlowLevel.heavy);
+      expect(edited.id, kV1EntryId);
+      expect(edited.dirty, isTrue);
+      expect(edited.localRev, 1);
+    });
 
-        // Reopen as the v2 test database: migration must run.
-        final v2 = V2TestDatabase(NativeDatabase(file));
-        final profilesAfter = await v2.storage.getProfiles(includeTombstones: true);
-        expect(profilesAfter.single.id, profile.id);
-        expect(profilesAfter.single.updatedAt, profile.updatedAt);
-        expect(profilesAfter.single.createdAt, profile.createdAt);
+    test('a real v1 fixture on a file upgrades to v2 (plain sqlite)',
+        () async {
+      final dir = await freshTempDir('migration_file');
+      final file = File('${dir.path}${Platform.pathSeparator}v1.db');
+      final raw = sqlite3.sqlite3.open(file.path);
+      seedV1(raw);
+      raw.close();
 
-        final entriesAfter = await v2.storage
-            .getDayEntries(profileId: profile.id, includeTombstones: true);
-        expect(entriesAfter.single.id, entry.id);
-        expect(entriesAfter.single.updatedAt, entry.updatedAt);
-        expect(entriesAfter.single.tags, ['migrating']);
+      final db = LunarLogDatabase(NativeDatabase(file));
+      addTearDown(() => db.close());
+      await expectUpgradedV2(db);
+    });
 
-        expect(await v2.storage.getSetting('k'), 'v');
+    test('an upgrade step failing after the first addColumn leaves '
+        'user_version = 1, no new columns and the rows intact; a clean '
+        'reopen completes the upgrade', () async {
+      final dir = await freshTempDir('migration_fail');
+      final file = File('${dir.path}${Platform.pathSeparator}v1.db');
+      final raw = sqlite3.sqlite3.open(file.path);
+      seedV1(raw);
+      raw.close();
 
-        final userVersion = (await v2
-                .customSelect('PRAGMA user_version')
-                .get())
-            .first
-            .data['user_version'];
-        expect(userVersion, 2, reason: 'schema version must advance to 2');
+      final completedSteps = <String>[];
+      final failing = LunarLogDatabase(NativeDatabase(file))
+        ..migrationStepHook = (step) async {
+          completedSteps.add(step);
+          if (step == 'profiles.dirty') {
+            throw StateError('injected failure after the first addColumn');
+          }
+        };
+      await expectLater(
+        failing.customSelect('SELECT 1').get(),
+        throwsA(isA<StateError>()),
+      );
+      await failing.close();
+      expect(completedSteps, ['profiles.dirty'],
+          reason: 'the first DDL step ran before the injected failure');
 
-        // The migration-added column exists and is readable.
-        final marker = await v2.customSelect(
-          'SELECT v2_test_marker FROM day_entries WHERE id = ?',
-          variables: [Variable.withString(entry.id)],
-        ).get();
-        expect(marker, hasLength(1));
-
-        await v2.close();
+      // Inspect the file with a raw handle: nothing half-applied.
+      final check = sqlite3.sqlite3.open(file.path);
+      try {
+        expect(check.select('PRAGMA user_version').first.values.first, 1);
+        final profileCols = check
+            .select('PRAGMA table_info(profiles)')
+            .map((r) => r['name'])
+            .toSet();
+        expect(profileCols, isNot(contains('dirty')),
+            reason: 'the addColumn must have been rolled back');
+        expect(profileCols, isNot(contains('local_rev')));
+        final entryCols = check
+            .select('PRAGMA table_info(day_entries)')
+            .map((r) => r['name'])
+            .toSet();
+        expect(entryCols, isNot(contains('dirty')));
+        final tables = check
+            .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .map((r) => r['name'])
+            .toSet();
+        expect(tables, isNot(contains('sync_state')));
+        expect(check.select('SELECT COUNT(*) AS n FROM profiles').first['n'], 1);
+        expect(
+            check.select('SELECT COUNT(*) AS n FROM day_entries').first['n'], 2);
+        expect(check.select('SELECT note FROM day_entries WHERE id = ?',
+            [kV1EntryId]).first['note'], 'keep me');
+      } finally {
+        check.close();
       }
+
+      // Clean reopen: the upgrade retries and completes.
+      final db = LunarLogDatabase(NativeDatabase(file));
+      addTearDown(() => db.close());
+      await expectUpgradedV2(db);
+    });
+
+    test('a v2 database does not re-run the v1 upgrade on reopen', () async {
+      final dir = await freshTempDir('migration_noop');
+      final file = File('${dir.path}${Platform.pathSeparator}v2.db');
+      final first = LunarLogDatabase(NativeDatabase(file));
+      await first.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await first.close();
+
+      final steps = <String>[];
+      final second = LunarLogDatabase(NativeDatabase(file))
+        ..migrationStepHook = (step) async => steps.add(step);
+      addTearDown(() => second.close());
+      expect(await userVersion(second), 2);
+      expect(steps, isEmpty);
+      expect(await second.storage.getProfiles(), hasLength(1));
     });
   });
 
@@ -681,26 +934,57 @@ void main() {
           wrongFactory.open(), throwsA(isA<DatabaseQuarantineError>()));
       expect(file.readAsBytesSync().length, greaterThan(0));
     });
+
+    test('a real v1 fixture in an encrypted file upgrades to v2 through the '
+        'mobile factory', () async {
+      final dir = await freshTempDir('cipher_migration');
+      final file = File('${dir.path}${Platform.pathSeparator}v1enc.db');
+      const key =
+          '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+      final raw = sqlite3.sqlite3.open(file.path);
+      raw.execute("PRAGMA key = \"x'$key'\";");
+      seedV1(raw);
+      raw.close();
+
+      final factory =
+          nativeDbFactory(file: file, keyStore: RecordingKeyStore(presetKey: key));
+      final db = await factory.open();
+      addTearDown(() => db.close());
+      await expectUpgradedV2(db);
+    });
+
+    test('an encrypted v1 file whose upgrade fails mid-way is left at v1 and '
+        'is not quarantined on the next open', () async {
+      final dir = await freshTempDir('cipher_migration_fail');
+      final file = File('${dir.path}${Platform.pathSeparator}v1enc.db');
+      const key =
+          '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+      final raw = sqlite3.sqlite3.open(file.path);
+      raw.execute("PRAGMA key = \"x'$key'\";");
+      seedV1(raw);
+      raw.close();
+
+      // Drive the failing open through the real executor builder but with
+      // the hook installed on the database class the factory creates: the
+      // factory has no seam for that, so open the executor directly.
+      final failing = LunarLogDatabase(NativeDatabase(file,
+          setup: (db) => db.execute("PRAGMA key = \"x'$key'\";")))
+        ..migrationStepHook = (step) async {
+          if (step == 'profiles.dirty') throw StateError('injected');
+        };
+      await expectLater(
+          failing.customSelect('SELECT 1').get(), throwsA(isA<StateError>()));
+      await failing.close();
+
+      final factory =
+          nativeDbFactory(file: file, keyStore: RecordingKeyStore(presetKey: key));
+      final db = await factory.open();
+      addTearDown(() => db.close());
+      await expectUpgradedV2(db);
+    });
   },
       skip: hostHasSqlcipher()
           ? false
           : 'sqlcipher native library not active on this host '
               '(hook observed: default sqlite3 build loaded)');
-}
-
-/// Test-only v2 schema: same tables as v1 plus a migration-added column,
-/// used to prove the migration framework preserves data and sync columns.
-class V2TestDatabase extends LunarLogDatabase {
-  V2TestDatabase(super.executor);
-
-  @override
-  int get schemaVersion => 2;
-
-  @override
-  Future<void> onUpgradeSteps(Migrator m, int from, int to) async {
-      if (from < 2) {
-      await customStatement(
-          'ALTER TABLE day_entries ADD COLUMN v2_test_marker TEXT NULL');
-    }
-  }
 }

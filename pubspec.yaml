@@ -43,6 +43,15 @@ dependencies:
   path_provider: ^2.1.5
   flutter_local_notifications: ^22.3.0
   timezone: ^0.11.1
+  supabase_flutter: ^2.17.2
+  # Bundled by supabase_flutter; declared directly because lib/data/auth
+  # imports it for the auth deep-link observer (KTD8).
+  app_links: ^7.2.1
+  http: ^1.6.0
+  sign_in_with_apple: ^8.2.0
+  crypto: ^3.0.7
+  # U7: crash reporting (KTD12). Inert unless SENTRY_DSN is defined.
+  sentry_flutter: ^9.28.0
 
 dev_dependencies:
   flutter_test:
