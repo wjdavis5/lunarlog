@@ -49,3 +49,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Apple & Android signing / keys / certificates
+*.p12
+*.cer
+*.p8
+*.mobileprovision
+*.jks
+*.keystore
+key.properties

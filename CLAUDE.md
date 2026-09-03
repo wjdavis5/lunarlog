@@ -12,5 +12,5 @@
   - `flutter pub get`
   - `flutter analyze`
   - `flutter test`
-- **iOS Device Build:** Target `Williams-Mini` (`192.168.0.9`, user `williamdavis`).
+- **iOS Device Build:** Target macOS build machine (Xcode 26+).
 - **Docs:** Full details live in [`AGENTS.md`](AGENTS.md) and [`README.md`](README.md).

@@ -37,7 +37,7 @@ Credentials and environment variables live in:
   - `SUPABASE_PROJECT_REF`
   - `DATABASE_PASSWORD`
   - `DATABASE_URL`
-- **Mac Mini Build Machine:** `~/git/lunarlog/.env` on `Williams-Mini` (`192.168.0.9`).
+- **Local Development:** `.env` at repo root (gitignored).
 - **CI / GitHub Actions:** Repository secrets configured on `wjdavis5/lunarlog`:
   - Supabase: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `DATABASE_URL`.
   - iOS App Store & TestFlight:
@@ -72,13 +72,9 @@ Credentials and environment variables live in:
   - Triggers on push to `main` (uploads to `internal` track) or manually via `workflow_dispatch` with target track (`internal`, `alpha`, `beta`, `production`).
   - Automatically resolves monotonic build numbers from GitHub run count offset (`$(( github.run_number + 1000 ))`).
   - Generates both signed `.aab` (uploaded to Google Play) and `.apk` (saved as run artifact).
-- **iOS Local Device Builds:** Run on the lab Mac Mini (`Williams-Mini`, `192.168.0.9`, SSH user `williamdavis` via lab key `ha_vm_ed25519`):
+- **iOS Local Device Builds:** Run on a macOS build machine with Xcode:
   ```bash
   flutter build ipa --release --no-codesign
   xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
   xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ios/ipa
   ```
-
-## Lab Context
-
-Part of the home lab managed from `C:\git`. The canonical lab systems inventory and credentials map live in `C:\git\CLAUDE.md`.
