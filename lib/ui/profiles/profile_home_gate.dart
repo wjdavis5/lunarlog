@@ -15,6 +15,14 @@
 /// the account-mismatch screen (AE5); the upload-consent screen until
 /// declined for this session (the Settings tile reopens it); and the
 /// data-free restoring step during the bind-time pull (AE13).
+///
+/// #2 U3 addition (KTD4, R7, AE4): a link failure latched by the auth
+/// service ([AuthController.pendingLinkFailure] — expired, reused, or
+/// foreign-device link, or a network failure during the exchange) is
+/// surfaced once, as a `SnackBar` keyed `auth-link-failure` carrying
+/// [authFailureCopy], and only after the device gate reports unlocked. It
+/// is consumed through the same microtask-plus-guard shape as the launch
+/// payload so a rebuild never repeats it.
 library;
 
 import 'dart:async';
@@ -26,6 +34,8 @@ import 'package:lunarlog/ui/account/account_mismatch_screen.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/password_recovery_screen.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
+import 'package:lunarlog/ui/account/sign_in_screen.dart'
+    show authFailureCopy;
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -55,6 +65,10 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// as soon as the engine leaves `awaitingUploadConsent`.
   bool _consentDeclined = false;
 
+  /// Guards against scheduling duplicate link-failure consumption
+  /// microtasks across consecutive builds (#2 U3).
+  bool _consumingLinkFailure = false;
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ProfileController>();
@@ -62,6 +76,7 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     final auth = Provider.of<AuthController?>(context);
     final sync = Provider.of<SyncStatusController?>(context);
     _maybeConsumeLaunchPayload(gate, controller);
+    _maybeShowLinkFailure(gate, auth);
     if (!controller.loaded) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -129,6 +144,27 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
       }
       setState(() => _overviewLaunchId = pending);
       unawaited(controller.selectProfile(pending));
+    });
+  }
+
+  /// AE4: a latched link failure is shown once, only after the device gate
+  /// is open (no gate provided means an un-gated harness), and consumed
+  /// off the build path (#2 U3; KTD4, R7).
+  void _maybeShowLinkFailure(GateController? gate, AuthController? auth) {
+    final failure = auth?.pendingLinkFailure;
+    if (failure == null || _consumingLinkFailure) return;
+    if (gate != null && !gate.unlocked) return;
+    _consumingLinkFailure = true;
+    scheduleMicrotask(() {
+      // Reset first so a *later* failure can show again; the pending
+      // value is null after consumption, so this build cycle is inert.
+      _consumingLinkFailure = false;
+      if (!mounted) return;
+      auth!.consumeLinkFailure();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        key: const ValueKey('auth-link-failure'),
+        content: Text(authFailureCopy(failure)),
+      ));
     });
   }
 }

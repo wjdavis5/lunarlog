@@ -31,6 +31,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
+import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
@@ -279,6 +280,109 @@ void main() {
     });
   });
 
+  group('link-delivered sessions on the sign-in screen (#2 U3; AE5, R8)', () {
+    testWidgets('the pushed screen pops when a session arrives without any '
+        'tap and Settings beneath shows the account', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      await h.openSettings();
+      await tester.tap(key('account-sign-in'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SignInScreen), findsOneWidget);
+
+      // A magic link exchanged elsewhere in the app: only the session
+      // event reaches the screen.
+      h.signIn();
+      await tester.pumpAndSettle();
+      expect(find.byType(SignInScreen), findsNothing);
+      expect(find.byType(SettingsScreen), findsOneWidget,
+          reason: 'exactly one pop: Settings is still the top route');
+      expect(find.text('Signed in as a@b.c'), findsOneWidget);
+      expect(h.auth.signInCalls, isEmpty);
+      await h.dispose();
+    });
+
+    testWidgets('a password sign-in whose session event fires before the '
+        'call returns pops once and leaves the route beneath untouched',
+        (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      await h.openSettings();
+      await tester.tap(key('account-sign-in'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.enterText(key('auth-password'), 'correct horse battery');
+      h.auth.hold = Completer<void>();
+      await tester.tap(key('auth-sign-in'));
+      await tester.pump();
+      expect(key('auth-pending'), findsOneWidget);
+
+      // gotrue's onAuthStateChange lands before signInWithPassword returns.
+      h.signIn(id: 'user-a@b.c');
+      await tester.pump();
+      h.auth.hold!.complete();
+      h.auth.hold = null;
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SignInScreen), findsNothing);
+      expect(find.byType(SettingsScreen), findsOneWidget,
+          reason: 'a second pop would have removed Settings too');
+      expect(find.text('Profiles'), findsNothing,
+          reason: 'the picker under Settings must not be exposed');
+      expect(find.text('Signed in as a@b.c'), findsOneWidget);
+      expect(h.auth.signInCalls.single.email, 'a@b.c');
+      await h.dispose();
+    });
+
+    testWidgets('a screen opened while already signed in does not complete '
+        'on its initial state, nor on a non-transition notify; only a '
+        'signed-out → signed-in transition completes it, once',
+        (tester) async {
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth.dispose);
+      final controller = AuthController(authService: auth);
+      addTearDown(controller.dispose);
+      var completions = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthController>.value(value: controller),
+            Provider<SettingsStore>.value(value: _NoopSettings()),
+          ],
+          child: SignInScreen(
+            embedded: true,
+            onSignedIn: () => completions++,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(completions, 0, reason: 'initial state is not a transition');
+
+      // A controller notify that is not a session transition.
+      auth.emitLinkFailure(const AuthFailure.network());
+      await tester.pumpAndSettle();
+      expect(completions, 0);
+
+      auth.emit(AuthSessionState.signedOut);
+      await tester.pumpAndSettle();
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1', email: 'a@b.c'));
+      await tester.pumpAndSettle();
+      expect(completions, 1);
+
+      // A duplicate emission after completion changes nothing.
+      auth.emit(AuthSessionState.signedOut);
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1', email: 'a@b.c'));
+      await tester.pumpAndSettle();
+      expect(completions, 1, reason: 'completes exactly once');
+    });
+  });
+
   group('password recovery (AE8, F4)', () {
     testWidgets('latched recovery renders nothing while locked; after unlock '
         'the recovery screen shows before any profile screen; saving calls '
@@ -395,6 +499,36 @@ void main() {
       expect(find.text('Create profile'), findsOneWidget);
       expect(key('sync-status'), findsOneWidget,
           reason: 'the tile explains the sync state beside the form');
+      await h.dispose();
+    });
+
+    testWidgets('the embedded account step advances to restoring when a '
+        'session arrives without any tap, and the name form never appears '
+        'for an account that holds a profile (#2 U3; R8)', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump();
+      await tester.tap(find.text('I understand'));
+      await tester.pumpAndSettle();
+      expect(key('auth-email'), findsOneWidget, reason: 'account step');
+
+      // A magic link opened on this device: only the session event.
+      h.signIn(email: 'a@b.c');
+      await pumpFew(tester);
+      expect(key('auth-email'), findsNothing);
+      expect(key('restoring'), findsOneWidget);
+      expect(find.text('Create profile'), findsNothing);
+      expect(h.auth.signInCalls, isEmpty);
+
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'u1');
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+      await AccountHarness.seedOneProfile(h.db);
+      h.engine.emitPhase(SyncPhase.idle,
+          lastSyncAt: DateTime.now().toUtc(), boundUserId: 'u1');
+      await h.settle();
+      expect(find.text('Profiles'), findsOneWidget);
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Create profile'), findsNothing);
       await h.dispose();
     });
   });

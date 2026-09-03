@@ -448,6 +448,80 @@ void main() {
     });
   });
 
+  group('link-failure surface after unlock (#2 U3; AE4, R7)', () {
+    final linkFailure = find.byKey(const ValueKey('auth-link-failure'));
+    const expiredCopy =
+        'That sign-in link is no longer valid. Request a new one.';
+
+    testWidgets('a latched expiredLink shows nothing while locked; after '
+        'unlock the home shows the generic message once and consumes it; '
+        'a later re-lock/unlock rebuild shows nothing', (tester) async {
+      final auth = FakeAuthService()
+        ..pendingLinkFailure = const AuthFailure.expiredLink();
+      addTearDown(auth.dispose);
+      final harness = Harness(tester, seed: (db) => seedTwoProfiles(db, 0));
+      await harness.pump(grant: false, authService: auth);
+      expect(lockScreen, findsOneWidget);
+      expect(linkFailure, findsNothing);
+      expect(find.text(expiredCopy), findsNothing);
+      expect(auth.linkFailureConsumed, 0,
+          reason: 'consumed only once the gate is unlocked');
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      expect(lockScreen, findsNothing);
+      expect(find.text('Alice'), findsOneWidget, reason: 'home is showing');
+      expect(linkFailure, findsOneWidget);
+      expect(find.text(expiredCopy), findsOneWidget);
+      expect(auth.linkFailureConsumed, 1);
+      expect(auth.pendingLinkFailure, isNull);
+      expect(expiredCopy, isNot(contains('@')));
+      expect(expiredCopy.toLowerCase(), isNot(contains('http')));
+
+      // Let the SnackBar retire, then force a full re-evaluation of the
+      // home gate through a re-lock and unlock.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(linkFailure, findsNothing);
+      await harness.background(AppLifecycleState.paused);
+      await harness.background(AppLifecycleState.resumed);
+      await harness.unlockViaButton();
+      expect(find.text('Alice'), findsOneWidget);
+      expect(linkFailure, findsNothing, reason: 'never repeats');
+      expect(auth.linkFailureConsumed, 1);
+      await harness.dispose();
+    });
+
+    testWidgets('a failure latched while re-locked (home offstage) waits '
+        'for the unlock; a latched network failure shows the network copy',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final harness = Harness(tester, seed: (db) => seedTwoProfiles(db, 0));
+      await harness.pump(authService: auth);
+      await harness.drainIsolateTraffic(tester);
+      expect(find.text('Alice'), findsOneWidget);
+
+      await harness.background(AppLifecycleState.paused);
+      expect(lockScreen, findsOneWidget);
+      auth.emitLinkFailure(const AuthFailure.network());
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(linkFailure, findsNothing);
+      expect(auth.linkFailureConsumed, 0);
+
+      await harness.background(AppLifecycleState.resumed);
+      await harness.unlockViaButton();
+      expect(linkFailure, findsOneWidget);
+      expect(
+          find.text(
+              'Could not reach the server. Check your connection and try again.'),
+          findsOneWidget);
+      expect(auth.linkFailureConsumed, 1);
+      await harness.dispose();
+    });
+  });
+
   group('fail-closed startup screen (replaces U4 StartupErrorApp)', () {
     testWidgets('quarantine failure gets its own message; single Close; no '
         'destructive actions; no data', (tester) async {

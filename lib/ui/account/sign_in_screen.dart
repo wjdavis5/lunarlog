@@ -8,6 +8,14 @@
 /// Used two ways: pushed from Settings (pops on success) and embedded as
 /// the first-run account step ([embedded], with "Not now").
 ///
+/// A session that arrives through a link while this screen is showing
+/// completes it the same way a button does (#2 U3; KTD4, R8): the state
+/// listens to the [AuthController] and funnels every completion — button
+/// actions and the listener — through one `_signedIn()` guarded by a
+/// `_completed` flag, because gotrue emits `signedIn` before
+/// `signInWithPassword` returns. Only a signed-out → signed-in transition
+/// counts; a screen opened while already signed in does not auto-complete.
+///
 /// [authFailureCopy] is the single, exhaustive copy table for every
 /// [AuthFailure], including the provider, link, code, identity, and
 /// closed-sign-up kinds (#2 U2; KTD4, R14).
@@ -75,15 +83,46 @@ class _SignInScreenState extends State<SignInScreen> {
   String? _error;
   String? _info;
 
+  /// The controller this state listens to for link-delivered sessions
+  /// (#2 U3; KTD4).
+  AuthController? _auth;
+
+  /// Last observed `signedIn`, so only a transition into it completes.
+  bool _wasSignedIn = false;
+
+  /// Set by the first completion; every later path returns early.
+  bool _completed = false;
+
   bool get _showApple =>
       widget.showApple ??
       (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = context.read<AuthController>();
+    if (identical(auth, _auth)) return;
+    _auth?.removeListener(_onAuthChanged);
+    _auth = auth..addListener(_onAuthChanged);
+    _wasSignedIn = auth.signedIn;
+  }
+
+  @override
   void dispose() {
+    _auth?.removeListener(_onAuthChanged);
+    _auth = null;
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  /// A session arrived (link, code, or a button action's early event):
+  /// complete on the signed-out → signed-in edge only (#2 U3; R8).
+  void _onAuthChanged() {
+    final signedIn = _auth?.signedIn ?? false;
+    final arrived = signedIn && !_wasSignedIn;
+    _wasSignedIn = signedIn;
+    if (arrived) _signedIn();
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -107,8 +146,11 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
+  /// The one completion path (KTD4): button actions and the controller
+  /// listener both land here, and only the first arrival acts.
   void _signedIn() {
-    if (!mounted) return;
+    if (!mounted || _completed) return;
+    _completed = true;
     widget.onSignedIn?.call();
     if (!widget.embedded) Navigator.of(context).maybePop();
   }

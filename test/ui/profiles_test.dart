@@ -12,12 +12,17 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+
+import '../support/fake_auth_service.dart';
+import '../support/fake_sync_engine.dart';
 
 const String kNoticeText =
     'Data stays on this device unless you sign in to sync it to your account.';
@@ -165,6 +170,64 @@ void main() {
       expect(find.byType(TextFormField), findsOneWidget,
           reason: 'straight to the name form on subsequent runs');
       await disposeApp(tester, db);
+    });
+
+    testWidgets('a first run that starts with a session and a sync '
+        'controller (cold-start link) shows the restoring wait before any '
+        'name form; without a sync controller the form shows directly '
+        '(#2 U3; R8)', (tester) async {
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth.dispose);
+      final engine = FakeSyncEngine();
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      await tester.pumpWidget(
+          LunarLogApp(db: db, authService: auth, syncEngine: engine));
+      await tester.pumpAndSettle();
+      expect(find.text(kNoticeText), findsOneWidget);
+      await tester.tap(find.text('I understand'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byKey(const ValueKey('auth-email')), findsNothing,
+          reason: 'a session exists: no account step');
+      expect(find.byKey(const ValueKey('restoring')), findsOneWidget);
+      expect(find.byType(TextFormField), findsNothing,
+          reason: 'the name form must not flash before the bind-time pull');
+      expect(find.text('Create profile'), findsNothing);
+
+      // The pull delivered a profile: the picker, still no name form.
+      engine.emitPhase(SyncPhase.restoring, boundUserId: 'u1');
+      await tester.pump(const Duration(milliseconds: 100));
+      await DriftProfilesRepository(db.storage)
+          .create(displayName: 'Alice', isMinor: false);
+      engine.emitPhase(SyncPhase.idle,
+          lastSyncAt: DateTime.now().toUtc(), boundUserId: 'u1');
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('Profiles'), findsOneWidget);
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Create profile'), findsNothing);
+      await disposeApp(tester, db);
+
+      // Contrast: a session with nothing to restore from goes to the form.
+      final auth2 = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth2.dispose);
+      final db2 = LunarLogDatabase(NativeDatabase.memory());
+      await tester.pumpWidget(LunarLogApp(db: db2, authService: auth2));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('I understand'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('restoring')), findsNothing);
+      expect(find.text('Create profile'), findsOneWidget);
+      await disposeApp(tester, db2);
     });
   });
 
