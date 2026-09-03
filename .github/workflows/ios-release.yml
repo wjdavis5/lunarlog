@@ -196,7 +196,7 @@ jobs:
             --build-number=${{ steps.version.outputs.build }} \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \n            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \n            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
 
       - name: Install CocoaPods dependencies (if present)
         run: |

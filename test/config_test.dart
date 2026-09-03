@@ -115,6 +115,68 @@ void main() {
     });
   });
 
+  group('computeHasGoogle', () {
+    test('is false when the iOS client id is empty', () {
+      expect(
+        computeHasGoogle(
+          hasSupabase: true,
+          isWeb: false,
+          iosClientId: '',
+          webClientId: 'web-id.apps.googleusercontent.com',
+        ),
+        isFalse,
+      );
+    });
+
+    test('is false when the web client id is empty', () {
+      expect(
+        computeHasGoogle(
+          hasSupabase: true,
+          isWeb: false,
+          iosClientId: 'ios-id.apps.googleusercontent.com',
+          webClientId: '',
+        ),
+        isFalse,
+      );
+    });
+
+    test('is false on web even when both ids are set', () {
+      expect(
+        computeHasGoogle(
+          hasSupabase: true,
+          isWeb: true,
+          iosClientId: 'ios-id.apps.googleusercontent.com',
+          webClientId: 'web-id.apps.googleusercontent.com',
+        ),
+        isFalse,
+      );
+    });
+
+    test('is false when Supabase is unconfigured', () {
+      expect(
+        computeHasGoogle(
+          hasSupabase: false,
+          isWeb: false,
+          iosClientId: 'ios-id.apps.googleusercontent.com',
+          webClientId: 'web-id.apps.googleusercontent.com',
+        ),
+        isFalse,
+      );
+    });
+
+    test('is true natively when Supabase and both ids are set', () {
+      expect(
+        computeHasGoogle(
+          hasSupabase: true,
+          isWeb: false,
+          iosClientId: 'ios-id.apps.googleusercontent.com',
+          webClientId: 'web-id.apps.googleusercontent.com',
+        ),
+        isTrue,
+      );
+    });
+  });
+
   group('AppConfig (compile-time values in this test run)', () {
     // The test runner passes no dart-defines, so every value is unconfigured.
     test('is unconfigured without dart-defines', () {
@@ -124,6 +186,9 @@ void main() {
       expect(AppConfig.webSyncEnabled, isFalse);
       expect(AppConfig.hasSupabase, isFalse);
       expect(AppConfig.hasSentry, isFalse);
+      expect(AppConfig.googleIosClientId, isEmpty);
+      expect(AppConfig.googleWebClientId, isEmpty);
+      expect(AppConfig.hasGoogle, isFalse);
     });
 
     test('hasSupabase agrees with the pure function for this platform', () {
@@ -134,6 +199,18 @@ void main() {
           publishableKey: AppConfig.supabasePublishableKey,
           isWeb: kIsWeb,
           webSyncEnabled: AppConfig.webSyncEnabled,
+        ),
+      );
+    });
+
+    test('hasGoogle agrees with the pure function for this platform', () {
+      expect(
+        AppConfig.hasGoogle,
+        computeHasGoogle(
+          hasSupabase: AppConfig.hasSupabase,
+          isWeb: kIsWeb,
+          iosClientId: AppConfig.googleIosClientId,
+          webClientId: AppConfig.googleWebClientId,
         ),
       );
     });
