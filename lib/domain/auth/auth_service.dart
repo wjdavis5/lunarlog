@@ -9,7 +9,8 @@
 ///
 /// Native Google Sign-In and the failure kinds for provider, link, code,
 /// identity, and closed sign-ups come from the social-logins plan
-/// (#2 U2; KTD1, KTD4, KTD8).
+/// (#2 U2; KTD1, KTD4, KTD8); passwordless email — a sign-in link plus the
+/// code from the same email — from (#2 U7; KTD3, KTD4).
 library;
 
 import 'package:meta/meta.dart';
@@ -209,7 +210,7 @@ final class AuthNetworkFailure extends AuthFailure {
   String toString() => 'AuthFailure.network';
 }
 
-/// Everything else, including rejected or expired links.
+/// Everything else (a rejected link is [AuthExpiredLinkFailure]).
 final class AuthUnknownFailure extends AuthFailure {
   const AuthUnknownFailure();
 
@@ -302,6 +303,26 @@ abstract interface class AuthService {
   /// provider-side failure, #2 KTD8).
   Future<GoogleSignInResult> signInWithGoogleNative();
 
+  /// Sends a sign-in email carrying a link (to open on this device, R5)
+  /// and a code (#2 KTD3). With [createAccount] false an unknown email
+  /// completes exactly like a known one — no account is created and no
+  /// failure is thrown (R6, AE3); with it true a new account is created,
+  /// or [AuthSignUpClosedFailure] is thrown while sign-ups are closed.
+  /// Throws [AuthFailure].
+  Future<void> sendMagicLink({
+    required String email,
+    required bool createAccount,
+  });
+
+  /// Verifies the code from the sign-in email and establishes the session
+  /// (the `signedIn` state arrives through [states] as for a password
+  /// sign-in). Throws [AuthInvalidCodeFailure] for a wrong or expired code
+  /// (#2 KTD4), [AuthFailure] otherwise.
+  Future<AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  });
+
   /// Throws [AuthFailure]; a [AuthSignOutScope.local] failure still leaves
   /// no session on this device.
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local});
@@ -327,8 +348,10 @@ abstract interface class AuthService {
 
   void consumeRecovery();
 
-  /// A rejected incoming link (expired, tampered, no matching verifier)
-  /// held until [consumeLinkFailure]; never carries the link's text.
+  /// A rejected incoming link (expired, reused, tampered, or opened on a
+  /// device with no matching verifier: [AuthExpiredLinkFailure]; a
+  /// transient [AuthNetworkFailure] leaves the link retryable) held until
+  /// [consumeLinkFailure]; never carries the link's text.
   AuthFailure? get pendingLinkFailure;
 
   /// Emits each rejected link's failure as it happens (the latched value in

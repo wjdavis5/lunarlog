@@ -1,7 +1,8 @@
 /// Hand-written [AuthService] fake (KTD6, the `FakeGate` convention): a
 /// controllable state stream plus call recorders, so widget and controller
 /// tests never touch a Supabase client. Google Sign-In mirrors the Apple
-/// knobs (#2 U2).
+/// knobs (#2 U2); the passwordless pair records its calls and signs in on
+/// a verified code like a password sign-in (#2 U7).
 library;
 
 import 'dart:async';
@@ -60,6 +61,8 @@ class FakeAuthService implements AuthService {
   final passwordResetCalls = <String>[];
   final updatePasswordCalls = <String>[];
   final signOutCalls = <AuthSignOutScope>[];
+  final magicLinkCalls = <({String email, bool createAccount})>[];
+  final codeCalls = <({String email, String code})>[];
   int appleCalls = 0;
   int googleCalls = 0;
   int recoveryConsumed = 0;
@@ -186,6 +189,27 @@ class FakeAuthService implements AuthService {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
+  }
+
+  @override
+  Future<void> sendMagicLink({
+    required String email,
+    required bool createAccount,
+  }) async {
+    magicLinkCalls.add((email: email, createAccount: createAccount));
+    await _maybeThrow();
+  }
+
+  @override
+  Future<AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    codeCalls.add((email: email, code: code));
+    await _maybeThrow();
+    final user = AuthUser(id: 'user-$email', email: email);
+    emit(AuthSessionState.signedIn, user: user);
+    return user;
   }
 
   @override

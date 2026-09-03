@@ -13,6 +13,8 @@
 /// Native Google Sign-In (#2 U2; KTD1, KTD8) runs through the injected
 /// [GoogleSignInClient] with one hashed nonce per process (#2 AS2); log
 /// lines carry only a runtime type or an exception-code name (#2 KTD7).
+/// Passwordless email (#2 U7; KTD3, KTD4) rides the same PKCE callback;
+/// [mapAuthError] stays pure and each operation wraps its own failures.
 library;
 
 import 'dart:async';
@@ -173,6 +175,13 @@ class SupabaseAuthService implements AuthService {
   /// replays the launch link on its stream — is handled once, except that
   /// an exchange which failed transiently (network) leaves the link
   /// retryable.
+  ///
+  /// Failures are mapped by operation (#2 U7; KTD4): a link the provider
+  /// already rejected and every non-network exchange failure — expired
+  /// (`otp_expired`), reused or stale (`flow_state_not_found`,
+  /// `flow_state_expired`, `bad_code_verifier`), or opened on a device
+  /// with no verifier (gotrue's code-less "Code verifier could not be
+  /// found") — surface as one generic [AuthExpiredLinkFailure] (R7).
   Future<void> handleLink(Uri uri) async {
     final link = classifyAuthLink(uri);
     if (link is AuthLinkIgnored) return;
@@ -185,7 +194,7 @@ class SupabaseAuthService implements AuthService {
         _lastHandledLink = key;
         // Never call getSessionFromUrl: gotrue would throw an AuthException
         // whose message *is* the error_description.
-        _surfaceLinkFailure(const AuthFailure.unknown());
+        _surfaceLinkFailure(const AuthFailure.expiredLink());
       case AuthLinkCallback(:final recovery):
         // Latched before the exchange so the stream replay of the launch
         // link cannot start a second exchange while this one is in flight.
@@ -197,13 +206,18 @@ class SupabaseAuthService implements AuthService {
           }
         } catch (error) {
           final failure = mapAuthError(error);
-          // A transient failure un-latches the link so the same link can
-          // be exchanged again; a definitive one (expired code, missing
-          // verifier) stays latched so the replay does not surface it twice.
-          if (failure is AuthNetworkFailure && _lastHandledLink == key) {
-            _lastHandledLink = null;
+          if (failure is AuthNetworkFailure) {
+            // A transient failure un-latches the link so the same link can
+            // be exchanged again.
+            if (_lastHandledLink == key) _lastHandledLink = null;
+            _surfaceLinkFailure(failure);
+            return;
           }
-          _surfaceLinkFailure(failure);
+          // A definitive failure stays latched so the replay does not
+          // surface it twice; its kind is not distinguished (KTD4).
+          debugPrint('lunarlog auth: link exchange rejected '
+              '(${error.runtimeType})');
+          _surfaceLinkFailure(const AuthFailure.expiredLink());
         }
     }
   }
@@ -436,6 +450,72 @@ class SupabaseAuthService implements AuthService {
   ({String raw, String hashed}) _mintGoogleNonce() {
     final raw = _generateNonce();
     return (raw: raw, hashed: sha256.convert(utf8.encode(raw)).toString());
+  }
+
+  /// Sends the sign-in email (#2 U7; KTD3). In sign-in mode the server's
+  /// `otp_disabled` rejection of an unknown email is treated as success so
+  /// a known and an unknown email get one response (R6, AE3); in create
+  /// mode `signup_disabled` maps to [AuthSignUpClosedFailure] through
+  /// [mapAuthError].
+  @override
+  Future<void> sendMagicLink({
+    required String email,
+    required bool createAccount,
+  }) =>
+      _guard(() async {
+        try {
+          await _gateway.signInWithOtp(
+            email: email,
+            emailRedirectTo: _redirectTo,
+            shouldCreateUser: createAccount,
+          );
+        } on AuthException catch (error) {
+          if (!createAccount && error.code == 'otp_disabled') return;
+          rethrow;
+        }
+      });
+
+  /// Verifies the emailed code (#2 U7; KTD3, KTD4). Mapping is by
+  /// operation: any client-side rejection of the code (`otp_expired`,
+  /// `otp_disabled`, or another 4xx) is [AuthInvalidCodeFailure]; a
+  /// network failure, a closed sign-up, and a server error keep their own
+  /// kinds. The `signedIn` state arrives through `onAuthStateChange`, as
+  /// for a password sign-in.
+  @override
+  Future<AuthUser> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    final AuthResponse response;
+    try {
+      response = await _gateway.verifyOTP(
+        email: email,
+        token: code,
+        type: OtpType.email,
+      );
+    } catch (error, stackTrace) {
+      final failure = mapAuthError(error);
+      Error.throwWithStackTrace(
+        _isRejectedCode(error, failure)
+            ? const AuthFailure.invalidCode()
+            : failure,
+        stackTrace,
+      );
+    }
+    final user = response.session?.user ?? response.user;
+    if (user == null) throw const AuthFailure.unknown();
+    return _toUser(user)!;
+  }
+
+  static bool _isRejectedCode(Object error, AuthFailure mapped) {
+    if (error is! AuthException) return false;
+    if (mapped is AuthNetworkFailure || mapped is AuthSignUpClosedFailure) {
+      return false;
+    }
+    if (error.code == 'otp_expired' || error.code == 'otp_disabled') {
+      return true;
+    }
+    return error.statusCode?.startsWith('4') ?? false;
   }
 
   @override

@@ -3,7 +3,8 @@
 /// interfaces so the service's link handling and event mapping are
 /// unit-testable with fakes; `SupabaseClient` itself is not fakeable.
 /// `signInWithIdToken` carries the optional Google access token
-/// (#2 U2; KTD1).
+/// (#2 U2; KTD1); `signInWithOtp` and `verifyOTP` are the passwordless
+/// pair (#2 U7; KTD3).
 library;
 
 import 'package:app_links/app_links.dart';
@@ -37,6 +38,23 @@ abstract interface class AuthGateway {
     required String idToken,
     String? accessToken,
     String? nonce,
+  });
+
+  /// Sends the sign-in email and stores a PKCE verifier for its link
+  /// (#2 KTD3). [shouldCreateUser] false makes the server reject an
+  /// unknown email with `otp_disabled` instead of creating an account.
+  Future<void> signInWithOtp({
+    required String email,
+    String? emailRedirectTo,
+    required bool shouldCreateUser,
+  });
+
+  /// Verifies the emailed code; [type] is `OtpType.email` for the
+  /// passwordless flow.
+  Future<AuthResponse> verifyOTP({
+    required String email,
+    required String token,
+    required OtpType type,
   });
 
   Future<void> signOut({required SignOutScope scope});
@@ -99,6 +117,26 @@ class GoTrueAuthGateway implements AuthGateway {
         accessToken: accessToken,
         nonce: nonce,
       );
+
+  @override
+  Future<void> signInWithOtp({
+    required String email,
+    String? emailRedirectTo,
+    required bool shouldCreateUser,
+  }) =>
+      _auth.signInWithOtp(
+        email: email,
+        emailRedirectTo: emailRedirectTo,
+        shouldCreateUser: shouldCreateUser,
+      );
+
+  @override
+  Future<AuthResponse> verifyOTP({
+    required String email,
+    required String token,
+    required OtpType type,
+  }) =>
+      _auth.verifyOTP(email: email, token: token, type: type);
 
   @override
   Future<void> signOut({required SignOutScope scope}) =>

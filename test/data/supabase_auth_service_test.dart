@@ -3,7 +3,9 @@
 /// itself, the recovery latch set before any widget exists, typed failure
 /// mapping with no provider text, and the native Apple flow. The native
 /// Google flow (#2 U2; KTD1, KTD8; AE1, AE2) runs over a fake
-/// [GoogleSignInClient] so no test touches the plugin.
+/// [GoogleSignInClient] so no test touches the plugin. Passwordless email
+/// (#2 U7; KTD3, KTD4; AE3) covers the uniform unknown-email response and
+/// the by-operation mapping of link and code failures.
 library;
 
 import 'dart:async';
@@ -67,6 +69,9 @@ class FakeAuthGateway implements AuthGateway {
     String? nonce,
   })>[];
   final signOutCalls = <SignOutScope>[];
+  final otpCalls =
+      <({String email, String? redirect, bool shouldCreateUser})>[];
+  final verifyOtpCalls = <({String email, String token, OtpType type})>[];
 
   void _maybeThrow() {
     final error = nextError;
@@ -181,6 +186,36 @@ class FakeAuthGateway implements AuthGateway {
     _maybeThrow();
     session = null;
     emit(AuthChangeEvent.signedOut, reason: SignOutReason.userInitiated);
+  }
+
+  /// Like gotrue, stores a PKCE verifier so the emailed link can be
+  /// exchanged on this device (#2 U7; KTD3).
+  @override
+  Future<void> signInWithOtp({
+    required String email,
+    String? emailRedirectTo,
+    required bool shouldCreateUser,
+  }) async {
+    otpCalls.add((
+      email: email,
+      redirect: emailRedirectTo,
+      shouldCreateUser: shouldCreateUser,
+    ));
+    _maybeThrow();
+    codeVerifier = 'verifier';
+  }
+
+  @override
+  Future<AuthResponse> verifyOTP({
+    required String email,
+    required String token,
+    required OtpType type,
+  }) async {
+    verifyOtpCalls.add((email: email, token: token, type: type));
+    _maybeThrow();
+    session = makeSession('otp', email: email);
+    emit(AuthChangeEvent.signedIn);
+    return AuthResponse(session: session);
   }
 }
 
@@ -395,8 +430,9 @@ void main() {
       expect(service.currentUserId, 'linked');
     });
 
-    test('a link with no matching verifier yields no session, stays '
-        'signedOut, and surfaces a typed failure', () async {
+    test('a link with no matching verifier (opened on another device) '
+        'yields no session, stays signedOut, and surfaces expiredLink '
+        '(#2 KTD4)', () async {
       final service = await started();
       final failures = <AuthFailure>[];
       service.linkFailures.listen(failures.add);
@@ -406,7 +442,7 @@ void main() {
       expect(service.state, AuthSessionState.signedOut);
       expect(service.currentUserId, isNull);
       expect(service.pendingRecovery, isFalse);
-      expect(service.pendingLinkFailure, isA<AuthUnknownFailure>());
+      expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
       expect(failures, hasLength(1));
     });
 
@@ -422,8 +458,12 @@ void main() {
       expect(gateway.getSessionFromUrlCalls, isEmpty);
       expect(service.state, AuthSessionState.signedOut);
       final failure = service.pendingLinkFailure;
-      expect(failure, isA<AuthUnknownFailure>());
-      expect(failure.toString(), isNot(contains('expired')));
+      expect(failure, isA<AuthExpiredLinkFailure>());
+      // The fieldless type name and nothing else: none of the link's
+      // error_description ("Email link is invalid or has expired") or codes.
+      expect(failure.toString(), 'AuthFailure.expiredLink');
+      expect(failure.toString(), isNot(contains('Email')));
+      expect(failure.toString(), isNot(contains('invalid')));
       expect(failure.toString(), isNot(contains('otp')));
       expect(failure.toString(), isNot(contains('access_denied')));
       expect(failures.single, same(failure));
@@ -444,7 +484,7 @@ void main() {
       expect(service.state, AuthSessionState.signedOut);
       expect(service.currentUserId, isNull);
       expect(service.pendingRecovery, isFalse);
-      expect(service.pendingLinkFailure, isA<AuthUnknownFailure>());
+      expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
       expect(failures, hasLength(1));
       expect(failures.single.toString(), isNot(contains('attacker')));
     });
@@ -500,7 +540,7 @@ void main() {
       links.controller.add(uri);
       await settle();
       expect(gateway.getSessionFromUrlCalls, hasLength(1));
-      expect(service.pendingLinkFailure, isA<AuthUnknownFailure>());
+      expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
     });
 
     test('the initial link replayed on the stream is exchanged only once',
@@ -1039,6 +1079,241 @@ void main() {
         expect(text.toLowerCase(), isNot(contains('token')));
         expect(text, isNot(contains(' ')));
       }
+    });
+  });
+
+  group('passwordless email (#2 U7; KTD3, KTD4)', () {
+    Future<Object?> failureOf(Future<Object?> call) =>
+        call.then<Object?>((_) => null, onError: (Object e) => e);
+
+    test('AE3: sign-in mode sends the link with shouldCreateUser false and '
+        'the callback redirect; an otp_disabled rejection (unknown email) '
+        'completes with no failure and no state change', () async {
+      final service = await started();
+      final seen = <AuthSessionState>[];
+      service.states.listen(seen.add);
+
+      await service.sendMagicLink(email: 'known@b.c', createAccount: false);
+      expect(gateway.otpCalls.single.email, 'known@b.c');
+      expect(gateway.otpCalls.single.redirect, callback);
+      expect(gateway.otpCalls.single.shouldCreateUser, isFalse);
+
+      gateway.nextError = const AuthApiException('Signups not allowed for otp',
+          statusCode: '422', code: 'otp_disabled');
+      await service.sendMagicLink(email: 'unknown@b.c', createAccount: false);
+      await settle();
+      expect(gateway.otpCalls, hasLength(2));
+      expect(gateway.otpCalls.last.shouldCreateUser, isFalse);
+      expect(seen, isEmpty);
+      expect(service.state, AuthSessionState.signedOut);
+      expect(service.pendingLinkFailure, isNull);
+    });
+
+    test('create mode passes shouldCreateUser true', () async {
+      final service = await started();
+      await service.sendMagicLink(email: 'new@b.c', createAccount: true);
+      expect(gateway.otpCalls.single.shouldCreateUser, isTrue);
+      expect(gateway.otpCalls.single.redirect, callback);
+    });
+
+    test('create mode with sign-ups closed throws signUpClosed', () async {
+      final service = await started();
+      gateway.nextError = const AuthApiException(
+          'Signups not allowed for this instance',
+          statusCode: '422',
+          code: 'signup_disabled');
+      final error = await failureOf(
+          service.sendMagicLink(email: 'new@b.c', createAccount: true));
+      expect(error, isA<AuthSignUpClosedFailure>());
+      expect(error.toString(), isNot(contains('Signups')));
+      expect(error.toString(), isNot(contains('b.c')));
+    });
+
+    test('an otp_disabled rejection in create mode is not swallowed',
+        () async {
+      final service = await started();
+      gateway.nextError = const AuthApiException('Signups not allowed for otp',
+          statusCode: '422', code: 'otp_disabled');
+      final error = await failureOf(
+          service.sendMagicLink(email: 'new@b.c', createAccount: true));
+      expect(error, isA<AuthFailure>());
+      expect(error, isNot(isA<AuthSignUpClosedFailure>()));
+    });
+
+    test('a network failure while sending is network in either mode',
+        () async {
+      final service = await started();
+      gateway.nextError = AuthRetryableFetchException();
+      expect(
+          await failureOf(
+              service.sendMagicLink(email: 'a@b.c', createAccount: false)),
+          isA<AuthNetworkFailure>());
+      gateway.nextError = const SocketException('Failed host lookup');
+      expect(
+          await failureOf(
+              service.sendMagicLink(email: 'a@b.c', createAccount: true)),
+          isA<AuthNetworkFailure>());
+    });
+
+    test('verifyEmailCode verifies with OtpType.email, returns the user, '
+        'and yields signedIn', () async {
+      final service = await started();
+      final user =
+          await service.verifyEmailCode(email: 'a@b.c', code: '12345678');
+      await settle();
+      final call = gateway.verifyOtpCalls.single;
+      expect(call.email, 'a@b.c');
+      expect(call.token, '12345678');
+      expect(call.type, OtpType.email);
+      expect(user.id, 'otp');
+      expect(user.email, 'a@b.c');
+      expect(service.state, AuthSessionState.signedIn);
+      expect(service.currentUserId, 'otp');
+    });
+
+    for (final (code, status, message) in [
+      ('otp_expired', '403', 'Token has expired or is invalid'),
+      ('otp_disabled', '422', 'Signups not allowed for otp'),
+      ('validation_failed', '400', 'Token has invalid format'),
+    ]) {
+      test('a rejected code ($code) throws invalidCode with no provider text',
+          () async {
+        final service = await started();
+        gateway.nextError =
+            AuthApiException(message, statusCode: status, code: code);
+        final error = await failureOf(
+            service.verifyEmailCode(email: 'a@b.c', code: '00000000'));
+        expect(error, isA<AuthInvalidCodeFailure>());
+        expect(error.toString(), isNot(contains('Token')));
+        expect(error.toString(), isNot(contains('b.c')));
+        expect(service.state, AuthSessionState.signedOut);
+      });
+    }
+
+    test('a network failure while verifying stays network', () async {
+      final service = await started();
+      gateway.nextError = AuthRetryableFetchException();
+      expect(
+          await failureOf(
+              service.verifyEmailCode(email: 'a@b.c', code: '00000000')),
+          isA<AuthNetworkFailure>());
+    });
+
+    test('a server error while verifying stays unknown, not invalidCode',
+        () async {
+      final service = await started();
+      gateway.nextError = const AuthApiException('Database error',
+          statusCode: '500', code: 'unexpected_failure');
+      expect(
+          await failureOf(
+              service.verifyEmailCode(email: 'a@b.c', code: '00000000')),
+          isA<AuthUnknownFailure>());
+    });
+
+    test('a link carrying error_code=otp_expired surfaces expiredLink '
+        'without exchanging', () async {
+      final service = await started();
+      final failures = <AuthFailure>[];
+      service.linkFailures.listen(failures.add);
+      await service.handleLink(Uri.parse(
+          '$callback?error=access_denied&error_code=otp_expired'
+          '&error_description=Email+link+is+invalid+or+has+expired'));
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, isEmpty);
+      expect(failures.single, isA<AuthExpiredLinkFailure>());
+      expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
+      expect(failures.single.toString(), isNot(contains('otp')));
+      expect(service.state, AuthSessionState.signedOut);
+    });
+
+    for (final code in [
+      'flow_state_not_found',
+      'flow_state_expired',
+      'bad_code_verifier',
+      'otp_expired',
+    ]) {
+      test('an exchange rejected with $code surfaces expiredLink and stays '
+          'latched', () async {
+        gateway.codeVerifier = 'verifier';
+        final service = await started();
+        final failures = <AuthFailure>[];
+        service.linkFailures.listen(failures.add);
+        final uri = Uri.parse('$callback?code=abc');
+        gateway.nextError = AuthApiException('PKCE flow state is $code',
+            statusCode: '404', code: code);
+        await service.handleLink(uri);
+        await settle();
+        expect(gateway.getSessionFromUrlCalls, hasLength(1));
+        expect(failures.single, isA<AuthExpiredLinkFailure>());
+        expect(failures.single.toString(), isNot(contains('flow')));
+        expect(service.state, AuthSessionState.signedOut);
+
+        await service.handleLink(uri);
+        await settle();
+        expect(gateway.getSessionFromUrlCalls, hasLength(1),
+            reason: 'a definitive failure is not exchanged again');
+        expect(failures, hasLength(1));
+      });
+    }
+
+    test('a code callback with no stored verifier (the gotrue null-code '
+        'exception) surfaces expiredLink, stays signedOut, and latches the '
+        'link so a replay is not exchanged again', () async {
+      final service = await started(); // no verifier stored
+      final failures = <AuthFailure>[];
+      service.linkFailures.listen(failures.add);
+      final uri = Uri.parse('$callback?code=abc');
+      await service.handleLink(uri);
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      expect(failures.single, isA<AuthExpiredLinkFailure>());
+      expect(failures.single.toString(), isNot(contains('verifier')));
+      expect(service.state, AuthSessionState.signedOut);
+      expect(service.currentUserId, isNull);
+
+      links.controller.add(uri);
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      expect(failures, hasLength(1));
+      expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
+    });
+
+    test('a transient network failure during the exchange is network and '
+        'leaves the link retryable', () async {
+      final service = await started();
+      await service.sendMagicLink(email: 'a@b.c', createAccount: false);
+      final failures = <AuthFailure>[];
+      service.linkFailures.listen(failures.add);
+      final uri = Uri.parse('$callback?code=abc');
+      gateway.nextError = AuthRetryableFetchException();
+      await service.handleLink(uri);
+      await settle();
+      expect(failures.single, isA<AuthNetworkFailure>());
+      expect(service.state, AuthSessionState.signedOut);
+
+      await service.handleLink(uri);
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(2));
+      expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('mapAuthError stays pure: it knows no operation and maps the '
+        'exchange codes to unknown on its own', () {
+      for (final code in [
+        'otp_expired',
+        'otp_disabled',
+        'flow_state_not_found',
+        'flow_state_expired',
+        'bad_code_verifier',
+      ]) {
+        expect(mapAuthError(AuthApiException('x', code: code)),
+            isA<AuthUnknownFailure>(),
+            reason: code);
+      }
+      expect(
+          mapAuthError(const AuthException(
+              'Code verifier could not be found in local storage.')),
+          isA<AuthUnknownFailure>());
     });
   });
 }

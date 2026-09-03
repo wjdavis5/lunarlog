@@ -123,6 +123,29 @@ void main() {
     expect(c.pendingLinkFailure, isA<AuthNetworkFailure>());
   });
 
+  test('delegates passwordless send and verify to the service (#2 U7)',
+      () async {
+    final c = controller();
+    await c.sendMagicLink(email: 'a@b.c', createAccount: false);
+    await c.sendMagicLink(email: 'n@b.c', createAccount: true);
+    expect(service.magicLinkCalls, [
+      (email: 'a@b.c', createAccount: false),
+      (email: 'n@b.c', createAccount: true),
+    ]);
+    expect(c.state, AuthSessionState.signedOut);
+
+    final user = await c.verifyEmailCode(email: 'a@b.c', code: '12345678');
+    await Future<void>.delayed(Duration.zero);
+    expect(service.codeCalls, [(email: 'a@b.c', code: '12345678')]);
+    expect(user.email, 'a@b.c');
+    expect(c.state, AuthSessionState.signedIn);
+    expect(c.currentUser, user);
+
+    service.nextFailure = const AuthFailure.invalidCode();
+    await expectLater(c.verifyEmailCode(email: 'a@b.c', code: '0'),
+        throwsA(isA<AuthInvalidCodeFailure>()));
+  });
+
   test('stops listening after dispose', () async {
     final c = AuthController(authService: service);
     var notifications = 0;
