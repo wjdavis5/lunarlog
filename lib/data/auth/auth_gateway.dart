@@ -4,7 +4,8 @@
 /// unit-testable with fakes; `SupabaseClient` itself is not fakeable.
 /// `signInWithIdToken` carries the optional Google access token
 /// (#2 U2; KTD1); `signInWithOtp` and `verifyOTP` are the passwordless
-/// pair (#2 U7; KTD3).
+/// pair (#2 U7; KTD3); `linkIdentityWithIdToken` attaches a second
+/// identity to the current session's user (#2 U8; KTD5).
 library;
 
 import 'package:app_links/app_links.dart';
@@ -55,6 +56,17 @@ abstract interface class AuthGateway {
     required String email,
     required String token,
     required OtpType type,
+  });
+
+  /// Links the identity in [idToken] to the current session's user
+  /// (#2 KTD5; the dashboard's "manual linking" must be on). gotrue saves
+  /// the returned session and emits `userUpdated`; the server rejects an
+  /// identity another account holds with `identity_already_exists`.
+  Future<AuthResponse> linkIdentityWithIdToken({
+    required OAuthProvider provider,
+    required String idToken,
+    String? accessToken,
+    String? nonce,
   });
 
   Future<void> signOut({required SignOutScope scope});
@@ -137,6 +149,20 @@ class GoTrueAuthGateway implements AuthGateway {
     required OtpType type,
   }) =>
       _auth.verifyOTP(email: email, token: token, type: type);
+
+  @override
+  Future<AuthResponse> linkIdentityWithIdToken({
+    required OAuthProvider provider,
+    required String idToken,
+    String? accessToken,
+    String? nonce,
+  }) =>
+      _auth.linkIdentityWithIdToken(
+        provider: provider,
+        idToken: idToken,
+        accessToken: accessToken,
+        nonce: nonce,
+      );
 
   @override
   Future<void> signOut({required SignOutScope scope}) =>

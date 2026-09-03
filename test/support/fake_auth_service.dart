@@ -2,7 +2,9 @@
 /// controllable state stream plus call recorders, so widget and controller
 /// tests never touch a Supabase client. Google Sign-In mirrors the Apple
 /// knobs (#2 U2); the passwordless pair records its calls and signs in on
-/// a verified code like a password sign-in (#2 U7).
+/// a verified code like a password sign-in (#2 U7). Sign-in methods and
+/// linking (#2 U8) are a `providers` list the current user carries plus
+/// recorded `linkCalls`.
 library;
 
 import 'dart:async';
@@ -24,6 +26,11 @@ class FakeAuthService implements AuthService {
   AuthSessionState _state;
   AuthUser? _user;
 
+  /// The current user's sign-in methods (#2 U8; KTD5). Applied to every
+  /// user this fake builds, and taken from an emitted user that carries
+  /// its own list.
+  List<String> providers = const [];
+
   @override
   bool pendingRecovery;
 
@@ -44,6 +51,14 @@ class FakeAuthService implements AuthService {
   /// When set, every mutating call throws it once.
   AuthFailure? nextFailure;
 
+  /// What [linkGoogle] / [linkApple] return when set; otherwise the
+  /// provider is appended to [providers] and the current user returned.
+  AuthUser? linkResult;
+
+  /// Simulates a dismissed picker or dialog while linking: the current
+  /// user is returned unchanged and nothing is recorded as linked.
+  bool linkCancelled = false;
+
   /// Throw [UnsupportedError] from [signInWithAppleNative] (non-iOS).
   bool appleUnsupported = false;
 
@@ -63,6 +78,7 @@ class FakeAuthService implements AuthService {
   final signOutCalls = <AuthSignOutScope>[];
   final magicLinkCalls = <({String email, bool createAccount})>[];
   final codeCalls = <({String email, String code})>[];
+  final linkCalls = <String>[];
   int appleCalls = 0;
   int googleCalls = 0;
   int recoveryConsumed = 0;
@@ -70,7 +86,10 @@ class FakeAuthService implements AuthService {
 
   /// Pushes a new state to subscribers and updates [state].
   void emit(AuthSessionState next, {AuthUser? user}) {
-    if (user != null) _user = user;
+    if (user != null) {
+      if (user.providers.isNotEmpty) providers = user.providers;
+      _user = user;
+    }
     if (next == AuthSessionState.signedOut ||
         next == AuthSessionState.expired) {
       _user = null;
@@ -102,7 +121,11 @@ class FakeAuthService implements AuthService {
   Stream<AuthFailure> get linkFailures => _linkFailures.stream;
 
   @override
-  AuthUser? get currentUser => _user;
+  AuthUser? get currentUser {
+    final user = _user;
+    if (user == null) return null;
+    return AuthUser(id: user.id, email: user.email, providers: providers);
+  }
 
   @override
   String? get currentUserId => _user?.id;
@@ -146,7 +169,8 @@ class FakeAuthService implements AuthService {
   }) async {
     signInCalls.add((email: email, password: password));
     await _maybeThrow();
-    final user = AuthUser(id: 'user-$email', email: email);
+    final user =
+        AuthUser(id: 'user-$email', email: email, providers: providers);
     emit(AuthSessionState.signedIn, user: user);
     return user;
   }
@@ -207,9 +231,42 @@ class FakeAuthService implements AuthService {
   }) async {
     codeCalls.add((email: email, code: code));
     await _maybeThrow();
-    final user = AuthUser(id: 'user-$email', email: email);
+    final user =
+        AuthUser(id: 'user-$email', email: email, providers: providers);
     emit(AuthSessionState.signedIn, user: user);
     return user;
+  }
+
+  @override
+  Future<AuthUser> linkGoogle() async {
+    if (googleUnsupported) {
+      throw UnsupportedError('Google Sign-In is not available in this build');
+    }
+    return _link('google');
+  }
+
+  @override
+  Future<AuthUser> linkApple() async {
+    if (appleUnsupported) {
+      throw UnsupportedError('Apple Sign-In is available on iOS only');
+    }
+    return _link('apple');
+  }
+
+  Future<AuthUser> _link(String provider) async {
+    if (_state != AuthSessionState.signedIn) {
+      throw const AuthFailure.unknown();
+    }
+    linkCalls.add(provider);
+    await _maybeThrow();
+    if (linkCancelled) return currentUser!;
+    final result = linkResult;
+    if (result != null) {
+      emit(_state, user: result);
+      return result;
+    }
+    if (!providers.contains(provider)) providers = [...providers, provider];
+    return currentUser!;
   }
 
   @override

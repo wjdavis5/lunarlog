@@ -10,7 +10,8 @@
 /// Native Google Sign-In and the failure kinds for provider, link, code,
 /// identity, and closed sign-ups come from the social-logins plan
 /// (#2 U2; KTD1, KTD4, KTD8); passwordless email — a sign-in link plus the
-/// code from the same email — from (#2 U7; KTD3, KTD4).
+/// code from the same email — from (#2 U7; KTD3, KTD4); the account's
+/// sign-in methods and in-app linking of a second one from (#2 U8; KTD5).
 library;
 
 import 'package:meta/meta.dart';
@@ -42,7 +43,7 @@ enum AuthSignOutScope {
 
 @immutable
 class AuthUser {
-  const AuthUser({required this.id, this.email});
+  const AuthUser({required this.id, this.email, this.providers = const []});
 
   /// The provider's stable user id (`auth.users.id`).
   final String id;
@@ -51,12 +52,29 @@ class AuthUser {
   /// provider may withhold it).
   final String? email;
 
-  @override
-  bool operator ==(Object other) =>
-      other is AuthUser && other.id == id && other.email == email;
+  /// The account's sign-in methods by provider name (`email`, `google`,
+  /// `apple`), in the order the provider reports them and without
+  /// duplicates (#2 U8; KTD5, R9). Empty when the provider reported none.
+  final List<String> providers;
 
   @override
-  int get hashCode => Object.hash(id, email);
+  bool operator ==(Object other) =>
+      other is AuthUser &&
+      other.id == id &&
+      other.email == email &&
+      _sameProviders(other.providers, providers);
+
+  @override
+  int get hashCode => Object.hash(id, email, Object.hashAll(providers));
+
+  static bool _sameProviders(List<String> a, List<String> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   @override
   String toString() => 'AuthUser($id)';
@@ -322,6 +340,24 @@ abstract interface class AuthService {
     required String email,
     required String code,
   });
+
+  /// Adds Google as a sign-in method for the *current* account through the
+  /// same native picker and nonce discipline as
+  /// [signInWithGoogleNative] (#2 U8; KTD5, R10). Requires [state] to be
+  /// [AuthSessionState.signedIn] — otherwise throws [AuthUnknownFailure]
+  /// before touching the platform. Throws [UnsupportedError] where Google
+  /// is unavailable. A dismissed picker returns the current user unchanged;
+  /// an identity that already belongs to another account throws
+  /// [AuthIdentityTakenFailure]. Returns the user with fresh [AuthUser
+  /// .providers]; the device-credential check before linking is the
+  /// caller's concern.
+  Future<AuthUser> linkGoogle();
+
+  /// Adds Apple as a sign-in method for the current account through the
+  /// native dialog with a hashed nonce, as [signInWithAppleNative] does
+  /// (#2 U8; KTD5, AS6). Same preconditions and outcomes as [linkGoogle];
+  /// iOS only ([UnsupportedError] elsewhere).
+  Future<AuthUser> linkApple();
 
   /// Throws [AuthFailure]; a [AuthSignOutScope.local] failure still leaves
   /// no session on this device.

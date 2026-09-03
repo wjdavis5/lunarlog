@@ -2,8 +2,8 @@
 /// [AuthService], shaped like `ProfileController` over its repository.
 /// Provided by `LunarLogApp` only when the build has an auth service; an
 /// unconfigured build provides nothing and shows no account section.
-/// Delegates native Google Sign-In like Apple (#2 U2) and the passwordless
-/// send and verify pair (#2 U7).
+/// Delegates native Google Sign-In like Apple (#2 U2), the passwordless
+/// send and verify pair (#2 U7), and identity linking (#2 U8).
 library;
 
 import 'dart:async';
@@ -93,6 +93,13 @@ class AuthController extends ChangeNotifier {
     required String code,
   }) =>
       _service.verifyEmailCode(email: email, code: code);
+
+  /// Adds a sign-in method to the current account (#2 U8; KTD5). The
+  /// caller runs the device-credential check first; a same-state
+  /// `userUpdated` does not notify, so it re-reads [currentUser] itself.
+  Future<AuthUser> linkGoogle() => _service.linkGoogle();
+
+  Future<AuthUser> linkApple() => _service.linkApple();
 
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local}) =>
       _service.signOut(scope: scope);

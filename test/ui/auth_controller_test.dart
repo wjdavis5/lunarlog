@@ -146,6 +146,29 @@ void main() {
         throwsA(isA<AuthInvalidCodeFailure>()));
   });
 
+  test('exposes providers and delegates linkGoogle / linkApple (#2 U8)',
+      () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email']));
+    final c = controller();
+    expect(c.currentUser?.providers, ['email']);
+
+    final linked = await c.linkGoogle();
+    expect(linked.providers, ['email', 'google']);
+    expect(c.currentUser?.providers, ['email', 'google']);
+    expect(service.linkCalls, ['google']);
+
+    service.appleUnsupported = true;
+    await expectLater(c.linkApple(), throwsUnsupportedError);
+    service.appleUnsupported = false;
+
+    service.nextFailure = const AuthFailure.identityTaken();
+    await expectLater(
+        c.linkApple(), throwsA(const AuthFailure.identityTaken()));
+    expect(service.linkCalls, ['google', 'apple']);
+    expect(c.currentUser?.providers, ['email', 'google']);
+  });
+
   test('stops listening after dispose', () async {
     final c = AuthController(authService: service);
     var notifications = 0;

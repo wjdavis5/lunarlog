@@ -15,6 +15,9 @@
 /// lines carry only a runtime type or an exception-code name (#2 KTD7).
 /// Passwordless email (#2 U7; KTD3, KTD4) rides the same PKCE callback;
 /// [mapAuthError] stays pure and each operation wraps its own failures.
+/// Sign-in methods come from `User.identities` and linking a second one
+/// reuses the Google and Apple credential paths against
+/// `linkIdentityWithIdToken` (#2 U8; KTD5).
 library;
 
 import 'dart:async';
@@ -356,22 +359,10 @@ class SupabaseAuthService implements AuthService {
 
   @override
   Future<AppleSignInResult> signInWithAppleNative() async {
-    if (!_appleAvailable) {
-      throw UnsupportedError('Apple Sign-In is available natively on iOS only');
-    }
+    _requireApple();
     final rawNonce = _generateNonce();
-    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
-    final AuthorizationCredentialAppleID credential;
-    try {
-      credential = await _requestAppleCredential(hashedNonce: hashedNonce);
-    } on SignInWithAppleAuthorizationException catch (error) {
-      if (error.code == AuthorizationErrorCode.canceled) {
-        return const AppleSignInCancelled();
-      }
-      throw const AuthFailure.unknown();
-    } catch (_) {
-      throw const AuthFailure.unknown();
-    }
+    final credential = await _requestAppleCredentialFor(rawNonce);
+    if (credential == null) return const AppleSignInCancelled();
     final idToken = credential.identityToken;
     if (idToken == null) throw const AuthFailure.unknown();
     final session = await _guard(() async {
@@ -401,36 +392,35 @@ class SupabaseAuthService implements AuthService {
     return AppleSignInSession(_toUser(session.user)!);
   }
 
-  @override
-  Future<GoogleSignInResult> signInWithGoogleNative() async {
-    if (!_googleAvailable) {
-      throw UnsupportedError(
-          'Google Sign-In needs client ids and a native platform');
+  void _requireApple() {
+    if (!_appleAvailable) {
+      throw UnsupportedError('Apple Sign-In is available natively on iOS only');
     }
-    final nonce = _googleNonce ??= _mintGoogleNonce();
-    final GoogleCredential credential;
+  }
+
+  /// Requests the Apple credential for the SHA-256 of [rawNonce] (KTD9).
+  /// Null when the operator dismissed the dialog; [AuthUnknownFailure] for
+  /// any other authorization error. Shared by sign-in and linking so both
+  /// follow one nonce discipline (#2 AS6).
+  Future<AuthorizationCredentialAppleID?> _requestAppleCredentialFor(
+      String rawNonce) async {
+    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
     try {
-      if (!_googleInitialized) {
-        await _googleClient.initialize(
-          iosClientId: AppConfig.googleIosClientId,
-          webClientId: AppConfig.googleWebClientId,
-          hashedNonce: nonce.hashed,
-        );
-        _googleInitialized = true;
-      }
-      credential = await _googleClient.authenticate();
-    } on GoogleSignInException catch (error) {
-      if (error.code == GoogleSignInExceptionCode.canceled) {
-        return const GoogleSignInCancelled();
-      }
-      // Every other code, including "no credentials" reported as
-      // unknownError on Android (#2 KTD8). The description is never logged.
-      debugPrint('lunarlog auth: google sign-in failed (${error.code.name})');
-      throw const AuthFailure.providerUnavailable();
-    } catch (error) {
-      debugPrint('lunarlog auth: google sign-in failed (${error.runtimeType})');
+      return await _requestAppleCredential(hashedNonce: hashedNonce);
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (error.code == AuthorizationErrorCode.canceled) return null;
+      throw const AuthFailure.unknown();
+    } catch (_) {
       throw const AuthFailure.unknown();
     }
+  }
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogleNative() async {
+    _requireGoogle();
+    final nonce = _googleNonce ??= _mintGoogleNonce();
+    final credential = await _requestGoogleCredential(nonce);
+    if (credential == null) return const GoogleSignInCancelled();
     final idToken = credential.idToken;
     if (idToken == null) throw const AuthFailure.unknown();
     final session = await _guard(() async {
@@ -447,9 +437,115 @@ class SupabaseAuthService implements AuthService {
     return GoogleSignInSession(_toUser(session.user)!);
   }
 
+  void _requireGoogle() {
+    if (!_googleAvailable) {
+      throw UnsupportedError(
+          'Google Sign-In needs client ids and a native platform');
+    }
+  }
+
+  /// Initializes the client once with the hashed nonce and runs the
+  /// picker (#2 KTD1). Null when the operator dismissed it;
+  /// [AuthProviderUnavailableFailure] for every other plugin code (#2 KTD8);
+  /// [AuthUnknownFailure] otherwise. Shared by sign-in and linking.
+  Future<GoogleCredential?> _requestGoogleCredential(
+      ({String raw, String hashed}) nonce) async {
+    try {
+      if (!_googleInitialized) {
+        await _googleClient.initialize(
+          iosClientId: AppConfig.googleIosClientId,
+          webClientId: AppConfig.googleWebClientId,
+          hashedNonce: nonce.hashed,
+        );
+        _googleInitialized = true;
+      }
+      return await _googleClient.authenticate();
+    } on GoogleSignInException catch (error) {
+      if (error.code == GoogleSignInExceptionCode.canceled) return null;
+      // Every other code, including "no credentials" reported as
+      // unknownError on Android (#2 KTD8). The description is never logged.
+      debugPrint('lunarlog auth: google sign-in failed (${error.code.name})');
+      throw const AuthFailure.providerUnavailable();
+    } catch (error) {
+      debugPrint('lunarlog auth: google sign-in failed (${error.runtimeType})');
+      throw const AuthFailure.unknown();
+    }
+  }
+
   ({String raw, String hashed}) _mintGoogleNonce() {
     final raw = _generateNonce();
     return (raw: raw, hashed: sha256.convert(utf8.encode(raw)).toString());
+  }
+
+  /// Links Google to the current account (#2 U8; KTD5, R10): the same
+  /// per-process nonce pair and client as sign-in, then
+  /// `linkIdentityWithIdToken` with the raw nonce. The signed-in check runs
+  /// before any platform call; a dismissed picker returns the user as is.
+  @override
+  Future<AuthUser> linkGoogle() async {
+    _requireGoogle();
+    final current = _requireSignedInUser();
+    final nonce = _googleNonce ??= _mintGoogleNonce();
+    final credential = await _requestGoogleCredential(nonce);
+    if (credential == null) return current;
+    final idToken = credential.idToken;
+    if (idToken == null) throw const AuthFailure.unknown();
+    return _link(
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: credential.accessToken,
+      nonce: nonce.raw,
+    );
+  }
+
+  /// Links Apple to the current account (#2 U8; KTD5, AS6) with a fresh
+  /// hashed nonce, as sign-in does. The name Apple sends with a first
+  /// credential is not written: the account already has its profile.
+  @override
+  Future<AuthUser> linkApple() async {
+    _requireApple();
+    final current = _requireSignedInUser();
+    final rawNonce = _generateNonce();
+    final credential = await _requestAppleCredentialFor(rawNonce);
+    if (credential == null) return current;
+    final idToken = credential.identityToken;
+    if (idToken == null) throw const AuthFailure.unknown();
+    return _link(
+      provider: OAuthProvider.apple,
+      idToken: idToken,
+      nonce: rawNonce,
+    );
+  }
+
+  /// The current user while [state] is `signedIn`; [AuthUnknownFailure]
+  /// otherwise (no session, recovery pending, or expired).
+  AuthUser _requireSignedInUser() {
+    final user = _state == AuthSessionState.signedIn ? currentUser : null;
+    if (user == null) throw const AuthFailure.unknown();
+    return user;
+  }
+
+  /// Calls `linkIdentityWithIdToken` through [_guard] (so
+  /// `identity_already_exists` is [AuthIdentityTakenFailure]) and re-reads
+  /// the session's user so [AuthUser.providers] is fresh, falling back to
+  /// the response's user.
+  Future<AuthUser> _link({
+    required OAuthProvider provider,
+    required String idToken,
+    String? accessToken,
+    required String nonce,
+  }) async {
+    final response = await _guard(() => _gateway.linkIdentityWithIdToken(
+          provider: provider,
+          idToken: idToken,
+          accessToken: accessToken,
+          nonce: nonce,
+        ));
+    final user = _gateway.currentSession?.user ??
+        response.session?.user ??
+        response.user;
+    if (user == null) throw const AuthFailure.unknown();
+    return _toUser(user)!;
   }
 
   /// Sends the sign-in email (#2 U7; KTD3). In sign-in mode the server's
@@ -543,6 +639,23 @@ class SupabaseAuthService implements AuthService {
     }
   }
 
-  static AuthUser? _toUser(User? user) =>
-      user == null ? null : AuthUser(id: user.id, email: user.email);
+  static AuthUser? _toUser(User? user) => user == null
+      ? null
+      : AuthUser(id: user.id, email: user.email, providers: _providersOf(user));
+
+  /// Provider names from `identities`, falling back to
+  /// `app_metadata.providers` when the user carries no identity list
+  /// (#2 KTD5). Never `user_metadata`, which the user can write. Order is
+  /// preserved, duplicates dropped.
+  static List<String> _providersOf(User user) {
+    final identities = user.identities;
+    final Iterable<String> names;
+    if (identities != null && identities.isNotEmpty) {
+      names = identities.map((identity) => identity.provider);
+    } else {
+      final raw = user.appMetadata['providers'];
+      names = raw is List ? raw.whereType<String>() : const <String>[];
+    }
+    return List.unmodifiable(names.toSet());
+  }
 }

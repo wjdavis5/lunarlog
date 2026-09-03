@@ -5,7 +5,9 @@
 /// Google flow (#2 U2; KTD1, KTD8; AE1, AE2) runs over a fake
 /// [GoogleSignInClient] so no test touches the plugin. Passwordless email
 /// (#2 U7; KTD3, KTD4; AE3) covers the uniform unknown-email response and
-/// the by-operation mapping of link and code failures.
+/// the by-operation mapping of link and code failures. Sign-in methods and
+/// identity linking (#2 U8; KTD5; AE6, R15) run the same credential paths
+/// against `linkIdentityWithIdToken` on the fake gateway.
 library;
 
 import 'dart:async';
@@ -22,22 +24,50 @@ import 'package:lunarlog/data/auth/supabase_auth_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
-User makeUser(String id, {String? email}) => User(
+User makeUser(
+  String id, {
+  String? email,
+  List<String>? identities,
+  Map<String, dynamic> appMetadata = const {},
+}) =>
+    User(
       id: id,
-      appMetadata: const {},
+      appMetadata: appMetadata,
       userMetadata: const {},
       aud: 'authenticated',
       createdAt: '2026-09-02T00:00:00Z',
       email: email,
+      identities: identities
+          ?.map((provider) => UserIdentity(
+                id: '$provider-$id',
+                userId: id,
+                identityData: const {},
+                identityId: '$provider-$id',
+                provider: provider,
+                createdAt: '2026-09-02T00:00:00Z',
+                lastSignInAt: '2026-09-02T00:00:00Z',
+              ))
+          .toList(),
     );
 
-Session makeSession(String id, {String? email}) => Session(
+Session makeSession(
+  String id, {
+  String? email,
+  List<String>? identities,
+  Map<String, dynamic> appMetadata = const {},
+}) =>
+    Session(
       accessToken: 'access-$id',
       tokenType: 'bearer',
       refreshToken: 'refresh-$id',
-      user: makeUser(id, email: email),
+      user: makeUser(
+        id,
+        email: email,
+        identities: identities,
+        appMetadata: appMetadata,
+      ),
     );
 
 /// Mimics the slice of `GoTrueClient` the service relies on, including
@@ -57,6 +87,11 @@ class FakeAuthGateway implements AuthGateway {
 
   AuthResponse? signUpResponse;
 
+  /// When set, every sign-in path (password, ID token, code) yields a
+  /// session for this user id, so R15 can compare `currentUserId` across
+  /// paths.
+  String? fixedUserId;
+
   final getSessionFromUrlCalls = <Uri>[];
   final signUpCalls = <({String email, String password, String? redirect})>[];
   final signInCalls = <({String email, String password})>[];
@@ -72,6 +107,12 @@ class FakeAuthGateway implements AuthGateway {
   final otpCalls =
       <({String email, String? redirect, bool shouldCreateUser})>[];
   final verifyOtpCalls = <({String email, String token, OtpType type})>[];
+  final linkIdentityCalls = <({
+    OAuthProvider provider,
+    String idToken,
+    String? accessToken,
+    String? nonce,
+  })>[];
 
   void _maybeThrow() {
     final error = nextError;
@@ -141,7 +182,7 @@ class FakeAuthGateway implements AuthGateway {
   }) async {
     signInCalls.add((email: email, password: password));
     _maybeThrow();
-    session = makeSession('pw', email: email);
+    session = makeSession(fixedUserId ?? 'pw', email: email);
     emit(AuthChangeEvent.signedIn);
     return AuthResponse(session: session);
   }
@@ -175,8 +216,43 @@ class FakeAuthGateway implements AuthGateway {
       nonce: nonce,
     ));
     _maybeThrow();
-    session = makeSession(provider.name);
+    session = makeSession(fixedUserId ?? provider.name);
     emit(AuthChangeEvent.signedIn);
+    return AuthResponse(session: session);
+  }
+
+  /// Like gotrue: requires a session, appends the identity to the current
+  /// user, saves the session, and emits `userUpdated` (#2 U8; KTD5).
+  @override
+  Future<AuthResponse> linkIdentityWithIdToken({
+    required OAuthProvider provider,
+    required String idToken,
+    String? accessToken,
+    String? nonce,
+  }) async {
+    linkIdentityCalls.add((
+      provider: provider,
+      idToken: idToken,
+      accessToken: accessToken,
+      nonce: nonce,
+    ));
+    _maybeThrow();
+    final current = session;
+    if (current == null) throw const AuthException('no session to link');
+    final existing =
+        current.user.identities?.map((i) => i.provider).toList() ?? const [];
+    session = Session(
+      accessToken: current.accessToken,
+      tokenType: current.tokenType,
+      refreshToken: current.refreshToken,
+      user: makeUser(
+        current.user.id,
+        email: current.user.email,
+        identities: [...existing, provider.name],
+        appMetadata: current.user.appMetadata,
+      ),
+    );
+    emit(AuthChangeEvent.userUpdated);
     return AuthResponse(session: session);
   }
 
@@ -213,7 +289,7 @@ class FakeAuthGateway implements AuthGateway {
   }) async {
     verifyOtpCalls.add((email: email, token: token, type: type));
     _maybeThrow();
-    session = makeSession('otp', email: email);
+    session = makeSession(fixedUserId ?? 'otp', email: email);
     emit(AuthChangeEvent.signedIn);
     return AuthResponse(session: session);
   }
@@ -1314,6 +1390,301 @@ void main() {
           mapAuthError(const AuthException(
               'Code verifier could not be found in local storage.')),
           isA<AuthUnknownFailure>());
+    });
+  });
+
+  group('sign-in methods and identity linking (#2 U8; KTD5)', () {
+    String hashed(String raw) => sha256.convert(utf8.encode(raw)).toString();
+
+    AuthorizationCredentialAppleID appleCredential({
+      String? identityToken = 'apple-id-token',
+    }) =>
+        AuthorizationCredentialAppleID(
+          userIdentifier: 'apple-user',
+          givenName: null,
+          familyName: null,
+          authorizationCode: 'auth-code',
+          email: null,
+          identityToken: identityToken,
+          state: null,
+        );
+
+    test('currentUser.providers lists the identities in order, '
+        'de-duplicated, and stays out of toString', () async {
+      gateway.session =
+          makeSession('u1', identities: ['email', 'google', 'email']);
+      final service = await started();
+      expect(service.currentUser?.providers, ['email', 'google']);
+      expect(service.currentUser.toString(), 'AuthUser(u1)');
+    });
+
+    test('providers falls back to appMetadata[providers] when identities '
+        'are null or empty, and is empty without either', () async {
+      gateway.session = makeSession('u1', appMetadata: const {
+        'providers': ['email', 'apple'],
+        'provider': 'email',
+      });
+      final service = await started();
+      expect(service.currentUser?.providers, ['email', 'apple']);
+
+      gateway.session = makeSession('u1',
+          identities: const [],
+          appMetadata: const {
+            'providers': ['google']
+          });
+      expect(service.currentUser?.providers, ['google']);
+
+      gateway.session = makeSession('u1');
+      expect(service.currentUser?.providers, isEmpty);
+      expect(service.currentUser, const AuthUser(id: 'u1'));
+    });
+
+    test('AE6: linkGoogle while signed in links with the Google token and '
+        'the raw nonce whose hash the client was initialized with, then '
+        'refreshes providers on the same user', () async {
+      gateway.session =
+          makeSession('u1', email: 'a@b.c', identities: ['email']);
+      final client = FakeGoogleSignInClient(
+        credential: const GoogleCredential(
+            idToken: 'google-id-token', accessToken: 'google-access-token'),
+      );
+      final service = await started(
+        googleAvailable: true,
+        googleClient: client,
+        generateNonce: () => 'raw-nonce-link',
+      );
+      expect(service.state, AuthSessionState.signedIn);
+      expect(service.currentUser?.providers, ['email']);
+
+      final user = await service.linkGoogle();
+      await settle();
+      expect(user.id, 'u1');
+      expect(user.providers, ['email', 'google']);
+      expect(service.currentUser?.providers, ['email', 'google']);
+      expect(service.currentUserId, 'u1');
+      expect(service.state, AuthSessionState.signedIn);
+
+      final call = gateway.linkIdentityCalls.single;
+      expect(call.provider, OAuthProvider.google);
+      expect(call.idToken, 'google-id-token');
+      expect(call.accessToken, 'google-access-token');
+      expect(call.nonce, 'raw-nonce-link');
+      expect(client.initializeCalls.single.hashedNonce, hashed(call.nonce!));
+      expect(gateway.idTokenCalls, isEmpty, reason: 'linking never signs in');
+    });
+
+    test('a Google sign-in after linking reuses the same nonce pair',
+        () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final client = FakeGoogleSignInClient();
+      final nonces = <String>['raw-nonce-1', 'raw-nonce-2'];
+      final service = await started(
+        googleAvailable: true,
+        googleClient: client,
+        generateNonce: () => nonces.removeAt(0),
+      );
+      await service.linkGoogle();
+      await service.signInWithGoogleNative();
+      expect(client.initializeCalls, hasLength(1));
+      expect(gateway.linkIdentityCalls.single.nonce, 'raw-nonce-1');
+      expect(gateway.idTokenCalls.single.nonce, 'raw-nonce-1');
+      expect(nonces, ['raw-nonce-2']);
+    });
+
+    test('AE6: identity_already_exists throws identityTaken and leaves the '
+        'user unchanged', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final client = FakeGoogleSignInClient();
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      gateway.nextError = const AuthApiException(
+          'Identity is already linked to another user',
+          statusCode: '422',
+          code: 'identity_already_exists');
+      final error = await service
+          .linkGoogle()
+          .then<Object?>((_) => null, onError: (Object e) => e);
+      expect(error, const AuthFailure.identityTaken());
+      expect(error.toString(), isNot(contains('linked')));
+      expect(
+          service.currentUser, const AuthUser(id: 'u1', providers: ['email']));
+      expect(service.currentUserId, 'u1');
+      expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('AE6: linkGoogle while signed out throws unknown and never '
+        'touches the client or the gateway', () async {
+      final client = FakeGoogleSignInClient();
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      expect(service.state, AuthSessionState.signedOut);
+      await expectLater(
+          service.linkGoogle(), throwsA(const AuthFailure.unknown()));
+      expect(client.initializeCalls, isEmpty);
+      expect(client.authenticateCalls, 0);
+      expect(gateway.linkIdentityCalls, isEmpty);
+      expect(gateway.idTokenCalls, isEmpty);
+    });
+
+    test('linkGoogle when Google is unavailable throws UnsupportedError',
+        () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final client = FakeGoogleSignInClient();
+      final service =
+          await started(googleAvailable: false, googleClient: client);
+      await expectLater(service.linkGoogle(), throwsUnsupportedError);
+      expect(client.authenticateCalls, 0);
+      expect(gateway.linkIdentityCalls, isEmpty);
+    });
+
+    test('a cancelled Google picker during linking returns the user '
+        'unchanged with no failure', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final client = FakeGoogleSignInClient(
+        authenticateError: const GoogleSignInException(
+          code: GoogleSignInExceptionCode.canceled,
+          description: 'user canceled',
+        ),
+      );
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      final user = await service.linkGoogle();
+      expect(user.providers, ['email']);
+      expect(service.currentUser?.providers, ['email']);
+      expect(service.pendingLinkFailure, isNull);
+      expect(gateway.linkIdentityCalls, isEmpty);
+    });
+
+    test('a provider failure during Google linking is providerUnavailable',
+        () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final client = FakeGoogleSignInClient(
+        authenticateError: const GoogleSignInException(
+          code: GoogleSignInExceptionCode.unknownError,
+          description: 'No credentials available',
+        ),
+      );
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      await expectLater(service.linkGoogle(),
+          throwsA(const AuthFailure.providerUnavailable()));
+      expect(service.currentUser?.providers, ['email']);
+      expect(gateway.linkIdentityCalls, isEmpty);
+    });
+
+    test('linkApple on a non-iOS platform throws UnsupportedError without '
+        'requesting a credential', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      var requests = 0;
+      final service = await started(
+        appleAvailable: false,
+        requestAppleCredential: ({required hashedNonce}) async {
+          requests++;
+          return appleCredential();
+        },
+      );
+      await expectLater(service.linkApple(), throwsUnsupportedError);
+      expect(requests, 0);
+      expect(gateway.linkIdentityCalls, isEmpty);
+    });
+
+    test('linkApple while signed out throws unknown without requesting a '
+        'credential', () async {
+      var requests = 0;
+      final service = await started(
+        appleAvailable: true,
+        requestAppleCredential: ({required hashedNonce}) async {
+          requests++;
+          return appleCredential();
+        },
+      );
+      await expectLater(
+          service.linkApple(), throwsA(const AuthFailure.unknown()));
+      expect(requests, 0);
+      expect(gateway.linkIdentityCalls, isEmpty);
+    });
+
+    test('a cancelled Apple dialog during linking leaves providers unchanged '
+        'and throws no failure', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final service = await started(
+        appleAvailable: true,
+        requestAppleCredential: ({required hashedNonce}) async {
+          throw const SignInWithAppleAuthorizationException(
+            code: AuthorizationErrorCode.canceled,
+            message: 'The user canceled the authorization attempt',
+          );
+        },
+      );
+      final user = await service.linkApple();
+      expect(user, const AuthUser(id: 'u1', providers: ['email']));
+      expect(service.currentUser?.providers, ['email']);
+      expect(service.pendingLinkFailure, isNull);
+      expect(gateway.linkIdentityCalls, isEmpty);
+      expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('linkApple hashes the nonce for Apple, sends the raw nonce with '
+        'the identity token, and refreshes providers', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      String? receivedNonce;
+      final service = await started(
+        appleAvailable: true,
+        generateNonce: () => 'raw-apple-nonce',
+        requestAppleCredential: ({required hashedNonce}) async {
+          receivedNonce = hashedNonce;
+          return appleCredential();
+        },
+      );
+      final user = await service.linkApple();
+      expect(receivedNonce, hashed('raw-apple-nonce'));
+      final call = gateway.linkIdentityCalls.single;
+      expect(call.provider, OAuthProvider.apple);
+      expect(call.idToken, 'apple-id-token');
+      expect(call.nonce, 'raw-apple-nonce');
+      expect(user.providers, ['email', 'apple']);
+      expect(service.currentUser?.providers, ['email', 'apple']);
+      expect(service.currentUserId, 'u1');
+      expect(gateway.idTokenCalls, isEmpty);
+      expect(gateway.updateUserCalls, isEmpty,
+          reason: 'linking never rewrites the profile name');
+    });
+
+    test('an Apple credential without an identity token during linking is '
+        'an unknown failure', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final service = await started(
+        appleAvailable: true,
+        requestAppleCredential: ({required hashedNonce}) async =>
+            appleCredential(identityToken: null),
+      );
+      await expectLater(
+          service.linkApple(), throwsA(const AuthFailure.unknown()));
+      expect(gateway.linkIdentityCalls, isEmpty);
+    });
+
+    test('R15: the Google, emailed-code, and password paths expose the same '
+        'currentUserId for the same account', () async {
+      gateway.fixedUserId = 'same-user';
+      final service = await started(
+        googleAvailable: true,
+        googleClient: FakeGoogleSignInClient(),
+      );
+
+      await service.signInWithPassword(email: 'a@b.c', password: 'pw');
+      final viaPassword = service.currentUserId;
+      await service.signOut();
+
+      await service.signInWithGoogleNative();
+      final viaGoogle = service.currentUserId;
+      await service.signOut();
+
+      await service.verifyEmailCode(email: 'a@b.c', code: '12345678');
+      final viaCode = service.currentUserId;
+
+      expect(viaPassword, 'same-user');
+      expect(viaGoogle, viaPassword);
+      expect(viaCode, viaPassword);
     });
   });
 }
