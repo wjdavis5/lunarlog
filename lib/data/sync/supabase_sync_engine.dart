@@ -337,16 +337,16 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   /// One cycle. Returns true when it ran to completion (idle), false when
   /// it was gated, paused, aborted or failed.
+  ///
+  /// Split (quality gate: McCabe complexity) into this orchestrator plus
+  /// `_passesGateAndAuthChecks`/`_resolveBinding`/`_reconcileIfDue`/
+  /// `_logRetryIfNeeded` — same sequencing, same conditions, no behavior
+  /// change; the try/catch shape (and its own decision points) stays here
+  /// since that's the error-handling architecture, not extractable work.
   Future<bool> _cycle() async {
     try {
-      if (!_gateUnlocked()) {
-        _emit(_snapshot.copyWith(phase: SyncPhase.paused));
-        return false;
-      }
-      if (_auth.state == AuthSessionState.expired) {
-        await _fail(SyncErrorKind.auth);
-        return false;
-      }
+      if (!await _passesGateAndAuthChecks()) return false;
+
       final uid = _confirmedUid();
       var state = await _storage.readSyncState();
       _restoreOffset(state);
@@ -356,50 +356,24 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         return false;
       }
 
-      var bindNow = false;
-      if (state.boundUserId == null) {
-        if (await _storage.isEmpty()) {
-          // The session may have vanished during the awaits above (a device
-          // reset signs out while the fresh database opens): never bind an
-          // empty database to an account that is no longer confirmed.
-          _checkpoint(uid);
-          state = await _bind(state, uid);
-          bindNow = true;
-          _restoring = true;
-        } else {
-          _emit(_snapshot.copyWith(
-              phase: SyncPhase.awaitingUploadConsent, boundUserId: null));
-          return false;
-        }
-      } else if (state.boundUserId != uid) {
-        _emit(_snapshot.copyWith(
-            phase: SyncPhase.accountMismatch, boundUserId: state.boundUserId));
-        return false;
-      }
+      final binding = await _resolveBinding(state, uid);
+      if (binding == null) return false;
+      state = binding.state;
+      final bindNow = binding.bindNow;
+
       _emit(_snapshot.copyWith(
           phase: _phase(SyncPhase.pushing), boundUserId: uid));
 
       final resolvedSeen = await _push(uid);
       final pullRetry = await _pullIncremental(uid);
       state = await _storage.readSyncState();
-      final now = _clock().toUtc();
-      final lastFull = state.lastFullPullAt?.toUtc();
-      final reconcileDue = bindNow ||
-          resolvedSeen ||
-          lastFull == null ||
-          now.difference(lastFull) > kSyncFullPullInterval;
-      var reconcileRetry = false;
-      if (reconcileDue) {
-        reconcileRetry = await _reconcile(uid);
-        if (!reconcileRetry) {
-          await _updateState(
-              (s) => s.copyWith(lastFullPullAt: Value(_clock().toUtc())));
-        }
-      }
-      if (pullRetry || reconcileRetry) {
-        debugPrint('lunarlog sync: a remote row waits for its profile; '
-            'retrying next cycle');
-      }
+      final reconcileRetry = await _reconcileIfDue(
+        uid: uid,
+        bindNow: bindNow,
+        resolvedSeen: resolvedSeen,
+        state: state,
+      );
+      _logRetryIfNeeded(pullRetry: pullRetry, reconcileRetry: reconcileRetry);
 
       final finishedAt = _clock().toUtc();
       await _updateState((s) => s.copyWith(
@@ -441,6 +415,82 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       return false;
     } finally {
       _restoring = false;
+    }
+  }
+
+  /// The two early-out checks at the top of [_cycle]: the gate must be
+  /// unlocked and the session must not be expired. Split out of [_cycle]
+  /// verbatim (quality gate).
+  Future<bool> _passesGateAndAuthChecks() async {
+    if (!_gateUnlocked()) {
+      _emit(_snapshot.copyWith(phase: SyncPhase.paused));
+      return false;
+    }
+    if (_auth.state == AuthSessionState.expired) {
+      await _fail(SyncErrorKind.auth);
+      return false;
+    }
+    return true;
+  }
+
+  /// [_cycle]'s bind/mismatch decision, split out verbatim (quality gate).
+  /// Returns the (possibly bound) state and whether binding happened just
+  /// now, or `null` when [_cycle] should emit-and-return-false (already
+  /// emitted by this method before returning null).
+  Future<({SyncStateRow state, bool bindNow})?> _resolveBinding(
+    SyncStateRow state,
+    String uid,
+  ) async {
+    if (state.boundUserId == null) {
+      if (await _storage.isEmpty()) {
+        // The session may have vanished during the awaits above (a device
+        // reset signs out while the fresh database opens): never bind an
+        // empty database to an account that is no longer confirmed.
+        _checkpoint(uid);
+        final bound = await _bind(state, uid);
+        _restoring = true;
+        return (state: bound, bindNow: true);
+      }
+      _emit(_snapshot.copyWith(
+          phase: SyncPhase.awaitingUploadConsent, boundUserId: null));
+      return null;
+    }
+    if (state.boundUserId != uid) {
+      _emit(_snapshot.copyWith(
+          phase: SyncPhase.accountMismatch, boundUserId: state.boundUserId));
+      return null;
+    }
+    return (state: state, bindNow: false);
+  }
+
+  /// [_cycle]'s reconcile-due decision and dispatch, split out verbatim
+  /// (quality gate). Returns whether the reconcile (if it ran) hit a
+  /// retryable apply failure.
+  Future<bool> _reconcileIfDue({
+    required String uid,
+    required bool bindNow,
+    required bool resolvedSeen,
+    required SyncStateRow state,
+  }) async {
+    final now = _clock().toUtc();
+    final lastFull = state.lastFullPullAt?.toUtc();
+    final reconcileDue = bindNow ||
+        resolvedSeen ||
+        lastFull == null ||
+        now.difference(lastFull) > kSyncFullPullInterval;
+    if (!reconcileDue) return false;
+    final reconcileRetry = await _reconcile(uid);
+    if (!reconcileRetry) {
+      await _updateState(
+          (s) => s.copyWith(lastFullPullAt: Value(_clock().toUtc())));
+    }
+    return reconcileRetry;
+  }
+
+  void _logRetryIfNeeded({required bool pullRetry, required bool reconcileRetry}) {
+    if (pullRetry || reconcileRetry) {
+      debugPrint('lunarlog sync: a remote row waits for its profile; '
+          'retrying next cycle');
     }
   }
 
@@ -534,48 +584,69 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     var resolvedSeen = false;
     Duration? lastOffset;
     for (final batch in _chunk(profiles, entries)) {
-      _checkpoint(uid);
-      final PushResult result;
-      try {
-        result = await _transport.push(PushBatch(
-          profiles: [for (final i in batch) if (i.table == SyncTable.profiles) i.json],
-          dayEntries: [for (final i in batch) if (i.table == SyncTable.dayEntries) i.json],
-        ));
-      } on SyncTransportRejectedError catch (error) {
-        // A transport without per-row results: the named rows are
-        // rejected, the rest of the batch stays dirty for the next cycle.
-        final batchRevs = {for (final i in batch) i.id: i.localRev};
-        for (final id in error.ids) {
-          final rev = batchRevs[id];
-          if (rev != null) _rejected[id] = rev;
-        }
-        continue;
-      }
-      final rejected = result.rejectedIds.toSet();
-      for (final item in batch) {
-        if (rejected.contains(item.id)) {
-          _rejected[item.id] = item.localRev;
-          continue;
-        }
-        _rejected.remove(item.id);
-        await _storage.markPushed(
-            table: item.table, id: item.id, localRevAtPush: item.localRev);
-      }
-      if (result.resolved.isNotEmpty) {
-        await _storage.applyResolved(result.resolved);
-        resolvedSeen = true;
-      }
-      // The in-memory offset takes effect immediately (it stamps the next
-      // local writes); the persisted copy is written once after the loop.
-      final offset = result.serverNow.toUtc().difference(_clock().toUtc());
-      _storage.setClockOffset(offset);
-      lastOffset = offset;
+      final outcome = await _pushBatch(uid, batch);
+      if (outcome.resolvedSeen) resolvedSeen = true;
+      if (outcome.offset != null) lastOffset = outcome.offset;
     }
     if (lastOffset != null) {
       final ms = lastOffset.inMilliseconds;
       await _updateState((s) => s.copyWith(serverClockOffsetMs: Value(ms)));
     }
     return resolvedSeen;
+  }
+
+  /// One push batch's request/response handling, split out of [_push]
+  /// verbatim (quality gate) — same sequencing, same conditions. `offset ==
+  /// null` means the batch hit [SyncTransportRejectedError] (no server
+  /// clock reading to take).
+  Future<({bool resolvedSeen, Duration? offset})> _pushBatch(
+    String uid,
+    List<_PushItem> batch,
+  ) async {
+    _checkpoint(uid);
+    final PushResult result;
+    try {
+      result = await _transport.push(PushBatch(
+        profiles: [for (final i in batch) if (i.table == SyncTable.profiles) i.json],
+        dayEntries: [for (final i in batch) if (i.table == SyncTable.dayEntries) i.json],
+      ));
+    } on SyncTransportRejectedError catch (error) {
+      // A transport without per-row results: the named rows are rejected,
+      // the rest of the batch stays dirty for the next cycle.
+      _markRejected(batch, error.ids);
+      return (resolvedSeen: false, offset: null);
+    }
+    await _applyPushResult(batch, result);
+    // The in-memory offset takes effect immediately (it stamps the next
+    // local writes); the persisted copy is written once after the loop in
+    // [_push].
+    final offset = result.serverNow.toUtc().difference(_clock().toUtc());
+    _storage.setClockOffset(offset);
+    return (resolvedSeen: result.resolved.isNotEmpty, offset: offset);
+  }
+
+  void _markRejected(List<_PushItem> batch, List<String> rejectedIds) {
+    final batchRevs = {for (final i in batch) i.id: i.localRev};
+    for (final id in rejectedIds) {
+      final rev = batchRevs[id];
+      if (rev != null) _rejected[id] = rev;
+    }
+  }
+
+  Future<void> _applyPushResult(List<_PushItem> batch, PushResult result) async {
+    final rejected = result.rejectedIds.toSet();
+    for (final item in batch) {
+      if (rejected.contains(item.id)) {
+        _rejected[item.id] = item.localRev;
+        continue;
+      }
+      _rejected.remove(item.id);
+      await _storage.markPushed(
+          table: item.table, id: item.id, localRevAtPush: item.localRev);
+    }
+    if (result.resolved.isNotEmpty) {
+      await _storage.applyResolved(result.resolved);
+    }
   }
 
   /// Batches of at most [_batchSize] rows per table with profiles in the

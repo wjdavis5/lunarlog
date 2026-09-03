@@ -72,38 +72,45 @@ String generateRawNonce([int bytes = 32]) {
 
 /// Reduces any error thrown by the provider to a typed, fieldless
 /// [AuthFailure]. Pure; exported for tests.
+///
+/// Split (quality gate: McCabe complexity) into this dispatcher plus
+/// [_mapGoTrueAuthException] and [_isNetworkShapedError] — same checks,
+/// same order, no behavior change.
 AuthFailure mapAuthError(Object error) {
   if (error is AuthFailure) return error;
   if (error is AuthWeakPasswordException) return const AuthFailure.weakPassword();
   if (error is AuthRetryableFetchException) return const AuthFailure.network();
-  if (error is AuthException) {
-    switch (error.code) {
-      case 'invalid_credentials':
-        return const AuthFailure.wrongPassword();
-      case 'weak_password':
-        return const AuthFailure.weakPassword();
-      case 'signup_disabled':
-        // Sign-ups closed: a first Google, Apple, or passwordless sign-in
-        // for an unknown person (#2 KTD3).
-        return const AuthFailure.signUpClosed();
-      case 'identity_already_exists':
-        return const AuthFailure.identityTaken();
-    }
-    // Older GoTrue servers send no code for a bad login, only the message.
-    if (error.statusCode == '400' &&
-        error.message.toLowerCase().contains('invalid login credentials')) {
+  if (error is AuthException) return _mapGoTrueAuthException(error);
+  if (_isNetworkShapedError(error)) return const AuthFailure.network();
+  return const AuthFailure.unknown();
+}
+
+AuthFailure _mapGoTrueAuthException(AuthException error) {
+  switch (error.code) {
+    case 'invalid_credentials':
       return const AuthFailure.wrongPassword();
-    }
-    return const AuthFailure.unknown();
+    case 'weak_password':
+      return const AuthFailure.weakPassword();
+    case 'signup_disabled':
+      // Sign-ups closed: a first Google, Apple, or passwordless sign-in
+      // for an unknown person (#2 KTD3).
+      return const AuthFailure.signUpClosed();
+    case 'identity_already_exists':
+      return const AuthFailure.identityTaken();
   }
-  if (error is SocketException ||
-      error is TimeoutException ||
-      error is HandshakeException ||
-      error is http.ClientException) {
-    return const AuthFailure.network();
+  // Older GoTrue servers send no code for a bad login, only the message.
+  if (error.statusCode == '400' &&
+      error.message.toLowerCase().contains('invalid login credentials')) {
+    return const AuthFailure.wrongPassword();
   }
   return const AuthFailure.unknown();
 }
+
+bool _isNetworkShapedError(Object error) =>
+    error is SocketException ||
+    error is TimeoutException ||
+    error is HandshakeException ||
+    error is http.ClientException;
 
 class SupabaseAuthService implements AuthService {
   SupabaseAuthService({
@@ -185,6 +192,9 @@ class SupabaseAuthService implements AuthService {
   /// `flow_state_expired`, `bad_code_verifier`), or opened on a device
   /// with no verifier (gotrue's code-less "Code verifier could not be
   /// found") — surface as one generic [AuthExpiredLinkFailure] (R7).
+  /// Split (quality gate: McCabe complexity) into this dispatcher plus
+  /// [_exchangeAuthLink]/[_handleAuthLinkExchangeError] — same sequencing,
+  /// same conditions, no behavior change.
   Future<void> handleLink(Uri uri) async {
     final link = classifyAuthLink(uri);
     if (link is AuthLinkIgnored) return;
@@ -202,27 +212,39 @@ class SupabaseAuthService implements AuthService {
         // Latched before the exchange so the stream replay of the launch
         // link cannot start a second exchange while this one is in flight.
         _lastHandledLink = key;
-        try {
-          final response = await _gateway.getSessionFromUrl(uri);
-          if (recovery || _isRecoveryType(response.redirectType)) {
-            _latchRecovery();
-          }
-        } catch (error) {
-          final failure = mapAuthError(error);
-          if (failure is AuthNetworkFailure) {
-            // A transient failure un-latches the link so the same link can
-            // be exchanged again.
-            if (_lastHandledLink == key) _lastHandledLink = null;
-            _surfaceLinkFailure(failure);
-            return;
-          }
-          // A definitive failure stays latched so the replay does not
-          // surface it twice; its kind is not distinguished (KTD4).
-          debugPrint('lunarlog auth: link exchange rejected '
-              '(${error.runtimeType})');
-          _surfaceLinkFailure(const AuthFailure.expiredLink());
-        }
+        await _exchangeAuthLink(uri, recovery: recovery, key: key);
     }
+  }
+
+  Future<void> _exchangeAuthLink(
+    Uri uri, {
+    required bool recovery,
+    required String key,
+  }) async {
+    try {
+      final response = await _gateway.getSessionFromUrl(uri);
+      if (recovery || _isRecoveryType(response.redirectType)) {
+        _latchRecovery();
+      }
+    } catch (error) {
+      _handleAuthLinkExchangeError(error, key);
+    }
+  }
+
+  void _handleAuthLinkExchangeError(Object error, String key) {
+    final failure = mapAuthError(error);
+    if (failure is AuthNetworkFailure) {
+      // A transient failure un-latches the link so the same link can be
+      // exchanged again.
+      if (_lastHandledLink == key) _lastHandledLink = null;
+      _surfaceLinkFailure(failure);
+      return;
+    }
+    // A definitive failure stays latched so the replay does not surface it
+    // twice; its kind is not distinguished (KTD4).
+    debugPrint('lunarlog auth: link exchange rejected '
+        '(${error.runtimeType})');
+    _surfaceLinkFailure(const AuthFailure.expiredLink());
   }
 
   static bool _isRecoveryType(String? redirectType) =>
@@ -242,16 +264,21 @@ class SupabaseAuthService implements AuthService {
       case AuthChangeEvent.passwordRecovery:
         _latchRecovery();
       case AuthChangeEvent.signedOut:
-        // A session that vanished cannot complete a recovery.
-        _pendingRecovery = false;
-        final involuntary = change.signOutReason == SignOutReason.sessionExpired ||
-            change.signOutReason == SignOutReason.sessionMissing;
-        _setState(involuntary
-            ? AuthSessionState.expired
-            : AuthSessionState.signedOut);
+        _handleSignedOutEvent(change.signOutReason);
       default:
         break;
     }
+  }
+
+  /// Split out of [_onAuthState] verbatim (quality gate: McCabe
+  /// complexity) — same conditions, no behavior change.
+  void _handleSignedOutEvent(SignOutReason? reason) {
+    // A session that vanished cannot complete a recovery.
+    _pendingRecovery = false;
+    final involuntary = reason == SignOutReason.sessionExpired ||
+        reason == SignOutReason.sessionMissing;
+    _setState(
+        involuntary ? AuthSessionState.expired : AuthSessionState.signedOut);
   }
 
   /// The state to report while a session exists: recovery wins until it
