@@ -57,10 +57,10 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs analyze +
 test + a release web build on ubuntu, a debug APK on ubuntu, and an unsigned
 iOS build on macOS, for pushes and PRs to `main`.
 
-Automated Android release to Google Play is handled by
-[`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml),
-supporting automatic internal track publishing and manual dispatch for alpha,
-beta, and production.
+Automated iOS release to TestFlight and App Store review (primary) is handled by
+[`.github/workflows/ios-release.yml`](.github/workflows/ios-release.yml)
+(mirrored from `taxiGame`). Automated Android release to Google Play is handled
+by [`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml).
 
 ## Config & credentials
 

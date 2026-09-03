@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Export options for CI, which signs with an explicit certificate and
+		provisioning profile supplied through GitHub secrets.
+
+		ExportOptions.plist (no suffix) is the local counterpart: it uses
+		automatic signing, because a developer running xcodebuild by hand on
+		Williams-Mini has a signed-in Xcode that can fetch signing material on demand.
+	-->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>5273C9R3V4</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<!-- Bundle identifier -> provisioning profile name -->
+		<key>com.wjdavis5.lunarlog</key>
+		<string>Lunarlog</string>
+	</dict>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>
