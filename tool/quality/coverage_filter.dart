@@ -1,5 +1,5 @@
 /// Parses `flutter test --coverage`'s `coverage/lcov.info` and applies
-/// [coverageExclusions] (plan U1).
+/// [excludedLibFilePaths] (plan U1).
 ///
 /// `flutter test --coverage`'s lcov output carries only `SF`/`DA`/`LF`/`LH`
 /// records — no `FN`/`FNDA` function records (verified empirically; see the
@@ -11,7 +11,7 @@
 /// `remove_from_coverage` pub package, but its pubspec caps the Dart SDK at
 /// `<3.0.0`, which this project's Dart 3.13.2 doesn't satisfy — so the
 /// (small) filtering logic it would have provided is implemented directly
-/// here instead. Same result — a file matching [coverageExclusions] is
+/// here instead. Same result — a file matching [excludedLibFilePaths] is
 /// dropped from the denominator — no subprocess, no incompatible
 /// dependency.
 library;
@@ -78,7 +78,7 @@ Map<String, FileCoverage> parseLcov(String content) {
   return files;
 }
 
-/// Drops every file matching [coverageExclusions] (KTD4/KTD6 — the single
+/// Drops every file matching [excludedLibFilePaths] (KTD4/KTD6 — the single
 /// exclusion list both gates share).
 Map<String, FileCoverage> applyExclusions(Map<String, FileCoverage> files) {
   final filtered = <String, FileCoverage>{};
@@ -90,7 +90,7 @@ Map<String, FileCoverage> applyExclusions(Map<String, FileCoverage> files) {
   return filtered;
 }
 
-/// Reads [lcovFile], parses it, and applies [coverageExclusions] — the one
+/// Reads [lcovFile], parses it, and applies [excludedLibFilePaths] — the one
 /// entrypoint `coverage_gate.dart` and `crap_gate.dart` both call so a file
 /// excluded from the coverage floor is excluded from CRAP too (KTD6).
 Map<String, FileCoverage> filteredCoverageFromFile(File lcovFile) {

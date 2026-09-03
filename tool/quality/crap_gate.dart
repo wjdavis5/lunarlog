@@ -15,6 +15,7 @@ import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/source/line_info.dart';
 
 import 'coverage_filter.dart';
 import 'exclusions.dart';
@@ -140,13 +141,13 @@ int _complexityOf(FunctionBody body) {
 /// abstract/interface signatures (`EmptyFunctionBody`) are skipped per the
 /// plan U3 Approach step 5 ("has no complexity to compute and no coverage
 /// to measure").
-List<_ScoredMethod> _methodsIn(CompilationUnit unit, dynamic lineInfo) {
+List<_ScoredMethod> _methodsIn(CompilationUnit unit, LineInfo lineInfo) {
   final methods = <_ScoredMethod>[];
 
   void addIfScoreable(String name, AstNode declaration, FunctionBody body) {
     if (body is EmptyFunctionBody) return;
-    final startLine = lineInfo.getLocation(declaration.offset).lineNumber as int;
-    final endLine = lineInfo.getLocation(declaration.end).lineNumber as int;
+    final startLine = lineInfo.getLocation(declaration.offset).lineNumber;
+    final endLine = lineInfo.getLocation(declaration.end).lineNumber;
     methods.add(_ScoredMethod(name, startLine, endLine, _complexityOf(body)));
   }
 
@@ -222,21 +223,6 @@ double _coverageOf(_ScoredMethod method, Map<int, int> daHits) {
   return hit / total * 100.0;
 }
 
-/// Every non-excluded `.dart` file under [libDir] ("lib" by default),
-/// relative-path-normalized to match lcov's `SF:` keys.
-List<File> _scoreableLibFiles(Directory libDir) {
-  final files = <File>[];
-  for (final entity in libDir.listSync(recursive: true)) {
-    if (entity is! File || !entity.path.endsWith('.dart')) continue;
-    final relative = normalizeSourcePath(
-      entity.path.replaceFirst('${libDir.path}${Platform.pathSeparator}', ''),
-    );
-    final libRelative = 'lib/$relative';
-    if (!isExcluded(libRelative)) files.add(entity);
-  }
-  return files;
-}
-
 /// Runs the CRAP gate over every non-excluded file under `lib/`, using
 /// [filtered] (already produced by [filteredCoverageFromFile] — KTD6, the
 /// same filtered pass the coverage gate uses).
@@ -244,31 +230,27 @@ CrapGateResult evaluateCrapGate(
   Map<String, FileCoverage> filtered, {
   Directory? libDir,
 }) {
-  final dir = libDir ?? Directory('lib');
   final offenders = <CrapOffender>[];
 
-  for (final file in _scoreableLibFiles(dir)) {
-    final relative = normalizeSourcePath(
-      file.path.replaceFirst('${dir.path}${Platform.pathSeparator}', ''),
-    );
-    final libRelativePath = 'lib/$relative';
+  // Keyed by normalized path once, up front, so each file below is an O(1)
+  // lookup instead of a per-file rescan of the whole filtered map (the
+  // scan cost would otherwise be O(files x coverage entries)) — `filtered`
+  // doesn't change across the loop below.
+  final normalizedFiltered = {
+    for (final entry in filtered.entries)
+      normalizeSourcePath(entry.key): entry.value,
+  };
 
+  for (final libFile in nonExcludedLibDartFiles(libDir)) {
     final parsed = parseFile(
-      path: file.path,
+      path: libFile.file.path,
       featureSet: FeatureSet.latestLanguageVersion(),
     );
     final methods = _methodsIn(parsed.unit, parsed.lineInfo);
     if (methods.isEmpty) continue;
 
-    // Match this file's coverage record regardless of which OS wrote the
-    // lcov (backslash vs forward-slash `SF:` paths).
-    Map<int, int> daHits = const <int, int>{};
-    for (final entry in filtered.entries) {
-      if (normalizeSourcePath(entry.key) == libRelativePath) {
-        daHits = entry.value.daHits;
-        break;
-      }
-    }
+    final libRelativePath = libFile.libRelativePath;
+    final daHits = normalizedFiltered[libRelativePath]?.daHits ?? const {};
 
     for (final method in methods) {
       final coverage = _coverageOf(method, daHits);

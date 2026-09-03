@@ -34,7 +34,9 @@ import 'quality/exclusions.dart';
 
 Future<void> main(List<String> args) async {
   final full = args.contains('--full');
-  final files = full ? await _allLibDartFiles() : await _changedLibDartFiles();
+  final files = full
+      ? [for (final f in nonExcludedLibDartFiles()) f.libRelativePath]
+      : await _changedLibDartFiles();
 
   if (files.isEmpty) {
     // ignore: avoid_print
@@ -79,13 +81,20 @@ Future<void> main(List<String> args) async {
     stderr.write(result.stderr);
     exitCode = result.exitCode;
   } finally {
-    if (rulesFile.existsSync()) rulesFile.deleteSync();
+    final tempDir = rulesFile.parent;
+    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   }
 }
 
 Future<List<String>> _changedLibDartFiles() async {
   final base = await _diffBaseRef();
   final diff = await Process.run('git', ['diff', '--name-only', base]);
+  if (diff.exitCode != 0) {
+    stderr.write(diff.stderr);
+    throw StateError(
+        'git diff --name-only $base failed (exit ${diff.exitCode}) — '
+        'see stderr above.');
+  }
   final names = (diff.stdout as String).split('\n');
   return _libDartFilesFrom(names);
 }
@@ -100,17 +109,6 @@ Future<String> _diffBaseRef() async {
     return (mergeBase.stdout as String).trim();
   }
   return 'HEAD~1';
-}
-
-Future<List<String>> _allLibDartFiles() async {
-  final names = <String>[];
-  final libDir = Directory('lib');
-  await for (final entity in libDir.list(recursive: true)) {
-    if (entity is File && entity.path.endsWith('.dart')) {
-      names.add(entity.path);
-    }
-  }
-  return _libDartFilesFrom(names);
 }
 
 /// Normalizes to forward slashes, keeps only non-excluded `lib/**.dart`
@@ -160,20 +158,24 @@ List<String>? mirroredTestFilesForTest(List<String> libFiles) =>
     _mirroredTestFiles(libFiles);
 
 /// Writes a temporary `--rules` document carrying this repo's shared
-/// exclusions (mirroring `tool/quality/exclusions.dart`, KTD4/KTD6) and
-/// the resolved [testCommand]. Deleted by the caller after the run.
+/// exclusions — derived from `tool/quality/exclusions.dart`'s
+/// [excludedLibFilePaths], the one canonical list (KTD4/KTD6), so this
+/// never drifts from what the coverage/CRAP gates exclude — and the
+/// resolved [testCommand]. Deleted by the caller after the run.
 Future<File> _writeScopedRulesXml(String testCommand) async {
-  final file = File(
-      '${Directory.systemTemp.path}/lunarlog_mutation_rules_${DateTime.now().microsecondsSinceEpoch}.xml');
+  final dir = Directory.systemTemp.createTempSync('lunarlog_mutation_rules_');
+  final file = File('${dir.path}${Platform.pathSeparator}rules.xml');
+  final excludeEntries = [
+    '**/*.g.dart',
+    for (final e in excludedLibFilePaths) e.path,
+  ];
+  final excludeXml =
+      excludeEntries.map((p) => '    <directory>$p</directory>').join('\n');
   await file.writeAsString('''
 <?xml version="1.0" encoding="UTF-8"?>
 <mutations version="1.2">
   <exclude>
-    <directory>**/*.g.dart</directory>
-    <directory>lib/data/auth/google_sign_in_client.dart</directory>
-    <directory>lib/data/auth/auth_gateway.dart</directory>
-    <directory>lib/data/db/key_store.dart</directory>
-    <directory>lib/data/notifications/notification_scheduler.dart</directory>
+$excludeXml
   </exclude>
   <commands>
     <command group="test" expected-return="0" working-directory=".">$testCommand</command>

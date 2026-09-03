@@ -49,8 +49,7 @@ class Trivial {
     });
 
     test('complexity 3 at 0% coverage scores 12 and is reported', () {
-      // 3 decision points (2 ifs + 1 &&) => complexity 4? Let's use exactly
-      // 2 decision points for complexity 3: one `if`, one `&&` inside it.
+      // Two decision points (one `if`, one `&&` inside it) => complexity 3.
       final source = '''
 class Risky {
   int classify(int x, int y) {
