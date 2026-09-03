@@ -6,6 +6,8 @@
 /// biometrics are verified manually on-device (U9 checklist).
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -37,12 +39,22 @@ class FakeGate implements AppGate {
   bool grantNext;
   int requests = 0;
 
+  /// When set, the next prompt stays up until this completes (its value is
+  /// the answer), so a test can act while the credential prompt is showing
+  /// (#2 U5; KTD5). Consumed by that request.
+  Completer<bool>? holdNext;
+
   @override
   bool requiresUnlock;
 
   @override
   Future<bool> requestAccess() async {
     requests++;
+    final hold = holdNext;
+    if (hold != null) {
+      holdNext = null;
+      return hold.future;
+    }
     return grantNext;
   }
 }
@@ -208,6 +220,70 @@ void main() {
     addTearDown(controller.dispose);
     expect(controller.relockEnabled, isTrue,
         reason: 'auto-relock default ON (fail closed)');
+  });
+
+  group('re-authentication for linking (#2 U5; KTD5)', () {
+    testWidgets('returns false without prompting while an unlock is in '
+        'progress; otherwise reports the credential and never changes '
+        'locked', (tester) async {
+      final gate = FakeGate();
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      expect(controller.locked, isTrue);
+
+      final held = Completer<bool>();
+      gate.holdNext = held;
+      final unlocking = controller.unlock();
+      expect(controller.authenticating, isTrue);
+      expect(await controller.reauthenticate(), isFalse);
+      expect(gate.requests, 1, reason: 'no second prompt over the first');
+      expect(controller.locked, isTrue);
+      held.complete(true);
+      await unlocking;
+      expect(controller.locked, isFalse);
+
+      gate.grantNext = true;
+      expect(await controller.reauthenticate(), isTrue);
+      expect(gate.requests, 2);
+      expect(controller.locked, isFalse);
+      expect(controller.authenticating, isFalse);
+
+      gate.grantNext = false;
+      expect(await controller.reauthenticate(), isFalse,
+          reason: 'declined or unavailable credential');
+      expect(controller.locked, isFalse,
+          reason: 'a declined re-auth is not a lock');
+
+      // While locked: a granted re-auth does not unlock either.
+      controller.lock();
+      expect(controller.locked, isTrue);
+      gate.grantNext = true;
+      expect(await controller.reauthenticate(), isTrue);
+      expect(controller.locked, isTrue);
+    });
+
+    testWidgets('returns false when the prompt is interrupted by a '
+        'lifecycle change, without re-locking mid-prompt', (tester) async {
+      final gate = FakeGate(requiresUnlock: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      expect(controller.locked, isFalse);
+
+      final hold = Completer<bool>();
+      gate.holdNext = hold;
+      final pending = controller.reauthenticate();
+      expect(controller.authenticating, isTrue);
+      // The system prompt itself reports `inactive`.
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      hold.complete(true);
+      expect(await pending, isFalse);
+      expect(controller.authenticating, isFalse);
+      expect(controller.locked, isFalse);
+
+      // A clean prompt afterwards works again.
+      gate.grantNext = true;
+      expect(await controller.reauthenticate(), isTrue);
+    });
   });
 
   group('cold start gates first (F3, AE4)', () {
