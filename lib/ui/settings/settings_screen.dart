@@ -64,6 +64,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                 : null,
           ),
+          const Divider(),
+          ListTile(
+            key: const ValueKey('privacy-policy-tile'),
+            leading: const Icon(Icons.shield_outlined),
+            title: const Text('Privacy policy'),
+            subtitle: const Text('Local-first, encrypted, zero tracking'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showPrivacyPolicy(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPrivacyPolicy(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('LunarLog Privacy Policy'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'LunarLog is a privacy-first, local-first cycle tracker.\n\n'
+            '• Local & Encrypted: All cycle data is encrypted on your device '
+            'behind biometric authentication.\n'
+            '• Optional Sync: Cloud accounts (Supabase) are optional. No data is '
+            'uploaded without your explicit consent.\n'
+            '• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n'
+            '• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health '
+            'and personal details on-device.\n'
+            '• Family Custodianship: Minor profiles are managed directly by adult '
+            'guardians with identical privacy protections.\n\n'
+            'Canonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
