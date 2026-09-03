@@ -469,6 +469,71 @@ void main() {
       expect((await rig.entry(p.id, e.id)).dirty, isFalse);
       expect(rig.engine.snapshot.rejectedCount, 0);
     });
+
+    test('rejected day entries are un-rejected and re-sent when their parent '
+        'profile is accepted', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p = await rig.storage.upsertProfile(
+          displayName: 'A', isMinor: false);
+      final e = await rig.storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+
+      // Push 1: both profile and day entry are rejected by server
+      rig.transport.scriptPushResult(rejectedIds: [p.id, e.id]);
+      await rig.start();
+      expect(rig.transport.pushes, hasLength(1));
+      expect(rig.engine.snapshot.rejectedCount, 2);
+
+      // Push 2: user edits profile, bumps localRev. Entry e is NOT edited.
+      await rig.storage.upsertProfile(
+          id: p.id, displayName: 'A Fixed', isMinor: false);
+      // Profile is accepted on push 2; un-rejected entry e is automatically re-sent on push 3
+      rig.transport.scriptPushResult();
+      rig.transport.scriptPushResult();
+      await rig.sync();
+      expect(rig.transport.pushes, hasLength(3));
+      expect(ids(rig.transport.pushes[1].profiles), [p.id]);
+      expect(ids(rig.transport.pushes[2].dayEntries), [e.id]);
+      expect(rig.engine.snapshot.rejectedCount, 0);
+      expect((await rig.entry(p.id, e.id)).dirty, isFalse);
+    });
+
+    test('reconcileDue clears rejected rows so they are retried on full '
+        'reconciliation cadence', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p = await rig.storage.upsertProfile(
+          displayName: 'A', isMinor: false);
+      final e = await rig.storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+
+      // Push 1: e is rejected
+      rig.transport.scriptPushResult(rejectedIds: [e.id]);
+      await rig.start();
+      expect(rig.transport.pushes, hasLength(1));
+      expect(rig.engine.snapshot.rejectedCount, 1);
+
+      // Sync without reconcile due: not pushed
+      await rig.sync();
+      expect(rig.transport.pushes, hasLength(1));
+
+      // Advance clock past 24 hours so reconcile is due
+      rig.clock.now = t0.add(const Duration(hours: 25));
+      rig.transport.scriptPushResult(); // accepted
+      await rig.sync();
+      expect(rig.transport.pushes, hasLength(2));
+      expect(ids(rig.transport.pushes[1].dayEntries), [e.id]);
+      expect(rig.engine.snapshot.rejectedCount, 0);
+    });
   });
 
   group('pull', () {

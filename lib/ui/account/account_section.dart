@@ -331,6 +331,7 @@ class _AccountSectionState extends State<AccountSection> {
         content: Text(
             '${authFailureCopy(failure)} Other devices were not signed out.'),
       ));
+      await _reset(context);
       return;
     }
     if (!context.mounted) return;
