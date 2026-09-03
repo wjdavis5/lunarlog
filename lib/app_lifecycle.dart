@@ -157,6 +157,8 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// flag: adding a sign-in method legitimately nests a credential prompt
   /// inside a provider ceremony.
   int _systemUiWindows = 0;
+  int _nextSystemUiEpoch = 0;
+  int? _systemUiEpoch;
   bool _settling = false;
   bool _departedDuringWindow = false;
   bool _disposed = false;
@@ -189,8 +191,8 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// True when the last credential attempt was declined or unavailable.
   bool get lastAttemptDenied => _denied;
 
-  /// True while content must be covered (lifecycle not resumed) — the
-  /// app-switcher snapshot posture.
+  /// True while content must be covered: either the lifecycle is not resumed
+  /// or system UI opened by the app is still active.
   bool get obscured => _obscured;
 
   bool get relockEnabled => _relockEnabled;
@@ -245,11 +247,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// on Android the device-credential fallback launches a separate activity
   /// through `KeyguardManager` and genuinely reports `paused`.
   Future<T> duringSystemUi<T>(Future<T> Function() action) async {
-    _openSystemUiWindow();
+    final epoch = _openSystemUiWindow();
     try {
       return await action();
     } finally {
-      _closeSystemUiWindow();
+      _closeSystemUiWindow(epoch);
     }
   }
 
@@ -262,10 +264,18 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _departedDuringWindow = false;
   }
 
-  void _openSystemUiWindow() {
-    _systemUiWindows++;
-    if (_systemUiWindows > 1) return;
-    _cancelSettleTail();
+  int _openSystemUiWindow() {
+    if (_systemUiWindows > 0) {
+      _systemUiWindows++;
+      return _systemUiEpoch!;
+    }
+    final settlingEpoch = _systemUiEpoch;
+    if (settlingEpoch != null) _reconcileWindowClose(settlingEpoch);
+    final epoch = ++_nextSystemUiEpoch;
+    _systemUiEpoch = epoch;
+    _systemUiWindows = 1;
+    final wasObscured = _obscured;
+    _obscured = true;
     // Suspend the foreground idle countdown for the window's duration. It
     // reaches `lock()`, which has no suppression check, so a countdown
     // already near its deadline would otherwise lock the app mid-ceremony
@@ -274,35 +284,32 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
     _systemUiTimer?.cancel();
-    _systemUiTimer =
-        inactivityTimerFactory(systemUiDeadline, _systemUiDeadlineExpired);
+    _systemUiTimer = inactivityTimerFactory(
+        systemUiDeadline, () => _systemUiDeadlineExpired(epoch));
+    if (!wasObscured) notifyListeners();
+    return epoch;
   }
 
-  void _closeSystemUiWindow() {
-    if (_disposed) return;
+  void _closeSystemUiWindow(int epoch) {
+    if (_disposed || _systemUiEpoch != epoch) return;
     if (_systemUiWindows == 0) return;
     _systemUiWindows--;
     if (_systemUiWindows > 0) return;
-    _systemUiTimer?.cancel();
-    _systemUiTimer = null;
-    if (!_departedDuringWindow) {
-      // Nothing to absorb: the system UI came and went without the
-      // platform reporting a departure, so there is no trailing report to
-      // wait for. Skipping the tail here is what keeps an ordinary unlock
-      // from leaving the app briefly un-lockable.
-      _reconcileWindowClose();
-      return;
+    if (_resumed && _obscured) {
+      _obscured = false;
+      notifyListeners();
     }
     _settling = true;
     _settleTimer?.cancel();
-    _settleTimer = inactivityTimerFactory(settleTimeout, _onSettleTimeout);
+    _settleTimer = inactivityTimerFactory(
+        settleTimeout, () => _onSettleTimeout(epoch));
   }
 
   /// The settle timer fired. Guarded because a cancelled-but-already-queued
   /// timer, or a window reopened during the tail, must not reconcile twice.
-  void _onSettleTimeout() {
-    if (_disposed || !_settling) return;
-    _reconcileWindowClose();
+  void _onSettleTimeout(int epoch) {
+    if (_disposed || !_settling || _systemUiEpoch != epoch) return;
+    _reconcileWindowClose(epoch);
   }
 
   /// End of a window's life: the cover is reconciled against the
@@ -310,7 +317,8 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// uncovers data and a closing window strands an opaque cover with no
   /// lock screen behind it), and [reauthenticate]'s narrowed replay fires
   /// if the operator is still away (#65 KTD4).
-  void _reconcileWindowClose() {
+  void _reconcileWindowClose(int epoch) {
+    if (_systemUiEpoch != epoch) return;
     // The departure this window absorbed is answered here, and the answer
     // is fail-closed: if the operator has not come back by the time the
     // system UI is down, the departure takes effect. Anything softer is a
@@ -320,6 +328,10 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     // all. That is strictly weaker than the behaviour this change
     // replaced, which locked on every departure.
     final unanswered = _departedDuringWindow && !_resumed;
+    _systemUiTimer?.cancel();
+    _systemUiTimer = null;
+    _systemUiWindows = 0;
+    _systemUiEpoch = null;
     _cancelSettleTail();
     if (unanswered) {
       _obscured = true;
@@ -343,6 +355,10 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// transitions, and there is nothing to wait for when the operator has
   /// not come back.
   void _replayDeparture() {
+    _systemUiTimer?.cancel();
+    _systemUiTimer = null;
+    _systemUiWindows = 0;
+    _systemUiEpoch = null;
     _cancelSettleTail();
     _obscured = true;
     lock();
@@ -351,9 +367,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// The window outstayed its bound (#65 KTD5). Lock unconditionally — this is
   /// the whole guarantee behind suppressing the lock in the first place,
   /// so it ignores the relock toggle, pointer activity, and nesting.
-  void _systemUiDeadlineExpired() {
+  void _systemUiDeadlineExpired(int epoch) {
+    if (_disposed || _systemUiEpoch != epoch) return;
     _systemUiTimer = null;
     _systemUiWindows = 0;
+    _systemUiEpoch = null;
     _generation++;
     _cancelSettleTail();
     // Release the prompt too. A credential request that never returns is
@@ -398,15 +416,15 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
       // Without this a throwing authenticator leaves the flag set and the
       // re-entrancy guard turns every later Unlock tap into a no-op.
       _authenticating = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
   /// A fresh device-credential check for a sensitive action while the app
   /// is already unlocked — adding a sign-in method (#2 U5; KTD5). Returns
-  /// true only when the credential was accepted and the app stayed in the
-  /// foreground for the whole prompt; false for a decline, an unavailable
-  /// authenticator, an interruption, or while another prompt is up.
+  /// true only when the credential was accepted and the app is resumed when
+  /// the prompt completes; false for a decline, an unavailable authenticator,
+  /// a still-away completion, or while another prompt is up.
   ///
   /// Runs inside a system-UI window like every other prompt, and the
   /// credential's own result is what it reports (#65 U1; KTD4). It used to
@@ -470,7 +488,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   void _armInactivity() {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
-    if (!_relockEnabled || _locked) return;
+    if (!_relockEnabled || _locked || _suppressingLock) return;
     _inactivityTimer = inactivityTimerFactory(
         inactivityTimeout, () => lock());
   }
@@ -480,8 +498,8 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         _resumed = true;
-        _obscured = false;
-        if (!_locked) _armInactivity();
+        if (_systemUiWindows == 0) _obscured = false;
+        if (!_locked && !_suppressingLock) _armInactivity();
         notifyListeners();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:

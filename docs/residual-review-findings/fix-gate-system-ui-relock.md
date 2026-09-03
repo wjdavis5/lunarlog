@@ -13,25 +13,19 @@ window, the disposal guard, the un-gated cover fix, and the user-facing
 copy that had promised a bound the code did not enforce. The items below
 were judged real but narrower, and are tracked rather than applied.
 
+A follow-up review after `c412de1` resolved the original review's stale-close
+and window-reopen items with per-window epochs. It also kept the absolute
+deadline armed through settlement, made every completed action absorb trailing
+lifecycle events, covered content while app-launched system UI is active, and
+guarded the last post-disposal notification.
+
 ## Residual findings
 
-- **P2 — the window deadline zeroes the depth counter while callers still
-  hold un-run `finally` blocks.** `_systemUiDeadlineExpired` sets
-  `_systemUiWindows = 0`; the `== 0` guard in `_closeSystemUiWindow` makes
-  the stale closes no-ops, but a *new* window opened before a stale close
-  runs would be decremented by it. Reachable only when the two-minute
-  deadline expires mid-ceremony, and the shell hides every caller behind
-  the lock screen once locked. The fix is a per-window epoch, mirroring the
-  credential generation counter already added.
 - **P2 — after a deadline lock during `_addMethod`, the remainder of that
   ceremony runs unprotected.** The counter is zeroed, so the subsequent
   `link()` picker opens with no window and its own `inactive` re-locks. The
   operator is already behind the lock screen at that point, so this is
   incoherent rather than exposing.
-- **P2 — reopening a window clears `_departedDuringWindow`.** A departure
-  absorbed by window A is forgotten if window B opens inside A's settling
-  tail. Narrow now that an unanswered departure fails closed at the tail's
-  end, and opening a window requires a tap in a foregrounded app.
 - **P2 — one pre-existing re-auth test cannot fail on its lock assertion.**
   `test/ui/gate_test.dart`'s "returns false when the prompt is interrupted"
   case uses `FakeGate(requiresUnlock: false)`, so `lock()` can never set

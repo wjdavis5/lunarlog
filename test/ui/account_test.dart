@@ -417,6 +417,7 @@ void main() {
       addTearDown(gate.dispose);
       gateFake.grantNext = true;
       await gate.unlock();
+      timers.fireWithDelay(kSystemUiSettleTimeout);
 
       final s = await pumpStandalone(tester, gate: gate);
       s.auth.hold = Completer<void>();
