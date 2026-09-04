@@ -64,11 +64,14 @@ class ReminderCoordinator with WidgetsBindingObserver {
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
   final Map<String, ActivePrediction> _latest = {};
   Timer? _replanTimer;
+  int _permissionProbeGeneration = 0;
+  bool _started = false;
   bool _disposed = false;
 
   Future<void> start({
     void Function(String profileId)? onLaunchFromNotification,
   }) async {
+    final generation = ++_permissionProbeGeneration;
     final availability =
         await _scheduler.initialize(onLaunchFromNotification: (id) {
       onLaunchFromNotification?.call(id);
@@ -76,8 +79,11 @@ class ReminderCoordinator with WidgetsBindingObserver {
       // the payload is consumed by the home gate after the next unlock.
     });
     if (_disposed) return;
-    _permissionState.update(availability);
+    if (generation == _permissionProbeGeneration) {
+      _permissionState.update(availability);
+    }
     _profilesSub = _activeProfiles.listen(_onProfilesChanged);
+    _started = true;
   }
 
   void _onProfilesChanged(List<Profile> profiles) {
@@ -128,10 +134,18 @@ class ReminderCoordinator with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // "At every app open": a new day may have arrived without any write.
-      _scheduleReplan();
+    if (_started && state == AppLifecycleState.resumed) {
+      final generation = ++_permissionProbeGeneration;
+      unawaited(_refreshPermissionAndReplan(generation));
     }
+  }
+
+  Future<void> _refreshPermissionAndReplan(int generation) async {
+    final availability = await _scheduler.checkAvailability();
+    if (_disposed || generation != _permissionProbeGeneration) return;
+    _permissionState.update(availability);
+    // "At every app open": permissions or the civil day may have changed.
+    _scheduleReplan();
   }
 
   Future<void> dispose() async {

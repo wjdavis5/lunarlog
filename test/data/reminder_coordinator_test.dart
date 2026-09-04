@@ -5,6 +5,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
@@ -18,8 +19,11 @@ class _FakeScheduler implements ReminderScheduler {
   _FakeScheduler({this.initialAvailability = NotificationAvailability.available});
 
   final NotificationAvailability initialAvailability;
+  NotificationAvailability? currentAvailability;
+  final List<Completer<NotificationAvailability>> availabilityGates = [];
   final List<List<PlannedReminder>> rescheduleCalls = [];
   int cancelCalls = 0;
+  int availabilityChecks = 0;
   void Function(String profileId)? launchSink;
 
   @override
@@ -28,6 +32,15 @@ class _FakeScheduler implements ReminderScheduler {
   }) async {
     launchSink = onLaunchFromNotification;
     return initialAvailability;
+  }
+
+  @override
+  Future<NotificationAvailability> checkAvailability() async {
+    availabilityChecks++;
+    if (availabilityGates.isNotEmpty) {
+      return availabilityGates.removeAt(0).future;
+    }
+    return currentAvailability ?? initialAvailability;
   }
 
   @override
@@ -188,5 +201,79 @@ void main() {
 
     scheduler.launchSink!('p9');
     expect(launched, 'p9');
+  });
+
+  test('resume refreshes permission before replanning', () async {
+    final scheduler = _FakeScheduler(
+        initialAvailability: NotificationAvailability.denied)
+      ..currentAvailability = NotificationAvailability.available;
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.denied);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(scheduler.availabilityChecks, 1);
+    expect(permissionState.value, NotificationAvailability.available);
+    expect(scheduler.rescheduleCalls, isNotEmpty);
+  });
+
+  test('resume notices revoked permission and cancels reminders', () async {
+    final scheduler = _FakeScheduler()
+      ..currentAvailability = NotificationAvailability.denied;
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(permissionState.value, NotificationAvailability.denied);
+    expect(scheduler.cancelCalls, 1);
+  });
+
+  test('a stale permission probe cannot overwrite a newer resume', () async {
+    final first = Completer<NotificationAvailability>();
+    final second = Completer<NotificationAvailability>();
+    final scheduler = _FakeScheduler()
+      ..availabilityGates.addAll([first, second]);
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    second.complete(NotificationAvailability.available);
+    await pumpEventQueue();
+    first.complete(NotificationAvailability.denied);
+    await pumpEventQueue();
+
+    expect(permissionState.value, NotificationAvailability.available);
+    expect(scheduler.cancelCalls, 0);
   });
 }
