@@ -5,19 +5,28 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
-import 'package:lunarlog/ui/overview/notification_availability.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 
 class _FakeScheduler implements ReminderScheduler {
-  _FakeScheduler({this.initialAvailability = NotificationAvailability.available});
+  _FakeScheduler({
+    this.initialAvailability = NotificationAvailability.available,
+    this.initializeGate,
+  });
 
   final NotificationAvailability initialAvailability;
+
+  /// When set, [initialize] parks on this completer before reporting
+  /// availability — the window in which an app resume can race `start()`.
+  final Completer<void>? initializeGate;
   final List<List<PlannedReminder>> rescheduleCalls = [];
   int cancelCalls = 0;
   void Function(String profileId)? launchSink;
@@ -27,6 +36,7 @@ class _FakeScheduler implements ReminderScheduler {
     void Function(String profileId)? onLaunchFromNotification,
   }) async {
     launchSink = onLaunchFromNotification;
+    await initializeGate?.future;
     return initialAvailability;
   }
 
@@ -38,6 +48,18 @@ class _FakeScheduler implements ReminderScheduler {
   @override
   Future<void> cancelAll() async {
     cancelCalls++;
+  }
+}
+
+/// The whole of what `lib/data` needs from the permission state: a plain
+/// [NotificationAvailabilitySink], with no `ChangeNotifier` and no
+/// `lib/ui` type in sight (KTD1).
+class _RecordingSink implements NotificationAvailabilitySink {
+  final List<NotificationAvailability> updates = [];
+
+  @override
+  void update(NotificationAvailability next) {
+    updates.add(next);
   }
 }
 
@@ -131,6 +153,33 @@ void main() {
     expect(scheduler.cancelCalls, greaterThan(0));
   });
 
+  test('a minimal sink (no UI notifier) still receives denial and skips '
+      'scheduling', () async {
+    final scheduler =
+        _FakeScheduler(initialAvailability: NotificationAvailability.denied);
+    final sink = _RecordingSink();
+    final profiles = StreamController<List<Profile>>(sync: true);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: sink,
+      activeProfiles: profiles.stream,
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+    });
+
+    expect(sink.updates, [NotificationAvailability.denied]);
+    profiles.add([_profile('p1')]);
+    await pumpEventQueue();
+    expect(scheduler.rescheduleCalls, isEmpty);
+    expect(scheduler.cancelCalls, greaterThan(0));
+  });
+
   test('archiving a profile drops its reminders from the plan', () async {
     final scheduler = _FakeScheduler();
     final permissionState =
@@ -169,6 +218,39 @@ void main() {
       scheduler.rescheduleCalls.last.any((r) => r.profileId == 'p1'),
       isFalse,
     );
+  });
+
+  test('a resume replan before start() resolves availability still schedules',
+      () async {
+    // app.dart fires `unawaited(_startReminders())` from initState, so a
+    // lifecycle resume can land while `_scheduler.initialize(...)` is still
+    // pending (unbounded on iOS/macOS first launch, where it waits on the
+    // system permission dialog). The coordinator must plan as "available"
+    // in that gap rather than throw.
+    final gate = Completer<void>();
+    final scheduler = _FakeScheduler(initializeGate: gate);
+    final permissionState = _RecordingSink();
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      today: () => LocalDate(2026, 8, 30),
+      replanDebounce: Duration.zero,
+    );
+    final started = coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+    });
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(scheduler.rescheduleCalls, hasLength(1));
+    expect(scheduler.cancelCalls, 0);
+
+    gate.complete();
+    await started;
   });
 
   test('notification tap payload reaches the launch seam', () async {

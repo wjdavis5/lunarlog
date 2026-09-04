@@ -16,21 +16,8 @@ import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
-import 'package:lunarlog/ui/overview/notification_availability.dart';
-
-/// Observable permission state consumed by the overview hint (U6 seam).
-class NotificationPermissionState extends ChangeNotifier {
-  NotificationPermissionState(this.value);
-
-  NotificationAvailability value;
-
-  void update(NotificationAvailability next) {
-    if (value == next) return;
-    value = next;
-    notifyListeners();
-  }
-}
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
@@ -38,7 +25,7 @@ typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 class ReminderCoordinator with WidgetsBindingObserver {
   ReminderCoordinator({
     required ReminderScheduler scheduler,
-    required NotificationPermissionState permissionState,
+    required NotificationAvailabilitySink permissionState,
     required ActiveProfilesStream activeProfiles,
     required PredictionStream predictionFor,
     LocalDate Function()? today,
@@ -52,13 +39,21 @@ class ReminderCoordinator with WidgetsBindingObserver {
   }
 
   final ReminderScheduler _scheduler;
-  final NotificationPermissionState _permissionState;
+  final NotificationAvailabilitySink _permissionState;
   final ActiveProfilesStream _activeProfiles;
   final PredictionStream _predictionFor;
   final LocalDate Function() today;
 
   @visibleForTesting
   final Duration replanDebounce;
+
+  // Availability as [start] last resolved it. Eagerly initialized, never
+  // `late`: this coordinator observes the widget binding from its own
+  // constructor and `app.dart` fires `start()` unawaited, so a lifecycle
+  // resume can drive a replan while `_scheduler.initialize(...)` is still
+  // pending. `available` matches the value the composition root seeds the
+  // sink with, so the pre-resolution window behaves as it always has.
+  NotificationAvailability _availability = NotificationAvailability.available;
 
   StreamSubscription<List<Profile>>? _profilesSub;
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
@@ -76,6 +71,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
       // the payload is consumed by the home gate after the next unlock.
     });
     if (_disposed) return;
+    _availability = availability;
     _permissionState.update(availability);
     _profilesSub = _activeProfiles.listen(_onProfilesChanged);
   }
@@ -117,7 +113,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
   @visibleForTesting
   Future<void> replan() async {
     if (_disposed) return;
-    if (_permissionState.value == NotificationAvailability.denied) {
+    if (_availability == NotificationAvailability.denied) {
       await _scheduler.cancelAll();
       return;
     }

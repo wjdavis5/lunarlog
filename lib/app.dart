@@ -17,6 +17,7 @@ import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -26,7 +27,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;
-import 'package:lunarlog/ui/overview/notification_availability.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';

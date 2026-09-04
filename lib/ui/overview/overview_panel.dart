@@ -8,12 +8,12 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
-import 'package:lunarlog/ui/overview/notification_availability.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:provider/provider.dart';
 
 const String kEstimateDisclaimer = 'Estimates only — not medical advice.';
