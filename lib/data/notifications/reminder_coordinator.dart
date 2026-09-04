@@ -47,23 +47,30 @@ class ReminderCoordinator with WidgetsBindingObserver {
   @visibleForTesting
   final Duration replanDebounce;
 
-  // Availability as [start] last resolved it. Eagerly initialized, never
-  // `late`: this coordinator observes the widget binding from its own
-  // constructor and `app.dart` fires `start()` unawaited, so a lifecycle
-  // resume can drive a replan while `_scheduler.initialize(...)` is still
-  // pending. `available` matches the value the composition root seeds the
-  // sink with, so the pre-resolution window behaves as it always has.
+  // Availability as last published through [_setAvailability] — by [start],
+  // and again by the resume re-probe. [replan] reads this rather than the
+  // sink, which is a write-only `lib/domain` contract.
+  //
+  // Eagerly initialized, never `late`. `didChangeAppLifecycleState`'s
+  // `_started` guard means nothing should reach [replan] before [start]
+  // resolves, so this is defence in depth rather than the only thing
+  // holding that window: a `late` field would turn any future path that did
+  // reach it into a LateInitializationError thrown from an unawaited timer.
+  // `available` matches the value the composition root seeds the sink with.
   NotificationAvailability _availability = NotificationAvailability.available;
 
   StreamSubscription<List<Profile>>? _profilesSub;
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
   final Map<String, ActivePrediction> _latest = {};
   Timer? _replanTimer;
+  int _permissionProbeGeneration = 0;
+  bool _started = false;
   bool _disposed = false;
 
   Future<void> start({
     void Function(String profileId)? onLaunchFromNotification,
   }) async {
+    final generation = ++_permissionProbeGeneration;
     final availability =
         await _scheduler.initialize(onLaunchFromNotification: (id) {
       onLaunchFromNotification?.call(id);
@@ -71,9 +78,11 @@ class ReminderCoordinator with WidgetsBindingObserver {
       // the payload is consumed by the home gate after the next unlock.
     });
     if (_disposed) return;
-    _availability = availability;
-    _permissionState.update(availability);
+    if (generation == _permissionProbeGeneration) {
+      _setAvailability(availability);
+    }
     _profilesSub = _activeProfiles.listen(_onProfilesChanged);
+    _started = true;
   }
 
   void _onProfilesChanged(List<Profile> profiles) {
@@ -110,6 +119,15 @@ class ReminderCoordinator with WidgetsBindingObserver {
     _replanTimer = Timer(replanDebounce, () => unawaited(replan()));
   }
 
+  /// The only writer of availability: keeps the local mirror [replan]
+  /// reads in step with the sink the UI renders. The sink is write-only
+  /// (it is a `lib/domain` contract), so the mirror is how the coordinator
+  /// reads back a value it published — including the resume re-check.
+  void _setAvailability(NotificationAvailability next) {
+    _availability = next;
+    _permissionState.update(next);
+  }
+
   @visibleForTesting
   Future<void> replan() async {
     if (_disposed) return;
@@ -124,10 +142,18 @@ class ReminderCoordinator with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // "At every app open": a new day may have arrived without any write.
-      _scheduleReplan();
+    if (_started && state == AppLifecycleState.resumed) {
+      final generation = ++_permissionProbeGeneration;
+      unawaited(_refreshPermissionAndReplan(generation));
     }
+  }
+
+  Future<void> _refreshPermissionAndReplan(int generation) async {
+    final availability = await _scheduler.checkAvailability();
+    if (_disposed || generation != _permissionProbeGeneration) return;
+    _setAvailability(availability);
+    // "At every app open": permissions or the civil day may have changed.
+    _scheduleReplan();
   }
 
   Future<void> dispose() async {

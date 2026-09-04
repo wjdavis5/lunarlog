@@ -556,6 +556,7 @@ void main() {
       );
       expect((await storage.readSyncState()).cursorProfiles, 7);
     });
+
   });
 
   group('clock offset', () {

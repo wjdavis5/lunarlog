@@ -40,7 +40,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart'
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_engine.dart';
 import '../support/pump_helpers.dart';
-import 'gate_test.dart' show FakeGate;
+import 'gate_test.dart' show FakeGate, FakeInactivityTimers;
 import 'profiles_test.dart' show kNoticeText;
 
 const String kWaitingCopy =
@@ -369,6 +369,72 @@ void main() {
       expect(copy, isNot(contains('@')));
     });
 
+    testWidgets('#65 AE5: the Google picker does not re-lock the app, and '
+        'the screen still completes once when it returns', (tester) async {
+      final gateFake = FakeGate();
+      final timers = FakeInactivityTimers();
+      final gate = GateController(
+          gate: gateFake, inactivityTimerFactory: timers.factory);
+      addTearDown(gate.dispose);
+      gateFake.grantNext = true;
+      await gate.unlock();
+      expect(gate.locked, isFalse);
+
+      var completions = 0;
+      final s = await pumpStandalone(
+        tester,
+        showGoogle: true,
+        gate: gate,
+        onSignedIn: () => completions++,
+      );
+      s.auth.hold = Completer<void>();
+
+      await tester.tap(key('auth-google'));
+      await tester.pump();
+      gate.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      await tester.pump();
+
+      expect(gate.locked, isFalse,
+          reason: 'the app opened the picker itself');
+      expect(gate.obscured, isTrue);
+
+      s.auth.hold!.complete();
+      s.auth.hold = null;
+      gate.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(s.auth.googleCalls, 1);
+      expect(completions, 1);
+      expect(gate.locked, isFalse);
+    });
+
+    testWidgets('an email/password sign-in is unaffected: a departure during '
+        'it still locks the app (#65 R7)', (tester) async {
+      final gateFake = FakeGate();
+      final timers = FakeInactivityTimers();
+      final gate = GateController(
+          gate: gateFake, inactivityTimerFactory: timers.factory);
+      addTearDown(gate.dispose);
+      gateFake.grantNext = true;
+      await gate.unlock();
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+
+      final s = await pumpStandalone(tester, gate: gate);
+      s.auth.hold = Completer<void>();
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.enterText(key('auth-password'), 'correct horse battery');
+      await tester.tap(key('auth-sign-in'));
+      await tester.pump();
+
+      gate.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(gate.locked, isTrue,
+          reason: 'no system UI was opened, so the policy is unchanged');
+
+      s.auth.hold!.complete();
+      s.auth.hold = null;
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('a Google session completes the screen exactly once', (
       tester,
     ) async {
@@ -639,6 +705,72 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets('first-run sign-in whose bind-time restore encounters an error '
+        'renders RestoreErrorScreen with a Retry action instead of the name form (Issue #39)',
+        (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump();
+      await tester.tap(find.text('I understand'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+      await tester.tap(key('auth-sign-in'));
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+
+      // Restore failed with a network or other sync error on empty-but-bound database:
+      h.engine.emitPhase(
+        SyncPhase.error,
+        boundUserId: 'user-a@b.c',
+        lastError: SyncErrorKind.network,
+      );
+      await h.settle();
+
+      // Must show RestoreErrorScreen, NOT the Create profile form!
+      expect(key('restoring'), findsNothing);
+      expect(key('restore-error'), findsOneWidget);
+      expect(find.text('Unable to restore data'), findsOneWidget);
+      expect(find.text('Create a profile'), findsNothing);
+      expect(key('restore-retry-button'), findsOneWidget);
+
+      // Tapping Retry calls requestSync on the engine
+      await tester.tap(key('restore-retry-button'));
+      await pumpFew(tester);
+      expect(h.engine.requestSyncCalls, 1);
+
+      h.engine.emitPhase(SyncPhase.pushing, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restore-error'), findsOneWidget,
+          reason: 'retry must not expose profile creation while pushing');
+      expect(find.text('Create a profile'), findsNothing);
+
+      h.engine.emitPhase(SyncPhase.pulling, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restore-error'), findsOneWidget,
+          reason: 'retry must not expose profile creation while pulling');
+
+      // Transition back to restoring, then restore completes with profile:
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+      expect(key('restore-error'), findsNothing);
+
+      await AccountHarness.seedOneProfile(h.db);
+      h.engine.emitPhase(
+        SyncPhase.idle,
+        lastSyncAt: DateTime.now().toUtc(),
+        boundUserId: 'user-a@b.c',
+      );
+      await h.settle();
+      expect(find.text('Profiles'), findsOneWidget);
+      expect(find.text('Alice'), findsOneWidget);
+
+      await h.dispose();
+    });
+
     testWidgets('the embedded account step advances to restoring when a '
         'session arrives without any tap, and the name form never appears '
         'for an account that holds a profile (#2 U3; R8)', (tester) async {
@@ -768,6 +900,43 @@ void main() {
       );
       expect(find.text('Sign-in methods: Email, Apple'), findsOneWidget);
       expect(key('account-add-apple'), findsNothing);
+    });
+
+    testWidgets('#65 AE5: adding a method does not re-lock the app when the '
+        'picker reports a departure, and still covers the content',
+        (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddGoogle: true,
+      );
+      final gate = s.gateController;
+      // pumpSection's gate requires unlock, so it starts locked.
+      s.gate.grantNext = true;
+      await gate.unlock();
+      gate.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(gate.locked, isFalse);
+      s.auth.hold = Completer<void>();
+
+      await tester.tap(key('account-add-google'));
+      await tester.pump();
+      // The Google picker takes over: on iOS an ASWebAuthenticationSession,
+      // on Android a Credential Manager sheet.
+      gate.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      await tester.pump();
+
+      expect(gate.locked, isFalse,
+          reason: 'the app opened this picker itself; landing the operator '
+              'on the lock screen mid-sign-in is the #65 complaint');
+      expect(gate.obscured, isTrue,
+          reason: 'covered throughout — the window never suppresses that');
+
+      s.auth.hold!.complete();
+      s.auth.hold = null;
+      gate.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(s.auth.linkCalls, ['google']);
+      expect(gate.locked, isFalse);
     });
 
     testWidgets('AE6: a granted re-auth calls linkGoogle and the subtitle '
@@ -1335,10 +1504,14 @@ void main() {
 /// [GateController] whose [FakeGate] answers the re-auth prompt (#2 U5;
 /// KTD5), so the linking scenarios pump the section without the app.
 class StandaloneSection {
-  StandaloneSection(this.auth, this.controller, this.gate);
+  StandaloneSection(this.auth, this.controller, this.gate, this.gateController);
   final FakeAuthService auth;
   final AuthController controller;
   final FakeGate gate;
+
+  /// The real [GateController] in the tree, so a test can drive lifecycle
+  /// through it and read the lock state (#65 U2).
+  final GateController gateController;
 }
 
 Future<StandaloneSection> pumpSection(
@@ -1359,7 +1532,11 @@ Future<StandaloneSection> pumpSection(
   final controller = AuthController(authService: auth);
   addTearDown(controller.dispose);
   final gate = FakeGate(grantNext: grantReauth);
-  final gateController = GateController(gate: gate);
+  // Fake timers: unlocking this gate (or closing a system-UI window) arms
+  // the inactivity countdown, which would otherwise leave a real 2-minute
+  // Timer pending past the end of the test.
+  final gateController = GateController(
+      gate: gate, inactivityTimerFactory: FakeInactivityTimers().factory);
   addTearDown(gateController.dispose);
   await tester.pumpWidget(
     MaterialApp(
@@ -1380,7 +1557,7 @@ Future<StandaloneSection> pumpSection(
     ),
   );
   await tester.pumpAndSettle();
-  return StandaloneSection(auth, controller, gate);
+  return StandaloneSection(auth, controller, gate, gateController);
 }
 
 /// A standalone [SignInScreen] over a fake service and an in-memory
@@ -1400,6 +1577,7 @@ Future<StandaloneSignIn> pumpStandalone(
   bool embedded = false,
   VoidCallback? onSignedIn,
   Map<String, String>? seed,
+  GateController? gate,
 }) async {
   final auth = FakeAuthService();
   addTearDown(auth.dispose);
@@ -1411,6 +1589,8 @@ Future<StandaloneSignIn> pumpStandalone(
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthController>.value(value: controller),
+          if (gate != null)
+            ChangeNotifierProvider<GateController>.value(value: gate),
           Provider<SettingsStore>.value(value: settings),
         ],
         child: SignInScreen(

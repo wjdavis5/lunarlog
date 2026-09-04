@@ -221,6 +221,9 @@ class SupabaseAuthService implements AuthService {
     required String key,
   }) async {
     try {
+      // GoTrue emits signedIn before getSessionFromUrl returns. Clear the
+      // stale failure first so observers of that event cannot capture it.
+      _pendingLinkFailure = null;
       final response = await _gateway.getSessionFromUrl(uri);
       if (recovery || _isRecoveryType(response.redirectType)) {
         _latchRecovery();

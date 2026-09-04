@@ -274,13 +274,15 @@ void main() {
       expect(requests, isEmpty);
     });
 
-    test('a malformed row is `other`', () async {
+    test('a malformed row fails the pull instead of being silently skipped',
+        () async {
       client = makeClient((_) async => json([
-            {...profileJson(), 'id': 'nope'}
+            {...entryJson(version: 45), 'tags': [1, 2]},
+            entryJson(version: 46),
           ]));
-      expect(
-        () => SupabaseSyncTransport(client!).pullPage(
-          table: SyncTable.profiles,
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.dayEntries,
           afterVersion: 0,
           limit: 500,
         ),

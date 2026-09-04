@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(83);
+select plan(87);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -399,6 +399,35 @@ select ok(exists(
   where locktype = 'advisory'
     and objid = hashtext(tests.get_supabase_uid('user_a')::text)
 ), 'sync_push acquires advisory transaction lock for the user');
+
+-- ---------------------------------------------------------------------------
+-- tags string-only validation (Issue #40)
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('user_a');
+select is(public.is_valid_tags_array('1'::jsonb), false,
+  'tags validator rejects a non-array without raising');
+insert into r select 'bad_tags', public.sync_push(
+  '[]'::jsonb,
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(116), 'profile_id', tests.ulid(1), 'local_date', '2026-09-16',
+      'tz', 'UTC', 'flow', 'none', 'tags', '[1, 2]'::jsonb, 'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(117), 'profile_id', tests.ulid(1), 'local_date', '2026-09-17',
+      'tz', 'UTC', 'flow', 'none', 'tags', '["valid", 123]'::jsonb, 'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(118), 'profile_id', tests.ulid(1), 'local_date', '2026-09-18',
+      'tz', 'UTC', 'flow', 'none', 'tags', '["valid", "tags"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))
+  ));
+select is(jsonb_array_length(pg_temp.resp('bad_tags') -> 'rejected'), 2,
+  'non-string tags elements ([1, 2] and ["valid", 123]) are rejected');
+select is((select count(*) from public.day_entries where id = tests.ulid(118)), 1::bigint,
+  'valid string array tags in same batch lands');
+
+select throws_ok(
+  $$ insert into public.day_entries (id, user_id, profile_id, local_date, tz, flow, tags, updated_at)
+     values (tests.ulid(119), tests.get_supabase_uid('user_a'), tests.ulid(1), '2026-09-19', 'UTC', 'none', '[1, 2]'::jsonb, now()) $$,
+  '23514',
+  null,
+  'table check constraint day_entries_tags_check rejects non-string tags'
+);
 
 select * from finish();
 rollback;

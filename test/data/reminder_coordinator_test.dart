@@ -182,21 +182,25 @@ void main() {
     );
   });
 
-  test('a resume during initialize plans as available without throwing, and '
-      'a replan still lands once initialize resolves', () async {
+  test('a resume during initialize is ignored, and a replan lands once start() completes', () async {
     // app.dart fires `unawaited(_startReminders())` from initState, so a
     // lifecycle resume can land while `_scheduler.initialize(...)` is still
     // pending (unbounded on iOS/macOS first launch, where it waits on the
-    // system permission dialog). The coordinator must plan as "available"
-    // in that gap rather than throw — a `late` _availability field throws
-    // LateInitializationError here.
+    // system permission dialog).
     //
-    // The pre-resolve call is deliberately NOT the thing that keeps
-    // reminders working: the real scheduler's rescheduleAll starts with
-    // `if (!_initialized) return;`, so it drops that call. What production
-    // actually honours is the replan driven by the profiles stream after
-    // initialize resolves, so this test asserts that too — otherwise a
-    // regression that broke the post-init replan would leave it green.
+    // `didChangeAppLifecycleState` guards on `_started`, which is set only
+    // at the end of `start()`, so that resume is dropped rather than
+    // driving a replan against half-initialised state. Dropping it costs
+    // nothing: the real scheduler's `rescheduleAll` opens with
+    // `if (!_initialized) return;`, so it would have discarded the call
+    // anyway. What production actually honours is the replan the profiles
+    // stream drives after `start()` completes — asserted below, so a
+    // regression that broke it cannot leave this test green.
+    //
+    // `_availability`'s eager initializer is defence in depth for the same
+    // window: `replan()` reads it, and a `late` field would throw
+    // LateInitializationError if anything ever reached it before start().
+
     final today = LocalDate(2026, 8, 30);
     final gate = Completer<void>();
     final scheduler = FakeReminderScheduler(initializeGate: gate);
@@ -221,8 +225,8 @@ void main() {
     coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
     await pumpEventQueue();
 
-    expect(scheduler.rescheduleCalls, hasLength(1),
-        reason: 'the resume replan runs instead of throwing');
+    expect(scheduler.rescheduleCalls, isEmpty,
+        reason: 'the _started guard drops a resume that lands mid-start');
     expect(scheduler.cancelCalls, 0);
 
     gate.complete();
@@ -257,5 +261,79 @@ void main() {
 
     scheduler.launchSink!('p9');
     expect(launched, 'p9');
+  });
+
+  test('resume refreshes permission before replanning', () async {
+    final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied)
+      ..currentAvailability = NotificationAvailability.available;
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.denied);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(scheduler.availabilityChecks, 1);
+    expect(permissionState.value, NotificationAvailability.available);
+    expect(scheduler.rescheduleCalls, isNotEmpty);
+  });
+
+  test('resume notices revoked permission and cancels reminders', () async {
+    final scheduler = FakeReminderScheduler()
+      ..currentAvailability = NotificationAvailability.denied;
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(permissionState.value, NotificationAvailability.denied);
+    expect(scheduler.cancelCalls, 1);
+  });
+
+  test('a stale permission probe cannot overwrite a newer resume', () async {
+    final first = Completer<NotificationAvailability>();
+    final second = Completer<NotificationAvailability>();
+    final scheduler = FakeReminderScheduler()
+      ..availabilityGates.addAll([first, second]);
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    second.complete(NotificationAvailability.available);
+    await pumpEventQueue();
+    first.complete(NotificationAvailability.denied);
+    await pumpEventQueue();
+
+    expect(permissionState.value, NotificationAvailability.available);
+    expect(scheduler.cancelCalls, 0);
   });
 }

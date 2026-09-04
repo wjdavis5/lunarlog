@@ -24,9 +24,19 @@ class FakeReminderScheduler implements ReminderScheduler {
   /// availability — the window in which an app resume can race `start()`.
   final Completer<void>? initializeGate;
 
+  /// Answer for the next [checkAvailability] (the resume-time re-probe),
+  /// when it should differ from [initialAvailability] — e.g. a permission
+  /// revoked while the app was backgrounded.
+  NotificationAvailability? currentAvailability;
+
+  /// Parks successive [checkAvailability] calls so a test can interleave
+  /// work with an in-flight permission probe.
+  final List<Completer<NotificationAvailability>> availabilityGates = [];
+
   final List<List<PlannedReminder>> rescheduleCalls = [];
   int initializeCalls = 0;
   int cancelCalls = 0;
+  int availabilityChecks = 0;
   void Function(String profileId)? launchSink;
 
   @override
@@ -37,6 +47,15 @@ class FakeReminderScheduler implements ReminderScheduler {
     launchSink = onLaunchFromNotification;
     await initializeGate?.future;
     return initialAvailability;
+  }
+
+  @override
+  Future<NotificationAvailability> checkAvailability() async {
+    availabilityChecks++;
+    if (availabilityGates.isNotEmpty) {
+      return availabilityGates.removeAt(0).future;
+    }
+    return currentAvailability ?? initialAvailability;
   }
 
   @override
