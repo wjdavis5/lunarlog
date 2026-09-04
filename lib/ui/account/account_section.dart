@@ -10,10 +10,13 @@
 /// [AuthUser.providers]; "Add Google" (`account-add-google`, only when the
 /// build has Google and the method is absent) and "Add Apple"
 /// (`account-add-apple`, iOS only, same rule) first run
-/// [GateController.reauthenticate] — a declined, unavailable, or
-/// interrupted device credential cancels silently with no provider call
-/// and no copy, like a dismissed picker — then link through the
-/// controller with the tapped tile disabled behind a spinner. Success
+/// [GateController.reauthenticate] — a declined or unavailable device
+/// credential cancels silently with no provider call and no copy, like a
+/// dismissed picker — then link through the controller with the tapped
+/// tile disabled behind a spinner. Both steps run inside one
+/// [GateController.duringSystemUi] window (#65 U2; KTD4, KTD6), so
+/// neither the credential prompt nor the provider picker re-locks the app
+/// on the way through. Success
 /// re-reads `currentUser.providers` in `setState` (a same-state
 /// `userUpdated` does not notify); a failure renders its generic copy in
 /// `account-link-error` beneath the identity tile (R14).
@@ -192,8 +195,13 @@ class _AccountSectionState extends State<AccountSection> {
   }
 
   /// F5: device credential first (KTD5), then the provider picker through
-  /// the controller. A declined or interrupted credential cancels with no
-  /// provider call and no copy.
+  /// the controller. A declined credential cancels with no provider call
+  /// and no copy.
+  ///
+  /// Both ceremonies run inside one system-UI window (#65 U2; KTD6) — the
+  /// credential prompt nests its own inside it, which the window's depth
+  /// counter handles — so neither the prompt nor the picker re-locks the
+  /// app on the way through.
   Future<void> _addMethod(
       String provider, Future<AuthUser> Function() link) async {
     if (_linking != null) return;
@@ -203,6 +211,12 @@ class _AccountSectionState extends State<AccountSection> {
       return;
     }
     setState(() => _linkError = null);
+    await gate
+        .duringSystemUi(() => _reauthenticateAndLink(gate, provider, link));
+  }
+
+  Future<void> _reauthenticateAndLink(GateController gate, String provider,
+      Future<AuthUser> Function() link) async {
     final granted = await gate.reauthenticate();
     if (!granted || !mounted) return;
     setState(() => _linking = provider);

@@ -30,6 +30,7 @@ import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
+import '../support/fake_settings_store.dart';
 import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
 
@@ -43,6 +44,21 @@ class FakeGate implements AppGate {
   /// the answer), so a test can act while the credential prompt is showing
   /// (#2 U5; KTD5). Consumed by that request.
   Completer<bool>? holdNext;
+  Object? errorNext;
+
+  /// Fired from inside [requestAccess], before it answers: the real system
+  /// credential prompt reports its own lifecycle transition while it is up
+  /// (iOS sends `inactive` for Face ID; Android's passcode fallback
+  /// launches a separate activity and sends `paused`). Reproducing *that*
+  /// — rather than a lifecycle event next to the prompt — is what issue #65
+  /// needs (#65 U3).
+  ///
+  /// Report transitions from here with
+  /// `controller.didChangeAppLifecycleState(...)` or
+  /// `tester.binding.handleAppLifecycleStateChanged(...)` directly; never
+  /// the pumping [transitionTo] driver, which trips a `TestAsyncUtils`
+  /// guarded-function conflict when called from inside an awaited prompt.
+  void Function()? onPrompt;
 
   @override
   bool requiresUnlock;
@@ -50,6 +66,12 @@ class FakeGate implements AppGate {
   @override
   Future<bool> requestAccess() async {
     requests++;
+    onPrompt?.call();
+    final error = errorNext;
+    if (error != null) {
+      errorNext = null;
+      throw error;
+    }
     final hold = holdNext;
     if (hold != null) {
       holdNext = null;
@@ -60,8 +82,13 @@ class FakeGate implements AppGate {
 }
 
 class FakeInactivityTimer implements InactivityTimer {
-  FakeInactivityTimer(this._onTimeout);
+  FakeInactivityTimer(this.delay, this._onTimeout);
 
+  /// The delay this timer was created with. The controller now creates
+  /// three kinds through one factory — the inactivity countdown, the
+  /// system-UI window deadline, and the settling tail (#65 U1) — and their
+  /// durations are what tell them apart.
+  final Duration delay;
   final void Function() _onTimeout;
   bool active = true;
 
@@ -79,9 +106,18 @@ class FakeInactivityTimers {
   final created = <FakeInactivityTimer>[];
 
   InactivityTimer create(Duration delay, VoidCallback onTimeout) {
-    final timer = FakeInactivityTimer(onTimeout);
+    final timer = FakeInactivityTimer(delay, onTimeout);
     created.add(timer);
     return timer;
+  }
+
+  /// Fires every active timer created with [delay]; the others are left
+  /// armed, so a test can expire the window deadline without also
+  /// expiring the inactivity countdown, or vice versa.
+  void fireWithDelay(Duration delay) {
+    for (final timer in List.of(created)) {
+      if (timer.delay == delay) timer.fire();
+    }
   }
 
   InactivityTimerFactory get factory => create;
@@ -95,6 +131,9 @@ class FakeInactivityTimers {
   }
 
   bool get anyActive => created.any((timer) => timer.active);
+
+  Iterable<FakeInactivityTimer> activeWithDelay(Duration delay) =>
+      created.where((timer) => timer.delay == delay && timer.active);
 }
 
 class Harness {
@@ -142,10 +181,19 @@ class Harness {
     ));
     await tester.pump();
     await tester.pumpAndSettle();
+    timers.fireWithDelay(kSystemUiSettleTimeout);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    await drainIsolateTraffic(tester);
   }
 
 Future<void> unlockViaButton() async {
   await tester.tap(find.byKey(const ValueKey('unlock-button')));
+  await tester.pump();
+  await tester.pumpAndSettle();
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  await tester.pump();
+  timers.fireWithDelay(kSystemUiSettleTimeout);
   await tester.pump();
   await tester.pumpAndSettle();
   await drainIsolateTraffic(tester);
@@ -222,12 +270,530 @@ void main() {
         reason: 'auto-relock default ON (fail closed)');
   });
 
+  group('the credential decides, not the lifecycle (#65 U1; KTD1, KTD2a)',
+      () {
+    testWidgets('a granted credential unlocks even though the prompt '
+        'reported inactive while it was up (issue #65)', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      expect(controller.locked, isTrue);
+
+      gate.grantNext = true;
+      // iOS reports `inactive` for the Face ID prompt itself.
+      gate.onPrompt =
+          () => controller.didChangeAppLifecycleState(
+              AppLifecycleState.inactive);
+
+      await controller.unlock();
+
+      expect(controller.locked, isFalse,
+          reason: 'the system accepted the credential; that decides');
+      expect(controller.lastAttemptDenied, isFalse,
+          reason: 'nothing was declined, so no denial message');
+    });
+
+    testWidgets('a granted credential unlocks even though the prompt '
+        'reported hidden then paused while it was up', (tester) async {
+      // Android's device-credential fallback launches a separate activity
+      // through KeyguardManager, genuinely backgrounding the app.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+
+      gate.grantNext = true;
+      gate.onPrompt = () {
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        controller.didChangeAppLifecycleState(AppLifecycleState.hidden);
+        controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      };
+
+      await controller.unlock();
+
+      expect(controller.locked, isFalse);
+      expect(controller.lastAttemptDenied, isFalse);
+    });
+
+    testWidgets('a departure delivered after the credential result does not '
+        're-lock the app', (tester) async {
+      // The prompt's dismissal can report `inactive` after the result has
+      // already been handed back; `lock()` never sets the denial flag, so
+      // this produces the same screen as a discarded grant.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+      expect(controller.systemUiActive, isTrue,
+          reason: 'every window settles so a first trailing event is caught');
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+
+      expect(controller.locked, isFalse,
+          reason: 'still settling; this is the same prompt dismissing');
+      expect(controller.obscured, isTrue,
+          reason: 'covered regardless — the window never suppresses that');
+    });
+
+    test('a stale grant after the deadline cannot reopen the app', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: const Duration(seconds: 90),
+      );
+      addTearDown(controller.dispose);
+      final held = Completer<bool>();
+      gate.holdNext = held;
+
+      final unlocking = controller.unlock();
+      timers.activeWithDelay(const Duration(seconds: 90)).single.fire();
+      held.complete(true);
+      await unlocking;
+
+      expect(controller.locked, isTrue);
+      expect(controller.authenticating, isFalse);
+    });
+
+    test('a throwing authenticator releases the prompt guard', () async {
+      final gate = FakeGate(requiresUnlock: true)
+        ..errorNext = StateError('authenticator');
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+
+      await expectLater(controller.unlock(), throwsStateError);
+      expect(controller.authenticating, isFalse);
+
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+    });
+
+    testWidgets('a declined credential still leaves the app locked with the '
+        'denial message, whatever the lifecycle reported', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+
+      gate.grantNext = false;
+      gate.onPrompt =
+          () => controller.didChangeAppLifecycleState(
+              AppLifecycleState.inactive);
+
+      await controller.unlock();
+
+      expect(controller.locked, isTrue);
+      expect(controller.lastAttemptDenied, isTrue);
+    });
+
+    testWidgets('reauthenticate reports a granted credential even though the '
+        'prompt reported inactive while it was up', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      gate.grantNext = true;
+      // The real sequence: the prompt reports `inactive` as it appears and
+      // the app is back by the time the credential is answered.
+      gate.onPrompt = () {
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      };
+
+      expect(await controller.reauthenticate(), isTrue,
+          reason: 'the add-a-method action must not be cancelled by the '
+              'credential prompt reporting its own focus loss');
+      expect(controller.locked, isFalse,
+          reason: 'the operator is back, so nothing is replayed and a '
+              're-auth never changes the lock state itself');
+    });
+  });
+
+  group('the system-UI window and its bound (#65 U1; KTD2, KTD5, KTD9)', () {
+    /// The window deadline defaults to the same two minutes as the
+    /// inactivity timeout, so firing by delay would fire both and a broken
+    /// deadline would still look locked. These tests give it a distinct
+    /// duration to isolate the mechanism they are named for.
+    const windowDeadline = Duration(seconds: 90);
+
+    /// A controller with fake timers, ready for a window.
+    (GateController, FakeGate, FakeInactivityTimers) unlockedRig() {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      return (controller, gate, timers);
+    }
+
+    testWidgets('a departure inside a window covers but does not lock; the '
+        'same departure outside one locks', (tester) async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      expect(controller.obscured, isTrue,
+          reason: 'the cover is raised for the entire system-UI window');
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+
+      expect(controller.locked, isFalse,
+          reason: 'the app put this system UI on screen itself');
+      expect(controller.obscured, isTrue,
+          reason: 'the window suppresses the lock, never the cover');
+
+      picker.complete();
+      await ceremony;
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.systemUiActive, isFalse);
+
+      // Same event, no window: the policy outside is unchanged.
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isTrue);
+    });
+
+    testWidgets('nesting: an inner window closing does not restore locking '
+        'while the outer one is open', (tester) async {
+      final (controller, gate, _) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final outer = Completer<void>();
+      final outerDone = controller.duringSystemUi(() async {
+        // The credential prompt nests inside the provider ceremony, as
+        // "Add Google" does.
+        await controller.duringSystemUi(() async {});
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        expect(controller.locked, isFalse,
+            reason: 'the outer window is still open');
+        await outer.future;
+      });
+      outer.complete();
+      await outerDone;
+      expect(controller.systemUiActive, isTrue,
+          reason: 'the outer window saw a departure, so it settles');
+    });
+
+    testWidgets('the deadline locks the app however long the operator was '
+        'away, and whatever else happened', (tester) async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      final deadline = timers.activeWithDelay(windowDeadline).single;
+      // Everything that would reset the inactivity countdown: a
+      // background-and-return cycle, and pointer activity.
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      controller.noteActivity();
+      expect(controller.locked, isFalse);
+      expect(controller.obscured, isTrue,
+          reason: 'resuming does not uncover an active window');
+
+      expect(timers.activeWithDelay(kDefaultInactivityTimeout), isEmpty,
+          reason: 'foreground inactivity stays suspended during the window');
+      expect(timers.activeWithDelay(windowDeadline).single, same(deadline),
+          reason: 'resumes and input must not replace the absolute deadline');
+
+      deadline.fire();
+
+      expect(controller.locked, isTrue,
+          reason: 'the window deadline is not extended by resumes or input');
+      picker.complete();
+      await ceremony;
+    });
+
+    test('the absolute deadline remains armed through the settling tail',
+        () async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      final deadline = timers.activeWithDelay(windowDeadline).single;
+      picker.complete();
+      await ceremony;
+
+      expect(deadline.active, isTrue,
+          reason: 'settling must not replace the absolute deadline');
+      deadline.fire();
+      expect(controller.locked, isTrue);
+    });
+
+    test('an expired action cannot close a replacement window', () async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final oldPicker = Completer<void>();
+      final oldCeremony = controller.duringSystemUi(() => oldPicker.future);
+      timers.activeWithDelay(windowDeadline).single.fire();
+      expect(controller.locked, isTrue);
+
+      final newPicker = Completer<void>();
+      final newCeremony = controller.duringSystemUi(() => newPicker.future);
+      final replacementDeadline =
+          timers.activeWithDelay(windowDeadline).single;
+      oldPicker.complete();
+      await oldCeremony;
+
+      expect(controller.systemUiActive, isTrue);
+      expect(replacementDeadline.active, isTrue,
+          reason: 'the stale close belongs to the expired epoch');
+      newPicker.complete();
+      await newCeremony;
+    });
+
+    // A plain `test`: the settings watch delivers over real async, which a
+    // `testWidgets` fake-async zone would never advance without pumping,
+    // and this case needs no widget tree.
+    test('the deadline still fires with the relock toggle off', () async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final settings =
+          FakeSettingsStore({SettingsKeys.relockEnabled: 'false'});
+      addTearDown(settings.close);
+      controller.attachSettings(settings);
+      // One event-loop turn for the seeded value to reach the listener;
+      // pumpEventQueue would never return against a broadcast stream that
+      // stays open for the life of the store.
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.relockEnabled, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isFalse);
+
+      timers.fireWithDelay(windowDeadline);
+
+      expect(controller.locked, isTrue,
+          reason: 'the toggle governs foreground inactivity, not the bound '
+              'on system UI the app put on screen itself');
+      picker.complete();
+      await ceremony;
+    });
+
+    // A plain `test`: the settings watch delivers over real async, which a
+    // `testWidgets` fake-async zone would never advance without pumping.
+    test('a granted unlock with the operator still away fails '
+        'closed, whatever the relock toggle says', () async {
+      // The window absorbed a real departure. The credential decides
+      // whether the app *may* open (KTD1), but an operator who walked away
+      // and never came back must not find it open: the departure is
+      // answered fail-closed when the window settles. Leaning on the
+      // inactivity timer here was a hole — it arms nothing when the relock
+      // toggle is off, and every resume restarts it.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      addTearDown(controller.dispose);
+
+      gate.grantNext = true;
+      gate.onPrompt = () {
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        controller.didChangeAppLifecycleState(AppLifecycleState.hidden);
+        controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      };
+      final settings =
+          FakeSettingsStore({SettingsKeys.relockEnabled: 'false'});
+      addTearDown(settings.close);
+      controller.attachSettings(settings);
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.relockEnabled, isFalse,
+          reason: 'the configuration with no inactivity fallback at all');
+
+      await controller.unlock();
+      expect(controller.locked, isFalse,
+          reason: 'the credential was accepted (KTD1)');
+
+      // The operator never comes back; the settling tail expires.
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+
+      expect(controller.locked, isTrue,
+          reason: 'the absorbed departure is answered, not waived');
+      expect(controller.obscured, isTrue);
+    });
+
+    test('a departure absorbed during a provider ceremony still locks when '
+        'the operator never returns', () async {
+      // The sign-in screen's pickers have no credential result to lean on
+      // at all, so this is the path with the least protection.
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(controller.locked, isFalse, reason: 'suppressed while up');
+      picker.complete();
+      await ceremony;
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+
+      expect(controller.locked, isTrue);
+      expect(controller.obscured, isTrue);
+    });
+
+    test('an action that throws still closes the window, and the next '
+        'departure locks normally', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
+
+      await expectLater(
+        controller.duringSystemUi(() async => throw StateError('picker')),
+        throwsStateError,
+      );
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.systemUiActive, isFalse,
+          reason: 'the finally still closed the window');
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isTrue,
+          reason: 'a leaked window would have suppressed this');
+    });
+
+    test('an unlock resolving after dispose does not notify', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      final held = Completer<bool>();
+      gate.holdNext = held;
+      final unlocking = controller.unlock();
+
+      controller.dispose();
+      held.complete(true);
+
+      await expectLater(unlocking, completes);
+      expect(timers.anyActive, isFalse);
+    });
+
+    test('a window closing after dispose arms nothing and notifies nobody',
+        () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      gate.grantNext = true;
+      await controller.unlock();
+
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      controller.dispose();
+
+      // The ceremony outlives the controller, as a provider future can
+      // outlive the widget tree.
+      picker.complete();
+      await ceremony;
+
+      expect(timers.anyActive, isFalse,
+          reason: 'no timer armed on a disposed controller for dispose() to '
+              'have missed');
+    });
+
+    testWidgets('the cover is reconciled when a window closes, never '
+        'stranded and never lifted while the app is away', (tester) async {
+      final (controller, gate, timers) = unlockedRig();
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+
+      // Closes while the app is back: the cover is lifted, not stranded
+      // behind a window with no lock screen.
+      var picker = Completer<void>();
+      var ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      picker.complete();
+      await ceremony;
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.obscured, isFalse);
+      expect(controller.locked, isFalse);
+
+      // Closes while the app is still away: the cover stays up.
+      picker = Completer<void>();
+      ceremony = controller.duringSystemUi(() => picker.future);
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      picker.complete();
+      await ceremony;
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.obscured, isTrue,
+          reason: 'R5: covered whenever the app is not resumed');
+    });
+  });
+
   group('re-authentication for linking (#2 U5; KTD5)', () {
     testWidgets('returns false without prompting while an unlock is in '
         'progress; otherwise reports the credential and never changes '
         'locked', (tester) async {
       final gate = FakeGate();
-      final controller = GateController(gate: gate);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
       addTearDown(controller.dispose);
       expect(controller.locked, isTrue);
 
@@ -265,7 +831,12 @@ void main() {
     testWidgets('returns false when the prompt is interrupted by a '
         'lifecycle change, without re-locking mid-prompt', (tester) async {
       final gate = FakeGate(requiresUnlock: false);
-      final controller = GateController(gate: gate);
+      // Fake timers: a closing system-UI window re-arms the inactivity
+      // countdown (#65 U1), which would otherwise leave a real 2-minute
+      // Timer pending past the end of the test.
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
       addTearDown(controller.dispose);
       expect(controller.locked, isFalse);
 
@@ -325,6 +896,33 @@ void main() {
       expect(find.text('Barb'), findsNothing);
       expect(harness.dbOpenerCalls, 0,
           reason: 'AE4: declined credential never decrypts — DB never opened');
+      await harness.dispose();
+    });
+
+    testWidgets('issue #65 end to end: the prompt reporting its own focus '
+        'loss still unlocks into the data', (tester) async {
+      // The field defect through the whole tree: Face ID succeeds and the
+      // lock screen used to stay up with no error, because the prompt's
+      // own `inactive` report was read as the operator leaving.
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(grant: false);
+      expect(lockScreen, findsOneWidget);
+
+      harness.gate.grantNext = true;
+      harness.gate.onPrompt = () => tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await harness.unlockViaButton();
+      await harness.background(AppLifecycleState.resumed);
+
+      expect(lockScreen, findsNothing,
+          reason: 'the system accepted the credential; that decides');
+      expect(deniedMessage, findsNothing, reason: 'nothing was declined');
+      expect(privacyCover, findsNothing,
+          reason: 'the cover is reconciled once the app is back (KTD9)');
+      expect(find.text('Alice'), findsOneWidget);
+      expect(harness.dbOpenerCalls, 1);
       await harness.dispose();
     });
 

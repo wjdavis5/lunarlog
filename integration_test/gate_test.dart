@@ -22,12 +22,20 @@ class FakeGate implements AppGate {
   bool grantNext;
   int requests = 0;
 
+  /// Fired from inside [requestAccess], before it answers: the real
+  /// credential prompt reports its own lifecycle transition while it is
+  /// up (iOS sends `inactive` for Face ID). Reproducing that is what
+  /// issue #65 needs (#65 U3). Independent of the widget-test fake in
+  /// `test/ui/gate_test.dart`, which this suite does not import.
+  void Function()? onPrompt;
+
   @override
   bool get requiresUnlock => true;
 
   @override
   Future<bool> requestAccess() async {
     requests++;
+    onPrompt?.call();
     return grantNext;
   }
 }
@@ -192,6 +200,36 @@ Future<void> main() async {
     expect(find.byKey(const ValueKey('lock-screen')), findsNothing);
     expect(find.text('Alice'), findsOneWidget);
     expect(dbOpenerCalls, 1);
+    await disposeDb(tester, db);
+  });
+
+  testWidgets('issue #65: the credential prompt reporting its own focus '
+      'loss still unlocks into the data', (tester) async {
+    // The field defect, end to end: Face ID succeeds, and the lock screen
+    // used to stay up with no error because the prompt's own `inactive`
+    // report was read as the operator leaving.
+    final db = await seededDb();
+    final gate = FakeGate();
+    await tester.pumpWidget(LunarLogRoot(
+      gate: gate,
+      dbOpener: () async => db,
+    ));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('lock-screen')), findsOneWidget);
+
+    gate.onPrompt = () => tester.binding
+        .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await unlockViaButton(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    await drainIsolateTraffic(tester);
+
+    expect(find.byKey(const ValueKey('lock-screen')), findsNothing,
+        reason: 'the system accepted the credential');
+    expect(find.byKey(const ValueKey('lock-denied-message')), findsNothing,
+        reason: 'nothing was declined');
+    expect(find.text('Alice'), findsOneWidget);
     await disposeDb(tester, db);
   });
 
