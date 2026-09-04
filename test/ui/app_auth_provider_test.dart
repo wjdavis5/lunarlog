@@ -15,14 +15,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
-import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -32,6 +30,7 @@ import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
+import '../support/fake_reminder_scheduler.dart';
 import 'gate_test.dart' show FakeGate;
 import 'overview_test.dart' show seedEpisodes;
 
@@ -43,35 +42,6 @@ Future<void> disposeApp(WidgetTester tester, LunarLogDatabase db) async {
 
 BuildContext homeContext(WidgetTester tester) =>
     tester.element(find.byType(ProfileHomeGate));
-
-/// Recording [ReminderScheduler] (the `_FakeScheduler` shape from
-/// `test/data/reminder_coordinator_test.dart`), so a widget test can see
-/// what the composition root's coordinator planned.
-class FakeReminderScheduler implements ReminderScheduler {
-  final List<List<PlannedReminder>> rescheduleCalls = [];
-  int initializeCalls = 0;
-  int cancelCalls = 0;
-  void Function(String profileId)? launchSink;
-
-  @override
-  Future<NotificationAvailability> initialize({
-    void Function(String profileId)? onLaunchFromNotification,
-  }) async {
-    initializeCalls++;
-    launchSink = onLaunchFromNotification;
-    return NotificationAvailability.available;
-  }
-
-  @override
-  Future<void> rescheduleAll(List<PlannedReminder> reminders) async {
-    rescheduleCalls.add(reminders);
-  }
-
-  @override
-  Future<void> cancelAll() async {
-    cancelCalls++;
-  }
-}
 
 /// Three completed 28/28/25-day cycles ending a few days ago: enough
 /// history for a live estimate that is still in the future, so exactly one

@@ -92,6 +92,22 @@ class _LunarLogAppState extends State<LunarLogApp> {
   ReminderCoordinator? _coordinator;
   AuthController? _authController;
 
+  /// The repositories below capture [LunarLogApp.db] once, so swapping the
+  /// database on a *mounted* app would leave them bound to the old (closed)
+  /// one while `build`'s row counter read the new one. `LunarLogRoot` never
+  /// does that — it nulls `_db` and waits a frame, so this element unmounts
+  /// first — and this assert keeps that invariant explicit rather than
+  /// incidental (KTD3).
+  @override
+  void didUpdateWidget(LunarLogApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    assert(
+      identical(oldWidget.db, widget.db),
+      'LunarLogApp does not support swapping db in place; unmount it first '
+      '(see _detachDatabaseFromTree in app_lifecycle.dart).',
+    );
+  }
+
   @override
   void initState() {
     super.initState();
