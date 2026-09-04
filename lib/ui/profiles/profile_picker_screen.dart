@@ -6,13 +6,16 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
+import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:provider/provider.dart';
 
 String formatCreatedDate(DateTime utc) {
@@ -63,6 +66,7 @@ class ProfilePickerScreen extends StatelessWidget {
                 onSelected: (action) =>
                     _onRowAction(context, profile, action),
                 itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
                   PopupMenuItem(value: 'rename', child: Text('Rename')),
                   PopupMenuItem(value: 'archive', child: Text('Archive')),
                 ],
@@ -113,7 +117,21 @@ class ProfilePickerScreen extends StatelessWidget {
   Future<void> _onRowAction(
       BuildContext context, Profile profile, String action) async {
     final controller = context.read<ProfileController>();
-    if (action == 'rename') {
+    if (action == 'caregivers') {
+      final storage = Provider.of<LunarLogStorage?>(context, listen: false);
+      final sharing = Provider.of<SharingService?>(context, listen: false);
+      if (storage != null && sharing != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ManageGuardiansScreen(
+              profile: profile,
+              storage: storage,
+              sharingService: sharing,
+            ),
+          ),
+        );
+      }
+    } else if (action == 'rename') {
       final result = await showProfileEditDialog(context, existing: profile);
       if (result == null) return;
       await controller.renameProfile(

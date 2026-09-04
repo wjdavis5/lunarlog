@@ -12,8 +12,8 @@ library;
 
 import '../db/tables.dart';
 
-/// The two synced tables (per-table pull cursors, KTD2).
-enum SyncTable { profiles, dayEntries }
+/// The synced tables (per-table pull cursors, KTD2, Issue #8).
+enum SyncTable { profiles, dayEntries, profileGuardians }
 
 /// A server copy of a synced row.
 sealed class RemoteRow {
@@ -75,6 +75,8 @@ final class RemoteDayEntryRow extends RemoteRow {
     required this.updatedAt,
     required this.deletedAt,
     this.serverVersion = 0,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
   });
 
   @override
@@ -94,8 +96,45 @@ final class RemoteDayEntryRow extends RemoteRow {
   @override
   final int serverVersion;
 
+  final String? loggedByUserId;
+  final String? lastModifiedByUserId;
+
   @override
   SyncTable get table => SyncTable.dayEntries;
+}
+
+final class RemoteProfileGuardianRow extends RemoteRow {
+  const RemoteProfileGuardianRow({
+    required this.id,
+    required this.profileId,
+    required this.userId,
+    required this.role,
+    required this.status,
+    this.displayName,
+    this.invitedBy,
+    required this.createdAt,
+    required this.updatedAt,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+  final String userId;
+  final String role;
+  final String status;
+  final String? displayName;
+  final String? invitedBy;
+  final DateTime createdAt;
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt = null;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.profileGuardians;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today

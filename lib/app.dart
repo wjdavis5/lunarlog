@@ -16,12 +16,14 @@ import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
@@ -40,12 +42,14 @@ class LunarLogApp extends StatefulWidget {
     this.scheduler,
     this.authService,
     this.syncEngine,
+    this.sharingService,
     this.onTeardown,
     this.resetDevice,
     this.showWebBanner = kIsWeb,
   });
 
   final LunarLogDatabase db;
+  final SharingService? sharingService;
 
   /// Reminder scheduler; defaults to the flutter_local_notifications
   /// implementation on native platforms and the no-op on web (KTD9).
@@ -204,6 +208,9 @@ class _LunarLogAppState extends State<LunarLogApp> {
           ChangeNotifierProvider<SyncStatusController>(
             create: (_) => SyncStatusController(engine: syncEngine),
           ),
+        Provider<LunarLogStorage>.value(value: widget.db.storage),
+        if (widget.sharingService != null)
+          Provider<SharingService>.value(value: widget.sharingService!),
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<SettingsStore>.value(value: _settings),

@@ -17,6 +17,9 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 
+import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
+
 String flowLabel(FlowLevel flow) {
   final name = flow.name;
   return name[0].toUpperCase() + name.substring(1);
@@ -39,6 +42,8 @@ class DaySheet extends StatefulWidget {
     this.existing,
     this.readOnly = false,
     this.timezoneProvider,
+    this.currentUserId,
+    this.guardians = const [],
   });
 
   final DayEntriesRepository repository;
@@ -55,6 +60,9 @@ class DaySheet extends StatefulWidget {
   /// Provider for the resolved IANA time zone identifier (paired with #38).
   /// Defaults to [resolveCurrentTimeZone] if not specified.
   final String Function()? timezoneProvider;
+
+  final String? currentUserId;
+  final List<ProfileGuardian> guardians;
 
   @override
   State<DaySheet> createState() => _DaySheetState();
@@ -194,8 +202,19 @@ class _DaySheetState extends State<DaySheet> {
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child:
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
                 Text(widget.date.iso, style: theme.textTheme.titleMedium),
+                if (widget.existing != null)
+                  CaregiverAttributionBadge(
+                    loggedByUserId: widget.existing!.loggedByUserId,
+                    lastModifiedByUserId: widget.existing!.lastModifiedByUserId,
+                    currentUserId: widget.currentUserId,
+                    guardians: widget.guardians,
+                  ),
+              ],
+            ),
           ),
           Wrap(
             spacing: 8,
@@ -326,7 +345,18 @@ class _DaySheetState extends State<DaySheet> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(existing.localDate.iso, style: theme.textTheme.titleMedium),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(existing.localDate.iso, style: theme.textTheme.titleMedium),
+            CaregiverAttributionBadge(
+              loggedByUserId: existing.loggedByUserId,
+              lastModifiedByUserId: existing.lastModifiedByUserId,
+              currentUserId: widget.currentUserId,
+              guardians: widget.guardians,
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
         Text('Flow', style: theme.textTheme.labelMedium),
         Text(flowLabel(existing.flow), style: theme.textTheme.titleSmall),

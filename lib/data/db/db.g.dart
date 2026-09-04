@@ -749,6 +749,28 @@ class $DayEntriesTable extends DayEntries
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _loggedByUserIdMeta = const VerificationMeta(
+    'loggedByUserId',
+  );
+  @override
+  late final GeneratedColumn<String> loggedByUserId = GeneratedColumn<String>(
+    'logged_by_user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastModifiedByUserIdMeta =
+      const VerificationMeta('lastModifiedByUserId');
+  @override
+  late final GeneratedColumn<String> lastModifiedByUserId =
+      GeneratedColumn<String>(
+        'last_modified_by_user_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -762,6 +784,8 @@ class $DayEntriesTable extends DayEntries
     deletedAt,
     dirty,
     localRev,
+    loggedByUserId,
+    lastModifiedByUserId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -833,6 +857,24 @@ class $DayEntriesTable extends DayEntries
         localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
       );
     }
+    if (data.containsKey('logged_by_user_id')) {
+      context.handle(
+        _loggedByUserIdMeta,
+        loggedByUserId.isAcceptableOrUnknown(
+          data['logged_by_user_id']!,
+          _loggedByUserIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_modified_by_user_id')) {
+      context.handle(
+        _lastModifiedByUserIdMeta,
+        lastModifiedByUserId.isAcceptableOrUnknown(
+          data['last_modified_by_user_id']!,
+          _lastModifiedByUserIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -890,6 +932,14 @@ class $DayEntriesTable extends DayEntries
         DriftSqlType.int,
         data['${effectivePrefix}local_rev'],
       )!,
+      loggedByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}logged_by_user_id'],
+      ),
+      lastModifiedByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_modified_by_user_id'],
+      ),
     );
   }
 
@@ -927,6 +977,12 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
 
   /// See [Profiles.localRev].
   final int localRev;
+
+  /// Supabase auth user who created this entry (stamped by server).
+  final String? loggedByUserId;
+
+  /// Supabase auth user who last edited this entry (stamped by server).
+  final String? lastModifiedByUserId;
   const DayEntry({
     required this.id,
     required this.profileId,
@@ -939,6 +995,8 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     this.deletedAt,
     required this.dirty,
     required this.localRev,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -966,6 +1024,12 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     }
     map['dirty'] = Variable<bool>(dirty);
     map['local_rev'] = Variable<int>(localRev);
+    if (!nullToAbsent || loggedByUserId != null) {
+      map['logged_by_user_id'] = Variable<String>(loggedByUserId);
+    }
+    if (!nullToAbsent || lastModifiedByUserId != null) {
+      map['last_modified_by_user_id'] = Variable<String>(lastModifiedByUserId);
+    }
     return map;
   }
 
@@ -984,6 +1048,12 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           : Value(deletedAt),
       dirty: Value(dirty),
       localRev: Value(localRev),
+      loggedByUserId: loggedByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(loggedByUserId),
+      lastModifiedByUserId: lastModifiedByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastModifiedByUserId),
     );
   }
 
@@ -1004,6 +1074,10 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       dirty: serializer.fromJson<bool>(json['dirty']),
       localRev: serializer.fromJson<int>(json['localRev']),
+      loggedByUserId: serializer.fromJson<String?>(json['loggedByUserId']),
+      lastModifiedByUserId: serializer.fromJson<String?>(
+        json['lastModifiedByUserId'],
+      ),
     );
   }
   @override
@@ -1021,6 +1095,8 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'dirty': serializer.toJson<bool>(dirty),
       'localRev': serializer.toJson<int>(localRev),
+      'loggedByUserId': serializer.toJson<String?>(loggedByUserId),
+      'lastModifiedByUserId': serializer.toJson<String?>(lastModifiedByUserId),
     };
   }
 
@@ -1036,6 +1112,8 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     Value<DateTime?> deletedAt = const Value.absent(),
     bool? dirty,
     int? localRev,
+    Value<String?> loggedByUserId = const Value.absent(),
+    Value<String?> lastModifiedByUserId = const Value.absent(),
   }) => DayEntry(
     id: id ?? this.id,
     profileId: profileId ?? this.profileId,
@@ -1048,6 +1126,12 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     dirty: dirty ?? this.dirty,
     localRev: localRev ?? this.localRev,
+    loggedByUserId: loggedByUserId.present
+        ? loggedByUserId.value
+        : this.loggedByUserId,
+    lastModifiedByUserId: lastModifiedByUserId.present
+        ? lastModifiedByUserId.value
+        : this.lastModifiedByUserId,
   );
   DayEntry copyWithCompanion(DayEntriesCompanion data) {
     return DayEntry(
@@ -1062,6 +1146,12 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       dirty: data.dirty.present ? data.dirty.value : this.dirty,
       localRev: data.localRev.present ? data.localRev.value : this.localRev,
+      loggedByUserId: data.loggedByUserId.present
+          ? data.loggedByUserId.value
+          : this.loggedByUserId,
+      lastModifiedByUserId: data.lastModifiedByUserId.present
+          ? data.lastModifiedByUserId.value
+          : this.lastModifiedByUserId,
     );
   }
 
@@ -1078,7 +1168,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
-          ..write('localRev: $localRev')
+          ..write('localRev: $localRev, ')
+          ..write('loggedByUserId: $loggedByUserId, ')
+          ..write('lastModifiedByUserId: $lastModifiedByUserId')
           ..write(')'))
         .toString();
   }
@@ -1096,6 +1188,8 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     deletedAt,
     dirty,
     localRev,
+    loggedByUserId,
+    lastModifiedByUserId,
   );
   @override
   bool operator ==(Object other) =>
@@ -1111,7 +1205,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.dirty == this.dirty &&
-          other.localRev == this.localRev);
+          other.localRev == this.localRev &&
+          other.loggedByUserId == this.loggedByUserId &&
+          other.lastModifiedByUserId == this.lastModifiedByUserId);
 }
 
 class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
@@ -1126,6 +1222,8 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
   final Value<DateTime?> deletedAt;
   final Value<bool> dirty;
   final Value<int> localRev;
+  final Value<String?> loggedByUserId;
+  final Value<String?> lastModifiedByUserId;
   final Value<int> rowid;
   const DayEntriesCompanion({
     this.id = const Value.absent(),
@@ -1139,6 +1237,8 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
     this.localRev = const Value.absent(),
+    this.loggedByUserId = const Value.absent(),
+    this.lastModifiedByUserId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DayEntriesCompanion.insert({
@@ -1153,6 +1253,8 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
     this.localRev = const Value.absent(),
+    this.loggedByUserId = const Value.absent(),
+    this.lastModifiedByUserId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        profileId = Value(profileId),
@@ -1172,6 +1274,8 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Expression<DateTime>? deletedAt,
     Expression<bool>? dirty,
     Expression<int>? localRev,
+    Expression<String>? loggedByUserId,
+    Expression<String>? lastModifiedByUserId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1186,6 +1290,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (dirty != null) 'dirty': dirty,
       if (localRev != null) 'local_rev': localRev,
+      if (loggedByUserId != null) 'logged_by_user_id': loggedByUserId,
+      if (lastModifiedByUserId != null)
+        'last_modified_by_user_id': lastModifiedByUserId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1202,6 +1309,8 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Value<DateTime?>? deletedAt,
     Value<bool>? dirty,
     Value<int>? localRev,
+    Value<String?>? loggedByUserId,
+    Value<String?>? lastModifiedByUserId,
     Value<int>? rowid,
   }) {
     return DayEntriesCompanion(
@@ -1216,6 +1325,8 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       deletedAt: deletedAt ?? this.deletedAt,
       dirty: dirty ?? this.dirty,
       localRev: localRev ?? this.localRev,
+      loggedByUserId: loggedByUserId ?? this.loggedByUserId,
+      lastModifiedByUserId: lastModifiedByUserId ?? this.lastModifiedByUserId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1260,6 +1371,14 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     if (localRev.present) {
       map['local_rev'] = Variable<int>(localRev.value);
     }
+    if (loggedByUserId.present) {
+      map['logged_by_user_id'] = Variable<String>(loggedByUserId.value);
+    }
+    if (lastModifiedByUserId.present) {
+      map['last_modified_by_user_id'] = Variable<String>(
+        lastModifiedByUserId.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1280,6 +1399,575 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
           ..write('localRev: $localRev, ')
+          ..write('loggedByUserId: $loggedByUserId, ')
+          ..write('lastModifiedByUserId: $lastModifiedByUserId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ProfileGuardiansTable extends ProfileGuardians
+    with TableInfo<$ProfileGuardiansTable, ProfileGuardianData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProfileGuardiansTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _roleMeta = const VerificationMeta('role');
+  @override
+  late final GeneratedColumn<String> role = GeneratedColumn<String>(
+    'role',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('accepted'),
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _invitedByMeta = const VerificationMeta(
+    'invitedBy',
+  );
+  @override
+  late final GeneratedColumn<String> invitedBy = GeneratedColumn<String>(
+    'invited_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    profileId,
+    userId,
+    role,
+    status,
+    displayName,
+    invitedBy,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'profile_guardians';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProfileGuardianData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('role')) {
+      context.handle(
+        _roleMeta,
+        role.isAcceptableOrUnknown(data['role']!, _roleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_roleMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('invited_by')) {
+      context.handle(
+        _invitedByMeta,
+        invitedBy.isAcceptableOrUnknown(data['invited_by']!, _invitedByMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProfileGuardianData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProfileGuardianData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      role: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}role'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      ),
+      invitedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}invited_by'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ProfileGuardiansTable createAlias(String alias) {
+    return $ProfileGuardiansTable(attachedDatabase, alias);
+  }
+}
+
+class ProfileGuardianData extends DataClass
+    implements Insertable<ProfileGuardianData> {
+  final String id;
+  final String profileId;
+  final String userId;
+
+  /// 'primary_guardian' | 'co_parent' | 'caregiver' | 'viewer'
+  final String role;
+
+  /// 'pending' | 'accepted' | 'revoked'
+  final String status;
+  final String? displayName;
+  final String? invitedBy;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ProfileGuardianData({
+    required this.id,
+    required this.profileId,
+    required this.userId,
+    required this.role,
+    required this.status,
+    this.displayName,
+    this.invitedBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['user_id'] = Variable<String>(userId);
+    map['role'] = Variable<String>(role);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || displayName != null) {
+      map['display_name'] = Variable<String>(displayName);
+    }
+    if (!nullToAbsent || invitedBy != null) {
+      map['invited_by'] = Variable<String>(invitedBy);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ProfileGuardiansCompanion toCompanion(bool nullToAbsent) {
+    return ProfileGuardiansCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      userId: Value(userId),
+      role: Value(role),
+      status: Value(status),
+      displayName: displayName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayName),
+      invitedBy: invitedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(invitedBy),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ProfileGuardianData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProfileGuardianData(
+      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      userId: serializer.fromJson<String>(json['userId']),
+      role: serializer.fromJson<String>(json['role']),
+      status: serializer.fromJson<String>(json['status']),
+      displayName: serializer.fromJson<String?>(json['displayName']),
+      invitedBy: serializer.fromJson<String?>(json['invitedBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'userId': serializer.toJson<String>(userId),
+      'role': serializer.toJson<String>(role),
+      'status': serializer.toJson<String>(status),
+      'displayName': serializer.toJson<String?>(displayName),
+      'invitedBy': serializer.toJson<String?>(invitedBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ProfileGuardianData copyWith({
+    String? id,
+    String? profileId,
+    String? userId,
+    String? role,
+    String? status,
+    Value<String?> displayName = const Value.absent(),
+    Value<String?> invitedBy = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ProfileGuardianData(
+    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    userId: userId ?? this.userId,
+    role: role ?? this.role,
+    status: status ?? this.status,
+    displayName: displayName.present ? displayName.value : this.displayName,
+    invitedBy: invitedBy.present ? invitedBy.value : this.invitedBy,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ProfileGuardianData copyWithCompanion(ProfileGuardiansCompanion data) {
+    return ProfileGuardianData(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      role: data.role.present ? data.role.value : this.role,
+      status: data.status.present ? data.status.value : this.status,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      invitedBy: data.invitedBy.present ? data.invitedBy.value : this.invitedBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileGuardianData(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('userId: $userId, ')
+          ..write('role: $role, ')
+          ..write('status: $status, ')
+          ..write('displayName: $displayName, ')
+          ..write('invitedBy: $invitedBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    profileId,
+    userId,
+    role,
+    status,
+    displayName,
+    invitedBy,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProfileGuardianData &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.userId == this.userId &&
+          other.role == this.role &&
+          other.status == this.status &&
+          other.displayName == this.displayName &&
+          other.invitedBy == this.invitedBy &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
+  final Value<String> id;
+  final Value<String> profileId;
+  final Value<String> userId;
+  final Value<String> role;
+  final Value<String> status;
+  final Value<String?> displayName;
+  final Value<String?> invitedBy;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ProfileGuardiansCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.role = const Value.absent(),
+    this.status = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.invitedBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProfileGuardiansCompanion.insert({
+    required String id,
+    required String profileId,
+    required String userId,
+    required String role,
+    this.status = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.invitedBy = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       profileId = Value(profileId),
+       userId = Value(userId),
+       role = Value(role),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ProfileGuardianData> custom({
+    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<String>? userId,
+    Expression<String>? role,
+    Expression<String>? status,
+    Expression<String>? displayName,
+    Expression<String>? invitedBy,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (userId != null) 'user_id': userId,
+      if (role != null) 'role': role,
+      if (status != null) 'status': status,
+      if (displayName != null) 'display_name': displayName,
+      if (invitedBy != null) 'invited_by': invitedBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProfileGuardiansCompanion copyWith({
+    Value<String>? id,
+    Value<String>? profileId,
+    Value<String>? userId,
+    Value<String>? role,
+    Value<String>? status,
+    Value<String?>? displayName,
+    Value<String?>? invitedBy,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ProfileGuardiansCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      userId: userId ?? this.userId,
+      role: role ?? this.role,
+      status: status ?? this.status,
+      displayName: displayName ?? this.displayName,
+      invitedBy: invitedBy ?? this.invitedBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (role.present) {
+      map['role'] = Variable<String>(role.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (invitedBy.present) {
+      map['invited_by'] = Variable<String>(invitedBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileGuardiansCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('userId: $userId, ')
+          ..write('role: $role, ')
+          ..write('status: $status, ')
+          ..write('displayName: $displayName, ')
+          ..write('invitedBy: $invitedBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2151,6 +2839,9 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   $LunarLogDatabaseManager get managers => $LunarLogDatabaseManager(this);
   late final $ProfilesTable profiles = $ProfilesTable(this);
   late final $DayEntriesTable dayEntries = $DayEntriesTable(this);
+  late final $ProfileGuardiansTable profileGuardians = $ProfileGuardiansTable(
+    this,
+  );
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   @override
@@ -2160,6 +2851,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     profiles,
     dayEntries,
+    profileGuardians,
     appSettings,
     syncState,
   ];
@@ -2212,6 +2904,27 @@ final class $$ProfilesTableReferences
     ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_dayEntriesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ProfileGuardiansTable, List<ProfileGuardianData>>
+  _profileGuardiansRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.profileGuardians,
+        aliasName: 'profiles__id__profile_guardians__profile_id',
+      );
+
+  $$ProfileGuardiansTableProcessedTableManager get profileGuardiansRefs {
+    final manager = $$ProfileGuardiansTableTableManager(
+      $_db,
+      $_db.profileGuardians,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _profileGuardiansRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2293,6 +3006,31 @@ class $$ProfilesTableFilterComposer
           }) => $$DayEntriesTableFilterComposer(
             $db: $db,
             $table: $db.dayEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> profileGuardiansRefs(
+    Expression<bool> Function($$ProfileGuardiansTableFilterComposer f) f,
+  ) {
+    final $$ProfileGuardiansTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.profileGuardians,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfileGuardiansTableFilterComposer(
+            $db: $db,
+            $table: $db.profileGuardians,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2430,6 +3168,31 @@ class $$ProfilesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> profileGuardiansRefs<T extends Object>(
+    Expression<T> Function($$ProfileGuardiansTableAnnotationComposer a) f,
+  ) {
+    final $$ProfileGuardiansTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.profileGuardians,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfileGuardiansTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profileGuardians,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -2445,7 +3208,10 @@ class $$ProfilesTableTableManager
           $$ProfilesTableUpdateCompanionBuilder,
           (Profile, $$ProfilesTableReferences),
           Profile,
-          PrefetchHooks Function({bool dayEntriesRefs})
+          PrefetchHooks Function({
+            bool dayEntriesRefs,
+            bool profileGuardiansRefs,
+          })
         > {
   $$ProfilesTableTableManager(_$LunarLogDatabase db, $ProfilesTable table)
     : super(
@@ -2513,40 +3279,68 @@ class $$ProfilesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ProfilesTable, Profile>(table),
                   $$ProfilesTableReferences(db, table, e),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({dayEntriesRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (dayEntriesRefs) db.dayEntries],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (dayEntriesRefs)
-                    await $_getPrefetchedData<
-                      Profile,
-                      $ProfilesTable,
-                      DayEntry
-                    >(
-                      currentTable: table,
-                      referencedTable: $$ProfilesTableReferences
-                          ._dayEntriesRefsTable(db),
-                      managerFromTypedResult: (p0) => $$ProfilesTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).dayEntriesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.profileId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({dayEntriesRefs = false, profileGuardiansRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (dayEntriesRefs) db.dayEntries,
+                    if (profileGuardiansRefs) db.profileGuardians,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (dayEntriesRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          DayEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._dayEntriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).dayEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (profileGuardiansRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          ProfileGuardianData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._profileGuardiansRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).profileGuardiansRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -2563,7 +3357,7 @@ typedef $$ProfilesTableProcessedTableManager =
       $$ProfilesTableUpdateCompanionBuilder,
       (Profile, $$ProfilesTableReferences),
       Profile,
-      PrefetchHooks Function({bool dayEntriesRefs})
+      PrefetchHooks Function({bool dayEntriesRefs, bool profileGuardiansRefs})
     >;
 typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
   required String id,
@@ -2577,6 +3371,8 @@ typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
   Value<int> localRev,
+  Value<String?> loggedByUserId,
+  Value<String?> lastModifiedByUserId,
   Value<int> rowid,
 });
 typedef $$DayEntriesTableUpdateCompanionBuilder = DayEntriesCompanion Function({
@@ -2591,6 +3387,8 @@ typedef $$DayEntriesTableUpdateCompanionBuilder = DayEntriesCompanion Function({
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
   Value<int> localRev,
+  Value<String?> loggedByUserId,
+  Value<String?> lastModifiedByUserId,
   Value<int> rowid,
 });
 
@@ -2677,6 +3475,16 @@ class $$DayEntriesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ProfilesTableFilterComposer get profileId {
     final $$ProfilesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -2760,6 +3568,16 @@ class $$DayEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProfilesTableOrderingComposer get profileId {
     final $$ProfilesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2822,6 +3640,16 @@ class $$DayEntriesTableAnnotationComposer
 
   GeneratedColumn<int> get localRev =>
       $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  GeneratedColumn<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => column,
+  );
 
   $$ProfilesTableAnnotationComposer get profileId {
     final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
@@ -2886,6 +3714,8 @@ class $$DayEntriesTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
                 Value<int> localRev = const Value.absent(),
+                Value<String?> loggedByUserId = const Value.absent(),
+                Value<String?> lastModifiedByUserId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayEntriesCompanion(
                 id: id,
@@ -2899,6 +3729,8 @@ class $$DayEntriesTableTableManager
                 deletedAt: deletedAt,
                 dirty: dirty,
                 localRev: localRev,
+                loggedByUserId: loggedByUserId,
+                lastModifiedByUserId: lastModifiedByUserId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2914,6 +3746,8 @@ class $$DayEntriesTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
                 Value<int> localRev = const Value.absent(),
+                Value<String?> loggedByUserId = const Value.absent(),
+                Value<String?> lastModifiedByUserId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayEntriesCompanion.insert(
                 id: id,
@@ -2927,12 +3761,14 @@ class $$DayEntriesTableTableManager
                 deletedAt: deletedAt,
                 dirty: dirty,
                 localRev: localRev,
+                loggedByUserId: loggedByUserId,
+                lastModifiedByUserId: lastModifiedByUserId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$DayEntriesTable, DayEntry>(table),
                   $$DayEntriesTableReferences(db, table, e),
                 ),
               )
@@ -2992,6 +3828,412 @@ typedef $$DayEntriesTableProcessedTableManager =
       $$DayEntriesTableUpdateCompanionBuilder,
       (DayEntry, $$DayEntriesTableReferences),
       DayEntry,
+      PrefetchHooks Function({bool profileId})
+    >;
+typedef $$ProfileGuardiansTableCreateCompanionBuilder =
+    ProfileGuardiansCompanion Function({
+      required String id,
+      required String profileId,
+      required String userId,
+      required String role,
+      Value<String> status,
+      Value<String?> displayName,
+      Value<String?> invitedBy,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ProfileGuardiansTableUpdateCompanionBuilder =
+    ProfileGuardiansCompanion Function({
+      Value<String> id,
+      Value<String> profileId,
+      Value<String> userId,
+      Value<String> role,
+      Value<String> status,
+      Value<String?> displayName,
+      Value<String?> invitedBy,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$ProfileGuardiansTableReferences
+    extends
+        BaseReferences<
+          _$LunarLogDatabase,
+          $ProfileGuardiansTable,
+          ProfileGuardianData
+        > {
+  $$ProfileGuardiansTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) =>
+      db.profiles.createAlias('profile_guardians__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ProfileGuardiansTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $ProfileGuardiansTable> {
+  $$ProfileGuardiansTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get role => $composableBuilder(
+    column: $table.role,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get invitedBy => $composableBuilder(
+    column: $table.invitedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileGuardiansTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $ProfileGuardiansTable> {
+  $$ProfileGuardiansTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get role => $composableBuilder(
+    column: $table.role,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get invitedBy => $composableBuilder(
+    column: $table.invitedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileGuardiansTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $ProfileGuardiansTable> {
+  $$ProfileGuardiansTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get role =>
+      $composableBuilder(column: $table.role, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get invitedBy =>
+      $composableBuilder(column: $table.invitedBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileGuardiansTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $ProfileGuardiansTable,
+          ProfileGuardianData,
+          $$ProfileGuardiansTableFilterComposer,
+          $$ProfileGuardiansTableOrderingComposer,
+          $$ProfileGuardiansTableAnnotationComposer,
+          $$ProfileGuardiansTableCreateCompanionBuilder,
+          $$ProfileGuardiansTableUpdateCompanionBuilder,
+          (ProfileGuardianData, $$ProfileGuardiansTableReferences),
+          ProfileGuardianData,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$ProfileGuardiansTableTableManager(
+    _$LunarLogDatabase db,
+    $ProfileGuardiansTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProfileGuardiansTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProfileGuardiansTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProfileGuardiansTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> role = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> displayName = const Value.absent(),
+                Value<String?> invitedBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProfileGuardiansCompanion(
+                id: id,
+                profileId: profileId,
+                userId: userId,
+                role: role,
+                status: status,
+                displayName: displayName,
+                invitedBy: invitedBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String profileId,
+                required String userId,
+                required String role,
+                Value<String> status = const Value.absent(),
+                Value<String?> displayName = const Value.absent(),
+                Value<String?> invitedBy = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ProfileGuardiansCompanion.insert(
+                id: id,
+                profileId: profileId,
+                userId: userId,
+                role: role,
+                status: status,
+                displayName: displayName,
+                invitedBy: invitedBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ProfileGuardiansTable, ProfileGuardianData>(
+                    table,
+                  ),
+                  $$ProfileGuardiansTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$ProfileGuardiansTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$ProfileGuardiansTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ProfileGuardiansTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $ProfileGuardiansTable,
+      ProfileGuardianData,
+      $$ProfileGuardiansTableFilterComposer,
+      $$ProfileGuardiansTableOrderingComposer,
+      $$ProfileGuardiansTableAnnotationComposer,
+      $$ProfileGuardiansTableCreateCompanionBuilder,
+      $$ProfileGuardiansTableUpdateCompanionBuilder,
+      (ProfileGuardianData, $$ProfileGuardiansTableReferences),
+      ProfileGuardianData,
       PrefetchHooks Function({bool profileId})
     >;
 typedef $$AppSettingsTableCreateCompanionBuilder =
@@ -3132,7 +4374,16 @@ class $$AppSettingsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$AppSettingsTable, AppSetting>(table),
+                  BaseReferences<
+                    _$LunarLogDatabase,
+                    $AppSettingsTable,
+                    AppSetting
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -3412,7 +4663,16 @@ class $$SyncStateTableTableManager
                 serverClockOffsetMs: serverClockOffsetMs,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$SyncStateTable, SyncStateRow>(table),
+                  BaseReferences<
+                    _$LunarLogDatabase,
+                    $SyncStateTable,
+                    SyncStateRow
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -3444,6 +4704,8 @@ class $LunarLogDatabaseManager {
       $$ProfilesTableTableManager(_db, _db.profiles);
   $$DayEntriesTableTableManager get dayEntries =>
       $$DayEntriesTableTableManager(_db, _db.dayEntries);
+  $$ProfileGuardiansTableTableManager get profileGuardians =>
+      $$ProfileGuardiansTableTableManager(_db, _db.profileGuardians);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$SyncStateTableTableManager get syncState =>

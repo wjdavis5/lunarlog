@@ -353,11 +353,13 @@ select is(
   (select array_agg(k order by k) from jsonb_object_keys(pg_temp.resp('b_malformed') -> 'rejected' -> 0) k),
   'rejected entries expose the same keys regardless of cause');
 
--- B pushing A's profile id as an own row (AE12 through the RPC)
+-- B pushing A's profile id as an own row is rejected (globally unique profile ID)
 insert into r select 'b_reuse', public.sync_push(
   jsonb_build_array(jsonb_build_object('id', tests.ulid(1), 'display_name', 'Bob two', 'updated_at', pg_temp.ts_txt('t1'))),
   '[]'::jsonb);
-select is(pg_temp.resp('b_reuse') -> 'rejected', '[]'::jsonb, 'reusing A''s profile ULID through the RPC is not an error');
+select is(pg_temp.resp('b_reuse') -> 'rejected',
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(1), 'rejected', true)),
+  'reusing A''s profile ULID through the RPC is rejected');
 
 -- from the owner's view: nothing landed under A
 select tests.clear_authentication();
@@ -369,7 +371,7 @@ select is((select count(*) from public.day_entries
   0::bigint, 'payload user_id = A: nothing landed under A (day entries)');
 select is((select display_name from public.profiles
             where id = tests.ulid(1) and user_id = tests.get_supabase_uid('user_a')),
-  'Alice', 'B''s reuse of A''s ULID did not touch A''s row');
+  'Alice', 'B''s reuse attempt of A''s ULID did not touch A''s row');
 
 -- ---------------------------------------------------------------------------
 -- anon and PUBLIC cannot execute sync_push

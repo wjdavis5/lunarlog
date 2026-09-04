@@ -36,6 +36,7 @@ class FakeSyncTransport implements SyncTransport {
   final pages = <SyncTable, List<List<RemoteRow>>>{
     SyncTable.profiles: [],
     SyncTable.dayEntries: [],
+    SyncTable.profileGuardians: [],
   };
 
   /// When set, wins over [pages]: computes each page from the call itself

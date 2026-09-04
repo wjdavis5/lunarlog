@@ -368,14 +368,53 @@ void main() {
             .having((e) => e.kind, 'kind', RowCodecErrorKind.invalidDate)),
       );
     });
+    test('decodes attribution fields when present', () {
+      final decoded = decodeDayEntry({
+        ...encodeDayEntry(makeEntry()),
+        'server_version': 1,
+        'logged_by_user_id': 'user-123',
+        'last_modified_by_user_id': 'user-456',
+      });
+      expect(decoded.loggedByUserId, 'user-123');
+      expect(decoded.lastModifiedByUserId, 'user-456');
+    });
+  });
+
+  group('profile guardians', () {
+    test('round-trips profile guardian row', () {
+      final json = {
+        'id': 'g1-uuid',
+        'profile_id': profileId,
+        'user_id': 'u1-uuid',
+        'role': 'co_parent',
+        'status': 'accepted',
+        'display_name': 'Dad',
+        'invited_by': 'mom-uuid',
+        'created_at': '2026-09-01T10:00:00.123456Z',
+        'updated_at': '2026-09-01T10:00:00.123456Z',
+        'server_version': 5,
+      };
+      final decoded = decodeProfileGuardian(json);
+      expect(decoded.id, 'g1-uuid');
+      expect(decoded.profileId, profileId);
+      expect(decoded.userId, 'u1-uuid');
+      expect(decoded.role, 'co_parent');
+      expect(decoded.status, 'accepted');
+      expect(decoded.displayName, 'Dad');
+      expect(decoded.invitedBy, 'mom-uuid');
+      expect(decoded.serverVersion, 5);
+      expect(decoded.table, SyncTable.profileGuardians);
+    });
   });
 
   group('table dispatch', () {
     test('table names match the remote schema', () {
       expect(syncTableName(SyncTable.profiles), 'profiles');
       expect(syncTableName(SyncTable.dayEntries), 'day_entries');
+      expect(syncTableName(SyncTable.profileGuardians), 'profile_guardians');
       expect(syncTableFromName('profiles'), SyncTable.profiles);
       expect(syncTableFromName('day_entries'), SyncTable.dayEntries);
+      expect(syncTableFromName('profile_guardians'), SyncTable.profileGuardians);
       expect(syncTableFromName('settings'), isNull);
     });
 
@@ -384,6 +423,16 @@ void main() {
       expect(p, isA<RemoteProfileRow>());
       final d = decodeRemoteRow(SyncTable.dayEntries, encodeDayEntry(makeEntry()));
       expect(d, isA<RemoteDayEntryRow>());
+      final g = decodeRemoteRow(SyncTable.profileGuardians, {
+        'id': 'g1',
+        'profile_id': profileId,
+        'user_id': 'u1',
+        'role': 'caregiver',
+        'status': 'accepted',
+        'created_at': '2026-09-01T10:00:00Z',
+        'updated_at': '2026-09-01T10:00:00Z',
+      });
+      expect(g, isA<RemoteProfileGuardianRow>());
     });
 
     test('decodeResolvedRow dispatches on the "table" key', () {

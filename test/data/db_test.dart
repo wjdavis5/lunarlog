@@ -100,14 +100,14 @@ Future<int> userVersion(LunarLogDatabase db) async =>
         .first
         .read<int>('user_version');
 
-/// Asserts everything the v1 fixture held survived the v2 upgrade with the
-/// new sync columns at their defaults.
+/// Asserts everything the v1 fixture held survived the upgrade with the
+/// new sync columns and profile_guardians table at their defaults.
 Future<void> expectUpgradedV2(LunarLogDatabase db) async {
-  expect(await userVersion(db), 2);
+  expect(await userVersion(db), 3);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev']));
   expect(await columnsOf(db, 'day_entries'),
-      containsAll(['dirty', 'local_rev']));
+      containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
 
   final stamp = DateTime.parse(kV1Stamp);
   final profile =
@@ -204,10 +204,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 2 and database opens with the expected tables',
+    test('schema version is 3 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 2);
-      expect(await userVersion(db), 2);
+      expect(db.schemaVersion, 3);
+      expect(await userVersion(db), 3);
 
       final tables = (await db
               .customSelect(
@@ -217,10 +217,12 @@ void main() {
           .map((row) => row.read<String>('name'))
           .toSet();
       expect(tables,
-          containsAll(['profiles', 'day_entries', 'app_settings', 'sync_state']));
+          containsAll(['profiles', 'day_entries', 'profile_guardians', 'app_settings', 'sync_state']));
       expect(await columnsOf(db, 'profiles'), containsAll(['dirty', 'local_rev']));
       expect(
-          await columnsOf(db, 'day_entries'), containsAll(['dirty', 'local_rev']));
+          await columnsOf(db, 'day_entries'), containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
+      expect(
+          await columnsOf(db, 'profile_guardians'), containsAll(['id', 'profile_id', 'user_id', 'role', 'status', 'display_name']));
     });
 
     test('partial unique index enforces one live entry per profile+date, '
@@ -892,9 +894,9 @@ void main() {
       await expectUpgradedV2(db);
     });
 
-    test('a v2 database does not re-run the v1 upgrade on reopen', () async {
+    test('a v3 database does not re-run the upgrade on reopen', () async {
       final dir = await freshTempDir('migration_noop');
-      final file = File('${dir.path}${Platform.pathSeparator}v2.db');
+      final file = File('${dir.path}${Platform.pathSeparator}v3.db');
       final first = LunarLogDatabase(NativeDatabase(file));
       await first.storage.upsertProfile(displayName: 'P', isMinor: false);
       await first.close();
@@ -903,7 +905,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 2);
+      expect(await userVersion(second), 3);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });

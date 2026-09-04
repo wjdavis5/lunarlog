@@ -22,6 +22,8 @@ class DayEntry {
     this.note,
     required this.updatedAt,
     this.deletedAt,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
   });
 
   final String id;
@@ -47,6 +49,12 @@ class DayEntry {
   /// full-fidelity sync reads in later units.
   final DateTime? deletedAt;
 
+  /// The Supabase auth user who originally recorded this day entry (Issue #8).
+  final String? loggedByUserId;
+
+  /// The Supabase auth user who last edited this day entry (Issue #8).
+  final String? lastModifiedByUserId;
+
   static const Object _unset = Object();
 
   DayEntry copyWith({
@@ -59,6 +67,8 @@ class DayEntry {
     Object? note = _unset,
     DateTime? updatedAt,
     Object? deletedAt = _unset,
+    Object? loggedByUserId = _unset,
+    Object? lastModifiedByUserId = _unset,
   }) =>
       DayEntry(
         id: id ?? this.id,
@@ -67,11 +77,16 @@ class DayEntry {
         tz: tz ?? this.tz,
         flow: flow ?? this.flow,
         tags: tags ?? this.tags,
-        note: note == _unset ? this.note : note as String?,
+        note: _resolveNullable(note, this.note),
         updatedAt: updatedAt ?? this.updatedAt,
-        deletedAt:
-            deletedAt == _unset ? this.deletedAt : deletedAt as DateTime?,
+        deletedAt: _resolveNullable(deletedAt, this.deletedAt),
+        loggedByUserId: _resolveNullable(loggedByUserId, this.loggedByUserId),
+        lastModifiedByUserId:
+            _resolveNullable(lastModifiedByUserId, this.lastModifiedByUserId),
       );
+
+  static T? _resolveNullable<T>(Object? overrideValue, T? currentValue) =>
+      identical(overrideValue, _unset) ? currentValue : overrideValue as T?;
 
   @override
   bool operator ==(Object other) =>
@@ -91,7 +106,9 @@ class DayEntry {
       listEquals(other.tags, tags) &&
       other.note == note &&
       other.updatedAt == updatedAt &&
-      other.deletedAt == deletedAt;
+      other.deletedAt == deletedAt &&
+      other.loggedByUserId == loggedByUserId &&
+      other.lastModifiedByUserId == lastModifiedByUserId;
 
   @override
   int get hashCode => Object.hash(
@@ -104,11 +121,13 @@ class DayEntry {
         note,
         updatedAt,
         deletedAt,
+        loggedByUserId,
+        lastModifiedByUserId,
       );
 
   @override
   String toString() =>
       'DayEntry($profileId ${localDate.iso} ${flow.name}'
       '${note == null ? '' : ' note'}'
-      '${deletedAt == null ? '' : ' [tombstoned]'})';
+      '${deletedAt == null ? '' : ' [tombstoned]}'})';
 }

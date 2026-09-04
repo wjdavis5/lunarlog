@@ -1,7 +1,7 @@
 -- RLS isolation, privilege, and constraint proof for the three sync tables
 -- (plan U2: AE1, AE2, AE12, column-list grants, CHECKs, server_version, anon).
 begin;
-select plan(52);
+select plan(51);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: users A and B each own one profile, one day entry, one setting.
@@ -78,21 +78,19 @@ select throws_ok($$delete from public.settings where key = 'lang'$$,
 select throws_ok(
   $$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
       values (tests.ulid(23), tests.ulid(1), '2026-09-02', 'UTC', 'none', now())$$,
-  '23503', null, 'B cannot reference A''s profile_id (composite foreign key)');
+  '42501', null, 'B cannot reference A''s profile_id (RLS rejects non-guardian write)');
 
 -- ---------------------------------------------------------------------------
--- AE12: reusing A's ULID lands as B's own row, no unique violation
+-- Reusing A's profile ULID is rejected by profiles_id_uq (globally unique profile ID)
 -- ---------------------------------------------------------------------------
-select lives_ok(
+select throws_ok(
   $$insert into public.profiles (id, display_name, updated_at)
       values (tests.ulid(1), 'Bob two', now())$$,
-  'B inserts a profile whose id equals A''s ULID as an own row');
+  '23505', null, 'B cannot insert a profile whose id equals A''s profile ULID');
 select lives_ok(
   $$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
       values (tests.ulid(2), tests.ulid(11), '2026-09-03', 'UTC', 'none', now())$$,
   'B inserts a day entry whose id equals A''s ULID as an own row');
-select is((select user_id from public.profiles where id = tests.ulid(1)),
-  tests.get_supabase_uid('user_b'), 'the reused profile id is owned by B from B''s view');
 
 -- ---------------------------------------------------------------------------
 -- Column-list UPDATE grant: user_id and server_version are not updatable
@@ -174,8 +172,8 @@ select cmp_ok((select v from sv where n = 3), '>', (select v from sv where n = 2
 -- From the owner's view (bypassrls): AE12 rows coexist under both users
 -- ---------------------------------------------------------------------------
 select tests.clear_authentication();
-select is((select count(*) from public.profiles where id = tests.ulid(1)), 2::bigint,
-  'the same profile ULID exists once per user');
+select is((select count(*) from public.profiles where id = tests.ulid(1)), 1::bigint,
+  'profile ULID is globally unique across users');
 select is((select count(*) from public.day_entries where id = tests.ulid(2)), 2::bigint,
   'the same day entry ULID exists once per user');
 select is((select display_name from public.profiles
