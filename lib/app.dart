@@ -80,6 +80,13 @@ class LunarLogApp extends StatefulWidget {
 }
 
 class _LunarLogAppState extends State<LunarLogApp> {
+  // KTD3/R5: one instance of each repository for this widget's lifetime,
+  // built once in [initState] from the (stable) database and shared by the
+  // reminder coordinator and the provider tree below.
+  late final ProfilesRepository _profiles;
+  late final DayEntriesRepository _dayEntries;
+  late final SettingsStore _settings;
+  late final CyclePredictionService _prediction;
   late final NotificationPermissionState _permissionState;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   ReminderCoordinator? _coordinator;
@@ -88,6 +95,11 @@ class _LunarLogAppState extends State<LunarLogApp> {
   @override
   void initState() {
     super.initState();
+    final storage = widget.db.storage;
+    _profiles = DriftProfilesRepository(storage);
+    _dayEntries = DriftDayEntriesRepository(storage);
+    _settings = DriftSettingsStore(storage);
+    _prediction = CyclePredictionService(_dayEntries);
     _permissionState = NotificationPermissionState(
       NotificationAvailability.available,
     );
@@ -107,17 +119,15 @@ class _LunarLogAppState extends State<LunarLogApp> {
   }
 
   Future<void> _startReminders() async {
-    // Repos are provided to the *subtree* below this widget; build the
-    // coordinator's instances directly from the database instead of
-    // reading them from this context.
+    // This state owns the repositories (KTD3) and provides those same
+    // instances to the subtree below, so the coordinator reads its streams
+    // straight off the fields rather than allocating a parallel set.
     final gate = context.read<GateController?>();
-    final dayEntries = DriftDayEntriesRepository(widget.db.storage);
     final coordinator = ReminderCoordinator(
       scheduler: widget.scheduler!,
       permissionState: _permissionState,
-      activeProfiles:
-          DriftProfilesRepository(widget.db.storage).watch(),
-      predictionFor: CyclePredictionService(dayEntries).watch,
+      activeProfiles: _profiles.watch(),
+      predictionFor: _prediction.watch,
     );
     _coordinator = coordinator;
     await coordinator.start(
@@ -133,9 +143,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
   }
 
   void _clearAwaitingConfirmation() {
-    final settings = DriftSettingsStore(widget.db.storage);
-    unawaited(settings.set(SettingsKeys.awaitingConfirmationEmail, ''));
-    unawaited(settings.set(SettingsKeys.awaitingMagicLinkEmail, ''));
+    unawaited(_settings.set(SettingsKeys.awaitingConfirmationEmail, ''));
+    unawaited(_settings.set(SettingsKeys.awaitingMagicLinkEmail, ''));
   }
 
   @override
@@ -179,19 +188,10 @@ class _LunarLogAppState extends State<LunarLogApp> {
           ChangeNotifierProvider<SyncStatusController>(
             create: (_) => SyncStatusController(engine: syncEngine),
           ),
-        Provider<ProfilesRepository>.value(
-          value: DriftProfilesRepository(widget.db.storage),
-        ),
-        Provider<DayEntriesRepository>.value(
-          value: DriftDayEntriesRepository(widget.db.storage),
-        ),
-        Provider<SettingsStore>.value(
-          value: DriftSettingsStore(widget.db.storage),
-        ),
-        Provider<CyclePredictionService>(
-          create: (context) =>
-              CyclePredictionService(context.read<DayEntriesRepository>()),
-        ),
+        Provider<ProfilesRepository>.value(value: _profiles),
+        Provider<DayEntriesRepository>.value(value: _dayEntries),
+        Provider<SettingsStore>.value(value: _settings),
+        Provider<CyclePredictionService>.value(value: _prediction),
         // U6 seam: the overview hint reads this; the coordinator updates it
         // from the real permission query (U8).
         ChangeNotifierProvider.value(
