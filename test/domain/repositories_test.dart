@@ -111,6 +111,30 @@ void main() {
       expect(await profiles.watch().first, isEmpty);
     });
 
+    test('findById reads null for a tombstoned id', () async {
+      final created = await profiles.create(displayName: 'A', isMinor: false);
+      await profiles.delete(created.id);
+      expect(await profiles.findById(created.id), isNull);
+      expect(await db.storage.getProfiles(includeTombstones: true),
+          hasLength(1),
+          reason: 'the tombstone is still held for sync');
+    });
+
+    test('setArchived throws for an unknown id and for a tombstoned id',
+        () async {
+      await expectLater(
+        profiles.setArchived('01JPROFILEUNKNOWN000000000', true),
+        throwsStateError,
+      );
+
+      final created = await profiles.create(displayName: 'A', isMinor: false);
+      await profiles.delete(created.id);
+      await expectLater(
+        profiles.setArchived(created.id, true),
+        throwsStateError,
+      );
+    });
+
     test('mapping round-trip: domain equality after write-then-read', () async {
       final created = await profiles.create(displayName: 'Eq', isMinor: true);
       final reread = await profiles.findById(created.id);
@@ -144,6 +168,28 @@ void main() {
       expect(found, saved);
       expect(
           await dayEntries.find(profile.id, LocalDate(2026, 5, 11)), isNull);
+    });
+
+    test('find is scoped to one profile and ignores tombstoned rows',
+        () async {
+      final a = await profiles.create(displayName: 'A', isMinor: false);
+      final b = await profiles.create(displayName: 'B', isMinor: true);
+      final forB =
+          await dayEntries.save(entryFor(b.id, LocalDate(2026, 5, 10)));
+
+      expect(await dayEntries.find(a.id, LocalDate(2026, 5, 10)), isNull,
+          reason: 'another profile entry for the same date must not answer');
+      expect((await dayEntries.find(b.id, LocalDate(2026, 5, 10)))!.id,
+          forB.id);
+
+      await dayEntries.delete(b.id, LocalDate(2026, 5, 10));
+      expect(await dayEntries.find(b.id, LocalDate(2026, 5, 10)), isNull,
+          reason: 'a date whose only row is a tombstone reads as null');
+      expect(
+          await db.storage
+              .getDayEntries(profileId: b.id, includeTombstones: true),
+          hasLength(1),
+          reason: 'the tombstone is still held for sync');
     });
 
     test('re-saving the same date updates in place (same row id)', () async {

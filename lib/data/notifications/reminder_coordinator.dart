@@ -16,21 +16,8 @@ import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
-import 'package:lunarlog/ui/overview/notification_availability.dart';
-
-/// Observable permission state consumed by the overview hint (U6 seam).
-class NotificationPermissionState extends ChangeNotifier {
-  NotificationPermissionState(this.value);
-
-  NotificationAvailability value;
-
-  void update(NotificationAvailability next) {
-    if (value == next) return;
-    value = next;
-    notifyListeners();
-  }
-}
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
@@ -38,7 +25,7 @@ typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 class ReminderCoordinator with WidgetsBindingObserver {
   ReminderCoordinator({
     required ReminderScheduler scheduler,
-    required NotificationPermissionState permissionState,
+    required NotificationAvailabilitySink permissionState,
     required ActiveProfilesStream activeProfiles,
     required PredictionStream predictionFor,
     LocalDate Function()? today,
@@ -52,13 +39,25 @@ class ReminderCoordinator with WidgetsBindingObserver {
   }
 
   final ReminderScheduler _scheduler;
-  final NotificationPermissionState _permissionState;
+  final NotificationAvailabilitySink _permissionState;
   final ActiveProfilesStream _activeProfiles;
   final PredictionStream _predictionFor;
   final LocalDate Function() today;
 
   @visibleForTesting
   final Duration replanDebounce;
+
+  // Availability as last published through [_setAvailability] — by [start],
+  // and again by the resume re-probe. [replan] reads this rather than the
+  // sink, which is a write-only `lib/domain` contract.
+  //
+  // Eagerly initialized, never `late`. `didChangeAppLifecycleState`'s
+  // `_started` guard means nothing should reach [replan] before [start]
+  // resolves, so this is defence in depth rather than the only thing
+  // holding that window: a `late` field would turn any future path that did
+  // reach it into a LateInitializationError thrown from an unawaited timer.
+  // `available` matches the value the composition root seeds the sink with.
+  NotificationAvailability _availability = NotificationAvailability.available;
 
   StreamSubscription<List<Profile>>? _profilesSub;
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
@@ -80,7 +79,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
     });
     if (_disposed) return;
     if (generation == _permissionProbeGeneration) {
-      _permissionState.update(availability);
+      _setAvailability(availability);
     }
     _profilesSub = _activeProfiles.listen(_onProfilesChanged);
     _started = true;
@@ -120,10 +119,19 @@ class ReminderCoordinator with WidgetsBindingObserver {
     _replanTimer = Timer(replanDebounce, () => unawaited(replan()));
   }
 
+  /// The only writer of availability: keeps the local mirror [replan]
+  /// reads in step with the sink the UI renders. The sink is write-only
+  /// (it is a `lib/domain` contract), so the mirror is how the coordinator
+  /// reads back a value it published — including the resume re-check.
+  void _setAvailability(NotificationAvailability next) {
+    _availability = next;
+    _permissionState.update(next);
+  }
+
   @visibleForTesting
   Future<void> replan() async {
     if (_disposed) return;
-    if (_permissionState.value == NotificationAvailability.denied) {
+    if (_availability == NotificationAvailability.denied) {
       await _scheduler.cancelAll();
       return;
     }
@@ -143,7 +151,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
   Future<void> _refreshPermissionAndReplan(int generation) async {
     final availability = await _scheduler.checkAvailability();
     if (_disposed || generation != _permissionProbeGeneration) return;
-    _permissionState.update(availability);
+    _setAvailability(availability);
     // "At every app open": permissions or the civil day may have changed.
     _scheduleReplan();
   }

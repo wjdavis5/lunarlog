@@ -203,29 +203,25 @@ class LunarLogStorage {
 
   /// Profiles for UI reads ([includeTombstones] false, default) or for sync
   /// (true), ordered by [Profiles.sortOrder] then id for stable lists.
-  Future<List<Profile>> getProfiles({bool includeTombstones = false}) {
-    final query = db.select(db.profiles)
-      ..orderBy([
-        (t) => OrderingTerm(expression: t.sortOrder),
-        (t) => OrderingTerm(expression: t.id),
-      ]);
-    if (!includeTombstones) {
-      query.where((t) => t.deletedAt.isNull());
-    }
-    return query.get();
-  }
+  Future<List<Profile>> getProfiles({bool includeTombstones = false}) =>
+      _profilesQuery(includeTombstones: includeTombstones).get();
 
   /// Stream variant of [getProfiles] for reactive UI.
-  Stream<List<Profile>> watchProfiles({bool includeTombstones = false}) {
-    final query = db.select(db.profiles)
-      ..orderBy([
-        (t) => OrderingTerm(expression: t.sortOrder),
-        (t) => OrderingTerm(expression: t.id),
-      ]);
+  Stream<List<Profile>> watchProfiles({bool includeTombstones = false}) =>
+      _profilesQuery(includeTombstones: includeTombstones).watch();
+
+  /// The single profile [id], or null when no such row is held. An indexed
+  /// primary-key lookup rather than a scan of [getProfiles].
+  ///
+  /// Tombstones are excluded by default — exactly the filter [getProfiles]
+  /// applies — so a tombstoned id reads as null; pass
+  /// [includeTombstones] `true` for the full-fidelity row that sync needs.
+  Future<Profile?> getProfile(String id, {bool includeTombstones = false}) {
+    final query = db.select(db.profiles)..where((t) => t.id.equals(id));
     if (!includeTombstones) {
       query.where((t) => t.deletedAt.isNull());
     }
-    return query.watch();
+    return query.getSingleOrNull();
   }
 
   // ------------------------------------------------------------- day entries
@@ -333,6 +329,28 @@ class LunarLogStorage {
       includeTombstones: includeTombstones,
       updatedAfter: updatedAfter,
     ).get();
+  }
+
+  /// The live day entry for (profileId, localDate), or null when that date
+  /// holds no entry — including when its only row is a tombstone, which
+  /// [getDayEntries] excludes for UI reads too. Scoped to the one
+  /// [profileId], so another profile's entry for the same date never
+  /// answers this query.
+  ///
+  /// Returns the first matching row rather than throwing on multiples: two
+  /// live rows for one (profileId, localDate) are impossible anyway, because
+  /// of the partial unique index `uq_day_entries_profile_date_live`
+  /// (`kLiveDayEntryIndexSql` in `lib/data/db/db.dart`).
+  Future<DayEntry?> getDayEntry({
+    required String profileId,
+    required String localDate,
+  }) async {
+    final rows = await _dayEntryQuery(
+      profileId: profileId,
+      includeTombstones: false,
+      localDate: localDate,
+    ).get();
+    return rows.isEmpty ? null : rows.first;
   }
 
   /// Stream variant of [getDayEntries] for reactive UI.
@@ -759,14 +777,35 @@ class LunarLogStorage {
     return (await query.getSingle()).read(count) ?? 0;
   }
 
+  /// The shared builder behind [getProfiles] and [watchProfiles]: ordered by
+  /// [Profiles.sortOrder] then id, tombstones filtered unless
+  /// [includeTombstones].
+  Selectable<Profile> _profilesQuery({required bool includeTombstones}) {
+    final query = db.select(db.profiles)
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.sortOrder),
+        (t) => OrderingTerm(expression: t.id),
+      ]);
+    if (!includeTombstones) {
+      query.where((t) => t.deletedAt.isNull());
+    }
+    return query;
+  }
+
+  /// The shared builder behind the day-entry reads. [localDate] narrows to
+  /// one date (the single-row [getDayEntry] lookup); the list reads omit it.
   Selectable<DayEntry> _dayEntryQuery({
     required String profileId,
     required bool includeTombstones,
+    String? localDate,
     DateTime? updatedAfter,
   }) {
     final query = db.select(db.dayEntries)
       ..where((row) {
         var condition = row.profileId.equals(profileId);
+        if (localDate != null) {
+          condition = condition & row.localDate.equals(localDate);
+        }
         if (!includeTombstones) {
           condition = condition & row.deletedAt.isNull();
         }

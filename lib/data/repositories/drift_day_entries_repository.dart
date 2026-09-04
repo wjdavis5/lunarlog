@@ -31,11 +31,11 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<domain.DayEntry?> find(
       String profileId, domain.LocalDate localDate) async {
-    final rows = await _storage.getDayEntries(profileId: profileId);
-    for (final row in rows) {
-      if (row.localDate == localDate.iso) return dayEntryToDomain(row);
-    }
-    return null;
+    final row = await _storage.getDayEntry(
+      profileId: profileId,
+      localDate: localDate.iso,
+    );
+    return row == null ? null : dayEntryToDomain(row);
   }
 
   @override

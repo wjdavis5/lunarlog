@@ -649,6 +649,151 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('R6: getProfiles and watchProfiles read through one shared query — '
+        'identical lists over live, archived and tombstoned profiles',
+        () async {
+      final live = await storage.upsertProfile(
+          id: '01JPROFILELIVE000000000000',
+          displayName: 'Live',
+          isMinor: false,
+          sortOrder: 1);
+      final archived = await storage.upsertProfile(
+          id: '01JPROFILEARCHIVED00000000',
+          displayName: 'Archived',
+          isMinor: true,
+          sortOrder: 2,
+          archivedAt: DateTime.utc(2026, 1, 1));
+      final gone = await storage.upsertProfile(
+          id: '01JPROFILETOMBSTONED000000',
+          displayName: 'Gone',
+          isMinor: false,
+          sortOrder: 3);
+      clock.now = clock.now.add(const Duration(hours: 1));
+      await storage.softDeleteProfile(gone.id);
+
+      final fetched = await storage.getProfiles();
+      final watched = await storage.watchProfiles().first;
+      expect(fetched.map((p) => p.id), [live.id, archived.id],
+          reason: 'archived rows stay; only tombstones are filtered');
+      expect(watched, fetched);
+    });
+
+    test('R6: both profile reads include tombstones when asked, ordered by '
+        'sortOrder then id', () async {
+      final b = await storage.upsertProfile(
+          id: '01JPROFILEBBBBBBBBBBBBBBBB',
+          displayName: 'B',
+          isMinor: false,
+          sortOrder: 0);
+      final a = await storage.upsertProfile(
+          id: '01JPROFILEAAAAAAAAAAAAAAAA',
+          displayName: 'A',
+          isMinor: false,
+          sortOrder: 0);
+      final c = await storage.upsertProfile(
+          id: '01JPROFILECCCCCCCCCCCCCCCC',
+          displayName: 'C',
+          isMinor: true,
+          sortOrder: 1);
+      clock.now = clock.now.add(const Duration(hours: 1));
+      await storage.softDeleteProfile(c.id);
+
+      final fetched = await storage.getProfiles(includeTombstones: true);
+      final watched =
+          await storage.watchProfiles(includeTombstones: true).first;
+      expect(fetched.map((p) => p.id), [a.id, b.id, c.id]);
+      expect(watched, fetched);
+    });
+
+    test('getDayEntry returns the live entry for a (profile, date), and null '
+        'for a date with no entry', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final saved = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-04-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium);
+
+      // Row identity is compared field by field: drift's generated DayEntry
+      // `==` compares `tags` by reference, so two reads of the same row are
+      // never `==` to each other.
+      final found =
+          await storage.getDayEntry(profileId: p.id, localDate: '2026-04-01');
+      expect(found, isNotNull);
+      expect(found!.id, saved.id);
+      expect(found.profileId, p.id);
+      expect(found.localDate, '2026-04-01');
+      expect(found.flow, FlowLevel.medium);
+      expect(found.deletedAt, isNull);
+
+      expect(
+          await storage.getDayEntry(profileId: p.id, localDate: '2026-04-02'),
+          isNull);
+    });
+
+    test('getDayEntry reads null for a date whose only row is a tombstone',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-04-01',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      clock.now = clock.now.add(const Duration(hours: 1));
+      await storage.softDeleteDayEntry(
+          profileId: p.id, localDate: '2026-04-01');
+
+      expect(
+          await storage.getDayEntry(profileId: p.id, localDate: '2026-04-01'),
+          isNull);
+      expect(
+          await storage.getDayEntries(
+              profileId: p.id, includeTombstones: true),
+          hasLength(1),
+          reason: 'the tombstone is still held for sync');
+    });
+
+    test('getDayEntry is scoped to one profile: the same date under another '
+        'profile is not returned', () async {
+      final a = await storage.upsertProfile(displayName: 'A', isMinor: false);
+      final b = await storage.upsertProfile(displayName: 'B', isMinor: true);
+      final bEntry = await storage.upsertDayEntry(
+          profileId: b.id,
+          localDate: '2026-04-01',
+          tz: 'UTC',
+          flow: FlowLevel.heavy);
+
+      expect(
+          await storage.getDayEntry(profileId: a.id, localDate: '2026-04-01'),
+          isNull);
+      final forB =
+          await storage.getDayEntry(profileId: b.id, localDate: '2026-04-01');
+      expect(forB, isNotNull);
+      expect(forB!.id, bEntry.id);
+      expect(forB.profileId, b.id);
+    });
+
+    test('getProfile is an indexed lookup that excludes tombstones by '
+        'default and reads null for unknown ids', () async {
+      final live =
+          await storage.upsertProfile(displayName: 'Live', isMinor: false);
+      final gone =
+          await storage.upsertProfile(displayName: 'Gone', isMinor: true);
+      clock.now = clock.now.add(const Duration(hours: 1));
+      await storage.softDeleteProfile(gone.id);
+
+      expect(await storage.getProfile(live.id), live);
+      expect(await storage.getProfile(gone.id), isNull);
+
+      final tombstone =
+          await storage.getProfile(gone.id, includeTombstones: true);
+      expect(tombstone, isNotNull);
+      expect(tombstone!.id, gone.id);
+      expect(tombstone.deletedAt, isNotNull);
+
+      expect(await storage.getProfile('01JPROFILEUNKNOWN000000000'), isNull);
+    });
   });
 
   group('migrations', () {

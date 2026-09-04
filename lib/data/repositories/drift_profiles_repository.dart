@@ -45,11 +45,8 @@ class DriftProfilesRepository implements ProfilesRepository {
 
   @override
   Future<domain.Profile?> findById(String id) async {
-    final rows = await _storage.getProfiles();
-    for (final row in rows) {
-      if (row.id == id) return profileToDomain(row);
-    }
-    return null;
+    final row = await _storage.getProfile(id);
+    return row == null ? null : profileToDomain(row);
   }
 
   @override
@@ -63,20 +60,19 @@ class DriftProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> setArchived(String id, bool archived) async {
-    final rows = await _storage.getProfiles();
-    for (final row in rows) {
-      if (row.id == id) {
-        await _storage.upsertProfile(
-          id: row.id,
-          displayName: row.displayName,
-          isMinor: row.isMinor,
-          sortOrder: row.sortOrder,
-          archivedAt: archived ? _now() : null,
-        );
-        return;
-      }
+    // getProfile excludes tombstones by default, so a tombstoned id reads as
+    // null here and is rejected just as it was when this scanned getProfiles().
+    final row = await _storage.getProfile(id);
+    if (row == null) {
+      throw StateError('cannot archive unknown or tombstoned profile: $id');
     }
-    throw StateError('cannot archive unknown or tombstoned profile: $id');
+    await _storage.upsertProfile(
+      id: row.id,
+      displayName: row.displayName,
+      isMinor: row.isMinor,
+      sortOrder: row.sortOrder,
+      archivedAt: archived ? _now() : null,
+    );
   }
 
   @override

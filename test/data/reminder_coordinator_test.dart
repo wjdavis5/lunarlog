@@ -7,50 +7,21 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
-import 'package:lunarlog/ui/overview/notification_availability.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 
-class _FakeScheduler implements ReminderScheduler {
-  _FakeScheduler({this.initialAvailability = NotificationAvailability.available});
+import '../support/fake_reminder_scheduler.dart';
 
-  final NotificationAvailability initialAvailability;
-  NotificationAvailability? currentAvailability;
-  final List<Completer<NotificationAvailability>> availabilityGates = [];
-  final List<List<PlannedReminder>> rescheduleCalls = [];
-  int cancelCalls = 0;
-  int availabilityChecks = 0;
-  void Function(String profileId)? launchSink;
+class _RecordingSink implements NotificationAvailabilitySink {
+  final List<NotificationAvailability> updates = [];
 
   @override
-  Future<NotificationAvailability> initialize({
-    void Function(String profileId)? onLaunchFromNotification,
-  }) async {
-    launchSink = onLaunchFromNotification;
-    return initialAvailability;
-  }
-
-  @override
-  Future<NotificationAvailability> checkAvailability() async {
-    availabilityChecks++;
-    if (availabilityGates.isNotEmpty) {
-      return availabilityGates.removeAt(0).future;
-    }
-    return currentAvailability ?? initialAvailability;
-  }
-
-  @override
-  Future<void> rescheduleAll(List<PlannedReminder> reminders) async {
-    rescheduleCalls.add(reminders);
-  }
-
-  @override
-  Future<void> cancelAll() async {
-    cancelCalls++;
+  void update(NotificationAvailability next) {
+    updates.add(next);
   }
 }
 
@@ -80,7 +51,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('profiles + predictions flow through to a reschedule call', () async {
-    final scheduler = _FakeScheduler();
+    final scheduler = FakeReminderScheduler();
     final permissionState =
         NotificationPermissionState(NotificationAvailability.available);
     final profiles = StreamController<List<Profile>>(sync: true);
@@ -119,7 +90,7 @@ void main() {
   test('denied permission: no scheduling, reminders cancelled, hint state set',
       () async {
     final scheduler =
-        _FakeScheduler(initialAvailability: NotificationAvailability.denied);
+        FakeReminderScheduler(initialAvailability: NotificationAvailability.denied);
     final permissionState =
         NotificationPermissionState(NotificationAvailability.available);
     final profiles = StreamController<List<Profile>>(sync: true);
@@ -144,8 +115,35 @@ void main() {
     expect(scheduler.cancelCalls, greaterThan(0));
   });
 
+  test('a minimal sink (no UI notifier) still receives denial and skips '
+      'scheduling', () async {
+    final scheduler =
+        FakeReminderScheduler(initialAvailability: NotificationAvailability.denied);
+    final sink = _RecordingSink();
+    final profiles = StreamController<List<Profile>>(sync: true);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: sink,
+      activeProfiles: profiles.stream,
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+    });
+
+    expect(sink.updates, [NotificationAvailability.denied]);
+    profiles.add([_profile('p1')]);
+    await pumpEventQueue();
+    expect(scheduler.rescheduleCalls, isEmpty);
+    expect(scheduler.cancelCalls, greaterThan(0));
+  });
+
   test('archiving a profile drops its reminders from the plan', () async {
-    final scheduler = _FakeScheduler();
+    final scheduler = FakeReminderScheduler();
     final permissionState =
         NotificationPermissionState(NotificationAvailability.available);
     final profiles = StreamController<List<Profile>>(sync: true);
@@ -184,8 +182,70 @@ void main() {
     );
   });
 
+  test('a resume during initialize is ignored, and a replan lands once start() completes', () async {
+    // app.dart fires `unawaited(_startReminders())` from initState, so a
+    // lifecycle resume can land while `_scheduler.initialize(...)` is still
+    // pending (unbounded on iOS/macOS first launch, where it waits on the
+    // system permission dialog).
+    //
+    // `didChangeAppLifecycleState` guards on `_started`, which is set only
+    // at the end of `start()`, so that resume is dropped rather than
+    // driving a replan against half-initialised state. Dropping it costs
+    // nothing: the real scheduler's `rescheduleAll` opens with
+    // `if (!_initialized) return;`, so it would have discarded the call
+    // anyway. What production actually honours is the replan the profiles
+    // stream drives after `start()` completes — asserted below, so a
+    // regression that broke it cannot leave this test green.
+    //
+    // `_availability`'s eager initializer is defence in depth for the same
+    // window: `replan()` reads it, and a `late` field would throw
+    // LateInitializationError if anything ever reached it before start().
+
+    final today = LocalDate(2026, 8, 30);
+    final gate = Completer<void>();
+    final scheduler = FakeReminderScheduler(initializeGate: gate);
+    final permissionState = _RecordingSink();
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = StreamController<CyclePrediction>(sync: true);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (_) => predictions.stream,
+      today: () => today,
+      replanDebounce: Duration.zero,
+    );
+    final started = coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      await predictions.close();
+    });
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(scheduler.rescheduleCalls, isEmpty,
+        reason: 'the _started guard drops a resume that lands mid-start');
+    expect(scheduler.cancelCalls, 0);
+
+    gate.complete();
+    await started;
+
+    final beforePostInit = scheduler.rescheduleCalls.length;
+    profiles.add([_profile('p1')]);
+    predictions.add(_late(today));
+    await pumpEventQueue();
+
+    expect(scheduler.rescheduleCalls.length, greaterThan(beforePostInit),
+        reason: 'a replan lands after initialize resolved — the call the '
+            'real scheduler actually honours');
+    expect(scheduler.rescheduleCalls.last.any((r) => r.profileId == 'p1'),
+        isTrue);
+  });
+
   test('notification tap payload reaches the launch seam', () async {
-    final scheduler = _FakeScheduler();
+    final scheduler = FakeReminderScheduler();
     final permissionState =
         NotificationPermissionState(NotificationAvailability.available);
     String? launched;
@@ -204,7 +264,7 @@ void main() {
   });
 
   test('resume refreshes permission before replanning', () async {
-    final scheduler = _FakeScheduler(
+    final scheduler = FakeReminderScheduler(
         initialAvailability: NotificationAvailability.denied)
       ..currentAvailability = NotificationAvailability.available;
     final permissionState =
@@ -228,7 +288,7 @@ void main() {
   });
 
   test('resume notices revoked permission and cancels reminders', () async {
-    final scheduler = _FakeScheduler()
+    final scheduler = FakeReminderScheduler()
       ..currentAvailability = NotificationAvailability.denied;
     final permissionState =
         NotificationPermissionState(NotificationAvailability.available);
@@ -252,7 +312,7 @@ void main() {
   test('a stale permission probe cannot overwrite a newer resume', () async {
     final first = Completer<NotificationAvailability>();
     final second = Completer<NotificationAvailability>();
-    final scheduler = _FakeScheduler()
+    final scheduler = FakeReminderScheduler()
       ..availabilityGates.addAll([first, second]);
     final permissionState =
         NotificationPermissionState(NotificationAvailability.available);
