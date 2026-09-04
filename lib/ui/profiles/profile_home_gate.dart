@@ -33,6 +33,7 @@ import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/account_mismatch_screen.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/password_recovery_screen.dart';
+import 'package:lunarlog/ui/account/restore_error_screen.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart'
     show authFailureCopy;
@@ -69,6 +70,10 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// microtasks across consecutive builds (#2 U3).
   bool _consumingLinkFailure = false;
 
+  /// Keeps an empty, bound account out of first-run while a restore retry is
+  /// moving through pushing/pulling. Cleared when the retry reaches idle.
+  bool _restoreRetryPending = false;
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ProfileController>();
@@ -84,7 +89,39 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     }
     return _recoveryScreen(auth, gate) ??
         _syncPhaseScreen(sync) ??
+        _restoreErrorScreen(sync, controller, auth) ??
         _profileScreen(controller);
+  }
+
+  /// Finding #3 in #37 (Issue #39): when an account is bound and the local
+  /// database has no profiles ([ProfileController.needsFirstRun]), a failed
+  /// restore ([SyncPhase.error]) presents a dedicated retry screen rather than
+  /// falling through to first-run profile creation, preventing divergent data.
+  Widget? _restoreErrorScreen(
+    SyncStatusController? sync,
+    ProfileController controller,
+    AuthController? auth,
+  ) {
+    if (sync == null) return null;
+    final isBound = sync.snapshot.boundUserId != null ||
+        (auth != null && auth.currentUser != null);
+    if (!isBound || !controller.needsFirstRun) {
+      _restoreRetryPending = false;
+      return null;
+    }
+    if (sync.phase == SyncPhase.idle) {
+      _restoreRetryPending = false;
+      return null;
+    }
+    if (sync.phase == SyncPhase.error || _restoreRetryPending) {
+      return RestoreErrorScreen(
+        onRetry: () {
+          setState(() => _restoreRetryPending = true);
+          sync.requestSync();
+        },
+      );
+    }
+    return null;
   }
 
   /// AE8: the recovery latch is honored only once the device gate is open

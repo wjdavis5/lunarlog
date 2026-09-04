@@ -70,6 +70,8 @@ class SupabaseSyncTransport implements SyncTransport {
     try {
       return [for (final row in data) decodeRemoteRow(table, row)];
     } on RowCodecError {
+      // Do not advance a cursor past data this client could not preserve.
+      // The engine surfaces a durable error and retries after repair.
       throw const SyncTransportError.other();
     }
   }

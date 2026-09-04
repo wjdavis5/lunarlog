@@ -12,7 +12,7 @@ execution: code
 - **Objective:** Resolve two high-priority defect issues:
   1. **Issue #24:** Stale network link failure (`_pendingLinkFailure`) survives a successful retry and is misreported to the user as an error SnackBar upon sign-in.
   2. **Issue #43:** iOS notification permission denial is not reported because only Android permissions were checked in `FlutterLocalNotificationsScheduler`, preventing the overview reminder hint from appearing on iOS when notifications are denied.
-- **Means:** 
+- **Means:**
   - In `lib/data/auth/supabase_auth_service.dart`, reset `_pendingLinkFailure = null;` upon successful link exchange in `_exchangeAuthLink()`.
   - In `lib/data/notifications/notification_scheduler.dart`, probe iOS/Darwin notification permissions via `IOSFlutterLocalNotificationsPlugin.checkPermissions()` and allow injecting `IOSFlutterLocalNotificationsPlugin` (or a custom permission checker seam) for testability.
   - Add regression tests in `test/data/supabase_auth_service_test.dart` and `test/data/notification_scheduler_test.dart`.
