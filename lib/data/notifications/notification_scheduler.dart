@@ -4,6 +4,7 @@
 /// posture: web is an insecure iteration surface).
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
@@ -48,6 +49,9 @@ abstract interface class ReminderScheduler {
   Future<NotificationAvailability> initialize({
     void Function(String profileId)? onLaunchFromNotification,
   });
+
+  /// Reads the current OS permission without reinitializing the plugin.
+  Future<NotificationAvailability> checkAvailability();
 
   Future<void> rescheduleAll(List<PlannedReminder> reminders);
 
@@ -124,14 +128,37 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       onLaunchFromNotification?.call(payload);
     }
 
-    final androidEnabled = await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.areNotificationsEnabled();
-    final enabled = androidEnabled ?? true;
-    return enabled
-        ? NotificationAvailability.available
-        : NotificationAvailability.denied;
+    return checkAvailability();
+  }
+
+  @override
+  Future<NotificationAvailability> checkAvailability() async {
+    try {
+      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      final macosPlugin = _plugin.resolvePlatformSpecificImplementation<
+          MacOSFlutterLocalNotificationsPlugin>();
+
+      bool? enabled;
+      if (androidPlugin != null) {
+        enabled = await androidPlugin.areNotificationsEnabled();
+      } else if (iosPlugin != null) {
+        enabled = (await iosPlugin.checkPermissions())?.isEnabled;
+      } else if (macosPlugin != null) {
+        enabled = (await macosPlugin.checkPermissions())?.isEnabled;
+      }
+      return enabled == false
+          ? NotificationAvailability.denied
+          : NotificationAvailability.available;
+    } catch (error) {
+      // The OS remains the enforcement boundary. Preserve the historical
+      // available fallback rather than aborting reminder coordination.
+      debugPrint(
+          'lunarlog notifications: permission probe failed (${error.runtimeType})');
+      return NotificationAvailability.available;
+    }
   }
 
   @override
@@ -183,6 +210,10 @@ class NoopReminderScheduler implements ReminderScheduler {
   Future<NotificationAvailability> initialize({
     void Function(String profileId)? onLaunchFromNotification,
   }) async => NotificationAvailability.available;
+
+  @override
+  Future<NotificationAvailability> checkAvailability() async =>
+      NotificationAvailability.available;
 
   @override
   Future<void> rescheduleAll(List<PlannedReminder> reminders) async {}

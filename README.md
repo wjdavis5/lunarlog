@@ -241,6 +241,18 @@ Part of the home lab; the canonical inventory lives in the lab root's
   the app is not resumed, plus FLAG_SECURE on Android (a tiny platform
   channel in `MainActivity.kt`); iOS has no Flutter-level FLAG_SECURE
   equivalent, so the cover is the only mechanism there.
+- Backgrounding does not re-lock while the app's own system UI is on
+  screen — its credential prompt, the Google picker, the Apple sheet.
+  Neither platform distinguishes those from the operator genuinely
+  leaving (iOS reports a spurious `hidden` for native modals,
+  flutter/flutter#146734; Android's passcode fallback really does
+  background the activity), and treating them as departures made the app
+  impossible to unlock at all (issue #65). Content stays covered for the
+  whole window; a departure the window absorbed is answered fail-closed
+  the moment the system UI comes down, and a window left open locks after
+  two minutes regardless of the inactivity toggle. The first-run
+  notification-permission prompt is not yet covered by this and still
+  re-locks.
 - iOS: the database file is not explicitly excluded from iCloud backups
   (skipped in U7 — it needs AppDelegate work on the Mac; the keychain-stored
   key is already device-only, and Android covers the equivalent with
