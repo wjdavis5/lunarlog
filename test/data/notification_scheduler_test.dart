@@ -10,26 +10,31 @@ import 'package:lunarlog/ui/overview/notification_availability.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  IOSFlutterLocalNotificationsPlugin.registerWith();
 
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
   final calls = <MethodCall>[];
-  bool? mockIosEnabled;
+  bool? permissionEnabled;
+  Object? permissionError;
 
   setUp(() {
     calls.clear();
-    mockIosEnabled = null;
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    permissionEnabled = null;
+    permissionError = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall call) async {
       calls.add(call);
-      if (call.method == 'checkPermissions') {
-        if (mockIosEnabled != null) {
+      if (call.method == 'checkPermissions' ||
+          call.method == 'areNotificationsEnabled') {
+        if (permissionError != null) throw permissionError!;
+        if (call.method == 'areNotificationsEnabled') {
+          return permissionEnabled;
+        }
+        if (permissionEnabled != null) {
           return <String, dynamic>{
-            'isEnabled': mockIosEnabled!,
-            'isAlertEnabled': mockIosEnabled!,
-            'isBadgeEnabled': mockIosEnabled!,
-            'isSoundEnabled': mockIosEnabled!,
+            'isEnabled': permissionEnabled!,
+            'isAlertEnabled': permissionEnabled!,
+            'isBadgeEnabled': permissionEnabled!,
+            'isSoundEnabled': permissionEnabled!,
             'isProvisionalEnabled': false,
             'isCriticalEnabled': false,
             'isProvidesAppNotificationSettingsEnabled': false,
@@ -47,12 +52,32 @@ void main() {
 
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
+    IOSFlutterLocalNotificationsPlugin.registerWith();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
   });
 
-  group('FlutterLocalNotificationsScheduler iOS permission probing (Issue #43)', () {
+  FlutterLocalNotificationsScheduler schedulerFor(TargetPlatform platform) {
+    debugDefaultTargetPlatformOverride = platform;
+    switch (platform) {
+      case TargetPlatform.android:
+        AndroidFlutterLocalNotificationsPlugin.registerWith();
+      case TargetPlatform.iOS:
+        IOSFlutterLocalNotificationsPlugin.registerWith();
+      case TargetPlatform.macOS:
+        MacOSFlutterLocalNotificationsPlugin.registerWith();
+      case TargetPlatform.fuchsia:
+      case TargetPlatform.linux:
+      case TargetPlatform.windows:
+        break;
+    }
+    return FlutterLocalNotificationsScheduler();
+  }
+
+  group('FlutterLocalNotificationsScheduler permission probing (Issue #43)', () {
     test('reports denied when iOS permissions are disabled', () async {
-      mockIosEnabled = false;
-      final scheduler = FlutterLocalNotificationsScheduler();
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.iOS);
       final availability = await scheduler.initialize();
 
       expect(availability, NotificationAvailability.denied);
@@ -60,18 +85,45 @@ void main() {
     });
 
     test('reports available when iOS permissions are enabled', () async {
-      mockIosEnabled = true;
-      final scheduler = FlutterLocalNotificationsScheduler();
-      final availability = await scheduler.initialize();
+      permissionEnabled = true;
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+      final availability = await scheduler.checkAvailability();
 
       expect(availability, NotificationAvailability.available);
       expect(calls.any((c) => c.method == 'checkPermissions'), isTrue);
     });
 
-    test('defaults to available when checkPermissions returns null (unsupported/headless)', () async {
-      mockIosEnabled = null;
-      final scheduler = FlutterLocalNotificationsScheduler();
-      final availability = await scheduler.initialize();
+    test('reports Android permission state', () async {
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.android);
+      final availability = await scheduler.checkAvailability();
+
+      expect(availability, NotificationAvailability.denied);
+      expect(calls.any((c) => c.method == 'areNotificationsEnabled'), isTrue);
+    });
+
+    test('reports macOS permission state', () async {
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.macOS);
+      final availability = await scheduler.checkAvailability();
+
+      expect(availability, NotificationAvailability.denied);
+      expect(calls.any((c) => c.method == 'checkPermissions'), isTrue);
+    });
+
+    test('defaults to available when no platform implementation resolves',
+        () async {
+      final scheduler = schedulerFor(TargetPlatform.linux);
+      final availability = await scheduler.checkAvailability();
+
+      expect(availability, NotificationAvailability.available);
+      expect(calls, isEmpty);
+    });
+
+    test('defaults to available when the permission probe throws', () async {
+      permissionError = PlatformException(code: 'unavailable');
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+      final availability = await scheduler.checkAvailability();
 
       expect(availability, NotificationAvailability.available);
     });

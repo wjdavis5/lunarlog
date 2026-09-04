@@ -93,6 +93,7 @@ class FakeAuthGateway implements AuthGateway {
   String? fixedUserId;
 
   Completer<void>? getSessionFromUrlGate;
+  bool deliverAuthEventBeforeReturn = false;
 
   final getSessionFromUrlCalls = <Uri>[];
   final signUpCalls = <({String email, String password, String? redirect})>[];
@@ -156,6 +157,7 @@ class FakeAuthGateway implements AuthGateway {
     final recovery = verifier.endsWith('/passwordRecovery');
     session = makeSession('linked');
     emit(recovery ? AuthChangeEvent.passwordRecovery : AuthChangeEvent.signedIn);
+    if (deliverAuthEventBeforeReturn) await Future<void>.delayed(Duration.zero);
     return AuthSessionUrlResponse(
       session: session!,
       redirectType: recovery ? 'passwordRecovery' : null,
@@ -624,6 +626,13 @@ void main() {
       expect(failures.single, isA<AuthNetworkFailure>());
       expect(service.state, AuthSessionState.signedOut);
 
+      final failuresAtSignedIn = <AuthFailure?>[];
+      service.states.listen((state) {
+        if (state == AuthSessionState.signedIn) {
+          failuresAtSignedIn.add(service.pendingLinkFailure);
+        }
+      });
+      gateway.deliverAuthEventBeforeReturn = true;
       await service.handleLink(uri);
       await settle();
       expect(gateway.getSessionFromUrlCalls, hasLength(2));
@@ -631,6 +640,8 @@ void main() {
       expect(service.currentUserId, 'linked');
       expect(service.pendingLinkFailure, isNull,
           reason: 'successful exchange resets prior pending link failure (Issue #24)');
+      expect(failuresAtSignedIn, [isNull],
+          reason: 'signed-in observers never capture the stale failure');
     });
 
     test('a definitive exchange failure stays latched: the stream replay of '
