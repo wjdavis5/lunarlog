@@ -10,17 +10,30 @@ language sql
 immutable
 parallel safe
 as $$
-  select jsonb_typeof(p_tags) = 'array'
-     and jsonb_array_length(p_tags) <= 32
-     and not exists (
-       select 1
-         from jsonb_array_elements(p_tags) elem
-        where jsonb_typeof(elem) <> 'string'
-     );
+  select case
+    when jsonb_typeof(p_tags) <> 'array' then false
+    else jsonb_array_length(p_tags) <= 32
+      and not exists (
+        select 1
+          from jsonb_array_elements(p_tags) elem
+         where jsonb_typeof(elem) <> 'string'
+      )
+  end;
 $$;
 
 comment on function public.is_valid_tags_array(jsonb) is
   'Validates that a JSONB value is an array of at most 32 strings (Issue #40).';
+
+-- The previous constraint accepted mixed-type arrays. Preserve every valid
+-- string tag before replacing it so an upgrade cannot fail or discard the
+-- usable portion of an existing row.
+update public.day_entries d
+   set tags = (
+     select coalesce(jsonb_agg(e.value order by e.ordinality), '[]'::jsonb)
+       from jsonb_array_elements(d.tags) with ordinality as e(value, ordinality)
+      where jsonb_typeof(e.value) = 'string'
+   )
+ where not public.is_valid_tags_array(d.tags);
 
 alter table public.day_entries
   drop constraint if exists day_entries_tags_check,

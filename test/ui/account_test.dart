@@ -741,6 +741,17 @@ void main() {
       await pumpFew(tester);
       expect(h.engine.requestSyncCalls, 1);
 
+      h.engine.emitPhase(SyncPhase.pushing, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restore-error'), findsOneWidget,
+          reason: 'retry must not expose profile creation while pushing');
+      expect(find.text('Create a profile'), findsNothing);
+
+      h.engine.emitPhase(SyncPhase.pulling, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restore-error'), findsOneWidget,
+          reason: 'retry must not expose profile creation while pulling');
+
       // Transition back to restoring, then restore completes with profile:
       h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'user-a@b.c');
       await pumpFew(tester);

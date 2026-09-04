@@ -86,7 +86,9 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       final loc = tz.getLocation(tzName);
       tz.setLocalLocation(loc);
     } catch (_) {
-      // Fallback: tz.local remains UTC or previously initialized location.
+      // Never retain a stale location after the device zone changes and a
+      // subsequent lookup fails.
+      tz.setLocalLocation(tz.UTC);
     }
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwin = DarwinInitializationSettings(

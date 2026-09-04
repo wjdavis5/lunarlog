@@ -66,6 +66,18 @@ void main() {
       expect(tzName, isNotEmpty);
       expect(isValidIanaTimeZone(tzName), isTrue);
     });
+
+    test('a failed refresh resets a previously configured zone to UTC',
+        () async {
+      tz.setLocalLocation(tz.getLocation('America/Chicago'));
+      final scheduler = FlutterLocalNotificationsScheduler(
+        localTimeZoneProvider: () => throw StateError('unavailable'),
+      );
+
+      await scheduler.initialize();
+
+      expect(tz.local, same(tz.UTC));
+    });
   });
 
   group('NoopReminderScheduler', () {

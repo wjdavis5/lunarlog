@@ -98,36 +98,6 @@ final class RemoteDayEntryRow extends RemoteRow {
   SyncTable get table => SyncTable.dayEntries;
 }
 
-/// A remote row that could not be decoded by the client codec (e.g. malformed
-/// JSON or corrupted schema elements, Issue #40).
-///
-/// Quarantining preserves the row's [serverVersion] so the pull cursor can
-/// advance past it rather than permanently wedging sync in an unrecoverable
-/// retry loop.
-final class QuarantinedRemoteRow extends RemoteRow {
-  const QuarantinedRemoteRow({
-    required this.id,
-    required this.table,
-    required this.serverVersion,
-    required this.reason,
-    this.raw = const {},
-  });
-
-  @override
-  final String id;
-  @override
-  final SyncTable table;
-  @override
-  final int serverVersion;
-  final String reason;
-  final Map<String, dynamic> raw;
-
-  @override
-  DateTime get updatedAt => DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
-  @override
-  DateTime? get deletedAt => null;
-}
-
 /// Applying a remote row failed for a reason the next cycle can fix — today
 /// only a day entry whose profile is not held locally yet (the profile page
 /// is still in flight, or was rejected). The engine retries; it never treats

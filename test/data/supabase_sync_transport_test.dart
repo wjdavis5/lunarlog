@@ -274,26 +274,20 @@ void main() {
       expect(requests, isEmpty);
     });
 
-    test('a malformed row is quarantined so the pull cursor can advance (Issue #40)', () async {
+    test('a malformed row fails the pull instead of being silently skipped',
+        () async {
       client = makeClient((_) async => json([
             {...entryJson(version: 45), 'tags': [1, 2]},
             entryJson(version: 46),
           ]));
-      final rows = await SupabaseSyncTransport(client!).pullPage(
-        table: SyncTable.dayEntries,
-        afterVersion: 0,
-        limit: 500,
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.dayEntries,
+          afterVersion: 0,
+          limit: 500,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
       );
-      expect(rows, hasLength(2));
-      final quarantined = rows.first as QuarantinedRemoteRow;
-      expect(quarantined.serverVersion, 45);
-      expect(quarantined.id, entryId);
-      expect(quarantined.table, SyncTable.dayEntries);
-      expect(quarantined.reason, contains('invalidTags'));
-
-      final valid = rows.last as RemoteDayEntryRow;
-      expect(valid.serverVersion, 46);
-      expect(valid.tags, ['cramps']);
     });
   });
 

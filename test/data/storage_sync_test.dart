@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
-import 'package:lunarlog/data/sync/remote_rows.dart';
 
 class FixedClock {
   FixedClock(this.now);
@@ -558,29 +557,6 @@ void main() {
       expect((await storage.readSyncState()).cursorProfiles, 7);
     });
 
-    test('a QuarantinedRemoteRow skips insertion while advancing the table cursor (Issue #40)', () async {
-      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
-      const r1 = '01J0000000000000000000000C';
-      await storage.applyRemotePage(
-        table: SyncTable.dayEntries,
-        rows: [
-          remoteEntry(r1, profileId: p.id, localDate: '2026-04-01', updatedAt: t0),
-          const QuarantinedRemoteRow(
-            id: '01J0000000000000000000000D',
-            table: SyncTable.dayEntries,
-            serverVersion: 105,
-            reason: 'invalidTags',
-          ),
-        ],
-        newCursor: 105,
-      );
-
-      final state = await storage.readSyncState();
-      expect(state.cursorDayEntries, 105, reason: 'cursor advanced past quarantined row');
-      final entries = await storage.getDayEntries(profileId: p.id);
-      expect(entries, hasLength(1), reason: 'quarantined row was not inserted');
-      expect(entries.single.id, r1);
-    });
   });
 
   group('clock offset', () {

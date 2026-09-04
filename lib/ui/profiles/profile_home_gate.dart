@@ -70,6 +70,10 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// microtasks across consecutive builds (#2 U3).
   bool _consumingLinkFailure = false;
 
+  /// Keeps an empty, bound account out of first-run while a restore retry is
+  /// moving through pushing/pulling. Cleared when the retry reaches idle.
+  bool _restoreRetryPending = false;
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ProfileController>();
@@ -101,9 +105,20 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     if (sync == null) return null;
     final isBound = sync.snapshot.boundUserId != null ||
         (auth != null && auth.currentUser != null);
-    if (isBound && controller.needsFirstRun && sync.phase == SyncPhase.error) {
+    if (!isBound || !controller.needsFirstRun) {
+      _restoreRetryPending = false;
+      return null;
+    }
+    if (sync.phase == SyncPhase.idle) {
+      _restoreRetryPending = false;
+      return null;
+    }
+    if (sync.phase == SyncPhase.error || _restoreRetryPending) {
       return RestoreErrorScreen(
-        onRetry: () => sync.requestSync(),
+        onRetry: () {
+          setState(() => _restoreRetryPending = true);
+          sync.requestSync();
+        },
       );
     }
     return null;

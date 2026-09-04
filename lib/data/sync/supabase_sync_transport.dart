@@ -67,24 +67,13 @@ class SupabaseSyncTransport implements SyncTransport {
     } catch (error) {
       throw mapSyncTransportError(error);
     }
-    final rows = <RemoteRow>[];
-    for (final row in data) {
-      try {
-        rows.add(decodeRemoteRow(table, row));
-      } on RowCodecError catch (e) {
-        // Quarantine corrupted/undecodable row so cursor can advance (Issue #40)
-        final version = (row[_versionColumn] as num?)?.toInt() ?? 0;
-        final id = row['id'] as String? ?? '';
-        rows.add(QuarantinedRemoteRow(
-          id: id,
-          table: table,
-          serverVersion: version,
-          reason: e.toString(),
-          raw: row,
-        ));
-      }
+    try {
+      return [for (final row in data) decodeRemoteRow(table, row)];
+    } on RowCodecError {
+      // Do not advance a cursor past data this client could not preserve.
+      // The engine surfaces a durable error and retries after repair.
+      throw const SyncTransportError.other();
     }
-    return rows;
   }
 
   PushResult _decodePushResult(Object? data) {

@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(86);
+select plan(87);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -404,6 +404,8 @@ select ok(exists(
 -- tags string-only validation (Issue #40)
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('user_a');
+select is(public.is_valid_tags_array('1'::jsonb), false,
+  'tags validator rejects a non-array without raising');
 insert into r select 'bad_tags', public.sync_push(
   '[]'::jsonb,
   jsonb_build_array(
