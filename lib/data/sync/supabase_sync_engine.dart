@@ -41,7 +41,6 @@ import '../../domain/sync/sync_engine.dart';
 import '../db/db.dart';
 import '../db/storage.dart';
 import '../db/ulid.dart';
-import 'remote_rows.dart';
 import 'row_codec.dart';
 import 'sync_transport.dart';
 
@@ -175,6 +174,17 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// excluded from pushes while its `local_rev` still equals the rejected
   /// one; a later local write bumps it and the row is retried.
   final Map<String, int> _rejected = {};
+
+  /// Profile ids seen as [QuarantinedRemoteRow]s. A quarantined profile
+  /// never lands locally, so its day entries can never apply: they are
+  /// skipped terminally (with the cursor advancing past them) instead of
+  /// throwing retryably every cycle. Process-lifetime memory — quarantined
+  /// rows are rare and server data only grows, so the set stays tiny.
+  final Set<String> _quarantinedProfileIds = {};
+
+  /// Quarantined rows plus skipped dependents observed during the current
+  /// cycle; emitted as [SyncSnapshot.quarantinedCount] on terminal emits.
+  int _quarantinedThisCycle = 0;
 
   StreamSubscription<AuthSessionState>? _authSub;
   StreamSubscription<Set<TableUpdate>>? _writeSub;
@@ -349,6 +359,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// (and its own decision points) stays here since that's the
   /// error-handling architecture, not extractable work.
   Future<bool> _cycle() async {
+    _quarantinedThisCycle = 0;
     try {
       if (!await _passesGateAndAuthChecks()) return false;
 
@@ -395,6 +406,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         phase: SyncPhase.idle,
         dirtyCount: await _storage.dirtyCount(),
         rejectedCount: _rejected.length,
+        quarantinedCount: _quarantinedThisCycle,
         lastSyncAt: finishedAt,
         lastError: SyncErrorKind.none,
         boundUserId: uid,
@@ -555,6 +567,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       lastError: kind,
       dirtyCount: await _safeDirtyCount(),
       rejectedCount: _rejected.length,
+      quarantinedCount: _quarantinedThisCycle,
     ));
   }
 
@@ -736,10 +749,16 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         final page = await _transport.pullPage(
             table: table, afterVersion: cursor, limit: _pageSize);
         if (page.isEmpty) break;
+        _noteQuarantined(page);
+        // The cursor advances over the full page — including skipped
+        // dependents — because a quarantined row (and anything depending
+        // on it) can never apply; leaving it under the cursor would spin.
         final newCursor = _maxVersion(page, cursor);
         try {
           await _storage.applyRemotePage(
-              table: table, rows: page, newCursor: newCursor);
+              table: table,
+              rows: _dropOrphanedEntries(page),
+              newCursor: newCursor);
         } on RetryableSyncApplyError {
           retry = true;
           break;
@@ -763,7 +782,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         final page = await _transport.pullPage(
             table: table, afterVersion: after, limit: _pageSize);
         if (page.isEmpty) break;
-        if (await _applyReconcilePage(page)) retry = true;
+        _noteQuarantined(page);
+        if (await _applyReconcilePage(_dropOrphanedEntries(page))) {
+          retry = true;
+        }
         final next = _maxVersion(page, after);
         if (page.length < _pageSize || next <= after) break;
         after = next;
@@ -808,6 +830,40 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       if (row.serverVersion > v) v = row.serverVersion;
     }
     return v;
+  }
+
+  /// Records every quarantined row on [page]: profiles join the orphaned
+  /// set (their dependents can never apply) and each one counts toward
+  /// the cycle's [SyncSnapshot.quarantinedCount].
+  void _noteQuarantined(List<RemoteRow> page) {
+    for (final row in page) {
+      if (row is! QuarantinedRemoteRow) continue;
+      _quarantinedThisCycle++;
+      if (row.table == SyncTable.profiles) {
+        _quarantinedProfileIds.add(row.id);
+      }
+    }
+  }
+
+  /// Drops day entries whose profile was quarantined: applying them would
+  /// throw [RetryableSyncApplyError] every cycle forever, since the
+  /// profile can never land. The caller still advances the cursor over
+  /// the full page, so the skip is terminal. Anything else passes
+  /// through untouched.
+  List<RemoteRow> _dropOrphanedEntries(List<RemoteRow> page) {
+    if (_quarantinedProfileIds.isEmpty) return page;
+    final kept = <RemoteRow>[];
+    for (final row in page) {
+      if (row is RemoteDayEntryRow &&
+          _quarantinedProfileIds.contains(row.profileId)) {
+        _quarantinedThisCycle++;
+        debugPrint('lunarlog sync: skipping entry ${row.id} of '
+            'quarantined profile ${row.profileId}');
+        continue;
+      }
+      kept.add(row);
+    }
+    return kept;
   }
 
   // --------------------------------------------------------------- snapshot

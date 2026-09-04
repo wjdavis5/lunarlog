@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(86);
+select plan(97);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -426,6 +426,46 @@ select throws_ok(
   null,
   'table check constraint day_entries_tags_check rejects non-string tags'
 );
+
+-- ---------------------------------------------------------------------------
+-- is_valid_tags_array edge shapes (review)
+-- ---------------------------------------------------------------------------
+select ok(public.is_valid_tags_array('[]'::jsonb),
+  'empty array is valid');
+select ok(public.is_valid_tags_array('["a"]'::jsonb),
+  'string array is valid');
+select ok(not public.is_valid_tags_array('[1, 2]'::jsonb),
+  'all-non-string array is invalid');
+select ok(not public.is_valid_tags_array('["valid", 123]'::jsonb),
+  'mixed array is invalid');
+select ok(not public.is_valid_tags_array('[["nested"]]'::jsonb),
+  'nested array element is invalid');
+select ok(not public.is_valid_tags_array('"just a string"'::jsonb),
+  'scalar is invalid');
+select ok(not public.is_valid_tags_array('null'::jsonb),
+  'json null is invalid');
+select ok(not public.is_valid_tags_array(null),
+  'sql null is invalid');
+select ok(public.is_valid_tags_array(
+    (select jsonb_agg('s' || g::text) from generate_series(1, 32) g)),
+  '32 strings are valid');
+select ok(not public.is_valid_tags_array(
+    (select jsonb_agg('s' || g::text) from generate_series(1, 33) g)),
+  '33 strings are invalid');
+
+-- The deploy backfill keeps string elements and drops the rest.
+create temp table legacy_tags (tags jsonb);
+insert into legacy_tags values ('["keep", 1, true, ["nested"], null]'::jsonb);
+update legacy_tags
+   set tags = coalesce(
+     (select jsonb_agg(elem)
+        from jsonb_array_elements(tags) elem
+       where jsonb_typeof(elem) = 'string'),
+     '[]'::jsonb)
+ where jsonb_typeof(tags) = 'array'
+   and not public.is_valid_tags_array(tags);
+select is((select tags::text from legacy_tags), '["keep"]',
+  'backfill keeps strings, drops the rest');
 
 select * from finish();
 rollback;

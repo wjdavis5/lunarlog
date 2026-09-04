@@ -36,7 +36,7 @@ import 'package:lunarlog/ui/account/password_recovery_screen.dart';
 import 'package:lunarlog/ui/account/restore_error_screen.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart'
-    show authFailureCopy;
+    show SignInScreen, authFailureCopy;
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -60,7 +60,14 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// Guards against scheduling duplicate consumption microtasks while the
   /// payload is still set across consecutive builds.
   String? _consuming;
-
+  /// Latched bind-time restore failure (review #7/#8): set when a bound,
+  /// empty database hits [SyncPhase.error], so a Retry that moves through
+  /// pushing/pulling keeps showing restore UI instead of falling through
+  /// to first-run profile creation. Cleared once a cycle completes without
+  /// error, the database gains a profile, or the account unbinds. Mutated
+  /// during build like [_consentDeclined] below — no setState needed since
+  /// the build that sets it already renders from it.
+  bool _restoreFailed = false;
   /// "Not now" on the inline consent screen: the home shows again and the
   /// status tile carries "Upload pending — tap to review" (AS4). Cleared
   /// as soon as the engine leaves `awaitingUploadConsent`.
@@ -93,21 +100,69 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// database has no profiles ([ProfileController.needsFirstRun]), a failed
   /// restore ([SyncPhase.error]) presents a dedicated retry screen rather than
   /// falling through to first-run profile creation, preventing divergent data.
+  ///
+  /// The latch covers the Retry window too (review #7/#8): pushing/pulling
+  /// after a failed restore shows [RestoringScreen], never the create form.
+  /// An expired session ([SyncErrorKind.auth]) cannot be retried into
+  /// working, so it offers sign-in instead (review #18).
   Widget? _restoreErrorScreen(
     SyncStatusController? sync,
     ProfileController controller,
     AuthController? auth,
   ) {
     if (sync == null) return null;
-    final isBound = sync.snapshot.boundUserId != null ||
+    final snapshot = sync.snapshot;
+    final bound = snapshot.boundUserId != null ||
         (auth != null && auth.currentUser != null);
-    if (isBound && controller.needsFirstRun && sync.phase == SyncPhase.error) {
-      return RestoreErrorScreen(
-        onRetry: () => sync.requestSync(),
-      );
+    _trackRestoreFailure(sync,
+        bound: bound, empty: controller.needsFirstRun);
+    if (!bound || !controller.needsFirstRun) return null;
+    if (sync.phase == SyncPhase.error) return _errorScreenFor(sync);
+    if (_restoreFailed && _retryInFlight(sync.phase)) {
+      return const RestoringScreen();
     }
     return null;
   }
+
+  /// Maintains [_restoreFailed]: set on a bound, empty error; cleared once
+  /// a cycle completes without error, the database gains a profile, or the
+  /// account unbinds. Mutated during build like [_consentDeclined] below —
+  /// no setState needed since the build that sets it already renders it.
+  void _trackRestoreFailure(SyncStatusController sync,
+      {required bool bound, required bool empty}) {
+    if (!bound || !empty) {
+      _restoreFailed = false;
+      return;
+    }
+    if (sync.phase == SyncPhase.error) {
+      _restoreFailed = true;
+    } else if (sync.phase == SyncPhase.idle &&
+        sync.snapshot.lastError == SyncErrorKind.none) {
+      _restoreFailed = false;
+    }
+  }
+
+  /// The screen for a failed restore: sign-in for an expired session,
+  /// otherwise retry.
+  Widget _errorScreenFor(SyncStatusController sync) {
+    if (sync.snapshot.lastError == SyncErrorKind.auth) {
+      return RestoreErrorScreen(
+        message: 'Your session expired. Sign in again to restore '
+            'your account data.',
+        actionLabel: 'Sign in again',
+        onRetry: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const SignInScreen()),
+        ),
+      );
+    }
+    return RestoreErrorScreen(
+      onRetry: () => sync.requestSync(),
+    );
+  }
+
+  /// A Retry cycle is in flight (its phases map to no screen of their own).
+  bool _retryInFlight(SyncPhase phase) =>
+      phase == SyncPhase.pushing || phase == SyncPhase.pulling;
 
   /// AE8: the recovery latch is honored only once the device gate is open
   /// (no gate provided means an un-gated harness). Returns null when

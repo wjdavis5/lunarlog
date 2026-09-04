@@ -1182,4 +1182,77 @@ void main() {
       expect((await rig.state()).lastSyncAt?.toUtc(), t0);
     });
   });
+
+  group('quarantine (Issue #40, review)', () {
+    test('a quarantined-only page advances the cursor and counts (#21)',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      rig.transport.scriptPage(SyncTable.profiles, [
+        const QuarantinedRemoteRow(
+            id: '01J0000000000000000000000Q',
+            table: SyncTable.profiles,
+            serverVersion: 10,
+            reason: 'bad'),
+      ]);
+      rig.transport.scriptPage(SyncTable.dayEntries, [
+        const QuarantinedRemoteRow(
+            id: '01J0000000000000000000000R',
+            table: SyncTable.dayEntries,
+            serverVersion: 12,
+            reason: 'bad'),
+      ]);
+
+      await rig.start();
+
+      final state = await rig.state();
+      expect(state.cursorProfiles, 10);
+      expect(state.cursorDayEntries, 12);
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+      expect(rig.engine.snapshot.quarantinedCount, 2);
+
+      // A clean follow-up cycle resets the count.
+      await rig.sync();
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+      expect(rig.engine.snapshot.quarantinedCount, 0);
+    });
+
+    test('entries of a quarantined profile are skipped without retry (#5)',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      const quarantinedProfile = '01J0000000000000000000000Q';
+      rig.transport.scriptPage(SyncTable.profiles, [
+        const QuarantinedRemoteRow(
+            id: quarantinedProfile,
+            table: SyncTable.profiles,
+            serverVersion: 10,
+            reason: 'bad'),
+      ]);
+      rig.transport.scriptPage(SyncTable.dayEntries, [
+        remoteEntry(ulidN(5),
+            profileId: quarantinedProfile, updatedAt: t0, serverVersion: 11),
+      ]);
+
+      await rig.start();
+
+      expect(
+          await rig.storage.getDayEntries(
+              profileId: quarantinedProfile, includeTombstones: true),
+          isEmpty,
+          reason: 'unprocessable dependent is skipped, not applied');
+      final state = await rig.state();
+      expect(state.cursorDayEntries, 11,
+          reason: 'cursor advances terminally past the skipped dependent');
+      expect(
+          rig.transport.pulls
+              .where((c) => c.table == SyncTable.dayEntries),
+          hasLength(1),
+          reason: 'no retry loop on the skipped page');
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+      expect(rig.engine.snapshot.quarantinedCount, 2);
+    });
+  });
 }

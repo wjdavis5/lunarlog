@@ -10,7 +10,8 @@ language sql
 immutable
 parallel safe
 as $$
-  select jsonb_typeof(p_tags) = 'array'
+  select p_tags is not null
+     and jsonb_typeof(p_tags) = 'array'
      and jsonb_array_length(p_tags) <= 32
      and not exists (
        select 1
@@ -21,6 +22,18 @@ $$;
 
 comment on function public.is_valid_tags_array(jsonb) is
   'Validates that a JSONB value is an array of at most 32 strings (Issue #40).';
+
+-- Legacy rows written under the looser CHECK keep their string elements;
+-- anything else becomes an empty array, so the new constraint below
+-- cannot abort the deploy on pre-existing data (review #9/#10).
+update public.day_entries
+   set tags = coalesce(
+     (select jsonb_agg(elem)
+        from jsonb_array_elements(tags) elem
+       where jsonb_typeof(elem) = 'string'),
+     '[]'::jsonb)
+ where jsonb_typeof(tags) = 'array'
+   and not public.is_valid_tags_array(tags);
 
 alter table public.day_entries
   drop constraint if exists day_entries_tags_check,

@@ -12,10 +12,15 @@ class RestoreErrorScreen extends StatelessWidget {
     super.key,
     required this.onRetry,
     this.message,
+    this.actionLabel = 'Retry',
   });
 
   final VoidCallback onRetry;
   final String? message;
+
+  /// Label of the action button. The key stays `restore-retry-button` so
+  /// harnesses keep working when the action is "Sign in again" instead.
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +56,7 @@ class RestoreErrorScreen extends StatelessWidget {
                 key: const ValueKey('restore-retry-button'),
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
+                label: Text(actionLabel),
               ),
             ],
           ),

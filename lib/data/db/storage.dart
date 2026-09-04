@@ -41,7 +41,13 @@ import 'ulid.dart';
 export 'package:lunarlog/domain/sync/local_row_counts.dart' show LocalRowCounts;
 
 export '../sync/remote_rows.dart'
-    show RemoteDayEntryRow, RemoteProfileRow, RemoteRow, RetryableSyncApplyError, SyncTable;
+    show
+        QuarantinedRemoteRow,
+        RemoteDayEntryRow,
+        RemoteProfileRow,
+        RemoteRow,
+        RetryableSyncApplyError,
+        SyncTable;
 
 /// Default ULID generator for new records (per-isolate monotonic).
 final UlidGenerator _ulid = UlidGenerator();

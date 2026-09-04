@@ -694,6 +694,91 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets('retry keeps restore UI across pushing/pulling instead of '
+        'the name form (review #7/#8)', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump();
+      await tester.tap(find.text('I understand'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+      await tester.tap(key('auth-sign-in'));
+      await pumpFew(tester);
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      h.engine.emitPhase(
+        SyncPhase.error,
+        boundUserId: 'user-a@b.c',
+        lastError: SyncErrorKind.network,
+      );
+      await h.settle();
+      expect(key('restore-error'), findsOneWidget);
+
+      await tester.tap(key('restore-retry-button'));
+      await pumpFew(tester);
+      expect(h.engine.requestSyncCalls, 1);
+
+      // The retry cycle passes through pushing/pulling on the still-empty
+      // database: restore UI, never the create-profile form.
+      h.engine.emitPhase(SyncPhase.pushing, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+      expect(key('restore-error'), findsNothing);
+      expect(find.text('Create a profile'), findsNothing);
+
+      h.engine.emitPhase(SyncPhase.pulling, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      expect(key('restoring'), findsOneWidget);
+      expect(key('restore-error'), findsNothing);
+      expect(find.text('Create a profile'), findsNothing);
+
+      // A clean idle on a genuinely empty account clears the latch and
+      // returns to first-run creation.
+      h.engine.emitPhase(
+        SyncPhase.idle,
+        boundUserId: 'user-a@b.c',
+        lastError: SyncErrorKind.none,
+        lastSyncAt: DateTime.now().toUtc(),
+      );
+      await h.settle();
+      expect(key('restoring'), findsNothing);
+      expect(key('restore-error'), findsNothing);
+      expect(find.text('Create a profile'), findsOneWidget);
+
+      await h.dispose();
+    });
+
+    testWidgets('auth-kind restore failure offers sign-in instead of a dead '
+        'Retry (review #18)', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump();
+      await tester.tap(find.text('I understand'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+      await tester.tap(key('auth-sign-in'));
+      await pumpFew(tester);
+      h.engine.emitPhase(SyncPhase.restoring, boundUserId: 'user-a@b.c');
+      await pumpFew(tester);
+      h.engine.emitPhase(
+        SyncPhase.error,
+        boundUserId: 'user-a@b.c',
+        lastError: SyncErrorKind.auth,
+      );
+      await h.settle();
+
+      expect(key('restore-error'), findsOneWidget);
+      expect(find.text('Sign in again'), findsOneWidget);
+
+      await tester.tap(key('restore-retry-button'));
+      await tester.pumpAndSettle();
+      expect(h.engine.requestSyncCalls, 0,
+          reason: 'sign-in navigation does not retry the dead cycle');
+      expect(find.byType(SignInScreen), findsOneWidget);
+
+      await h.dispose();
+    });
+
     testWidgets('the embedded account step advances to restoring when a '
         'session arrives without any tap, and the name form never appears '
         'for an account that holds a profile (#2 U3; R8)', (tester) async {

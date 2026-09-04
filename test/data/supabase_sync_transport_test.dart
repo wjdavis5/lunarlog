@@ -295,6 +295,49 @@ void main() {
       expect(valid.serverVersion, 46);
       expect(valid.tags, ['cramps']);
     });
+
+    test('a decode failure without server_version fails the page loudly (review #6)', () async {
+      final bad = {...entryJson(version: 45), 'tags': [1, 2]}
+        ..remove('server_version');
+      client = makeClient((_) async => json([bad]));
+      expect(
+        () => SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.dayEntries,
+          afterVersion: 0,
+          limit: 500,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
+      );
+    });
+
+    test('a decode failure with a mistyped version fails the page loudly (review #6)', () async {
+      client = makeClient((_) async => json([
+            {...entryJson(version: 45), 'tags': [1, 2], 'server_version': '45'},
+          ]));
+      expect(
+        () => SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.dayEntries,
+          afterVersion: 0,
+          limit: 500,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
+      );
+    });
+
+    test('a decode failure with a mistyped id quarantines with an empty id (review #12)', () async {
+      client = makeClient((_) async => json([
+            {...entryJson(version: 45), 'tags': [1, 2], 'id': 123},
+          ]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.dayEntries,
+        afterVersion: 0,
+        limit: 500,
+      );
+      expect(rows, hasLength(1));
+      final quarantined = rows.single as QuarantinedRemoteRow;
+      expect(quarantined.serverVersion, 45);
+      expect(quarantined.id, isEmpty);
+    });
   });
 
   group('error mapping over HTTP', () {

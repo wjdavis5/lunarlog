@@ -4,10 +4,14 @@
 /// posture: web is an insecure iteration surface).
 library;
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/overview/notification_availability.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -70,6 +74,32 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
 
   static const String _channelId = 'lunarlog_reminders';
 
+  /// Resolves the host zone and installs it as [tz.local]. An unknown
+  /// identifier falls back to UTC deterministically; a provider failure
+  /// keeps the previous location (UTC on a fresh start). Both fallbacks
+  /// are logged, so a silent 09:00 UTC shift is always diagnosable. A
+  /// hanging provider cannot wedge scheduling: the lookup gives up after
+  /// five seconds.
+  @visibleForTesting
+  Future<void> resolveLocalZone() async {
+    String tzName = 'UTC';
+    try {
+      tzName = await _localTimeZoneProvider()
+          .timeout(const Duration(seconds: 5), onTimeout: () => Future.value('UTC'));
+      if (!isValidIanaTimeZone(tzName)) {
+        debugPrint(
+            'lunarlog reminders: unknown time zone "$tzName", using UTC');
+        tzName = 'UTC';
+      }
+      tz.setLocalLocation(tz.getLocation(tzName));
+    } catch (error) {
+      // Fallback: tz.local remains UTC or previously initialized location.
+      debugPrint(
+          'lunarlog reminders: time zone resolution failed ("$tzName"): '
+          '$error');
+    }
+  }
+
   @override
   Future<NotificationAvailability> initialize({
     void Function(String profileId)? onLaunchFromNotification,
@@ -77,13 +107,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     if (tz.timeZoneDatabase.locations.isEmpty) {
       tzdata.initializeTimeZones();
     }
-    try {
-      final tzName = await _localTimeZoneProvider();
-      final loc = tz.getLocation(tzName);
-      tz.setLocalLocation(loc);
-    } catch (_) {
-      // Fallback: tz.local remains UTC or previously initialized location.
-    }
+    await resolveLocalZone();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwin = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -137,6 +161,10 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   @override
   Future<void> rescheduleAll(List<PlannedReminder> reminders) async {
     if (!_initialized) return;
+    // The device zone can change without a restart (travel); re-resolve it
+    // on every replan so reminders stay on local civil time. One cheap
+    // platform-channel call, bounded by the lookup timeout.
+    await resolveLocalZone();
     await _plugin.cancelAllPendingNotifications();
     final loc = locationProvider?.call() ?? tz.local;
     for (final (index, reminder) in reminders.indexed) {

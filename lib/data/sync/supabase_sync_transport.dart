@@ -14,6 +14,7 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -72,9 +73,22 @@ class SupabaseSyncTransport implements SyncTransport {
       try {
         rows.add(decodeRemoteRow(table, row));
       } on RowCodecError catch (e) {
-        // Quarantine corrupted/undecodable row so cursor can advance (Issue #40)
-        final version = (row[_versionColumn] as num?)?.toInt() ?? 0;
-        final id = row['id'] as String? ?? '';
+        // Quarantine corrupted/undecodable row so cursor can advance (#40).
+        // A row without a usable server_version cannot be advanced past:
+        // fail loudly into the existing error/backoff path instead of
+        // spinning on the same page forever. The casts are guarded: a
+        // mistyped version/id must not throw TypeError outside this handler
+        // and abort the whole page.
+        final Object? versionValue = row[_versionColumn];
+        final Object? idValue = row['id'];
+        final version = versionValue is num ? versionValue.toInt() : 0;
+        final id = idValue is String ? idValue : '';
+        if (version <= 0) {
+          throw const SyncTransportError.other();
+        }
+        // R18-safe: the reason carries table/field/kind only, never the
+        // payload (`raw` is deliberately never logged).
+        debugPrint('lunarlog sync: quarantined ${table.name} row $id ($e)');
         rows.add(QuarantinedRemoteRow(
           id: id,
           table: table,

@@ -5,9 +5,11 @@
 /// U10's row codec maps Supabase JSON into these; U5's engine hands them to
 /// `LunarLogStorage.applyRemote*`. They are deliberately plain: no JSON, no
 /// drift, and every timestamp is already a parsed `DateTime` (KTD5 compares
-/// instants, never strings). Tombstones are recognised by `deletedAt`; the
-/// storage layer clears their payload on write regardless of what the
-/// codec put in `note`, `tags` or `displayName`.
+/// instants, never strings) — except [QuarantinedRemoteRow], which carries
+/// the raw undecodable payload plus a meaningless epoch-0 [RemoteRow.updatedAt]
+/// and must never feed LWW comparison. Tombstones are recognised by
+/// `deletedAt`; the storage layer clears their payload on write regardless
+/// of what the codec put in `note`, `tags` or `displayName`.
 library;
 
 import '../db/tables.dart';

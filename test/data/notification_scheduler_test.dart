@@ -14,6 +14,12 @@ void main() {
     tzdata.initializeTimeZones();
   });
 
+  // The zone-resolution tests below mutate the process-global tz.local;
+  // restore UTC afterwards so file order cannot leak zones into other tests.
+  tearDown(() {
+    tz.setLocalLocation(tz.getLocation('UTC'));
+  });
+
   group('calculateReminderFireAt', () {
     final date = LocalDate(2026, 8, 30);
 
@@ -81,6 +87,37 @@ void main() {
       final chicago = tz.getLocation('America/Chicago');
       tz.setLocalLocation(chicago);
       expect(resolveCurrentTimeZone(), 'America/Chicago');
+    });
+  });
+
+  group('resolveLocalZone wiring (review #4)', () {
+    test('throwing provider keeps the previous location without throwing',
+        () async {
+      tz.setLocalLocation(tz.getLocation('America/New_York'));
+      final scheduler = FlutterLocalNotificationsScheduler(
+        localTimeZoneProvider: () =>
+            Future<String>.error(StateError('no channel')),
+      );
+      await scheduler.resolveLocalZone();
+      expect(tz.local.name, 'America/New_York');
+    });
+
+    test('unknown zone falls back to UTC without throwing', () async {
+      tz.setLocalLocation(tz.getLocation('America/New_York'));
+      final scheduler = FlutterLocalNotificationsScheduler(
+        localTimeZoneProvider: () async => 'Not/AZone',
+      );
+      await scheduler.resolveLocalZone();
+      expect(tz.local.name, 'UTC');
+    });
+
+    test('valid zone installs the location', () async {
+      tz.setLocalLocation(tz.getLocation('UTC'));
+      final scheduler = FlutterLocalNotificationsScheduler(
+        localTimeZoneProvider: () async => 'Asia/Tokyo',
+      );
+      await scheduler.resolveLocalZone();
+      expect(tz.local.name, 'Asia/Tokyo');
     });
   });
 }

@@ -66,6 +66,7 @@ class SyncSnapshot {
     required this.phase,
     this.dirtyCount = 0,
     this.rejectedCount = 0,
+    this.quarantinedCount = 0,
     this.lastSyncAt,
     this.lastError = SyncErrorKind.none,
     this.boundUserId,
@@ -83,6 +84,12 @@ class SyncSnapshot {
   /// not retried in a tight loop ("some entries could not be uploaded").
   final int rejectedCount;
 
+  /// Remote rows skipped by quarantine logic during the last cycle:
+  /// undecodable rows plus their unprocessable dependents. The payloads
+  /// are dropped while the cursor advances, so this count is the durable
+  /// signal a future warning surface can display.
+  final int quarantinedCount;
+
   /// When the last cycle completed without error (UTC), if ever.
   final DateTime? lastSyncAt;
 
@@ -97,6 +104,7 @@ class SyncSnapshot {
     SyncPhase? phase,
     int? dirtyCount,
     int? rejectedCount,
+    int? quarantinedCount,
     DateTime? lastSyncAt,
     SyncErrorKind? lastError,
     String? boundUserId,
@@ -105,6 +113,7 @@ class SyncSnapshot {
         phase: phase ?? this.phase,
         dirtyCount: dirtyCount ?? this.dirtyCount,
         rejectedCount: rejectedCount ?? this.rejectedCount,
+        quarantinedCount: quarantinedCount ?? this.quarantinedCount,
         lastSyncAt: lastSyncAt ?? this.lastSyncAt,
         lastError: lastError ?? this.lastError,
         boundUserId: boundUserId ?? this.boundUserId,
@@ -116,17 +125,19 @@ class SyncSnapshot {
       other.phase == phase &&
       other.dirtyCount == dirtyCount &&
       other.rejectedCount == rejectedCount &&
+      other.quarantinedCount == quarantinedCount &&
       other.lastSyncAt == lastSyncAt &&
       other.lastError == lastError &&
       other.boundUserId == boundUserId;
 
   @override
   int get hashCode => Object.hash(
-      phase, dirtyCount, rejectedCount, lastSyncAt, lastError, boundUserId);
+      phase, dirtyCount, rejectedCount, quarantinedCount, lastSyncAt, lastError, boundUserId);
 
   @override
   String toString() => 'SyncSnapshot(${phase.name}, dirty: $dirtyCount, '
-      'rejected: $rejectedCount, lastError: ${lastError.name})';
+      'rejected: $rejectedCount, quarantined: $quarantinedCount, '
+      'lastError: ${lastError.name})';
 }
 
 /// The sync seam. Built by `LunarLogRoot` after the database opens and

@@ -11,6 +11,12 @@ void main() {
     tzdata.initializeTimeZones();
   });
 
+  // setLocalLocation mutates the process-global tz.local; restore UTC so
+  // file order cannot leak zones into other tests.
+  tearDown(() {
+    tz.setLocalLocation(tz.getLocation('UTC'));
+  });
+
   group('resolveCurrentTimeZone', () {
     test('returns canonical IANA timezone identifier', () {
       final initial = resolveCurrentTimeZone();
