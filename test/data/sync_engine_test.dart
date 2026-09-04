@@ -139,17 +139,32 @@ RemoteDayEntryRow remoteEntry(
       serverVersion: serverVersion,
     );
 
-/// Storage whose `isEmpty` runs [beforeIsEmpty] first, so a test can change
-/// the session in the middle of the engine's bind decision.
+/// Storage with test seams in front of two writes: `isEmpty` runs
+/// [beforeIsEmpty] first, so a test can change the session in the middle of
+/// the engine's bind decision, and `markPushed` runs [beforeMarkPushed]
+/// first, so a test can fail a storage apply between two push batches.
 class HookedStorage extends LunarLogStorage {
   HookedStorage(super.db, {super.clock});
 
   Future<void> Function()? beforeIsEmpty;
 
+  Future<void> Function(SyncTable table, String id)? beforeMarkPushed;
+
   @override
   Future<bool> isEmpty() async {
     await beforeIsEmpty?.call();
     return super.isEmpty();
+  }
+
+  @override
+  Future<bool> markPushed({
+    required SyncTable table,
+    required String id,
+    required int localRevAtPush,
+  }) async {
+    await beforeMarkPushed?.call(table, id);
+    return super.markPushed(
+        table: table, id: id, localRevAtPush: localRevAtPush);
   }
 }
 
@@ -563,6 +578,76 @@ void main() {
       expect(ids(rig.transport.pushes[1].dayEntries), [e.id]);
       expect(rig.engine.snapshot.rejectedCount, 0);
     });
+
+    test('R8: a storage apply failure between push batches leaves the '
+        'committed batch pushed and the failing batch dirty; the next cycle '
+        're-pushes only what is left', () async {
+      // Two dirty profiles and NO day entries: at batchSize 1 that is what
+      // yields two batches ([pA], [pB]). One profile plus one day entry
+      // would collapse into a single batch, because `_chunk` appends the
+      // first day entries to the *last* profile batch - the failure would
+      // then land inside batch 1, before anything committed, which is not
+      // the cross-batch failure this test exists to pin.
+      final rig = Rig(
+          batchSize: 1,
+          storageFactory: (db, clock) => HookedStorage(db, clock: clock));
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      await rig.storage.upsertProfile(displayName: 'B', isMinor: false);
+      final offsetBefore = (await rig.state()).serverClockOffsetMs;
+      // Batch 1 answers with a server clock five minutes ahead, so the
+      // in-memory offset it sets is visibly different from the persisted one.
+      rig.transport.scriptPushResult(
+          serverNow: t0.add(const Duration(minutes: 5)));
+
+      final hooked = rig.storage as HookedStorage;
+      var markPushedCalls = 0;
+      hooked.beforeMarkPushed = (table, id) async {
+        markPushedCalls++;
+        // The first write of batch 2, after batch 1 fully committed. A plain
+        // Exception (not a SyncTransportError) lands in `_cycle`'s general
+        // catch, so the kind is `other`.
+        if (markPushedCalls == 2) throw Exception('storage apply failed');
+      };
+
+      await rig.start();
+
+      final pushes = rig.transport.pushes;
+      expect(pushes, hasLength(2),
+          reason: 'two profile-only batches were sent; a collapse back into '
+              'one batch would silently void every assertion below');
+      expect(pushes[0].profiles, hasLength(1));
+      expect(pushes[1].profiles, hasLength(1));
+      expect(pushes[0].dayEntries, isEmpty);
+      expect(pushes[1].dayEntries, isEmpty);
+      final committedId = ids(pushes[0].profiles).single;
+      final failedId = ids(pushes[1].profiles).single;
+
+      expect((await rig.profile(committedId)).dirty, isFalse,
+          reason: 'batch 1 markPushed committed and nothing rolled it back');
+      expect((await rig.profile(failedId)).dirty, isTrue);
+      expect(await rig.storage.dirtyCount(), 1);
+      expect(rig.engine.snapshot.phase, SyncPhase.error);
+      expect(rig.engine.snapshot.lastError, SyncErrorKind.other);
+      expect(rig.transport.pulls, isEmpty,
+          reason: 'a failed push ends the cycle');
+      expect(rig.storage.clockOffset, const Duration(minutes: 5),
+          reason: 'the in-memory offset from batch 1 did take effect');
+      expect((await rig.state()).serverClockOffsetMs, offsetBefore,
+          reason: 'the persist happens after the batch loop, which the '
+              'exception skipped');
+
+      hooked.beforeMarkPushed = null;
+      await rig.sync();
+
+      expect(rig.transport.pushes, hasLength(3));
+      expect(rig.transport.pushes[2].profiles, hasLength(1));
+      expect(ids(rig.transport.pushes[2].profiles), [failedId],
+          reason: 'only the row left over is re-pushed');
+      expect(await rig.storage.dirtyCount(), 0);
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+    });
   });
 
   group('pull', () {
@@ -795,6 +880,65 @@ void main() {
       expect((await rig.state()).lastFullPullAt?.toUtc(), staleFullPull,
           reason: 'reconcile is retried, so the full-pull stamp does not '
               'advance yet');
+    });
+
+    test('R9: a full-reconcile page that fails as a batch lands the rows the '
+        'per-row fallback can apply and defers only the orphan', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      final staleFullPull = t0.subtract(const Duration(hours: 25));
+      await rig.bind(uidA, lastFullPullAt: staleFullPull);
+      // pA is held locally so the remote entry referencing it can apply.
+      // Creating it marks it dirty, so pA also rides this cycle's push -
+      // harmless, but it is why this test asserts nothing about
+      // `transport.pushes`.
+      final pA = await rig.storage.upsertProfile(
+          displayName: 'A', isMinor: false);
+      const orphanProfileId = 'no-such-profile';
+      final orphan = remoteEntry(ulidN(10),
+          profileId: orphanProfileId, localDate: '2026-01-01', updatedAt: t0,
+          serverVersion: 10);
+      final appliable = remoteEntry(ulidN(11),
+          profileId: pA.id, localDate: '2026-02-02', updatedAt: t0,
+          serverVersion: 11);
+      // The incremental dayEntries pull gets nothing; the reconcile page
+      // carries both rows, so `applyRemoteRows` fails the whole page as one
+      // transaction and `_applyReconcilePage` re-applies it row by row.
+      //
+      // THE ROW ORDER IS DELIBERATE - DO NOT REORDER. The orphan must come
+      // first. `_applyReconcilePage` iterates the page in order, so with the
+      // appliable row first a `break`-on-first-failure regression would
+      // produce byte-identical results (the good row would already have
+      // landed) and this test would pass against the very bug it exists to
+      // catch.
+      rig.transport.scriptPage(SyncTable.dayEntries, const []);
+      rig.transport.scriptPage(SyncTable.dayEntries, [orphan, appliable]);
+
+      await rig.start();
+
+      final landed = await rig.storage.getDayEntries(profileId: pA.id);
+      expect(landed, hasLength(1),
+          reason: 'the appliable row lands even though an earlier row in the '
+              'same page failed');
+      expect(landed.single.id, appliable.id);
+      expect(landed.single.localDate, '2026-02-02');
+      expect(landed.single.flow, FlowLevel.medium);
+      expect(landed.single.note, 'from remote');
+      expect(landed.single.tags, ['remote']);
+      expect(
+          await rig.storage.getDayEntries(
+              profileId: orphanProfileId, includeTombstones: true),
+          isEmpty,
+          reason: 'the orphan is deferred, not persisted');
+      expect(rig.engine.snapshot.phase, SyncPhase.idle,
+          reason: 'a retryable apply failure is not a cycle failure');
+      final state = await rig.state();
+      expect(state.lastFullPullAt?.toUtc(), staleFullPull,
+          reason: 'the deferred row keeps the full-pull stamp where it was, '
+              'so the reconcile is retried next cycle');
+      expect(state.cursorProfiles, 0);
+      expect(state.cursorDayEntries, 0,
+          reason: 'a reconcile applies without moving the per-table cursors');
     });
   });
 
