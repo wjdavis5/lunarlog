@@ -45,10 +45,10 @@ class RealtimeSyncCoordinator {
   Timer? _debounceTimer;
   bool _disposed = false;
 
-  /// The profile set from the most recent [storage] emission, kept so a
+  /// The profile ids from the most recent [storage] emission, kept so a
   /// sign-in/sign-out identity change can rebuild channels without waiting
   /// for another watch emission.
-  List<Profile> _lastProfiles = const [];
+  Set<String> _lastProfileIds = const {};
 
   /// The signed-in user id channels are currently subscribed under, or null
   /// while signed out. Only a *change* of this value triggers a rebuild —
@@ -61,20 +61,17 @@ class RealtimeSyncCoordinator {
     if (_disposed) return;
     final auth = this.auth;
     if (auth != null) {
-      _boundUserId = _identityOf(auth);
+      _boundUserId = auth.confirmedUserId;
       _authSubscription = auth.states.listen((_) => _onAuthStateChanged());
     }
     _profilesSubscription = storage.watchProfiles().listen(_onProfilesUpdated);
   }
 
-  String? _identityOf(AuthService auth) =>
-      auth.state == AuthSessionState.signedIn ? auth.currentUserId : null;
-
   void _onAuthStateChanged() {
     if (_disposed) return;
     final auth = this.auth;
     if (auth == null) return;
-    final identity = _identityOf(auth);
+    final identity = auth.confirmedUserId;
     if (identity == _boundUserId) return;
     _boundUserId = identity;
     _rebuildChannels();
@@ -86,27 +83,26 @@ class RealtimeSyncCoordinator {
   /// there is no authorized identity to bind a fresh subscription to, so
   /// resubscribing would just open channels the server will reject.
   void _rebuildChannels() {
-    for (final ch in _channels.values) {
-      client.removeChannel(ch);
+    for (final removal in _clearChannels()) {
+      unawaited(removal);
     }
-    _channels.clear();
     if (_boundUserId == null) return;
-    for (final profile in _lastProfiles) {
-      _subscribeToProfile(profile.id);
+    for (final id in _lastProfileIds) {
+      _subscribeToProfile(id);
     }
   }
 
   void _onProfilesUpdated(List<Profile> profiles) {
     if (_disposed) return;
-    _lastProfiles = profiles;
     final currentIds = profiles.map((p) => p.id).toSet();
+    _lastProfileIds = currentIds;
 
     // 1. Remove channels for profiles no longer present.
     final toRemove = _channels.keys.where((id) => !currentIds.contains(id)).toList();
     for (final id in toRemove) {
       final ch = _channels.remove(id);
       if (ch != null) {
-        client.removeChannel(ch);
+        unawaited(client.removeChannel(ch));
       }
     }
 
@@ -116,6 +112,17 @@ class RealtimeSyncCoordinator {
         _subscribeToProfile(id);
       }
     }
+  }
+
+  /// Removes every current channel and clears [_channels], returning the
+  /// pending removal futures so each caller decides whether to await them:
+  /// [dispose] awaits them all concurrently, while [_rebuildChannels] fires
+  /// them and moves straight to re-subscribing (the old channels' removal
+  /// completing is not a precondition for the new ones).
+  List<Future<void>> _clearChannels() {
+    final removals = _channels.values.map(client.removeChannel).toList();
+    _channels.clear();
+    return removals;
   }
 
   void _subscribeToProfile(String profileId) {
@@ -184,9 +191,6 @@ class RealtimeSyncCoordinator {
     unawaited(_profilesSubscription?.cancel());
     _profilesSubscription = null;
 
-    for (final ch in _channels.values) {
-      await client.removeChannel(ch);
-    }
-    _channels.clear();
+    await Future.wait(_clearChannels());
   }
 }
