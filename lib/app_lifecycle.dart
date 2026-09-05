@@ -779,7 +779,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
   /// server's answer) — *before* the reopen, so the fresh database's first
   /// sync cycle never sees the account being signed out and binds to it;
   /// finally reopen through `dbOpener` (which mints a fresh key) and start
-  /// a fresh engine.
+  /// a fresh engine, then re-lock the gate (U1; R14) so the device lands on
+  /// first-run behind the credential, with cleared profiles and cursors.
   ///
   /// A second call while one is running is ignored. A local step failing
   /// fails closed: the root shows the fail-closed screen rather than
@@ -796,6 +797,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
       if (!deleted) return;
       await _signOutLocally();
       if (mounted) await _openDatabase();
+      // Re-lock behind the fresh database (U1; R14): on un-gated platforms
+      // this only settles the cover flag, so first-run harnesses are
+      // untouched.
+      if (mounted) _gate.lock();
     } finally {
       _resetting = false;
     }

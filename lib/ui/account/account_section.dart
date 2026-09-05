@@ -1,9 +1,20 @@
 /// Settings "Account" section (U6; R6, R16, AS3, F6). Rendered only when
 /// an [AuthController] is provided (an unconfigured build has none, so
 /// the section is absent, KTD11). Tiles: sign in / signed-in email, the
-/// sync status tile, "Sync now", "Sign out" and "Sign out everywhere".
-/// Both sign-outs end in the one device reset (KTD16); the plain one warns
+/// sync status tile, "Sync now", "Export data" (U1; R13), "Sign out",
+/// "Sign out everywhere", and "Delete account" (U1; R14). Both sign-outs
+/// end in the one device reset (KTD16); the plain one warns
 /// first when unsynced rows (tombstones included) exist.
+///
+/// Export (U1; R13): "Export data" builds CSV, a one-page PDF summary, and
+/// JSON for the selected profile through the system share sheet; temp files
+/// are deleted whatever the share reports.
+///
+/// Deletion (U1; R14): "Delete account" offers the export first
+/// (non-blocking, skippable), requires a typed DELETE confirmation, runs
+/// the server cascade online (an offline attempt refuses and removes
+/// nothing), revokes the Apple token on a best-effort basis, and ends in
+/// the one device reset to first-run.
 ///
 /// Sign-in methods and adding one (#2 U5; KTD5, R9, R10, F5): the
 /// identity tile's subtitle lists the account's methods from
@@ -27,12 +38,22 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart'
     show DeviceResetCallback, GateController;
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/data/account/account_deletion.dart';
+import 'package:lunarlog/data/account/apple_revocation.dart';
+import 'package:lunarlog/data/account/supabase_account_deletion.dart';
+import 'package:lunarlog/data/export/export_service.dart';
+import 'package:lunarlog/data/export/share_client.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 const String kSignOutConsequenceCopy =
     'This removes the data from this device. It stays in your account.';
@@ -47,8 +68,33 @@ String providerLabel(String provider) => switch (provider) {
       _ => provider[0].toUpperCase() + provider.substring(1),
     };
 
+/// Kinds-only copy for an export failure (R18: no paths, no content).
+String accountExportCopy(ExportError error) => switch (error) {
+      ExportNoProfileError() => 'That profile no longer exists.',
+      ExportIoError() => 'Export failed. Nothing was shared.',
+      ExportShareFailedError() => 'Sharing failed. Nothing was shared.',
+    };
+
+/// Kinds-only copy for a deletion failure (R18). Every copy states what
+/// was (not) removed.
+String accountDeletionCopy(AccountDeletionError error) => switch (error) {
+      AccountDeletionOfflineError() =>
+        'No connection. Nothing was deleted.',
+      AccountDeletionNotSignedInError() =>
+        'You are signed out. Nothing was deleted.',
+      AccountDeletionServerError() =>
+        'Deletion failed. Nothing on this device was removed.',
+    };
+
 class AccountSection extends StatefulWidget {
-  const AccountSection({super.key, this.showAddGoogle, this.showAddApple});
+  const AccountSection({
+    super.key,
+    this.showAddGoogle,
+    this.showAddApple,
+    this.exportService,
+    this.deleteServerData,
+    this.revokeAppleToken,
+  });
 
   /// Whether "Add Google" may render; null means [AppConfig.hasGoogle]
   /// (#2 U5). Injectable so tests exercise the action without defines.
@@ -56,6 +102,18 @@ class AccountSection extends StatefulWidget {
 
   /// Whether "Add Apple" may render; null means "iOS, not web" (#2 U5).
   final bool? showAddApple;
+
+  /// Export delivery; null builds one from the context's repositories with
+  /// the system share sheet (U1; R13). Injectable for tests.
+  final ExportService? exportService;
+
+  /// The privileged server cascade; null runs `request_account_deletion`
+  /// over the configured client (U1; R14). Injectable for tests.
+  final DeleteServerData? deleteServerData;
+
+  /// Best-effort Apple token revocation; null uses the documented no-op
+  /// seam. Injectable for tests.
+  final RevokeAppleToken? revokeAppleToken;
 
   @override
   State<AccountSection> createState() => _AccountSectionState();
@@ -66,6 +124,10 @@ class _AccountSectionState extends State<AccountSection> {
   /// time: the tapped tile is disabled and a second tap does nothing.
   String? _linking;
   String? _linkError;
+
+  /// True while an export or a deletion is running; both tiles are
+  /// disabled meanwhile.
+  bool _busy = false;
 
   bool get _canAddGoogle => widget.showAddGoogle ?? AppConfig.hasGoogle;
 
@@ -155,14 +217,32 @@ class _AccountSectionState extends State<AccountSection> {
             leading: const Icon(Icons.logout),
             title: const Text('Sign out'),
             subtitle: const Text('Removes the data from this device.'),
-            onTap: () => _signOut(context),
+            onTap: _busy ? null : () => _signOut(context),
           ),
           ListTile(
             key: const ValueKey('account-sign-out-everywhere'),
             leading: const Icon(Icons.devices_other),
             title: const Text('Sign out everywhere'),
             subtitle: const Text('Ends every session of this account.'),
-            onTap: () => _signOutEverywhere(context),
+            onTap: _busy ? null : () => _signOutEverywhere(context),
+          ),
+          ListTile(
+            key: const ValueKey('account-export'),
+            leading: const Icon(Icons.download),
+            title: const Text('Export data'),
+            subtitle:
+                const Text('CSV, PDF summary, and JSON for one profile.'),
+            onTap: _busy ? null : () => _export(context),
+          ),
+          ListTile(
+            key: const ValueKey('account-delete'),
+            leading: Icon(Icons.delete_forever,
+                color: theme.colorScheme.error),
+            title: Text('Delete account',
+                style: TextStyle(color: theme.colorScheme.error)),
+            subtitle: const Text(
+                'Deletes your account and its data everywhere.'),
+            onTap: _busy ? null : () => _deleteAccount(context),
           ),
         ],
       ],
@@ -350,5 +430,239 @@ class _AccountSectionState extends State<AccountSection> {
     }
     if (!context.mounted) return;
     await _reset(context);
+  }
+
+  ExportService _services(BuildContext context) =>
+      widget.exportService ??
+      ExportService(
+        profiles: context.read<ProfilesRepository>(),
+        dayEntries: context.read<DayEntriesRepository>(),
+        tempDirectory: getTemporaryDirectory,
+        shareFiles: shareExportFiles,
+      );
+
+  DeleteServerData _cascade() =>
+      widget.deleteServerData ?? _supabaseCascade;
+
+  /// The production cascade: `request_account_deletion` over the
+  /// configured client. Without a configured backend there is no account
+  /// to delete, so the attempt fails closed as a server error.
+  Future<void> _supabaseCascade() {
+    if (!AppConfig.hasSupabase) {
+      throw const AccountDeletionError.server();
+    }
+    return SupabaseAccountDeletion(Supabase.instance.client)
+        .deleteServerData();
+  }
+
+  void _snack(BuildContext context, String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+    ));
+  }
+
+  /// U1 (R13): shares CSV, PDF summary, and JSON for one profile. Returns
+  /// true when the share sheet was shown.
+  Future<bool> _export(BuildContext context) async {
+    if (_busy) return false;
+    setState(() => _busy = true);
+    try {
+      return await _runExport(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Profile picker for export and deletion flows. Null means cancelled.
+  Future<String?> _pickProfile(
+      BuildContext context, List<Profile> profiles) {
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        key: const ValueKey('account-export-pick'),
+        title: const Text('Export which profile?'),
+        children: [
+          for (final profile in profiles)
+            SimpleDialogOption(
+              key: ValueKey('account-export-pick-${profile.id}'),
+              onPressed: () => Navigator.of(dialogContext).pop(profile.id),
+              child: Text(profile.displayName),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// U1 (R14): export-first offer (non-blocking, skippable), typed DELETE
+  /// confirmation, online cascade, best-effort Apple revocation, then the
+  /// one device reset to first-run.
+  Future<void> _deleteAccount(BuildContext context) async {
+    if (_busy) return;
+    final auth = context.read<AuthController>();
+    final user = auth.currentUser;
+    final signedIn = auth.state == AuthSessionState.signedIn ||
+        auth.state == AuthSessionState.passwordRecovery;
+    setState(() => _busy = true);
+    try {
+      final offer = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          key: const ValueKey('account-delete-export-offer'),
+          title: const Text('Keep a copy first?'),
+          content: const Text(
+            'Export builds CSV, a PDF summary, and JSON for one profile '
+            'through the share sheet. You can skip and delete right away.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              key: const ValueKey('account-delete-export-skip'),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Skip'),
+            ),
+            FilledButton(
+              key: const ValueKey('account-delete-export-go'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Export a profile'),
+            ),
+          ],
+        ),
+      );
+      if (offer == null || !context.mounted) return;
+      // Non-blocking: an export failure reports its own copy and the
+      // deletion still proceeds to confirmation.
+      if (offer) await _runExport(context);
+
+      if (!context.mounted) return;
+      final confirmed = await _confirmDeletion(context);
+      if (confirmed != true || !context.mounted) return;
+
+      final service = AccountDeletionService(
+        deleteServerData: _cascade(),
+        revokeAppleToken:
+            widget.revokeAppleToken ?? revokeAppleTokenBestEffort,
+        resetDevice: () => _reset(context),
+      );
+      try {
+        await service.deleteAccount(
+          signedIn: signedIn,
+          providers: user?.providers ?? const <String>[],
+        );
+      } on AccountDeletionError catch (error) {
+        if (!context.mounted) return;
+        _snack(context, accountDeletionCopy(error));
+      }
+      // On success the reset unmounted this tree; nothing to report.
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The export body shared by [_export] and the deletion's non-blocking
+  /// first step ([_deleteAccount] holds `_busy` throughout, so this never
+  /// touches it).
+  Future<bool> _runExport(BuildContext context) async {
+    final service = _services(context);
+    final profilesRepo = context.read<ProfilesRepository>();
+    try {
+      final profiles = await profilesRepo.list();
+      if (!context.mounted) return false;
+      if (profiles.isEmpty) {
+        _snack(context, 'Nothing to export yet.');
+        return false;
+      }
+      final profileId = profiles.length == 1
+          ? profiles.single.id
+          : await _pickProfile(context, profiles);
+      if (profileId == null || !context.mounted) return false;
+      try {
+        await service.exportProfile(profileId);
+      } on ExportError catch (error) {
+        if (!context.mounted) return false;
+        _snack(context, accountExportCopy(error));
+        return false;
+      }
+      if (!context.mounted) return false;
+      _snack(context, 'Export shared.');
+      return true;
+    } catch (error) {
+      debugPrint('lunarlog account: export failed (${error.runtimeType})');
+      if (context.mounted) {
+        _snack(context,
+            accountExportCopy(const ExportError.shareFailed()));
+      }
+      return false;
+    }
+  }
+
+  /// Typed DELETE confirmation. Null means cancelled.
+  Future<bool?> _confirmDeletion(BuildContext context) {
+    final controller = TextEditingController();
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => _DeleteConfirmDialog(
+        controller: controller,
+      ),
+    ).whenComplete(controller.dispose);
+  }
+}
+
+/// Typed-confirmation dialog for account deletion (U1; R14). The delete
+/// button enables only when the field reads DELETE exactly.
+class _DeleteConfirmDialog extends StatefulWidget {
+  const _DeleteConfirmDialog({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  State<_DeleteConfirmDialog> createState() => _DeleteConfirmDialogState();
+}
+
+class _DeleteConfirmDialogState extends State<_DeleteConfirmDialog> {
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey('account-delete-confirm'),
+      title: const Text('Delete account?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'This deletes your account and its data on the server and on '
+            'this device. Type DELETE to confirm.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('account-delete-confirm-field'),
+            controller: widget.controller,
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+              labelText: 'Type DELETE',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('account-delete-confirm-delete'),
+          onPressed: widget.controller.text == 'DELETE'
+              ? () => Navigator.of(context).pop(true)
+              : null,
+          child: const Text('Delete account'),
+        ),
+      ],
+    );
   }
 }
