@@ -6,8 +6,12 @@ name: iOS Release
 #
 # Two stages of delivery:
 #   - Every push to main uploads a build to TestFlight.
-#   - App Store review submission fires only when the `version:` string in
-#     pubspec.yaml changes (or when manually dispatched with submit_for_review: true).
+#   - App Store review submission fires when the `version:` string in
+#     pubspec.yaml changes anywhere across the pushed commit range (or when
+#     manually dispatched with submit_for_review: true). See
+#     .github/scripts/detect-version-bump.sh for the detection logic and
+#     .github/scripts/check-release-gate.sh for the account-deletion gate
+#     that can withhold submission (issue #17, issue #41).
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
 #   ASC_KEY_ID                    App Store Connect API key ID
@@ -157,7 +161,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          # Reading pubspec.yaml at an arbitrary before-commit (see the
+          # `Detect a version bump` step below) needs full history --
+          # fetch-depth: 2 only has the tip and its parent.
+          fetch-depth: 0
 
       - uses: subosito/flutter-action@v2
         with:
@@ -181,29 +188,12 @@ jobs:
 
       - name: Detect a version bump
         id: bump
-        run: |
-          set -euo pipefail
-
-          current="${{ steps.version.outputs.marketing }}"
-
-          if previous_raw="$(git show 'HEAD~1:pubspec.yaml' 2>/dev/null)"; then
-            previous="$(printf '%s' "$previous_raw" | grep '^version:' | sed 's/^version: *//' | cut -d'+' -f1)"
-          else
-            previous="$current"
-          fi
-
-          manual="${{ inputs.submit_for_review }}"
-
-          if [ "$manual" = "true" ]; then
-            echo "submit=true" >> "$GITHUB_OUTPUT"
-            echo "Submission requested manually via workflow_dispatch."
-          elif [ "$current" != "$previous" ]; then
-            echo "submit=true" >> "$GITHUB_OUTPUT"
-            echo "Version bumped ($previous -> $current); will submit for App Store review."
-          else
-            echo "submit=false" >> "$GITHUB_OUTPUT"
-            echo "Version unchanged ($current); uploading to TestFlight only."
-          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
+          CURRENT_VERSION: ${{ steps.version.outputs.marketing }}
+        run: bash .github/scripts/detect-version-bump.sh
 
       - name: Install the App Store Connect API key
         env:
