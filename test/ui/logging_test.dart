@@ -129,6 +129,32 @@ DayEntry entryFor(
   );
 }
 
+/// The provider set `pumpLogging` builds (mirrors `lib/app.dart`'s
+/// ordering, KTD2), factored out so the profile-switch test (R6) can
+/// rebuild the same tree shape at a second `pumpWidget` call without its
+/// own copy silently drifting from this one.
+List<SingleChildWidget> loggingProviders({
+  required ProfilesRepository profiles,
+  required DayEntriesRepository dayEntries,
+  required SettingsStore settings,
+  AuthController? authController,
+  LunarLogStorage? storage,
+}) =>
+    [
+      Provider<ProfilesRepository>.value(value: profiles),
+      Provider<DayEntriesRepository>.value(value: dayEntries),
+      Provider<SettingsStore>.value(value: settings),
+      ChangeNotifierProvider(
+        create: (_) => ProfileController(
+          profilesRepository: profiles,
+          settingsStore: settings,
+        )..load(),
+      ),
+      if (authController != null)
+        ChangeNotifierProvider<AuthController>.value(value: authController),
+      if (storage != null) Provider<LunarLogStorage>.value(value: storage),
+    ];
+
 Future<Harness> pumpLogging(
   WidgetTester tester, {
   bool readOnly = false,
@@ -154,36 +180,22 @@ Future<Harness> pumpLogging(
   }
   final entries = DriftDayEntriesRepository(db.storage);
 
-  AuthController? authController;
-  final providers = <SingleChildWidget>[
-    Provider<ProfilesRepository>.value(value: profiles),
-    Provider<DayEntriesRepository>.value(
-      value: entryRepositoryOverride ?? entries,
-    ),
-    Provider<SettingsStore>.value(value: settings),
-    ChangeNotifierProvider(
-      create: (_) => ProfileController(
-        profilesRepository: profiles,
-        settingsStore: settings,
-      )..load(),
-    ),
-  ];
-  if (authService != null) {
-    authController = AuthController(authService: authService);
-    providers.add(
-      ChangeNotifierProvider<AuthController>.value(value: authController),
-    );
-  }
-  // Matches lib/app.dart's provider set (KTD2): LunarLogStorage is what
-  // ProfileDetailScreen reads to decide whether MonthCalendar gets a
-  // ProfileGuardiansRepository (R5) at all.
-  if (withStorage) {
-    providers.add(Provider<LunarLogStorage>.value(value: db.storage));
-  }
+  final authController = authService == null
+      ? null
+      : AuthController(authService: authService);
 
   await tester.pumpWidget(
     MultiProvider(
-      providers: providers,
+      providers: loggingProviders(
+        profiles: profiles,
+        dayEntries: entryRepositoryOverride ?? entries,
+        settings: settings,
+        authController: authController,
+        // Matches lib/app.dart's provider set (KTD2): LunarLogStorage is
+        // what ProfileDetailScreen reads to decide whether MonthCalendar
+        // gets a ProfileGuardiansRepository (R5) at all.
+        storage: withStorage ? db.storage : null,
+      ),
       child: MaterialApp(
         home: ProfileDetailScreen(
           profile: profile,
@@ -835,30 +847,18 @@ void main() {
 
       // Rebuild ProfileDetailScreen at the same tree position with the new
       // profile, mirroring how the home gate swaps the active profile
-      // in-place (see ProfileDetailScreen's own didUpdateWidget doc). The
-      // provider list mirrors pumpLogging's exactly (including
-      // ProfileController, which ProfileDetailScreen.build reads
-      // unconditionally) so this is a like-for-like tree update, not a
-      // remount.
+      // in-place (see ProfileDetailScreen's own didUpdateWidget doc). Reuses
+      // loggingProviders so this tree shape can never silently drift from
+      // pumpLogging's — a like-for-like update, not a remount.
       await tester.pumpWidget(
         MultiProvider(
-          providers: <SingleChildWidget>[
-            Provider<ProfilesRepository>.value(value: profiles),
-            Provider<DayEntriesRepository>.value(
-              value: DriftDayEntriesRepository(h.db.storage),
-            ),
-            Provider<SettingsStore>.value(value: settings),
-            ChangeNotifierProvider(
-              create: (_) => ProfileController(
-                profilesRepository: profiles,
-                settingsStore: settings,
-              )..load(),
-            ),
-            ChangeNotifierProvider<AuthController>.value(
-              value: h.authController!,
-            ),
-            Provider<LunarLogStorage>.value(value: h.db.storage),
-          ],
+          providers: loggingProviders(
+            profiles: profiles,
+            dayEntries: h.entries,
+            settings: settings,
+            authController: h.authController,
+            storage: h.db.storage,
+          ),
           child: MaterialApp(
             home: ProfileDetailScreen(
               profile: profileB,
