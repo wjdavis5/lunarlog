@@ -753,6 +753,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   /// Incremental pull per table, profiles first (KTD2). Returns whether a
   /// page hit a retryable apply failure (left for the next cycle).
+  ///
+  /// Per-table paging and the profileGuardians-specific retry bookkeeping
+  /// are split into [_pullTable]/[_onTablePullFailure]/
+  /// [_onTablePullSettled] (finding #4 follow-up) so this stays a plain
+  /// orchestrator: each extracted piece is small enough to score well
+  /// under the CRAP gate on its own, instead of one method carrying all of
+  /// it.
   Future<bool> _pullIncremental(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
     var retry = false;
@@ -761,63 +768,80 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.profileGuardians,
       SyncTable.dayEntries,
     ]) {
-      final state = await _storage.readSyncState();
-      // profileGuardians has no persisted cursor yet (schema v3): it pages
-      // from 0 every cycle, but `after` still advances locally so a full
-      // first page terminates instead of looping on the same page.
-      var after = switch (table) {
-        SyncTable.profiles => state.cursorProfiles,
-        SyncTable.dayEntries => state.cursorDayEntries,
-        SyncTable.profileGuardians => 0,
-      };
-      var guardianFailedThisTable = false;
-      while (true) {
-        _checkpoint(uid);
-        final page = await _transport.pullPage(
-            table: table, afterVersion: after, limit: _pageSize);
-        if (page.isEmpty) break;
-        final newCursor = _maxVersion(page, after);
-        try {
-          await _storage.applyRemotePage(
-              table: table, rows: page, newCursor: newCursor);
-        } on RetryableSyncApplyError {
-          retry = true;
-          if (table == SyncTable.profileGuardians) {
-            guardianFailedThisTable = true;
-            // A guardian row whose profile is not held locally: the
-            // profile may sit below the profiles cursor (joined share),
-            // so rewind it - the next cycle re-pulls profiles from
-            // version 0 and the share converges without involving the
-            // reconcile-retry bound (#74 owns that path exclusively).
-            //
-            // Bounded the same way as that cap (finding #4): after fixing
-            // #8, the only row that can still reach here is an accepted
-            // membership whose profile genuinely never arrives, and
-            // without its own bound that single row would force a full
-            // profile re-pull every cycle forever. Past
-            // kMaxConsecutiveReconcileRetries consecutive failures the
-            // rewind stops - unlike the reconcile cap there is no
-            // time-based gate like lastFullPullAt to lean on here, so the
-            // count is only reset once profileGuardians applies cleanly
-            // again (below), not on hitting the cap itself.
-            _consecutiveGuardianPullRetries++;
-            if (_consecutiveGuardianPullRetries <
-                kMaxConsecutiveReconcileRetries) {
-              final s = await _storage.readSyncState();
-              await _storage.writeSyncState(s.copyWith(cursorProfiles: 0));
-            }
-          }
-          break;
-        }
-        final progressed = newCursor > after;
-        after = newCursor;
-        if (page.length < _pageSize || !progressed) break;
-      }
-      if (table == SyncTable.profileGuardians && !guardianFailedThisTable) {
-        _consecutiveGuardianPullRetries = 0;
-      }
+      if (await _pullTable(table, uid)) retry = true;
     }
     return retry;
+  }
+
+  /// Pages [table] incrementally until exhausted or a page hits a
+  /// retryable apply failure. Returns whether it failed (left for the next
+  /// cycle by the caller's `retry` flag).
+  Future<bool> _pullTable(SyncTable table, String uid) async {
+    final state = await _storage.readSyncState();
+    // profileGuardians has no persisted cursor yet (schema v3): it pages
+    // from 0 every cycle, but `after` still advances locally so a full
+    // first page terminates instead of looping on the same page.
+    var after = switch (table) {
+      SyncTable.profiles => state.cursorProfiles,
+      SyncTable.dayEntries => state.cursorDayEntries,
+      SyncTable.profileGuardians => 0,
+    };
+    var failed = false;
+    while (true) {
+      _checkpoint(uid);
+      final page = await _transport.pullPage(
+          table: table, afterVersion: after, limit: _pageSize);
+      if (page.isEmpty) break;
+      final newCursor = _maxVersion(page, after);
+      try {
+        await _storage.applyRemotePage(
+            table: table, rows: page, newCursor: newCursor);
+      } on RetryableSyncApplyError {
+        failed = true;
+        await _onTablePullFailure(table);
+        break;
+      }
+      final progressed = newCursor > after;
+      after = newCursor;
+      if (page.length < _pageSize || !progressed) break;
+    }
+    _onTablePullSettled(table, failed);
+    return failed;
+  }
+
+  /// A page of [table] hit a [RetryableSyncApplyError]. Only profileGuardians
+  /// carries follow-up bookkeeping (KTD2 predates a retry story for the
+  /// other tables).
+  Future<void> _onTablePullFailure(SyncTable table) async {
+    if (table != SyncTable.profileGuardians) return;
+    // A guardian row whose profile is not held locally: the profile may
+    // sit below the profiles cursor (joined share), so rewind it - the
+    // next cycle re-pulls profiles from version 0 and the share converges
+    // without involving the reconcile-retry bound (#74 owns that path
+    // exclusively).
+    //
+    // Bounded the same way as that cap (finding #4): after fixing #8, the
+    // only row that can still reach here is an accepted membership whose
+    // profile genuinely never arrives, and without its own bound that
+    // single row would force a full profile re-pull every cycle forever.
+    // Past kMaxConsecutiveReconcileRetries consecutive failures the
+    // rewind stops - unlike the reconcile cap there is no time-based gate
+    // like lastFullPullAt to lean on here, so the count is only reset
+    // once profileGuardians applies cleanly again ([_onTablePullSettled]),
+    // not on hitting the cap itself.
+    _consecutiveGuardianPullRetries++;
+    if (_consecutiveGuardianPullRetries < kMaxConsecutiveReconcileRetries) {
+      final s = await _storage.readSyncState();
+      await _storage.writeSyncState(s.copyWith(cursorProfiles: 0));
+    }
+  }
+
+  /// [table]'s page loop finished (normally or via a failure). Clears the
+  /// profileGuardians retry count once it applies cleanly again.
+  void _onTablePullSettled(SyncTable table, bool failed) {
+    if (table == SyncTable.profileGuardians && !failed) {
+      _consecutiveGuardianPullRetries = 0;
+    }
   }
 
   /// Full reconciliation: every row of tables paged from version 0,
