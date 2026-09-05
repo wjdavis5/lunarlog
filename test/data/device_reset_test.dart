@@ -70,8 +70,11 @@ void main() {
     await deleteDatabaseFiles(file);
 
     for (final suffix in const ['', '-wal', '-shm', '-journal']) {
-      expect(File('${file.path}$suffix').existsSync(), isFalse,
-          reason: 'sibling "$suffix" must be deleted');
+      expect(
+        File('${file.path}$suffix').existsSync(),
+        isFalse,
+        reason: 'sibling "$suffix" must be deleted',
+      );
     }
     expect(unrelated.existsSync(), isTrue);
 
@@ -86,7 +89,10 @@ void main() {
     final encrypted = hostHasSqlcipher();
 
     final factory = nativeDbFactory(
-        file: file, keyStore: keys, requireEncryption: encrypted);
+      file: file,
+      keyStore: keys,
+      requireEncryption: encrypted,
+    );
     final db = await factory.open();
     await db.storage.upsertProfile(displayName: 'Before', isMinor: false);
     await db.close();
@@ -112,28 +118,35 @@ void main() {
     }
   });
 
-  test('AE10 counterexample: deleting the key first and crashing before the '
-      'file is removed quarantines the next open (why files go first)',
-      () async {
-    final file = await freshDbFile('key_first');
-    final keys = MemoryKeyStore();
-    final factory = nativeDbFactory(file: file, keyStore: keys);
-    final db = await factory.open();
-    await db.storage.upsertProfile(displayName: 'Before', isMinor: false);
-    await db.close();
+  test(
+    'AE10 counterexample: deleting the key first and crashing before the '
+    'file is removed quarantines the next open (why files go first)',
+    () async {
+      final file = await freshDbFile('key_first');
+      final keys = MemoryKeyStore();
+      final factory = nativeDbFactory(file: file, keyStore: keys);
+      final db = await factory.open();
+      await db.storage.upsertProfile(displayName: 'Before', isMinor: false);
+      await db.close();
 
-    await keys.deleteKey();
-    // Simulated crash: the file deletion never happens.
+      await keys.deleteKey();
+      // Simulated crash: the file deletion never happens.
 
-    await expectLater(
-        factory.open(), throwsA(isA<DatabaseQuarantineError>()));
-    expect(keys.minted, hasLength(2),
-        reason: 'a new key was minted over the old encrypted file');
-    expect(file.existsSync(), isTrue, reason: 'quarantine never wipes');
-  },
-      skip: hostHasSqlcipher()
-          ? false
-          : 'sqlcipher native library not active on this host');
+      await expectLater(
+        factory.open(),
+        throwsA(isA<DatabaseQuarantineError>()),
+      );
+      expect(
+        keys.minted,
+        hasLength(2),
+        reason: 'a new key was minted over the old encrypted file',
+      );
+      expect(file.existsSync(), isTrue, reason: 'quarantine never wipes');
+    },
+    skip: hostHasSqlcipher()
+        ? false
+        : 'sqlcipher native library not active on this host',
+  );
 
   test('SecureDbKeyStore exposes deleteKey on the interface', () {
     // Compile-time proof that the production store implements the primitive;
@@ -142,14 +155,11 @@ void main() {
     expect(SecureDbKeyStore(), isA<DbKeyStore>());
   });
 
-  test(
-      'SecureDbKeyStore pins the Keychain accessibility to '
-      'first_unlock_this_device rather than the flutter_secure_storage '
-      '`unlocked` default (docs/ops/ios-export-compliance.md)', () {
+  test('SecureDbKeyStore pins the Keychain accessibility to '
+      'unlocked_this_device -- device-bound like the flutter_secure_storage '
+      '`unlocked` default, never first_unlock_this_device '
+      '(docs/ops/ios-export-compliance.md)', () {
     final iOptions = SecureDbKeyStore().storage.iOptions;
-    expect(
-      iOptions.accessibility,
-      KeychainAccessibility.first_unlock_this_device,
-    );
+    expect(iOptions.accessibility, KeychainAccessibility.unlocked_this_device);
   });
 }

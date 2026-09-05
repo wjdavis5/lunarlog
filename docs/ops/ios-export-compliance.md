@@ -17,7 +17,7 @@ been obtained.
   encryption compiled into the binary, not OS-provided crypto.
 - **Per-install key.** A 256-bit `Random.secure()` key held in
   `flutter_secure_storage` (`lib/data/db/key_store.dart`) — iOS Keychain,
-  `first_unlock_this_device`, non-syncable.
+  `unlocked_this_device`, non-syncable.
 - **SHA-256** from `package:crypto` for OIDC nonces and invitation-token
   hashes.
 - **`pointycastle 4.0.0`**, bundled transitively through the Supabase/auth
@@ -30,10 +30,16 @@ been obtained.
 ## Consistency anchor
 
 This declaration must stay consistent with `PRIVACY.md`'s public claims
-(`:15`, `:65`, `:85`, `:89` — "encrypted at rest using SQLCipher (AES-256)").
-If one changes, both change. Before this fix, `fastlane/Fastfile` told App
-Store Connect the app used no encryption while `PRIVACY.md` told users the
-opposite; that contradiction is what issue #48 / finding #28 flagged.
+(`:15` "Encrypted at Rest ... using SQLCipher (AES-256)", `:85` "Device
+Encryption: SQLite database encrypted using SQLCipher with AES-256
+encryption" — the only two lines that name SQLCipher specifically; `PRIVACY.md`
+also makes general at-rest/in-transit encryption claims elsewhere, e.g. the
+Supabase row of its third-party table and its Transport Security bullet, but
+those don't name SQLCipher and aren't part of this anchor). If either
+SQLCipher line changes, this declaration changes too. Before this fix,
+`fastlane/Fastfile` told App Store Connect the app used no encryption while
+`PRIVACY.md` told users the opposite; that contradiction is what issue #48 /
+finding #28 flagged.
 
 ## The classification and why
 
