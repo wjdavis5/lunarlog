@@ -7,6 +7,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -74,6 +76,9 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<ProfileController>();
+    final storage = context.read<LunarLogStorage?>();
+    final guardiansRepository =
+        storage == null ? null : ProfileGuardiansRepository(storage);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -124,6 +129,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     readOnly: widget.readOnly,
                     todayProvider: widget.todayProvider,
                     timezoneProvider: widget.timezoneProvider,
+                    guardiansRepository: guardiansRepository,
                   ),
           ),
         ],

@@ -11,10 +11,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/db/db.dart' show ProfileGuardianData;
-import 'package:lunarlog/data/db/storage.dart' show LunarLogStorage;
-import 'package:lunarlog/data/repositories/mappers.dart'
-    show profileGuardianToDomain;
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -50,6 +47,7 @@ class MonthCalendar extends StatefulWidget {
     this.readOnly = false,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
+    this.guardiansRepository,
   });
 
   final String profileId;
@@ -61,6 +59,11 @@ class MonthCalendar extends StatefulWidget {
   /// Provider for the resolved IANA time zone identifier (paired with #38).
   /// Passed to [DaySheet].
   final String Function()? timezoneProvider;
+
+  /// Source of this profile's guardians for attribution (R12); null in
+  /// local-only use (no storage wired up), matching the previous
+  /// ambient-provider lookup's own null fallback.
+  final ProfileGuardiansRepository? guardiansRepository;
 
   @override
   State<MonthCalendar> createState() => _MonthCalendarState();
@@ -77,7 +80,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// "Logged by you" at the real call site. Null/empty in local-only use.
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
-  StreamSubscription<List<ProfileGuardianData>>? _guardiansSub;
+  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
   AuthController? _auth;
 
   @override
@@ -103,14 +106,16 @@ class _MonthCalendarState extends State<MonthCalendar> {
 
   void _watchGuardians() {
     _guardiansSub?.cancel();
-    final storage = context.read<LunarLogStorage?>();
-    if (storage == null) return;
-    _guardiansSub = storage
-        .watchGuardiansForProfile(widget.profileId)
-        .listen((rows) {
+    // Reset immediately (not just on the new stream's first tick) so a
+    // profile switch never keeps rendering the previous profile's
+    // guardians in the meantime (residual note on #11).
+    _guardians = const [];
+    final repository = widget.guardiansRepository;
+    if (repository == null) return;
+    _guardiansSub =
+        repository.watchForProfile(widget.profileId).listen((guardians) {
       if (!mounted) return;
-      setState(
-          () => _guardians = rows.map(profileGuardianToDomain).toList());
+      setState(() => _guardians = guardians);
     });
   }
 

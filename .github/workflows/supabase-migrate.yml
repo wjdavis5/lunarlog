@@ -32,6 +32,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,6 +49,10 @@ jobs:
           fi
           if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
             echo "::error::SUPABASE_DB_PASSWORD is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
             exit 1
           fi
 

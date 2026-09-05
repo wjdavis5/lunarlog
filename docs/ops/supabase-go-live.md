@@ -136,8 +136,15 @@ passwordless email depends on custom SMTP above like every other email.
 
 ### GitHub
 
-- [ ] `production` environment on `wjdavis5/lunarlog` with a required
-      reviewer.
+- [ ] **Prerequisite — configure this before the secrets below.**
+      `production` environment on `wjdavis5/lunarlog` with a required
+      reviewer (Settings → Environments → `production` → Deployment
+      protection rules). **Not yet configured** — the environment
+      currently reports no protection rules at all. Until it is,
+      `supabase-migrate.yml` has valid deploy credentials the moment the
+      next item is done and will push migrations on the next `main` push
+      with no one reviewing first, which is exactly the unsupervised run
+      the G1-G3 audits in the runbook below are meant to gate.
 - [ ] `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` (and
       `SUPABASE_PROJECT_REF`) set as environment secrets on `production`
       (`supabase-migrate.yml` runs `supabase link` + `db push` there).
@@ -430,10 +437,13 @@ pgTAP tests.
 
 ## Multi-guardian migration runbook (20260904010000 + 20260904020000)
 
-The two guardian migrations swap constraints on existing tables, so the
-production reviewer runs these read-only audits **before approving
-`supabase db push`**. Each must return 0 rows / the stated result; any
-deviation stops the deploy.
+The two guardian migrations swap constraints on existing tables, so
+whoever pushes this deploy runs these read-only audits **before running
+`supabase db push`**. This is meant to be enforced by the `production`
+environment's required-reviewer rule (see the GitHub checklist above),
+but that rule is not yet configured, so until it is, running these audits
+first is a manual discipline, not an enforced gate. Each must return
+0 rows / the stated result; any deviation stops the deploy.
 
 ```sql
 -- G1: duplicate profile ids across owners (breaks profiles_id_uq).
@@ -474,11 +484,14 @@ select count(*) from public.day_entries
 Operational notes:
 
 - **Deploy order is mandatory: server migrations first, app release
-  second.** `supabase-migrate.yml` waits for the `production` reviewer
-  while `ios-release.yml` / `play-store-release.yml` upload on every push
-  to `main`. Do not let a new app build reach testers before both
-  migrations are applied: the new client pulls `profile_guardians` every
-  sync cycle and calls the invitation RPCs, which do not exist on the old
+  second.** `supabase-migrate.yml` is meant to wait for the `production`
+  reviewer, but that environment's required-reviewer rule is not yet
+  configured (see the GitHub checklist above) — so today nothing actually
+  blocks `ios-release.yml` / `play-store-release.yml` from uploading on
+  the same push to `main`. Do not let a new app build reach testers
+  before both migrations are applied: the new client pulls
+  `profile_guardians` every sync cycle and calls the invitation RPCs,
+  which do not exist on the old
   schema. Old app builds on the new server are fully supported.
 - **Rollback.** Migration 2 is reversible via compensating SQL (restore
   the previous `sync_push` body, drop the three RPCs). Migration 1 is

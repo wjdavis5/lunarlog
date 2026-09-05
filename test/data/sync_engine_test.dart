@@ -139,6 +139,29 @@ RemoteDayEntryRow remoteEntry(
       serverVersion: serverVersion,
     );
 
+RemoteProfileGuardianRow remoteGuardian(
+  String id, {
+  required String profileId,
+  required String userId,
+  String role = 'caregiver',
+  required String status,
+  required DateTime updatedAt,
+  DateTime? createdAt,
+  int serverVersion = 0,
+}) =>
+    RemoteProfileGuardianRow(
+      id: id,
+      profileId: profileId,
+      userId: userId,
+      role: role,
+      status: status,
+      displayName: null,
+      invitedBy: null,
+      createdAt: createdAt ?? updatedAt,
+      updatedAt: updatedAt,
+      serverVersion: serverVersion,
+    );
+
 /// Storage with test seams in front of two writes: `isEmpty` runs
 /// [beforeIsEmpty] first, so a test can change the session in the middle of
 /// the engine's bind decision, and `markPushed` runs [beforeMarkPushed]
@@ -995,6 +1018,163 @@ void main() {
       // and NO reconcile pull is made.
       expect(rig.transport.pullCount, pullsBeforeCycle4 + 3,
           reason: 'cycle 4 ran incremental pulls only, no full reconcile');
+    });
+
+    test('finding #4: an unresolvable profileGuardians row bounds the '
+        'cursorProfiles rewind to 3 consecutive cycles, then stops forcing '
+        'a full profile re-pull', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      // An accepted membership whose profile never arrives - the one case
+      // finding #8 leaves able to keep throwing here. It never changes and
+      // never resolves.
+      final stuck = remoteGuardian('g-stuck',
+          profileId: 'no-such-profile', userId: uidA, status: 'accepted',
+          updatedAt: t0);
+      rig.transport.pageResolver = (table, after, limit) => switch (table) {
+            SyncTable.profiles => const [],
+            SyncTable.dayEntries => const [],
+            SyncTable.profileGuardians => [stuck],
+          };
+
+      // Re-primes cursorProfiles to a nonzero value before each cycle, so a
+      // rewind back to 0 is observable independently of whatever the
+      // previous cycle left behind.
+      Future<void> primeCursorProfiles() async {
+        final s = await rig.state();
+        await rig.storage.writeSyncState(s.copyWith(cursorProfiles: 100));
+      }
+
+      // Cycle 1: 1st consecutive failure - the rewind still fires.
+      await primeCursorProfiles();
+      await rig.start();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'cycle 1: rewound (1st consecutive failure)');
+
+      // Cycle 2: 2nd consecutive failure - still under the cap, still
+      // rewinds.
+      await primeCursorProfiles();
+      await rig.sync();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'cycle 2: rewound (2nd consecutive failure)');
+
+      // Cycle 3: 3rd consecutive failure reaches kMaxConsecutiveReconcileRetries
+      // - the rewind is skipped this time.
+      await primeCursorProfiles();
+      await rig.sync();
+      expect((await rig.state()).cursorProfiles, 100,
+          reason: 'cycle 3: cap reached, cursorProfiles is left alone');
+
+      // Cycle 4: the row is still stuck, but the bound holds - it does not
+      // force a full profile re-pull every cycle forever.
+      await primeCursorProfiles();
+      await rig.sync();
+      expect((await rig.state()).cursorProfiles, 100,
+          reason: 'cycle 4: still bounded, cursorProfiles stays put');
+
+      expect(rig.engine.snapshot.phase, SyncPhase.idle,
+          reason: 'an unresolvable guardian row is retried, not fatal');
+    });
+
+    test('R5, finding #9: revoke -> re-invite -> reconcile brings the '
+        'profile and its entries back, instead of the revocation tombstone '
+        'outliving every later server row forever', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final pShared = ulidN(1);
+      final entryId = ulidN(10);
+      // Never touched again for the rest of the test: neither revoking nor
+      // re-accepting a guardian invitation bumps the server's
+      // profiles.updated_at (or the day entry's).
+      final sharedProfile =
+          remoteProfile(pShared, updatedAt: t0, serverVersion: 1);
+      final sharedEntry = remoteEntry(entryId,
+          profileId: pShared, localDate: '2026-01-15', updatedAt: t0,
+          serverVersion: 1);
+
+      // Cycle 1: the profile is shared and the invitation accepted.
+      rig.transport.scriptPage(SyncTable.profiles, [sharedProfile]);
+      rig.transport.scriptPage(SyncTable.profileGuardians, [
+        remoteGuardian('g-1',
+            profileId: pShared,
+            userId: uidA,
+            status: 'accepted',
+            updatedAt: t0,
+            serverVersion: 1),
+      ]);
+      rig.transport.scriptPage(SyncTable.dayEntries, [sharedEntry]);
+      await rig.start();
+
+      expect(await rig.storage.getProfile(pShared), isNotNull);
+      expect(
+          await rig.storage.getDayEntries(profileId: pShared), hasLength(1));
+
+      // Cycle 2: guardianship is revoked - R5 wipes the profile and its
+      // entries locally at the revocation timestamp.
+      final revokedAt = t0.add(const Duration(hours: 1));
+      rig.transport.scriptPage(SyncTable.profileGuardians, [
+        remoteGuardian('g-1',
+            profileId: pShared,
+            userId: uidA,
+            status: 'revoked',
+            updatedAt: revokedAt,
+            serverVersion: 2),
+      ]);
+      await rig.sync();
+
+      expect(await rig.storage.getProfile(pShared), isNull,
+          reason: 'revoked access hides the shared profile');
+      expect(await rig.storage.getDayEntries(profileId: pShared), isEmpty);
+
+      // Cycle 3: re-invited and re-accepted. The membership flips back to
+      // accepted, but the profile row itself is untouched server-side (the
+      // accept RPC never bumps profiles.updated_at), so it stays hidden
+      // until a reconcile re-delivers it.
+      final reacceptedAt = revokedAt.add(const Duration(hours: 1));
+      rig.transport.scriptPage(SyncTable.profileGuardians, [
+        remoteGuardian('g-1',
+            profileId: pShared,
+            userId: uidA,
+            status: 'accepted',
+            updatedAt: reacceptedAt,
+            serverVersion: 3),
+      ]);
+      await rig.sync();
+
+      expect(await rig.storage.getProfile(pShared), isNull,
+          reason: 'accepting the invite alone does not restore the profile');
+
+      // Cycle 4: a reconcile (here, 24h staleness; in the app, the sharing
+      // flow also triggers one directly on acceptance) re-delivers the
+      // server's profile and day-entry rows, still stamped at their
+      // original, never-touched updated_at. Before the fix, that
+      // timestamp had permanently lost to the tombstone's (bumped to
+      // revokedAt); after the fix the tombstone kept its pre-revocation
+      // updated_at, so the server's copy ties under KTD5 and wins
+      // normally.
+      rig.clock.now = t0.add(const Duration(hours: 25));
+      rig.transport.scriptPage(SyncTable.profiles, const []); // incremental
+      rig.transport.scriptPage(SyncTable.dayEntries, const []); // incremental
+      rig.transport
+          .scriptPage(SyncTable.profileGuardians, const []); // incremental
+      rig.transport.scriptPage(SyncTable.profiles, [sharedProfile]); // reconcile
+      rig.transport.scriptPage(SyncTable.dayEntries, [sharedEntry]); // reconcile
+      rig.transport
+          .scriptPage(SyncTable.profileGuardians, const []); // reconcile
+      await rig.sync();
+
+      final revived = await rig.storage.getProfile(pShared);
+      expect(revived, isNotNull,
+          reason: 'the profile is visible again once the server row '
+              'reconciles');
+      expect(revived!.deletedAt, isNull);
+      final entries = await rig.storage.getDayEntries(profileId: pShared);
+      expect(entries, hasLength(1));
+      expect(entries.single.deletedAt, isNull);
+      expect(entries.single.note, 'from remote');
     });
   });
 

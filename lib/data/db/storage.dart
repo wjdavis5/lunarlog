@@ -656,7 +656,18 @@ class LunarLogStorage {
     // guardian row whose profile is not held locally yet (invite accepted
     // on another device, profile page still in flight) is a typed,
     // retryable failure - never a raw FK exception that wedges the cycle.
+    // Retried only when [remote] is `accepted`, where the profile really is
+    // expected to show up (a later page, or the next reconcile) and an
+    // unresolvable row is a genuine inconsistency worth surfacing. A
+    // pending or revoked membership whose profile was never held locally
+    // never gets one: `profiles_select_guardians` only returns a profile
+    // row for an accepted membership, so this device will never receive it
+    // for as long as the row stays non-accepted, and `applyRemotePage` is
+    // one transaction per page with no persisted guardian cursor - throwing
+    // here would roll the whole page back and re-fail identically forever
+    // (finding #8). Skipped instead: nothing to apply, nothing lost.
     if (await _profileOrNull(remote.profileId) == null) {
+      if (remote.status != 'accepted') return false;
       throw RetryableSyncApplyError(
           'profile_guardian ${remote.id} references a profile not held locally');
     }
@@ -705,6 +716,15 @@ class LunarLogStorage {
   /// payload and are marked not dirty - the server already knows, so the
   /// wipe must never be pushed back. Rows with unpushed local edits are
   /// wiped too: once revoked, the server rejects those pushes regardless.
+  ///
+  /// `updated_at` is deliberately left untouched (finding #9): neither
+  /// `revoke_guardian` nor `accept_guardian_invitation` bumps the server's
+  /// `profiles.updated_at`, so stamping the tombstone with `revokedAt` would
+  /// make it permanently newer than any row a later re-share can ever
+  /// deliver - `remoteWinsById` (KTD5) would then keep the tombstone forever
+  /// and the profile could never come back. Leaving `updated_at` where it
+  /// was means a later server row (even one carrying its original,
+  /// never-touched timestamp) ties or wins normally and un-tombstones it.
   Future<void> _tombstoneRevokedSharedProfile(
       String profileId, DateTime revokedAt) async {
     final stamp = revokedAt.toUtc();
@@ -714,7 +734,6 @@ class LunarLogStorage {
         .write(DayEntriesCompanion(
           note: const Value(null),
           tags: const Value(<String>[]),
-          updatedAt: Value(stamp),
           deletedAt: Value(stamp),
           dirty: const Value(false),
         ));
@@ -722,7 +741,6 @@ class LunarLogStorage {
           ..where((t) => t.id.equals(profileId) & t.deletedAt.isNull()))
         .write(ProfilesCompanion(
           displayName: const Value(''),
-          updatedAt: Value(stamp),
           deletedAt: Value(stamp),
           dirty: const Value(false),
         ));

@@ -900,6 +900,48 @@ void main() {
       );
     });
 
+    test('finding #8: a revoked or pending membership whose profile is not '
+        'held locally is skipped, not retried forever', () async {
+      const revokedProfileId = '01ANOTHELDPROFILE0000000000001';
+      const pendingProfileId = '01ANOTHELDPROFILE0000000000002';
+
+      // Neither throws: `profiles_select_guardians` only ever returns a
+      // profile row for an accepted membership, so a non-accepted row
+      // referencing a profile this device never held would retry
+      // identically every cycle forever if it threw the same way the
+      // accepted case above does.
+      await storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-revoked',
+          profileId: revokedProfileId,
+          userId: 'u-me',
+          role: 'caregiver',
+          status: 'revoked',
+          displayName: null,
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
+      await storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-pending',
+          profileId: pendingProfileId,
+          userId: 'u-me',
+          role: 'caregiver',
+          status: 'pending',
+          displayName: null,
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
+
+      // Skipped, not applied: there is nothing to retry.
+      expect(await storage.getGuardiansForProfile(revokedProfileId), isEmpty);
+      expect(await storage.getGuardiansForProfile(pendingProfileId), isEmpty);
+    });
+
     test('wipeAllData empties profile_guardians before profiles (FK order)',
         () async {
       final profile =

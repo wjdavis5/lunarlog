@@ -39,12 +39,17 @@
             <!-- U4 (KTD8): auth callback for confirmation and password-reset
                  emails, lunarlog://auth-callback. PKCE binds the code to the
                  verifier in this app's secure storage, so a scheme claimed
-                 by another app yields nothing. -->
+                 by another app yields nothing.
+                 U8 (R9): guardian invitations, lunarlog://invite?code=...
+                 Both data elements live in this one filter — Android ORs
+                 multiple <data> entries within an intent-filter, so either
+                 host launches the app. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="lunarlog" android:host="auth-callback"/>
+                <data android:scheme="lunarlog" android:host="invite"/>
             </intent-filter>
         </activity>
         <!-- U8: flutter_local_notifications receivers (schedule delivery and

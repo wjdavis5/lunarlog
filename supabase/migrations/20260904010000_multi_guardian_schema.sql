@@ -211,16 +211,14 @@ create policy "profile_guardians_select" on public.profile_guardians
     or public.is_profile_guardian(profile_id, (select auth.uid()))
   );
 
--- Membership rows are created by the SECURITY DEFINER invitation RPC or by
--- an existing primary_guardian / co_parent; a user must never be able to
--- self-insert membership (R16) - the `user_id = auth.uid()` self-service
--- branch would let any authenticated user grant itself any role on any
--- profile.
-create policy "profile_guardians_insert" on public.profile_guardians
-  for insert to authenticated
-  with check (
-    public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
-  );
+-- Membership rows are created exclusively by the SECURITY DEFINER paths
+-- (the profiles-insert trigger and accept_guardian_invitation) - there is no
+-- INSERT policy or grant for `authenticated` here. A `with check` on this
+-- policy can only constrain the caller, never the row being written, so any
+-- accepted guardian (primary_guardian or co_parent) could otherwise issue a
+-- direct PostgREST insert setting an arbitrary user_id/role/status
+-- ('primary_guardian', 'accepted') on the profile - no invitation, no
+-- token, no consent from the invitee.
 
 -- Membership state transitions run through the SECURITY DEFINER RPCs
 -- (accept / revoke). A self-service `user_id = auth.uid()` branch here
@@ -243,12 +241,14 @@ create policy "guardian_invitations_select" on public.guardian_invitations
     or public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
   );
 
-create policy "guardian_invitations_insert" on public.guardian_invitations
-  for insert to authenticated
-  with check (
-    invited_by = (select auth.uid())
-    and public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
-  );
+-- Invitation rows are created exclusively by the SECURITY DEFINER
+-- create_guardian_invitation RPC - there is no INSERT policy or grant for
+-- `authenticated` here. A `with check` on this policy can only constrain
+-- the caller, never the row being written, so it cannot enforce the R3
+-- co-parent-cannot-invite-a-co-parent rule or the R7 TTL bound (1-168
+-- hours): a direct PostgREST insert could set role='co_parent' or an
+-- arbitrary expires_at regardless of what the check clause tests about the
+-- caller. Those invariants live only in create_guardian_invitation.
 
 -- Only the invitation's creator may modify it (revoke it). Consumption
 -- (accepted_at / accepted_by) is written exclusively by the SECURITY
@@ -318,12 +318,23 @@ create policy "day_entries_update_guardians" on public.day_entries
 -- security-invoker sync_push writes it (last_modified_by_user_id = caller;
 -- logged_by_user_id is insert-only and enforced by the trigger below).
 
+-- No INSERT grant: membership rows are created only by the SECURITY
+-- DEFINER trigger (on_profile_created_add_guardian) and RPC
+-- (accept_guardian_invitation), which run as the function owner and so are
+-- unaffected by this revoke. Granting INSERT to `authenticated` here would
+-- let any accepted guardian direct-insert an arbitrary membership row - see
+-- the policy comment above.
 revoke all on table public.profile_guardians from public, anon, authenticated;
-grant select, insert on table public.profile_guardians to authenticated;
+grant select on table public.profile_guardians to authenticated;
 grant update (display_name, updated_at) on table public.profile_guardians to authenticated;
 
+-- No INSERT grant: invitation rows are created only by the SECURITY
+-- DEFINER create_guardian_invitation RPC, which runs as the function owner
+-- and so is unaffected by this revoke. Granting INSERT to `authenticated`
+-- here would let a direct insert bypass the RPC's co-parent and TTL checks
+-- - see the policy comment above.
 revoke all on table public.guardian_invitations from public, anon, authenticated;
-grant select, insert on table public.guardian_invitations to authenticated;
+grant select on table public.guardian_invitations to authenticated;
 grant update (revoked_at) on table public.guardian_invitations to authenticated;
 
 grant update (last_modified_by_user_id) on table public.day_entries to authenticated;

@@ -70,7 +70,9 @@ const Duration kSyncFullPullInterval = Duration(hours: 24);
 
 /// Maximum consecutive sync cycles that may retry reconciliation due to
 /// un-appliable remote rows before advancing lastFullPullAt to avoid an
-/// unbounded reconcile loop.
+/// unbounded reconcile loop. Also bounds [_consecutiveGuardianPullRetries]
+/// (finding #4), a separate un-appliable-row loop with the same shape in
+/// [SupabaseSyncEngine._pullIncremental].
 const int kMaxConsecutiveReconcileRetries = 3;
 
 final Random _jitter = Random();
@@ -176,6 +178,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   bool _writeDuringCycle = false;
   int _consecutiveNetworkFailures = 0;
   int _consecutiveReconcileRetries = 0;
+
+  /// Consecutive cycles in a row where a profileGuardians page hit a
+  /// [RetryableSyncApplyError] (finding #4): bounds the `cursorProfiles`
+  /// rewind in [_pullIncremental] the same way [_consecutiveReconcileRetries]
+  /// bounds the reconcile path, so one permanently unresolvable row (an
+  /// accepted membership whose profile never arrives — the only case left
+  /// after finding #8) cannot force a full profile re-pull every cycle
+  /// forever.
+  int _consecutiveGuardianPullRetries = 0;
 
   /// Rows the server rejected, id → `local_rev` at rejection. A row is
   /// excluded from pushes while its `local_rev` still equals the rejected
@@ -759,6 +770,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         SyncTable.dayEntries => state.cursorDayEntries,
         SyncTable.profileGuardians => 0,
       };
+      var guardianFailedThisTable = false;
       while (true) {
         _checkpoint(uid);
         final page = await _transport.pullPage(
@@ -771,19 +783,38 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         } on RetryableSyncApplyError {
           retry = true;
           if (table == SyncTable.profileGuardians) {
+            guardianFailedThisTable = true;
             // A guardian row whose profile is not held locally: the
             // profile may sit below the profiles cursor (joined share),
             // so rewind it - the next cycle re-pulls profiles from
             // version 0 and the share converges without involving the
             // reconcile-retry bound (#74 owns that path exclusively).
-            final s = await _storage.readSyncState();
-            await _storage.writeSyncState(s.copyWith(cursorProfiles: 0));
+            //
+            // Bounded the same way as that cap (finding #4): after fixing
+            // #8, the only row that can still reach here is an accepted
+            // membership whose profile genuinely never arrives, and
+            // without its own bound that single row would force a full
+            // profile re-pull every cycle forever. Past
+            // kMaxConsecutiveReconcileRetries consecutive failures the
+            // rewind stops - unlike the reconcile cap there is no
+            // time-based gate like lastFullPullAt to lean on here, so the
+            // count is only reset once profileGuardians applies cleanly
+            // again (below), not on hitting the cap itself.
+            _consecutiveGuardianPullRetries++;
+            if (_consecutiveGuardianPullRetries <
+                kMaxConsecutiveReconcileRetries) {
+              final s = await _storage.readSyncState();
+              await _storage.writeSyncState(s.copyWith(cursorProfiles: 0));
+            }
           }
           break;
         }
         final progressed = newCursor > after;
         after = newCursor;
         if (page.length < _pageSize || !progressed) break;
+      }
+      if (table == SyncTable.profileGuardians && !guardianFailedThisTable) {
+        _consecutiveGuardianPullRetries = 0;
       }
     }
     return retry;
