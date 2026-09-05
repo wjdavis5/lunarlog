@@ -251,6 +251,38 @@ void main() {
       expect(row.updatedAt, DateTime.utc(2026, 9, 1, 10, 0, 0, 500));
     });
 
+    test('profile guardians use the profile_guardians table', () async {
+      client = makeClient((_) async => json([
+            {
+              'id': '00000000-0000-0000-0000-000000000001',
+              'profile_id': profileId,
+              'user_id': '00000000-0000-0000-0000-000000000002',
+              'role': 'co_parent',
+              'status': 'accepted',
+              'display_name': 'Dad',
+              'invited_by': null,
+              'created_at': '2026-03-01T12:00:00.000Z',
+              'updated_at': '2026-03-01T12:00:00.000Z',
+              'server_version': 5,
+            }
+          ]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.profileGuardians,
+        afterVersion: 0,
+        limit: 100,
+      );
+      final request = requests.single;
+      expect(request.url.path, '/rest/v1/profile_guardians');
+      expect(request.url.queryParameters['server_version'], 'gt.0');
+      expect(request.url.queryParameters['limit'], '100');
+      final row = rows.single as RemoteProfileGuardianRow;
+      expect(row.id, '00000000-0000-0000-0000-000000000001');
+      expect(row.profileId, profileId);
+      expect(row.role, 'co_parent');
+      expect(row.displayName, 'Dad');
+      expect(row.serverVersion, 5);
+    });
+
     test('an empty page decodes to an empty list', () async {
       client = makeClient((_) async => json([]));
       final rows = await SupabaseSyncTransport(client!).pullPage(

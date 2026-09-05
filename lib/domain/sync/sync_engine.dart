@@ -146,6 +146,10 @@ abstract interface class SyncEngine {
   /// at most one follow-up cycle is queued.
   void requestSync();
 
+  /// Forces a full reconciliation pull on the next cycle, clearing pull
+  /// cursors so newly joined profiles or guardians are pulled completely (Issue #8).
+  void triggerFullReconcile();
+
   /// Answers [SyncPhase.awaitingUploadConsent]: marks every local row for
   /// upload, binds the device to the session's account and runs a cycle
   /// (R14). A no-op in any other phase.

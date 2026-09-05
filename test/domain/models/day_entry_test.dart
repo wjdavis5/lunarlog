@@ -77,13 +77,33 @@ void main() {
       expect(base, isNot(_entry(tz: 'UTC')));
     });
 
-    test('differing content fields (flow/tags/note/updatedAt/deletedAt) are unequal', () {
+    test('differing content fields (flow/tags/note/updatedAt/deletedAt/attribution) are unequal', () {
       final base = _entry();
       expect(base, isNot(_entry(flow: FlowLevel.heavy)));
       expect(base, isNot(_entry(tags: const ['spotting'])));
       expect(base, isNot(_entry(note: 'different')));
       expect(base, isNot(_entry(updatedAt: DateTime.utc(2026, 9, 5))));
       expect(base, isNot(_entry(deletedAt: DateTime.utc(2026, 9, 5))));
+      expect(base, isNot(base.copyWith(loggedByUserId: 'user_x')));
+      expect(base, isNot(base.copyWith(lastModifiedByUserId: 'user_y')));
+    });
+
+    test('loggedByUserId and lastModifiedByUserId are retained across copyWith', () {
+      final entry = _entry().copyWith(
+        loggedByUserId: 'user_1',
+        lastModifiedByUserId: 'user_2',
+      );
+      expect(entry.loggedByUserId, 'user_1');
+      expect(entry.lastModifiedByUserId, 'user_2');
+
+      final copied = entry.copyWith(note: 'new note');
+      expect(copied.loggedByUserId, 'user_1');
+      expect(copied.lastModifiedByUserId, 'user_2');
+      expect(copied.note, 'new note');
+
+      final cleared = entry.copyWith(loggedByUserId: null, lastModifiedByUserId: null);
+      expect(cleared.loggedByUserId, isNull);
+      expect(cleared.lastModifiedByUserId, isNull);
     });
 
     test('not equal to a different type', () {

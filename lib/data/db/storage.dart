@@ -439,6 +439,8 @@ class LunarLogStorage {
               ..where((t) =>
                   t.id.equals(id) & t.localRev.equals(localRevAtPush)))
             .write(const DayEntriesCompanion(dirty: Value(false)));
+      case SyncTable.profileGuardians:
+        changed = 0;
     }
     return changed > 0;
   }
@@ -522,23 +524,35 @@ class LunarLogStorage {
     }
     await db.transaction(() async {
       for (final row in rows) {
-        switch (row) {
-          case RemoteProfileRow():
-            await _applyProfile(row, onlyExisting: false);
-          case RemoteDayEntryRow():
-            await _applyDayEntry(row, onlyExisting: false);
-        }
+        await _applyPageRow(row);
       }
-      await _ensureSyncStateRow();
-      await (db.update(db.syncState)..where((t) => t.id.equals(1))).write(
-        switch (table) {
-          SyncTable.profiles =>
-            SyncStateCompanion(cursorProfiles: Value(newCursor)),
-          SyncTable.dayEntries =>
-            SyncStateCompanion(cursorDayEntries: Value(newCursor)),
-        },
-      );
+      await _updateTableCursor(table, newCursor);
     });
+  }
+
+  Future<void> _applyPageRow(RemoteRow row) async {
+    switch (row) {
+      case RemoteProfileRow():
+        await _applyProfile(row, onlyExisting: false);
+      case RemoteDayEntryRow():
+        await _applyDayEntry(row, onlyExisting: false);
+      case RemoteProfileGuardianRow():
+        await _applyProfileGuardian(row);
+    }
+  }
+
+  Future<void> _updateTableCursor(SyncTable table, int newCursor) async {
+    await _ensureSyncStateRow();
+    await (db.update(db.syncState)..where((t) => t.id.equals(1))).write(
+      switch (table) {
+        SyncTable.profiles =>
+          SyncStateCompanion(cursorProfiles: Value(newCursor)),
+        SyncTable.dayEntries =>
+          SyncStateCompanion(cursorDayEntries: Value(newCursor)),
+        SyncTable.profileGuardians =>
+          const SyncStateCompanion(),
+      },
+    );
   }
 
   /// Applies one full-reconcile page (rows of one or both tables) in ONE
@@ -550,6 +564,9 @@ class LunarLogStorage {
     await db.transaction(() async {
       for (final row in rows.whereType<RemoteProfileRow>()) {
         await _applyProfile(row, onlyExisting: false);
+      }
+      for (final row in rows.whereType<RemoteProfileGuardianRow>()) {
+        await _applyProfileGuardian(row);
       }
       for (final row in rows.whereType<RemoteDayEntryRow>()) {
         await _applyDayEntry(row, onlyExisting: false);
@@ -634,6 +651,42 @@ class LunarLogStorage {
     return true;
   }
 
+  Future<bool> _applyProfileGuardian(RemoteProfileGuardianRow remote) async {
+    final existing = await (db.select(db.profileGuardians)
+          ..where((t) => t.id.equals(remote.id)))
+        .getSingleOrNull();
+
+    if (existing != null &&
+        !remoteWinsById(
+            localUpdatedAt: existing.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return false;
+    }
+
+    await db.into(db.profileGuardians).insertOnConflictUpdate(
+          ProfileGuardiansCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            userId: remote.userId,
+            role: remote.role,
+            status: Value(remote.status),
+            displayName: Value(remote.displayName),
+            invitedBy: Value(remote.invitedBy),
+            createdAt: remote.createdAt.toUtc(),
+            updatedAt: remote.updatedAt.toUtc(),
+          ),
+        );
+    return true;
+  }
+
+  Future<List<ProfileGuardianData>> getGuardiansForProfile(String profileId) =>
+      (db.select(db.profileGuardians)..where((t) => t.profileId.equals(profileId)))
+          .get();
+
+  Stream<List<ProfileGuardianData>> watchGuardiansForProfile(String profileId) =>
+      (db.select(db.profileGuardians)..where((t) => t.profileId.equals(profileId)))
+          .watch();
+
   Future<bool> _applyDayEntry(RemoteDayEntryRow remote,
       {required bool onlyExisting}) async {
     final local = await _dayEntryOrNull(remote.id);
@@ -664,6 +717,8 @@ class LunarLogStorage {
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
             localRev: const Value(0),
+            loggedByUserId: Value(remote.loggedByUserId),
+            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
           ));
       return true;
     }
@@ -678,6 +733,8 @@ class LunarLogStorage {
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),
       dirty: const Value(false),
+      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
+      lastModifiedByUserId: Value(remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
     ));
     return true;
   }

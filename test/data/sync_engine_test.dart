@@ -691,6 +691,7 @@ void main() {
       expect(calls.map((c) => (c.table, c.afterVersion)).toList(), [
         (SyncTable.profiles, 0),
         (SyncTable.profiles, 2),
+        (SyncTable.profileGuardians, 0),
         (SyncTable.dayEntries, 0),
         (SyncTable.dayEntries, 11),
       ]);
@@ -720,6 +721,7 @@ void main() {
             SyncTable.profiles => after < 900
                 ? [remoteProfile(pA, updatedAt: t0, serverVersion: 900)]
                 : const [],
+            SyncTable.profileGuardians => const [],
             SyncTable.dayEntries => after < 899
                 ? [
                     remoteEntry(ulidN(600),
@@ -764,6 +766,7 @@ void main() {
             SyncTable.profiles => after == 0
                 ? [remoteProfile(pA, updatedAt: t0, serverVersion: 50)]
                 : const [],
+            SyncTable.profileGuardians => const [],
             SyncTable.dayEntries => const [],
           };
 
@@ -797,7 +800,7 @@ void main() {
         lastFullPullAt: Value(t0),
       ));
       await rig.start();
-      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 100]);
+      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 0, 100]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
 
       // (c) A push with resolved rows makes a reconcile due.
@@ -812,19 +815,19 @@ void main() {
       ]);
       rig.transport.pulls.clear();
       await rig.sync();
-      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 100, 0, 0]);
+      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 0, 100, 0, 0, 0]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
 
       // (d) Not otherwise: the next cycle is incremental only.
       rig.transport.pulls.clear();
       await rig.sync();
-      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 100]);
+      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 0, 100]);
 
       // (e) Older than 24h: due again.
       rig.clock.now = rig.clock.now.add(const Duration(hours: 25));
       rig.transport.pulls.clear();
       await rig.sync();
-      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 100, 0, 0]);
+      expect(rig.transport.pulls.map((c) => c.afterVersion), [100, 0, 100, 0, 0, 0]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
     });
 
@@ -1043,7 +1046,7 @@ void main() {
       expect(rig.transport.pullCount, 0);
       rig.gate.unlock();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, 2);
+      expect(rig.transport.pullCount, 3);
       expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });
 
@@ -1078,7 +1081,7 @@ void main() {
       final pulls = rig.transport.pullCount;
       rig.timers.periodics.single.fire();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, pulls + 2);
+      expect(rig.transport.pullCount, pulls + 3);
     });
   });
 
@@ -1168,6 +1171,7 @@ void main() {
             SyncTable.profiles => after == 0
                 ? [remoteProfile(pA, updatedAt: t0, serverVersion: 1)]
                 : const [],
+            SyncTable.profileGuardians => const [],
             SyncTable.dayEntries => const [],
           };
       SyncPhase? phaseDuringPull;
@@ -1332,8 +1336,8 @@ void main() {
       hold.complete();
       await rig.engine.flush();
 
-      expect(rig.transport.pullCount, 4,
-          reason: 'two cycles of two pulls: the running one plus one queued');
+      expect(rig.transport.pullCount, 6,
+          reason: 'two cycles of three pulls: the running one plus one queued');
       expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });
 

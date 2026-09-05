@@ -9,6 +9,7 @@ import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
+import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
 
 domain.Profile profileToDomain(db.Profile row) => domain.Profile(
       id: row.id,
@@ -37,4 +38,19 @@ domain.DayEntry dayEntryToDomain(db.DayEntry row) => domain.DayEntry(
       note: row.note,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
+      loggedByUserId: row.loggedByUserId,
+      lastModifiedByUserId: row.lastModifiedByUserId,
+    );
+
+domain.ProfileGuardian profileGuardianToDomain(db.ProfileGuardianData row) =>
+    domain.ProfileGuardian(
+      id: row.id,
+      profileId: row.profileId,
+      userId: row.userId,
+      role: domain.GuardianRole.fromDb(row.role),
+      status: domain.GuardianStatus.fromDb(row.status),
+      displayName: row.displayName,
+      invitedBy: row.invitedBy,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     );

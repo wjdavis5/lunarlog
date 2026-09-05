@@ -84,7 +84,7 @@ globally); Docker must be running.
 ```powershell
 npx supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
 npx supabase@2.116.0 db reset --local    # re-apply migrations from scratch
-npx supabase@2.116.0 test db --local     # 135 pgTAP tests
+npx supabase@2.116.0 test db --local     # 186 pgTAP tests
 npx supabase@2.116.0 stop --no-backup
 ```
 

@@ -103,6 +103,14 @@ class DayEntries extends Table {
   IntColumn get localRev =>
       integer().named('local_rev').withDefault(const Constant(0))();
 
+  /// Supabase auth user who created this entry (stamped by server).
+  TextColumn get loggedByUserId =>
+      text().named('logged_by_user_id').nullable()();
+
+  /// Supabase auth user who last edited this entry (stamped by server).
+  TextColumn get lastModifiedByUserId =>
+      text().named('last_modified_by_user_id').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 
@@ -110,6 +118,34 @@ class DayEntries extends Table {
   // rows, via the partial index created in LunarLogDatabase's migration
   // (uq_day_entries_profile_date_live). A plain UNIQUE constraint would make
   // re-creating an entry for a tombstoned date impossible, breaking sync.
+}
+
+@DataClassName('ProfileGuardianData')
+class ProfileGuardians extends Table {
+  TextColumn get id => text()();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  TextColumn get userId => text().named('user_id')();
+
+  /// 'primary_guardian' | 'co_parent' | 'caregiver' | 'viewer'
+  TextColumn get role => text()();
+
+  /// 'pending' | 'accepted' | 'revoked'
+  TextColumn get status =>
+      text().withDefault(const Constant('accepted'))();
+
+  TextColumn get displayName => text().named('display_name').nullable()();
+
+  TextColumn get invitedBy => text().named('invited_by').nullable()();
+
+  DateTimeColumn get createdAt => dateTime().named('created_at')();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 @DataClassName('AppSetting')

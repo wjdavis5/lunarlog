@@ -49,6 +49,7 @@ import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/startup/startup.dart' as startup;
 import 'package:lunarlog/ui/gate/lock_screen.dart';
@@ -599,6 +600,7 @@ class LunarLogRoot extends StatefulWidget {
     this.scheduler,
     this.authService,
     this.syncTransport,
+    this.sharingService,
     this.syncEngineBuilder = defaultSyncEngineBuilder,
     this.deleteLocalDatabase = startup.deleteLocalDatabase,
     this.deleteDbKey = defaultDeleteDbKey,
@@ -627,6 +629,8 @@ class LunarLogRoot extends StatefulWidget {
   /// build has no Supabase configuration. The engine is built only when
   /// both are present (KTD11).
   final SyncTransport? syncTransport;
+
+  final SharingService? sharingService;
 
   /// Test seam: how the engine is built once the database is open.
   @visibleForTesting
@@ -872,6 +876,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
         scheduler: widget.scheduler,
         authService: widget.authService,
         syncEngine: _syncEngine,
+        sharingService: widget.sharingService,
         onTeardown: (done) => _appTeardown = done,
       );
     } else if (_gate.locked) {

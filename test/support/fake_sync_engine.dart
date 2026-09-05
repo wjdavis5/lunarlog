@@ -61,6 +61,14 @@ class FakeSyncEngine implements SyncEngine {
     startCalls++;
   }
 
+  int triggerFullReconcileCalls = 0;
+
+  @override
+  void triggerFullReconcile() {
+    triggerFullReconcileCalls++;
+    requestSync();
+  }
+
   @override
   void requestSync() {
     requestSyncCalls++;

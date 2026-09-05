@@ -41,6 +41,7 @@ import '../../domain/sync/sync_engine.dart';
 import '../db/db.dart';
 import '../db/storage.dart';
 import '../db/ulid.dart';
+import 'remote_rows.dart';
 import 'row_codec.dart';
 import 'sync_transport.dart';
 
@@ -212,6 +213,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     requestSync();
   }
 
+  bool _forceFullReconcile = false;
+
   @override
   void requestSync() {
     if (_disposed || !_started) return;
@@ -221,6 +224,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
     _loopDone = Completer<void>();
     unawaited(_runLoop());
+  }
+
+  @override
+  void triggerFullReconcile() {
+    _forceFullReconcile = true;
+    requestSync();
   }
 
   /// Completes when no cycle is running (test seam; also handy for a
@@ -481,7 +490,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   bool _reconcileDueBeforePush(bool bindNow, SyncStateRow state) {
     final now = _clock().toUtc();
     final lastFull = state.lastFullPullAt?.toUtc();
-    final due = bindNow ||
+    final forced = _forceFullReconcile;
+    _forceFullReconcile = false;
+    final due = forced ||
+        bindNow ||
         lastFull == null ||
         now.difference(lastFull) > kSyncFullPullInterval;
     if (due) _rejected.clear();
@@ -733,13 +745,18 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   Future<bool> _pullIncremental(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
     var retry = false;
-    for (final table in const [SyncTable.profiles, SyncTable.dayEntries]) {
+    for (final table in const [
+      SyncTable.profiles,
+      SyncTable.profileGuardians,
+      SyncTable.dayEntries,
+    ]) {
       while (true) {
         _checkpoint(uid);
         final state = await _storage.readSyncState();
         final cursor = switch (table) {
           SyncTable.profiles => state.cursorProfiles,
           SyncTable.dayEntries => state.cursorDayEntries,
+          SyncTable.profileGuardians => 0,
         };
         final page = await _transport.pullPage(
             table: table, afterVersion: cursor, limit: _pageSize);
@@ -758,13 +775,17 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return retry;
   }
 
-  /// Full reconciliation: every row of both tables paged from version 0,
+  /// Full reconciliation: every row of tables paged from version 0,
   /// applied under LWW without touching the cursors (KTD2). Returns whether
   /// a row hit a retryable apply failure.
   Future<bool> _reconcile(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
     var retry = false;
-    for (final table in const [SyncTable.profiles, SyncTable.dayEntries]) {
+    for (final table in const [
+      SyncTable.profiles,
+      SyncTable.profileGuardians,
+      SyncTable.dayEntries,
+    ]) {
       var after = 0;
       while (true) {
         _checkpoint(uid);
@@ -797,6 +818,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         switch (row) {
           case RemoteProfileRow():
             await _storage.applyRemoteProfile(row);
+          case RemoteProfileGuardianRow():
+            await _storage.applyRemoteRows([row]);
           case RemoteDayEntryRow():
             await _storage.applyRemoteDayEntry(row);
         }

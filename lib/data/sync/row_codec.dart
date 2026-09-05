@@ -72,16 +72,18 @@ final RegExp _isoDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 
 
-/// Remote table name for [table] (`profiles` / `day_entries`).
+/// Remote table name for [table] (`profiles` / `day_entries` / `profile_guardians`).
 String syncTableName(SyncTable table) => switch (table) {
       SyncTable.profiles => 'profiles',
       SyncTable.dayEntries => 'day_entries',
+      SyncTable.profileGuardians => 'profile_guardians',
     };
 
 /// Inverse of [syncTableName]; null for anything else.
 SyncTable? syncTableFromName(String name) => switch (name) {
       'profiles' => SyncTable.profiles,
       'day_entries' => SyncTable.dayEntries,
+      'profile_guardians' => SyncTable.profileGuardians,
       _ => null,
     };
 
@@ -210,6 +212,26 @@ RemoteDayEntryRow decodeDayEntry(JsonRow json) {
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),
     serverVersion: r.integerOr('server_version', 0),
+    loggedByUserId: r.stringOrNull('logged_by_user_id'),
+    lastModifiedByUserId: r.stringOrNull('last_modified_by_user_id'),
+  );
+}
+
+/// Decodes a `profile_guardians` row.
+RemoteProfileGuardianRow decodeProfileGuardian(JsonRow json) {
+  const table = SyncTable.profileGuardians;
+  final r = _Reader(json, table);
+  return RemoteProfileGuardianRow(
+    id: r.string('id'),
+    profileId: r.ulid('profile_id'),
+    userId: r.string('user_id'),
+    role: r.string('role'),
+    status: r.string('status'),
+    displayName: r.stringOrNull('display_name'),
+    invitedBy: r.stringOrNull('invited_by'),
+    createdAt: r.timestamp('created_at'),
+    updatedAt: r.timestamp('updated_at'),
+    serverVersion: r.integerOr('server_version', 0),
   );
 }
 
@@ -217,6 +239,7 @@ RemoteDayEntryRow decodeDayEntry(JsonRow json) {
 RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
       SyncTable.profiles => decodeProfile(json),
       SyncTable.dayEntries => decodeDayEntry(json),
+      SyncTable.profileGuardians => decodeProfileGuardian(json),
     };
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`
