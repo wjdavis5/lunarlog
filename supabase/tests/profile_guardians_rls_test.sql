@@ -304,17 +304,37 @@ select public.create_guardian_invitation(
   48
 );
 
+-- Scoped to this invitation specifically (by its unique token_hash and
+-- invited_by), not a bare table-wide count: by this point in setup, Mom's
+-- earlier invitations to Dad/Sitter/Doctor (all via the same RPC handshake)
+-- are still present rows too, so a global count would be perturbed by
+-- unrelated, legitimate setup activity rather than proving anything about
+-- this call.
 select is(
-  (select count(*) from public.guardian_invitations where profile_id = tests.ulid(101)),
+  (select count(*) from public.guardian_invitations
+    where profile_id = tests.ulid(101)
+      and token_hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+      and invited_by = tests.get_supabase_uid('dad')),
   1::bigint,
   'Dad can create guardian invitation'
 );
 
 -- Only the invitation's creator may modify it: even the primary guardian
--- cannot consume or revoke Dad's invitation by direct UPDATE.
+-- cannot consume or revoke Dad's invitation by direct UPDATE. Scoped to
+-- Dad's specific invitation (by token_hash) rather than the whole
+-- profile_id, so this proves Mom cannot touch a row she did not create -
+-- not merely that some update happened to match zero rows. (Mom is herself
+-- the creator of three other invitation rows for this profile from earlier
+-- setup steps, and legitimately updating those is not the property under
+-- test here.) If guardian_invitations_update's USING/WITH CHECK clause ever
+-- stopped requiring invited_by = auth.uid() - e.g. widened to admit any
+-- accepted guardian or primary_guardian - this would start updating 1 row
+-- and fail.
 select tests.authenticate_as('mom');
 with u as (
-  update public.guardian_invitations set revoked_at = now() where profile_id = tests.ulid(101) returning 1
+  update public.guardian_invitations set revoked_at = now()
+   where token_hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+  returning 1
 ) select is(count(*), 0::bigint, 'Non-creator cannot modify another guardian''s invitation (0 rows updated)') from u;
 
 select tests.authenticate_as('dad');
