@@ -28,6 +28,14 @@
 -- checks `pg_publication_rel` before adding each table, so it is safe to
 -- re-run (e.g. a local `db reset`) without erroring on an already-published
 -- table.
+--
+-- OPERATIONAL WARNING: the guard below only checks *membership* -- if either
+-- table is already a member of `supabase_realtime` (most plausibly because
+-- someone flipped Supabase Studio's per-table "Enable Realtime" toggle,
+-- which issues a bare whole-row `add table`), this migration sees it as
+-- already present and skips it, silently leaving the whole-row publication
+-- in place. Never use that dashboard toggle for `public.profiles` or
+-- `public.day_entries` -- it bypasses the column-list guard above.
 
 do $$
 begin

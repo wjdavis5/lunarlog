@@ -295,6 +295,28 @@ void main() {
       // timer check by keeping the test's async zone alive.
     });
 
+    test(
+        'an auth event that arrives after dispose is a no-op: no rebuild, '
+        'no channel churn', () async {
+      authCoordinator.start();
+      await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      await authCoordinator.dispose();
+      expect(client.createdChannels, isEmpty);
+      final removedBefore = client.removedChannels.length;
+
+      // The auth stream's subscription cancellation in dispose() is
+      // deliberately fire-and-forget, so a late in-flight event on it is a
+      // real scenario, not a hypothetical -- this proves the `_disposed`
+      // guard, not the cancellation, is what makes it safe.
+      auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'guardian-a'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(client.createdChannels, isEmpty);
+      expect(client.removedChannels.length, removedBefore);
+    });
+
     test('constructing the coordinator without an auth source behaves '
         'exactly as today', () async {
       final noAuthCoordinator = RealtimeSyncCoordinator(
