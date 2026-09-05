@@ -1515,17 +1515,9 @@ void main() {
           reason: 'channel topics are distinct per profile id');
 
       // Unmounting the root disposes the coordinator before the database
-      // closes, which must remove every channel it created. The coordinator
-      // cancels a drift stream subscription backed by the NativeDatabase
-      // worker isolate, so a bare pump is not enough to observe completion.
+      // closes, which must remove every channel it created.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
-      // The coordinator's teardown cancels a real drift StreamSubscription;
-      // that cancellation future only settles on a real event-loop turn, not
-      // a synthetic pump, so bridge out of the fake-async test zone briefly.
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 200)));
-      await tester.pump();
       expect(client.createdChannels, isEmpty);
       expect(client.removedChannels, hasLength(2));
       await harness.db.close();
@@ -1606,6 +1598,54 @@ void main() {
       expect(client.createdChannels.keys.toSet().containsAll(existingTopics),
           isTrue,
           reason: 'existing channels are not recreated');
+
+      await harness.dispose();
+    });
+
+    testWidgets(
+        '(#77) a device that opened the database signed out gets live '
+        'channels once the user signs in, without an app restart',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final client = FakeSupabaseClient();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        supabaseClient: client,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+      expect(client.createdChannels, hasLength(2),
+          reason: 'signed out (R9-style: configured but no session) still '
+              'subscribes from the local profile set');
+      expect(client.removedChannels, isEmpty);
+
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'guardian-a'));
+      await tester.pump();
+      await harness.drainIsolateTraffic(tester);
+
+      expect(client.removedChannels, hasLength(2),
+          reason: 'the pre-sign-in channels are torn down (R4)');
+      expect(client.createdChannels, hasLength(2),
+          reason: 'and re-created under the signed-in identity, with no '
+              'app restart');
 
       await harness.dispose();
     });
