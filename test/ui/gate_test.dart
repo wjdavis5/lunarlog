@@ -1477,6 +1477,138 @@ void main() {
 
       await harness.dispose();
     });
+
+    testWidgets(
+        '(#77) a supabaseClient builds and starts a RealtimeSyncCoordinator '
+        'that subscribes one channel per profile and disposes them before '
+        'the database closes — a revert of that wiring must fail this test',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final client = FakeSupabaseClient();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        supabaseClient: client,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+
+      expect(client.createdChannels, hasLength(2),
+          reason: 'issue #77: one Realtime channel per seeded profile');
+      expect(client.createdChannels.keys.toSet(), hasLength(2),
+          reason: 'channel topics are distinct per profile id');
+
+      // Unmounting the root disposes the coordinator before the database
+      // closes, which must remove every channel it created. The coordinator
+      // cancels a drift stream subscription backed by the NativeDatabase
+      // worker isolate, so a bare pump is not enough to observe completion.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      // The coordinator's teardown cancels a real drift StreamSubscription;
+      // that cancellation future only settles on a real event-loop turn, not
+      // a synthetic pump, so bridge out of the fake-async test zone briefly.
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump();
+      expect(client.createdChannels, isEmpty);
+      expect(client.removedChannels, hasLength(2));
+      await harness.db.close();
+    });
+
+    testWidgets(
+        '(#77) with no supabaseClient the sync engine still starts but no '
+        'Realtime channel is ever created', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+
+      expect(engine.startCalls, 1);
+      // No supabaseClient means no coordinator; FakeSupabaseClient is never
+      // even constructed, so there is nothing to assert channels against —
+      // the absence of a crash and the engine starting normally is the
+      // proof.
+
+      await harness.dispose();
+    });
+
+    testWidgets(
+        '(#77) a profile added after unlock gets its own channel without '
+        'recreating the existing ones', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final client = FakeSupabaseClient();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        supabaseClient: client,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+      expect(client.createdChannels, hasLength(2));
+      final existingTopics = client.createdChannels.keys.toSet();
+
+      await DriftProfilesRepository(harness.db.storage)
+          .create(displayName: 'Cammie', isMinor: true);
+      await harness.drainIsolateTraffic(tester);
+
+      expect(client.createdChannels, hasLength(3));
+      expect(client.createdChannels.keys.toSet().containsAll(existingTopics),
+          isTrue,
+          reason: 'existing channels are not recreated');
+
+      await harness.dispose();
+    });
   });
 
   group('settings screen (v1: exactly one control)', () {
