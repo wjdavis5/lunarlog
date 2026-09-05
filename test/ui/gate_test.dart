@@ -19,18 +19,22 @@ import 'package:lunarlog/data/db/errors.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_settings_store.dart';
+import '../support/fake_supabase_client.dart';
 import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
 
@@ -157,6 +161,7 @@ class Harness {
     Duration inactivityTimeout = kDefaultInactivityTimeout,
     AuthService? authService,
     SyncTransport? syncTransport,
+    SupabaseClient? supabaseClient,
     SyncEngineBuilder syncEngineBuilder = defaultSyncEngineBuilder,
   }) async {
     await pendingSeed;
@@ -177,6 +182,7 @@ class Harness {
       inactivityTimerFactory: timers.factory,
       authService: authService,
       syncTransport: syncTransport,
+      supabaseClient: supabaseClient,
       syncEngineBuilder: syncEngineBuilder,
     ));
     await tester.pump();
@@ -1323,6 +1329,11 @@ void main() {
               .element(find.byType(ProfileHomeGate))
               .read<SyncStatusController?>(),
           isNull);
+      // #76: no Supabase client, so no sharing service either — the
+      // Caregivers menu and invite intake must stay dormant, not crash.
+      expect(
+          tester.element(find.byType(ProfileHomeGate)).read<SharingService?>(),
+          isNull);
       await harness.dispose();
     });
 
@@ -1368,6 +1379,11 @@ void main() {
           .read<SyncStatusController?>();
       expect(controller, isNotNull);
       expect(controller!.snapshot, SyncSnapshot.initial);
+      // #76: a sync engine with no supabaseClient still builds no sharing
+      // service — the two are wired independently in _startSyncEngine.
+      expect(
+          tester.element(find.byType(ProfileHomeGate)).read<SharingService?>(),
+          isNull);
       engine.emitPhase(SyncPhase.pulling);
       await tester.pump();
       expect(controller.phase, SyncPhase.pulling);
@@ -1412,6 +1428,53 @@ void main() {
 
       // Root disposal cancels the periodic timer; a leaked one would fail
       // this test as a pending timer.
+      await harness.dispose();
+    });
+
+    testWidgets(
+        '(#76) a supabaseClient builds a real SupabaseSharingService and '
+        'provides it down the tree, so the Caregivers menu and invite '
+        'intake are reachable in production — not just when a test injects '
+        'a fake sharing service directly', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final client = FakeSupabaseClient();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        supabaseClient: client,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+
+      final sharing = tester
+          .element(find.byType(ProfileHomeGate))
+          .read<SharingService?>();
+      expect(sharing, isNotNull,
+          reason: 'issue #76: main.dart passes supabaseClient, so '
+              'LunarLogRoot must build and provide a sharing service');
+      expect(sharing, isA<SupabaseSharingService>());
+      // Signed out (no session emitted on `auth`) and the service is still
+      // provided: `supabaseClient`/`authService` gate on Supabase being
+      // *configured*, not on a session existing, so an unauthenticated
+      // recipient can still land on the accept-invite sheet before signing
+      // in (R9's sign-in latch handles the rest).
+      expect(auth.state, AuthSessionState.signedOut);
+
       await harness.dispose();
     });
   });
