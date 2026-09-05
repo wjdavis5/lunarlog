@@ -700,26 +700,53 @@ void main() {
 
     testWidgets(
         'entry logged by a user id with no guardian row shows the generic '
-        'fallback (R3)', (tester) async {
+        'fallback, distinct from a real caregiver-role guardian match (R3)',
+        (tester) async {
       final auth = FakeAuthService()
         ..emit(AuthSessionState.signedIn,
             user: const AuthUser(id: 'user-mom'));
+      final matchedDate = kToday.addDays(-1);
       final h = await pumpLogging(
         tester,
         authService: auth,
         withStorage: true,
         seed: (db, profileId) async {
           await db.storage.applyRemoteRows([
+            // A real guardian whose role happens to be "caregiver" — whose
+            // label is the literal string 'Caregiver', identical to the
+            // no-match fallback text. Giving it a display name and
+            // attributing a *separate* entry to it proves the wiring
+            // actually looked the guardian up (real name shown) rather
+            // than the generic-fallback and matched-caregiver-role cases
+            // coincidentally rendering the same text: if the guardian list
+            // were ever dropped, this second entry would also read
+            // "Logged by Caregiver" instead of "Logged by Nanny".
+            guardianRow(profileId, 'g-nanny', 'user-nanny', 'caregiver',
+                displayName: 'Nanny'),
             dayEntryRow(profileId, 'e-1', kToday,
                 loggedByUserId: 'user-ghost'),
+            dayEntryRow(profileId, 'e-2', matchedDate,
+                loggedByUserId: 'user-nanny'),
           ]);
         },
       );
 
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
+      expect(find.textContaining('Logged by Caregiver'), findsOneWidget,
+          reason: 'a user id absent from the guardian list falls back to '
+              'the generic label');
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
 
-      expect(find.textContaining('Logged by Caregiver'), findsOneWidget);
+      await tester.tap(find.byKey(ValueKey('day-cell-${matchedDate.iso}')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Logged by Nanny'), findsOneWidget,
+          reason: 'a real guardian whose role label is the same string as '
+              'the generic fallback must still resolve to its own display '
+              'name, proving the match — not the fallback — produced it');
+      expect(find.textContaining('Logged by Caregiver'), findsNothing);
+
       await disposeLogging(tester, h);
     });
 
@@ -759,13 +786,31 @@ void main() {
     });
 
     testWidgets(
-        'local-only operation with no auth or storage renders no '
-        'attribution badge (R4)', (tester) async {
+        'local-only operation with no auth or storage suppresses '
+        'personalized attribution even when the entry carries a '
+        'loggedByUserId (R4)', (tester) async {
       final h = await pumpLogging(
         tester,
+        // Deliberately no `authService:`/`withStorage:` — this is the
+        // local-only tree (no AuthController, no LunarLogStorage provider),
+        // so MonthCalendar._currentUserId stays null and _guardians stays
+        // empty regardless of what the underlying entry carries.
         seed: (db, profileId) async {
-          await DriftDayEntriesRepository(db.storage)
-              .save(entryFor(profileId, kToday));
+          // Seeded via applyRemoteRows (bypassing the widget tree's
+          // provider wiring, straight into the shared db) so the entry
+          // carries a real loggedByUserId — e.g. previously synced data
+          // being viewed while signed out — plus a guardian row for that
+          // same user id that WOULD resolve to "Mom" if the guardians
+          // repository were wired up. This is what makes the test load
+          // bearing: a fixture that never seeds loggedByUserId at all (the
+          // prior version of this test) can't distinguish "local-only mode
+          // suppresses attribution" from "there was nothing to attribute in
+          // the first place".
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-mom', 'user-mom', 'primary_guardian',
+                displayName: 'Mom'),
+            dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-mom'),
+          ]);
         },
       );
 
@@ -773,10 +818,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(DaySheet), findsOneWidget);
-      expect(find.byIcon(Icons.people_outline), findsNothing,
-          reason: 'a locally-created entry has no loggedByUserId at all, '
-              'so the badge renders nothing');
+      // The badge still renders (loggedByUserId is non-null), but with no
+      // AuthController or guardians repository wired, it can only fall
+      // back to the generic label — never "you" and never the guardian's
+      // real display name, even though "Mom" exists in local storage for
+      // that exact user id. If local-only mode's suppression of
+      // currentUserId/guardians were ever removed, this would instead
+      // render "Logged by Mom".
+      expect(find.textContaining('Logged by Caregiver'), findsOneWidget,
+          reason: 'no AuthController/guardians repository is wired, so the '
+              'badge cannot personalize even though a matching guardian '
+              'row exists in local storage');
       expect(find.textContaining('you'), findsNothing);
+      expect(find.textContaining('Mom'), findsNothing,
+          reason: 'the guardian display name must not leak through when '
+              'local-only mode never wired the guardians repository');
       await disposeLogging(tester, h);
     });
 
@@ -839,10 +895,20 @@ void main() {
       final settings = DriftSettingsStore(h.db.storage);
       final profileB =
           await profiles.create(displayName: 'Bob', isMinor: false);
+      final dadLeakDate = kToday.addDays(-1);
       await h.db.storage.applyRemoteRows([
         guardianRow(profileB.id, 'g-aunt', 'user-aunt', 'viewer',
             displayName: 'Aunt'),
         dayEntryRow(profileB.id, 'e-2', kToday, loggedByUserId: 'user-aunt'),
+        // Attributed to profile A's guardian's *user id*, but profile B
+        // registers no guardian for that id. If profile A's guardian list
+        // (["Dad"]) ever leaked into profile B's attribution context, this
+        // entry would incorrectly resolve to "Logged by Dad" instead of the
+        // generic fallback — the real regression this test guards against,
+        // as distinct from merely not seeing "Dad" text anywhere by
+        // coincidence.
+        dayEntryRow(profileB.id, 'e-3', dadLeakDate,
+            loggedByUserId: 'user-dad'),
       ]);
 
       // Rebuild ProfileDetailScreen at the same tree position with the new
@@ -871,7 +937,22 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Logged by Aunt'), findsOneWidget);
+      expect(find.textContaining('Logged by Aunt'), findsOneWidget,
+          reason: "profile B's own real guardian still resolves correctly "
+              'after the switch');
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      // The load-bearing assertion: an entry attributed to profile A's
+      // guardian's user id must resolve to the generic fallback in profile
+      // B, not to "Dad" — proving the guardian list actually reset on
+      // switch rather than merely never containing an entry that would
+      // render "Dad" by coincidence.
+      await tester.tap(find.byKey(ValueKey('day-cell-${dadLeakDate.iso}')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Logged by Caregiver'), findsOneWidget,
+          reason: "profile A's guardian must not resolve in profile B's "
+              'attribution context');
       expect(find.textContaining('Dad'), findsNothing,
           reason: "profile B must never render profile A's guardian names");
 
