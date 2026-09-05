@@ -596,6 +596,7 @@ void main() {
       await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
       await rig.storage.upsertProfile(displayName: 'B', isMinor: false);
       final offsetBefore = (await rig.state()).serverClockOffsetMs;
+      expect(offsetBefore, isNull);
       // Batch 1 answers with a server clock five minutes ahead, so the
       // in-memory offset it sets is visibly different from the persisted one.
       rig.transport.scriptPushResult(
@@ -634,9 +635,9 @@ void main() {
           reason: 'a failed push ends the cycle');
       expect(rig.storage.clockOffset, const Duration(minutes: 5),
           reason: 'the in-memory offset from batch 1 did take effect');
-      expect((await rig.state()).serverClockOffsetMs, offsetBefore,
-          reason: 'the persist happens after the batch loop, which the '
-              'exception skipped');
+      expect((await rig.state()).serverClockOffsetMs,
+          const Duration(minutes: 5).inMilliseconds,
+          reason: 'the persist happens immediately per committed batch');
 
       hooked.beforeMarkPushed = null;
       await rig.sync();
@@ -939,6 +940,57 @@ void main() {
       expect(state.cursorProfiles, 0);
       expect(state.cursorDayEntries, 0,
           reason: 'a reconcile applies without moving the per-table cursors');
+    });
+
+    test('an un-appliable reconcile row retries up to 3 times before advancing '
+        'lastFullPullAt to bound the loop', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      final staleFullPull = t0.subtract(const Duration(hours: 25));
+      await rig.bind(uidA, lastFullPullAt: staleFullPull);
+
+      const orphanProfileId = 'no-such-profile';
+      final orphan = remoteEntry(ulidN(20),
+          profileId: orphanProfileId, localDate: '2026-01-01', updatedAt: t0,
+          serverVersion: 20);
+
+      // Incremental pulls return empty. Reconcile pages return the orphan.
+      // Cycle 1: start() runs cycle 1.
+      rig.transport.scriptPage(SyncTable.dayEntries, const []); // incremental
+      rig.transport.scriptPage(SyncTable.dayEntries, [orphan]); // reconcile
+      await rig.start();
+
+      var state = await rig.state();
+      expect(state.lastFullPullAt?.toUtc(), staleFullPull,
+          reason: 'cycle 1 failed reconcile retry, stamp still stale');
+
+      // Cycle 2: requestSync runs cycle 2.
+      rig.transport.scriptPage(SyncTable.dayEntries, const []); // incremental
+      rig.transport.scriptPage(SyncTable.dayEntries, [orphan]); // reconcile
+      await rig.sync();
+
+      state = await rig.state();
+      expect(state.lastFullPullAt?.toUtc(), staleFullPull,
+          reason: 'cycle 2 failed reconcile retry, stamp still stale');
+
+      // Cycle 3: 3rd consecutive retry reaches limit, advancing lastFullPullAt.
+      rig.transport.scriptPage(SyncTable.dayEntries, const []); // incremental
+      rig.transport.scriptPage(SyncTable.dayEntries, [orphan]); // reconcile
+      await rig.sync();
+
+      state = await rig.state();
+      expect(state.lastFullPullAt?.toUtc(), t0,
+          reason: 'cycle 3 reached retry bound; lastFullPullAt advanced to t0');
+
+      // Cycle 4: full reconcile is no longer due because lastFullPullAt is fresh.
+      final pullsBeforeCycle4 = rig.transport.pullCount;
+      rig.transport.scriptPage(SyncTable.dayEntries, const []); // incremental
+      await rig.sync();
+
+      // Incremental pull checks profiles and dayEntries (2 pull calls: 1 profiles, 1 dayEntries)
+      // and NO reconcile pull is made.
+      expect(rig.transport.pullCount, pullsBeforeCycle4 + 2,
+          reason: 'cycle 4 ran incremental pulls only, no full reconcile');
     });
   });
 

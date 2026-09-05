@@ -67,6 +67,11 @@ const Duration kSyncBackoffCap = Duration(minutes: 10);
 /// (KTD2).
 const Duration kSyncFullPullInterval = Duration(hours: 24);
 
+/// Maximum consecutive sync cycles that may retry reconciliation due to
+/// un-appliable remote rows before advancing lastFullPullAt to avoid an
+/// unbounded reconcile loop.
+const int kMaxConsecutiveReconcileRetries = 3;
+
 final Random _jitter = Random();
 
 /// Exponential backoff with up to 25% jitter, capped at ten minutes:
@@ -169,6 +174,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   bool _restoring = false;
   bool _writeDuringCycle = false;
   int _consecutiveNetworkFailures = 0;
+  int _consecutiveReconcileRetries = 0;
 
   /// Rows the server rejected, id → `local_rev` at rejection. A row is
   /// excluded from pushes while its `local_rev` still equals the rejected
@@ -494,8 +500,16 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (!reconcileDueBeforePush && !resolvedSeen) return false;
     final reconcileRetry = await _reconcile(uid);
     if (!reconcileRetry) {
+      _consecutiveReconcileRetries = 0;
       await _updateState(
           (s) => s.copyWith(lastFullPullAt: Value(_clock().toUtc())));
+    } else {
+      _consecutiveReconcileRetries++;
+      if (_consecutiveReconcileRetries >= kMaxConsecutiveReconcileRetries) {
+        _consecutiveReconcileRetries = 0;
+        await _updateState(
+            (s) => s.copyWith(lastFullPullAt: Value(_clock().toUtc())));
+      }
     }
     return reconcileRetry;
   }
@@ -605,15 +619,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (profiles.isEmpty && entries.isEmpty) return false;
 
     var resolvedSeen = false;
-    Duration? lastOffset;
     for (final batch in _chunk(profiles, entries)) {
       final outcome = await _pushBatch(uid, batch);
       if (outcome.resolvedSeen) resolvedSeen = true;
-      if (outcome.offset != null) lastOffset = outcome.offset;
-    }
-    if (lastOffset != null) {
-      final ms = lastOffset.inMilliseconds;
-      await _updateState((s) => s.copyWith(serverClockOffsetMs: Value(ms)));
     }
     return resolvedSeen;
   }
@@ -641,10 +649,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
     await _applyPushResult(batch, result);
     // The in-memory offset takes effect immediately (it stamps the next
-    // local writes); the persisted copy is written once after the loop in
-    // [_push].
+    // local writes) and is persisted to sync_state for this committed batch.
     final offset = result.serverNow.toUtc().difference(_clock().toUtc());
     _storage.setClockOffset(offset);
+    await _updateState(
+        (s) => s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));
     return (resolvedSeen: result.resolved.isNotEmpty, offset: offset);
   }
 
