@@ -27,8 +27,11 @@ class FakeRealtimeChannel implements RealtimeChannel {
   @override
   final String topic;
 
-  void Function(PostgresChangePayload payload)? dayEntriesCallback;
-  void Function(PostgresChangePayload payload)? profilesCallback;
+  /// The coordinator listens on `sync_signals` only (Issue #77 PR #92
+  /// review revision of KTD2) — see realtime_sync_coordinator.dart's
+  /// top-of-file doc comment for why `day_entries`/`profiles` are never
+  /// subscribed to directly.
+  void Function(PostgresChangePayload payload)? syncSignalsCallback;
 
   @override
   RealtimeChannel onPostgresChanges({
@@ -40,10 +43,8 @@ class FakeRealtimeChannel implements RealtimeChannel {
     List<String>? select,
     required void Function(PostgresChangePayload payload) callback,
   }) {
-    if (table == 'day_entries') {
-      dayEntriesCallback = callback;
-    } else if (table == 'profiles') {
-      profilesCallback = callback;
+    if (table == 'sync_signals') {
+      syncSignalsCallback = callback;
     }
     return this;
   }
@@ -130,35 +131,35 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
     final ch = client.createdChannels['profile:${p1.id}']!;
-    expect(ch.dayEntriesCallback, isNotNull);
+    expect(ch.syncSignalsCallback, isNotNull);
 
     final now = DateTime.utc(2026, 9, 4, 12);
 
     // Simulate 3 rapid changes
-    ch.dayEntriesCallback!(PostgresChangePayload(
+    ch.syncSignalsCallback!(PostgresChangePayload(
       eventType: PostgresChangeEvent.all,
       newRecord: {},
       oldRecord: {},
       schema: 'public',
-      table: 'day_entries',
+      table: 'sync_signals',
       commitTimestamp: now,
       errors: [],
     ));
-    ch.dayEntriesCallback!(PostgresChangePayload(
+    ch.syncSignalsCallback!(PostgresChangePayload(
       eventType: PostgresChangeEvent.all,
       newRecord: {},
       oldRecord: {},
       schema: 'public',
-      table: 'day_entries',
+      table: 'sync_signals',
       commitTimestamp: now.add(const Duration(seconds: 1)),
       errors: [],
     ));
-    ch.profilesCallback!(PostgresChangePayload(
+    ch.syncSignalsCallback!(PostgresChangePayload(
       eventType: PostgresChangeEvent.all,
       newRecord: {},
       oldRecord: {},
       schema: 'public',
-      table: 'profiles',
+      table: 'sync_signals',
       commitTimestamp: now.add(const Duration(seconds: 2)),
       errors: [],
     ));
@@ -278,12 +279,12 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       final ch = client.createdChannels.values.first;
-      ch.dayEntriesCallback!(PostgresChangePayload(
+      ch.syncSignalsCallback!(PostgresChangePayload(
         eventType: PostgresChangeEvent.all,
         newRecord: {},
         oldRecord: {},
         schema: 'public',
-        table: 'day_entries',
+        table: 'sync_signals',
         commitTimestamp: DateTime.utc(2026, 9, 5),
         errors: [],
       ));

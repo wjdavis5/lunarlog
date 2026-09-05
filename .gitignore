@@ -65,3 +65,8 @@ key.properties
 
 # Worktrees
 .worktrees/
+
+# Node deps for the manual (non-CI) Realtime verification script
+# (supabase/tests/manual/verify_realtime_delivery.mjs)
+supabase/tests/manual/node_modules/
+supabase/tests/manual/package-lock.json

@@ -16,6 +16,45 @@ depth: standard
 
 ---
 
+## Amendment (PR #92 review, P0)
+
+**KTD2 as originally written below is wrong and was not shipped as designed.**
+U2 originally published `public.profiles`/`public.day_entries` directly with a
+narrow *publication* column list, on the theory that Realtime would honor it
+and keep `note`/`tags`/`flow` off the websocket. **It would not have.**
+Supabase Realtime's WALRUS decodes the replication stream with wal2json,
+which only uses a publication as a table-level "which tables am I watching"
+list — publication column lists are a pgoutput-only feature and are inert
+for wal2json/Realtime. The filter Realtime actually applies per column is
+`has_column_privilege(<role>, <table>, <column>, 'SELECT')`, and
+`20260903014208_initial_sync_schema.sql` grants table-wide `select` on
+`day_entries`/`profiles` to `authenticated`, so every column — including
+`note`/`tags`/`flow` — would have passed that check and reached the
+websocket regardless of the publication's declared column list. Every
+mention of "column list" as the privacy mechanism below (KTD2, R3, U2, the
+Definition of Done, the Risks table) describes the design as originally
+written, not what shipped.
+
+**What actually shipped:** a dedicated table, `public.sync_signals`
+(`profile_id`, `updated_at` — nothing else), populated by AFTER triggers on
+`profiles`/`day_entries`, and published to `supabase_realtime` in place of
+the source tables. `public.profiles`/`public.day_entries` are never
+published, in any form. `RealtimeSyncCoordinator` subscribes to
+`sync_signals` instead of the source tables directly; its behavior (discard
+the payload, call `syncEngine.requestSync()`) is unchanged. See
+`supabase/migrations/20260905100000_realtime_publication.sql`'s header
+comment for the full mechanism, and `supabase/tests/realtime_publication_test.sql`
+for the pgTAP proof (including that `day_entries`/`profiles` are NOT
+publication members — the assertion that gives this fix teeth). The P1 fix
+from the same review — the migration's guard checked publication
+*membership* only, so a table already published whole-row (e.g. via
+Supabase Studio's "Enable Realtime" toggle) read as already-correct and was
+skipped — is addressed by `public.reconcile_realtime_publication()`, which
+checks and *corrects* membership, `puballtables`, and `sync_signals`'s
+column list rather than skipping on a membership-only match.
+
+---
+
 ## Goal Capsule
 
 Co-caregiver edits should land on the other guardian's device within seconds
@@ -75,7 +114,7 @@ what keeps the feature dormant in production, is three things:
 |---|---|
 | R1 | A test fails if `LunarLogRoot` stops constructing, starting, or disposing `RealtimeSyncCoordinator` when a `SupabaseClient` is present. |
 | R2 | `public.profiles` and `public.day_entries` changes are delivered to authorized guardian subscribers via Supabase Realtime. |
-| R3 | No entry payload content (`note`, `tags`, `flow`) is broadcast over the Realtime websocket. The coordinator needs a wake signal only; the authoritative read stays on the RLS-checked sync pull. |
+| R3 | No entry payload content (`note`, `tags`, `flow`) is broadcast over the Realtime websocket. The coordinator needs a wake signal only; the authoritative read stays on the RLS-checked sync pull. **Mechanism corrected post-review — see "Amendment" above: enforced by never publishing `profiles`/`day_entries` at all, not by a publication column list.** |
 | R4 | A device that opens its database signed out and signs in afterwards ends up with live channels, without an app restart. |
 | R5 | The change is verifiable in CI without the Realtime container (which `supabase start` excludes in this repo). |
 
@@ -92,7 +131,14 @@ test (R1) and the missing enablement (R2, R4). The PR body must say this
 explicitly so the issue's stale premise is corrected in the record — same
 pattern as `7d4c664` for #76.
 
-### KTD2. Publish column lists, never whole rows
+### KTD2. Publish column lists, never whole rows (SUPERSEDED — see "Amendment" above)
+
+**This KTD is wrong as written and was not what shipped.** Publication
+column lists do not restrict what Realtime delivers (they are a
+pgoutput-only feature; Realtime's WALRUS uses wal2json). What shipped
+instead: a dedicated `public.sync_signals` table with no health-content
+columns, published in place of `profiles`/`day_entries`. Left below for
+history; do not implement this KTD as written.
 
 `public.day_entries` stores `note` (up to 2000 chars), `tags`, and `flow` in
 plaintext server-side (`supabase/migrations/20260903014208_initial_sync_schema.sql:68-100`).
@@ -130,15 +176,34 @@ auth session stream and tear down + rebuild its channels when the signed-in
 user identity changes. This is cheap (channel churn only on sign-in/sign-out,
 not on token refresh) and deterministic.
 
-### KTD4. Verify the publication from pgTAP, not from an end-to-end Realtime test
+### KTD4. Verify the publication from pgTAP, not from an end-to-end Realtime test (still true post-review, revised)
 
 `AGENTS.md:39` and `.github/workflows/ci.yml:76-78` both start local Supabase
 with `-x realtime`, so there is no Realtime container in CI to assert against.
-Publication membership is plain catalog state, so `pg_publication_tables` /
-`pg_publication_rel` assertions in a pgTAP file give exact, fast coverage of
-both R2 and R3 (including the negative assertion that `note` is not published)
-without adding a container. End-to-end delivery is a manual cloud check, listed
-under Verification.
+Catalog-only assertions (`pg_publication_tables`) plus trigger *behavior* in a
+pgTAP file give exact, fast coverage of both R2 and R3 without adding a
+container to the pgTAP job — see `supabase/tests/realtime_publication_test.sql`.
+
+**Investigated for this review, not adopted as a CI blocker:** adding a
+`realtime`-inclusive Supabase stack to CI (a new job or an addition to
+`db-tests`) was investigated and prototyped locally
+(`supabase/tests/manual/verify_realtime_delivery.mjs`, run against a real
+local Realtime container with Docker). It works, but empirically the
+`postgres_changes` subscription's own "subscribed" confirmation is a *second*,
+slower async round-trip after the initial channel join ok (order of seconds,
+not the join's own latency) — a fixed CI-friendly timeout would need
+real-clock margin per assertion, which is a materially different (slower,
+more container-dependent, more failure-mode-prone: Kong routing, tenant
+connect races, `RealtimeDisabledForConfiguration` vs. silent non-delivery are
+different failure shapes) proposition than the fast, deterministic pgTAP job
+this repo currently has. Standing this up reliably in GitHub Actions — with
+retries/backoff tuned against real CI timing rather than this one local
+machine — is out of proportion for one migration's regression coverage, so
+this KTD's original call stands: **verify the publication from pgTAP in CI,
+and run `verify_realtime_delivery.mjs` manually (local Docker or cloud)
+before every merge that touches `20260905100000_realtime_publication.sql` or
+the coordinator's subscription shape.** See "Amendment" above and the
+Verification Contract below for what was actually run for this PR.
 
 ---
 
@@ -226,10 +291,12 @@ case fail.
 
 ---
 
-### U2. Migration: add the two tables to `supabase_realtime` with column lists
+### U2. Migration: publish a dedicated `sync_signals` table to `supabase_realtime` (REVISED post-review — see "Amendment" above)
 
-**Goal:** Make Postgres actually emit the changes the coordinator is listening
-for, without broadcasting entry content (R2, R3).
+**Goal:** Make Postgres actually emit a change signal the coordinator is
+listening for, without broadcasting entry content (R2, R3) — via a mechanism
+that actually enforces that, not a publication column list on the source
+tables (superseded KTD2 above).
 
 **Requirements:** R2, R3
 
@@ -239,29 +306,42 @@ for, without broadcasting entry content (R2, R3).
 - `supabase/migrations/20260905100000_realtime_publication.sql` (new — bump the timestamp past `20260905090000_close_guardian_revocation_bypass.sql`)
 - `supabase/tests/realtime_publication_test.sql` (new)
 
-**Approach:**
+**Approach (as shipped, revised from the original 5-step list below):**
 
-1. Guard for the publication's existence — `supabase_realtime` is created by the platform's own base migrations, so the migration should be a no-op-safe `do $$ … $$` block rather than assuming it, and should be re-runnable (`pg_publication_rel` check before `alter publication … add table`).
-2. Add `public.profiles` with the column list from KTD2.
-3. Add `public.day_entries` with the column list from KTD2.
-4. Leave replica identity at the default (primary key). Do **not** set `replica identity full` — it would defeat KTD2 by restoring the excluded columns in the old-row image.
-5. Add a `comment on` or header comment explaining *why* the column list is narrow, so a future "just add the table" edit is visibly a privacy regression.
+1. Create `public.sync_signals (profile_id text primary key, updated_at timestamptz not null default now())` — two columns, no health content possible by construction.
+2. RLS on `sync_signals`, mirroring `day_entries_select_guardians`: `for select to authenticated using (public.is_profile_guardian(profile_id, (select auth.uid())))`. No insert/update/delete grant to `authenticated` at all.
+3. `public.touch_sync_signal()`, a `security definer` AFTER trigger function on both `profiles` and `day_entries`, upserts `sync_signals`' row for the affected `profile_id` on every insert/update/delete.
+4. `public.reconcile_realtime_publication()`: a callable (not merely inline) guard that (a) removes `day_entries`/`profiles` from `supabase_realtime` if either is ever found published, in any form; (b) fails loudly if the publication is `FOR ALL TABLES`; (c) adds `sync_signals` to the publication with exactly `(profile_id, updated_at)`, correcting the column list if it ever drifts (e.g. a Studio toggle). The migration calls it once; pgTAP calls it again after manufacturing drift, to prove correction rather than skip (P1 fix).
+5. Leave replica identity on `profiles`/`day_entries` at the default (primary key) — moot for the privacy boundary now (they are never published), but still correct so a future publish attempt does not additionally reach for `replica identity full`.
+6. The migration's header comment explains *why* the source tables are never published (wal2json vs. pgoutput, `has_column_privilege`), not just that a column list is narrow — so a future "let's add a column list back" edit is visibly re-introducing the flaw this migration exists to close.
+
+Original 5-step approach (superseded, kept for history — do not implement):
+guard for the publication's existence; add `public.profiles`/`public.day_entries`
+directly with the KTD2 column lists; leave replica identity default; document
+why the column list is narrow.
 
 **Patterns to follow:** the header-comment + numbered-section style of
 `supabase/migrations/20260904010000_multi_guardian_schema.sql`; the pgTAP file
 conventions in `supabase/tests/rls_isolation_test.sql`, with helpers from
 `supabase/tests/000-setup.sql`.
 
-**Test scenarios:**
-- `public.profiles` is a member of `supabase_realtime`.
-- `public.day_entries` is a member of `supabase_realtime`.
-- The published column set for `day_entries` includes `id`, `user_id`, `profile_id`, `updated_at`, `deleted_at`, `server_version`.
-- The published column set for `day_entries` **excludes** `note`, `tags`, `flow`, `local_date`, and `tz` — the privacy assertion that gives KTD2 teeth.
-- The published column set for `profiles` excludes `display_name`.
-- Both tables' replica identity is `d` (default), not `f` (full).
-- Re-running the migration body is a no-op (idempotence), so a re-applied migration does not error.
+**Test scenarios (as shipped):**
+- `public.sync_signals` is a member of `supabase_realtime`; `public.day_entries` and `public.profiles` are NOT — the assertion that gives this fix teeth (superseding the "narrow column list" assertions below).
+- The published column set for `sync_signals` is exactly `profile_id`, `updated_at`.
+- `sync_signals` has exactly 2 columns total, structurally, not just "not published wider".
+- `authenticated` cannot insert/update/delete `sync_signals` directly (`42501`).
+- Inserting a profile touches its `sync_signals` row (profiles trigger); inserting/updating a `day_entries` row does too, independently (day_entries trigger).
+- A non-guardian cannot see another family's `sync_signals` row.
+- `public.reconcile_realtime_publication()` reverts a simulated Studio-toggle whole-row publish of `day_entries`, and narrows a simulated column-list drift on `sync_signals` back to `profile_id, updated_at` — correction, not skip (P1 fix).
+- Both source tables' replica identity is `d` (default), not `f` (full).
 
-**Verification:** `npx supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor`, then `db reset --local`, then `test db --local` — all pgTAP files green, including the new one.
+Original test scenarios (superseded, kept for history — do not implement):
+`public.profiles`/`public.day_entries` are publication members; their
+published column sets include the KTD2 allowlist and exclude
+`note`/`tags`/`flow`/`local_date`/`tz`/`display_name`; re-running the
+migration body is a no-op.
+
+**Verification:** `npx supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor`, then `db reset --local`, then `test db --local` — all pgTAP files green, including the new one. See also the CI/manual verification split under KTD4 (revised) and the Verification Contract below.
 
 ---
 
@@ -385,7 +465,8 @@ channel rebuild, the channel-name fix, and the doc note.
 
 | Risk | Mitigation |
 |---|---|
-| Publishing the tables leaks entry content over websockets. | KTD2's column lists, enforced by U2's negative pgTAP assertions on `note`/`tags`/`flow`. |
+| Publishing the tables leaks entry content over websockets. | **Corrected post-review:** `day_entries`/`profiles` are never published at all (not a column list, which does not work for Realtime's wal2json-based decoding — see "Amendment"). Enforced by `realtime_publication_test.sql`'s assertions that they are NOT publication members, and empirically confirmed against a real local Realtime container (`verify_realtime_delivery.mjs`): Realtime itself refuses those subscriptions with `RealtimeDisabledForConfiguration`. |
+| A publication column list is assumed to restrict Realtime delivery. | This was the original (wrong) design — see "Amendment". No column list is relied on for privacy anywhere in the shipped migration; `sync_signals` has no sensitive columns to begin with. |
 | `replica identity full` gets added later "to fix" a missing old-row image, silently re-publishing the excluded columns. | Called out in the migration's header comment and asserted by a pgTAP replica-identity check. |
 | The migration reaches production before the client change. | The two are independent and both safe alone: the publication with no listening client is inert, and the client change without the publication is today's behavior. Order does not matter. |
 | `supabase-migrate.yml` applies this to the live project on merge. | Migration is additive and idempotent; no data change, no policy change. |
@@ -404,20 +485,21 @@ Run from `C:\git\repos\lunarlog-wt\issue-77`:
 4. `dart run tool/quality_gate.dart` — 90% coverage floor and per-method CRAP gate pass (CI-enforced).
 5. `npx supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor`, then `npx supabase@2.116.0 db reset --local`, then `npx supabase@2.116.0 test db --local` — all pgTAP files green, including `supabase/tests/realtime_publication_test.sql`. Stop with `npx supabase@2.116.0 stop --no-backup`.
 6. Negative check for U1: temporarily comment out the `RealtimeSyncCoordinator` construction in `_startSyncEngine`, confirm the new `gate_test.dart` case **fails**, then restore.
-7. Manual (cloud, not CI): two accounts sharing one profile; guardian B records an entry; guardian A's device pulls within a few seconds without a foreground refresh. Confirm in the Realtime inspector that the delivered payload carries no `note`/`tags`/`flow`.
+7. **Manual, empirical, against a real Realtime container — actually run for this PR (revised from "cloud check" — see "Amendment"):** `npx supabase@2.116.0 start` with realtime NOT excluded (Docker required), then `supabase/tests/manual/verify_realtime_delivery.mjs` — real websocket assertions against the local Realtime container proved (a) `sync_signals` delivers a wake event whose payload contains only `profile_id`/`updated_at`, and (b) `day_entries`/`profiles` subscriptions are refused outright by Realtime (`RealtimeDisabledForConfiguration`) rather than silently filtered, so no entry content ever reaches the websocket via those tables. Run this (or the equivalent against the cloud project) before every merge touching the publication migration or the coordinator's subscription shape; it is intentionally not in CI (see revised KTD4).
 
 ---
 
 ## Definition of Done
 
-- [ ] `gate_test.dart` fails if the root stops constructing, starting, or disposing `RealtimeSyncCoordinator` (R1).
-- [ ] `supabase/migrations/20260905100000_realtime_publication.sql` adds both tables to `supabase_realtime` with narrow column lists (R2, R3).
-- [ ] `supabase/tests/realtime_publication_test.sql` asserts membership, the included columns, the excluded content columns, and default replica identity (R3, R5).
-- [ ] The coordinator rebuilds its channels on a signed-in identity change and not on a token refresh (R4).
-- [ ] Channel topics are no longer double-prefixed.
-- [ ] `AGENTS.md` records the publication's shape and the CI verification gap.
-- [ ] Steps 1-6 of the Verification Contract pass locally.
-- [ ] The PR body states that the issue's premise was stale — the wiring landed in `7a4c7a6` (PR #80) — and that this PR adds the missing proof and backend enablement, mirroring how `7d4c664` closed #76.
+- [x] `gate_test.dart` fails if the root stops constructing, starting, or disposing `RealtimeSyncCoordinator` (R1).
+- [x] `supabase/migrations/20260905100000_realtime_publication.sql` publishes only `public.sync_signals` (profile_id, updated_at) to `supabase_realtime`, and never publishes `public.day_entries`/`public.profiles` in any form — corrected post-review (R2, R3; see "Amendment" above, not the original "narrow column lists on the source tables" text this bullet used to have).
+- [x] `supabase/tests/realtime_publication_test.sql` asserts `sync_signals` membership and column list, that `day_entries`/`profiles` are NOT published, default replica identity, and behaviorally that profiles/day_entries writes populate `sync_signals` and a non-guardian cannot read another family's signal row (R3, R5).
+- [x] `public.reconcile_realtime_publication()` corrects (not just checks) publication drift — a simulated Supabase Studio "Enable Realtime" toggle on `day_entries` is reverted, not skipped (P1 fix from the PR #92 review).
+- [x] The coordinator rebuilds its channels on a signed-in identity change and not on a token refresh (R4).
+- [x] Channel topics are no longer double-prefixed.
+- [x] `AGENTS.md` and `README.md` record the `sync_signals` mechanism, why a publication column list on the source tables would not have worked, and the CI verification gap plus the required manual pre-merge cloud check.
+- [x] Steps 1-7 of the Verification Contract pass locally (see the updated contract below) — including step 7, run for real against a local Realtime container, not skipped as infeasible.
+- [ ] The PR body states that the issue's premise was stale — the wiring landed in `7a4c7a6` (PR #80) — and that this PR adds the missing proof and backend enablement, mirroring how `7d4c664` closed #76, and additionally that the PR #92 review's P0/P1 findings on the original `20260905100000_realtime_publication.sql` were corrected (see "Amendment" above).
 
 ---
 

@@ -3,6 +3,15 @@
 /// co-caregivers push changes. Issue #77 (KTD2, KTD3) added the
 /// backend publication that makes the channels actually emit, and the
 /// sign-in channel rebuild below.
+///
+/// Listens on `public.sync_signals`, a dedicated wake-signal table — not
+/// `day_entries`/`profiles` directly (PR #92 review revision of KTD2):
+/// Realtime's WALRUS decodes with wal2json, which only honors a publication
+/// as a table-level membership list, so a narrow *publication* column list
+/// on the source tables would not have kept `note`/`tags`/`flow` off this
+/// channel (see `supabase/migrations/20260905100000_realtime_publication.sql`).
+/// `sync_signals` carries no health content by construction, so there is
+/// nothing to discard here except a bare "something changed" notification.
 library;
 
 import 'dart:async';
@@ -133,25 +142,24 @@ class RealtimeSyncCoordinator {
     final channelName = 'profile:$profileId';
     final channel = client.channel(channelName);
 
+    // Listens on `sync_signals`, not `day_entries`/`profiles` directly
+    // (Issue #77 PR #92 review, KTD2 revised): Supabase Realtime's WALRUS
+    // decodes with wal2json, which only honors a publication as a
+    // table-level membership list — a narrow *publication* column list on
+    // the source tables would not have stopped full rows (note/tags/flow)
+    // from reaching this callback, because `has_column_privilege` still
+    // passes for every column under this app's table-wide `select` grant.
+    // `sync_signals` carries no health content by construction, so there is
+    // nothing here to discard except a bare change notification — which is
+    // exactly what this callback already treated the payload as.
     channel
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'day_entries',
+          table: 'sync_signals',
           filter: PostgresChangeFilter(
             type: PostgresChangeFilterType.eq,
             column: 'profile_id',
-            value: profileId,
-          ),
-          callback: (_) => _onRemoteChange(),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'profiles',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
             value: profileId,
           ),
           callback: (_) => _onRemoteChange(),
