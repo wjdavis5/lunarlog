@@ -134,6 +134,10 @@ Store review (primary) is handled by
 [`.github/workflows/ios-release.yml`](.github/workflows/ios-release.yml)
 (mirrored from `taxiGame`). Automated Android release to Google Play is handled
 by [`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml).
+The iOS release declares non-exempt encryption usage (SQLCipher) to App Store
+Connect; see
+[`docs/ops/ios-export-compliance.md`](docs/ops/ios-export-compliance.md) for
+the classification and the operator's recurring filing duties.
 
 ## Accounts
 

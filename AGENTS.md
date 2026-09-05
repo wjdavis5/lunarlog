@@ -105,6 +105,7 @@ Credentials and environment variables live in:
   - Submits for App Store review automatically when `version:` in `pubspec.yaml` changes, or manually via `workflow_dispatch` (`submit_for_review: true`).
   - Monotonic build number calculated via GitHub run counter (`$(( github.run_number + 1000 ))`).
   - Manual signing in CI via [`ios/ExportOptions-ci.plist`](ios/ExportOptions-ci.plist). The target now has the Sign in with Apple entitlement (`ios/Runner/Runner.entitlements`, wired via `CODE_SIGN_ENTITLEMENTS`), so the App Store provisioning profile in `IOS_PROVISION_PROFILE_BASE64` must be regenerated with that capability on the `com.wjdavis5.lunarlog` App ID before the workflow can sign — not yet done.
+  - Export-compliance declaration (`ITSAppUsesNonExemptEncryption` in `ios/Runner/Info.plist`, aligned in `fastlane/Fastfile`, verified in the "Verify the exported bundle" step): classification rationale and the operator's recurring filing duties are in [`docs/ops/ios-export-compliance.md`](docs/ops/ios-export-compliance.md).
 - **Android Play Store Release Workflow:**
   - Automated via [`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml).
   - Triggers on push to `main` (uploads to `internal` track) or manually via `workflow_dispatch` with target track (`internal`, `alpha`, `beta`, `production`).
