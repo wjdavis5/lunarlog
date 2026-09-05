@@ -57,7 +57,7 @@ The live risk is therefore **regression, not absence**. `test/ui/logging_test.da
 
 - **KTD1. Cover the seam with widget tests at the `ProfileDetailScreen` level, not by refactoring `MonthCalendar`.** The wiring is correct; a test that pumps the real screen with real providers is what proves it stays correct. No production restructuring is in scope.
 - **KTD2. Extend the existing `pumpLogging` harness with optional providers rather than adding a parallel harness.** `test/ui/logging_test.dart` already owns the drift-in-memory setup and the `disposeLogging` teardown discipline; adding optional `authService`/storage-provider parameters keeps one harness and avoids a second teardown convention to get wrong.
-- **KTD3. Seed guardian rows through `storage.applyRemoteRows` with a `guardianRow(...)`-style helper, mirroring `test/ui/sharing_flow_test.dart`.** That is the established way this repo materializes server-authored guardian rows locally; reusing it keeps the fixtures honest about where `display_name` comes from.
+- **KTD3. Seed guardian rows through `storage.applyRemoteRows` with a `guardianRow(...)`-style helper, mirroring `test/ui/sharing_flow_test.dart`.** That is the established way this repo materializes server-authored guardian rows locally; reusing it keeps the fixtures honest about where `display_name` comes from. **Day entries carrying `loggedByUserId`/`lastModifiedByUserId` must be seeded the same way** — via `storage.applyRemoteRows([RemoteDayEntryRow(...)])` (`lib/data/sync/remote_rows.dart`), not through `DayEntriesRepository.save()`/`entryFor()`. `LunarLogStorage.upsertDayEntry` (`lib/data/db/storage.dart`) has no parameters for those two columns — only the `applyRemoteRows` path (`_applyDayEntry`) writes them. Mirror the existing `RemoteDayEntryRow` usage in `test/data/storage_sync_test.dart` or `test/data/sync_engine_test.dart`.
 - **KTD4. Attribution resolves against *all* guardian rows, not only `accepted` ones.** `MonthCalendar` passes the unfiltered list, and that is correct: a revoked guardian's past entries should still read "Logged by Dad" rather than losing their name. Recorded here so a future reviewer does not "fix" it into a status filter.
 - **KTD5. Fake the auth seam, do not reach Supabase.** Attribution needs only `AuthController.currentUserId`; the tests supply a minimal fake auth service (or the existing test double used by `test/ui/auth_controller_test.dart`) so the suite stays hermetic.
 
@@ -124,7 +124,7 @@ The live risk is therefore **regression, not absence**. `test/ui/logging_test.da
 
 **Goal:** Assert that opening a day from the calendar renders real attribution, so removing either argument from `_openDay` fails the suite.
 
-**Requirements:** R1, R2, R3, R4, R6, R7.
+**Requirements:** R1, R2, R3, R4, R5, R6, R7. (R5's "supplies the repository when ambient" half is exercised by every R1-R3 scenario below, since attribution only renders correctly when `ProfileDetailScreen` actually passed the repository through; the "supplies null when not ambient" half is exercised by the no-`AuthController`/no-`LunarLogStorage` scenario.)
 
 **Dependencies:** U2.
 
@@ -161,7 +161,7 @@ Run from the repo root in the `issue-79` worktree:
 2. `flutter analyze` — zero issues.
 3. `flutter test` — full suite green.
 4. `dart run tool/quality_gate.dart` — 90% line-coverage floor and the per-method CRAP gate (gate at 10) both pass. This is the CI `check` job's gate; new test-only code must not drag either metric.
-5. `dart run tool/mutation_gate.dart` — local-only; run it scoped to the changed files. Because U3's whole point is mutation resistance, the two attribution arguments in `_openDay` should now be killed mutants rather than survivors.
+5. `dart run tool/mutation_gate.dart` — local-only. Note: this plan changes no `lib/` files, and the gate's default scope mutates only files in the branch diff under `lib/`, so a default-scope run will report no changed `lib/` files and mutate nothing in `month_calendar.dart`. The actual mutation-resistance evidence for the two `_openDay` arguments is U3's required manual spot-check (temporarily remove `currentUserId`/`guardians` from `_openDay`, confirm the new tests fail, then revert) — not this gate. Run `dart run tool/mutation_gate.dart --full` only if automated confirmation against `month_calendar.dart` specifically is wanted; it has no time budget and is run on demand.
 
 Manual/device verification is not required: the change is test-only and touches no platform channel, no migration, and no Supabase surface. The pgTAP suite is unaffected.
 
@@ -180,6 +180,7 @@ Manual/device verification is not required: the change is test-only and touches 
 
 - **Live refresh of an already-open day sheet.** `_openDay` snapshots `_currentUserId` and `_guardians` when the modal is built, so a guardian-stream tick or a sign-in while the sheet is open does not restyle the badge until it is reopened. Closing this means passing streams (or a listenable) into `DaySheet` rather than values — a real refactor with its own review surface. R7 above is deliberately scoped to "the next sheet opened". File as a separate issue if the behavior is ever user-visible.
 - **`ProfileDetailScreen` allocating a new `ProfileGuardiansRepository` on every build.** Harmless today (`MonthCalendar` only re-subscribes on `profileId` change), but it is an allocation per frame; a tidy-up belongs with a broader `ProfileDetailScreen` pass, not here.
+- **A test exercising `app.dart`'s own composition root.** U3's harness (KTD1/KTD2) mirrors `app.dart`'s provider wiring inside `pumpLogging` rather than pumping `app.dart` itself, so a regression in the real composition root (e.g. the "present whenever an `authService` was supplied" condition on `AuthController`, or provider reordering) would not be caught by this plan's coverage. Deliberate scope choice per KTD1 — closing it means a broader app-level smoke test, out of scope here.
 
 ---
 
