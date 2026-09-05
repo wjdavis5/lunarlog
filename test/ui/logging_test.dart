@@ -1,6 +1,8 @@
 /// Widget tests for U5: month calendar, day sheet logging (flow/tags/note),
 /// backfill, future-date lock, edit-without-duplicate, delete via tombstone,
-/// symptom-only markers, save-failure retention, and archived read-only view.
+/// symptom-only markers, save-failure retention, archived read-only view,
+/// and caregiver attribution wiring (issue #79; R1-R7 of the attribution
+/// wiring plan).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -8,9 +10,13 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
+import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -20,22 +26,89 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:provider/single_child_widget.dart';
+
+import '../support/fake_auth_service.dart';
 
 /// Fixed "today" so month defaults and future locks are deterministic.
 final LocalDate kToday = LocalDate(2026, 8, 30);
 
 class Harness {
-  Harness(this.db, this.profile, this.entries);
+  Harness(
+    this.db,
+    this.profile,
+    this.entries, {
+    this.authService,
+    this.authController,
+  });
 
   final LunarLogDatabase db;
   final Profile profile;
   final DriftDayEntriesRepository entries;
+
+  /// Present only when [pumpLogging] was called with `authService:` (U2;
+  /// R1/R7). Exposed so a test can flip the signed-in user mid-flight.
+  final FakeAuthService? authService;
+  final AuthController? authController;
 }
+
+/// Materializes a server-authored guardian row locally, mirroring
+/// `test/ui/sharing_flow_test.dart`'s `guardianRow` helper (KTD3) so
+/// attribution fixtures stay honest about where `display_name` comes from.
+RemoteProfileGuardianRow guardianRow(
+  String profileId,
+  String id,
+  String userId,
+  String role, {
+  String? displayName,
+  String status = 'accepted',
+  int serverVersion = 1,
+}) =>
+    RemoteProfileGuardianRow(
+      id: id,
+      profileId: profileId,
+      userId: userId,
+      role: role,
+      status: status,
+      displayName: displayName,
+      invitedBy: null,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+      serverVersion: serverVersion,
+    );
+
+/// Materializes a server-authored day entry carrying attribution stamps
+/// (`logged_by_user_id`/`last_modified_by_user_id`). These two columns are
+/// only ever written by the `applyRemoteRows` path (KTD3) — the local
+/// `DayEntriesRepository.save()` upsert has no parameters for them.
+RemoteDayEntryRow dayEntryRow(
+  String profileId,
+  String id,
+  LocalDate date, {
+  String? loggedByUserId,
+  String? lastModifiedByUserId,
+  FlowLevel flow = FlowLevel.medium,
+}) =>
+    RemoteDayEntryRow(
+      id: id,
+      profileId: profileId,
+      localDate: date.iso,
+      tz: 'America/Chicago',
+      flow: flowFromDomain(flow),
+      tags: const [],
+      note: null,
+      updatedAt: DateTime.utc(2026, 1, 1),
+      deletedAt: null,
+      serverVersion: 1,
+      loggedByUserId: loggedByUserId,
+      lastModifiedByUserId: lastModifiedByUserId,
+    );
 
 DayEntry entryFor(
   String profileId,
@@ -62,6 +135,10 @@ Future<Harness> pumpLogging(
   DayEntriesRepository? entryRepositoryOverride,
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
   String Function()? timezoneProvider,
+  // Attribution seam (U2; R1/R5/R7). Both default off so every pre-existing
+  // test keeps exercising the local-only fallback unchanged (R4).
+  FakeAuthService? authService,
+  bool withStorage = false,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -76,21 +153,37 @@ Future<Harness> pumpLogging(
     await seed(db, profile.id);
   }
   final entries = DriftDayEntriesRepository(db.storage);
+
+  AuthController? authController;
+  final providers = <SingleChildWidget>[
+    Provider<ProfilesRepository>.value(value: profiles),
+    Provider<DayEntriesRepository>.value(
+      value: entryRepositoryOverride ?? entries,
+    ),
+    Provider<SettingsStore>.value(value: settings),
+    ChangeNotifierProvider(
+      create: (_) => ProfileController(
+        profilesRepository: profiles,
+        settingsStore: settings,
+      )..load(),
+    ),
+  ];
+  if (authService != null) {
+    authController = AuthController(authService: authService);
+    providers.add(
+      ChangeNotifierProvider<AuthController>.value(value: authController),
+    );
+  }
+  // Matches lib/app.dart's provider set (KTD2): LunarLogStorage is what
+  // ProfileDetailScreen reads to decide whether MonthCalendar gets a
+  // ProfileGuardiansRepository (R5) at all.
+  if (withStorage) {
+    providers.add(Provider<LunarLogStorage>.value(value: db.storage));
+  }
+
   await tester.pumpWidget(
     MultiProvider(
-      providers: [
-        Provider<ProfilesRepository>.value(value: profiles),
-        Provider<DayEntriesRepository>.value(
-          value: entryRepositoryOverride ?? entries,
-        ),
-        Provider<SettingsStore>.value(value: settings),
-        ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: profiles,
-            settingsStore: settings,
-          )..load(),
-        ),
-      ],
+      providers: providers,
       child: MaterialApp(
         home: ProfileDetailScreen(
           profile: profile,
@@ -102,7 +195,13 @@ Future<Harness> pumpLogging(
     ),
   );
   await tester.pumpAndSettle();
-  return Harness(db, profile, entries);
+  return Harness(
+    db,
+    profile,
+    entries,
+    authService: authService,
+    authController: authController,
+  );
 }
 
 /// Must run as the last statement of every test that used [pumpLogging]
@@ -110,6 +209,8 @@ Future<Harness> pumpLogging(
 Future<void> disposeLogging(WidgetTester tester, Harness h) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump(const Duration(milliseconds: 100));
+  h.authController?.dispose();
+  await h.authService?.dispose();
   await h.db.close();
 }
 
@@ -507,6 +608,325 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(DaySheet), findsNothing,
           reason: 'no entry-creation affordance in read-only mode');
+      await disposeLogging(tester, h);
+    });
+  });
+
+  group('caregiver attribution', () {
+    testWidgets('entry logged by the signed-in user shows "Logged by you" '
+        '(R1)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-mom'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Logged by you'), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('entry logged by another guardian shows their display name '
+        '(R2)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-dad', 'user-dad', 'co_parent',
+                displayName: 'Dad'),
+            dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-dad'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Logged by Dad'), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'entry logged by a guardian with no display name shows the role '
+        'label (R2)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-dad', 'user-dad', 'co_parent'),
+            dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-dad'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Logged by Co-Parent'), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'entry logged by a user id with no guardian row shows the generic '
+        'fallback (R3)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            dayEntryRow(profileId, 'e-1', kToday,
+                loggedByUserId: 'user-ghost'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Logged by Caregiver'), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'entry logged by one guardian and last-modified by another shows '
+        'both segments', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-someone'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-mom', 'user-mom', 'primary_guardian',
+                displayName: 'Mom'),
+            guardianRow(profileId, 'g-dad', 'user-dad', 'co_parent',
+                displayName: 'Dad'),
+            dayEntryRow(
+              profileId,
+              'e-1',
+              kToday,
+              loggedByUserId: 'user-mom',
+              lastModifiedByUserId: 'user-dad',
+            ),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Logged by Mom • Modified by Dad'),
+          findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'local-only operation with no auth or storage renders no '
+        'attribution badge (R4)', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage)
+              .save(entryFor(profileId, kToday));
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DaySheet), findsOneWidget);
+      expect(find.byIcon(Icons.people_outline), findsNothing,
+          reason: 'a locally-created entry has no loggedByUserId at all, '
+              'so the badge renders nothing');
+      expect(find.textContaining('you'), findsNothing);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'archived (read-only) day sheet renders the same attribution as '
+        'the editable body (R1/R2, second call site)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        readOnly: true,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-dad', 'user-dad', 'co_parent',
+                displayName: 'Dad'),
+            dayEntryRow(profileId, 'e-1', LocalDate(2026, 3, 1),
+                loggedByUserId: 'user-dad'),
+          ]);
+        },
+      );
+
+      await showMonth(tester, 2026, 3);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-03-01')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DaySheet), findsOneWidget);
+      expect(find.textContaining('Logged by Dad'), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'switching profiles does not leak the previous profile\'s '
+        'guardians (R6)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-dad', 'user-dad', 'co_parent',
+                displayName: 'Dad'),
+            dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-dad'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Logged by Dad'), findsOneWidget);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final settings = DriftSettingsStore(h.db.storage);
+      final profileB =
+          await profiles.create(displayName: 'Bob', isMinor: false);
+      await h.db.storage.applyRemoteRows([
+        guardianRow(profileB.id, 'g-aunt', 'user-aunt', 'viewer',
+            displayName: 'Aunt'),
+        dayEntryRow(profileB.id, 'e-2', kToday, loggedByUserId: 'user-aunt'),
+      ]);
+
+      // Rebuild ProfileDetailScreen at the same tree position with the new
+      // profile, mirroring how the home gate swaps the active profile
+      // in-place (see ProfileDetailScreen's own didUpdateWidget doc). The
+      // provider list mirrors pumpLogging's exactly (including
+      // ProfileController, which ProfileDetailScreen.build reads
+      // unconditionally) so this is a like-for-like tree update, not a
+      // remount.
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: <SingleChildWidget>[
+            Provider<ProfilesRepository>.value(value: profiles),
+            Provider<DayEntriesRepository>.value(
+              value: DriftDayEntriesRepository(h.db.storage),
+            ),
+            Provider<SettingsStore>.value(value: settings),
+            ChangeNotifierProvider(
+              create: (_) => ProfileController(
+                profilesRepository: profiles,
+                settingsStore: settings,
+              )..load(),
+            ),
+            ChangeNotifierProvider<AuthController>.value(
+              value: h.authController!,
+            ),
+            Provider<LunarLogStorage>.value(value: h.db.storage),
+          ],
+          child: MaterialApp(
+            home: ProfileDetailScreen(
+              profile: profileB,
+              todayProvider: () => kToday,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Logged by Aunt'), findsOneWidget);
+      expect(find.textContaining('Dad'), findsNothing,
+          reason: "profile B must never render profile A's guardian names");
+
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'signing in while the calendar is mounted attributes the next '
+        'opened sheet (R7)', (tester) async {
+      final auth = FakeAuthService();
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-mom'),
+          ]);
+        },
+      );
+
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-mom'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Logged by you'), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        "a revoked guardian's past entry still resolves to their display "
+        'name (KTD4)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-dad', 'user-dad', 'co_parent',
+                displayName: 'Dad', status: 'revoked'),
+            dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-dad'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Logged by Dad'), findsOneWidget);
       await disposeLogging(tester, h);
     });
   });
