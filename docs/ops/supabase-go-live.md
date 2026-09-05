@@ -484,15 +484,28 @@ select count(*) from public.day_entries
 Operational notes:
 
 - **Deploy order is mandatory: server migrations first, app release
-  second.** `supabase-migrate.yml` is meant to wait for the `production`
-  reviewer, but that environment's required-reviewer rule is not yet
-  configured (see the GitHub checklist above) — so today nothing actually
-  blocks `ios-release.yml` / `play-store-release.yml` from uploading on
-  the same push to `main`. Do not let a new app build reach testers
-  before both migrations are applied: the new client pulls
-  `profile_guardians` every sync cycle and calls the invitation RPCs,
-  which do not exist on the old
-  schema. Old app builds on the new server are fully supported.
+  second.** The new client pulls `profile_guardians` every sync cycle and
+  calls the invitation RPCs, which do not exist on the old schema. Old app
+  builds on the new server are fully supported.
+
+  This ordering is now **enforced in CI** (issue #47): `ios-release.yml`'s
+  `migration-gate` job compares every migration in `supabase/migrations`
+  against `supabase_migrations.schema_migrations` in production and fails
+  the release when any is unapplied, so `release` cannot upload to
+  TestFlight ahead of its schema. It fails closed — a blocked release is
+  recoverable, a client shipped against a missing schema is not.
+
+  It is a backstop, not a substitute for sequencing the deploy yourself.
+  It also does not cover `play-store-release.yml`, which is
+  `workflow_dispatch`-only and therefore already a deliberate human action.
+
+  This gate exists because the failure is not hypothetical: on 2026-09-05
+  two TestFlight builds carrying the multi-guardian feature uploaded on
+  merge to `main` roughly an hour before `profile_guardians` existed in
+  production. Note also that `supabase-migrate.yml` is still waiting on
+  the `production` required-reviewer rule and `SUPABASE_ACCESS_TOKEN`
+  (see the GitHub checklist above); until those exist, migrations are
+  applied by hand and this gate is what keeps the client from racing them.
 - **Rollback.** Migration 2 is reversible via compensating SQL (restore
   the previous `sync_push` body, drop the three RPCs). Migration 1 is
   **not** reversible in place (policy replacement, FK/index swap,

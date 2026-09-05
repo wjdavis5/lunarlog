@@ -62,9 +62,96 @@ jobs:
       - name: Test
         run: flutter test
 
+  migration-gate:
+    # Issue #47. A push to main uploads a client build to TestFlight, but
+    # migrations are pushed by a *separate*, manually-gated workflow. Nothing
+    # enforced the ordering, so the client could ship expecting a schema
+    # production did not have yet -- which is exactly what happened on
+    # 2026-09-05: two TestFlight builds carrying the multi-guardian sharing
+    # feature went out roughly an hour before `profile_guardians` existed in
+    # production.
+    #
+    # This job fails the release when any migration in the repo is not applied
+    # to production. It fails closed on purpose: a blocked release is
+    # recoverable, a client shipped against a missing schema is not.
+    name: Verify Supabase migrations are applied
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # The direct host (db.<ref>.supabase.co) publishes AAAA records only, and
+      # GitHub-hosted runners have no IPv6 route -- it fails to resolve there.
+      # Connect through the IPv4 session pooler instead. Override with the
+      # repository variable if the project ever moves region.
+      POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-0-us-west-2.pooler.supabase.com' }}
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PGSSLMODE: require
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check gate credentials
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::SUPABASE_DB_PASSWORD is not set. This gate cannot verify that production has the migrations this build expects, so the release is blocked. Add it under Settings -> Secrets and variables -> Actions."
+            missing=1
+          fi
+          if [ -z "${PROJECT_REF:-}" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is not set. Add it under Settings -> Secrets and variables -> Actions."
+            missing=1
+          fi
+          [ "$missing" -eq 0 ] || exit 1
+
+      - name: Install psql
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null 2>&1 || {
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          }
+          psql --version
+
+      - name: Compare repo migrations against production
+        run: |
+          set -euo pipefail
+
+          repo=$(ls supabase/migrations/*.sql 2>/dev/null \
+                 | xargs -n1 basename \
+                 | sed -E 's/^([0-9]+)_.*/\1/' | sort -u)
+          if [ -z "$repo" ]; then
+            echo "::error::No migrations found in supabase/migrations. Refusing to release without verifying schema state."
+            exit 1
+          fi
+
+          # Separate connection params rather than a URL: the password is not
+          # URL-encoded anywhere, so a '@' or ':' in it cannot corrupt parsing.
+          applied=$(psql -h "$POOLER_HOST" -p 5432 -U "postgres.${PROJECT_REF}" -d postgres \
+                      -t -A -c "select version from supabase_migrations.schema_migrations" \
+                    | tr -d '\r' | sed '/^$/d' | sort -u)
+
+          missing=$(comm -23 <(echo "$repo") <(echo "$applied") || true)
+          extra=$(comm -13 <(echo "$repo") <(echo "$applied") || true)
+
+          echo "Repo migrations:      $(echo "$repo" | wc -l)"
+          echo "Applied in production: $(echo "$applied" | sed '/^$/d' | wc -l)"
+
+          if [ -n "$extra" ]; then
+            # Not fatal: production having extra history does not mean this
+            # client is ahead of its schema. It does mean the repo is not the
+            # sole source of truth, which is worth surfacing.
+            echo "::warning::Production has migration versions absent from this repo (applied outside the repo path): $(echo "$extra" | tr '\n' ' ')"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Release blocked -- production is missing $(echo "$missing" | wc -l) migration(s) this build expects: $(echo "$missing" | tr '\n' ' '). Run the 'Supabase migrate' workflow (or apply them manually), then re-run this release. Shipping now would put a client on TestFlight whose features fail against production."
+            exit 1
+          fi
+
+          echo "All $(echo "$repo" | wc -l) repo migrations are applied to production. Safe to release."
+
   release:
     name: Build, sign, and upload to TestFlight
-    needs: verify
+    needs: [verify, migration-gate]
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
