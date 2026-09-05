@@ -160,25 +160,23 @@ jobs:
     # no job-level `if:` -- a skipped `needs` job by default also skips its
     # dependent job, which would block every ordinary push to main. This
     # job always runs and always succeeds except in the one case it exists
-    # to catch (R5, R6, R8).
+    # to catch.
     name: Verify the release gate for explicit submission
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - name: Skip when not an explicit submission dispatch
+        if: github.event_name != 'workflow_dispatch' || inputs.submit_for_review != true
+        run: echo "Not an explicit submit_for_review dispatch; nothing to gate here."
 
-      - name: Check the release gate
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.submit_for_review == true
+
+      - name: Enforce the release gate
+        if: github.event_name == 'workflow_dispatch' && inputs.submit_for_review == true
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
           RELEASE_GATE_ACCOUNT_DELETION: ${{ vars.RELEASE_GATE_ACCOUNT_DELETION }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" != "workflow_dispatch" ] || [ "$SUBMIT_FOR_REVIEW" != "true" ]; then
-            echo "Not an explicit submit_for_review dispatch; nothing to gate here."
-            exit 0
-          fi
-          bash .github/scripts/check-release-gate.sh
+        run: bash .github/scripts/check-release-gate.sh
 
   release:
     name: Build, sign, and upload to TestFlight
@@ -203,8 +201,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # pubspec version is "x.y.z+build"; marketing version is the part before '+'.
-          marketing="$(grep '^version:' pubspec.yaml | sed 's/^version: *//' | cut -d'+' -f1)"
+          marketing="$(bash .github/scripts/extract-marketing-version.sh < pubspec.yaml)"
 
           # Build number comes from monotonic run counter
           build_number=$(( ${{ github.run_number }} + 1000 ))
@@ -226,7 +223,7 @@ jobs:
         # A bump was detected, but the account-deletion release gate
         # (issue #17) governs whether it may actually submit. Closed here
         # degrades to a warning rather than failing the run -- TestFlight
-        # delivery must not be denied for a policy reason (KD2, R8).
+        # delivery must not be denied for a policy reason.
         id: gate
         if: steps.bump.outputs.submit == 'true'
         env:

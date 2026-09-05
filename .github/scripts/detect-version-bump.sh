@@ -25,6 +25,7 @@ set -euo pipefail
 # plus human-readable log lines and, on an unevaluable range, a
 # `::warning::` naming why.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALL_ZERO_SHA="0000000000000000000000000000000000000000"
 
 emit_submit() {
@@ -45,14 +46,13 @@ warn() {
 }
 
 extract_version() {
-  # $1 = raw pubspec.yaml content. Marketing version is the "x.y.z" part
-  # before the "+build" suffix -- same extraction the workflow's own
-  # `Resolve build and version numbers` step performs, so the two can never
-  # disagree about what a "version" is.
-  printf '%s\n' "$1" | grep '^version:' | sed 's/^version: *//' | cut -d'+' -f1
+  # $1 = raw pubspec.yaml content. Delegates to the same script the
+  # workflow's own `Resolve build and version numbers` step calls, so the
+  # two can never disagree about what a "version" is.
+  printf '%s\n' "$1" | bash "$SCRIPT_DIR/extract-marketing-version.sh"
 }
 
-# R4: an explicit dispatch request to submit always wins, independent of any
+# An explicit dispatch request to submit always wins, independent of any
 # bump, and needs no git access at all.
 if [ "${SUBMIT_FOR_REVIEW:-}" = "true" ]; then
   emit_submit true
@@ -88,8 +88,16 @@ elif ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
   warn "before-commit $before is not present locally (likely a force-push rewriting history); cannot evaluate the pushed range. Falling back to HEAD~1."
 else
   if raw="$(git show "${before}:pubspec.yaml" 2>/dev/null)"; then
-    previous="$(extract_version "$raw")"
-    resolved=true
+    # extract_version can fail (no `version:` line) -- guard the assignment
+    # as an `if` condition so `set -e` doesn't abort the whole script on a
+    # malformed historical pubspec.yaml; treat it the same as any other
+    # unevaluable case: warn and fall back to HEAD~1, never crash.
+    if extracted="$(extract_version "$raw" 2>/dev/null)" && [ -n "$extracted" ]; then
+      previous="$extracted"
+      resolved=true
+    else
+      warn "pubspec.yaml at before-commit $before has no parseable version: line; cannot evaluate the pushed range. Falling back to HEAD~1."
+    fi
   else
     warn "pubspec.yaml did not exist at before-commit $before; cannot evaluate the pushed range. Falling back to HEAD~1."
   fi
@@ -97,7 +105,12 @@ fi
 
 if [ "$resolved" = false ]; then
   if raw="$(git show 'HEAD~1:pubspec.yaml' 2>/dev/null)"; then
-    previous="$(extract_version "$raw")"
+    if extracted="$(extract_version "$raw" 2>/dev/null)" && [ -n "$extracted" ]; then
+      previous="$extracted"
+    else
+      warn "HEAD~1's pubspec.yaml has no parseable version: line; treating version as unchanged."
+      previous="$current"
+    fi
   else
     warn "HEAD~1 is also unavailable (single-commit repo); treating version as unchanged."
     previous="$current"

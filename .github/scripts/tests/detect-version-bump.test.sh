@@ -10,9 +10,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/../detect-version-bump.sh"
 ALL_ZERO_SHA="0000000000000000000000000000000000000000"
+# shellcheck source=lib/assert.sh
+source "$SCRIPT_DIR/lib/assert.sh"
 
-pass=0
-fail=0
 tmp_dirs=()
 
 cleanup() {
@@ -70,37 +70,15 @@ run_case() {
 
 assert_submit() {
   local desc="$1" expected="$2"
-  if [ "$LAST_SUBMIT" = "$expected" ]; then
-    echo "PASS: $desc"
-    pass=$((pass + 1))
-  else
-    echo "FAIL: $desc (expected submit=$expected, got submit=${LAST_SUBMIT:-<none>})"
-    echo "  --- log ---"
-    echo "$LAST_LOG" | sed 's/^/  /'
-    fail=$((fail + 1))
-  fi
+  assert_eq "$desc" "$expected" "${LAST_SUBMIT:-<none>}"
 }
 
 assert_warning() {
-  local desc="$1"
-  if printf '%s' "$LAST_LOG" | grep -q '::warning::'; then
-    echo "PASS: $desc"
-    pass=$((pass + 1))
-  else
-    echo "FAIL: $desc (expected a ::warning:: annotation, found none)"
-    fail=$((fail + 1))
-  fi
+  assert_contains "$1" "$LAST_LOG" "::warning::"
 }
 
 assert_no_warning() {
-  local desc="$1"
-  if printf '%s' "$LAST_LOG" | grep -q '::warning::'; then
-    echo "FAIL: $desc (expected no ::warning::, found one)"
-    fail=$((fail + 1))
-  else
-    echo "PASS: $desc"
-    pass=$((pass + 1))
-  fi
+  assert_not_contains "$1" "$LAST_LOG" "::warning::"
 }
 
 # --- Case 1: Bump in the tip commit of a one-commit push -> submit=true ---
@@ -121,9 +99,9 @@ commit "$dir" "base"
 before="$(sha_of "$dir" HEAD)"
 write_pubspec "$dir" "1.1.0"
 commit "$dir" "bump (commit 1 of 3)"
-echo "unrelated change" >> "$dir/README.md" 2>/dev/null || echo "unrelated" > "$dir/NOTES.txt"
+echo "unrelated change" >> "$dir/README.md"
 commit "$dir" "unrelated (commit 2 of 3)"
-echo "more" >> "$dir/NOTES.txt"
+echo "more" >> "$dir/README.md"
 commit "$dir" "unrelated tip (commit 3 of 3)"
 run_case "$dir" "push" "$before" "" "1.1.0"
 assert_submit "bump in first of three commits, tip unchanged" "true"
@@ -154,7 +132,7 @@ run_case "$dir" "push" "$before" "" "1.0.0"
 assert_submit "no bump anywhere in three-commit push" "false"
 assert_no_warning "no bump anywhere in three-commit push emits no warning"
 
-# --- Case 5: Bump in commit 1 reverted in commit 3 -> submit=false (R2) ---
+# --- Case 5: Bump in commit 1 reverted in commit 3 -> submit=false ---
 dir="$(new_repo)"
 write_pubspec "$dir" "1.0.0"
 commit "$dir" "base"
@@ -236,7 +214,21 @@ run_case "$dir" "push" "" "" "1.0.0"
 assert_submit "single-commit repo with no usable history treats version as unchanged" "false"
 assert_warning "single-commit repo with no usable history emits a warning"
 
-# --- Case 13: $GITHUB_OUTPUT unset -> script still runs and prints the verdict ---
+# --- Case 13: pubspec.yaml at the before-commit has no parseable version: line
+# (malformed/hand-edited history) -> fallback + warning, never a script crash ---
+dir="$(new_repo)"
+printf 'name: lunarlog\ndescription: no version line here\n' > "$dir/pubspec.yaml"
+commit "$dir" "base with malformed pubspec"
+before="$(sha_of "$dir" HEAD)"
+write_pubspec "$dir" "1.0.0"
+commit "$dir" "add real version (HEAD~1)"
+echo "unrelated" > "$dir/unrelated.txt"
+commit "$dir" "tip (no bump)"
+run_case "$dir" "push" "$before" "" "1.0.0"
+assert_submit "malformed pubspec at before-commit falls back to HEAD~1 verdict" "false"
+assert_warning "malformed pubspec at before-commit emits a warning"
+
+# --- Case 14: $GITHUB_OUTPUT unset -> script still runs and prints the verdict ---
 dir="$(new_repo)"
 write_pubspec "$dir" "1.0.0"
 commit "$dir" "base"
@@ -253,15 +245,7 @@ logfile="$dir/.log-no-output"
   export CURRENT_VERSION="1.1.0"
   bash "$SCRIPT"
 ) >"$logfile" 2>&1
-if grep -q 'submit=true' "$logfile"; then
-  echo "PASS: unset \$GITHUB_OUTPUT prints the verdict to stdout instead of failing"
-  pass=$((pass + 1))
-else
-  echo "FAIL: unset \$GITHUB_OUTPUT did not print submit= to stdout"
-  cat "$logfile" | sed 's/^/  /'
-  fail=$((fail + 1))
-fi
+assert_contains "unset \$GITHUB_OUTPUT prints the verdict to stdout instead of failing" \
+  "$(cat "$logfile")" "submit=true"
 
-echo ""
-echo "detect-version-bump.test.sh: $pass passed, $fail failed"
-[ "$fail" -eq 0 ]
+print_summary "detect-version-bump.test.sh"

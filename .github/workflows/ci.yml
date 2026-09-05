@@ -28,13 +28,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Run extract-marketing-version tests
+        run: bash .github/scripts/tests/extract-marketing-version.test.sh
+
       - name: Run detect-version-bump tests
         run: bash .github/scripts/tests/detect-version-bump.test.sh
 
       - name: Run check-release-gate tests
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
+      - name: Cache actionlint
+        id: actionlint-cache
+        uses: actions/cache@v4
+        with:
+          path: actionlint
+          key: actionlint-${{ runner.os }}-1.7.7
+
       - name: Install actionlint
+        if: steps.actionlint-cache.outputs.cache-hit != 'true'
         env:
           ACTIONLINT_VERSION: '1.7.7'
         run: |
@@ -43,10 +54,35 @@ jobs:
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           tar -xzf actionlint.tar.gz actionlint
           rm actionlint.tar.gz
-          ./actionlint -version
+
+      - name: Verify actionlint
+        run: ./actionlint -version
 
       - name: Lint workflows with actionlint
         run: ./actionlint .github/workflows/*.yml
+
+  release-guards-macos:
+    # The guard scripts actually execute on ios-release.yml's macos-latest
+    # runner, which ships a frozen Bash 3.2 (no bash-4+ syntax) -- a real
+    # bash-4-only construct (${var,,}) slipped into check-release-gate.sh
+    # during this same branch's development and would have crashed the
+    # TestFlight pipeline silently, since the ubuntu-only release-guards job
+    # above cannot see a macOS-only shell incompatibility. Same three test
+    # scripts, no actionlint (that check is OS-independent).
+    name: Release guard scripts on macOS (bash 3.2 compatibility)
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run extract-marketing-version tests
+        run: bash .github/scripts/tests/extract-marketing-version.test.sh
+
+      - name: Run detect-version-bump tests
+        run: bash .github/scripts/tests/detect-version-bump.test.sh
+
+      - name: Run check-release-gate tests
+        run: bash .github/scripts/tests/check-release-gate.test.sh
 
   check:
     name: Analyze, test, build web

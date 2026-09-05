@@ -4,31 +4,31 @@ set -euo pipefail
 # .github/scripts/check-release-gate.sh
 #
 # The single implementation of "is App Store / Play Store production
-# submission permitted yet?" (issue #41, finding #7). Both store workflows
-# consult this script rather than carrying two divergent copies of the
-# same rule (KTD4). No git access, no network, no secrets.
+# submission permitted yet?" (issue #41). Both store workflows consult this
+# script rather than carrying two divergent copies of the same rule. No git
+# access, no network, no secrets.
 #
 # Inputs (env):
 #   RELEASE_GATE_ACCOUNT_DELETION   Must equal "shipped" (case and
 #                                   surrounding-whitespace tolerant) to open
 #                                   the gate. Anything else -- including
 #                                   unset or empty -- is closed. Closed is
-#                                   the default (KD1: fail closed).
+#                                   the default: fail closed.
 #   RELEASE_GATE_MODE                "warn" reports a closed gate as a
 #                                   ::warning:: and does not fail the run by
 #                                   itself (used by the iOS automatic-bump
 #                                   path to degrade to TestFlight-only
-#                                   rather than fail, KD2). Any other value,
+#                                   rather than fail). Any other value,
 #                                   including unset, is the hard-fail
 #                                   default. Ignored when
 #                                   REQUIRE_PRODUCTION_CONFIRMATION=true --
 #                                   a production dispatch always hard-fails.
 #   REQUIRE_PRODUCTION_CONFIRMATION  "true" additionally requires
 #                                   CONFIRM_PRODUCTION to equal exactly
-#                                   "production" (KTD7). Both the gate and
-#                                   the confirmation are checked and
-#                                   reported together, so a dispatcher sees
-#                                   every reason at once rather than one per
+#                                   "production". Both the gate and the
+#                                   confirmation are checked and reported
+#                                   together, so a dispatcher sees every
+#                                   reason at once rather than one per
 #                                   attempt.
 #   CONFIRM_PRODUCTION               The typed confirmation value to check
 #                                   when REQUIRE_PRODUCTION_CONFIRMATION is
@@ -49,6 +49,9 @@ CONFIRM_MESSAGE="Production confirmation missing or incorrect. Type exactly 'pro
 
 value="${RELEASE_GATE_ACCOUNT_DELETION:-}"
 trimmed="$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+# `tr`, not bash 4's ${trimmed,,}: this script runs on ios-release.yml's
+# macOS runner, which ships Bash 3.2 by default and has no case-conversion
+# parameter expansion -- ${var,,} would crash the whole TestFlight pipeline.
 lowered="$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]')"
 
 errors=0
