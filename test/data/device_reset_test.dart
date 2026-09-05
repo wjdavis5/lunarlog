@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/errors.dart';
 import 'package:lunarlog/data/db/key_store.dart';
@@ -139,5 +140,16 @@ void main() {
     // the platform channel is not exercised here.
     expect(SecureDbKeyStore.new, isA<Function>());
     expect(SecureDbKeyStore(), isA<DbKeyStore>());
+  });
+
+  test(
+      'SecureDbKeyStore pins the Keychain accessibility to '
+      'first_unlock_this_device rather than the flutter_secure_storage '
+      '`unlocked` default (docs/ops/ios-export-compliance.md)', () {
+    final iOptions = SecureDbKeyStore().storage.iOptions;
+    expect(
+      iOptions.accessibility,
+      KeychainAccessibility.first_unlock_this_device,
+    );
   });
 }

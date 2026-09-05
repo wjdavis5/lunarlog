@@ -8,6 +8,7 @@ library;
 
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'errors.dart';
@@ -27,12 +28,32 @@ abstract interface class DbKeyStore {
 }
 
 class SecureDbKeyStore implements DbKeyStore {
+  /// Explicit Keychain accessibility for the database key (rather than
+  /// relying on flutter_secure_storage's `unlocked` default): the key must
+  /// not migrate to a different device on a backup restore (the encrypted
+  /// database file itself never migrates that way either, so a synced key
+  /// would only be dead weight sitting in a new device's Keychain), and it
+  /// should not be readable before the device has been unlocked at least
+  /// once since boot. This is stricter than the default and matches the
+  /// threat model for a minors'-data health app documented in
+  /// docs/ops/ios-export-compliance.md.
   SecureDbKeyStore({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              iOptions: IOSOptions(
+                accessibility: KeychainAccessibility.first_unlock_this_device,
+              ),
+            );
 
   static const String storageKey = 'lunarlog.db.key';
 
   final FlutterSecureStorage _storage;
+
+  /// Exposes the configured storage so a test can assert on [iOptions]
+  /// (e.g. the Keychain accessibility) without exercising the platform
+  /// channel, which constructing a [FlutterSecureStorage] does not touch.
+  @visibleForTesting
+  FlutterSecureStorage get storage => _storage;
 
   @override
   Future<String> getOrCreateDbKey() async {

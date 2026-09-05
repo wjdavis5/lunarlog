@@ -16,7 +16,10 @@
 ///   for one test (see docs/ops/ios-export-compliance.md).
 /// * The Info.plist key is matched together with its following `<true/>`
 ///   or `<false/>` value element, not the bare key name, so a `<false/>`
-///   value cannot pass by having the right key nearby.
+///   value cannot pass by having the right key nearby. XML comments are
+///   stripped first, so a commented-out declaration -- or a commented
+///   `<true/>` sitting above a live `<false/>` -- cannot be mistaken for a
+///   live `true`.
 ///
 /// R7 (no compliance code without one in hand): both files are also
 /// scanned for `ITSEncryptionExportComplianceCode`, which must never
@@ -53,9 +56,22 @@ final _exportComplianceKeyPattern = RegExp(
   r'<key>\s*ITSAppUsesNonExemptEncryption\s*</key>\s*<(true|false)\s*/>',
 );
 
-/// `true`, `false`, or `null` if the key is absent from [infoPlistContents].
+/// Matches an XML comment (`<!-- ... -->`), including multi-line ones, so it
+/// can be stripped before the key/value pattern runs. Without this, a
+/// commented-out declaration -- or worse, a commented `<true/>` sitting
+/// directly above a live `<false/>` -- would satisfy
+/// [_exportComplianceKeyPattern], because plain regex matching has no notion
+/// of XML comments.
+final _xmlCommentPattern = RegExp(r'<!--.*?-->', dotAll: true);
+
+String _stripXmlComments(String xml) =>
+    xml.replaceAll(_xmlCommentPattern, '');
+
+/// `true`, `false`, or `null` if the key is absent from [infoPlistContents]
+/// once XML comments are stripped.
 bool? _declaredNonExemptEncryption(String infoPlistContents) {
-  final match = _exportComplianceKeyPattern.firstMatch(infoPlistContents);
+  final stripped = _stripXmlComments(infoPlistContents);
+  final match = _exportComplianceKeyPattern.firstMatch(stripped);
   if (match == null) return null;
   return match.group(1) == 'true';
 }
@@ -178,6 +194,27 @@ hooks:
           isFalse,
           reason: 'a false value must be read as false, not matched by '
               'key name alone');
+
+      expect(
+          _declaredNonExemptEncryption('''
+<!--
+<key>ITSAppUsesNonExemptEncryption</key>
+<true/>
+-->
+'''),
+          isNull,
+          reason: 'a commented-out true declaration must not be read as a '
+              'live true -- the key must report absent, not true');
+
+      expect(
+          _declaredNonExemptEncryption('''
+<!-- <key>ITSAppUsesNonExemptEncryption</key> <true/> -->
+<key>ITSAppUsesNonExemptEncryption</key>
+<false/>
+'''),
+          isFalse,
+          reason: 'a commented-out true sitting above a live false must not '
+              'mask the live false');
 
       expect(
           _fastfileDeclaresEncryptionTrue(
