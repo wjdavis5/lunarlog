@@ -45,6 +45,8 @@ import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
+import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -56,6 +58,7 @@ import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
+import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
 /// Platform channel used to set Android FLAG_SECURE (snapshot/screenshot
 /// suppression at the window level). Best effort — see
@@ -601,6 +604,10 @@ class LunarLogRoot extends StatefulWidget {
     this.authService,
     this.syncTransport,
     this.sharingService,
+    this.supabaseClient,
+    this.inviteLinks,
+    this.initialInviteCode,
+    this.initialInviteProfileId,
     this.syncEngineBuilder = defaultSyncEngineBuilder,
     this.deleteLocalDatabase = startup.deleteLocalDatabase,
     this.deleteDbKey = defaultDeleteDbKey,
@@ -632,6 +639,23 @@ class LunarLogRoot extends StatefulWidget {
 
   final SharingService? sharingService;
 
+  /// The Supabase client from the successful bootstrap. When present (and
+  /// [sharingService] was not injected) the root constructs the production
+  /// [SupabaseSharingService] and [RealtimeSyncCoordinator] alongside the
+  /// sync engine, so the sharing feature is live in production builds.
+  final SupabaseClient? supabaseClient;
+
+  /// `lunarlog://invite?code=...` links (U8; R9), filtered upstream by
+  /// main.dart. Null in tests and unconfigured builds.
+  final Stream<Uri>? inviteLinks;
+
+  /// The invite code from a cold-start link, if any (R9: the link is
+  /// latched across the sign-in gate).
+  final String? initialInviteCode;
+
+  /// The `profile` parameter of the cold-start invite link, if any.
+  final String? initialInviteProfileId;
+
   /// Test seam: how the engine is built once the database is open.
   @visibleForTesting
   final SyncEngineBuilder syncEngineBuilder;
@@ -657,6 +681,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
   late final GateController _gate;
   LunarLogDatabase? _db;
   SyncEngine? _syncEngine;
+  SharingService? _builtSharingService;
+  RealtimeSyncCoordinator? _realtimeCoordinator;
 
   /// The app subtree's teardown (reminder coordinator disposal), captured
   /// when [LunarLogApp] unmounts so a device reset (KTD16) can await it
@@ -716,7 +742,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
 
   /// KTD11: the engine exists only when the build has both collaborators;
   /// null collaborators build nothing, so harnesses without them are
-  /// untouched.
+  /// untouched. When a Supabase client is present the production sharing
+  /// service (U5) and realtime coordinator (U6) are built here too, so
+  /// the sharing feature is reachable in production builds.
   void _startSyncEngine(LunarLogDatabase db) {
     final authService = widget.authService;
     final transport = widget.syncTransport;
@@ -732,13 +760,31 @@ class LunarLogRootState extends State<LunarLogRoot> {
     );
     _syncEngine = engine;
     engine.start();
+
+    final client = widget.supabaseClient;
+    if (client != null) {
+      _builtSharingService =
+          SupabaseSharingService(client: client, syncEngine: engine);
+      final coordinator = RealtimeSyncCoordinator(
+        client: client,
+        syncEngine: engine,
+        storage: db.storage,
+      );
+      _realtimeCoordinator = coordinator;
+      coordinator.start();
+    }
   }
 
   /// Stops the engine and waits for its in-flight batch or page, so the
-  /// database can be closed afterwards (KTD11). The first step of a device
+  /// database can be closed afterwards (KTD11). The realtime coordinator
+  /// goes first: it can still request syncs. The first step of a device
   /// reset (KTD16): call it, unmount the app, await [_awaitAppTeardown],
   /// then close the database.
   Future<void> _disposeSyncEngine() async {
+    final coordinator = _realtimeCoordinator;
+    _realtimeCoordinator = null;
+    await coordinator?.dispose();
+    _builtSharingService = null;
     final engine = _syncEngine;
     _syncEngine = null;
     await engine?.dispose();
@@ -876,7 +922,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
         scheduler: widget.scheduler,
         authService: widget.authService,
         syncEngine: _syncEngine,
-        sharingService: widget.sharingService,
+        sharingService: widget.sharingService ?? _builtSharingService,
+        inviteLinks: widget.inviteLinks,
+        initialInviteCode: widget.initialInviteCode,
+        initialInviteProfileId: widget.initialInviteProfileId,
         onTeardown: (done) => _appTeardown = done,
       );
     } else if (_gate.locked) {

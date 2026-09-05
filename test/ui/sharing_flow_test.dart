@@ -179,21 +179,32 @@ void main() {
   });
 
   group('ManageGuardiansScreen', () {
-    testWidgets('renders active guardians and handles revocation', (tester) async {
-      // Add a guardian to storage
-      await storage.applyRemoteRows([
+    RemoteProfileGuardianRow guardianRow(
+      String id,
+      String userId,
+      String role,
+      String? displayName, {
+      int serverVersion = 1,
+    }) =>
         RemoteProfileGuardianRow(
-          id: 'g-1',
+          id: id,
           profileId: testProfile.id,
-          userId: 'user-dad',
-          role: 'co_parent',
+          userId: userId,
+          role: role,
           status: 'accepted',
-          displayName: 'Dad',
+          displayName: displayName,
           invitedBy: null,
           createdAt: DateTime.utc(2026, 1, 1),
           updatedAt: DateTime.utc(2026, 1, 1),
-          serverVersion: 1,
-        ),
+          serverVersion: serverVersion,
+        );
+
+    testWidgets('renders active guardians and handles revocation', (tester) async {
+      // The server always carries the creator's primary row; seed it so
+      // the caller's role resolves (mom = primary_guardian).
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
       ]);
 
       await tester.pumpWidget(
@@ -211,9 +222,13 @@ void main() {
 
       expect(find.text('Dad'), findsOneWidget);
       expect(find.text('Co-Parent'), findsOneWidget);
+      expect(find.byIcon(Icons.person_add), findsOneWidget);
 
-      // Tap revoke icon
-      await tester.tap(find.byIcon(Icons.remove_circle_outline));
+      // Tap the revoke icon on Dad's row (Mom's own row offers self-leave).
+      await tester.tap(find.descendant(
+        of: find.widgetWithText(ListTile, 'Dad'),
+        matching: find.byIcon(Icons.remove_circle_outline),
+      ));
       await tester.pumpAndSettle();
 
       expect(find.text('Remove Dad?'), findsOneWidget);
@@ -221,6 +236,73 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(sharingService.lastRevokedUserId, 'user-dad');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('hides invite and revocation controls from a caregiver (U8)',
+        (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-2', 'user-sitter', 'caregiver', 'Sue'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            storage: storage,
+            sharingService: sharingService,
+            currentUserId: 'user-sitter',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No invite button for a caregiver.
+      expect(find.byIcon(Icons.person_add), findsNothing);
+      // No revocation for anyone else; only self-leave is offered.
+      expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget);
+      expect(find.byTooltip('Leave profile'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('co-parent cannot remove the primary guardian (R4)',
+        (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+        guardianRow('g-2', 'user-sitter', 'caregiver', 'Sue'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            storage: storage,
+            sharingService: sharingService,
+            currentUserId: 'user-dad',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // A co-parent can invite...
+      expect(find.byIcon(Icons.person_add), findsOneWidget);
+      // ...and can revoke the caregiver, but not the primary guardian or
+      // another co-parent: two remove controls (Sue + self-leave), none
+      // on Mom's row.
+      expect(find.byIcon(Icons.remove_circle_outline), findsNWidgets(2));
+      expect(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Mom'),
+          matching: find.byIcon(Icons.remove_circle_outline),
+        ),
+        findsNothing,
+      );
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

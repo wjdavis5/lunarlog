@@ -427,3 +427,76 @@ pgTAP tests.
   Also Google Sign-In on web (`google_sign_in_web` offers only its rendered
   button) and security-notification emails for a linked identity or changed
   password once custom SMTP exists (issue #18).
+
+## Multi-guardian migration runbook (20260904010000 + 20260904020000)
+
+The two guardian migrations swap constraints on existing tables, so the
+production reviewer runs these read-only audits **before approving
+`supabase db push`**. Each must return 0 rows / the stated result; any
+deviation stops the deploy.
+
+```sql
+-- G1: duplicate profile ids across owners (breaks profiles_id_uq).
+select id, count(*) as rows, array_agg(user_id) as owners
+  from public.profiles group by id having count(*) > 1;
+
+-- G2: live day-entry duplicates on the new (profile_id, local_date) key
+-- (breaks day_entries_live_profile_date_uq as recreated).
+select profile_id, local_date, count(*) as live_rows
+  from public.day_entries where deleted_at is null
+  group by 1, 2 having count(*) > 1;
+
+-- G3: orphaned day_entries.profile_id (breaks the new direct FK).
+select count(*) from public.day_entries d
+  where not exists (select 1 from public.profiles p where p.id = d.profile_id);
+```
+
+Pre-push sanity: `supabase migration list --linked` must show both files
+as **pending** (not already applied). If a previous push already applied
+these versions, edited files are skipped silently — never re-push edited
+migrations in that case; write a new follow-up migration instead.
+
+Post-push verification (within 5 minutes; save baseline counts first):
+
+```sql
+-- Every profile's owner is exactly one accepted primary_guardian.
+select p.id from public.profiles p
+  join lateral (
+    select count(*) filter (where role = 'primary_guardian' and status = 'accepted') as primaries
+      from public.profile_guardians g where g.profile_id = p.id and g.user_id = p.user_id
+  ) x on true where x.primaries <> 1;   -- expect 0 rows
+
+-- Attribution backfill complete.
+select count(*) from public.day_entries
+  where logged_by_user_id is null or last_modified_by_user_id is null;  -- expect 0
+```
+
+Operational notes:
+
+- **Deploy order is mandatory: server migrations first, app release
+  second.** `supabase-migrate.yml` waits for the `production` reviewer
+  while `ios-release.yml` / `play-store-release.yml` upload on every push
+  to `main`. Do not let a new app build reach testers before both
+  migrations are applied: the new client pulls `profile_guardians` every
+  sync cycle and calls the invitation RPCs, which do not exist on the old
+  schema. Old app builds on the new server are fully supported.
+- **Rollback.** Migration 2 is reversible via compensating SQL (restore
+  the previous `sync_push` body, drop the three RPCs). Migration 1 is
+  **not** reversible in place (policy replacement, FK/index swap,
+  backfilled attribution): rollback requires a PITR restore to a verified
+  pre-deploy recovery point, so confirm the backup timestamp in the
+  dashboard before approving the push.
+- **Expect a one-time re-pull.** The attribution backfill rewrites every
+  `day_entries` row, which bumps `server_version` through the trigger:
+  every active client does a full day-entries re-pull on its next sync.
+  Bandwidth blip only, not data loss.
+- **Lock window.** The unique-index rebuild and FK validation scan take
+  ACCESS EXCLUSIVE / SHARE locks on `day_entries` for the scan duration.
+  Fine at the current table size; if the table grows past ~1M rows,
+  schedule a maintenance window first.
+- **Realtime publication.** The realtime coordinator listens on
+  `day_entries` and `profiles` `postgres_changes`. The migrations do not
+  add the tables to the `supabase_realtime` publication; without it,
+  cross-device updates fall back to periodic/foreground sync (acceptable
+  degraded mode). If adding it, do so **after** migration 1 completes to
+  avoid a fan-out storm from the backfill rewrites.

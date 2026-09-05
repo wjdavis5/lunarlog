@@ -110,7 +110,15 @@ class SupabaseSharingService implements SharingService {
         role: role,
       );
     } catch (e) {
-      throw _mapError(e);
+      final failure = _mapError(e);
+      // "Already accepted" (another device redeemed it) or "already an
+      // active guardian" still means this device must pull the shared
+      // profile down - reconcile before surfacing the error.
+      if (failure is SharingAlreadyAcceptedFailure ||
+          failure is SharingAlreadyGuardianFailure) {
+        syncEngine.triggerFullReconcile();
+      }
+      throw failure;
     }
   }
 

@@ -16,12 +16,15 @@ class ManageGuardiansScreen extends StatefulWidget {
     required this.profile,
     required this.storage,
     required this.sharingService,
-    this.currentUserId,
+    required this.currentUserId,
   });
 
   final Profile profile;
   final LunarLogStorage storage;
   final SharingService sharingService;
+
+  /// The signed-in user's id, required for role gating (U8): viewers and
+  /// caregivers never see the invite action or revocation controls.
   final String? currentUserId;
 
   @override
@@ -29,6 +32,38 @@ class ManageGuardiansScreen extends StatefulWidget {
 }
 
 class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
+  Stream<List<ProfileGuardian>> get _activeGuardians =>
+      widget.storage.watchGuardiansForProfile(widget.profile.id).map((rows) =>
+          rows
+              .map(profileGuardianToDomain)
+              .where((g) => g.status == GuardianStatus.accepted)
+              .toList());
+
+  /// The caller's own accepted role on this profile, or null when the
+  /// caller is not an active guardian (or is unknown).
+  GuardianRole? _callerRoleOf(List<ProfileGuardian> activeGuardians) {
+    final uid = widget.currentUserId;
+    if (uid == null) return null;
+    for (final g in activeGuardians) {
+      if (g.userId == uid) return g.role;
+    }
+    return null;
+  }
+
+  /// R3/R4 revocation authority: anyone may leave (the server blocks the
+  /// sole primary guardian); the primary guardian may revoke anyone; a
+  /// co-parent may revoke caregivers and viewers only.
+  bool _canRevoke(ProfileGuardian guardian, GuardianRole? callerRole) {
+    if (callerRole == null) return false;
+    if (guardian.userId == widget.currentUserId) return true;
+    if (callerRole == GuardianRole.primaryGuardian) return true;
+    if (callerRole == GuardianRole.coParent) {
+      return guardian.role != GuardianRole.primaryGuardian &&
+          guardian.role != GuardianRole.coParent;
+    }
+    return false;
+  }
+
   Future<void> _revoke(ProfileGuardian guardian) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -93,18 +128,30 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       appBar: AppBar(
         title: Text('${widget.profile.displayName} Caregivers'),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openInviteDialog,
-        icon: const Icon(Icons.person_add),
-        label: const Text('Invite Caregiver'),
+      // U8: only the primary guardian and co-parents can invite; the
+      // server enforces it too, so the button is not even offered.
+      // A nested StreamBuilder keeps the same proven-settling structure
+      // as the body below.
+      floatingActionButton:
+          StreamBuilder<List<ProfileGuardian>>(
+        stream: _activeGuardians,
+        builder: (context, snapshot) {
+          final callerRole = _callerRoleOf(snapshot.data ?? const []);
+          if (callerRole?.canManageGuardians != true) {
+            return const SizedBox.shrink();
+          }
+          return FloatingActionButton.extended(
+            onPressed: _openInviteDialog,
+            icon: const Icon(Icons.person_add),
+            label: const Text('Invite Caregiver'),
+          );
+        },
       ),
       body: StreamBuilder<List<ProfileGuardian>>(
-        stream: widget.storage
-            .watchGuardiansForProfile(widget.profile.id)
-            .map((rows) => rows.map(profileGuardianToDomain).toList()),
+        stream: _activeGuardians,
         builder: (context, snapshot) {
-          final guardians = snapshot.data ?? [];
-          final activeGuardians = guardians.where((g) => g.status == GuardianStatus.accepted).toList();
+          final activeGuardians = snapshot.data ?? const [];
+          final callerRole = _callerRoleOf(activeGuardians);
 
           if (activeGuardians.isEmpty) {
             return Center(
@@ -130,7 +177,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final guardian = activeGuardians[index];
-              final isMe = widget.currentUserId != null && guardian.userId == widget.currentUserId;
+              final isMe =
+                  widget.currentUserId != null && guardian.userId == widget.currentUserId;
 
               return ListTile(
                 leading: CircleAvatar(
@@ -159,11 +207,13 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                   ],
                 ),
                 subtitle: Text(guardian.role.label),
-                trailing: IconButton(
-                  icon: const Icon(Icons.remove_circle_outline),
-                  tooltip: isMe ? 'Leave profile' : 'Remove caregiver',
-                  onPressed: () => _revoke(guardian),
-                ),
+                trailing: _canRevoke(guardian, callerRole)
+                    ? IconButton(
+                        icon: const Icon(Icons.remove_circle_outline),
+                        tooltip: isMe ? 'Leave profile' : 'Remove caregiver',
+                        onPressed: () => _revoke(guardian),
+                      )
+                    : null,
               );
             },
           );

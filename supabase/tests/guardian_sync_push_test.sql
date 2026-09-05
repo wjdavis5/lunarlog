@@ -1,6 +1,6 @@
 -- Unit test for guardian sync_push and invitations RPCs (Issue #8, Unit U2).
 begin;
-select plan(23);
+select plan(26);
 
 -- ---------------------------------------------------------------------------
 -- Setup test users: mom (creator), dad (co-parent), nanny (caregiver), doc (viewer), eve (attacker)
@@ -91,6 +91,16 @@ select public.create_guardian_invitation(
   48
 );
 
+-- R3: a co-parent may not mint co-parent invitations (primary only).
+select throws_ok(
+  $$select public.create_guardian_invitation(
+    tests.ulid(301), 'co_parent', 'Fake Co-Parent',
+    '4444444444444444444444444444444444444444444444444444444444444444', 48)$$,
+  '42501',
+  null,
+  'Co-parent cannot create a co-parent invitation'
+);
+
 select public.create_guardian_invitation(
   tests.ulid(301),
   'viewer',
@@ -177,6 +187,45 @@ select is(
   (select last_modified_by_user_id from public.day_entries where id = tests.ulid(302)),
   tests.get_supabase_uid('dad'),
   'last_modified_by_user_id updated to Dad'
+);
+
+-- A day entry can never move between profiles: Dad is a guardian of both
+-- 301 and (below) 305, but re-pointing entry 302 to 305 is rejected.
+select tests.authenticate_as('mom');
+select public.sync_push(
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(305), 'display_name', 'Lily', 'updated_at', '2026-09-01T00:00:00Z')),
+  '[]'::jsonb
+);
+select public.create_guardian_invitation(
+  tests.ulid(305), 'co_parent', 'Dad',
+  '5555555555555555555555555555555555555555555555555555555555555555', 48
+);
+select tests.authenticate_as('dad');
+select public.accept_guardian_invitation(
+  '5555555555555555555555555555555555555555555555555555555555555555',
+  'Dad'
+);
+
+select is(
+  public.sync_push(
+    '[]'::jsonb,
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(302),
+      'profile_id', tests.ulid(305),
+      'local_date', '2026-09-01',
+      'tz', 'UTC',
+      'flow', 'medium',
+      'updated_at', '2026-09-01T16:00:00Z'
+    ))
+  ) -> 'rejected',
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(302), 'rejected', true)),
+  'Day entry cannot be re-pointed to another profile (rejected)'
+);
+
+select is(
+  (select profile_id from public.day_entries where id = tests.ulid(302)),
+  tests.ulid(301),
+  'Re-pointed entry stays in its original profile'
 );
 
 -- Viewer (Doc) attempts to push day entry: rejected

@@ -253,6 +253,14 @@ begin
        for update;
 
       if found then
+        -- An entry never legitimately changes profiles: the role check
+        -- above ran against v_profile_id only, so a re-pointed row would
+        -- smuggle another profile's entry past that check.
+        if v_stored.profile_id is distinct from v_profile_id then
+          raise exception 'day entry cannot move between profiles'
+            using errcode = 'insufficient_privilege';
+        end if;
+
         v_accept := v_updated_at > v_stored.updated_at
           or (v_updated_at = v_stored.updated_at
               and v_deleted_at is not null
@@ -383,6 +391,21 @@ begin
 
   if p_role not in ('co_parent', 'caregiver', 'viewer') then
     raise exception 'invalid role: %', p_role using errcode = 'invalid_parameter_value';
+  end if;
+
+  -- R3: only the primary guardian may create co-parent invitations; a
+  -- co-parent can invite caregivers and viewers only.
+  if p_role = 'co_parent'
+     and not public.is_guardian_with_roles(p_profile_id, v_uid, array['primary_guardian']) then
+    raise exception 'only the primary guardian can invite a co-parent'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  -- R7: the TTL is server-bounded so an authorized inviter cannot mint a
+  -- multi-century (or negative) invitation.
+  if coalesce(p_ttl_hours, 48) < 1 or coalesce(p_ttl_hours, 48) > 168 then
+    raise exception 'p_ttl_hours must be between 1 and 168'
+      using errcode = 'invalid_parameter_value';
   end if;
 
   if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then

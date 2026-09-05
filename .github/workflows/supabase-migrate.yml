@@ -40,6 +40,17 @@ jobs:
           # Pinned to the version the migrations and tests were written against.
           version: 2.116.0
 
+      - name: Check deploy credentials
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set. Create a Supabase personal access token (supabase.com dashboard -> Account -> Access Tokens) and add it as a \`production\` environment secret named SUPABASE_ACCESS_TOKEN (repository Settings -> Environments -> production -> Environment secrets), then re-run this workflow."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::error::SUPABASE_DB_PASSWORD is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
+            exit 1
+          fi
+
       - name: Link project
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 

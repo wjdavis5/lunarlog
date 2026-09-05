@@ -39,7 +39,7 @@ create table public.profile_guardians (
     constraint profile_guardians_display_name_check
     check (display_name is null or char_length(display_name) <= 80),
   invited_by uuid
-    references auth.users (id),
+    references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   server_version bigint not null default 0,
@@ -151,7 +151,7 @@ create table public.guardian_invitations (
   expires_at timestamptz not null,
   accepted_at timestamptz,
   accepted_by uuid
-    references auth.users (id),
+    references auth.users (id) on delete set null,
   revoked_at timestamptz,
   created_at timestamptz not null default now()
 );
@@ -167,8 +167,8 @@ create index guardian_invitations_token_hash_idx on public.guardian_invitations 
 -- ---------------------------------------------------------------------------
 
 alter table public.day_entries
-  add column if not exists logged_by_user_id uuid references auth.users(id),
-  add column if not exists last_modified_by_user_id uuid references auth.users(id);
+  add column if not exists logged_by_user_id uuid references auth.users(id) on delete set null,
+  add column if not exists last_modified_by_user_id uuid references auth.users(id) on delete set null;
 
 update public.day_entries
    set logged_by_user_id = user_id,
@@ -211,22 +211,28 @@ create policy "profile_guardians_select" on public.profile_guardians
     or public.is_profile_guardian(profile_id, (select auth.uid()))
   );
 
+-- Membership rows are created by the SECURITY DEFINER invitation RPC or by
+-- an existing primary_guardian / co_parent; a user must never be able to
+-- self-insert membership (R16) - the `user_id = auth.uid()` self-service
+-- branch would let any authenticated user grant itself any role on any
+-- profile.
 create policy "profile_guardians_insert" on public.profile_guardians
   for insert to authenticated
   with check (
-    user_id = (select auth.uid())
-    or public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
+    public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
   );
 
+-- Membership state transitions run through the SECURITY DEFINER RPCs
+-- (accept / revoke). A self-service `user_id = auth.uid()` branch here
+-- would let a revoked guardian flip its own status back to 'accepted',
+-- defeating revocation (R4/R5).
 create policy "profile_guardians_update" on public.profile_guardians
   for update to authenticated
   using (
-    user_id = (select auth.uid())
-    or public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
+    public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
   )
   with check (
-    user_id = (select auth.uid())
-    or public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
+    public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
   );
 
 -- Policies on guardian_invitations
@@ -244,15 +250,17 @@ create policy "guardian_invitations_insert" on public.guardian_invitations
     and public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
   );
 
+-- Only the invitation's creator may modify it (revoke it). Consumption
+-- (accepted_at / accepted_by) is written exclusively by the SECURITY
+-- DEFINER accept RPC; a role-based branch here would let a co-parent
+-- forge-accept or un-revoke the primary guardian's invitations.
 create policy "guardian_invitations_update" on public.guardian_invitations
   for update to authenticated
   using (
     invited_by = (select auth.uid())
-    or public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
   )
   with check (
     invited_by = (select auth.uid())
-    or public.is_guardian_with_roles(profile_id, (select auth.uid()), array['primary_guardian', 'co_parent'])
   );
 
 -- Policies on profiles (Updated to include guardians)
@@ -304,16 +312,73 @@ create policy "day_entries_update_guardians" on public.day_entries
 -- ---------------------------------------------------------------------------
 -- 9. Privileges
 -- ---------------------------------------------------------------------------
+-- Least privilege (KTD15): membership state (`status`, `role`) is only
+-- writable through the SECURITY DEFINER RPCs, invitation consumption only
+-- through the accept RPC, and day_entries attribution only as the
+-- security-invoker sync_push writes it (last_modified_by_user_id = caller;
+-- logged_by_user_id is insert-only and enforced by the trigger below).
 
 revoke all on table public.profile_guardians from public, anon, authenticated;
 grant select, insert on table public.profile_guardians to authenticated;
-grant update (display_name, status, updated_at) on table public.profile_guardians to authenticated;
+grant update (display_name, updated_at) on table public.profile_guardians to authenticated;
 
 revoke all on table public.guardian_invitations from public, anon, authenticated;
 grant select, insert on table public.guardian_invitations to authenticated;
-grant update (revoked_at, accepted_at, accepted_by) on table public.guardian_invitations to authenticated;
+grant update (revoked_at) on table public.guardian_invitations to authenticated;
 
-grant update (logged_by_user_id, last_modified_by_user_id) on table public.day_entries to authenticated;
+grant update (last_modified_by_user_id) on table public.day_entries to authenticated;
+
+-- R11/AE2: attribution columns are server-authoritative. sync_push stamps
+-- them from (select auth.uid()) and never changes logged_by_user_id on
+-- UPDATE, so this trigger holds for every RPC path while making direct
+-- client writes (forged logged_by / last_modified values) fail. A null
+-- auth.uid() (migrations, service role) is exempt: the backfill above and
+-- operational tooling run without a JWT.
+create or replace function public.enforce_day_entry_attribution()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+begin
+  if v_uid is null then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    -- NULL attribution (legacy rows, direct inserts) is allowed; a value
+    -- other than the caller's own uid is a forgery.
+    if (new.logged_by_user_id is not null
+          and new.logged_by_user_id is distinct from v_uid)
+       or (new.last_modified_by_user_id is not null
+             and new.last_modified_by_user_id is distinct from v_uid) then
+      raise exception 'attribution columns are server-authoritative'
+        using errcode = 'insufficient_privilege';
+    end if;
+  else
+    if new.logged_by_user_id is distinct from old.logged_by_user_id then
+      raise exception 'logged_by_user_id is server-authoritative'
+        using errcode = 'insufficient_privilege';
+    end if;
+    if new.last_modified_by_user_id is distinct from v_uid then
+      raise exception 'last_modified_by_user_id must be the calling user'
+        using errcode = 'insufficient_privilege';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger day_entries_attribution_insert_guard
+  before insert on public.day_entries
+  for each row execute function public.enforce_day_entry_attribution();
+
+create trigger day_entries_attribution_update_guard
+  before update on public.day_entries
+  for each row execute function public.enforce_day_entry_attribution();
+
+revoke execute on function public.enforce_day_entry_attribution() from public, anon;
 
 grant execute on function public.is_profile_guardian(text, uuid) to authenticated;
 grant execute on function public.is_guardian_with_roles(text, uuid, text[]) to authenticated;

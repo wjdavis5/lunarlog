@@ -652,6 +652,15 @@ class LunarLogStorage {
   }
 
   Future<bool> _applyProfileGuardian(RemoteProfileGuardianRow remote) async {
+    // Referential integrity up front, mirroring the day-entry rule: a
+    // guardian row whose profile is not held locally yet (invite accepted
+    // on another device, profile page still in flight) is a typed,
+    // retryable failure - never a raw FK exception that wedges the cycle.
+    if (await _profileOrNull(remote.profileId) == null) {
+      throw RetryableSyncApplyError(
+          'profile_guardian ${remote.id} references a profile not held locally');
+    }
+
     final existing = await (db.select(db.profileGuardians)
           ..where((t) => t.id.equals(remote.id)))
         .getSingleOrNull();
@@ -661,6 +670,18 @@ class LunarLogStorage {
             localUpdatedAt: existing.updatedAt,
             remoteUpdatedAt: remote.updatedAt)) {
       return false;
+    }
+
+    // R5: when this device's bound user is no longer an accepted guardian,
+    // access to the shared profile is revoked locally too - the profile
+    // and its day entries are tombstoned (payload cleared, not dirty, so
+    // the wipe is never pushed back) in the same transaction as the
+    // membership upsert.
+    final boundUserId = (await readSyncState()).boundUserId;
+    if (boundUserId != null &&
+        remote.userId == boundUserId &&
+        remote.status != 'accepted') {
+      await _tombstoneRevokedSharedProfile(remote.profileId, remote.updatedAt);
     }
 
     await db.into(db.profileGuardians).insertOnConflictUpdate(
@@ -677,6 +698,34 @@ class LunarLogStorage {
           ),
         );
     return true;
+  }
+
+  /// Revocation wipe (R5): tombstones the shared profile and every live day
+  /// entry of it at the server's revocation timestamp. Tombstones carry no
+  /// payload and are marked not dirty - the server already knows, so the
+  /// wipe must never be pushed back. Rows with unpushed local edits are
+  /// wiped too: once revoked, the server rejects those pushes regardless.
+  Future<void> _tombstoneRevokedSharedProfile(
+      String profileId, DateTime revokedAt) async {
+    final stamp = revokedAt.toUtc();
+    await (db.update(db.dayEntries)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(DayEntriesCompanion(
+          note: const Value(null),
+          tags: const Value(<String>[]),
+          updatedAt: Value(stamp),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    await (db.update(db.profiles)
+          ..where((t) => t.id.equals(profileId) & t.deletedAt.isNull()))
+        .write(ProfilesCompanion(
+          displayName: const Value(''),
+          updatedAt: Value(stamp),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
   }
 
   Future<List<ProfileGuardianData>> getGuardiansForProfile(String profileId) =>

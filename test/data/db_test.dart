@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
@@ -11,6 +11,7 @@ import 'package:lunarlog/data/db/native_db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/db/ulid.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 /// Key store fake that records every call — used to prove the web flavor of
@@ -795,6 +796,133 @@ void main() {
       expect(tombstone.deletedAt, isNotNull);
 
       expect(await storage.getProfile('01JPROFILEUNKNOWN000000000'), isNull);
+    });
+
+    test('R5: applying a revoked membership for the bound user tombstones '
+        'the shared profile and its day entries', () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'Shared', isMinor: true);
+      await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: const ['cramps'],
+          note: 'secret');
+      await storage.writeSyncState(
+          kDefaultSyncState.copyWith(boundUserId: const Value('u-revoked')));
+
+      await storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-1',
+          profileId: profile.id,
+          userId: 'u-revoked',
+          role: 'caregiver',
+          status: 'revoked',
+          displayName: null,
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      ]);
+
+      // UI reads see nothing; full-fidelity reads see tombstones.
+      expect(await storage.getProfile(profile.id), isNull);
+      final tombstone =
+          await storage.getProfile(profile.id, includeTombstones: true);
+      expect(tombstone!.deletedAt, isNotNull);
+      expect(await storage.getDayEntries(profileId: profile.id), isEmpty);
+      final entryTombstones = await storage.getDayEntries(
+          profileId: profile.id, includeTombstones: true);
+      expect(entryTombstones, isNotEmpty);
+      expect(entryTombstones.every((e) => e.deletedAt != null), isTrue);
+      // The membership row itself is stored (status revoked).
+      expect(
+        (await storage.getGuardiansForProfile(profile.id))
+            .single
+            .status,
+        'revoked',
+      );
+    });
+
+    test('R5 does not fire for another user\'s revoked membership or for '
+        'an accepted own membership', () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'Mine', isMinor: false);
+      await storage.writeSyncState(
+          kDefaultSyncState.copyWith(boundUserId: const Value('u-me')));
+
+      await storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-other',
+          profileId: profile.id,
+          userId: 'u-someone-else',
+          role: 'caregiver',
+          status: 'revoked',
+          displayName: null,
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+        RemoteProfileGuardianRow(
+          id: 'g-me',
+          profileId: profile.id,
+          userId: 'u-me',
+          role: 'co_parent',
+          status: 'accepted',
+          displayName: null,
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+      ]);
+
+      expect(await storage.getProfile(profile.id), isNotNull);
+    });
+
+    test('a profile_guardians row whose profile is not held locally throws '
+        'RetryableSyncApplyError (typed, retried next cycle)', () async {
+      await expectLater(
+        storage.applyRemoteRows([
+          RemoteProfileGuardianRow(
+            id: 'g-x',
+            profileId: '01ANOTHELDPROFILE0000000000000',
+            userId: 'u-me',
+            role: 'co_parent',
+            status: 'accepted',
+            displayName: null,
+            invitedBy: null,
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ]),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+    });
+
+    test('wipeAllData empties profile_guardians before profiles (FK order)',
+        () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-1',
+          profileId: profile.id,
+          userId: 'u-me',
+          role: 'primary_guardian',
+          status: 'accepted',
+          displayName: null,
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
+      expect(await storage.getGuardiansForProfile(profile.id), isNotEmpty);
+
+      await db.wipeAllData();
+
+      expect(await storage.getProfiles(includeTombstones: true), isEmpty);
+      expect(await storage.getGuardiansForProfile(profile.id), isEmpty);
     });
   });
 

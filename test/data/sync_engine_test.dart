@@ -990,9 +990,10 @@ void main() {
       rig.transport.scriptPage(SyncTable.dayEntries, const []); // incremental
       await rig.sync();
 
-      // Incremental pull checks profiles and dayEntries (2 pull calls: 1 profiles, 1 dayEntries)
-      // and NO reconcile pull is made.
-      expect(rig.transport.pullCount, pullsBeforeCycle4 + 2,
+      // Incremental pull checks profiles, guardians and dayEntries
+      // (3 pull calls: 1 profiles, 1 guardians, 1 dayEntries) and NO
+      // reconcile pull is made.
+      expect(rig.transport.pullCount, pullsBeforeCycle4 + 3,
           reason: 'cycle 4 ran incremental pulls only, no full reconcile');
     });
   });

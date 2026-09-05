@@ -1,6 +1,6 @@
 -- RLS and permission tests for multi-guardian access (Issue #8, Unit U1).
 begin;
-select plan(24);
+select plan(31);
 
 -- ---------------------------------------------------------------------------
 -- Setup users: Mom (creator), Dad (co_parent), Sitter (caregiver), Doctor (viewer), Stranger
@@ -131,6 +131,18 @@ with u as (
   update public.profiles set display_name = 'Hacked by Sitter' where id = tests.ulid(101) returning 1
 ) select is(count(*), 0::bigint, 'Sitter cannot update profile metadata (0 rows updated)') from u;
 
+-- Sitter cannot forge attribution: logged_by_user_id is not even granted
+-- for direct UPDATE, and a forged last_modified_by_user_id value trips the
+-- attribution guard trigger (R11/AE2 beyond the sync_push path).
+select throws_ok(
+  $$update public.day_entries set logged_by_user_id = tests.get_supabase_uid('mom') where id = tests.ulid(105)$$,
+  '42501', null, 'Sitter cannot UPDATE logged_by_user_id directly (column not granted)'
+);
+select throws_ok(
+  $$update public.day_entries set last_modified_by_user_id = tests.get_supabase_uid('mom') where id = tests.ulid(105)$$,
+  '42501', null, 'Sitter cannot forge last_modified_by_user_id (trigger enforces caller uid)'
+);
+
 -- ---------------------------------------------------------------------------
 -- 6. Mom adds Doctor as viewer
 -- ---------------------------------------------------------------------------
@@ -167,12 +179,34 @@ with u as (
 -- ---------------------------------------------------------------------------
 -- 7. Revocation
 -- ---------------------------------------------------------------------------
+-- Membership state changes only through the revoke_guardian RPC: the
+-- profile_guardians update policy has no self-service branch and `status`
+-- is not granted for direct UPDATE.
+select tests.authenticate_as('stranger');
+
+select throws_ok(
+  $$insert into public.profile_guardians (profile_id, user_id, role, status)
+    values (tests.ulid(101), tests.get_supabase_uid('stranger'), 'primary_guardian', 'accepted')$$,
+  '42501', null, 'Stranger cannot self-insert membership as primary_guardian'
+);
+
 select tests.authenticate_as('mom');
 
--- Mom revokes Sitter
-update public.profile_guardians
-   set status = 'revoked', updated_at = now()
- where profile_id = tests.ulid(101) and user_id = tests.get_supabase_uid('sitter');
+select is(
+  public.revoke_guardian(tests.ulid(101), tests.get_supabase_uid('sitter')),
+  true,
+  'Mom revokes Sitter via the revoke_guardian RPC'
+);
+
+select tests.authenticate_as('sitter');
+
+-- A revoked guardian must not be able to flip its own row back to accepted:
+-- the self-service policy branch is gone and `status` is not granted for
+-- direct UPDATE, so the attempt fails with insufficient privilege.
+select throws_ok(
+  $$update public.profile_guardians set status = 'accepted' where profile_id = tests.ulid(101) and user_id = tests.get_supabase_uid('sitter')$$,
+  '42501', null, 'Revoked guardian cannot reactivate its own membership'
+);
 
 select tests.authenticate_as('sitter');
 
@@ -208,6 +242,18 @@ select is(
   1::bigint,
   'Dad can create guardian invitation'
 );
+
+-- Only the invitation's creator may modify it: even the primary guardian
+-- cannot consume or revoke Dad's invitation by direct UPDATE.
+select tests.authenticate_as('mom');
+with u as (
+  update public.guardian_invitations set revoked_at = now() where profile_id = tests.ulid(101) returning 1
+) select is(count(*), 0::bigint, 'Non-creator cannot modify another guardian''s invitation (0 rows updated)') from u;
+
+select tests.authenticate_as('dad');
+with u as (
+  update public.guardian_invitations set revoked_at = now() where profile_id = tests.ulid(101) returning 1
+) select is(count(*), 1::bigint, 'Invitation creator can revoke its own invitation') from u;
 
 select tests.authenticate_as('stranger');
 

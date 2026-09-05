@@ -750,26 +750,40 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.profileGuardians,
       SyncTable.dayEntries,
     ]) {
+      final state = await _storage.readSyncState();
+      // profileGuardians has no persisted cursor yet (schema v3): it pages
+      // from 0 every cycle, but `after` still advances locally so a full
+      // first page terminates instead of looping on the same page.
+      var after = switch (table) {
+        SyncTable.profiles => state.cursorProfiles,
+        SyncTable.dayEntries => state.cursorDayEntries,
+        SyncTable.profileGuardians => 0,
+      };
       while (true) {
         _checkpoint(uid);
-        final state = await _storage.readSyncState();
-        final cursor = switch (table) {
-          SyncTable.profiles => state.cursorProfiles,
-          SyncTable.dayEntries => state.cursorDayEntries,
-          SyncTable.profileGuardians => 0,
-        };
         final page = await _transport.pullPage(
-            table: table, afterVersion: cursor, limit: _pageSize);
+            table: table, afterVersion: after, limit: _pageSize);
         if (page.isEmpty) break;
-        final newCursor = _maxVersion(page, cursor);
+        final newCursor = _maxVersion(page, after);
         try {
           await _storage.applyRemotePage(
               table: table, rows: page, newCursor: newCursor);
         } on RetryableSyncApplyError {
           retry = true;
+          if (table == SyncTable.profileGuardians) {
+            // A guardian row whose profile is not held locally: the
+            // profile may sit below the profiles cursor (joined share),
+            // so rewind it - the next cycle re-pulls profiles from
+            // version 0 and the share converges without involving the
+            // reconcile-retry bound (#74 owns that path exclusively).
+            final s = await _storage.readSyncState();
+            await _storage.writeSyncState(s.copyWith(cursorProfiles: 0));
+          }
           break;
         }
-        if (page.length < _pageSize || newCursor <= cursor) break;
+        final progressed = newCursor > after;
+        after = newCursor;
+        if (page.length < _pageSize || !progressed) break;
       }
     }
     return retry;
