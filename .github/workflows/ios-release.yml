@@ -153,9 +153,36 @@ jobs:
 
           echo "All $(echo "$repo" | wc -l) repo migrations are applied to production. Safe to release."
 
+  release-gate:
+    # Fails fast, before any build work, when a dispatcher explicitly
+    # requests submission (submit_for_review: true) while the
+    # account-deletion release gate (issue #17) is closed. Deliberately has
+    # no job-level `if:` -- a skipped `needs` job by default also skips its
+    # dependent job, which would block every ordinary push to main. This
+    # job always runs and always succeeds except in the one case it exists
+    # to catch (R5, R6, R8).
+    name: Verify the release gate for explicit submission
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the release gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
+          RELEASE_GATE_ACCOUNT_DELETION: ${{ vars.RELEASE_GATE_ACCOUNT_DELETION }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] || [ "$SUBMIT_FOR_REVIEW" != "true" ]; then
+            echo "Not an explicit submit_for_review dispatch; nothing to gate here."
+            exit 0
+          fi
+          bash .github/scripts/check-release-gate.sh
+
   release:
     name: Build, sign, and upload to TestFlight
-    needs: [verify, migration-gate]
+    needs: [verify, migration-gate, release-gate]
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -194,6 +221,18 @@ jobs:
           SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
           CURRENT_VERSION: ${{ steps.version.outputs.marketing }}
         run: bash .github/scripts/detect-version-bump.sh
+
+      - name: Check the release gate (warn-only)
+        # A bump was detected, but the account-deletion release gate
+        # (issue #17) governs whether it may actually submit. Closed here
+        # degrades to a warning rather than failing the run -- TestFlight
+        # delivery must not be denied for a policy reason (KD2, R8).
+        id: gate
+        if: steps.bump.outputs.submit == 'true'
+        env:
+          RELEASE_GATE_ACCOUNT_DELETION: ${{ vars.RELEASE_GATE_ACCOUNT_DELETION }}
+          RELEASE_GATE_MODE: warn
+        run: bash .github/scripts/check-release-gate.sh
 
       - name: Install the App Store Connect API key
         env:
@@ -363,7 +402,7 @@ jobs:
             --apiIssuer "$ASC_ISSUER_ID"
 
       - name: Submit for App Store review
-        if: steps.bump.outputs.submit == 'true'
+        if: steps.bump.outputs.submit == 'true' && steps.gate.outputs.gate_open != 'false'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}

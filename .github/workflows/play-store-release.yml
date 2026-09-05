@@ -4,9 +4,12 @@ name: Play Store Release
 #
 # Mirrored from the release architecture in taxiGame / kegel_trainer.
 #
-# Two modes:
-#   - Automated: Pushes to main build and publish to the 'internal' testing track.
-#   - Manual (workflow_dispatch): Deploy to internal, alpha, beta, or production tracks.
+# Manual only -- there is no push trigger; every run is a workflow_dispatch
+# to internal, alpha, beta, or production. A `production` dispatch is
+# additionally gated: it requires the account-deletion release gate
+# (issue #17) to be open AND a typed `confirm_production` confirmation, both
+# enforced by the `production-gate` job before any build runs. See
+# .github/scripts/check-release-gate.sh (issue #41, finding #7).
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
 #   ANDROID_KEYSTORE_BASE64       Base64-encoded release keystore (.jks or .keystore)
@@ -40,6 +43,10 @@ on:
           - inProgress
           - halted
         default: completed
+      confirm_production:
+        description: "Type 'production' to confirm a production release"
+        type: string
+        default: ''
 
 env:
   FLUTTER_CHANNEL: stable
@@ -72,9 +79,36 @@ jobs:
       - name: Test
         run: flutter test
 
+  production-gate:
+    # Fails fast, before any build work, when track is 'production' unless
+    # both the account-deletion release gate (issue #17) is open and the
+    # dispatcher typed the exact confirmation string. Deliberately has no
+    # job-level `if:` -- a skipped `needs` job by default also skips its
+    # dependent job, which would block every non-production dispatch. This
+    # job always runs and always succeeds except for the production case it
+    # exists to gate (R5, R6, R7).
+    name: Verify the production release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Skip for non-production tracks
+        if: inputs.track != 'production'
+        run: echo "track is '${{ inputs.track }}', not production; nothing to gate here."
+
+      - uses: actions/checkout@v4
+        if: inputs.track == 'production'
+
+      - name: Enforce the production gate
+        if: inputs.track == 'production'
+        env:
+          RELEASE_GATE_ACCOUNT_DELETION: ${{ vars.RELEASE_GATE_ACCOUNT_DELETION }}
+          REQUIRE_PRODUCTION_CONFIRMATION: 'true'
+          CONFIRM_PRODUCTION: ${{ inputs.confirm_production }}
+        run: bash .github/scripts/check-release-gate.sh
+
   release:
     name: Build, sign, and publish to Play Store
-    needs: verify
+    needs: [verify, production-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

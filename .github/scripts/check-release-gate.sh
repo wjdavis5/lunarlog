@@ -37,6 +37,12 @@ set -euo pipefail
 # Exit code: 0 when submission is permitted (or the gate is closed but
 # RELEASE_GATE_MODE=warn with no confirmation requirement), non-zero
 # otherwise.
+#
+# Output: a `gate_open=true|false` line appended to $GITHUB_OUTPUT (when
+# set), reporting the account-deletion gate's own state independent of
+# RELEASE_GATE_MODE or the confirmation check -- this is what lets a
+# warn-mode caller (the iOS submit path) suppress submission without
+# failing the run.
 
 GATE_MESSAGE="Release gate closed: the account-deletion feature (issue #17) has not shipped yet. App Store guideline 5.1.1(v) requires in-app account deletion before this build can go to store review/production. To open the gate once it has shipped, set the RELEASE_GATE_ACCOUNT_DELETION repository variable to 'shipped' (Settings -> Secrets and variables -> Actions -> Variables)."
 CONFIRM_MESSAGE="Production confirmation missing or incorrect. Type exactly 'production' (all lowercase) into the confirm_production input to proceed with a production release."
@@ -46,8 +52,10 @@ trimmed="$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$
 lowered="$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]')"
 
 errors=0
+gate_open=false
 
 if [ "$lowered" = "shipped" ]; then
+  gate_open=true
   echo "Release gate open (RELEASE_GATE_ACCOUNT_DELETION=shipped)."
 elif [ "${RELEASE_GATE_MODE:-}" = "warn" ] && [ "${REQUIRE_PRODUCTION_CONFIRMATION:-}" != "true" ]; then
   echo "::warning::$GATE_MESSAGE"
@@ -63,6 +71,10 @@ if [ "${REQUIRE_PRODUCTION_CONFIRMATION:-}" = "true" ]; then
   else
     echo "Production confirmation received."
   fi
+fi
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "gate_open=$gate_open" >> "$GITHUB_OUTPUT"
 fi
 
 [ "$errors" -eq 0 ]
