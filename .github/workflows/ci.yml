@@ -18,6 +18,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-guards:
+    # Proves the release-guard scripts (issue #41) on every PR instead of
+    # by pushing to main. No Flutter, Java, or Supabase toolchain and no
+    # secrets, so this stays fast.
+    name: Release guard scripts (unit tests + actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run detect-version-bump tests
+        run: bash .github/scripts/tests/detect-version-bump.test.sh
+
+      - name: Run check-release-gate tests
+        run: bash .github/scripts/tests/check-release-gate.test.sh
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: '1.7.7'
+        run: |
+          set -euo pipefail
+          curl -sSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf actionlint.tar.gz actionlint
+          rm actionlint.tar.gz
+          ./actionlint -version
+
+      - name: Lint workflows with actionlint
+        run: ./actionlint .github/workflows/*.yml
+
   check:
     name: Analyze, test, build web
     runs-on: ubuntu-latest
