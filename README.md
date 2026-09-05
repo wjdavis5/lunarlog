@@ -258,6 +258,11 @@ Part of the home lab; the canonical inventory lives in the lab root's
   key is already device-only, and Android covers the equivalent with
   `allowBackup="false"`). The Supabase session and PKCE verifier are stored
   with `first_unlock_this_device` and never travel in a backup.
+- Realtime co-caregiver sync (issue #77) cannot be exercised end-to-end in
+  CI: local and CI Supabase both start with `-x realtime` (no Realtime
+  container), so the `supabase_realtime` publication is verified from
+  pgTAP against catalog state (`supabase/tests/realtime_publication_test.sql`)
+  and actual delivery is a manual check against the cloud project.
 
 ## License
 
