@@ -467,6 +467,87 @@ void main() {
       expect(find.text('Alice'), findsNothing);
       await disposeApp(tester, db);
     });
+
+    testWidgets('cancelling the rename dialog leaves the name unchanged',
+        (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+      });
+
+      final aliceTile =
+          find.ancestor(of: find.text('Alice'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), 'Alicia');
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Alice'), findsOneWidget,
+          reason: 'cancelling the dialog never calls renameProfile');
+      expect(find.text('Alicia'), findsNothing);
+      await disposeApp(tester, db);
+    });
+  });
+
+  group('archive cancellation', () {
+    testWidgets(
+        'cancelling the archive confirmation leaves the profile active',
+        (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await seedTwoProfiles(db);
+      });
+
+      final aliceTile =
+          find.ancestor(of: find.text('Alice'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Archive Alice?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Alice'), findsOneWidget,
+          reason: 'cancelling the confirmation never calls archiveProfile');
+      expect(find.textContaining('Archived'), findsNothing,
+          reason: 'no archived section appeared');
+      await disposeApp(tester, db);
+    });
+  });
+
+  group('caregivers action without a sharing service (U8)', () {
+    testWidgets(
+        'tapping Caregivers does nothing when no sharing service is '
+        'configured', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+      });
+
+      final aliceTile =
+          find.ancestor(of: find.text('Alice'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Caregivers'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice Caregivers'), findsNothing,
+          reason: 'no sharing service means no navigation at all');
+      expect(find.text('Profiles'), findsOneWidget,
+          reason: 'still on the picker; nothing was pushed');
+      expect(find.text('Alice'), findsOneWidget);
+      await disposeApp(tester, db);
+    });
   });
 
   group('last-active fallback (R4)', () {

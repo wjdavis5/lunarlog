@@ -32,6 +32,7 @@ import 'package:lunarlog/domain/sync/local_row_counts.dart'
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
+import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
@@ -43,6 +44,9 @@ class LunarLogApp extends StatefulWidget {
     this.authService,
     this.syncEngine,
     this.sharingService,
+    this.inviteLinks,
+    this.initialInviteCode,
+    this.initialInviteProfileId,
     this.onTeardown,
     this.resetDevice,
     this.showWebBanner = kIsWeb,
@@ -50,6 +54,19 @@ class LunarLogApp extends StatefulWidget {
 
   final LunarLogDatabase db;
   final SharingService? sharingService;
+
+  /// `lunarlog://invite?code=...` links (U8; R9/F2), filtered by main.dart
+  /// (or injected by tests). When present and a sharing service exists,
+  /// an incoming link presents [AcceptInviteSheet] - after sign-in if the
+  /// recipient is not authenticated yet (the code is latched across the
+  /// gate in between).
+  final Stream<Uri>? inviteLinks;
+
+  /// The invite code from a cold-start link, if any (R9).
+  final String? initialInviteCode;
+
+  /// The `profile` parameter of the cold-start invite link, if any.
+  final String? initialInviteProfileId;
 
   /// Reminder scheduler; defaults to the flutter_local_notifications
   /// implementation on native platforms and the no-op on web (KTD9).
@@ -95,6 +112,10 @@ class _LunarLogAppState extends State<LunarLogApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   ReminderCoordinator? _coordinator;
   AuthController? _authController;
+  StreamSubscription<Uri>? _inviteSub;
+  String? _pendingInviteCode;
+  String? _profileIdOfPendingInvite;
+  bool _inviteSheetOpen = false;
 
   /// The repositories below capture [LunarLogApp.db] once, so swapping the
   /// database on a *mounted* app would leave them bound to the old (closed)
@@ -136,6 +157,68 @@ class _LunarLogAppState extends State<LunarLogApp> {
     if (widget.scheduler != null) {
       unawaited(_startReminders());
     }
+    // U8/R9: invite deep links. The cold-start code is latched here; live
+    // links arrive on the stream. Presentation waits for a signed-in
+    // session when needed.
+    _inviteSub = widget.inviteLinks?.listen(_handleInviteLink);
+    final initialInviteCode = widget.initialInviteCode;
+    if (initialInviteCode != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _maybePresentInvite(initialInviteCode, widget.initialInviteProfileId);
+      });
+    }
+  }
+
+  void _handleInviteLink(Uri uri) {
+    if (!mounted) return;
+    final code = uri.queryParameters['code'];
+    if (code == null || code.isEmpty) return;
+    _maybePresentInvite(code, uri.queryParameters['profile']);
+  }
+
+  void _maybePresentInvite(String code, String? profileId) {
+    if (widget.sharingService == null || _inviteSheetOpen) return;
+    if (_authController?.signedIn ?? false) {
+      _showInviteSheet(code, profileId);
+    } else {
+      // R9: an unauthenticated recipient signs in (or creates an account)
+      // first; the code stays latched until the session appears.
+      setState(() {
+        _pendingInviteCode = code;
+        _profileIdOfPendingInvite = profileId;
+      });
+    }
+  }
+
+  void _showInviteSheet(String code, String? profileId) {
+    final sharing = widget.sharingService;
+    if (sharing == null || _inviteSheetOpen) return;
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) {
+      setState(() {
+        _pendingInviteCode = code;
+        _profileIdOfPendingInvite = profileId;
+      });
+      return;
+    }
+    _inviteSheetOpen = true;
+    setState(() {
+      _pendingInviteCode = null;
+      _profileIdOfPendingInvite = null;
+    });
+    unawaited(
+      showModalBottomSheet<void>(
+        context: ctx,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => AcceptInviteSheet(
+          rawToken: code,
+          sharingService: sharing,
+          initialProfileId: profileId,
+        ),
+      ).whenComplete(() => _inviteSheetOpen = false),
+    );
   }
 
   Future<void> _startReminders() async {
@@ -158,8 +241,15 @@ class _LunarLogAppState extends State<LunarLogApp> {
   /// AS10: a signed-in session (the confirmation link opened on this
   /// device) retires the device-local "awaiting confirmation" note, and
   /// the passwordless "sign-in email sent" note with it (#2 U4; KTD3).
+  /// A latched invite code (R9) is presented once the session exists.
   void _onAuthChanged() {
-    if (_authController?.signedIn ?? false) _clearAwaitingConfirmation();
+    if (_authController?.signedIn ?? false) {
+      _clearAwaitingConfirmation();
+      final code = _pendingInviteCode;
+      if (code != null) {
+        _showInviteSheet(code, _profileIdOfPendingInvite);
+      }
+    }
   }
 
   void _clearAwaitingConfirmation() {
@@ -169,6 +259,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
 
   @override
   void dispose() {
+    _inviteSub?.cancel();
+    _inviteSub = null;
     _authController?.dispose();
     _authController = null;
     final teardown = _coordinator?.dispose() ?? Future<void>.value();

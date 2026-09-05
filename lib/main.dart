@@ -8,6 +8,7 @@
 /// and every Sentry call in the app is a no-op.
 library;
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryHttpClient;
@@ -25,6 +26,15 @@ import 'startup/startup.dart';
 import 'startup/supabase_bootstrap.dart';
 
 Future<void> main() => runWithSentry(appRunner: _runLunarlog);
+
+/// `lunarlog://invite?code=...` (U8; R9): the pairing deep link. Anything
+/// else on the custom scheme belongs to the auth service's own link
+/// observer and is ignored here.
+bool _isInviteLink(Uri? uri) =>
+    uri != null &&
+    uri.scheme == 'lunarlog' &&
+    uri.host == 'invite' &&
+    (uri.queryParameters['code']?.isNotEmpty ?? false);
 
 Future<void> _runLunarlog() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,6 +59,22 @@ Future<void> _runLunarlog() async {
   final SyncTransport? syncTransport = authService == null
       ? null
       : SupabaseSyncTransport(Supabase.instance.client);
+  // Guardian invitations (U8; R9): the same app_links source the auth
+  // service uses, filtered to the invite host. A cold-start code is
+  // latched here and survives the sign-in gate.
+  Stream<Uri>? inviteLinks;
+  String? initialInviteCode;
+  String? initialInviteProfileId;
+  if (authService != null) {
+    final appLinks = AppLinks();
+    final initial = await appLinks.getInitialLink();
+    if (_isInviteLink(initial)) {
+      final invite = initial as Uri;
+      initialInviteCode = invite.queryParameters['code'];
+      initialInviteProfileId = invite.queryParameters['profile'];
+    }
+    inviteLinks = appLinks.uriLinkStream.where(_isInviteLink);
+  }
   runApp(wrapWithSentry(LunarLogRoot(
     gate: defaultAppGate(),
     dbOpener: () async => (await buildDbFactory()).open(),
@@ -57,5 +83,11 @@ Future<void> _runLunarlog() async {
         kIsWeb ? NoopReminderScheduler() : FlutterLocalNotificationsScheduler(),
     authService: authService,
     syncTransport: syncTransport,
+    // U5/U6: with a client present the root also builds the sharing
+    // service and the realtime coordinator next to the sync engine.
+    supabaseClient: authService == null ? null : Supabase.instance.client,
+    inviteLinks: inviteLinks,
+    initialInviteCode: initialInviteCode,
+    initialInviteProfileId: initialInviteProfileId,
   )));
 }

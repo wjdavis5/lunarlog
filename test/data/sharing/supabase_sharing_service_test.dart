@@ -162,6 +162,33 @@ void main() {
         throwsA(isA<SharingExpiredFailure>()),
       );
     });
+
+    test('already-accepted / already-guardian failures still trigger the '
+        'full reconcile (the profile must land on this device)', () async {
+      for (final message in [
+        'invitation already accepted',
+        'user is already an active guardian of this profile',
+      ]) {
+        syncEngine = MockSyncEngine();
+        final client = makeClient((req) async {
+          return http.Response(
+            jsonEncode({'message': message, 'code': '55000'}),
+            400,
+          );
+        });
+        final service = SupabaseSharingService(
+          client: client,
+          syncEngine: syncEngine,
+        );
+
+        await expectLater(
+          service.acceptInvite(rawToken: 'any-token'),
+          throwsA(isA<SharingFailure>()),
+        );
+        expect(syncEngine.fullReconcileCount, 1,
+            reason: 'failure "$message" must still reconcile');
+      }
+    });
   });
 
   group('revokeGuardian', () {

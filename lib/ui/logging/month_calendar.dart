@@ -8,11 +8,16 @@
 /// profile id and one repository stream; no drift types cross here.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:provider/provider.dart';
 
@@ -42,6 +47,7 @@ class MonthCalendar extends StatefulWidget {
     this.readOnly = false,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
+    this.guardiansRepository,
   });
 
   final String profileId;
@@ -54,6 +60,11 @@ class MonthCalendar extends StatefulWidget {
   /// Passed to [DaySheet].
   final String Function()? timezoneProvider;
 
+  /// Source of this profile's guardians for attribution (R12); null in
+  /// local-only use (no storage wired up), matching the previous
+  /// ambient-provider lookup's own null fallback.
+  final ProfileGuardiansRepository? guardiansRepository;
+
   @override
   State<MonthCalendar> createState() => _MonthCalendarState();
 }
@@ -64,12 +75,48 @@ class _MonthCalendarState extends State<MonthCalendar> {
   int _displayedYear = 1970;
   int _displayedMonth = 1;
 
+  /// Attribution context (R12): the signed-in user and this profile's
+  /// guardians, so the day sheet's badge can render "Logged by Dad" and
+  /// "Logged by you" at the real call site. Null/empty in local-only use.
+  String? _currentUserId;
+  List<ProfileGuardian> _guardians = const [];
+  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+  AuthController? _auth;
+
   @override
   void initState() {
     super.initState();
     _repository = context.read<DayEntriesRepository>();
     _entriesStream = _repository.watchForProfile(widget.profileId);
+    final auth = context.read<AuthController?>();
+    if (auth != null) {
+      _currentUserId = auth.currentUserId;
+      auth.addListener(_onAuthChanged);
+      _auth = auth;
+    }
+    _watchGuardians();
     _resetToTodaysMonth();
+  }
+
+  void _onAuthChanged() {
+    final auth = _auth;
+    if (auth == null || !mounted) return;
+    setState(() => _currentUserId = auth.currentUserId);
+  }
+
+  void _watchGuardians() {
+    _guardiansSub?.cancel();
+    // Reset immediately (not just on the new stream's first tick) so a
+    // profile switch never keeps rendering the previous profile's
+    // guardians in the meantime (residual note on #11).
+    _guardians = const [];
+    final repository = widget.guardiansRepository;
+    if (repository == null) return;
+    _guardiansSub =
+        repository.watchForProfile(widget.profileId).listen((guardians) {
+      if (!mounted) return;
+      setState(() => _guardians = guardians);
+    });
   }
 
   @override
@@ -77,8 +124,18 @@ class _MonthCalendarState extends State<MonthCalendar> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profileId != widget.profileId) {
       _entriesStream = _repository.watchForProfile(widget.profileId);
+      _watchGuardians();
       _resetToTodaysMonth();
     }
+  }
+
+  @override
+  void dispose() {
+    _guardiansSub?.cancel();
+    _guardiansSub = null;
+    _auth?.removeListener(_onAuthChanged);
+    _auth = null;
+    super.dispose();
   }
 
   void _resetToTodaysMonth() {
@@ -108,6 +165,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
         today: widget.todayProvider(),
         readOnly: widget.readOnly,
         timezoneProvider: widget.timezoneProvider,
+        currentUserId: _currentUserId,
+        guardians: _guardians,
       ),
     );
   }

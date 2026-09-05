@@ -111,6 +111,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   Future<void> wipeAllData() async {
     await transaction(() async {
       await delete(dayEntries).go();
+      // profile_guardians references profiles(id): it must be emptied
+      // before profiles or the FK fails the whole wipe.
+      await delete(profileGuardians).go();
       await delete(profiles).go();
       await delete(appSettings).go();
       await delete(syncState).go();

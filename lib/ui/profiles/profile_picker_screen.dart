@@ -7,8 +7,10 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -125,8 +127,10 @@ class ProfilePickerScreen extends StatelessWidget {
           MaterialPageRoute<void>(
             builder: (_) => ManageGuardiansScreen(
               profile: profile,
-              storage: storage,
+              guardiansRepository: ProfileGuardiansRepository(storage),
               sharingService: sharing,
+              currentUserId:
+                  context.read<AuthController?>()?.currentUserId,
             ),
           ),
         );
