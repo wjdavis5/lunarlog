@@ -1,7 +1,7 @@
 -- RLS, constraint, and trigger tests for feedback_tickets / feedback_replies
 -- (Issue #6, Unit U1).
 begin;
-select plan(20);
+select plan(22);
 
 -- ---------------------------------------------------------------------------
 -- Setup users
@@ -136,6 +136,24 @@ select throws_ok(
   $$update public.feedback_tickets set status = 'resolved'
     where message = 'the bug ticket: crashed opening the calendar'$$,
   '42501', null, 'A cannot set status directly (column not granted)'
+);
+
+-- ---------------------------------------------------------------------------
+-- 8b. PR #105 review: feedback-notify's replay guard (notified_at) must be
+--     as unwritable to authenticated as status is, or a caller could reset
+--     it and re-trigger the admin alert through the client itself rather
+--     than the function.
+-- ---------------------------------------------------------------------------
+select is(
+  (select notified_at from public.feedback_tickets where message = 'the bug ticket: crashed opening the calendar'),
+  null,
+  'notified_at defaults to null on insert'
+);
+
+select throws_ok(
+  $$update public.feedback_tickets set notified_at = now()
+    where message = 'the bug ticket: crashed opening the calendar'$$,
+  '42501', null, 'A cannot set notified_at directly (column not granted) - only feedback-notify (service role) can'
 );
 
 -- ---------------------------------------------------------------------------

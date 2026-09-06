@@ -2,11 +2,24 @@
 //
 // Invoked by the client, best-effort, right after a successful
 // feedback_tickets insert (`client.functions.invoke('feedback-notify', ...)`
-// in SupabaseFeedbackService). Verified by the platform's own JWT check
-// (`verify_jwt = true` in supabase/config.toml); this handler re-reads the
-// ticket with the service-role client rather than trusting anything the
-// caller sent beyond the ticket id, and never echoes ticket content in its
-// response (R21).
+// in SupabaseFeedbackService). `verify_jwt = true` (supabase/config.toml)
+// only proves the caller is *someone* signed in - it says nothing about
+// which ticket they may notify on - so this handler adds two checks of its
+// own before it will use the service-role key to send anything:
+//
+//   1. Ownership: the caller's own JWT (forwarded in Authorization, read
+//      with the anon key rather than trusted as a raw claim) must name the
+//      auth id that owns the ticket. Without this, any signed-in account
+//      could pass an arbitrary or guessed ticket_id and get an admin email
+//      sent on someone else's behalf.
+//   2. Replay/rate: an atomic `UPDATE ... WHERE notified_at IS NULL` claims
+//      the notification; a ticket can only ever be claimed once, so calling
+//      this repeatedly for the same ticket (accidentally or to flood the
+//      admin inbox / burn the Resend quota) sends at most one email.
+//
+// A missing/invalid caller identity, an unowned or already-notified ticket,
+// and a not-found ticket all degrade to the same 204 - this endpoint never
+// echoes ticket content or existence in its response (R21).
 //
 // Thin by design (KTD6): all real logic lives in `_shared/format.ts`
 // (tested) and `_shared/email.ts`.
@@ -41,24 +54,60 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const adminEmail = Deno.env.get("FEEDBACK_ADMIN_EMAIL");
 
   // Missing config degrades to "no alert sent" rather than a visible
   // failure — this call is best-effort from the client's perspective.
-  if (!supabaseUrl || !serviceRoleKey || !adminEmail) {
+  if (!supabaseUrl || !anonKey || !serviceRoleKey || !adminEmail) {
+    return new Response(null, { status: 204 });
+  }
+
+  // Ownership check: identify the caller from their own forwarded JWT
+  // (never from anything in the request body) before touching the
+  // service-role client at all.
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
     return new Response(null, { status: 204 });
   }
 
   try {
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: callerData, error: callerError } = await callerClient.auth.getUser();
+    const callerId = callerData?.user?.id;
+    if (callerError || !callerId) {
+      return new Response(null, { status: 204 });
+    }
+
     const client = createClient(supabaseUrl, serviceRoleKey);
     const { data: ticket, error } = await client
       .from("feedback_tickets")
-      .select("id, category, device_info, created_at")
+      .select("id, user_id, category, device_info, created_at")
       .eq("id", ticketId)
       .single();
 
-    if (error || !ticket) {
+    // Ticket missing or owned by someone else: the same 204 either way, so
+    // a guessed id can't be distinguished from someone else's real ticket.
+    if (error || !ticket || ticket.user_id !== callerId) {
+      return new Response(null, { status: 204 });
+    }
+
+    // Replay/rate guard: atomically claim the notification. This update
+    // matches the row only the first time it runs for this ticket - every
+    // later call (retried by the client, or invoked again on purpose)
+    // matches zero rows and sends nothing.
+    const { data: claimed, error: claimError } = await client
+      .from("feedback_tickets")
+      .update({ notified_at: new Date().toISOString() })
+      .eq("id", ticketId)
+      .is("notified_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (claimError || !claimed) {
       return new Response(null, { status: 204 });
     }
 

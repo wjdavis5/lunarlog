@@ -262,9 +262,20 @@ SentryEvent? scrubEvent(SentryEvent event) {
   );
 }
 
+/// Scrubs breadcrumb free text the same way [_scrubMessage] scrubs an event
+/// message: null passes through, anything mentioning a deny-listed key
+/// becomes `[scrubbed]`, everything else passes through unchanged.
+String? _scrubBreadcrumbMessage(String? message) =>
+    message != null && mentionsDenyListedKey(message) ? '[scrubbed]' : message;
+
 /// Applies the KTD12 breadcrumb rules. Returns null (drop) when the
 /// breadcrumb's `data` carries a deny-listed key at any depth; otherwise a
-/// new breadcrumb with navigation `data` removed and `http` URLs cut at `?`.
+/// new breadcrumb with navigation `data` removed, `http` URLs cut at `?`,
+/// and `message` scrubbed via [_scrubBreadcrumbMessage] — raw
+/// console/debugPrint text can itself carry health-log content or a DB
+/// error with bound arguments, and this breadcrumb goes to the Sentry SDK
+/// via `beforeBreadcrumb` regardless of what the local breadcrumb ring
+/// keeps.
 Breadcrumb? scrubBreadcrumb(Breadcrumb? breadcrumb) {
   if (breadcrumb == null) return null;
   final data = breadcrumb.data;
@@ -289,7 +300,7 @@ Breadcrumb? scrubBreadcrumb(Breadcrumb? breadcrumb) {
   }
 
   return Breadcrumb(
-    message: breadcrumb.message,
+    message: _scrubBreadcrumbMessage(breadcrumb.message),
     timestamp: breadcrumb.timestamp,
     category: category,
     data: scrubbedData,

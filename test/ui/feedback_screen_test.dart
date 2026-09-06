@@ -12,6 +12,13 @@ import 'package:provider/provider.dart';
 
 import '../support/fake_feedback_service.dart';
 
+class _FakeAttachmentSource implements AttachmentSource {
+  FeedbackAttachment? nextResult;
+
+  @override
+  Future<FeedbackAttachment?> pickImage() async => nextResult;
+}
+
 /// A collector wired entirely from fakes: the real [DeviceDiagnosticsCollector]
 /// touches platform channels that never answer under `flutter test`'s
 /// default binary messenger, so every widget test injects this instead.
@@ -28,12 +35,19 @@ DeviceDiagnosticsCollector _fakeCollector() => DeviceDiagnosticsCollector(
       breadcrumbLog: BreadcrumbLog(),
     );
 
-Future<void> pumpFeedbackScreen(WidgetTester tester, FakeFeedbackService service) async {
+Future<void> pumpFeedbackScreen(
+  WidgetTester tester,
+  FakeFeedbackService service, {
+  AttachmentSource? attachmentSource,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Provider<FeedbackService>.value(
         value: service,
-        child: FeedbackScreen(diagnosticsCollector: _fakeCollector()),
+        child: FeedbackScreen(
+          diagnosticsCollector: _fakeCollector(),
+          attachmentSource: attachmentSource,
+        ),
       ),
     ),
   );
@@ -207,5 +221,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(service.submitCalls, 1);
+  });
+
+  testWidgets(
+      'a screenshot attached to a successful submission is not silently '
+      'reused on a second submission in the same screen session', (tester) async {
+    final service = FakeFeedbackService();
+    final attachmentSource = _FakeAttachmentSource()
+      ..nextResult = FeedbackAttachment(
+        bytes: List<int>.filled(1024, 1),
+        mimeType: 'image/png',
+        filename: 'shot.png',
+      );
+    await pumpFeedbackScreen(tester, service, attachmentSource: attachmentSource);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'first report');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.ensureVisible(find.byKey(const ValueKey('feedback-add-screenshot')));
+    await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsOneWidget);
+
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(service.submitCalls, 1);
+    expect(service.lastAttachment, isNotNull);
+    // The picker itself resets, not just the internal field the screen
+    // sends to the service — otherwise a returning user would see the
+    // prior screenshot still listed as attached.
+    expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsNothing);
+    expect(find.byKey(const ValueKey('feedback-add-screenshot')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'second report, no new screenshot');
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(service.submitCalls, 2);
+    expect(service.lastAttachment, isNull);
   });
 }

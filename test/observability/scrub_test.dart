@@ -319,6 +319,25 @@ void main() {
       expect(out.data, isNull);
     });
 
+    test('breadcrumb message mentioning a deny-listed key is scrubbed, not '
+        'passed through raw', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'console',
+        message: "DatabaseException: UNIQUE constraint failed: "
+            "day_entries.note ($_note)",
+      ))!;
+      expect(out.message, '[scrubbed]');
+      expect(jsonEncode(out.toJson()), isNot(contains(_note)));
+    });
+
+    test('breadcrumb message with nothing deny-listed passes through', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'console',
+        message: 'database opened in 12 ms',
+      ))!;
+      expect(out.message, 'database opened in 12 ms');
+    });
+
     test('http breadcrumb URL is truncated at ? and query fields dropped', () {
       final out = scrubBreadcrumb(Breadcrumb.http(
         url: Uri.parse(_url),

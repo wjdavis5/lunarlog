@@ -165,9 +165,12 @@ bucket, and the two admin-facing emails
       `supabase secrets set`, never committed): `RESEND_API_KEY`,
       `FEEDBACK_FROM_ADDRESS`, `FEEDBACK_ADMIN_EMAIL`, and
       `FEEDBACK_WEBHOOK_SECRET` (a CSPRNG value shared only with the
-      Database Webhook's custom header above). `SUPABASE_URL` and
-      `SUPABASE_SERVICE_ROLE_KEY` are platform-injected into every Edge
-      Function automatically and need no `supabase secrets set` call.
+      Database Webhook's custom header above). `SUPABASE_URL`,
+      `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are
+      platform-injected into every Edge Function automatically and need no
+      `supabase secrets set` call — `feedback-notify` uses the anon key
+      (forwarding the caller's own JWT) to identify the caller for its
+      ownership check before it touches anything with the service-role key.
 - [ ] A Resend sending domain under `wjd.io` verified. If this cannot be
       completed before U9 ships, record it as an open ops gap — the in-app
       Support history still satisfies R22 without the reply email.

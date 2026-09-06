@@ -62,6 +62,13 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   String? _error;
   String? _info;
 
+  /// Bumped on every successful submission and used as [AttachmentField]'s
+  /// key, forcing a fresh [State] for it: the field keeps its own selection
+  /// internally, so clearing [_attachment] alone would leave a submitted
+  /// screenshot still showing as attached in the picker UI even though it
+  /// no longer rides along with the next submission.
+  int _formGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -129,7 +136,17 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           attachment: _attachment,
         );
         _message.clear();
-        if (mounted) setState(() => _info = "Thanks — we'll get back to you at $replyEmail.");
+        if (mounted) {
+          setState(() {
+            // Clear the screenshot along with the message: leaving it
+            // behind would silently re-upload and re-attach it (with no
+            // fresh consent) to whatever the user submits next in this
+            // screen session, and it may carry minors' health data (R5).
+            _attachment = null;
+            _formGeneration++;
+            _info = "Thanks — we'll get back to you at $replyEmail.";
+          });
+        }
       });
 
   List<Widget> _buildCategoryChips() => [
@@ -240,6 +257,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       ];
 
   Widget _buildAttachmentField() => AttachmentField(
+        key: ValueKey('feedback-attachment-field-$_formGeneration'),
         source: _attachmentSource,
         onChanged: (attachment) => setState(() => _attachment = attachment),
       );
