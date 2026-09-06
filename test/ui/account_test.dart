@@ -1493,9 +1493,38 @@ void main() {
       expect(find.text('Account'), findsNothing);
       expect(key('relock-toggle'), findsOneWidget);
       expect(find.byType(ProfileHomeGate), findsNothing);
+      // Issue #17 R11: an unconfigured build shows neither the export nor
+      // the delete tile - they render only inside the signed-in block this
+      // whole section never reaches here.
+      expect(key('account-export'), findsNothing);
+      expect(key('account-delete'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
+    });
+  });
+
+  group('export and delete tiles (Issue #17 U6; R11)', () {
+    testWidgets('signed out: neither tile renders', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      await h.openSettings();
+      expect(key('account-export'), findsNothing);
+      expect(key('account-delete'), findsNothing);
+      await h.dispose();
+    });
+
+    testWidgets('signed in with no AccountDeletionService: export renders, '
+        'delete does not (export needs no deletion collaborator)',
+        (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn();
+      await h.openSettings();
+      await h.settle();
+      expect(key('account-export'), findsOneWidget);
+      expect(key('account-delete'), findsNothing);
+      await h.dispose();
     });
   });
 }

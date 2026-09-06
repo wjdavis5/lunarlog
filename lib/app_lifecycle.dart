@@ -42,6 +42,7 @@ import 'package:flutter/services.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/key_store.dart';
+import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
@@ -50,6 +51,7 @@ import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
+import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -607,6 +609,7 @@ class LunarLogRoot extends StatefulWidget {
     this.syncTransport,
     this.sharingService,
     this.feedbackService,
+    this.accountDeletionService,
     this.supabaseClient,
     this.inviteLinks,
     this.initialInviteCode,
@@ -647,11 +650,20 @@ class LunarLogRoot extends StatefulWidget {
   /// production [SupabaseFeedbackService] alongside [sharingService].
   final FeedbackService? feedbackService;
 
+  /// Account deletion seam (#17 U4; KTD8), injectable for tests. When null
+  /// (and [supabaseClient] is present) the root constructs the production
+  /// [SupabaseAccountDeletionService] alongside the sync engine, exactly as
+  /// it does for [sharingService] - see issue #76/PR #83, the precedent
+  /// behind building both in the same place a `SupabaseClient` is in scope.
+  final AccountDeletionService? accountDeletionService;
+
   /// The Supabase client from the successful bootstrap. When present (and
-  /// [sharingService]/[feedbackService] were not injected) the root
-  /// constructs the production [SupabaseSharingService],
-  /// [SupabaseFeedbackService], and [RealtimeSyncCoordinator] alongside the
-  /// sync engine, so those features are live in production builds.
+  /// [sharingService]/[feedbackService]/[accountDeletionService] were not
+  /// injected) the root constructs the production
+  /// [SupabaseSharingService], [SupabaseFeedbackService],
+  /// [SupabaseAccountDeletionService], and [RealtimeSyncCoordinator]
+  /// alongside the sync engine, so those features are live in production
+  /// builds.
   final SupabaseClient? supabaseClient;
 
   /// `lunarlog://invite?code=...` links (U8; R9), filtered upstream by
@@ -692,6 +704,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   SyncEngine? _syncEngine;
   SharingService? _builtSharingService;
   FeedbackService? _builtFeedbackService;
+  AccountDeletionService? _builtAccountDeletionService;
   RealtimeSyncCoordinator? _realtimeCoordinator;
 
   /// The app subtree's teardown (reminder coordinator disposal), captured
@@ -753,8 +766,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
   /// KTD11: the engine exists only when the build has both collaborators;
   /// null collaborators build nothing, so harnesses without them are
   /// untouched. When a Supabase client is present the production sharing
-  /// service (U5) and realtime coordinator (U6) are built here too, so
-  /// the sharing feature is reachable in production builds.
+  /// service (U5), feedback service (Issue #6, U6), account deletion
+  /// service (#17 U4; KTD8), and realtime coordinator (U6) are built here
+  /// too, so all of those features are reachable in production builds.
   void _startSyncEngine(LunarLogDatabase db) {
     final authService = widget.authService;
     final transport = widget.syncTransport;
@@ -776,6 +790,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
       _builtSharingService =
           SupabaseSharingService(client: client, syncEngine: engine);
       _builtFeedbackService = SupabaseFeedbackService(client: client);
+      _builtAccountDeletionService =
+          SupabaseAccountDeletionService(client: client);
       final coordinator = RealtimeSyncCoordinator(
         client: client,
         syncEngine: engine,
@@ -798,6 +814,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     await coordinator?.dispose();
     _builtSharingService = null;
     _builtFeedbackService = null;
+    _builtAccountDeletionService = null;
     final engine = _syncEngine;
     _syncEngine = null;
     await engine?.dispose();
@@ -937,6 +954,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
         syncEngine: _syncEngine,
         sharingService: widget.sharingService ?? _builtSharingService,
         feedbackService: widget.feedbackService ?? _builtFeedbackService,
+        accountDeletionService:
+            widget.accountDeletionService ?? _builtAccountDeletionService,
         inviteLinks: widget.inviteLinks,
         initialInviteCode: widget.initialInviteCode,
         initialInviteProfileId: widget.initialInviteProfileId,

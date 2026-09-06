@@ -64,6 +64,15 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'run under flutter test; it holds no branching logic worth testing '
         'in isolation, same treatment as google_sign_in_client.dart.',
   ),
+  const CoverageExclusion(
+    'lib/data/export/account_export_writer.dart',
+    'AccountExportWriter wraps path_provider (temp directory) and '
+        'share_plus (the platform share sheet), neither of which can run '
+        'under flutter test. All content-shaped logic lives in the pure '
+        'lib/domain/export/account_export.dart builder it wraps, which is '
+        'unit-tested directly; this file is proven by the U7 device '
+        'checklist instead, same treatment as google_sign_in_client.dart.',
+  ),
 ];
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');

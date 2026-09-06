@@ -44,6 +44,23 @@ begin
 end;
 $$;
 
+-- Deletes a confirmed auth user created by tests.create_supabase_user, for
+-- real - i.e. `delete from auth.users`, exercising every `on delete cascade`/
+-- `on delete set null` FK exactly as `auth.admin.deleteUser` does in
+-- production (the delete-account Edge Function's last step, #17 KTD4). This
+-- is the only way a test can prove a cascade fires correctly, as opposed to
+-- merely calling a `security definer` RPC that never touches auth.users.
+create or replace function tests.delete_supabase_user(identifier text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from auth.users where id = tests.get_supabase_uid(identifier);
+end;
+$$;
+
 -- Looks up the uuid of a user created by tests.create_supabase_user.
 create or replace function tests.get_supabase_uid(identifier text)
 returns uuid
