@@ -390,6 +390,23 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Issue #6, U9: in-app feedback notifications.
+[functions.feedback-notify]
+enabled = true
+# Invoked by the client SDK right after a ticket insert; the platform's own
+# JWT check is the caller-auth boundary (the handler re-reads the ticket
+# with the service-role key rather than trusting the request body).
+verify_jwt = true
+entrypoint = "./functions/feedback-notify/index.ts"
+
+[functions.feedback-reply]
+enabled = true
+# Invoked only by the feedback_replies Database Webhook (dashboard-configured,
+# see docs/ops/supabase-go-live.md), which carries no Supabase JWT — the
+# handler validates the shared webhook secret header itself instead.
+verify_jwt = false
+entrypoint = "./functions/feedback-reply/index.ts"
+
 [analytics]
 enabled = true
 port = 54327

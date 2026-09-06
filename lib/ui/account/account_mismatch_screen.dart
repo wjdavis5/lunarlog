@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart' show DeviceResetCallback;
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:provider/provider.dart';
 
@@ -33,6 +34,12 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
       // The local session is gone regardless (service contract).
       debugPrint('lunarlog auth: switch-account sign-out reported $failure');
     } finally {
+      // The local session ends here regardless of the service's answer
+      // (see the comment above), so this is a real session-ending path —
+      // same as resetDevice (KTD16) — and breadcrumbs recorded under the
+      // account being left must not ride into a ticket filed by whoever
+      // signs in next on a shared device.
+      defaultBreadcrumbLog.clear();
       if (mounted) setState(() => _busy = false);
     }
   }

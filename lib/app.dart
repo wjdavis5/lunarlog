@@ -23,6 +23,7 @@ import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -45,6 +46,7 @@ class LunarLogApp extends StatefulWidget {
     this.authService,
     this.syncEngine,
     this.sharingService,
+    this.feedbackService,
     this.accountDeletionService,
     this.inviteLinks,
     this.initialInviteCode,
@@ -56,6 +58,11 @@ class LunarLogApp extends StatefulWidget {
 
   final LunarLogDatabase db;
   final SharingService? sharingService;
+
+  /// In-app feedback service (Issue #6, U6). When present, Settings gains a
+  /// "Send feedback" entry (R24); when null, Settings shows the
+  /// contact-support fallback tile instead (R23).
+  final FeedbackService? feedbackService;
 
   /// Account deletion seam (#17 U4). When present,
   /// `lib/ui/account/account_section.dart` renders a "Delete account" tile
@@ -311,6 +318,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider<LunarLogStorage>.value(value: widget.db.storage),
         if (widget.sharingService != null)
           Provider<SharingService>.value(value: widget.sharingService!),
+        if (widget.feedbackService != null)
+          Provider<FeedbackService>.value(value: widget.feedbackService!),
         if (widget.accountDeletionService != null)
           Provider<AccountDeletionService>.value(
               value: widget.accountDeletionService!),

@@ -22,6 +22,7 @@ import 'package:lunarlog/data/auth/auth_link_classifier.dart';
 import 'package:lunarlog/data/auth/google_sign_in_client.dart';
 import 'package:lunarlog/data/auth/supabase_auth_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
@@ -814,6 +815,68 @@ void main() {
       gateway.events.addError(AuthRetryableFetchException());
       await settle();
       expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('an involuntary signedOut (session expired) clears the '
+        'process-global breadcrumb log — the "remote sign-out / session '
+        'expiry" session-ending path, distinct from resetDevice and the '
+        'mismatch screen\'s local sign-out', () async {
+      addTearDown(defaultBreadcrumbLog.clear);
+      final service = await started();
+      gateway.session = makeSession('u1');
+      gateway.emit(AuthChangeEvent.signedIn);
+      await settle();
+      defaultBreadcrumbLog.record('nav', 'overview');
+      expect(defaultBreadcrumbLog.snapshot(), isNotEmpty);
+
+      gateway.session = null;
+      gateway.emit(AuthChangeEvent.signedOut,
+          reason: SignOutReason.sessionExpired);
+      await settle();
+
+      expect(service.state, AuthSessionState.expired);
+      expect(defaultBreadcrumbLog.snapshot(), isEmpty);
+    });
+
+    test('a voluntary signedOut (e.g. "sign out everywhere" landing here '
+        'from another device) also clears the breadcrumb log', () async {
+      addTearDown(defaultBreadcrumbLog.clear);
+      final service = await started();
+      gateway.session = makeSession('u1');
+      gateway.emit(AuthChangeEvent.signedIn);
+      await settle();
+      defaultBreadcrumbLog.record('nav', 'overview');
+
+      gateway.session = null;
+      gateway.emit(AuthChangeEvent.signedOut,
+          reason: SignOutReason.userInitiated);
+      await settle();
+
+      expect(service.state, AuthSessionState.signedOut);
+      expect(defaultBreadcrumbLog.snapshot(), isEmpty);
+    });
+
+    test('a signedIn event that REPLACES a live session with no preceding '
+        'signedOut (a magic link on a shared device, per vendored '
+        'gotrue-2.27.2\'s own comments on getSessionFromUrl) also clears '
+        'the breadcrumb log, so the incoming account cannot inherit the '
+        'outgoing account\'s breadcrumbs', () async {
+      addTearDown(defaultBreadcrumbLog.clear);
+      final service = await started();
+      gateway.session = makeSession('u1');
+      gateway.emit(AuthChangeEvent.signedIn);
+      await settle();
+      defaultBreadcrumbLog.record('nav', 'overview');
+      expect(defaultBreadcrumbLog.snapshot(), isNotEmpty);
+
+      // Account B's magic link exchange lands here directly — gotrue never
+      // emits signedOut for account A first.
+      gateway.session = makeSession('u2');
+      gateway.emit(AuthChangeEvent.signedIn);
+      await settle();
+
+      expect(service.state, AuthSessionState.signedIn);
+      expect(defaultBreadcrumbLog.snapshot(), isEmpty);
     });
   });
 

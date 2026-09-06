@@ -107,6 +107,11 @@ jobs:
           supabase db query --linked \
             "select public.reconcile_realtime_publication();"
 
+      - name: Deploy Edge Functions
+        # supabase/** already covers supabase/functions/, so no trigger-path
+        # change is needed for this step (Issue #6, U9).
+        run: supabase functions deploy feedback-notify feedback-reply --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
       - name: Check Apple secrets (account-deletion deploy only)
         run: |
           if [ -z "${APPLE_TEAM_ID:-}" ] || [ -z "${APPLE_KEY_ID:-}" ] || [ -z "${APPLE_CLIENT_ID:-}" ] || [ -z "${APPLE_PRIVATE_KEY:-}" ]; then

@@ -27,6 +27,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
@@ -852,6 +853,46 @@ void main() {
       h.engine.emitPhase(SyncPhase.idle);
       await h.settle();
       expect(find.text(kNoticeText), findsOneWidget, reason: 'first-run');
+      await h.dispose();
+    });
+
+    testWidgets('switching accounts clears the process-global breadcrumb '
+        'log even though it is a local sign-out and never touches '
+        'resetDevice', (tester) async {
+      addTearDown(defaultBreadcrumbLog.clear);
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn(id: 'u2');
+      h.engine.emitPhase(SyncPhase.accountMismatch, boundUserId: 'u1');
+      await tester.pumpAndSettle();
+      defaultBreadcrumbLog.record('nav', 'overview');
+      expect(defaultBreadcrumbLog.snapshot(), isNotEmpty);
+
+      await tester.tap(key('mismatch-switch-account'));
+      await tester.pumpAndSettle();
+
+      expect(h.auth.signOutCalls, [AuthSignOutScope.local]);
+      expect(h.resets, 0, reason: 'this path never calls resetDevice');
+      expect(defaultBreadcrumbLog.snapshot(), isEmpty);
+      await h.dispose();
+    });
+
+    testWidgets('switching accounts clears breadcrumbs even when the '
+        'local sign-out reports a failure (the local session is gone '
+        'regardless, per the service contract)', (tester) async {
+      addTearDown(defaultBreadcrumbLog.clear);
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn(id: 'u2');
+      h.engine.emitPhase(SyncPhase.accountMismatch, boundUserId: 'u1');
+      await tester.pumpAndSettle();
+      defaultBreadcrumbLog.record('nav', 'overview');
+      h.auth.nextFailure = const AuthFailure.network();
+
+      await tester.tap(key('mismatch-switch-account'));
+      await tester.pumpAndSettle();
+
+      expect(defaultBreadcrumbLog.snapshot(), isEmpty);
       await h.dispose();
     });
   });

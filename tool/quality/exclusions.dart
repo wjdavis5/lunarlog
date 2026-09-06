@@ -59,6 +59,12 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'and gets a direct unit test anyway, same treatment as key_store.dart.',
   ),
   const CoverageExclusion(
+    'lib/data/feedback/image_picker_attachment_source.dart',
+    'ImagePickerAttachmentSource wraps the image_picker plugin and cannot '
+        'run under flutter test; it holds no branching logic worth testing '
+        'in isolation, same treatment as google_sign_in_client.dart.',
+  ),
+  const CoverageExclusion(
     'lib/data/export/account_export_writer.dart',
     'AccountExportWriter wraps path_provider (temp directory) and '
         'share_plus (the platform share sheet), neither of which can run '

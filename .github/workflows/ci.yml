@@ -140,6 +140,26 @@ jobs:
             --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
             --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
 
+  edge-functions:
+    # Runs the Deno test suite for supabase/functions (Issue #6, issue #103
+    # follow-up). Previously nothing in CI ran `deno test` at all -
+    # `_shared/format.test.ts` and, as of PR #105 round 3,
+    # `feedback-notify/index.test.ts` (its ownership check + replay guard)
+    # only ever ran locally, so a regression there would have shipped green.
+    name: Edge Functions (deno test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Run deno test
+        working-directory: supabase/functions
+        run: deno test
+
   db-tests:
     name: Database tests (pgTAP)
     runs-on: ubuntu-latest

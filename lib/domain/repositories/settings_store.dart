@@ -29,4 +29,10 @@ abstract final class SettingsKeys {
   /// lifecycle as [awaitingConfirmationEmail]: device-local; cleared (set
   /// to the empty string) once a signed-in session arrives.
   static const String awaitingMagicLinkEmail = 'awaiting_magic_link_email';
+
+  /// ISO-8601 timestamp of the newest feedback reply the operator has seen
+  /// in Support history (Issue #6, U8). The Settings history tile compares
+  /// this against the newest reply it can see and shows an unread badge
+  /// when that reply is newer.
+  static const String feedbackLastSeenAt = 'feedback_last_seen_at';
 }

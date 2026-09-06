@@ -15,6 +15,7 @@ import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:provider/provider.dart';
 
@@ -230,6 +231,26 @@ void main() {
       'open',
     ], reason: 'wipeAllData runs on the old database before it closes');
     expect(find.text(kNoticeText), findsOneWidget);
+    await h.dispose();
+  });
+
+  testWidgets('a reset clears the process-global breadcrumb log so a support '
+      'ticket filed after the next sign-in never carries the previous '
+      'account\'s entries', (tester) async {
+    addTearDown(defaultBreadcrumbLog.clear);
+    final h = ResetHarness(tester);
+    h.auth.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'));
+    await h.pump();
+    defaultBreadcrumbLog.record('nav', 'overview');
+    expect(defaultBreadcrumbLog.snapshot(), isNotEmpty);
+
+    final done = h.reset();
+    await drainIsolateTraffic(tester);
+    await done;
+    await drainIsolateTraffic(tester);
+
+    expect(defaultBreadcrumbLog.snapshot(), isEmpty);
     await h.dispose();
   });
 

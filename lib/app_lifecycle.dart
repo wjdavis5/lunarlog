@@ -45,6 +45,7 @@ import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
@@ -52,9 +53,11 @@ import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/startup/startup.dart' as startup;
 import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
@@ -176,6 +179,15 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// closing, and would hand the sync engine an unlocked edge on a grant
   /// nobody re-verified.
   int _generation = 0;
+
+  /// Public read of [_generation], for a caller that runs its own operation
+  /// inside [duringSystemUi] without a dedicated result-checking wrapper
+  /// like [unlock] or [reauthenticate] — e.g. the feedback attachment
+  /// picker. Capture this before starting the operation and compare after
+  /// it resolves; a change means the deadline fired and re-locked the gate
+  /// while the operation was in flight, so its result is stale and must be
+  /// discarded rather than honoured.
+  int get generation => _generation;
   InactivityTimer? _systemUiTimer;
   InactivityTimer? _settleTimer;
 
@@ -606,6 +618,7 @@ class LunarLogRoot extends StatefulWidget {
     this.authService,
     this.syncTransport,
     this.sharingService,
+    this.feedbackService,
     this.accountDeletionService,
     this.supabaseClient,
     this.inviteLinks,
@@ -642,6 +655,11 @@ class LunarLogRoot extends StatefulWidget {
 
   final SharingService? sharingService;
 
+  /// In-app feedback service (Issue #6, U6), injectable for tests. When
+  /// null (and a Supabase client is present) the root constructs the
+  /// production [SupabaseFeedbackService] alongside [sharingService].
+  final FeedbackService? feedbackService;
+
   /// Account deletion seam (#17 U4; KTD8), injectable for tests. When null
   /// (and [supabaseClient] is present) the root constructs the production
   /// [SupabaseAccountDeletionService] alongside the sync engine, exactly as
@@ -650,10 +668,11 @@ class LunarLogRoot extends StatefulWidget {
   final AccountDeletionService? accountDeletionService;
 
   /// The Supabase client from the successful bootstrap. When present (and
-  /// [sharingService]/[accountDeletionService] were not injected) the root
-  /// constructs the production [SupabaseSharingService],
+  /// [sharingService]/[feedbackService]/[accountDeletionService] were not
+  /// injected) the root constructs the production
+  /// [SupabaseSharingService], [SupabaseFeedbackService],
   /// [SupabaseAccountDeletionService], and [RealtimeSyncCoordinator]
-  /// alongside the sync engine, so both features are live in production
+  /// alongside the sync engine, so those features are live in production
   /// builds.
   final SupabaseClient? supabaseClient;
 
@@ -694,6 +713,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   LunarLogDatabase? _db;
   SyncEngine? _syncEngine;
   SharingService? _builtSharingService;
+  FeedbackService? _builtFeedbackService;
   AccountDeletionService? _builtAccountDeletionService;
   RealtimeSyncCoordinator? _realtimeCoordinator;
 
@@ -756,9 +776,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
   /// KTD11: the engine exists only when the build has both collaborators;
   /// null collaborators build nothing, so harnesses without them are
   /// untouched. When a Supabase client is present the production sharing
-  /// service (U5), account deletion service (#17 U4; KTD8), and realtime
-  /// coordinator (U6) are built here too, so both features are reachable in
-  /// production builds.
+  /// service (U5), feedback service (Issue #6, U6), account deletion
+  /// service (#17 U4; KTD8), and realtime coordinator (U6) are built here
+  /// too, so all of those features are reachable in production builds.
   void _startSyncEngine(LunarLogDatabase db) {
     final authService = widget.authService;
     final transport = widget.syncTransport;
@@ -779,6 +799,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     if (client != null) {
       _builtSharingService =
           SupabaseSharingService(client: client, syncEngine: engine);
+      _builtFeedbackService = SupabaseFeedbackService(client: client);
       _builtAccountDeletionService =
           SupabaseAccountDeletionService(client: client);
       final coordinator = RealtimeSyncCoordinator(
@@ -802,6 +823,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     _realtimeCoordinator = null;
     await coordinator?.dispose();
     _builtSharingService = null;
+    _builtFeedbackService = null;
     _builtAccountDeletionService = null;
     final engine = _syncEngine;
     _syncEngine = null;
@@ -863,6 +885,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
       final deleted = await _deleteDatabaseAndKey(db);
       if (!deleted) return;
       await _signOutLocally();
+      // Per-session diagnostics must not cross the account boundary this
+      // reset draws: on a shared device, a support ticket filed by whoever
+      // signs in next must never carry breadcrumbs recorded under the
+      // family that just signed out.
+      defaultBreadcrumbLog.clear();
       if (mounted) await _openDatabase();
     } finally {
       _resetting = false;
@@ -941,6 +968,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
         authService: widget.authService,
         syncEngine: _syncEngine,
         sharingService: widget.sharingService ?? _builtSharingService,
+        feedbackService: widget.feedbackService ?? _builtFeedbackService,
         accountDeletionService:
             widget.accountDeletionService ?? _builtAccountDeletionService,
         inviteLinks: widget.inviteLinks,

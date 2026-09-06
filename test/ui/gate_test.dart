@@ -16,12 +16,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/errors.dart';
+import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -1334,6 +1336,12 @@ void main() {
       expect(
           tester.element(find.byType(ProfileHomeGate)).read<SharingService?>(),
           isNull);
+      // Same wiring gap, feedback side: no Supabase client means no
+      // feedback service either, so Settings must show the support-email
+      // fallback, not a form wired to nothing.
+      expect(
+          tester.element(find.byType(ProfileHomeGate)).read<FeedbackService?>(),
+          isNull);
       await harness.dispose();
     });
 
@@ -1432,10 +1440,11 @@ void main() {
     });
 
     testWidgets(
-        '(#76) a supabaseClient builds a real SupabaseSharingService and '
-        'provides it down the tree, so the Caregivers menu and invite '
-        'intake are reachable in production — not just when a test injects '
-        'a fake sharing service directly', (tester) async {
+        '(#76) a supabaseClient builds a real SupabaseSharingService and a '
+        'real SupabaseFeedbackService and provides both down the tree, so '
+        'the Caregivers menu, invite intake, and Send feedback are reachable '
+        'in production — not just when a test injects a fake service '
+        'directly', (tester) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
       final transport = FakeSyncTransport();
@@ -1468,6 +1477,17 @@ void main() {
           reason: 'issue #76: main.dart passes supabaseClient, so '
               'LunarLogRoot must build and provide a sharing service');
       expect(sharing, isA<SupabaseSharingService>());
+      // Same composition-root gap the (#76) fix closed for sharing,
+      // reopened for feedback (Issue #6): a regression here would delete or
+      // break `_startSyncEngine`'s `_builtFeedbackService` construction
+      // without any test failing.
+      final feedback = tester
+          .element(find.byType(ProfileHomeGate))
+          .read<FeedbackService?>();
+      expect(feedback, isNotNull,
+          reason: 'main.dart passes supabaseClient, so LunarLogRoot must '
+              'build and provide a feedback service too');
+      expect(feedback, isA<SupabaseFeedbackService>());
       // Signed out (no session emitted on `auth`) and the service is still
       // provided: `supabaseClient`/`authService` gate on Supabase being
       // *configured*, not on a session existing, so an unauthenticated
