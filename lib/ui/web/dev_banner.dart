@@ -3,6 +3,11 @@
 /// development banner and a confirm-guarded wipe-local-data action. The
 /// one-time first-profile acknowledgment lives in
 /// [showWebFirstRunAcknowledgment] (called from the first-run screen).
+///
+/// Route naming (U2 Approach 2b): both `showDialog` calls here (the
+/// erase-local-data confirm and the non-dismissible dev-build notice) are
+/// deliberately left unnamed — informational or trivial confirm/cancel,
+/// not distinct destinations.
 library;
 
 import 'package:flutter/material.dart';

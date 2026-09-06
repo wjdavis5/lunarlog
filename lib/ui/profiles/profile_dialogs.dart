@@ -10,6 +10,7 @@ import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
+import 'package:lunarlog/observability/route_names.dart';
 
 /// Shared profile-name validation: non-blank, and no longer than the
 /// server accepts ([kMaxDisplayNameLength], mirrored from its CHECK).
@@ -71,6 +72,7 @@ Future<ProfileEditResult?> showProfileEditDialog(
 }) {
   return showDialog<ProfileEditResult>(
     context: context,
+    routeSettings: const RouteSettings(name: kRouteProfileEditDialog),
     builder: (dialogContext) => _ProfileEditDialog(existing: existing),
   );
 }
@@ -183,6 +185,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
 Future<bool> confirmArchiveProfile(BuildContext context, Profile profile) async {
   final confirmed = await showDialog<bool>(
     context: context,
+    routeSettings: const RouteSettings(name: kRouteProfileArchiveDialog),
     builder: (dialogContext) => AlertDialog(
       title: Text('Archive ${profile.displayName}?'),
       content: const Text(

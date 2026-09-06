@@ -22,7 +22,13 @@ class _FakeAttachmentSource implements AttachmentSource {
 /// A collector wired entirely from fakes: the real [DeviceDiagnosticsCollector]
 /// touches platform channels that never answer under `flutter test`'s
 /// default binary messenger, so every widget test injects this instead.
-DeviceDiagnosticsCollector _fakeCollector() => DeviceDiagnosticsCollector(
+///
+/// [breadcrumbLog] defaults to an empty ring (most tests here don't care
+/// about breadcrumb content); AE10's rendering test below passes a
+/// pre-populated one, since an always-empty log can never catch a
+/// regression in how the diagnostics preview renders breadcrumb entries.
+DeviceDiagnosticsCollector _fakeCollector({BreadcrumbLog? breadcrumbLog}) =>
+    DeviceDiagnosticsCollector(
       packageInfoReader: () async => PackageInfo(
         appName: 'lunarlog',
         packageName: 'com.wjdavis5.lunarlog',
@@ -32,20 +38,21 @@ DeviceDiagnosticsCollector _fakeCollector() => DeviceDiagnosticsCollector(
       deviceInfoReader: () async => throw StateError('no fake device info in this test'),
       localeSupplier: () => const Locale('en', 'US'),
       platform: TargetPlatform.iOS,
-      breadcrumbLog: BreadcrumbLog(),
+      breadcrumbLog: breadcrumbLog ?? BreadcrumbLog(),
     );
 
 Future<void> pumpFeedbackScreen(
   WidgetTester tester,
   FakeFeedbackService service, {
   AttachmentSource? attachmentSource,
+  BreadcrumbLog? breadcrumbLog,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Provider<FeedbackService>.value(
         value: service,
         child: FeedbackScreen(
-          diagnosticsCollector: _fakeCollector(),
+          diagnosticsCollector: _fakeCollector(breadcrumbLog: breadcrumbLog),
           attachmentSource: attachmentSource,
         ),
       ),
@@ -156,6 +163,21 @@ void main() {
     // availability under `flutter test` (the collector falls back to
     // 'unknown' rather than throwing).
     expect(find.textContaining('Locale:'), findsOneWidget);
+  });
+
+  testWidgets('AE10: the diagnostics preview shows navigation breadcrumbs as '
+      'readable screen names, not blank entries', (tester) async {
+    final log = BreadcrumbLog()
+      ..record('navigation', 'SettingsScreen')
+      ..record('navigation', 'FeedbackScreen');
+    final service = FakeFeedbackService();
+    await pumpFeedbackScreen(tester, service, breadcrumbLog: log);
+
+    await tester.tap(find.byKey(const ValueKey('feedback-diagnostics-preview-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('navigation: SettingsScreen'), findsOneWidget);
+    expect(find.textContaining('navigation: FeedbackScreen'), findsOneWidget);
   });
 
   testWidgets('Covers AE8: a thrown FeedbackFailure.network renders its userFacingMessage, '

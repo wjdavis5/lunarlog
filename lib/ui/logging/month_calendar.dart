@@ -17,6 +17,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:provider/provider.dart';
@@ -157,6 +158,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      routeSettings: const RouteSettings(name: kRouteDaySheetScreen),
       builder: (_) => DaySheet(
         repository: _repository,
         profileId: widget.profileId,
