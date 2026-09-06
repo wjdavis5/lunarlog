@@ -132,7 +132,10 @@ values
   (tests.ulid(414), tests.ulid(401), '2026-09-05', 'UTC', 'none', now(),
    tests.get_supabase_uid('mom_a'), tests.get_supabase_uid('mom_a'));
 
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a')), 2::bigint,
+-- U4 (revoke_guardian, R5) also purges the revoked guardian's existing
+-- unsent outbox rows immediately, so sitter's count drops to zero here
+-- rather than merely stopping growth.
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a')), 0::bigint,
   'A revoked guardian produces no row');
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 3::bigint,
   'A still-accepted guardian keeps receiving rows');
@@ -156,7 +159,7 @@ update public.day_entries set note = 'updated note' where id = tests.ulid(410);
 
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 3::bigint,
   'Updating a non-boundary entry produces no row for a cycle_start_only guardian');
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a')), 2::bigint,
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a')), 0::bigint,
   'A revoked guardian (sitter) still gets nothing on this later update');
 
 -- authenticated selecting notification_outbox returns zero rows even for
