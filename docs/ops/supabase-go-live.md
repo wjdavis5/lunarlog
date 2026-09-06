@@ -252,13 +252,74 @@ Supabase Auth setup above.
       a real Apple ID: the app disappears from Settings → Apple ID → Sign in
       with Apple → apps using this Apple ID.
 
+### Caregiver alerts and reminders (issue #5)
+
+Dashboard prerequisites for remote push (FCM/APNs), the outbox drain, and
+the nightly missed-entry scan
+([plan](../plans/2026-09-06-001-feat-caregiver-alerts-and-reminders-plan.md)).
+Nothing here is needed for the app to run without push - `AppConfig.hasPush`
+requires every `FCM_*` dart-define, so an unconfigured build compiles, runs,
+registers no device, and shows no Notifications entry (R17).
+
+- [ ] A Firebase project created, with Android and iOS apps registered under
+      it (package name / bundle id `com.wjdavis5.lunarlog` for both). Record
+      the project id, sender id (project number), and each platform's app id
+      and API key - these six values become the client-side `FCM_*`
+      dart-defines (AGENTS.md's "Config & Credential Locations").
+- [ ] An APNs auth key (or the Firebase-managed APNs certificate flow)
+      uploaded to the Firebase project under Project Settings → Cloud
+      Messaging → Apple app configuration, so FCM can actually deliver to
+      iOS.
+- [ ] Push Notifications capability added to the `com.wjdavis5.lunarlog` App
+      ID in the Apple Developer portal, and the App Store provisioning
+      profile regenerated to include it - **do this in the same pass as**
+      the Sign in with Apple capability regeneration below (one regeneration
+      covers both; doing it for only one capability wastes the trip).
+- [ ] A Firebase service account created (Project Settings → Service
+      Accounts → Generate new private key) and its JSON recorded. Three
+      values from it become `production` environment secrets on
+      `push-dispatch` (never `--dart-define`d, never read by the Flutter
+      client): `FCM_PROJECT_ID` (same value as the client-side define),
+      `FCM_CLIENT_EMAIL`, and `FCM_PRIVATE_KEY` (the full PEM, including the
+      `BEGIN/END PRIVATE KEY` lines).
+- [ ] A CSPRNG `PUSH_DISPATCH_WEBHOOK_SECRET` generated and set as a fourth
+      `push-dispatch` function secret.
+- [ ] A Database Webhook: Database → Webhooks → new webhook on
+      `public.notification_outbox`, event `INSERT`, HTTP target the deployed
+      `push-dispatch` Edge Function, with a custom header
+      `x-push-dispatch-webhook-secret: <value>` matching the secret above -
+      the same pattern as issue #6's `feedback_replies` webhook.
+- [ ] Two GUC settings on the linked project, so the nightly `pg_cron` job's
+      `trigger_push_dispatch()` can reach the function too (it degrades to
+      "scan and sweep still ran, dispatch skipped" if either is unset, per
+      that function's own guard):
+      ```sql
+      alter database postgres set app.settings.push_dispatch_url = 'https://<project-ref>.supabase.co/functions/v1/push-dispatch';
+      alter database postgres set app.settings.push_dispatch_webhook_secret = '<same PUSH_DISPATCH_WEBHOOK_SECRET value>';
+      ```
+- [ ] First `supabase-migrate.yml` run since issue #5 pushes the four new
+      migrations and reports `push-dispatch` deployed.
+- [ ] Supabase MCP `get_advisors` run against the cloud project after the
+      push migrations land, with no new security or RLS findings on
+      `notification_preferences`, `push_devices`, `notification_outbox`, or
+      `profile_reminder_windows`.
+- [ ] `pg_cron`/`pg_net` extensions enabled on the cloud project (they are
+      guarded to no-op locally per `20260906180000_reminder_windows_and_cron.sql`'s
+      header, but the cloud project needs them enabled for real - Database
+      → Extensions).
+- [ ] `PRIVACY.md`'s Firebase Cloud Messaging disclosure (section 4) is live
+      before caregiver alerts are enabled in a shipped build (R21).
+
 ### Apple / Google store plumbing
 
 - [ ] App Store provisioning profile regenerated with the Sign in with Apple
       capability on the `com.wjdavis5.lunarlog` App ID, and
       `IOS_PROVISION_PROFILE_BASE64` replaced. Until then `ios-release.yml`
       fails at signing because `Runner.entitlements` now requests
-      `com.apple.developer.applesignin`.
+      `com.apple.developer.applesignin`. **Issue #5 note:** the same
+      regeneration now also needs to add the Push Notifications capability
+      (`Runner.entitlements` requests `aps-environment` too) - do both in
+      one pass, see "Caregiver alerts and reminders (issue #5)" above.
 - [ ] App Privacy details in App Store Connect updated to match
       `ios/Runner/PrivacyInfo.xcprivacy`: Health and Email Address collected,
       linked to the user, for app functionality; Crash Data collected, not
@@ -606,6 +667,36 @@ account and fabricated profiles only.
       confirmation dialog, each leave the account untouched with no error
       copy and no server call.
 
+### Caregiver alerts and reminders (issue #5)
+
+Run on an iPhone build **and** an Android build, both signed in as a
+co-parent/caregiver on a shared **throwaway** profile with **fabricated**
+entries only. Nothing here reaches real family data.
+
+- [ ] **Alert received with the app killed (AE1).** Guardian B enables
+      "notify me when someone logs an entry" on profile P, then force-quits
+      the app. Holder A saves a day entry on their device. B's phone shows
+      the fixed generic notification ("A reminder from Lunarlog / Open
+      Lunarlog to see what it is about.") with the app not running.
+- [ ] **Quiet hours delay delivery, not drop it (AE4).** With B's quiet
+      hours covering the current time, A logs an entry: the alert arrives
+      only after the window ends, not immediately and not never.
+- [ ] **Tap routing through the lock gate (R11).** Tapping the notification
+      opens the app, presents the device-credential gate first, and lands on
+      profile P after unlock - never before it.
+- [ ] **Sign-out stops alerts.** After B signs out on their device, a
+      subsequent entry write on P produces no notification on B's device
+      (the local registration was removed).
+- [ ] **Revocation stops alerts (R5).** The primary guardian revokes B. A
+      subsequent entry write on P produces no notification for B, even
+      though B's app is still signed in on another session.
+- [ ] **Missed-entry reminder after a real threshold elapses (AE5).** Set
+      B's threshold to 1 day; let a full day pass with no entry logged past
+      the predicted start. The nightly scan (or a manual
+      `select public.scan_missed_entry_reminders();` against the cloud
+      project, for a faster check) enqueues, and B's device receives, the
+      check-in alert.
+
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows
@@ -637,6 +728,29 @@ is a gate before go-live.
 - `supabase functions deploy delete-account` against the cloud project
   (needs `SUPABASE_ACCESS_TOKEN` and the four `APPLE_*` secrets locally, or
   the first `supabase-migrate.yml` run since issue #17).
+- Issue #5: every real-delivery item in "Caregiver alerts and reminders"
+  above (no Firebase project, APNs key, or physical device in the Windows
+  implementation environment) — `deno test` for `push-dispatch` and its
+  claim-before-send logic were run and pass against fakes (no live FCM
+  credential or network), and the four new pgTAP suites cover the SQL side
+  fully locally, but nothing proves a real FCM/APNs delivery, a real quiet-
+  hours release, or the cloud project's `pg_cron`/`pg_net` schedule actually
+  firing. `flutter build ios --release --no-codesign` with the new
+  `Runner.entitlements`/`Info.plist` keys is also not runnable here (macOS
+  only) — a debug **Android** APK with empty `FCM_*` defines was built
+  successfully instead, proving R17/R22 on this platform.
+- The Push Notifications capability regeneration and Firebase/APNs dashboard
+  setup in "Caregiver alerts and reminders" above.
+
+What **was** run (2026-09-06, Windows, issue #5): `flutter analyze` clean;
+`flutter test` green (955 tests); `dart run tool/quality_gate.dart` passed
+(93.25% coverage, 0 CRAP-gate failures); `npx supabase@2.116.0 start` + `db
+reset --local` + `test db --local`, 373/373 pgTAP tests (68 of them new,
+across `notification_preferences_rls_test.sql`, `push_devices_rls_test.sql`,
+`notification_outbox_test.sql`, `missed_entry_scan_test.sql`, and 14 new
+assertions in `account_deletion_test.sql`); `deno test` in
+`supabase/functions/` green (41 tests, including `push-dispatch`'s new
+suite); `flutter build apk --debug` with no `--dart-define`s (R17/R22).
 
 What **was** run (2026-09-05, Windows, issue #17): `flutter analyze` clean;
 `flutter test` green (722 tests); `dart run tool/quality_gate.dart` passed

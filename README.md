@@ -205,6 +205,16 @@ Part of the home lab; the canonical inventory lives in the lab root's
 
 ## Verified
 
+- 2026-09-06, Flutter 3.47.2 stable on Windows (branch `issue-5`, Issue #5
+  caregiver alerts and reminders): `flutter analyze` clean (0 issues);
+  `flutter test` 955/955 passed; `dart run tool/quality_gate.dart` passed
+  (93.25% coverage, 0 CRAP-gate methods over threshold); `flutter build apk
+  --debug` succeeded with no `--dart-define`s (R17/R22); `npx
+  supabase@2.116.0 start` + `db reset --local` + `test db --local` ran
+  373/373 pgTAP tests; `deno test` in `supabase/functions/` passed 41/41.
+  Not run in this environment: the iOS build (macOS only) and every
+  real-delivery device-checklist item (no Firebase project or physical
+  device) — tracked in `docs/ops/supabase-go-live.md`.
 - 2026-09-03, Flutter 3.47.2 stable on Windows (branch
   `feat/supabase-auth-cloud-sync`): `flutter analyze` clean (0 issues);
   `flutter test` 377/377 passed; `flutter build web --release` (no defines)
@@ -330,6 +340,18 @@ Part of the home lab; the canonical inventory lives in the lab root's
   deliberately not wired into CI — investigated (a `realtime`-inclusive CI
   stack was prototyped) and found out of proportion for one migration's
   regression coverage; see the plan's KTD4 for why.
+- Caregiver alerts and reminders (issue #5) have no CI coverage of real push
+  delivery: `db-tests` covers the SQL (eligibility, the outbox, quiet-hours
+  math, the missed-entry scan) and `edge-functions` covers `push-dispatch`'s
+  claim-before-send logic and FCM message shape against fakes, but nothing
+  in CI proves a real FCM/APNs delivery, a real quiet-hours release, or the
+  cloud project's `pg_cron` schedule actually firing — those are manual
+  device-checklist items (`docs/ops/supabase-go-live.md`). Push is entirely
+  absent (`AppConfig.hasPush`) on a build without every `FCM_*` dart-define,
+  and richer lock-screen copy behind an opt-in was deliberately not built —
+  every caregiver alert shows the same fixed generic text the app's own
+  local reminders already use, by construction, not by a copy choice that
+  could later be widened.
 
 ## License
 
