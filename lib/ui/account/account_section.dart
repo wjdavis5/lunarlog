@@ -80,6 +80,15 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
             'sign-in revocation, so your account sign-in itself still '
             'exists. Try again to finish removing it, or contact support if '
             'you\'re concerned about the lingering Apple access.',
+      AccountDeletionTimeoutFailure() =>
+        'This is taking longer than expected and we can\'t confirm whether '
+            'your account was deleted. Wait a moment and check whether '
+            'you\'re still signed in before retrying - retrying is safe '
+            'either way.',
+      AccountDeletionDeleteUserFailedFailure() =>
+        'Your account data has already been deleted, but removing the '
+            'account sign-in itself did not finish. Please try again in a '
+            'moment, or contact support if it keeps failing.',
       AccountDeletionUnknownFailure() =>
         'Something went wrong. Your account was not deleted. Please try '
             'again.',
@@ -453,14 +462,22 @@ class _AccountSectionState extends State<AccountSection> {
   /// popped first because the reset unmounts the whole tree beneath the
   /// root, and a pushed route would otherwise outlive its providers in
   /// harnesses that stub the reset.
-  Future<void> _reset(BuildContext context) async {
-    final reset = context.read<DeviceResetCallback?>();
-    if (reset == null) {
+  ///
+  /// [reset] may be passed in already resolved (Issue #17 P1 fix) for a
+  /// caller that must read it from [context] *before* an async gap, so the
+  /// actual data-wipe side effect still runs even if [context] is
+  /// unmounted by the time this is called - only the UI navigation step is
+  /// gated on [BuildContext.mounted].
+  Future<void> _reset(BuildContext context, {DeviceResetCallback? reset}) async {
+    final resetCallback = reset ?? context.read<DeviceResetCallback?>();
+    if (resetCallback == null) {
       debugPrint('lunarlog account: no device reset available');
       return;
     }
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    await reset();
+    if (context.mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+    await resetCallback();
   }
 
   Future<void> _signOut(BuildContext context) async {
@@ -641,12 +658,21 @@ class _AccountSectionState extends State<AccountSection> {
   /// carries an Apple identity (a cancelled Apple sheet aborts silently,
   /// KTD3), then the deletion call, then the one device reset (R6, KTD16).
   /// No reset runs on any failure (R12).
+  ///
+  /// The device reset callback is read from [context] *before* any `await`
+  /// below (Issue #17 P1 fix): a confirmed successful deletion must still
+  /// wipe this device's local data even if the Settings screen (and this
+  /// widget) has since been navigated away from or otherwise unmounted -
+  /// skipping the wipe would leave a deleted account's data sitting on
+  /// disk. Only the UI feedback (`setState`, the pop in [_reset]) stays
+  /// gated on [mounted]/`context.mounted`.
   Future<void> _performDeletion(
     BuildContext context,
     GateController gate,
     AccountDeletionService service,
     List<String> providers,
   ) async {
+    final resetCallback = context.read<DeviceResetCallback?>();
     setState(() => _action = _AccountAction.delete);
     try {
       String? appleCode;
@@ -670,8 +696,12 @@ class _AccountSectionState extends State<AccountSection> {
     } finally {
       if (mounted) setState(() => _action = null);
     }
-    if (!context.mounted) return;
-    await _reset(context);
+    // context is intentionally used here whether or not it is still mounted
+    // (Issue #17 P1 fix): _reset only ever uses it for the UI pop, gated on
+    // context.mounted internally, and always calls resetCallback (the data
+    // wipe) regardless.
+    // ignore: use_build_context_synchronously
+    await _reset(context, reset: resetCallback);
   }
 
   /// A fresh Sign in with Apple authorization code (#17 KTD3). Null means

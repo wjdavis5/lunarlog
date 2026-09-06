@@ -50,55 +50,71 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final exportError = _exportError;
-    return AlertDialog(
-      title: const Text('Delete account?'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'This permanently removes the server rows for this account, '
-            'the account itself, and this device\'s local data. This '
-            'cannot be undone.',
-          ),
-          if (exportError != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              exportError,
-              key: const ValueKey('account-delete-export-error'),
-              style: TextStyle(color: theme.colorScheme.error),
+    return PopScope(
+      // #17 P1 fix: block the hardware-back/system-pop path while an export
+      // is in flight, alongside the button guards below and
+      // showDeleteAccountDialog's barrierDismissible: false - together
+      // these mean the dialog cannot go away by any route until the export
+      // has actually finished, so this State is guaranteed still mounted
+      // when _handleExport's own `if (mounted)` checks run, and a race
+      // between "Delete" and an in-flight export can no longer happen.
+      canPop: !_exporting,
+      child: AlertDialog(
+        title: const Text('Delete account?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This permanently removes the server rows for this account, '
+              'the account itself, and this device\'s local data. This '
+              'cannot be undone.',
             ),
+            if (exportError != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                exportError,
+                key: const ValueKey('account-delete-export-error'),
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ],
           ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: _exporting
+                ? null
+                : () => Navigator.of(context).pop(DeleteAccountDecision.cancel),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            key: const ValueKey('account-delete-export-first'),
+            onPressed: _exporting ? null : _handleExport,
+            child: _exporting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Export first'),
+          ),
+          FilledButton(
+            key: const ValueKey('account-delete-confirm'),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: theme.colorScheme.onError,
+            ),
+            // #17 P1 fix: guarded the same way as "Export first" above -
+            // confirming delete while an export is reading the database
+            // would let resetDevice() tear the database out from under
+            // that in-flight read.
+            onPressed: _exporting
+                ? null
+                : () => Navigator.of(context).pop(DeleteAccountDecision.delete),
+            child: const Text('Delete account'),
+          ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () =>
-              Navigator.of(context).pop(DeleteAccountDecision.cancel),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey('account-delete-export-first'),
-          onPressed: _exporting ? null : _handleExport,
-          child: _exporting
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Export first'),
-        ),
-        FilledButton(
-          key: const ValueKey('account-delete-confirm'),
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.error,
-            foregroundColor: theme.colorScheme.onError,
-          ),
-          onPressed: () =>
-              Navigator.of(context).pop(DeleteAccountDecision.delete),
-          child: const Text('Delete account'),
-        ),
-      ],
     );
   }
 }
@@ -112,5 +128,9 @@ Future<DeleteAccountDecision?> showDeleteAccountDialog(
 }) =>
     showDialog<DeleteAccountDecision>(
       context: context,
+      // #17 P1 fix: paired with the dialog's own PopScope(canPop: !
+      // _exporting) - a barrier tap can't dismiss the dialog out from under
+      // an in-flight export either.
+      barrierDismissible: false,
       builder: (_) => DeleteAccountDialog(onExport: onExport),
     );

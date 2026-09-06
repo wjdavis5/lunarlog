@@ -17,6 +17,10 @@ void main() {
           isA<AccountDeletionUnauthorizedFailure>());
       expect(const AccountDeletionFailure.appleRevokeFailed(),
           isA<AccountDeletionAppleRevokeFailedFailure>());
+      expect(const AccountDeletionFailure.timeout(),
+          isA<AccountDeletionTimeoutFailure>());
+      expect(const AccountDeletionFailure.deleteUserFailed(),
+          isA<AccountDeletionDeleteUserFailedFailure>());
       expect(const AccountDeletionFailure.unknown(),
           isA<AccountDeletionUnknownFailure>());
     });
@@ -27,6 +31,8 @@ void main() {
       AccountDeletionFailure.network(),
       AccountDeletionFailure.unauthorized(),
       AccountDeletionFailure.appleRevokeFailed(),
+      AccountDeletionFailure.timeout(),
+      AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
     ];
 
@@ -71,6 +77,10 @@ void main() {
           'AccountDeletionFailure.unauthorized');
       expect(const AccountDeletionFailure.appleRevokeFailed().toString(),
           'AccountDeletionFailure.appleRevokeFailed');
+      expect(const AccountDeletionFailure.timeout().toString(),
+          'AccountDeletionFailure.timeout');
+      expect(const AccountDeletionFailure.deleteUserFailed().toString(),
+          'AccountDeletionFailure.deleteUserFailed');
       expect(const AccountDeletionFailure.unknown().toString(),
           'AccountDeletionFailure.unknown');
     });

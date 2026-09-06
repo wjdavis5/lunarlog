@@ -3,6 +3,7 @@
 /// from `SupabaseSharingService._mapError`.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -174,6 +175,99 @@ void main() {
         service.deleteAccount(),
         throwsA(const AccountDeletionFailure.unknown()),
       );
+    });
+
+    test('a 2xx response body carrying code delete_user_failed maps to '
+        'deleteUserFailed (#17 P1 fix)', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(
+          data: {'ok': false, 'code': 'delete_user_failed'},
+          status: 200,
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.deleteUserFailed()),
+      );
+    });
+
+    test('a non-2xx response body carrying code delete_user_failed also '
+        'maps to deleteUserFailed', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            throw const FunctionsHttpException(
+          status: 500,
+          details: {'ok': false, 'code': 'delete_user_failed'},
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.deleteUserFailed()),
+      );
+    });
+
+    test('a non-Map 2xx response body fails closed as unknown, not success '
+        '(#17 P1 fix)', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(data: 'not a map', status: 200),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.unknown()),
+      );
+    });
+
+    test('a null 2xx response body also fails closed as unknown', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(data: null, status: 200),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.unknown()),
+      );
+    });
+  });
+
+  group('client-side timeout (#17 P1 fix)', () {
+    test('a call that never returns maps to timeout, not network or unknown, '
+        'once the injected timeout elapses', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) => Completer<FunctionResponse>().future,
+      );
+      final service = SupabaseAccountDeletionService(
+        client: client,
+        timeout: Duration.zero,
+      );
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.timeout()),
+      );
+    });
+
+    test('a response that arrives before the timeout still succeeds',
+        () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(data: {'ok': true}, status: 200),
+      );
+      final service = SupabaseAccountDeletionService(
+        client: client,
+        timeout: const Duration(seconds: 30),
+      );
+
+      await service.deleteAccount();
     });
   });
 }

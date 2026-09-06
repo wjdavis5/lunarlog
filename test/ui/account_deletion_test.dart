@@ -129,6 +129,13 @@ class DeletionHarness {
   final bool provideGate;
   int resetCalls = 0;
 
+  /// Toggled by [unmountSection] (#17 P1 fix regression coverage): lets a
+  /// test unmount just [AccountSection] - the way navigating away from the
+  /// Settings screen would in the real app - while every provider above it
+  /// (including the [DeviceResetCallback]) stays alive, mirroring how
+  /// [DeviceResetCallback] is actually provided from the app root.
+  final ValueNotifier<bool> _sectionVisible = ValueNotifier(true);
+
   Future<void> pump(WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -150,10 +157,15 @@ class DeletionHarness {
             ),
           ],
           child: Scaffold(
-            body: AccountSection(
-              showExportAndDelete: true,
-              exportAccount: exportAccount,
-              appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
+            body: ValueListenableBuilder<bool>(
+              valueListenable: _sectionVisible,
+              builder: (context, visible, _) => visible
+                  ? AccountSection(
+                      showExportAndDelete: true,
+                      exportAccount: exportAccount,
+                      appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
+                    )
+                  : const SizedBox.shrink(),
             ),
           ),
         ),
@@ -162,10 +174,17 @@ class DeletionHarness {
     await tester.pumpAndSettle();
   }
 
+  /// Unmounts [AccountSection] without touching the providers above it.
+  Future<void> unmountSection(WidgetTester tester) async {
+    _sectionVisible.value = false;
+    await tester.pump();
+  }
+
   void dispose() {
     controller.dispose();
     gateController.dispose();
     auth.dispose();
+    _sectionVisible.dispose();
   }
 }
 
@@ -284,6 +303,102 @@ void main() {
     });
   });
 
+  group('Export/Delete race guard (#17 P1 fix)', () {
+    testWidgets('Delete and Cancel are disabled while an export is running, '
+        'a tap on either does nothing, and a failure that completes '
+        'afterward still surfaces (the dialog cannot have unmounted in the '
+        'meantime)', (tester) async {
+      final exportHold = Completer<void>();
+      final h = DeletionHarness(
+        exportAccount: ({
+          required profiles,
+          required entriesByProfile,
+          required appVersion,
+        }) async {
+          await exportHold.future;
+          throw StateError('disk full');
+        },
+      );
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-export-first'));
+      await tester.pump(); // export is now in flight, still held open
+
+      expect(
+        tester
+            .widget<TextButton>(find.ancestor(
+              of: find.text('Cancel'),
+              matching: find.byType(TextButton),
+            ))
+            .onPressed,
+        isNull,
+        reason: 'Cancel is disabled mid-export',
+      );
+      expect(
+        tester.widget<FilledButton>(key('account-delete-confirm')).onPressed,
+        isNull,
+        reason: 'Delete is disabled mid-export (the race this guards against)',
+      );
+
+      // Tapping the guarded Delete button does nothing while exporting.
+      await tester.tap(key('account-delete-confirm'), warnIfMissed: false);
+      await tester.pump();
+      expect(find.text('Delete account?'), findsOneWidget,
+          reason: 'the dialog is still open: the tap was a no-op');
+      expect(h.deletion!.deleteCalls, 0);
+
+      // The export finishes (with a failure) only now - the dialog could
+      // not have unmounted underneath it, so the error still reaches the
+      // screen instead of being silently swallowed.
+      exportHold.complete();
+      await tester.pumpAndSettle();
+
+      expect(key('account-delete-export-error'), findsOneWidget);
+      expect(find.text('Delete account?'), findsOneWidget);
+      expect(h.deletion!.deleteCalls, 0);
+
+      // The guard lifts once the export has actually finished.
+      expect(
+        tester.widget<FilledButton>(key('account-delete-confirm')).onPressed,
+        isNotNull,
+      );
+    });
+  });
+
+  group('resetDevice reliability regardless of widget lifecycle '
+      '(#17 P1 fix)', () {
+    testWidgets('a confirmed deletion still wipes the device even if '
+        'AccountSection is unmounted before the service call resolves', (
+      tester,
+    ) async {
+      final service = FakeAccountDeletionService()..hold = Completer<void>();
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await pumpFew(tester); // the service call is now in flight, held open
+
+      // Navigate away: AccountSection unmounts, but the DeviceResetCallback
+      // provider above it (mirroring the app root in production) does not.
+      await h.unmountSection(tester);
+      expect(find.byType(AccountSection), findsNothing);
+
+      service.hold!.complete();
+      await tester.pump();
+      await tester.pump();
+
+      expect(h.resetCalls, 1,
+          reason: 'the data wipe must run for a confirmed deletion even '
+              'though the widget that started it is already gone');
+    });
+  });
+
   group('Apple identity ceremony (KTD3)', () {
     testWidgets('with apple in providers, the code is fetched and forwarded '
         'to the service', (tester) async {
@@ -396,6 +511,8 @@ void main() {
       AccountDeletionFailure.network(),
       AccountDeletionFailure.unauthorized(),
       AccountDeletionFailure.appleRevokeFailed(),
+      AccountDeletionFailure.timeout(),
+      AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
     ]) {
       testWidgets('$failure', (tester) async {
@@ -444,6 +561,48 @@ void main() {
       expect(copy.toLowerCase(), contains('sign-in'));
       expect(copy.toLowerCase(), contains('try again'));
       expect(copy.toLowerCase(), contains('support'));
+    });
+
+    testWidgets('deleteUserFailed explains the data WAS deleted and never '
+        'tells the operator to sign in again (#17 P1 fix)', (tester) async {
+      const failure = AccountDeletionFailure.deleteUserFailed();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      // The data really is already gone by the time this code is possible
+      // (#17 P1 fix) - the copy must not claim otherwise, and must not send
+      // the operator to sign back into an account that may no longer be
+      // reachable that way.
+      expect(copy, isNot(contains('not deleted')));
+      expect(copy.toLowerCase(), isNot(contains('sign in again')));
+      expect(copy.toLowerCase(), contains('already been deleted'));
+      expect(copy.toLowerCase(), contains('try again'));
+    });
+
+    testWidgets('timeout copy does not claim the account was not deleted '
+        '(#17 P1 fix)', (tester) async {
+      const failure = AccountDeletionFailure.timeout();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      expect(copy, isNot(contains('not deleted')));
+      expect(copy.toLowerCase(), isNot(contains('sign in again')));
     });
   });
 

@@ -1,15 +1,41 @@
 // delete-account Edge Function (Issue #17, Unit U2; KTD1, KTD2, KTD4).
 //
 // The authenticated HTTP entry point for in-app account deletion. Thin by
-// design: authenticate the caller from the Authorization header, run U1's
-// `delete_account_data()` RPC as the caller (so RLS/auth.uid() semantics
-// hold), revoke Apple when the account has an Apple identity (U3), then
-// delete the `auth.users` row last - the only irreversible, non-retryable
-// step (KTD4). An Apple identity with no authorization code supplied fails
-// closed exactly like a failed revocation - it never falls through to
-// deleting the user with revocation silently skipped. Either way, a revoke
-// failure (or a missing code) stops before that last step so the whole call
-// stays retryable.
+// design: authenticate the caller from the Authorization header, check the
+// Apple-code precondition (P1 fix below), run U1's `delete_account_data()`
+// RPC as the caller (so RLS/auth.uid() semantics hold), revoke Apple when
+// the account has an Apple identity (U3), re-home once more (P1 fix below),
+// then delete the `auth.users` row last - the only irreversible,
+// non-retryable step (KTD4). An Apple identity with no authorization code
+// supplied fails closed exactly like a failed revocation - it never falls
+// through to deleting the user with revocation silently skipped. Either
+// way, a revoke failure (or a missing code) stops before that last step so
+// the whole call stays retryable.
+//
+// #17 P1 fixes (2026-09-06), on top of the original U1-U4 implementation:
+//   * The missing-Apple-code precondition now runs *before* the destructive
+//     RPC (Step 3 below), not after it. Previously a client that omitted
+//     the code (a stale/buggy client, or an attacker calling from a device
+//     that never linked Apple) still triggered the row deletion before the
+//     check failed - unrecoverable data loss for an account that could
+//     never finish deleting from that device. A missing code now fails
+//     closed with nothing touched at all.
+//   * A second, best-effort call to `rehome_stray_day_entries()` runs
+//     immediately before `auth.admin.deleteUser` (Step 6), narrowing - not
+//     closing - the window between the RPC's one-time re-home and the
+//     `auth.users` row actually being removed, during which a stray write
+//     from this caller's own device could in principle still land on a
+//     profile they don't own and be reached by that row's
+//     `on delete cascade`. Closing this fully would mean pausing this
+//     user's sync engine for the whole flow, which is out of scope here;
+//     see `20260906120000_account_deletion_final_rehome.sql` for the full
+//     writeup of the residual risk and why this pass is best-effort.
+//   * A failure in the final `auth.admin.deleteUser` step now returns its
+//     own `delete_user_failed` code rather than the generic `unknown` one.
+//     By that point every server row this account owns is already gone
+//     (Step 3 succeeded) - `unknown`'s client-side copy ("your account was
+//     not deleted") is simply false there, and sending the operator to
+//     "sign in again" is not the right guidance for a state this specific.
 //
 // Never echoes Supabase/Apple error text, tokens, emails, or row content
 // into the response or the log: only a stable error `code`, an HTTP status,
@@ -33,7 +59,11 @@ interface DeleteAccountRequestBody {
   appleAuthorizationCode?: string;
 }
 
-type ErrorCode = "unauthorized" | "apple_revoke_failed" | "unknown";
+type ErrorCode =
+  | "unauthorized"
+  | "apple_revoke_failed"
+  | "delete_user_failed"
+  | "unknown";
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -100,7 +130,26 @@ Deno.serve(async (req: Request) => {
   const user = userData.user;
   const body = await readBody(req);
 
-  // Step 3: the row deletion (U1), run as the caller.
+  const providers = (user.identities ?? []).map((identity) => identity.provider);
+  const appleCode = body.appleAuthorizationCode;
+  const hasAppleIdentity = providers.includes("apple");
+
+  // Step 3 (#17 P1 fix - moved ahead of the destructive RPC): an Apple
+  // identity with no authorization code supplied fails closed here, before
+  // any data is touched. This is reachable without any client bug: Apple
+  // can be linked from a *different* device than the one calling delete,
+  // and a stale/buggy client on this device would omit the code it was
+  // never told to fetch. Previously this check ran after Step 4 below, so
+  // it still let the row deletion happen first - unrecoverable, since a
+  // deleted account can never supply a code to finish deleting itself.
+  if (hasAppleIdentity && !appleCode) {
+    console.error(
+      "delete-account: apple identity present but no authorization code supplied; nothing touched",
+    );
+    return errorResponse("apple_revoke_failed", 409);
+  }
+
+  // Step 4: the row deletion (U1), run as the caller.
   let rowCounts: unknown;
   try {
     const { data, error } = await userClient.rpc("delete_account_data");
@@ -111,25 +160,14 @@ Deno.serve(async (req: Request) => {
     return errorResponse("unknown", 500);
   }
 
-  // Step 4: Apple revocation, required whenever the account has an Apple
-  // identity. Fail closed: an Apple identity with no code supplied (e.g. a
-  // client bug, or a stale request replayed without a fresh code) stops
-  // here exactly like a failed revocation, rather than proceeding to delete
-  // the user with no revocation attempted at all. Either way this stops
-  // before the user row is touched - so the whole call is safe to retry
-  // (KTD4). Rows are already gone at this point; retrying re-runs U1's RPC
-  // idempotently (it reports zero counts the second time) and retries the
-  // Apple step.
-  const providers = (user.identities ?? []).map((identity) => identity.provider);
-  const appleCode = body.appleAuthorizationCode;
-  if (providers.includes("apple")) {
-    if (!appleCode) {
-      console.error(
-        "delete-account: apple identity present but no authorization code supplied; rows already removed",
-      );
-      return errorResponse("apple_revoke_failed", 409);
-    }
-    const revoked = await revokeAppleToken(appleCode);
+  // Step 5: Apple revocation itself, now that Step 3 has already confirmed
+  // a code was supplied whenever one is required. A revoke failure here
+  // (as opposed to a missing code) stops before the user row is touched -
+  // so the whole call is safe to retry (KTD4). Rows are already gone at
+  // this point; retrying re-runs U1's RPC idempotently (it reports zero
+  // counts the second time) and retries the Apple step.
+  if (hasAppleIdentity) {
+    const revoked = await revokeAppleToken(appleCode!);
     if (revoked.kind !== "ok") {
       console.error(
         `delete-account: apple revoke failed (${revoked.kind}); rows already removed`,
@@ -138,7 +176,29 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Step 5: the user row, last (KTD4) - the only irreversible step, on a
+  // Step 6 (#17 P1 fix): a second, best-effort re-home pass immediately
+  // before the one irreversible step below. delete_account_data() already
+  // ran this once (as its own step 0); Apple revocation's network round
+  // trip (when applicable) is the main source of the gap since. This
+  // narrows - it cannot fully close, see the migration's comment - the
+  // window in which a stray write from this caller's own device could
+  // still land on a profile they don't own and be reached by that row's
+  // `on delete cascade` once Step 7 removes their `auth.users` row.
+  //
+  // Best-effort on purpose: the RPC below already covers the overwhelming
+  // majority of the risk surface, and failing an otherwise-successful,
+  // already-confirmed deletion over this purely defensive extra pass would
+  // trade a small, already-narrow residual risk for a certain bad outcome
+  // (the account stays undeleted indefinitely).
+  try {
+    await userClient.rpc("rehome_stray_day_entries");
+  } catch (error) {
+    console.error(
+      `delete-account: final rehome pass failed (${errorType(error)}); proceeding to delete the user anyway`,
+    );
+  }
+
+  // Step 7: the user row, last (KTD4) - the only irreversible step, on a
   // separate service-role client (auth.admin.* needs the service role).
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
@@ -147,10 +207,15 @@ Deno.serve(async (req: Request) => {
     user.id,
   );
   if (deleteUserError) {
+    // #17 P1 fix: a distinct code, not "unknown" - every server row this
+    // account owns is already gone by this point (Step 4 succeeded), so
+    // "your account was not deleted" (unknown's client-side copy) would be
+    // false, and telling the operator to sign in again is not the right
+    // guidance for this specific, narrow failure.
     console.error(
-      `delete-account: auth.admin.deleteUser failed (${errorType(deleteUserError)})`,
+      `delete-account: auth.admin.deleteUser failed (${errorType(deleteUserError)}); rows already removed`,
     );
-    return errorResponse("unknown", 500);
+    return errorResponse("delete_user_failed", 500);
   }
 
   console.log("delete-account: succeeded", rowCounts);

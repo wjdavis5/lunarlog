@@ -255,16 +255,28 @@ Then, in another shell, against the local stack (`http://127.0.0.1:54321`):
   `provider = 'apple'` for the test user) with an empty JSON body
   (`appleAuthorizationCode` omitted entirely) → `409
   {"ok":false,"code":"apple_revoke_failed"}` with **no** call to Apple at
-  all - failing closed rather than silently skipping revocation and
-  deleting the user anyway. The profile/day-entry rows are already gone
-  (U1 ran first) but the `auth.users` row is still present (KTD4).
-- The same simulated Apple identity, now with no `APPLE_*` secrets set
-  locally, called with a non-empty `appleAuthorizationCode` → the same
-  `409 apple_revoke_failed` (a `misconfigured` revoke result), `auth.users`
-  still present. Retrying is only ever safe, never silently destructive:
-  calling again with no code, or with secrets still missing, returns the
-  same 409 every time; only supplying a fresh code once `APPLE_*` secrets
-  are configured lets the retry actually revoke and complete the deletion.
+  all, and, since the #17 P1 fix (2026-09-06), **no** call to
+  `delete_account_data()` either - the missing-code precondition now runs
+  *before* the destructive RPC, so nothing is touched at all: the profile
+  row and `auth.users` are both still present, and the call is safe to
+  retry from any device once a fresh code is available. (Before that fix,
+  the RPC ran first and only the precondition check came after it, so the
+  profile/day-entry rows were already gone by the time this 409 came back -
+  confirm this is no longer the case when re-proving this locally.)
+- The same simulated Apple identity, now with a non-empty
+  `appleAuthorizationCode` but no `APPLE_*` secrets set locally → the same
+  `409 apple_revoke_failed` (a `misconfigured` revoke result) - but this
+  time the profile/day-entry rows **are** gone (the precondition passed, so
+  the RPC ran) while `auth.users` is still present (KTD4). Retrying is only
+  ever safe, never silently destructive: calling again with no code, or
+  with secrets still missing, returns the same 409 every time; only
+  supplying a fresh code once `APPLE_*` secrets are configured lets the
+  retry actually revoke and complete the deletion.
+- Force `auth.admin.deleteUser` to fail (e.g. call delete twice in quick
+  succession for the same user, or otherwise make the admin call error) →
+  `500 {"ok":false,"code":"delete_user_failed"}` (#17 P1 fix), not the
+  generic `unknown` code - the profile/day-entry rows are already gone at
+  this point.
 
 Deploying: `supabase-migrate.yml`'s "Set delete-account function secrets"
 step runs `supabase secrets set` for the four `APPLE_*` values, then

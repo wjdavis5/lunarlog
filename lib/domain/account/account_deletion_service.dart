@@ -37,6 +37,25 @@ sealed class AccountDeletionFailure implements Exception {
   const factory AccountDeletionFailure.appleRevokeFailed() =
       AccountDeletionAppleRevokeFailedFailure;
 
+  /// The client-side call to the Edge Function timed out (#17 P1 fix):
+  /// `functions_client` 2.7.1's `invoke()` has no default deadline, so
+  /// [SupabaseAccountDeletionService] applies its own via `abortSignal`.
+  /// Unlike [AccountDeletionFailure.network] (the request never reached the
+  /// server) this means the server may still be mid-flight or may already
+  /// have finished - the outcome is genuinely unknown, not "definitely
+  /// didn't happen".
+  const factory AccountDeletionFailure.timeout() = AccountDeletionTimeoutFailure;
+
+  /// The Edge Function's own `delete_user_failed` code (#17 P1 fix): the
+  /// server-side row deletion (and Apple revocation, if applicable) already
+  /// succeeded, but the final `auth.users` deletion step itself failed. The
+  /// account's sign-in may still exist even though the data is gone - the
+  /// call is safe to retry (KTD4's RPC is idempotent) - so this gets its
+  /// own copy rather than [AccountDeletionFailure.unknown]'s "your account
+  /// was not deleted" claim, which would be false here.
+  const factory AccountDeletionFailure.deleteUserFailed() =
+      AccountDeletionDeleteUserFailedFailure;
+
   const factory AccountDeletionFailure.unknown() =
       AccountDeletionUnknownFailure;
 
@@ -70,6 +89,23 @@ final class AccountDeletionAppleRevokeFailedFailure
 
   @override
   String toString() => 'AccountDeletionFailure.appleRevokeFailed';
+}
+
+/// See [AccountDeletionFailure.timeout].
+final class AccountDeletionTimeoutFailure extends AccountDeletionFailure {
+  const AccountDeletionTimeoutFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.timeout';
+}
+
+/// See [AccountDeletionFailure.deleteUserFailed].
+final class AccountDeletionDeleteUserFailedFailure
+    extends AccountDeletionFailure {
+  const AccountDeletionDeleteUserFailedFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.deleteUserFailed';
 }
 
 /// Everything else.

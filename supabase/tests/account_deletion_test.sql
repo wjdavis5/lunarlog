@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(31);
+select plan(41);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -394,6 +394,114 @@ select is(
   (select logged_by_user_id from public.day_entries where id = tests.ulid(40)),
   null,
   'P0: logged_by_user_id still nulls out via its own on-delete-set-null FK once H''s auth.users row is gone'
+);
+
+-- ---------------------------------------------------------------------------
+-- 9. #17 P1 item 5: public.rehome_stray_day_entries() - the re-home logic
+--    extracted into its own callable function so the delete-account Edge
+--    Function can call it a second time, standalone, immediately before
+--    auth.admin.deleteUser (narrowing, not closing, the window between
+--    delete_account_data()'s one-time re-home and the actual auth.users
+--    removal - see 20260906120000_account_deletion_final_rehome.sql).
+-- ---------------------------------------------------------------------------
+
+select ok(
+  exists (
+    select 1 from pg_proc
+     where proname = 'rehome_stray_day_entries'
+       and pronamespace = 'public'::regnamespace
+  ),
+  'public.rehome_stray_day_entries() exists'
+);
+
+select is(
+  (select prosecdef from pg_proc
+    where proname = 'rehome_stray_day_entries' and pronamespace = 'public'::regnamespace),
+  true,
+  'rehome_stray_day_entries is security definer'
+);
+
+select ok(
+  exists (
+    select 1 from pg_proc, unnest(proconfig) as c(setting)
+     where proname = 'rehome_stray_day_entries' and pronamespace = 'public'::regnamespace
+       and c.setting like 'search_path=%'
+  ),
+  'rehome_stray_day_entries sets search_path = '''''
+);
+
+select ok(
+  has_function_privilege('authenticated', 'public.rehome_stray_day_entries()', 'execute'),
+  'authenticated can execute rehome_stray_day_entries'
+);
+
+select is(
+  (select count(*) from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+     cross join lateral aclexplode(coalesce(p.proacl, '{}'::aclitem[])) a
+    where n.nspname = 'public' and p.proname = 'rehome_stray_day_entries'
+      and (a.grantee = 0 or a.grantee = 'anon'::regrole)),
+  0::bigint,
+  'PUBLIC and anon hold no EXECUTE on rehome_stray_day_entries'
+);
+
+select tests.authenticate_as_anon();
+select throws_ok(
+  $$select public.rehome_stray_day_entries()$$,
+  '42501', null,
+  'anon cannot execute rehome_stray_day_entries'
+);
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'authenticated', true);
+select throws_ok(
+  $$select public.rehome_stray_day_entries()$$,
+  '42501', null,
+  'an authenticated role with no JWT claims is refused (auth.uid() is null)'
+);
+select tests.clear_authentication();
+
+-- Direct behavior: a caregiver logs an entry on a profile they don't own,
+-- standing in for a write that lands *after* delete_account_data()'s own
+-- one-time re-home has already run (the #17 P1 item 5 race) - this is what
+-- the Edge Function's second, standalone call catches.
+select tests.create_supabase_user('user_i'); -- owner
+select tests.create_supabase_user('user_j'); -- caregiver
+
+select tests.authenticate_as('user_i');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(7), 'Riley I', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_guardian_invitation(
+  tests.ulid(7), 'caregiver', 'J',
+  'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', 48
+);
+
+select tests.authenticate_as('user_j');
+select public.accept_guardian_invitation(
+  'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', 'J'
+);
+
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(41), tests.ulid(7), '2026-09-06', 'UTC', 'medium', '2026-09-06T00:00:00Z',
+        tests.get_supabase_uid('user_j'), tests.get_supabase_uid('user_j'));
+
+select is(
+  public.rehome_stray_day_entries(),
+  1::bigint,
+  'rehome_stray_day_entries re-homes the one stray row it finds'
+);
+
+select is(
+  (select user_id from public.day_entries where id = tests.ulid(41)),
+  tests.get_supabase_uid('user_i'),
+  'the stray row is re-homed to the profile''s actual owner'
+);
+
+select is(
+  public.rehome_stray_day_entries(),
+  0::bigint,
+  'a second call is idempotent: nothing left to re-home'
 );
 
 select * from finish();

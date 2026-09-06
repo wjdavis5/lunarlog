@@ -1,7 +1,7 @@
 # LunarLog Privacy Policy
 
 **Effective Date:** September 3, 2026  
-**Last Updated:** September 5, 2026  
+**Last Updated:** September 6, 2026  
 
 LunarLog ("we", "our", or "the app") is a privacy-first, local-first menstrual cycle and symptom tracker designed for individuals and families. We believe that reproductive and menstrual health data is deeply personal and sensitive. LunarLog is architected from the ground up to protect your privacy: your device is the primary source of truth, data is encrypted, and cloud synchronization is strictly optional.
 
@@ -94,7 +94,7 @@ We implement rigorous technical safeguards to ensure the security and confidenti
 ## 7. Data Export & Retention & Deletion Rights
 
 You have complete control over your data:
-- **Export Your Data:** From Settings → Account, "Export my data" saves a JSON file of your profiles and day entries (built entirely from the copy already on your device, so it works offline) and hands it to your device's normal share sheet - AirDrop, Files, email, or any app you choose. The file contains only your own data: no sync-protocol internals, no other account's identifiers, and no credentials.
+- **Export Your Data:** From Settings → Account, "Export my data" saves a JSON file of your profiles and day entries (built entirely from the copy already on your device, so it works offline) and hands it to your device's normal share sheet - AirDrop, Files, email, or any app you choose. The file includes every profile and day entry already synced to this device - your own profiles, and, if you are an accepted caregiver or co-parent on someone else's profile (multi-guardian sharing, Settings → Account), that profile's entries too, since those are the same records you can already view and log in the app. It never includes sync-protocol internals, other accounts' identifiers or tokens, or credentials. If you are exporting on a shared or borrowed device, review the file before sharing it further - it reflects everything that account can currently see, not only entries you personally logged.
 - **Local Deletion:** You can delete individual cycle entries or entire profiles from the app at any time. Deleted records are tombstoned and permanently removed upon sync.
 - **Sign Out & Local Wipe:** Signing out of your account gives you the option to discard all local database records from that device immediately.
 - **Sign Out Everywhere:** You can invalidate sessions across all devices from the Account settings.

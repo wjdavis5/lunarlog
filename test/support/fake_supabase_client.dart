@@ -42,7 +42,15 @@ class FakeFunctionsClient implements FunctionsClient {
   }) {
     invokedFunctionNames.add(functionName);
     invokedBodies.add(body);
-    return _invoke(functionName, headers: headers, body: body);
+    final result = _invoke(functionName, headers: headers, body: body);
+    if (abortSignal == null) return result;
+    // Mirrors the real FunctionsClient's abortSignal race (#17 P1 fix, for
+    // SupabaseAccountDeletionService's client-side timeout): whichever
+    // completes first wins, and an abort throws RequestAbortedException
+    // exactly like the real implementation.
+    final aborted = abortSignal.then<FunctionResponse>(
+        (_) => throw RequestAbortedException());
+    return Future.any([result, aborted]);
   }
 
   @override
