@@ -4,5 +4,11 @@
   "SENTRY_DSN": "",
   "LUNARLOG_WEB_SYNC": "false",
   "GOOGLE_IOS_CLIENT_ID": "",
-  "GOOGLE_WEB_CLIENT_ID": ""
+  "GOOGLE_WEB_CLIENT_ID": "",
+  "FCM_PROJECT_ID": "",
+  "FCM_SENDER_ID": "",
+  "FCM_ANDROID_API_KEY": "",
+  "FCM_ANDROID_APP_ID": "",
+  "FCM_IOS_API_KEY": "",
+  "FCM_IOS_APP_ID": ""
 }

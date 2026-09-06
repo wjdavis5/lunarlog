@@ -53,7 +53,10 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart'
-    show DeviceResetCallback, GateController;
+    show
+        DeviceResetCallback,
+        GateController,
+        RemoveAllPushRegistrationsCallback;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
@@ -699,6 +702,17 @@ class _AccountSectionState extends State<AccountSection> {
     );
     if (confirmed != true || !context.mounted) return;
     final auth = context.read<AuthController>();
+    // #1/#9 (review fix): remove *every* device's push registration while
+    // the session is still authenticated, before signOut() clears it - see
+    // RemoveAllPushRegistrationsCallback's doc comment. This is the global
+    // ("everywhere") path: signOut(scope: global) below revokes every
+    // device's session server-side, so its push registration must go too,
+    // not just this device's (which RemovePushRegistrationCallback alone
+    // would leave behind on every other device). _reset(context) below
+    // (resetDevice) also attempts a single-device removal, but by then
+    // signOut() has already cleared the session, so that attempt alone runs
+    // as anon and is denied.
+    await context.read<RemoveAllPushRegistrationsCallback?>()?.call();
     try {
       await auth.signOut(scope: AuthSignOutScope.global);
     } on AuthFailure catch (failure) {

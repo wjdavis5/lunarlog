@@ -182,7 +182,13 @@ jobs:
             --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
             --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
+            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
+            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
+            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
+            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
+            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
+            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
 
       - name: Build release APK
         run: |
@@ -193,7 +199,13 @@ jobs:
             --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
             --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
+            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
+            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
+            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
+            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
+            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
+            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
 
       - name: Verify build outputs
         run: |

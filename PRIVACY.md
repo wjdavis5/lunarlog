@@ -1,7 +1,7 @@
 # LunarLog Privacy Policy
 
 **Effective Date:** September 3, 2026  
-**Last Updated:** September 6, 2026  
+**Last Updated:** September 6, 2026 (added Firebase Cloud Messaging disclosure for caregiver push alerts)  
 
 LunarLog ("we", "our", or "the app") is a privacy-first, local-first menstrual cycle and symptom tracker designed for individuals and families. We believe that reproductive and menstrual health data is deeply personal and sensitive. LunarLog is architected from the ground up to protect your privacy: your device is the primary source of truth, data is encrypted, and cloud synchronization is strictly optional.
 
@@ -76,6 +76,7 @@ LunarLog limits third-party integration to essential operational infrastructure:
 | **Apple (Sign in with Apple)** | Optional identity provider on iOS/macOS | Apple user identifier, relay email address (if selected) | Governed by Apple Privacy Policy |
 | **Google (Google Sign-In)** | Optional identity provider | Google ID token (email and basic account identifier) | Governed by Google Privacy Policy |
 | **Resend** | Transactional support email (an admin alert when you submit a ticket; the admin's reply email to you) | Reply email address and, for the reply you receive, the reply text | Governed by Resend's Privacy Policy |
+| **Firebase Cloud Messaging (FCM)** | Optional remote push alerts to a caregiver when another guardian logs an entry, or when an expected entry hasn't arrived (only when a guardian turns this on; a build with no push configuration never contacts FCM at all) | Your device's push registration token and the profile's internal identifier only. Never a note, tag, flow level, date, or profile name - the notification you see on your lock screen is always the same fixed generic text the app's own local reminders already use | Governed by Google Privacy Policy; delivered over Apple/Google's push infrastructure (APNs on iOS, FCM on Android) |
 
 No other third parties receive data from LunarLog.
 
@@ -131,7 +132,7 @@ To exercise any of these rights, please contact us at `will@wjdavis5.net`.
 
 In compliance with Apple App Store Guidelines (including Guideline 5.1.1 and `PrivacyInfo.xcprivacy`) and Google Play Data Safety:
 - **Data Used to Track You:** None (`NSPrivacyTracking: false`).
-- **Data Linked to You:** Email Address (App Functionality), Health Information (App Functionality, only when cloud sync is active).
+- **Data Linked to You:** Email Address (App Functionality), Health Information (App Functionality, only when cloud sync is active), Device Push Token (App Functionality, only when a guardian enables caregiver alerts on a build with push configured).
 - **Data Not Linked to You:** Crash Data (App Functionality, fully anonymized).
 
 ---

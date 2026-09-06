@@ -162,7 +162,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             '• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health '
             'and personal details on-device.\n'
             '• Family Custodianship: Minor profiles are managed directly by adult '
-            'guardians with identical privacy protections.\n\n'
+            'guardians with identical privacy protections.\n'
+            '• Caregiver Alerts: Optional push notifications to another guardian '
+            'never carry what was logged - only a generic reminder, via Firebase '
+            'Cloud Messaging.\n\n'
             'Canonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md',
           ),
         ),

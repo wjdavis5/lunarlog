@@ -73,6 +73,23 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'unit-tested directly; this file is proven by the U7 device '
         'checklist instead, same treatment as google_sign_in_client.dart.',
   ),
+  const CoverageExclusion(
+    'lib/data/notifications/firebase_push_token_source.dart',
+    'FirebasePushTokenSource wraps firebase_core/firebase_messaging calls '
+        '(Firebase.initializeApp, requestPermission, getToken, and the two '
+        'FirebaseMessaging stream getters) that cannot run under flutter '
+        'test -- but, per review #10, NOT because the file has no branching '
+        'worth testing in isolation: an earlier version of this rationale '
+        'said exactly that while quietly excluding the sequencing bugs #4 '
+        '(missing requestPermission()) and #5 (FirebaseMessaging.instance '
+        'touched before Firebase.initializeApp() completed) from ever being '
+        'exercised. buildFirebaseOptions(), the one piece of pure branching '
+        'this file has, is now a directly unit-tested top-level function '
+        '(same treatment key_store.dart gives isValidDbKeyHex) despite '
+        'living in this excluded file. PushRegistrationCoordinator (the '
+        'ordering/lifecycle logic) is covered directly against a fake '
+        'PushTokenSource.',
+  ),
 ];
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');

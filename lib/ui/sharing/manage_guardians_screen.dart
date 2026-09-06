@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 import '../../data/repositories/profile_guardians_repository.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/profile_guardian.dart';
+import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/sharing/sharing_service.dart';
 import 'invite_guardian_dialog.dart';
+import 'notification_preferences_screen.dart';
 
 class ManageGuardiansScreen extends StatefulWidget {
   const ManageGuardiansScreen({
@@ -18,6 +20,7 @@ class ManageGuardiansScreen extends StatefulWidget {
     required this.guardiansRepository,
     required this.sharingService,
     required this.currentUserId,
+    this.notificationPreferencesService,
   });
 
   final Profile profile;
@@ -27,6 +30,12 @@ class ManageGuardiansScreen extends StatefulWidget {
   /// The signed-in user's id, required for role gating (U8): viewers and
   /// caregivers never see the invite action or revocation controls.
   final String? currentUserId;
+
+  /// Issue #5, U8: when present, an AppBar "Notifications" action opens
+  /// [NotificationPreferencesScreen]. Null (an unconfigured build, or a
+  /// platform/build with push unavailable) hides the action entirely - this
+  /// is what keeps R17 true with zero conditionals in the caller.
+  final NotificationPreferencesService? notificationPreferencesService;
 
   @override
   State<ManageGuardiansScreen> createState() => _ManageGuardiansScreenState();
@@ -173,9 +182,26 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final notificationPreferencesService = widget.notificationPreferencesService;
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.profile.displayName} Caregivers'),
+        actions: [
+          if (notificationPreferencesService != null)
+            IconButton(
+              key: const ValueKey('notifications-action'),
+              tooltip: 'Notifications',
+              icon: const Icon(Icons.notifications_outlined),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => NotificationPreferencesScreen(
+                    profile: widget.profile,
+                    preferencesService: notificationPreferencesService,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       // U8: only the primary guardian and co-parents can invite; the
       // server enforces it too, so the button is not even offered. Rows

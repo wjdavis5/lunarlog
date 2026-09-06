@@ -61,6 +61,13 @@ dependencies:
   uuid: ^4.6.0
   image_picker: ^1.2.3
   share_plus: ^13.3.0
+  # Issue #5, U7: caregiver push alerts. Initialized only from AppConfig's
+  # FirebaseOptions (KTD6) - no google-services.json/GoogleService-Info.plist
+  # and no Google Services Gradle plugin, so AppConfig.hasPush gates every
+  # code path that touches these and an unconfigured build never links them
+  # at runtime.
+  firebase_core: ^4.1.1
+  firebase_messaging: ^16.0.2
 
 dev_dependencies:
   flutter_test:
