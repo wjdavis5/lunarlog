@@ -785,6 +785,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
         client: client,
         syncEngine: engine,
         storage: db.storage,
+        auth: authService,
       );
       _realtimeCoordinator = coordinator;
       coordinator.start();

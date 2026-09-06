@@ -55,6 +55,15 @@ class FakeRealtimeChannel implements RealtimeChannel {
   @override
   final String topic;
 
+  /// How many times [subscribe] was actually called on this channel (PR #92
+  /// review round 2, carried over from round 1): nothing in the test suite
+  /// previously asserted this, so deleting the production `.subscribe()`
+  /// call in `RealtimeSyncCoordinator` would still leave every test green —
+  /// a channel is created and torn down correctly either way, and only
+  /// `subscribeCalls` distinguishes "actually subscribed" from "just built
+  /// the channel object". See the gate_test.dart assertion that reads this.
+  int subscribeCalls = 0;
+
   @override
   RealtimeChannel onPostgresChanges({
     required PostgresChangeEvent event,
@@ -71,6 +80,7 @@ class FakeRealtimeChannel implements RealtimeChannel {
   RealtimeChannel subscribe(
       [void Function(RealtimeSubscribeStatus status, Object? error)? callback,
       Duration? timeout]) {
+    subscribeCalls++;
     callback?.call(RealtimeSubscribeStatus.subscribed, null);
     return this;
   }

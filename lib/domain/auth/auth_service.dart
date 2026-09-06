@@ -396,3 +396,13 @@ abstract interface class AuthService {
 
   void consumeLinkFailure();
 }
+
+/// The authenticated user id, treating only [AuthSessionState.signedIn] as
+/// confirmed. [AuthSessionState.passwordRecovery] and
+/// [AuthSessionState.expired] also carry a session but are deliberately not
+/// "confirmed" here — a recovery session shouldn't bind sync/realtime
+/// identity, and an expired session has nothing valid to bind.
+extension ConfirmedIdentity on AuthService {
+  String? get confirmedUserId =>
+      state == AuthSessionState.signedIn ? currentUserId : null;
+}
