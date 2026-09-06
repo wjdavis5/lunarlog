@@ -87,7 +87,7 @@ globally); Docker must be running.
 ```powershell
 npx supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
 npx supabase@2.116.0 db reset --local    # re-apply migrations from scratch
-npx supabase@2.116.0 test db --local     # 233 pgTAP tests
+npx supabase@2.116.0 test db --local     # 355 pgTAP tests
 npx supabase@2.116.0 stop --no-backup
 ```
 
@@ -169,6 +169,28 @@ device-credential check as adding a sign-in method; see
 [`docs/plans/2026-09-05-001-feat-remove-linked-sign-in-method-plan.md`](docs/plans/2026-09-05-001-feat-remove-linked-sign-in-method-plan.md),
 and
 [`docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md`](docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md).
+
+## Family sharing
+
+A profile can be shared with other signed-in guardians via a single-use
+invite link (`lunarlog://invite?code=...`, 1-168 hour TTL), with roles
+`primary_guardian`, `co_parent`, `caregiver`, and `viewer`. A `viewer` sees
+the calendar, history, and predictions but cannot open a writable day
+sheet — tapping a day shows a read-only view naming the view-only reason,
+distinct from an archived profile's read-only view. An outstanding
+invitation can be cancelled from Manage Guardians before it is redeemed
+(the same role ladder as removing a guardian: the primary guardian may
+cancel any invitation; a co-parent may cancel one it created plus any
+caregiver/viewer invitation) — cancelling makes the link permanently
+unredeemable. When two guardians log symptoms for the same date while
+offline or simultaneously, the app keeps both: their tags are merged
+(a set union) onto the surviving entry rather than one caregiver's tags
+being silently destroyed; `flow` and the free-text `note` remain
+last-writer-wins, since neither has a merge that is both order-independent
+and meaningful. Plan:
+[`docs/plans/2026-09-06-001-feat-family-sharing-invitations-plan.md`](docs/plans/2026-09-06-001-feat-family-sharing-invitations-plan.md)
+(gap-closure pass against the shipped guardian/sharing infrastructure from
+issue #8).
 
 ## Config & credentials
 

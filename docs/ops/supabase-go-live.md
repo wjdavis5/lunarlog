@@ -606,6 +606,38 @@ account and fabricated profiles only.
       confirmation dialog, each leave the account untouched with no error
       copy and no server call.
 
+### Family sharing (issue #3 gap-closure plan)
+
+Run on at least two devices (a third where noted) with throwaway accounts
+and **fabricated profiles only - never real family data**.
+
+- [ ] **Cancel an invitation before it is redeemed.** Generate an invite on
+      Device A, see it in the pending list with a live countdown, cancel
+      it, then attempt to redeem the link on Device B: rejected, no
+      membership created.
+- [ ] **A co-parent's invitation is visible to the primary guardian.**
+      Generate an invite as a co-parent on Device B; confirm the primary
+      guardian on Device A can see and cancel it.
+- [ ] **A caregiver sees no pending-invitations section at all.** Confirm a
+      caregiver account does not see the section, even though a pending
+      invitation exists for the profile.
+- [ ] **Viewer read-only.** Accept a `viewer` invitation on Device C: the
+      shared profile's calendar and history render, tapping a day opens a
+      read-only sheet naming the view-only reason (not the archived-profile
+      reason), and no entry can be composed.
+- [ ] **Fail-open with no account.** On a device with no account at all,
+      confirm logging still works on a local profile (R15).
+- [ ] **Same-date tag merge, offline.** With both devices offline, log
+      `cramps` on A and `heavy flow` on B for the same date; reconnect both
+      and sync: both tags are present on both devices, one entry, no
+      duplicate row.
+- [ ] **Same-date collision with notes.** Same scenario with notes on both
+      sides: the later note survives, the earlier is gone, and nothing else
+      (tags, flow) is lost.
+- [ ] **Manage Guardians screen offline.** In airplane mode, the guardian
+      list still renders from local storage; the pending-invitations
+      section shows its retry affordance rather than blocking the screen.
+
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows
