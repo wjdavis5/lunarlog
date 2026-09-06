@@ -24,6 +24,11 @@ name: iOS Release
 #   SUPABASE_ANON_KEY             Supabase publishable key (client-safe);
 #                                 passed as SUPABASE_PUBLISHABLE_KEY
 #   SENTRY_DSN                    Sentry DSN (client-safe; empty disables)
+#   SENTRY_AUTH_TOKEN             Sentry org auth token, project:releases scope
+#                                 only (issue #19); dSYM upload warns and
+#                                 skips when this or the next two are empty
+#   SENTRY_ORG                    Sentry organization slug
+#   SENTRY_PROJECT                Sentry project slug
 
 on:
   push:
@@ -392,6 +397,37 @@ jobs:
           [ -f "$app/PrivacyInfo.xcprivacy" ] || { echo "::error::privacy manifest missing from the bundle"; exit 1; }
 
           [ "$encryption" = "true" ] || { echo "::error::ITSAppUsesNonExemptEncryption is '$encryption' in the exported Info.plist, expected true (see docs/ops/ios-export-compliance.md)"; exit 1; }
+
+      - name: Upload Sentry debug symbols (dSYMs)
+        # U5 (R15/R16): warns and skips rather than failing the release when
+        # the upload secrets are absent -- true for every build today, since
+        # issue #19 has not provisioned them yet. sentry-cli is installed as
+        # a pinned, checksum-verified release binary, never `curl | bash`
+        # (KTD10): this step runs after the signing keychain and
+        # provisioning profile are installed, so an unpinned remote script
+        # here would run with the full signing credential set in reach.
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "::warning::Sentry symbol upload skipped -- SENTRY_AUTH_TOKEN/ORG/PROJECT not set (issue #19)."
+            exit 0
+          fi
+          set -euo pipefail
+
+          sentry_cli_version="3.7.0"
+          sentry_cli_sha256="10ccaaa39e6eee2b52034546f5f617533fdc76c64aa75c3038887045da1a367d"
+          curl -sSL -o sentry-cli \
+            "https://github.com/getsentry/sentry-cli/releases/download/${sentry_cli_version}/sentry-cli-Darwin-universal"
+          echo "${sentry_cli_sha256}  sentry-cli" | shasum -a 256 -c -
+          chmod +x sentry-cli
+          ./sentry-cli --version
+
+          # No --include-sources: this app's source files would upload to a
+          # third party for no symbolication benefit (KTD10).
+          ./sentry-cli debug-files upload build/ios/archive/Runner.xcarchive/dSYMs
 
       - name: Upload to TestFlight
         env:

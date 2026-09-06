@@ -178,8 +178,10 @@ another:
 
 - **App (client-side, build time):** `lib/config.dart` (`AppConfig`) reads
   `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SENTRY_DSN`,
-  `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, and `LUNARLOG_WEB_SYNC`
-  via `--dart-define`. Empty means unconfigured. For local runs copy
+  `SENTRY_TRACES_SAMPLE_RATE`, `GOOGLE_IOS_CLIENT_ID`,
+  `GOOGLE_WEB_CLIENT_ID`, and `LUNARLOG_WEB_SYNC` via `--dart-define`. Empty
+  means unconfigured — `SENTRY_TRACES_SAMPLE_RATE` stays empty in every
+  workflow (opt-in only, after issue #19). For local runs copy
   `dart_defines.example.json` to `dart_defines.json` (gitignored;
   client-safe values only — the publishable key, DSN, and Google client ids
   are designed to ship inside the binary) and pass

@@ -21,6 +21,11 @@ name: Play Store Release
 #   SUPABASE_ANON_KEY             Supabase publishable key (client-safe);
 #                                 passed as SUPABASE_PUBLISHABLE_KEY
 #   SENTRY_DSN                    Sentry DSN (client-safe; empty disables)
+#   SENTRY_AUTH_TOKEN             Sentry org auth token, project:releases scope
+#                                 only (issue #19); native-symbol upload warns
+#                                 and skips when this or the next two are empty
+#   SENTRY_ORG                    Sentry organization slug
+#   SENTRY_PROJECT                Sentry project slug
 
 on:
   workflow_dispatch:
@@ -206,6 +211,46 @@ jobs:
 
           echo "AAB size: $(du -h "$aab" | cut -f1)"
           echo "APK size: $(du -h "$apk" | cut -f1)"
+
+      - name: Upload Sentry debug symbols (native + ProGuard mapping)
+        # U5 (R15/R16/R17): warns and skips rather than failing the release
+        # when the upload secrets are absent -- true for every build today,
+        # since issue #19 has not provisioned them yet. sentry-cli is
+        # installed as a pinned, checksum-verified release binary, never
+        # `curl | bash` (KTD10). The ProGuard upload is a documented no-op
+        # today: R8/minification is not enabled by this plan (see Scope
+        # Boundaries), so no mapping.txt exists yet; the conditional exists
+        # so enabling R8 later needs no workflow edit.
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "::warning::Sentry symbol upload skipped -- SENTRY_AUTH_TOKEN/ORG/PROJECT not set (issue #19)."
+            exit 0
+          fi
+          set -euo pipefail
+
+          sentry_cli_version="3.7.0"
+          sentry_cli_sha256="cec71d46a7cc394c94b6e75f1601985c710d457376c546ef3975567b3671563b"
+          curl -sSL -o sentry-cli \
+            "https://github.com/getsentry/sentry-cli/releases/download/${sentry_cli_version}/sentry-cli-Linux-x86_64"
+          echo "${sentry_cli_sha256}  sentry-cli" | sha256sum -c -
+          chmod +x sentry-cli
+          ./sentry-cli --version
+
+          native_libs_dir="build/app/intermediates/merged_native_libs/release/out/lib"
+          if [ -d "$native_libs_dir" ]; then
+            ./sentry-cli debug-files upload "$native_libs_dir"
+          else
+            echo "::warning::No native libs directory found at $native_libs_dir -- skipping native symbol upload."
+          fi
+
+          mapping="build/app/outputs/mapping/release/mapping.txt"
+          if [ -f "$mapping" ]; then
+            ./sentry-cli upload-proguard "$mapping"
+          fi
 
       - name: Publish to Google Play Store
         uses: r0adkll/upload-google-play@v1
