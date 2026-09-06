@@ -333,8 +333,14 @@ void _scrubSpanDataInPlace(SentrySpan span) {
 SentryTransaction? scrubTransaction(SentryTransaction transaction) {
   // ignore: deprecated_member_use
   if (containsDenyListedKey(transaction.extra)) return null;
+  // One pass: a deny-listed hit drops the whole transaction regardless of
+  // scan order, and nothing reads a span mutated before the drop is
+  // detected — scrubTransaction returns null and the mutated object is
+  // never read again — so checking and scrubbing each span together is
+  // exactly as safe as two separate passes, and does half the iteration.
   for (final span in transaction.spans) {
     if (containsDenyListedKey(span.data)) return null;
+    _scrubSpanDataInPlace(span);
   }
 
   transaction.user = null;
@@ -350,9 +356,6 @@ SentryTransaction? scrubTransaction(SentryTransaction transaction) {
       ?.map(scrubBreadcrumb)
       .whereType<Breadcrumb>()
       .toList(growable: false);
-  for (final span in transaction.spans) {
-    _scrubSpanDataInPlace(span);
-  }
   return transaction;
 }
 
