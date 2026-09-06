@@ -281,6 +281,37 @@ Contexts _scrubTransactionContexts(Contexts contexts) {
   return scrubbed;
 }
 
+/// The two suffixes `sentry_flutter` 9.28.0's `time_to_initial_display_
+/// tracker.dart` / `time_to_full_display_tracker.dart` append to a TTID/TTFD
+/// span's `description`: `'${transaction.name} initial display'` /
+/// `'... full display'`. `transaction.name` there is the *raw*
+/// `RouteSettings.name` the navigator observer saw, not the value
+/// [scrubRouteName] has already reduced — so the description carries an
+/// unscrubbed route name verbatim unless [_scrubSpanDescription] recognizes
+/// this exact shape and scrubs the prefix.
+const List<String> _spanDescriptionSuffixes = [
+  ' initial display',
+  ' full display',
+];
+
+/// Reduces a span's `description` the same way [scrubEvent] reduces
+/// `event.transaction`: a TTID/TTFD description has its raw route-name
+/// prefix passed through [scrubRouteName] (see [_spanDescriptionSuffixes]);
+/// anything else is treated like a free-text message — kept unless it
+/// mentions a deny-listed key, in which case it becomes `'[scrubbed]'`
+/// (mirrors [_scrubMessage]). `null` passes through.
+String? _scrubSpanDescription(String? description) {
+  if (description == null) return null;
+  for (final suffix in _spanDescriptionSuffixes) {
+    if (description.endsWith(suffix)) {
+      final rawRouteName =
+          description.substring(0, description.length - suffix.length);
+      return '${scrubRouteName(rawRouteName)}$suffix';
+    }
+  }
+  return mentionsDenyListedKey(description) ? '[scrubbed]' : description;
+}
+
 /// KTD9: rebuilds one span's `data` under an allowlist, using the SDK's
 /// real key names — `url` (truncated at `?`), `http.request.method`,
 /// `http.response.status_code`, `http.response_content_length`,
@@ -289,6 +320,15 @@ Contexts _scrubTransactionContexts(Contexts contexts) {
 /// getter returns the live field, and mutating it directly is the only way
 /// to change a span's data once the transaction has already finished (its
 /// own `setData`/`removeData` methods no-op on a finished span).
+///
+/// Also scrubs `span.context.description` (through [_scrubSpanDescription])
+/// and `span.tags` — both reach the wire alongside `data` and neither was
+/// covered by the allowlist above: a span's `description` carries the raw
+/// route name from the TTID/TTFD spans `SentryNavigatorObserver` produces,
+/// and `tags` is a second free-form key/value map distinct from `data`,
+/// subject to the same deny-list [_scrubTags] applies to an event's tags.
+/// `span.tags`'s getter, like `span.data`'s, returns the live map, so it is
+/// scrubbed the same way: in place.
 void _scrubSpanDataInPlace(SentrySpan span) {
   final data = span.data;
   final url = data['url'];
@@ -306,6 +346,15 @@ void _scrubSpanDataInPlace(SentrySpan span) {
   data
     ..clear()
     ..addAll(allowed);
+
+  span.context.description = _scrubSpanDescription(span.context.description);
+
+  final tags = span.tags;
+  final deniedTagKeys =
+      tags.keys.where(isDenyListedKey).toList(growable: false);
+  for (final key in deniedTagKeys) {
+    tags.remove(key);
+  }
 }
 
 /// Reduces [transaction] to the same KTD12 allowlist [scrubEvent] applies

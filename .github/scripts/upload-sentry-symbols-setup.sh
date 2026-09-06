@@ -29,6 +29,14 @@
 #   if [ -x ./sentry-cli ]; then
 #     ./sentry-cli debug-files upload <path>
 #   fi
+#
+# R15: this script's own exit code alone is not enough to keep a Sentry
+# outage from blocking a signed release -- `set -euo pipefail` means a
+# non-zero exit here (a download timeout, a transient 5xx) already fails
+# this script, but the *calling workflow step* must additionally run with
+# `continue-on-error: true` so that failure degrades telemetry rather than
+# the TestFlight/Play upload. See ios-release.yml's and
+# play-store-release.yml's "Upload Sentry debug symbols" steps.
 set -euo pipefail
 
 if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
@@ -36,7 +44,13 @@ if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY
   exit 0
 fi
 
-curl -sSL -o sentry-cli "$SENTRY_CLI_DOWNLOAD_URL"
+# --fail: treat an HTTP error response (4xx/5xx) as a failure instead of
+# saving the error body as if it were the binary. --max-time: never let a
+# hung Sentry/GitHub endpoint block the release job indefinitely.
+# --retry/--retry-delay/--retry-connrefused: ride out a transient blip
+# (DNS hiccup, momentary 5xx, connection refused) before giving up.
+curl -sSL --fail --max-time 60 --retry 3 --retry-delay 2 \
+  --retry-connrefused -o sentry-cli "$SENTRY_CLI_DOWNLOAD_URL"
 
 case "$SENTRY_CLI_CHECKSUM_TOOL" in
   sha256sum) echo "${SENTRY_CLI_SHA256}  sentry-cli" | sha256sum -c - ;;

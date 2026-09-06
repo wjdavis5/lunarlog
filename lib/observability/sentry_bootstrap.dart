@@ -113,19 +113,59 @@ void configureSentryOptions(
     // health strings in memory, and nobody has inspected what such a
     // payload actually carries. Pinned false; the opt-in (after a real
     // payload has been inspected) belongs to issue #19.
-    ..enableTombstone = false;
+    ..enableTombstone = false
+    // Print breadcrumbs are the only option left at the SDK default of
+    // `true` in this cascade -- pinned false instead. `DebugPrintIntegration`
+    // (sentry_flutter 9.28.0) turns every non-debug-mode `debugPrint` call
+    // into a `Breadcrumb.console` with the raw printed text as `message`
+    // and no `data`, so `containsDenyListedKey` (a key-name check) never
+    // sees it; the only guard the message gets is `scrubBreadcrumb`'s
+    // `mentionsDenyListedKey` word scan, which catches a literal key name
+    // like `note` appearing as a token but not an arbitrary sensitive
+    // *value* a caller happened to print -- e.g. `app_lifecycle.dart`'s
+    // reset-failure handler does `debugPrint('lunarlog reset failed:
+    // $error\n$stackTrace')`, and neither `error`'s message nor the stack
+    // trace is guaranteed to avoid health-adjacent content. Same posture
+    // as `enableTombstone` above: pin off until a real payload has been
+    // inspected (issue #19), rather than ship a value-based scrubber this
+    // file has never had reason to build.
+    ..enablePrintBreadcrumbs = false;
   // Allowlist scrubbing (R18). scrubTransaction (U4) is inert while
   // tracesSampleRate is null -- no transaction is ever produced for it to
   // see -- and proven by unit tests long before an operator opts in.
-  options.beforeSend = (event, hint) => scrubEvent(event);
-  options.beforeSendTransaction =
-      (transaction, hint) => scrubTransaction(transaction);
-  options.beforeBreadcrumb = (breadcrumb, hint) {
-    final scrubbed = scrubBreadcrumb(breadcrumb);
-    if (scrubbed != null) {
-      log.record(scrubbed.category ?? 'breadcrumb', breadcrumbLabel(scrubbed));
+  //
+  // Every callback below fails closed: the SDK forwards the raw,
+  // unscrubbed event/transaction/breadcrumb when a `beforeSend*`/
+  // `beforeBreadcrumb` callback throws, so a bug in the scrubber itself
+  // (an unexpected field shape, a null the scrubber didn't anticipate)
+  // would otherwise leak exactly the payload this whole file exists to
+  // stop. Catching broadly and returning null (drop) is deliberate here --
+  // dropping a report is always safe, sending an unscrubbed one never is.
+  options.beforeSend = (event, hint) {
+    try {
+      return scrubEvent(event);
+    } catch (_) {
+      return null;
     }
-    return scrubbed;
+  };
+  options.beforeSendTransaction = (transaction, hint) {
+    try {
+      return scrubTransaction(transaction);
+    } catch (_) {
+      return null;
+    }
+  };
+  options.beforeBreadcrumb = (breadcrumb, hint) {
+    try {
+      final scrubbed = scrubBreadcrumb(breadcrumb);
+      if (scrubbed != null) {
+        log.record(
+            scrubbed.category ?? 'breadcrumb', breadcrumbLabel(scrubbed));
+      }
+      return scrubbed;
+    } catch (_) {
+      return null;
+    }
   };
   // Session replay stays off: both sample rates null (the SDK default) means
   // `replay.isEnabled` is false. Set explicitly so a default change upstream
