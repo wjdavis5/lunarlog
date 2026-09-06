@@ -220,40 +220,36 @@ jobs:
         # `curl | bash` (KTD10). The ProGuard upload is a documented no-op
         # today: R8/minification is not enabled by this plan (see Scope
         # Boundaries), so no mapping.txt exists yet; the conditional exists
-        # so enabling R8 later needs no workflow edit.
+        # so enabling R8 later needs no workflow edit. The guard/download/
+        # verify logic is shared with ios-release.yml via
+        # upload-sentry-symbols-setup.sh (tested in CI's release-guards
+        # jobs); only the download URL/checksum and the upload commands
+        # themselves are platform-specific.
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_CLI_DOWNLOAD_URL: https://github.com/getsentry/sentry-cli/releases/download/3.7.0/sentry-cli-Linux-x86_64
+          SENTRY_CLI_SHA256: cec71d46a7cc394c94b6e75f1601985c710d457376c546ef3975567b3671563b
+          SENTRY_CLI_CHECKSUM_TOOL: sha256sum
         run: |
-          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
-            echo "::warning::Sentry symbol upload skipped -- SENTRY_AUTH_TOKEN/ORG/PROJECT not set (issue #19)."
-            exit 0
-          fi
-          set -euo pipefail
+          bash .github/scripts/upload-sentry-symbols-setup.sh
+          if [ -x ./sentry-cli ]; then
+            # Verified empirically against this toolchain's real
+            # `flutter build appbundle --release` output tree (Q2) -- AGP's
+            # merge-native-libs task nests an extra `mergeReleaseNativeLibs`
+            # segment that a naive guess at the path misses.
+            native_libs_dir="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
+            if [ -d "$native_libs_dir" ]; then
+              ./sentry-cli debug-files upload "$native_libs_dir"
+            else
+              echo "::warning::No native libs directory found at $native_libs_dir -- skipping native symbol upload."
+            fi
 
-          sentry_cli_version="3.7.0"
-          sentry_cli_sha256="cec71d46a7cc394c94b6e75f1601985c710d457376c546ef3975567b3671563b"
-          curl -sSL -o sentry-cli \
-            "https://github.com/getsentry/sentry-cli/releases/download/${sentry_cli_version}/sentry-cli-Linux-x86_64"
-          echo "${sentry_cli_sha256}  sentry-cli" | sha256sum -c -
-          chmod +x sentry-cli
-          ./sentry-cli --version
-
-          # Verified empirically against this toolchain's real
-          # `flutter build appbundle --release` output tree (Q2) -- AGP's
-          # merge-native-libs task nests an extra `mergeReleaseNativeLibs`
-          # segment that a naive guess at the path misses.
-          native_libs_dir="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
-          if [ -d "$native_libs_dir" ]; then
-            ./sentry-cli debug-files upload "$native_libs_dir"
-          else
-            echo "::warning::No native libs directory found at $native_libs_dir -- skipping native symbol upload."
-          fi
-
-          mapping="build/app/outputs/mapping/release/mapping.txt"
-          if [ -f "$mapping" ]; then
-            ./sentry-cli upload-proguard "$mapping"
+            mapping="build/app/outputs/mapping/release/mapping.txt"
+            if [ -f "$mapping" ]; then
+              ./sentry-cli upload-proguard "$mapping"
+            fi
           fi
 
       - name: Publish to Google Play Store

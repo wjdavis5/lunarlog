@@ -405,29 +405,25 @@ jobs:
         # a pinned, checksum-verified release binary, never `curl | bash`
         # (KTD10): this step runs after the signing keychain and
         # provisioning profile are installed, so an unpinned remote script
-        # here would run with the full signing credential set in reach.
+        # here would run with the full signing credential set in reach. The
+        # guard/download/verify logic is shared with play-store-release.yml
+        # via upload-sentry-symbols-setup.sh (tested in CI's release-guards
+        # jobs); only the download URL/checksum and the upload command
+        # itself are platform-specific.
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_CLI_DOWNLOAD_URL: https://github.com/getsentry/sentry-cli/releases/download/3.7.0/sentry-cli-Darwin-universal
+          SENTRY_CLI_SHA256: 10ccaaa39e6eee2b52034546f5f617533fdc76c64aa75c3038887045da1a367d
+          SENTRY_CLI_CHECKSUM_TOOL: shasum
         run: |
-          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
-            echo "::warning::Sentry symbol upload skipped -- SENTRY_AUTH_TOKEN/ORG/PROJECT not set (issue #19)."
-            exit 0
+          bash .github/scripts/upload-sentry-symbols-setup.sh
+          if [ -x ./sentry-cli ]; then
+            # No --include-sources: this app's source files would upload to
+            # a third party for no symbolication benefit (KTD10).
+            ./sentry-cli debug-files upload build/ios/archive/Runner.xcarchive/dSYMs
           fi
-          set -euo pipefail
-
-          sentry_cli_version="3.7.0"
-          sentry_cli_sha256="10ccaaa39e6eee2b52034546f5f617533fdc76c64aa75c3038887045da1a367d"
-          curl -sSL -o sentry-cli \
-            "https://github.com/getsentry/sentry-cli/releases/download/${sentry_cli_version}/sentry-cli-Darwin-universal"
-          echo "${sentry_cli_sha256}  sentry-cli" | shasum -a 256 -c -
-          chmod +x sentry-cli
-          ./sentry-cli --version
-
-          # No --include-sources: this app's source files would upload to a
-          # third party for no symbolication benefit (KTD10).
-          ./sentry-cli debug-files upload build/ios/archive/Runner.xcarchive/dSYMs
 
       - name: Upload to TestFlight
         env:
