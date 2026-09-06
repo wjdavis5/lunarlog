@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/widgets.dart';
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/scrub.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -45,8 +46,18 @@ Future<void> runWithSentry({
 
 /// Applies the KTD12 privacy floor to [options]. Pure over [options]; kept
 /// separate from [runWithSentry] so tests can assert every setting.
-void configureSentryOptions(SentryFlutterOptions options,
-    {required String dsn}) {
+///
+/// [breadcrumbLog] (Issue #6, U4; KTD9) receives every breadcrumb that
+/// survives [scrubBreadcrumb] — feeding the feedback diagnostics preview
+/// from the same already-scrubbed stream Sentry uses, so no new
+/// instrumentation is needed when Sentry is configured. Defaults to the
+/// shared [defaultBreadcrumbLog]; tests pass their own.
+void configureSentryOptions(
+  SentryFlutterOptions options, {
+  required String dsn,
+  BreadcrumbLog? breadcrumbLog,
+}) {
+  final log = breadcrumbLog ?? defaultBreadcrumbLog;
   options
     ..dsn = dsn
     // `release` is left to the SDK's LoadReleaseIntegration, which reads
@@ -71,7 +82,13 @@ void configureSentryOptions(SentryFlutterOptions options,
     ..maxRequestBodySize = MaxRequestBodySize.never;
   // Allowlist scrubbing (R18).
   options.beforeSend = (event, hint) => scrubEvent(event);
-  options.beforeBreadcrumb = (breadcrumb, hint) => scrubBreadcrumb(breadcrumb);
+  options.beforeBreadcrumb = (breadcrumb, hint) {
+    final scrubbed = scrubBreadcrumb(breadcrumb);
+    if (scrubbed != null) {
+      log.record(scrubbed.category ?? 'breadcrumb', scrubbed.message ?? '');
+    }
+    return scrubbed;
+  };
   // Session replay stays off: both sample rates null (the SDK default) means
   // `replay.isEnabled` is false. Set explicitly so a default change upstream
   // cannot turn it on.

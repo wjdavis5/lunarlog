@@ -8,6 +8,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/scrub.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -549,6 +550,34 @@ void main() {
             Breadcrumb(category: 'x', data: {'email': _email}), Hint()),
         isNull,
       );
+    });
+  });
+
+  group('configureSentryOptions breadcrumb tee (Issue #6, U4; KTD9)', () {
+    test('a breadcrumb that survives scrubBreadcrumb is teed into the injected log', () {
+      final log = BreadcrumbLog();
+      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
+
+      options.beforeBreadcrumb!(
+        Breadcrumb(category: 'navigation', message: 'overview'),
+        Hint(),
+      );
+
+      expect(log.snapshot(), ['navigation: overview']);
+    });
+
+    test('a breadcrumb scrubBreadcrumb drops is not teed', () {
+      final log = BreadcrumbLog();
+      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
+
+      options.beforeBreadcrumb!(
+        Breadcrumb(category: 'x', data: {'email': _email}),
+        Hint(),
+      );
+
+      expect(log.snapshot(), isEmpty);
     });
   });
 }
