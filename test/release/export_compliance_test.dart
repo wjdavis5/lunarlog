@@ -26,9 +26,9 @@
 /// appear until the operator has actually obtained a code.
 library;
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+
+import 'repo_text_helpers.dart';
 
 const _pubspecPath = 'pubspec.yaml';
 const _infoPlistPath = 'ios/Runner/Info.plist';
@@ -93,22 +93,12 @@ bool _fastfileDeclaresEncryptionTrue(String fastfileContents) {
 bool _assertsComplianceCode(String contents) =>
     contents.contains('ITSEncryptionExportComplianceCode');
 
-String _readRepoFile(String path) {
-  final file = File(path);
-  expect(file.existsSync(), isTrue,
-      reason: 'expected to find $path at the repo root '
-          '(flutter test runs with CWD at the repo root)');
-  final contents = file.readAsStringSync();
-  expect(contents, isNotEmpty, reason: '$path exists but is empty');
-  return contents;
-}
-
 void main() {
   group('export compliance (KTD1/KTD2, issue #48)', () {
     test('SQLCipher hook, Info.plist, and Fastfile agree', () {
-      final pubspec = _readRepoFile(_pubspecPath);
-      final infoPlist = _readRepoFile(_infoPlistPath);
-      final fastfile = _readRepoFile(_fastfilePath);
+      final pubspec = readRepoFile(_pubspecPath);
+      final infoPlist = readRepoFile(_infoPlistPath);
+      final fastfile = readRepoFile(_fastfilePath);
 
       expect(_declaresSqlcipherHook(pubspec), isTrue,
           reason: '$_pubspecPath no longer declares the sqlcipher build '

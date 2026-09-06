@@ -137,6 +137,18 @@ void main() {
     test('greater than 1 clamps to 1.0', () {
       expect(computeTracesSampleRate('5'), 1.0);
     });
+
+    // Code-review finding: double.tryParse accepts the literal tokens
+    // "NaN"/"Infinity" as successfully parsed (not null), and num.clamp
+    // maps NaN to the *upper* bound rather than rejecting it -- so a
+    // non-finite value must be treated the same as unparseable (off), not
+    // silently clamped into 100% tracing.
+    test('non-finite values (NaN, Infinity, -Infinity) are null, not '
+        'clamped to 1.0', () {
+      expect(computeTracesSampleRate('NaN'), isNull);
+      expect(computeTracesSampleRate('Infinity'), isNull);
+      expect(computeTracesSampleRate('-Infinity'), isNull);
+    });
   });
 
   group('computeHasGoogle', () {
@@ -239,14 +251,11 @@ void main() {
       );
     });
 
-    test('sentryTracesSampleRate agrees with the pure function and is null '
-        'without a dart-define (issue #7 U4)', () {
-      expect(AppConfig.sentryTracesSampleRateRaw, isEmpty);
+    test('sentryTracesSampleRate agrees with the pure function applied to '
+        'an empty raw define -- this test run passes none (issue #7 U4)',
+        () {
       expect(AppConfig.sentryTracesSampleRate, isNull);
-      expect(
-        AppConfig.sentryTracesSampleRate,
-        computeTracesSampleRate(AppConfig.sentryTracesSampleRateRaw),
-      );
+      expect(AppConfig.sentryTracesSampleRate, computeTracesSampleRate(''));
     });
   });
 }

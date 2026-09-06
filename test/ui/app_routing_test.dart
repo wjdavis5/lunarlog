@@ -67,4 +67,27 @@ void main() {
 
     await disposeApp(tester, db);
   });
+
+  testWidgets('onGenerateRoute only produces ProfileHomeGate for the '
+      'default route name -- a future named push must fall through to '
+      "Flutter's own unknown-route handling, not silently render home",
+      (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpAndSettle();
+
+    final onGenerateRoute =
+        tester.widget<MaterialApp>(find.byType(MaterialApp)).onGenerateRoute!;
+
+    final defaultRoute =
+        onGenerateRoute(const RouteSettings(name: Navigator.defaultRouteName));
+    expect(defaultRoute, isNotNull);
+    expect(defaultRoute!.settings.name, kRouteProfileHomeGate);
+
+    final namedRoute =
+        onGenerateRoute(const RouteSettings(name: '/some-other-route'));
+    expect(namedRoute, isNull);
+
+    await disposeApp(tester, db);
+  });
 }

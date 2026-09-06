@@ -375,11 +375,18 @@ class _LunarLogAppState extends State<LunarLogApp> {
         // scrubRouteName's shape check rejects), and `initialRoute`/
         // `onGenerateInitialRoutes` cannot coexist with `home:` (WidgetsApp
         // asserts the two are mutually exclusive). onGenerateRoute is the
-        // one mechanism that produces the registered ProfileHomeGate name.
-        onGenerateRoute: (settings) => MaterialPageRoute<void>(
-          settings: const RouteSettings(name: kRouteProfileHomeGate),
-          builder: (_) => const ProfileHomeGate(),
-        ),
+        // one mechanism that produces the registered ProfileHomeGate name
+        // for the initial route -- guarded to the default route name so it
+        // stays exactly that (this app never calls Navigator.pushNamed):
+        // returning null for any other name lets Flutter's own
+        // unknown-route handling fire instead of silently rendering the
+        // home screen under an unrelated route name.
+        onGenerateRoute: (settings) => settings.name == Navigator.defaultRouteName
+            ? MaterialPageRoute<void>(
+                settings: const RouteSettings(name: kRouteProfileHomeGate),
+                builder: (_) => const ProfileHomeGate(),
+              )
+            : null,
       ),
     );
   }

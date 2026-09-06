@@ -30,10 +30,12 @@ abstract final class AppConfig {
   static const String sentryDsn = String.fromEnvironment('SENTRY_DSN');
 
   /// Raw value of `SENTRY_TRACES_SAMPLE_RATE` (issue #7 U4); mirrors the
-  /// `_webSyncRaw` idiom. Empty in `dart_defines.example.json` and in every
-  /// workflow — an operator opts a build into performance tracing locally
-  /// or by adding the flag deliberately, only after issue #19 exists.
-  static const String sentryTracesSampleRateRaw =
+  /// `_webSyncRaw` idiom (private: nothing but [sentryTracesSampleRate]
+  /// needs the unvalidated string). Empty in `dart_defines.example.json`
+  /// and in every workflow — an operator opts a build into performance
+  /// tracing locally or by adding the flag deliberately, only after issue
+  /// #19 exists.
+  static const String _sentryTracesSampleRateRaw =
       String.fromEnvironment('SENTRY_TRACES_SAMPLE_RATE');
 
   /// The tracing sample rate to configure, or null when tracing stays off
@@ -42,7 +44,7 @@ abstract final class AppConfig {
   /// initializer, so unlike [hasSupabase]/[hasSentry] this cannot itself be
   /// `const`; `static final` still computes it exactly once.
   static final double? sentryTracesSampleRate =
-      computeTracesSampleRate(sentryTracesSampleRateRaw);
+      computeTracesSampleRate(_sentryTracesSampleRateRaw);
 
   /// Raw value of `LUNARLOG_WEB_SYNC`; only the literal `true` opts a web
   /// build into account sign-in and sync. Never set in CI.
@@ -116,13 +118,19 @@ bool computeHasSupabase({
 bool computeHasSentry(String dsn) => dsn.isNotEmpty;
 
 /// Pure decision behind [AppConfig.sentryTracesSampleRate] (issue #7 U4;
-/// KTD8). Empty or unparseable input means tracing stays off (`null`); a
-/// parseable value is clamped to `[0, 1]`, matching Sentry's own contract
-/// for `tracesSampleRate`.
+/// KTD8). Empty, unparseable, or non-finite input means tracing stays off
+/// (`null`); a finite parseable value is clamped to `[0, 1]`, matching
+/// Sentry's own contract for `tracesSampleRate`.
+///
+/// `double.tryParse` accepts the literal tokens `"NaN"` and `"Infinity"` as
+/// successfully parsed (not `null`), and `num.clamp` maps `NaN` to the
+/// *upper* bound (`1.0`) rather than rejecting it — so without the explicit
+/// `isFinite` check, a stray `SENTRY_TRACES_SAMPLE_RATE=NaN` would silently
+/// enable 100% tracing instead of leaving it off.
 double? computeTracesSampleRate(String raw) {
   if (raw.isEmpty) return null;
   final parsed = double.tryParse(raw);
-  if (parsed == null) return null;
+  if (parsed == null || !parsed.isFinite) return null;
   return parsed.clamp(0.0, 1.0).toDouble();
 }
 

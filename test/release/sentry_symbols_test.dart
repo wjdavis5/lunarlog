@@ -16,31 +16,14 @@
 /// satisfy any assertion here.
 library;
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+
+import 'repo_text_helpers.dart';
 
 const _iosWorkflowPath = '.github/workflows/ios-release.yml';
 const _androidWorkflowPath = '.github/workflows/play-store-release.yml';
 const _gradlePath = 'android/app/build.gradle.kts';
 const _sharedScriptPath = '.github/scripts/upload-sentry-symbols-setup.sh';
-
-String _readRepoFile(String path) {
-  final file = File(path);
-  expect(file.existsSync(), isTrue,
-      reason: 'expected to find $path at the repo root '
-          '(flutter test runs with CWD at the repo root)');
-  final contents = file.readAsStringSync();
-  expect(contents, isNotEmpty, reason: '$path exists but is empty');
-  return contents;
-}
-
-/// Strips full-line `#` comments (YAML) so a commented-out step cannot
-/// satisfy any assertion below.
-String _stripYamlComments(String yaml) => yaml
-    .split('\n')
-    .where((line) => !RegExp(r'^\s*#').hasMatch(line))
-    .join('\n');
 
 /// The whole Sentry symbol-upload step body, matched from its `name:` line
 /// (case-insensitively naming "Sentry" and "symbol") up to (but not
@@ -85,7 +68,7 @@ void main() {
         late String runBlock;
 
         setUpAll(() {
-          final contents = _stripYamlComments(_readRepoFile(path));
+          final contents = stripHashComments(readRepoFile(path));
           stepBody = _sentrySymbolStepBody(contents);
           runBlock = _runBlockOf(stepBody);
         });
@@ -149,7 +132,7 @@ void main() {
     }
 
     test('the iOS step references the archive dSYMs directory', () {
-      final contents = _stripYamlComments(_readRepoFile(_iosWorkflowPath));
+      final contents = stripHashComments(readRepoFile(_iosWorkflowPath));
       final stepBody = _sentrySymbolStepBody(contents);
       expect(stepBody, contains('build/ios/archive/Runner.xcarchive/dSYMs'));
       expect(stepBody, isNot(contains('--include-sources')));
@@ -158,7 +141,7 @@ void main() {
     test("the Android step's ProGuard upload is inside a mapping.txt "
         'existence conditional', () {
       final contents =
-          _stripYamlComments(_readRepoFile(_androidWorkflowPath));
+          stripHashComments(readRepoFile(_androidWorkflowPath));
       final stepBody = _sentrySymbolStepBody(contents);
       expect(stepBody, contains('upload-proguard'));
       final guardIndex = stepBody.indexOf('mapping.txt');
@@ -172,16 +155,16 @@ void main() {
 
     test('AE9: build.gradle.kts declares sentry-native-ndk and enables '
         'Prefab', () {
-      final gradle = _readRepoFile(_gradlePath);
+      final gradle = readRepoFile(_gradlePath);
       expect(gradle, contains('io.sentry:sentry-native-ndk'));
       expect(gradle, contains('prefab = true'));
     });
 
     test('the shared script exists and is referenced from both workflows',
         () {
-      _readRepoFile(_sharedScriptPath); // asserts existence/non-empty
+      readRepoFile(_sharedScriptPath); // asserts existence/non-empty
       for (final path in [_iosWorkflowPath, _androidWorkflowPath]) {
-        expect(_readRepoFile(path), contains(_sharedScriptPath),
+        expect(readRepoFile(path), contains(_sharedScriptPath),
             reason: path);
       }
     });
