@@ -15,6 +15,8 @@ void main() {
           isA<AccountDeletionNetworkFailure>());
       expect(const AccountDeletionFailure.unauthorized(),
           isA<AccountDeletionUnauthorizedFailure>());
+      expect(const AccountDeletionFailure.appleCodeRequired(),
+          isA<AccountDeletionAppleCodeRequiredFailure>());
       expect(const AccountDeletionFailure.appleRevokeFailed(),
           isA<AccountDeletionAppleRevokeFailedFailure>());
       expect(const AccountDeletionFailure.timeout(),
@@ -30,6 +32,7 @@ void main() {
     const failures = <AccountDeletionFailure>[
       AccountDeletionFailure.network(),
       AccountDeletionFailure.unauthorized(),
+      AccountDeletionFailure.appleCodeRequired(),
       AccountDeletionFailure.appleRevokeFailed(),
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
@@ -75,6 +78,8 @@ void main() {
           'AccountDeletionFailure.network');
       expect(const AccountDeletionFailure.unauthorized().toString(),
           'AccountDeletionFailure.unauthorized');
+      expect(const AccountDeletionFailure.appleCodeRequired().toString(),
+          'AccountDeletionFailure.appleCodeRequired');
       expect(const AccountDeletionFailure.appleRevokeFailed().toString(),
           'AccountDeletionFailure.appleRevokeFailed');
       expect(const AccountDeletionFailure.timeout().toString(),

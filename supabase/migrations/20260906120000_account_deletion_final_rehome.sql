@@ -52,52 +52,86 @@
 --
 -- Per the repo's standing rule, this is a new migration file only; no
 -- merged migration is edited in place.
+--
+-- #17 P1 round 2 fix (2026-09-06, same day, same unmerged PR): the first
+-- version of this migration granted EXECUTE on rehome_stray_day_entries()
+-- to `authenticated` and had it key off `auth.uid()`, on the theory that it
+-- was "just" a second call to the same self-service re-home
+-- delete_account_data() already runs as its own step 0. That reasoning
+-- missed that `day_entries.user_id` is *excluded* from the ordinary
+-- `authenticated` column grant (see 20260903014208_initial_sync_schema.sql)
+-- precisely so a caregiver cannot write it directly - this SECURITY DEFINER
+-- wrapper reopened exactly that door: ANY authenticated caller, including a
+-- guardian already `revoke_guardian`'d off a family, could call it directly
+-- naming themselves and re-stamp `last_modified_by_user_id` on that
+-- family's `day_entries` rows, bumping `server_version` and waking their
+-- Realtime subscribers for a family they no longer have access to -
+-- exactly the revocation-bypass class of bug closed elsewhere in this repo
+-- (#81/#82). Fixed here (this file is not yet merged, so it is edited in
+-- place rather than layered under a further migration) by:
+--   * taking an explicit `p_user_id` parameter instead of reading
+--     `auth.uid()`, so the function no longer has any notion of "the
+--     caller is the subject" for a client to exploit;
+--   * revoking `EXECUTE` from `authenticated` (and `anon`/`PUBLIC`)
+--     entirely - nobody but the function's owner and `service_role` can
+--     call it now;
+--   * calling it only from `delete_account_data()`'s own internal
+--     (security-definer, so it runs as the owner regardless of grants)
+--     call, and from the delete-account Edge Function's service-role
+--     client immediately before `auth.admin.deleteUser` - never from
+--     client code.
 
-create or replace function public.rehome_stray_day_entries()
+create or replace function public.rehome_stray_day_entries(p_user_id uuid)
 returns bigint
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_uid uuid := (select auth.uid());
   v_rehomed bigint := 0;
 begin
-  if v_uid is null then
-    raise exception 'authentication required' using errcode = 'insufficient_privilege';
+  if p_user_id is null then
+    raise exception 'p_user_id is required' using errcode = 'invalid_parameter_value';
   end if;
 
-  -- Re-home (to the profile's actual owner) any live day_entries the
-  -- caller logged on a profile they do not own. Idempotent: a row already
-  -- re-homed no longer matches `d.user_id = v_uid`, so a second call in a
-  -- row finds nothing left to move (see the pgTAP coverage below).
+  -- Re-home (to the profile's actual owner) any live day_entries
+  -- p_user_id logged as a caregiver on a profile they do not own.
+  -- Idempotent: a row already re-homed no longer matches
+  -- `d.user_id = p_user_id`, so a second call in a row finds nothing left
+  -- to move (see the pgTAP coverage below).
   update public.day_entries d
      set user_id = p.user_id,
-         last_modified_by_user_id = v_uid
+         last_modified_by_user_id = p_user_id
     from public.profiles p
    where d.profile_id = p.id
-     and d.user_id = v_uid
-     and p.user_id <> v_uid;
+     and d.user_id = p_user_id
+     and p.user_id <> p_user_id;
   get diagnostics v_rehomed = row_count;
 
   return v_rehomed;
 end;
 $$;
 
-comment on function public.rehome_stray_day_entries() is
-  'Re-homes (to the profile''s actual owner) any live day_entries the '
-  'calling user (auth.uid()) logged as a caregiver on a profile they do '
-  'not own. Idempotent - a second call finds nothing left to move. Used by '
-  'delete_account_data() as its step 0, and called a second time, '
-  'standalone, by the delete-account Edge Function immediately before '
-  'auth.admin.deleteUser, to narrow the window between the row-deletion '
-  'RPC and the actual auth.users removal in which a stray write could '
-  'otherwise still be reached by that row''s on-delete-cascade (#17 P1 '
-  'item 5 - see this migration''s header for the residual risk that '
-  'remains even so).';
+comment on function public.rehome_stray_day_entries(uuid) is
+  'Re-homes (to the profile''s actual owner) any live day_entries '
+  'p_user_id logged as a caregiver on a profile they do not own. '
+  'Idempotent - a second call finds nothing left to move. Takes an '
+  'explicit p_user_id rather than reading auth.uid(), and EXECUTE is not '
+  'granted to authenticated/anon/PUBLIC (#17 P1 round 2 fix): a client-'
+  'callable, auth.uid()-keyed version of this function let any '
+  'authenticated caller - including a guardian already revoked from a '
+  'family - re-stamp last_modified_by_user_id on that family''s '
+  'day_entries rows, a revocation-bypass class of bug this repo already '
+  'closed elsewhere (#81/#82). Called only from delete_account_data()''s '
+  'own internal (security-definer) call as its step 0, and, standalone, '
+  'from the delete-account Edge Function''s service-role client '
+  'immediately before auth.admin.deleteUser, to narrow the window between '
+  'the row-deletion RPC and the actual auth.users removal in which a '
+  'stray write could otherwise still be reached by that row''s '
+  'on-delete-cascade (#17 P1 item 5 - see this migration''s header for '
+  'the residual risk that remains even so).';
 
-revoke all on function public.rehome_stray_day_entries() from public, anon;
-grant execute on function public.rehome_stray_day_entries() to authenticated;
+revoke all on function public.rehome_stray_day_entries(uuid) from public, anon, authenticated;
 
 -- Re-point delete_account_data()'s step 0 at the shared function above
 -- instead of duplicating its UPDATE inline. No behavior change: same
@@ -123,9 +157,12 @@ begin
 
   -- Step 0 (P0 fix; #17 P1 item 5 follow-up): see
   -- public.rehome_stray_day_entries() above - the delete-account Edge
-  -- Function calls it a second time, standalone, immediately before
-  -- auth.admin.deleteUser.
-  v_day_entries_rehomed := public.rehome_stray_day_entries();
+  -- Function calls it a second time, standalone (on its service-role
+  -- client, with an explicit p_user_id - #17 P1 round 2 fix), immediately
+  -- before auth.admin.deleteUser. This call runs inside a security-definer
+  -- function, so it executes as the function owner regardless of
+  -- rehome_stray_day_entries()'s own (now-revoked) grants to authenticated.
+  v_day_entries_rehomed := public.rehome_stray_day_entries(v_uid);
 
   -- day_entries on profiles the caller owns. Deliberately not
   -- `day_entries.user_id = v_uid`: that column is stamped from auth.uid()
@@ -178,15 +215,19 @@ $$;
 comment on function public.delete_account_data() is
   'Deletes every row the calling user (auth.uid()) owns across profiles, '
   'day_entries, settings, profile_guardians and guardian_invitations, '
-  'first calling public.rehome_stray_day_entries() to re-home any '
-  'day_entries this caller logged as a caregiver on a profile they do not '
-  'own, so the auth.users on delete cascade the Edge Function triggers '
-  'afterwards cannot reach them (#17 P0 fix). Takes no parameters - the '
-  'caller is always the subject, so no other account can be named in the '
-  'call. Called by the delete-account Edge Function before it revokes '
-  'Apple and deletes the auth.users row (#17 KTD1/KTD4); that same '
-  'function calls rehome_stray_day_entries() a second time, standalone, '
-  'immediately before the auth.users deletion (#17 P1 item 5).';
+  'first calling public.rehome_stray_day_entries(auth.uid()) to re-home '
+  'any day_entries this caller logged as a caregiver on a profile they do '
+  'not own, so the auth.users on delete cascade the Edge Function '
+  'triggers afterwards cannot reach them (#17 P0 fix). That call runs as '
+  'this function''s own security-definer owner, so it succeeds regardless '
+  'of rehome_stray_day_entries()''s own (revoked, #17 P1 round 2 fix) '
+  'grants. Takes no parameters itself - the caller is always the subject, '
+  'so no other account can be named in the call. Called by the '
+  'delete-account Edge Function before it revokes Apple and deletes the '
+  'auth.users row (#17 KTD1/KTD4); that same function calls '
+  'rehome_stray_day_entries() a second time, standalone, on its '
+  'service-role client with an explicit p_user_id, immediately before the '
+  'auth.users deletion (#17 P1 item 5; round 2 fix).';
 
 revoke all on function public.delete_account_data() from public, anon;
 grant execute on function public.delete_account_data() to authenticated;

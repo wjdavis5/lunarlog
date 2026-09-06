@@ -37,6 +37,34 @@
 //     not deleted") is simply false there, and sending the operator to
 //     "sign in again" is not the right guidance for a state this specific.
 //
+// #17 P1 round 2 fixes (2026-09-06), on top of the round-1 fixes above:
+//   * Step 3's missing-Apple-code precondition used to return the same
+//     `apple_revoke_failed` code as a real revocation failure. That code's
+//     client-side copy says "your account data was deleted, but..." - true
+//     for a real revoke failure (Step 3 already confirmed a code was
+//     present, so Step 4's RPC has run by the time revocation is
+//     attempted), but false here: this precondition fails *before* Step 4,
+//     so nothing has been touched yet. It now returns its own
+//     `apple_code_required` code with copy that accurately says nothing was
+//     deleted and the operator just needs to retry with a fresh code.
+//   * Step 6's re-home pass now calls `rehome_stray_day_entries` with an
+//     explicit `p_user_id` on the service-role client, not the caller's own
+//     `userClient`. The function's `EXECUTE` grant to `authenticated` has
+//     been revoked (see the migration): a caller could otherwise invoke it
+//     directly - including a guardian already revoked from a family - to
+//     re-stamp `last_modified_by_user_id` on that family's `day_entries`
+//     rows and wake their Realtime subscribers, exactly the
+//     revocation-bypass class of bug this repo already closed elsewhere
+//     (#81/#82). It is now reachable only from this service-role call and
+//     from `delete_account_data()`'s own internal (security-definer) call.
+//   * That Step 6 call now checks the `{ data, error }` result `rpc()`
+//     actually returns instead of relying on a `catch` block: `rpc()`
+//     resolves rather than throws for a Postgres-side error, so the old
+//     `catch` alone could never observe a failed rehome and would log
+//     nothing. The `catch` stays as a secondary net for a genuine thrown
+//     exception (e.g. a network-level failure), but the primary path now
+//     inspects `error` directly.
+//
 // Never echoes Supabase/Apple error text, tokens, emails, or row content
 // into the response or the log: only a stable error `code`, an HTTP status,
 // and (server-side only) an error *type* or U1's row-count summary are ever
@@ -61,6 +89,7 @@ interface DeleteAccountRequestBody {
 
 type ErrorCode =
   | "unauthorized"
+  | "apple_code_required"
   | "apple_revoke_failed"
   | "delete_user_failed"
   | "unknown";
@@ -142,11 +171,18 @@ Deno.serve(async (req: Request) => {
   // never told to fetch. Previously this check ran after Step 4 below, so
   // it still let the row deletion happen first - unrecoverable, since a
   // deleted account can never supply a code to finish deleting itself.
+  //
+  // #17 P1 round 2 fix: a distinct `apple_code_required` code, not
+  // `apple_revoke_failed`. That code is also used below (Step 5) for a real
+  // revocation failure, where Step 4's RPC has already run and its
+  // client-side copy correctly says "your account data was deleted, but...".
+  // Reusing it here would say the same false thing about a call that never
+  // touched a single row.
   if (hasAppleIdentity && !appleCode) {
     console.error(
       "delete-account: apple identity present but no authorization code supplied; nothing touched",
     );
-    return errorResponse("apple_revoke_failed", 409);
+    return errorResponse("apple_code_required", 400);
   }
 
   // Step 4: the row deletion (U1), run as the caller.
@@ -176,33 +212,56 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Step 6 (#17 P1 fix): a second, best-effort re-home pass immediately
-  // before the one irreversible step below. delete_account_data() already
-  // ran this once (as its own step 0); Apple revocation's network round
-  // trip (when applicable) is the main source of the gap since. This
-  // narrows - it cannot fully close, see the migration's comment - the
-  // window in which a stray write from this caller's own device could
-  // still land on a profile they don't own and be reached by that row's
-  // `on delete cascade` once Step 7 removes their `auth.users` row.
-  //
-  // Best-effort on purpose: the RPC below already covers the overwhelming
-  // majority of the risk surface, and failing an otherwise-successful,
-  // already-confirmed deletion over this purely defensive extra pass would
-  // trade a small, already-narrow residual risk for a certain bad outcome
-  // (the account stays undeleted indefinitely).
-  try {
-    await userClient.rpc("rehome_stray_day_entries");
-  } catch (error) {
-    console.error(
-      `delete-account: final rehome pass failed (${errorType(error)}); proceeding to delete the user anyway`,
-    );
-  }
-
-  // Step 7: the user row, last (KTD4) - the only irreversible step, on a
-  // separate service-role client (auth.admin.* needs the service role).
+  // A separate service-role client (auth.admin.* needs the service role;
+  // Step 6 below also uses it now - see that step's comment).
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  // Step 6 (#17 P1 fix; round 2 fix on top): a second, best-effort re-home
+  // pass immediately before the one irreversible step below.
+  // delete_account_data() already ran this once (as its own step 0); Apple
+  // revocation's network round trip (when applicable) is the main source of
+  // the gap since. This narrows - it cannot fully close, see the
+  // migration's comment - the window in which a stray write from this
+  // caller's own device could still land on a profile they don't own and be
+  // reached by that row's `on delete cascade` once Step 7 removes their
+  // `auth.users` row.
+  //
+  // Round 2 fix: called on `adminClient` (service role) with an explicit
+  // `p_user_id`, not on `userClient`. The function's `EXECUTE` grant to
+  // `authenticated` has been revoked (see the migration) precisely so a
+  // client - including a guardian already revoked from a family - cannot
+  // call it directly to re-stamp `last_modified_by_user_id` on rows in a
+  // family they no longer have access to. It is now reachable only from
+  // here and from `delete_account_data()`'s own internal call.
+  //
+  // Best-effort on purpose: the RPC already covers the overwhelming
+  // majority of the risk surface, and failing an otherwise-successful,
+  // already-confirmed deletion over this purely defensive extra pass would
+  // trade a small, already-narrow residual risk for a certain bad outcome
+  // (the account stays undeleted indefinitely). The `error` result is
+  // checked directly (round 2 fix) - `rpc()` resolves with `{ data, error }`
+  // rather than throwing on a Postgres-side failure, so a bare `catch` alone
+  // could never have observed one; the `catch` here is only a secondary net
+  // for a genuine thrown exception (e.g. a network-level failure).
+  try {
+    const { error: rehomeError } = await adminClient.rpc(
+      "rehome_stray_day_entries",
+      { p_user_id: user.id },
+    );
+    if (rehomeError) {
+      console.error(
+        `delete-account: final rehome pass failed (${errorType(rehomeError)}); proceeding to delete the user anyway`,
+      );
+    }
+  } catch (error) {
+    console.error(
+      `delete-account: final rehome pass threw unexpectedly (${errorType(error)}); proceeding to delete the user anyway`,
+    );
+  }
+
+  // Step 7: the user row, last (KTD4) - the only irreversible step.
   const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(
     user.id,
   );

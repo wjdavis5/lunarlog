@@ -66,6 +66,40 @@ void main() {
       );
     });
 
+    test('a non-2xx response body carrying code apple_code_required maps to '
+        'appleCodeRequired (#17 P1 round 2 fix)', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            throw const FunctionsHttpException(
+          status: 400,
+          details: {'ok': false, 'code': 'apple_code_required'},
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.appleCodeRequired()),
+      );
+    });
+
+    test('a 2xx response body reporting ok:false with code '
+        'apple_code_required also maps to appleCodeRequired', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(
+          data: {'ok': false, 'code': 'apple_code_required'},
+          status: 200,
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.appleCodeRequired()),
+      );
+    });
+
     test('a non-2xx response body carrying code apple_revoke_failed maps to '
         'appleRevokeFailed', () async {
       final client = FakeSupabaseClient(

@@ -30,6 +30,17 @@ sealed class AccountDeletionFailure implements Exception {
   const factory AccountDeletionFailure.unauthorized() =
       AccountDeletionUnauthorizedFailure;
 
+  /// The Edge Function's own `apple_code_required` code (#17 P1 round 2
+  /// fix): the account has an Apple identity but the client supplied no
+  /// authorization code, so the Edge Function refused *before* running any
+  /// destructive step - nothing was touched at all. Distinct from
+  /// [AccountDeletionFailure.appleRevokeFailed], where the server-side row
+  /// deletion has already run: that code's copy correctly says data was
+  /// deleted, which would be false here. The operator just needs to retry -
+  /// retrying the delete flow fetches a fresh Apple code (KTD3).
+  const factory AccountDeletionFailure.appleCodeRequired() =
+      AccountDeletionAppleCodeRequiredFailure;
+
   /// The Edge Function's own `apple_revoke_failed` code (#17 KTD4): the
   /// server-side row deletion already ran, but Apple could not confirm the
   /// revocation, so the `auth.users` row was deliberately left in place and
@@ -80,6 +91,15 @@ final class AccountDeletionUnauthorizedFailure extends AccountDeletionFailure {
 
   @override
   String toString() => 'AccountDeletionFailure.unauthorized';
+}
+
+/// See [AccountDeletionFailure.appleCodeRequired].
+final class AccountDeletionAppleCodeRequiredFailure
+    extends AccountDeletionFailure {
+  const AccountDeletionAppleCodeRequiredFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.appleCodeRequired';
 }
 
 /// See [AccountDeletionFailure.appleRevokeFailed].

@@ -510,6 +510,7 @@ void main() {
     for (final failure in const <AccountDeletionFailure>[
       AccountDeletionFailure.network(),
       AccountDeletionFailure.unauthorized(),
+      AccountDeletionFailure.appleCodeRequired(),
       AccountDeletionFailure.appleRevokeFailed(),
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
@@ -538,6 +539,29 @@ void main() {
         );
       });
     }
+
+    testWidgets('appleCodeRequired explains nothing was deleted and the '
+        'operator should retry (#17 P1 round 2 fix)', (tester) async {
+      const failure = AccountDeletionFailure.appleCodeRequired();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      // Unlike appleRevokeFailed, nothing was touched on this path (the
+      // Edge Function fails closed before Step 4's destructive RPC even
+      // runs) - the copy must say so, not the appleRevokeFailed line's
+      // "your account data was deleted, but...".
+      expect(copy, isNot(contains('your account data was deleted')));
+      expect(copy.toLowerCase(), contains('nothing was deleted'));
+      expect(copy.toLowerCase(), contains('try again'));
+    });
 
     testWidgets('appleRevokeFailed explains the data WAS deleted, only Apple '
         'revocation failed, and the action can be retried', (tester) async {

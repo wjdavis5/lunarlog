@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(41);
+select plan(42);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -397,12 +397,25 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- 9. #17 P1 item 5: public.rehome_stray_day_entries() - the re-home logic
---    extracted into its own callable function so the delete-account Edge
---    Function can call it a second time, standalone, immediately before
---    auth.admin.deleteUser (narrowing, not closing, the window between
---    delete_account_data()'s one-time re-home and the actual auth.users
---    removal - see 20260906120000_account_deletion_final_rehome.sql).
+-- 9. #17 P1 item 5: public.rehome_stray_day_entries(uuid) - the re-home
+--    logic extracted into its own callable function so the delete-account
+--    Edge Function can call it a second time, standalone, immediately
+--    before auth.admin.deleteUser (narrowing, not closing, the window
+--    between delete_account_data()'s one-time re-home and the actual
+--    auth.users removal - see
+--    20260906120000_account_deletion_final_rehome.sql).
+--
+--    #17 P1 round 2 fix: this function used to take no arguments, read
+--    auth.uid(), and be EXECUTE-granted to authenticated - which let ANY
+--    authenticated caller, including a guardian already revoked from a
+--    family, re-stamp last_modified_by_user_id on that family's
+--    day_entries rows directly (a revocation-bypass class of bug closed
+--    elsewhere in this repo, #81/#82). It now takes an explicit
+--    p_user_id and authenticated holds no EXECUTE at all - only
+--    delete_account_data()'s own internal call and a service-role caller
+--    can reach it. The tests below assert the closed-off grant and prove
+--    the update logic itself via service_role, mirroring how the
+--    delete-account Edge Function actually calls it.
 -- ---------------------------------------------------------------------------
 
 select ok(
@@ -411,7 +424,7 @@ select ok(
      where proname = 'rehome_stray_day_entries'
        and pronamespace = 'public'::regnamespace
   ),
-  'public.rehome_stray_day_entries() exists'
+  'public.rehome_stray_day_entries(uuid) exists'
 );
 
 select is(
@@ -431,8 +444,8 @@ select ok(
 );
 
 select ok(
-  has_function_privilege('authenticated', 'public.rehome_stray_day_entries()', 'execute'),
-  'authenticated can execute rehome_stray_day_entries'
+  not has_function_privilege('authenticated', 'public.rehome_stray_day_entries(uuid)', 'execute'),
+  'authenticated cannot execute rehome_stray_day_entries (#17 P1 round 2 fix: the revocation bypass this closes)'
 );
 
 select is(
@@ -440,31 +453,23 @@ select is(
      join pg_namespace n on n.oid = p.pronamespace
      cross join lateral aclexplode(coalesce(p.proacl, '{}'::aclitem[])) a
     where n.nspname = 'public' and p.proname = 'rehome_stray_day_entries'
-      and (a.grantee = 0 or a.grantee = 'anon'::regrole)),
+      and (a.grantee = 0 or a.grantee = 'anon'::regrole or a.grantee = 'authenticated'::regrole)),
   0::bigint,
-  'PUBLIC and anon hold no EXECUTE on rehome_stray_day_entries'
+  'PUBLIC, anon, and authenticated hold no EXECUTE on rehome_stray_day_entries'
 );
 
 select tests.authenticate_as_anon();
 select throws_ok(
-  $$select public.rehome_stray_day_entries()$$,
+  $$select public.rehome_stray_day_entries('00000000-0000-0000-0000-000000000001'::uuid)$$,
   '42501', null,
   'anon cannot execute rehome_stray_day_entries'
 );
 
-select set_config('request.jwt.claims', '', true);
-select set_config('role', 'authenticated', true);
-select throws_ok(
-  $$select public.rehome_stray_day_entries()$$,
-  '42501', null,
-  'an authenticated role with no JWT claims is refused (auth.uid() is null)'
-);
-select tests.clear_authentication();
-
--- Direct behavior: a caregiver logs an entry on a profile they don't own,
--- standing in for a write that lands *after* delete_account_data()'s own
--- one-time re-home has already run (the #17 P1 item 5 race) - this is what
--- the Edge Function's second, standalone call catches.
+-- Direct behavior fixture: a caregiver logs an entry on a profile they
+-- don't own, standing in for a write that lands *after*
+-- delete_account_data()'s own one-time re-home has already run (the #17 P1
+-- item 5 race) - this is what the Edge Function's second, standalone call
+-- catches.
 select tests.create_supabase_user('user_i'); -- owner
 select tests.create_supabase_user('user_j'); -- caregiver
 
@@ -486,10 +491,25 @@ insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at
 values (tests.ulid(41), tests.ulid(7), '2026-09-06', 'UTC', 'medium', '2026-09-06T00:00:00Z',
         tests.get_supabase_uid('user_j'), tests.get_supabase_uid('user_j'));
 
+-- The revocation-bypass this round-2 fix closes: J, still authenticated
+-- (not even revoked) with a real JWT, cannot call the function directly
+-- even naming themselves - the grant itself is the barrier, not an
+-- auth.uid() check the caller could satisfy.
+select throws_ok(
+  format($$select public.rehome_stray_day_entries(%L::uuid)$$, tests.get_supabase_uid('user_j')),
+  '42501', null,
+  'authenticated cannot execute rehome_stray_day_entries directly, even naming themselves'
+);
+
+-- Only a service-role caller (the Edge Function's admin client in
+-- production) can reach it now.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
 select is(
-  public.rehome_stray_day_entries(),
+  public.rehome_stray_day_entries(tests.get_supabase_uid('user_j')),
   1::bigint,
-  'rehome_stray_day_entries re-homes the one stray row it finds'
+  'service_role can call rehome_stray_day_entries, which re-homes the one stray row it finds'
 );
 
 select is(
@@ -499,10 +519,18 @@ select is(
 );
 
 select is(
-  public.rehome_stray_day_entries(),
+  public.rehome_stray_day_entries(tests.get_supabase_uid('user_j')),
   0::bigint,
   'a second call is idempotent: nothing left to re-home'
 );
+
+select throws_ok(
+  $$select public.rehome_stray_day_entries(null)$$,
+  '22023', null,
+  'a null p_user_id is refused rather than silently matching every row'
+);
+
+select tests.clear_authentication();
 
 select * from finish();
 rollback;

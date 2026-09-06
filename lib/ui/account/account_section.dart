@@ -66,7 +66,10 @@ const String kAppVersionForExport = '1.0.0+1';
 /// U6; R10), the same shape as [authFailureCopy]. [AccountDeletionFailure
 /// .appleRevokeFailed] gets a distinct line: the server rows are already
 /// gone, but the account itself was deliberately left intact and the whole
-/// call is safe to retry (#17 KTD4).
+/// call is safe to retry (#17 KTD4). [AccountDeletionFailure
+/// .appleCodeRequired] gets its own distinct line too (#17 P1 round 2 fix):
+/// unlike [AccountDeletionFailure.appleRevokeFailed], nothing was touched
+/// on this path at all, so its copy must not claim any data was deleted.
 String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
     switch (failure) {
       AccountDeletionNetworkFailure() =>
@@ -75,6 +78,10 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
       AccountDeletionUnauthorizedFailure() =>
         'Your session has expired. Sign in again and retry - your account '
             'was not deleted.',
+      AccountDeletionAppleCodeRequiredFailure() =>
+        'Nothing was deleted. We couldn\'t confirm your Apple sign-in '
+            'before starting, so the deletion never began - please try '
+            'again.',
       AccountDeletionAppleRevokeFailedFailure() =>
         'Your account data was deleted, but Apple could not confirm the '
             'sign-in revocation, so your account sign-in itself still '
