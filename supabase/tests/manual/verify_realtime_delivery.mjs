@@ -32,6 +32,9 @@
 // `finally` -- including on a thrown assertion failure -- so repeated runs
 // against the cloud project do not accumulate test users or leave
 // real-looking minor's-health-log content (`note`/`tags`/`flow`) behind.
+// As a second line of defence against a run that dies without reaching
+// `finally` at all (Ctrl-C, SIGKILL, a crashed container), step 0 sweeps the
+// two fixed throwaway row ids before creating anything -- see `preclean()`.
 //
 // Exit code 0 = PASS (sync_signals delivered a wake event containing only
 // profile_id/updated_at, on a channel that genuinely reached Realtime and
@@ -54,6 +57,27 @@ if (!ANON_KEY || !SERVICE_ROLE_KEY) {
 const admin = createClient(API_URL, SERVICE_ROLE_KEY);
 const email = `verify-realtime-${Date.now()}@test.local`;
 const password = 'correct horse battery staple 1!';
+
+/** Everything `teardown()` has to clean up, at MODULE scope and populated by
+ * `main()` *as each resource is created* -- never returned from `main()`.
+ *
+ * This is load-bearing, not style. A thrown assertion skips every remaining
+ * statement in `main()`, including any trailing `return`, so a context handed
+ * over by return value is still empty when the `finally` below runs: teardown
+ * would print "[teardown] done." while leaving the auth user, the profile,
+ * and the day_entries row (real-looking minor's-health-log content) behind on
+ * exactly the failure paths that need cleanup most. Worse, `ulid(1)` is a
+ * fixed literal and `profiles.id` carries a global unique constraint
+ * (`profiles_id_uq`), so one leaked profile row permanently wedges this gate
+ * for every later run -- and each wedged run leaks another auth user.
+ * (PR #92 review round 3; both behaviours were reproduced before this fix.) */
+const ctx = {
+  channels: [],
+  authed: null,
+  profileId: null,
+  dayEntryId: null,
+  userId: null,
+};
 
 /** A 26-char ULID-shaped literal satisfying this schema's ULID check
  * constraints; only needs to be unique within one run of this script. */
@@ -91,10 +115,38 @@ function waitForPostgresSubscriptionSettled(channel, timeoutMs = 8000) {
   });
 }
 
+/** Removes the two fixed-id throwaway rows before the run creates them, so a
+ * previous run that was killed outright (Ctrl-C, SIGKILL, a container that
+ * went away) cannot wedge this gate forever on `profiles_id_uq`. Deleting the
+ * profile FK-cascades its day_entries and profile_guardians rows, and its
+ * AFTER DELETE trigger (`profiles_after_change_signal`) drops the matching
+ * sync_signals row -- sync_signals deliberately has no FK to profiles, see the
+ * migration header. The explicit day_entries delete just avoids depending on
+ * that cascade. Any row this actually removes is a leftover, so say so loudly
+ * rather than quietly papering over it. */
+async function preclean(profileId, dayEntryId) {
+  for (const [table, column, value] of [
+    ['day_entries', 'id', dayEntryId],
+    ['profiles', 'id', profileId],
+  ]) {
+    const { data, error } = await admin.from(table).delete().eq(column, value).select(column);
+    if (error) {
+      console.error(`[0/8] pre-clean of ${table} failed:`, error.message);
+    } else if (data?.length) {
+      console.warn(
+        `[0/8] WARNING: removed ${data.length} leftover ${table} row(s) from an earlier `
+          + 'run that died before teardown -- investigate why that run was killed.'
+      );
+    }
+  }
+}
+
 async function main() {
-  let userId = null;
-  let authed = null;
-  const channels = [];
+  const profileId = ulid(1);
+  const dayEntryId = ulid(2);
+
+  console.log('[0/8] pre-cleaning any leftover throwaway rows from a killed earlier run ...');
+  await preclean(profileId, dayEntryId);
 
   console.log('[1/8] creating a test user and signing in ...');
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
@@ -103,13 +155,13 @@ async function main() {
     email_confirm: true,
   });
   if (createErr) throw createErr;
-  userId = created.user.id;
+  ctx.userId = created.user.id;
 
   const anon = createClient(API_URL, ANON_KEY);
   const { data: signIn, error: signInErr } = await anon.auth.signInWithPassword({ email, password });
   if (signInErr) throw signInErr;
 
-  authed = createClient(API_URL, ANON_KEY, {
+  const authed = createClient(API_URL, ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${signIn.session.access_token}` } },
     accessToken: async () => signIn.session.access_token,
     realtime: {
@@ -117,9 +169,12 @@ async function main() {
       logger: (kind, msg, data) => console.log('[rt]', kind, msg, JSON.stringify(data)),
     },
   });
+  ctx.authed = authed;
 
-  const profileId = ulid(1);
-  const dayEntryId = ulid(2);
+  // Registered BEFORE the inserts, not after: if an insert half-succeeds or a
+  // later step throws, teardown still knows which ids to delete.
+  ctx.profileId = profileId;
+  ctx.dayEntryId = dayEntryId;
 
   console.log('[2/8] inserting a profile as the authenticated user (creates guardian membership via trigger) ...');
   const { error: profileErr } = await authed.from('profiles').insert({
@@ -162,7 +217,9 @@ async function main() {
       { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${profileId}` },
       (payload) => received.profiles.push(payload)
     );
-  channels.push(syncSignalsChannel, dayEntriesChannel, profilesChannel);
+  // Registered before `subscribe()`, so a channel that errors during
+  // subscription is still removed by teardown.
+  ctx.channels.push(syncSignalsChannel, dayEntriesChannel, profilesChannel);
 
   const settleResults = {};
   await Promise.all(
@@ -286,8 +343,6 @@ async function main() {
       + 'update and the day_entries insert; day_entries/profiles delivered nothing, '
       + 'against a real local Supabase Realtime container.'
   );
-
-  return { channels, authed, profileId, dayEntryId, userId };
 }
 
 async function teardown({ channels, authed, profileId, dayEntryId, userId }) {
@@ -317,11 +372,7 @@ async function teardown({ channels, authed, profileId, dayEntryId, userId }) {
   console.log('[teardown] done.');
 }
 
-let ctx = {};
 main()
-  .then((result) => {
-    ctx = result ?? ctx;
-  })
   .catch((e) => {
     console.error('verify_realtime_delivery.mjs failed:', e);
     process.exitCode = process.exitCode || 1;
