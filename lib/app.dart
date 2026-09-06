@@ -17,6 +17,7 @@ import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -44,6 +45,7 @@ class LunarLogApp extends StatefulWidget {
     this.authService,
     this.syncEngine,
     this.sharingService,
+    this.accountDeletionService,
     this.inviteLinks,
     this.initialInviteCode,
     this.initialInviteProfileId,
@@ -54,6 +56,12 @@ class LunarLogApp extends StatefulWidget {
 
   final LunarLogDatabase db;
   final SharingService? sharingService;
+
+  /// Account deletion seam (#17 U4). When present,
+  /// `lib/ui/account/account_section.dart` renders a "Delete account" tile
+  /// (R11); when null (an unconfigured build, or web unless
+  /// `LUNARLOG_WEB_SYNC=true`) the tile is absent.
+  final AccountDeletionService? accountDeletionService;
 
   /// `lunarlog://invite?code=...` links (U8; R9/F2), filtered by main.dart
   /// (or injected by tests). When present and a sharing service exists,
@@ -303,6 +311,9 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider<LunarLogStorage>.value(value: widget.db.storage),
         if (widget.sharingService != null)
           Provider<SharingService>.value(value: widget.sharingService!),
+        if (widget.accountDeletionService != null)
+          Provider<AccountDeletionService>.value(
+              value: widget.accountDeletionService!),
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<SettingsStore>.value(value: _settings),
