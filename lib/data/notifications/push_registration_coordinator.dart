@@ -3,6 +3,14 @@
 /// this device's registration on sign-out. Fully testable against fakes -
 /// mirrors `lib/data/notifications/reminder_coordinator.dart`'s disposal
 /// discipline.
+///
+/// [removeRegistration] (#1 review fix) is the removal path every real
+/// sign-out UI flow calls explicitly, before invoking the auth service's own
+/// signOut() - see its doc comment for why reacting to the auth-state stream
+/// alone is not reliable. [_onAuthState] below still calls the same
+/// best-effort removal when it observes a sign-out (e.g. a session expiring
+/// server-side rather than through one of those UI flows), as defense in
+/// depth, not as the primary mechanism.
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -102,6 +110,21 @@ class PushRegistrationCoordinator {
       // Best-effort.
     }
   }
+
+  /// Explicit, best-effort removal of this device's registration (#1
+  /// review fix). [_onAuthState] reacting to the auth-state stream cannot
+  /// be the *only* removal path: by the time that stream emits signedOut,
+  /// the underlying auth client has typically already cleared its local
+  /// session as part of signOut()'s own effect, so a registry call made
+  /// from that handler runs unauthenticated (RLS then silently denies the
+  /// delete) - and on the device-reset path this coordinator is disposed,
+  /// cancelling that subscription, before sign-out even runs, so the
+  /// handler never fires at all. Every UI sign-out entry point (composition
+  /// root only - see the callers of this method) must call this while the
+  /// session is still authenticated, *before* calling the auth service's
+  /// own signOut(), rather than relying on this coordinator to notice
+  /// afterwards.
+  Future<void> removeRegistration() => _safeRemove();
 
   Future<void> dispose() async {
     _disposed = true;

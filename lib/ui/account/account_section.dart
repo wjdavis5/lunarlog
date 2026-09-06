@@ -53,7 +53,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart'
-    show DeviceResetCallback, GateController;
+    show DeviceResetCallback, GateController, RemovePushRegistrationCallback;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
@@ -699,6 +699,12 @@ class _AccountSectionState extends State<AccountSection> {
     );
     if (confirmed != true || !context.mounted) return;
     final auth = context.read<AuthController>();
+    // #1 (review fix): remove this device's push registration while the
+    // session is still authenticated, before signOut() clears it - see
+    // RemovePushRegistrationCallback's doc comment. _reset(context) below
+    // (resetDevice) also attempts this, but by then signOut() has already
+    // cleared the session, so that attempt alone runs as anon and is denied.
+    await context.read<RemovePushRegistrationCallback?>()?.call();
     try {
       await auth.signOut(scope: AuthSignOutScope.global);
     } on AuthFailure catch (failure) {

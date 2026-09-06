@@ -257,6 +257,12 @@ Supabase Auth setup above.
 Dashboard prerequisites for remote push (FCM/APNs), the outbox drain, and
 the nightly missed-entry scan
 ([plan](../plans/2026-09-06-001-feat-caregiver-alerts-and-reminders-plan.md)).
+Two `pg_cron` jobs drive this as of PR #109 review, not one: the nightly
+`run_nightly_caregiver_alerts_job()` (scan, sweep, dispatch - 09:00 UTC) and
+a `run_caregiver_alert_drain()` every 15 minutes (sweep, dispatch only), so a
+quiet-hours release or a retry reaches the recipient within minutes rather
+than waiting up to a day for the next nightly run (review #9). Both GUC
+settings below feed `trigger_push_dispatch()` calls from either job.
 Nothing here is needed for the app to run without push - `AppConfig.hasPush`
 requires every `FCM_*` dart-define, so an unconfigured build compiles, runs,
 registers no device, and shows no Notifications entry (R17).
@@ -289,10 +295,10 @@ registers no device, and shows no Notifications entry (R17).
       `push-dispatch` Edge Function, with a custom header
       `x-push-dispatch-webhook-secret: <value>` matching the secret above -
       the same pattern as issue #6's `feedback_replies` webhook.
-- [ ] Two GUC settings on the linked project, so the nightly `pg_cron` job's
-      `trigger_push_dispatch()` can reach the function too (it degrades to
-      "scan and sweep still ran, dispatch skipped" if either is unset, per
-      that function's own guard):
+- [ ] Two GUC settings on the linked project, so both `pg_cron` jobs'
+      `trigger_push_dispatch()` calls can reach the function too (it
+      degrades to "scan and sweep still ran, dispatch skipped" if either is
+      unset, per that function's own guard):
       ```sql
       alter database postgres set app.settings.push_dispatch_url = 'https://<project-ref>.supabase.co/functions/v1/push-dispatch';
       alter database postgres set app.settings.push_dispatch_webhook_secret = '<same PUSH_DISPATCH_WEBHOOK_SECRET value>';
@@ -301,8 +307,8 @@ registers no device, and shows no Notifications entry (R17).
       migrations and reports `push-dispatch` deployed.
 - [ ] Supabase MCP `get_advisors` run against the cloud project after the
       push migrations land, with no new security or RLS findings on
-      `notification_preferences`, `push_devices`, `notification_outbox`, or
-      `profile_reminder_windows`.
+      `notification_preferences`, `push_devices`, `notification_outbox`,
+      `profile_reminder_windows`, or `missed_entry_alert_state`.
 - [ ] `pg_cron`/`pg_net` extensions enabled on the cloud project (they are
       guarded to no-op locally per `20260906180000_reminder_windows_and_cron.sql`'s
       header, but the cloud project needs them enabled for real - Database

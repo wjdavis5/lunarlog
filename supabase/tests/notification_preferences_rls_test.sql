@@ -1,6 +1,16 @@
 -- RLS coverage for public.notification_preferences (Issue #5, Unit U1).
 begin;
-select plan(10);
+select plan(11);
+
+-- #14 (review fix): TRUNCATE bypasses RLS entirely (there is no per-row
+-- check for it), so authenticated must not carry the table's default
+-- TRUNCATE privilege the way it would if the universal
+-- `revoke all ... from public, anon, authenticated` were missing.
+select is(
+  has_table_privilege('authenticated', 'public.notification_preferences', 'TRUNCATE'),
+  false,
+  'authenticated cannot TRUNCATE notification_preferences'
+);
 
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('dad');

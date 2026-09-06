@@ -17,11 +17,7 @@ create table public.profile_reminder_windows (
     references public.profiles (id) on delete cascade,
   estimated_next_start date not null,
   episode_open boolean not null default false,
-  updated_at timestamptz not null default now(),
-  -- KTD8: dedupe marker. Compared against estimated_next_start at scan
-  -- time; a re-run before a fresh window is published finds this equal and
-  -- no-ops.
-  last_enqueued_for date
+  updated_at timestamptz not null default now()
 );
 
 comment on table public.profile_reminder_windows is
@@ -29,7 +25,9 @@ comment on table public.profile_reminder_windows is
   'estimated next start plus whether an episode is currently open. Never '
   'computed server-side. The SELECT policy exists only for '
   '`insert ... on conflict do update` mechanics -- no UI reads this table; '
-  'public.scan_missed_entry_reminders() reads it as SECURITY DEFINER.';
+  'public.scan_missed_entry_reminders() reads it as SECURITY DEFINER. The '
+  'missed-entry dedupe marker (KTD8) does not live here -- see '
+  'public.missed_entry_alert_state below (#8 review fix).';
 
 alter table public.profile_reminder_windows enable row level security;
 alter table public.profile_reminder_windows force row level security;
@@ -78,9 +76,45 @@ revoke all on table public.profile_reminder_windows from public, anon, authentic
 grant select, insert, update on table public.profile_reminder_windows to authenticated;
 
 -- ---------------------------------------------------------------------------
+-- missed_entry_alert_state (#8 review fix): the missed-entry dedupe marker,
+-- keyed per (profile, guardian) rather than per profile. KTD8 originally put
+-- this marker on profile_reminder_windows, which has exactly one row per
+-- profile -- shared across every guardian on it. Two guardians on the same
+-- profile with different missed_entry_days thresholds fire at different
+-- times, but a shared marker meant whichever guardian's threshold elapsed
+-- first stamped the marker for that estimated_next_start, and the scan's
+-- `last_enqueued_for is distinct from estimated_next_start` check then
+-- silently skipped every other guardian for the same window forever (R15
+-- violation). Owned exclusively by scan_missed_entry_reminders() (SECURITY
+-- DEFINER); no policies, no grants -- mirrors notification_outbox's
+-- posture, since nothing but the scan itself ever needs to touch it.
+-- ---------------------------------------------------------------------------
+
+create table public.missed_entry_alert_state (
+  profile_id text not null
+    references public.profiles (id) on delete cascade,
+  user_id uuid not null
+    references auth.users (id) on delete cascade,
+  last_enqueued_for date,
+  primary key (profile_id, user_id)
+);
+
+comment on table public.missed_entry_alert_state is
+  'Per-(profile, guardian) missed-entry dedupe marker (Issue #5 review #8), '
+  'owned exclusively by public.scan_missed_entry_reminders(). Replaces the '
+  'original per-profile marker on profile_reminder_windows, which let one '
+  'guardian''s alert silently suppress every co-guardian''s alert for the '
+  'same estimated_next_start (R15).';
+
+alter table public.missed_entry_alert_state enable row level security;
+alter table public.missed_entry_alert_state force row level security;
+
+revoke all on table public.missed_entry_alert_state from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- upsert_reminder_window: SECURITY INVOKER so the RLS policies above decide
--- who can call it (R13). last_enqueued_for is never touched here -- only
--- the scan below owns it.
+-- who can call it (R13). Never touches missed_entry_alert_state -- only the
+-- scan below owns it.
 -- ---------------------------------------------------------------------------
 
 create or replace function public.upsert_reminder_window(
@@ -105,7 +139,7 @@ $$;
 comment on function public.upsert_reminder_window(text, date, boolean) is
   'Publishes the client''s current cycle prediction (R13): SECURITY INVOKER '
   'so the caller''s own RLS grant is what allows or refuses the write. '
-  'Never touches last_enqueued_for.';
+  'Never touches missed_entry_alert_state.';
 
 revoke all on function public.upsert_reminder_window(text, date, boolean) from public, anon;
 grant execute on function public.upsert_reminder_window(text, date, boolean) to authenticated;
@@ -130,12 +164,19 @@ begin
   for v_row in
     select p.user_id, p.profile_id, p.missed_entry_days,
            p.quiet_hours_start, p.quiet_hours_end, p.time_zone,
-           w.estimated_next_start, w.episode_open, w.last_enqueued_for
+           w.estimated_next_start, w.episode_open,
+           s.last_enqueued_for
       from public.notification_preferences p
       join public.profile_guardians g
         on g.profile_id = p.profile_id and g.user_id = p.user_id
       join public.profile_reminder_windows w
         on w.profile_id = p.profile_id
+      -- #8 (review): dedupe is per (profile, guardian), not per profile --
+      -- see missed_entry_alert_state's comment above. A guardian with no
+      -- row yet here has never been enqueued for anything, hence the
+      -- left join rather than an inner one.
+      left join public.missed_entry_alert_state s
+        on s.profile_id = p.profile_id and s.user_id = p.user_id
      where p.missed_entry_days is not null
        and g.status = 'accepted'
   loop
@@ -158,9 +199,10 @@ begin
         )
       );
 
-      update public.profile_reminder_windows
-         set last_enqueued_for = v_row.estimated_next_start
-       where profile_id = v_row.profile_id;
+      insert into public.missed_entry_alert_state (profile_id, user_id, last_enqueued_for)
+      values (v_row.profile_id, v_row.user_id, v_row.estimated_next_start)
+      on conflict (profile_id, user_id) do update
+        set last_enqueued_for = excluded.last_enqueued_for;
 
       v_count := v_count + 1;
     end if;
@@ -174,8 +216,10 @@ comment on function public.scan_missed_entry_reminders() is
   'Enqueues one missed_entry alert per (guardian, profile) whose newest '
   'live entry is older than the guardian''s threshold and whose published '
   'reminder window says the estimate has passed or an episode is open '
-  '(R14). Deduped per window via last_enqueued_for (KTD8), so a re-run '
-  'before a fresh window is published enqueues nothing (R15).';
+  '(R14). Deduped per (profile, guardian) via missed_entry_alert_state '
+  '(KTD8, #8 review fix), so a re-run before a fresh window is published '
+  'enqueues nothing (R15), and one guardian being enqueued never suppresses '
+  'a co-guardian with a different threshold on the same profile.';
 
 revoke all on function public.scan_missed_entry_reminders() from public, anon, authenticated;
 
@@ -265,6 +309,104 @@ $$;
 
 revoke all on function public.trigger_push_dispatch() from public, anon, authenticated;
 
+-- ---------------------------------------------------------------------------
+-- run_nightly_caregiver_alerts_job (#15 review fix): pg_cron runs a job's
+-- command string as a single implicit transaction/statement batch, so the
+-- original three bare `select ...;` statements meant one tenant's bad
+-- time_zone raising out of scan_missed_entry_reminders() (or any other
+-- unexpected error from either function) aborted the whole job -- the sweep
+-- and dispatch legs then never ran, for every tenant, permanently (there was
+-- no other periodic trigger for either). #3's fix makes resolve_deliver_after
+-- itself never raise on a bad zone, but this wrapper is defense in depth
+-- against *any* failure in the scan or sweep step: each step is isolated in
+-- its own sub-block so a failure in one can never prevent the next from
+-- running. trigger_push_dispatch() already self-guards this way internally.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.run_nightly_caregiver_alerts_job() returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  begin
+    perform public.scan_missed_entry_reminders();
+  exception
+    when others then
+      raise notice 'run_nightly_caregiver_alerts_job: scan_missed_entry_reminders failed: %', sqlerrm;
+  end;
+
+  begin
+    perform public.sweep_notification_outbox();
+  exception
+    when others then
+      raise notice 'run_nightly_caregiver_alerts_job: sweep_notification_outbox failed: %', sqlerrm;
+  end;
+
+  -- Already self-guards (see its own exception handler above); still run
+  -- from its own sub-block so a future change to it cannot regress this
+  -- function's own isolation guarantee.
+  begin
+    perform public.trigger_push_dispatch();
+  exception
+    when others then
+      raise notice 'run_nightly_caregiver_alerts_job: trigger_push_dispatch failed: %', sqlerrm;
+  end;
+end;
+$$;
+
+comment on function public.run_nightly_caregiver_alerts_job() is
+  'Runs the missed-entry scan, the outbox sweep, and a dispatch nudge, each '
+  'isolated in its own sub-block (#15 review fix) so one tenant''s bad data '
+  'or any other single-step failure cannot silently stop the other two '
+  'from running, for every tenant, until the next deploy.';
+
+revoke all on function public.run_nightly_caregiver_alerts_job() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- run_caregiver_alert_drain (#9 review fix): the nightly job alone left
+-- quiet-hours releases and retries waiting up to ~24h for the next 09:00 UTC
+-- run (AE4 requires delivery promptly after the quiet-hours window ends, not
+-- up to a day later). This frequent, cheap drain covers just the two
+-- time-sensitive legs -- sweeping stuck claims and nudging the dispatcher --
+-- so a deferred alert releases within one cadence interval of its
+-- deliver_after, not one nightly run. The missed-entry scan stays nightly
+-- only (its own threshold granularity is whole days, so more frequent scans
+-- add load without changing outcomes) and is deliberately not duplicated
+-- here. Per Q3 in the plan: "a 15-minute cadence is a one-line change."
+-- ---------------------------------------------------------------------------
+
+create or replace function public.run_caregiver_alert_drain() returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  begin
+    perform public.sweep_notification_outbox();
+  exception
+    when others then
+      raise notice 'run_caregiver_alert_drain: sweep_notification_outbox failed: %', sqlerrm;
+  end;
+
+  begin
+    perform public.trigger_push_dispatch();
+  exception
+    when others then
+      raise notice 'run_caregiver_alert_drain: trigger_push_dispatch failed: %', sqlerrm;
+  end;
+end;
+$$;
+
+comment on function public.run_caregiver_alert_drain() is
+  'Sweeps stuck claims and nudges push-dispatch every 15 minutes (#9 review '
+  'fix), so a quiet-hours release or a retry reaches the recipient within '
+  'one cadence interval rather than waiting for the next 09:00 UTC nightly '
+  'run (AE4). The missed-entry scan is not duplicated here -- it stays on '
+  'the nightly job alone.';
+
+revoke all on function public.run_caregiver_alert_drain() from public, anon, authenticated;
+
 do $$
 begin
   if not exists (select 1 from pg_available_extensions where name = 'pg_cron')
@@ -280,14 +422,20 @@ begin
     from cron.job
    where jobname = 'lunarlog-nightly-caregiver-alerts';
 
+  perform cron.unschedule(jobid)
+    from cron.job
+   where jobname = 'lunarlog-caregiver-alert-drain';
+
   perform cron.schedule(
     'lunarlog-nightly-caregiver-alerts',
     '0 9 * * *', -- 09:00 UTC nightly (Q3: revisit cadence if too coarse)
-    $cron$
-      select public.scan_missed_entry_reminders();
-      select public.sweep_notification_outbox();
-      select public.trigger_push_dispatch();
-    $cron$
+    $cron$select public.run_nightly_caregiver_alerts_job();$cron$
+  );
+
+  perform cron.schedule(
+    'lunarlog-caregiver-alert-drain',
+    '*/15 * * * *', -- every 15 minutes (#9 review fix; Q3's anticipated one-line change)
+    $cron$select public.run_caregiver_alert_drain();$cron$
   );
 end;
 $$;

@@ -57,6 +57,7 @@ class LunarLogApp extends StatefulWidget {
     this.initialInviteProfileId,
     this.onTeardown,
     this.resetDevice,
+    this.removePushRegistration,
     this.showWebBanner = kIsWeb,
   });
 
@@ -122,6 +123,13 @@ class LunarLogApp extends StatefulWidget {
   /// (tests) takes precedence. When neither exists the web wipe falls back
   /// to [LunarLogDatabase.wipeAllData] alone.
   final DeviceResetCallback? resetDevice;
+
+  /// Explicit push-device-registration removal (#1 review fix). Same
+  /// override shape as [resetDevice]: `LunarLogRoot` provides it above this
+  /// widget in production, an explicit value (tests) takes precedence, and
+  /// a signed-out flow that has neither simply skips removal (push was
+  /// never started).
+  final RemovePushRegistrationCallback? removePushRegistration;
 
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
@@ -334,6 +342,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
     final syncEngine = widget.syncEngine;
     final resetDevice = widget.resetDevice ??
         Provider.of<DeviceResetCallback?>(context, listen: false);
+    final removePushRegistration = widget.removePushRegistration ??
+        Provider.of<RemovePushRegistrationCallback?>(context, listen: false);
     return MultiProvider(
       providers: [
         if (authController != null)
@@ -341,6 +351,11 @@ class _LunarLogAppState extends State<LunarLogApp> {
         if (resetDevice != null)
           Provider<DeviceResetCallback>.value(
             value: resetDevice,
+            updateShouldNotify: (_, _) => false,
+          ),
+        if (removePushRegistration != null)
+          Provider<RemovePushRegistrationCallback>.value(
+            value: removePushRegistration,
             updateShouldNotify: (_, _) => false,
           ),
         // Upload-consent counts (R14): the only place `lib/ui` learns how

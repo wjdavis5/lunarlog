@@ -5,7 +5,7 @@
 -- are exercised directly, proving KTD9's guard: the scan/sweep logic never
 -- depends on the cron schedule actually existing.
 begin;
-select plan(15);
+select plan(26);
 
 create function pg_temp.outbox_count(p_profile text, p_recipient uuid) returns bigint
 language sql security definer set search_path = '' as $$
@@ -214,6 +214,78 @@ select is(pg_temp.outbox_count(tests.ulid(506), tests.get_supabase_uid('dad_s6')
   'A revoked guardian with a threshold set: nothing enqueued');
 
 -- ---------------------------------------------------------------------------
+-- Group 510 (#8 review fix): two co-guardians on the same profile with
+-- different missed_entry_days thresholds must be deduped independently --
+-- one guardian being enqueued for a window must never silently suppress a
+-- co-guardian's own alert for that same window.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('mom_s10');
+select tests.create_supabase_user('dad_s10');
+select tests.create_supabase_user('step_s10');
+
+select tests.authenticate_as('mom_s10');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(510), 'S10', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select public.create_guardian_invitation(
+  tests.ulid(510), 'co_parent', 'Dad',
+  '6767676767676767676767676767676767676767676767676767676767676767', 48
+);
+select tests.authenticate_as('dad_s10');
+select public.accept_guardian_invitation(
+  '6767676767676767676767676767676767676767676767676767676767676767', 'Dad'
+);
+select tests.authenticate_as('mom_s10');
+select public.create_guardian_invitation(
+  tests.ulid(510), 'caregiver', 'Step',
+  '6868686868686868686868686868686868686868686868686868686868686868', 48
+);
+select tests.authenticate_as('step_s10');
+select public.accept_guardian_invitation(
+  '6868686868686868686868686868686868686868686868686868686868686868', 'Step'
+);
+
+-- dad's threshold (1 day) is already met; step's (3 days, the max the
+-- check constraint allows) is not yet -- the entry below is exactly 3 days
+-- old, and eligibility requires strictly more than the threshold. Each
+-- guardian inserts their own preference row (RLS requires user_id =
+-- auth.uid()), so authenticate as each in turn.
+select tests.authenticate_as('dad_s10');
+insert into public.notification_preferences (user_id, profile_id, missed_entry_days)
+values (tests.get_supabase_uid('dad_s10'), tests.ulid(510), 1);
+select tests.authenticate_as('step_s10');
+insert into public.notification_preferences (user_id, profile_id, missed_entry_days)
+values (tests.get_supabase_uid('step_s10'), tests.ulid(510), 3);
+select public.upsert_reminder_window(tests.ulid(510), (current_date - 1), false);
+
+select tests.authenticate_as('mom_s10');
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(5100), tests.ulid(510), (current_date - 3), 'UTC', 'medium', now());
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select public.scan_missed_entry_reminders();
+select is(pg_temp.outbox_count(tests.ulid(510), tests.get_supabase_uid('dad_s10')), 1::bigint,
+  '#8: dad (threshold 1, already met) gets his one row on the first scan');
+select is(pg_temp.outbox_count(tests.ulid(510), tests.get_supabase_uid('step_s10')), 0::bigint,
+  '#8: step (threshold 5, not yet met) gets nothing on the first scan');
+
+-- step's threshold now retroactively met (same window, same estimated_next_
+-- start, no new entry, no app restart) -- exactly the scenario a co-guardian
+-- with a longer threshold hits in practice as more days pass.
+select tests.authenticate_as('step_s10');
+update public.notification_preferences
+   set missed_entry_days = 1
+ where user_id = tests.get_supabase_uid('step_s10') and profile_id = tests.ulid(510);
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select public.scan_missed_entry_reminders();
+select is(pg_temp.outbox_count(tests.ulid(510), tests.get_supabase_uid('step_s10')), 1::bigint,
+  '#8: step gets her own row on the second scan -- not silently suppressed by dad''s already-set marker for the same window');
+select is(pg_temp.outbox_count(tests.ulid(510), tests.get_supabase_uid('dad_s10')), 1::bigint,
+  '#8: dad still has exactly one row -- per-guardian dedupe still holds for him across the second scan');
+
+-- ---------------------------------------------------------------------------
 -- Group 507: RLS on upsert_reminder_window.
 -- ---------------------------------------------------------------------------
 select tests.create_supabase_user('mom_s7');
@@ -252,6 +324,54 @@ select is(
   has_function_privilege('anon', 'public.sweep_notification_outbox()', 'execute'),
   false,
   'anon cannot execute sweep_notification_outbox'
+);
+
+-- #15/#9 (review fix): the two cron wrapper functions carry the same grant
+-- posture, and each runs end to end without raising -- their whole purpose
+-- is to isolate a failure in one step from the others, so a smoke call
+-- (nothing set up to fail) proves at minimum that the isolation plumbing
+-- itself does not introduce a new way to raise.
+select is(
+  has_function_privilege('authenticated', 'public.run_nightly_caregiver_alerts_job()', 'execute'),
+  false,
+  '#15: authenticated cannot execute run_nightly_caregiver_alerts_job'
+);
+select is(
+  has_function_privilege('anon', 'public.run_nightly_caregiver_alerts_job()', 'execute'),
+  false,
+  '#15: anon cannot execute run_nightly_caregiver_alerts_job'
+);
+select is(
+  has_function_privilege('authenticated', 'public.run_caregiver_alert_drain()', 'execute'),
+  false,
+  '#9: authenticated cannot execute run_caregiver_alert_drain'
+);
+select is(
+  has_function_privilege('anon', 'public.run_caregiver_alert_drain()', 'execute'),
+  false,
+  '#9: anon cannot execute run_caregiver_alert_drain'
+);
+-- Neither function is granted to authenticated (just proven above) -- call
+-- them as service_role, like every other direct call to a SECURITY
+-- DEFINER caregiver-alert function elsewhere in this file.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select lives_ok(
+  $$select public.run_nightly_caregiver_alerts_job()$$,
+  '#15: run_nightly_caregiver_alerts_job runs scan, sweep, and dispatch without raising'
+);
+select lives_ok(
+  $$select public.run_caregiver_alert_drain()$$,
+  '#9: run_caregiver_alert_drain runs sweep and dispatch without raising'
+);
+
+-- #8 (review fix): missed_entry_alert_state is owned exclusively by
+-- scan_missed_entry_reminders() -- no policies, no grants at all, mirroring
+-- notification_outbox's posture.
+select is(
+  has_table_privilege('authenticated', 'public.missed_entry_alert_state', 'select'),
+  false,
+  '#8: authenticated has no grant at all on missed_entry_alert_state'
 );
 
 -- ---------------------------------------------------------------------------

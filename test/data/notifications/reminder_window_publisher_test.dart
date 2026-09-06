@@ -196,6 +196,98 @@ void main() {
     expect(attemptCount, 2);
   });
 
+  test('#12 (review fix): a failed publish retries the same prediction after retryDelay, without waiting for a new prediction change', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final calls = <_UpsertCall>[];
+    var attemptCount = 0;
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = ReminderWindowPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      upsert: (profileId, iso, episodeOpen) async {
+        attemptCount++;
+        if (attemptCount == 1) throw Exception('network down');
+        calls.add(_UpsertCall(profileId, iso, episodeOpen));
+      },
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+      retryDelay: Duration.zero,
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1')]);
+    predictions['p1']!.add(_active(today, estimatedNextStart: today.addDays(1)));
+
+    // No second prediction change and no app restart -- only the bounded
+    // retry itself must republish the same (unchanged) prediction.
+    await pumpEventQueue();
+
+    expect(attemptCount, 2,
+        reason: 'the first attempt failed; the retry made a second attempt '
+            'on its own, without a new prediction change');
+    expect(calls, hasLength(1));
+    expect(calls.single.profileId, 'p1');
+    expect(calls.single.estimatedNextStartIso, today.addDays(1).iso);
+  });
+
+  test('#12 (review fix): a genuinely new prediction after a failure supersedes the pending retry rather than racing it', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final calls = <_UpsertCall>[];
+    var attemptCount = 0;
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = ReminderWindowPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      upsert: (profileId, iso, episodeOpen) async {
+        attemptCount++;
+        if (attemptCount == 1) throw Exception('network down');
+        calls.add(_UpsertCall(profileId, iso, episodeOpen));
+      },
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+      retryDelay: const Duration(minutes: 5),
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1')]);
+    predictions['p1']!.add(_active(today, estimatedNextStart: today.addDays(1)));
+    await pumpEventQueue();
+    expect(attemptCount, 1, reason: 'the first attempt failed');
+    expect(calls, isEmpty);
+
+    // A real prediction change arrives well before the 5-minute retry would
+    // have fired; it must supersede the stale retry with the fresh value,
+    // not merely add a second, separate publish of the old one.
+    predictions['p1']!.add(_active(today, estimatedNextStart: today.addDays(2)));
+    await pumpEventQueue();
+
+    expect(attemptCount, 2);
+    expect(calls, hasLength(1));
+    expect(calls.single.estimatedNextStartIso, today.addDays(2).iso);
+  });
+
   test('dispose cancels every subscription and a late emission after disposal is a no-op', () async {
     final profiles = StreamController<List<Profile>>(sync: true);
     final predictions = <String, StreamController<CyclePrediction>>{};

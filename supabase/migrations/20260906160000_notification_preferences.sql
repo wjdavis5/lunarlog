@@ -79,7 +79,11 @@ create policy "notification_preferences_delete" on public.notification_preferenc
     user_id = (select auth.uid())
   );
 
-revoke all on table public.notification_preferences from public, anon;
+-- #14 (review): every RLS table in this schema revokes all from
+-- authenticated too, before re-granting the specific privileges below --
+-- otherwise authenticated keeps its default TRUNCATE privilege, which
+-- bypasses RLS entirely (TRUNCATE has no row-level check).
+revoke all on table public.notification_preferences from public, anon, authenticated;
 grant select, insert, update, delete on table public.notification_preferences to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -129,5 +133,8 @@ create policy "push_devices_delete" on public.push_devices
   for delete to authenticated
   using (user_id = (select auth.uid()));
 
-revoke all on table public.push_devices from public, anon;
+-- #14 (review): see the matching comment above notification_preferences'
+-- revoke -- authenticated's default TRUNCATE privilege bypasses RLS and
+-- must be revoked here too.
+revoke all on table public.push_devices from public, anon, authenticated;
 grant select, insert, update, delete on table public.push_devices to authenticated;

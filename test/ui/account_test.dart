@@ -57,6 +57,12 @@ class AccountHarness {
   final FakeSyncEngine engine = FakeSyncEngine();
   int resets = 0;
 
+  /// #1 (review fix): call-order log shared with [auth]'s own recorded
+  /// calls (via [FakeAuthService.signOutCalls]) so a test can assert
+  /// removePushRegistration ran *before* the corresponding signOut call,
+  /// not merely that both ran.
+  final List<String> pushRemovalOrder = [];
+
   Future<void> pump({
     bool withEngine = true,
     Future<void> Function(LunarLogDatabase db)? seed,
@@ -71,6 +77,7 @@ class AccountHarness {
         // the real order): local wipe first, server sign-out last.
         resetDevice: () async {
           resets++;
+          pushRemovalOrder.add('reset');
           await db.wipeAllData();
           try {
             await auth.signOut(scope: AuthSignOutScope.local);
@@ -78,6 +85,9 @@ class AccountHarness {
             // best effort
           }
         },
+        removePushRegistration: RemovePushRegistrationCallback(() async {
+          pushRemovalOrder.add('push-removed');
+        }),
       ),
     );
     await tester.pumpAndSettle();
@@ -1765,6 +1775,11 @@ void main() {
       expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
       expect(h.resets, 1);
       expect(find.text(kNoticeText), findsOneWidget);
+      // #1 (review fix): push-device removal must happen while the session
+      // is still authenticated - before signOut(global) tears it down and
+      // before resetDevice runs - not left to a later reaction to the
+      // auth-state stream, which by then would run as anon.
+      expect(h.pushRemovalOrder, ['push-removed', 'reset']);
       await h.dispose();
     });
 
@@ -1788,6 +1803,9 @@ void main() {
       expect(h.resets, 1);
       expect(find.textContaining('Other devices were not signed out.'),
           findsOneWidget);
+      // #1 (review fix): push removal still runs before the failed
+      // signOut(global) attempt and before the reset that follows it.
+      expect(h.pushRemovalOrder, ['push-removed', 'reset']);
       await h.dispose();
     });
   });

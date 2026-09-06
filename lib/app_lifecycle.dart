@@ -606,6 +606,39 @@ SyncEngine defaultSyncEngineBuilder({
 /// directly without passing one.
 typedef DeviceResetCallback = Future<void> Function();
 
+/// Explicit push-device-registration removal (#1 review fix), provided
+/// alongside [DeviceResetCallback] so a sign-out UI flow that does *not* go
+/// through [LunarLogRootState.resetDevice] (e.g. `AccountMismatchScreen`'s
+/// "Switch account", `AccountSection`'s "sign out everywhere") can still
+/// remove this device's push registration while the session is still
+/// authenticated, before calling the auth service's own signOut(). Always
+/// best-effort (never throws) and a no-op when push was never started
+/// (unconfigured build, web, or no session yet). Null in harnesses that
+/// mount `LunarLogApp` directly without passing one, exactly like
+/// [DeviceResetCallback].
+///
+/// Deliberately a wrapper class, not a bare `typedef ... = Future&lt;void&gt;
+/// Function()` (as first written, and as [DeviceResetCallback] itself is):
+/// Dart's generics use *structural* equality for function types, so a
+/// second same-shaped typedef used as a distinct `Provider<T>` type is
+/// indistinguishable at runtime from [DeviceResetCallback] - both reify to
+/// `Provider<Future<void> Function()>` - and one silently shadows the other
+/// in the provider tree depending on nesting order. `Provider.of`/
+/// `context.read` would then hand an `AccountMismatchScreen` calling
+/// `context.read<DeviceResetCallback?>()` this callback instead, or vice
+/// versa, with no compile-time or runtime signal that anything was wrong.
+/// Caught by `test/ui/account_test.dart`'s sign-out order assertions during
+/// review; the wrapper class gives this a distinct nominal type so it can
+/// never collide with [DeviceResetCallback] or any future same-shaped
+/// callback.
+class RemovePushRegistrationCallback {
+  const RemovePushRegistrationCallback(this._call);
+
+  final Future<void> Function() _call;
+
+  Future<void> call() => _call();
+}
+
 /// Default native key deletion for [LunarLogRoot.deleteDbKey].
 Future<void> defaultDeleteDbKey() => SecureDbKeyStore().deleteKey();
 
@@ -974,6 +1007,13 @@ class LunarLogRootState extends State<LunarLogRoot> {
     if (_resetting) return;
     _resetting = true;
     try {
+      // #1 (review fix): explicitly remove this device's push registration
+      // while the session is still authenticated - before _disposeSyncEngine
+      // below disposes the coordinator (cancelling its auth-state
+      // subscription, so it would otherwise never see the sign-out that
+      // follows) and before _signOutLocally clears the session (after which
+      // any registry call would run as anon and RLS would silently deny it).
+      await _pushCoordinator?.removeRegistration();
       await _disposeSyncEngine();
       final db = _db;
       await _detachDatabaseFromTree(db);
@@ -1092,9 +1132,15 @@ class LunarLogRootState extends State<LunarLogRoot> {
       child: Provider<DeviceResetCallback>.value(
         value: resetDevice,
         updateShouldNotify: (_, _) => false,
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: GateShell(controller: _gate, child: content),
+        child: Provider<RemovePushRegistrationCallback>.value(
+          value: RemovePushRegistrationCallback(
+            () async => _pushCoordinator?.removeRegistration() ?? Future.value(),
+          ),
+          updateShouldNotify: (_, _) => false,
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: GateShell(controller: _gate, child: content),
+          ),
         ),
       ),
     );
