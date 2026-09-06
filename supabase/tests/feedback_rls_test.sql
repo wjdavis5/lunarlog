@@ -1,7 +1,7 @@
 -- RLS, constraint, and trigger tests for feedback_tickets / feedback_replies
 -- (Issue #6, Unit U1).
 begin;
-select plan(22);
+select plan(24);
 
 -- ---------------------------------------------------------------------------
 -- Setup users
@@ -155,6 +155,74 @@ select throws_ok(
     where message = 'the bug ticket: crashed opening the calendar'$$,
   '42501', null, 'A cannot set notified_at directly (column not granted) - only feedback-notify (service role) can'
 );
+
+-- ---------------------------------------------------------------------------
+-- 8c. PR #105 review round 7/8: feedback_tickets_update had no coverage at
+--     all - neither the positive path (can the owner actually use the
+--     column grant U5 depends on?) nor the negative one (can a *different*
+--     owner reach it?). Both directions are covered here.
+--
+--     The positive case matters because Postgres AND-combines the USING
+--     clauses of every applicable policy for UPDATE/DELETE: since
+--     `feedback_tickets_select` already restricts row visibility to
+--     `user_id = auth.uid()`, deleting `feedback_tickets_update`'s own
+--     USING/WITH CHECK entirely (or the whole policy) does not by itself
+--     open a cross-account write - it silently breaks the *owner's own*
+--     legitimate attachment upload instead (empirically verified while
+--     writing this test: with the update policy's USING loosened to
+--     `true`, a same-owner update still succeeds, so a naive "loosen it and
+--     see if a stranger can write" mutant check alone would have missed
+--     that a from-scratch policy could be equally broken in the *other*
+--     direction). A positive assertion is what catches that failure mode.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('fb_a');
+
+update public.feedback_tickets
+   set attachment_paths = array['a-own-path.png']
+ where message = 'the bug ticket: crashed opening the calendar';
+
+select is(
+  (select attachment_paths from public.feedback_tickets
+    where message = 'the bug ticket: crashed opening the calendar'),
+  array['a-own-path.png'],
+  'A can update attachment_paths on A''s own ticket - the granted column '
+  'U5''s post-submit attachment upload depends on'
+);
+
+-- ---------------------------------------------------------------------------
+-- 8d. The negative direction: even with the row's own owner able to write
+--     it, a *different* authenticated caller must not be able to touch it.
+--     Deleting the USING clause here would not raise an error the way the
+--     column-grant tests (8, 8b) do (RLS filters rows rather than
+--     throwing), so this needs a row-count assertion instead of throws_ok.
+--
+--     Note for future maintainers: because of the AND-with-SELECT-policy
+--     behavior described above, this specific assertion is not, on its
+--     own, independently mutation-proof against a *lone* change to this
+--     policy's own USING/WITH CHECK clause - `feedback_tickets_select`'s
+--     own ownership check (exercised by AE1 in section 3 above) provides
+--     the same cross-account guarantee as a structural backstop. Real
+--     exploitation would require loosening both policies at once. This
+--     test still documents and pins the intended, defense-in-depth
+--     behavior of the policy as written.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('fb_b');
+
+update public.feedback_tickets
+   set attachment_paths = array['b-planted-path']
+ where message = 'the bug ticket: crashed opening the calendar';
+
+select is(
+  (select count(*) from public.feedback_tickets
+    where message = 'the bug ticket: crashed opening the calendar'
+      and attachment_paths = array['b-planted-path']),
+  0::bigint,
+  'B cannot update A''s ticket even on a granted column (attachment_paths) - '
+  'the update policy''s USING clause blocks the row match, not just the '
+  'column grant'
+);
+
+select tests.authenticate_as('fb_a');
 
 -- ---------------------------------------------------------------------------
 -- 9. Error path: a user cannot insert an admin-authored reply

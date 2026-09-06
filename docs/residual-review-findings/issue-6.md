@@ -1,11 +1,10 @@
 # Residual Review Findings — `issue-6`
 
-**Source:** `ce-code-review` rounds 1–7 on PR #105 (Issue #6, in-app feedback/
+**Source:** `ce-code-review` rounds 1–8 on PR #105 (Issue #6, in-app feedback/
 support), branch `issue-6`, plan
 [`docs/plans/2026-09-05-001-feat-in-app-feedback-support-plan.md`](../plans/2026-09-05-001-feat-in-app-feedback-support-plan.md).
-Round 7 (`833ae89`) is the most authoritative on current state; earlier
-rounds are cited for a finding's history where it recurred under a
-different number.
+Round 8 is the most authoritative on current state; earlier rounds are
+cited for a finding's history where it recurred under a different number.
 
 Round 7 verdict was "changes requested" on five blockers (B1–B5). B1–B4
 were fixed in the session that produced this file:
@@ -38,6 +37,95 @@ The feature's authorization model, RLS design, and the replay/ownership
 guards on `feedback-notify` are sound — round 7 verified all of that by
 mutation testing, not by reading. Everything below is P2/P3: real, but
 narrower than a merge blocker, and tracked here rather than applied.
+
+## Round 8 — completing round 7's adjudication
+
+Round 7's own findings included three `SupabaseFeedbackService`/schema
+mutants this file did not actually record a decision for when it was first
+written. Each is adjudicated for real below, not carried forward again.
+
+- **`lib/observability/breadcrumbs.dart` — `defaultBreadcrumbLog.clear()`
+  was only wired into `resetDevice()`.** Two other real session-ending
+  paths never cleared it: `AccountMismatchScreen._switchAccount`
+  (`lib/ui/account/account_mismatch_screen.dart`) — a local sign-out
+  documented as "and nothing else" that still ends the device's session —
+  and `SupabaseAuthService._handleSignedOutEvent`
+  (`lib/data/auth/supabase_auth_service.dart`), which is what actually
+  fires for every `AuthChangeEvent.signedOut` gotrue delivers: a remote
+  "sign out everywhere" landing here from another device, and gotrue's own
+  expired/missing-session detection, neither of which goes through
+  `resetDevice` at all. **Fixed** — `defaultBreadcrumbLog.clear()` now runs
+  in both, with tests: `test/ui/account_test.dart` covers the mismatch
+  screen's switch-account path (both the plain case and the "local
+  sign-out reports a failure" case, since the comment there says the
+  session ends either way), and `test/data/supabase_auth_service_test.dart`
+  covers `_handleSignedOutEvent` for both an involuntary
+  (`sessionExpired`) and a voluntary (`userInitiated`) reason.
+- **`supabase/functions/_shared/email.ts` — the `!response.ok` branch and
+  the `missing_email_config` branch were both mutation-dead**: deleting
+  either left all 21 (now 23) Deno tests green, meaning a Resend 4xx/5xx
+  response could read as success and silently drop the ticket's admin
+  alert forever — the same failure mode rounds 4-7 closed different
+  aspects of. **Fixed** — two new tests in
+  `supabase/functions/_shared/email.test.ts` pin the result *shape*
+  (`{ ok: false, reason: ... }`) rather than merely checking a return
+  value: one mocks a Resend 401 and asserts the function reports failure,
+  not success; one asserts `missing_email_config` when `apiKey`/`from` is
+  absent and that `fetch` is never called. Both were manually
+  mutation-tested (delete the branch, confirm the new test fails with the
+  expected diff, restore) — see this file's own commit for the exact
+  before/after output.
+- **`lib/data/feedback/supabase_feedback_service.dart` —
+  `kSignedAttachmentUrlTtlSeconds`.** Round 7 flagged this as a live
+  mutant with no test pinning it, worrying specifically that a widened
+  value (it named 604800s/7 days) would hand out a week-long link to a
+  minor's screenshot with no backstop. **Investigated for real:** the
+  constant is, and per its own git history always has been, `300` (5
+  minutes) — not 604800. There is no 604800 anywhere in this repo's
+  history; round 7's number describes a risk the code was never actually
+  running, not a regression that needs reverting. What round 7 got right
+  is that the value had zero test coverage: `signedAttachmentUrl` was not
+  exercised by any test at all before this round. **Fixed the actual gap**
+  — a new `signedAttachmentUrl` test group in
+  `test/data/feedback/supabase_feedback_service_test.dart` pins the
+  request's `expiresIn` body field against the literal `300` (not against
+  the constant itself, which would pass trivially no matter what the
+  constant said) and covers the storage-error mapping path too. Manually
+  mutation-tested: bumping the constant to `604800` fails the new test
+  with `Expected: <300> Actual: <604800>`; reverted after confirming.
+  300s remains the intentional value — short enough that a link copied out
+  of the support-history screen is not still live hours later, long enough
+  for the one synchronous render-and-display it's minted for.
+- **`supabase/migrations/20260906130000_feedback_tickets.sql`'s
+  `feedback_tickets_update` policy had no test coverage at all** — neither
+  the positive path (can the ticket owner actually use the granted-column
+  update U5's attachment flow depends on?) nor the negative one (can a
+  *different* authenticated caller reach it?). **Investigated and fixed,
+  with a documented limit:** two new pgTAP assertions in
+  `supabase/tests/feedback_rls_test.sql` (8c positive, 8d negative). The
+  positive one matters more than it first looks: PostgreSQL AND-combines
+  the USING clauses of every policy applicable to UPDATE/DELETE, which
+  means `feedback_tickets_select`'s own `user_id = auth.uid()` check is
+  *also* enforced on every update — verified empirically while writing
+  this test, by loosening the update policy's own USING clause to `true`
+  and confirming a cross-account write was still blocked (0 rows), then
+  loosening the select policy instead with the update policy back to
+  normal and confirming the same block held. Only loosening *both at once*
+  actually opened the door (confirmed: it also broke the existing AE1
+  test and raised a WITH CHECK violation). One real consequence: a lone
+  mutation of `feedback_tickets_update`'s own USING/WITH CHECK clause is
+  not independently killable by a negative (cross-account) test alone,
+  because `feedback_tickets_select` already backstops row visibility for
+  UPDATE. The positive test closes the blind spot that check alone leaves
+  open — a naively "safe-looking" loosening of the update policy (e.g.
+  `using (false)`, confirmed to fail the positive test) would otherwise
+  have broken the owner's *own* attachment upload with nothing to catch
+  it. The `with check` clause is separately inert today given the current
+  column grants (`user_id` is not in `grant update (...) to authenticated`
+  at all, so no client write can ever produce a row that clause would
+  reject) — kept as documented defense-in-depth against a future grant
+  change, not something a test can currently exercise without also
+  changing the grants.
 
 ## Diagnostics / breadcrumb bounds
 

@@ -120,3 +120,59 @@ Deno.test(
     );
   },
 );
+
+// PR #105 review round 8: `!response.ok` was mutation-dead - deleting that
+// branch entirely (so a Resend 4xx/5xx response fell through to `{ ok: true
+// }`) left every test in this file green. That is the failure mode the
+// header comment above describes as the worst case: `releaseClaim` never
+// runs and the ticket's admin alert is silently and permanently lost. This
+// test pins the branch by asserting the *shape* of the result (`ok: false`
+// with a status-carrying reason), not merely that a value was returned.
+Deno.test(
+  "sendEmail reports failure, not success, when Resend responds with a " +
+    "non-2xx status (a bad API key, a malformed payload, or a Resend outage)",
+  async () => {
+    await withStubs(
+      {
+        fetch: (async () =>
+          new Response(JSON.stringify({ message: "Invalid API key" }), {
+            status: 401,
+          })) as typeof fetch,
+      },
+      async () => {
+        const result = await sendEmail(envelope, "bad-key", "from@example.test");
+        assertEquals(
+          result,
+          { ok: false, reason: "resend_status_401" },
+          "a 4xx/5xx Resend response must never read as { ok: true } - the " +
+            "caller's claim-before-send guard depends on this to release " +
+            "the claim and retry the alert",
+        );
+      },
+    );
+  },
+);
+
+Deno.test(
+  "sendEmail reports failure with reason 'missing_email_config' when the " +
+    "Resend API key or the from address is missing, and never calls fetch",
+  async () => {
+    let fetchCalled = false;
+    const stubbedFetch = (async () => {
+      fetchCalled = true;
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    await withStubs({ fetch: stubbedFetch }, async () => {
+      const result = await sendEmail(envelope, undefined, "from@example.test");
+      assertEquals(result, { ok: false, reason: "missing_email_config" });
+    });
+    assert(!fetchCalled, "a missing apiKey must short-circuit before fetch");
+
+    await withStubs({ fetch: stubbedFetch }, async () => {
+      const result = await sendEmail(envelope, "key", undefined);
+      assertEquals(result, { ok: false, reason: "missing_email_config" });
+    });
+    assert(!fetchCalled, "a missing from address must short-circuit before fetch");
+  },
+);

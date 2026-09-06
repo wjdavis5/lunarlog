@@ -367,6 +367,46 @@ void main() {
     });
   });
 
+  group('signedAttachmentUrl', () {
+    test('requests a signed URL with expiresIn exactly 300 (5 minutes), '
+        'not the 604800s/7-day value round 7 flagged as a live mutant — '
+        'pinned against the literal, not against kSignedAttachmentUrlTtlSeconds '
+        'itself, so a changed constant fails this test rather than sliding '
+        'through unnoticed (see docs/residual-review-findings/issue-6.md)',
+        () async {
+      Map<String, dynamic>? capturedBody;
+      String? capturedPath;
+      final client = makeClient((req) async {
+        capturedPath = req.url.path;
+        capturedBody = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(jsonEncode({'signedURL': '/object/sign/x?token=abc'}), 200);
+      });
+      final service = SupabaseFeedbackService(client: client);
+
+      final url = await service.signedAttachmentUrl('$_uid/t1/shot.png');
+
+      expect(capturedPath, '/storage/v1/object/sign/$kFeedbackAttachmentsBucket/$_uid/t1/shot.png');
+      expect(capturedBody?['expiresIn'], 300,
+          reason: '5 minutes, a sane TTL for a signed screenshot URL shown '
+              'immediately in the support-history UI — not the 604800s/'
+              '7-day value round 7 found no backstop against');
+      expect(url, contains('token=abc'));
+    });
+
+    test('a Storage error mints no URL and maps through the same '
+        '_mapStorageError ladder submitTicket uses', () async {
+      final client = makeClient((req) async {
+        return http.Response(jsonEncode({'message': 'not found', 'statusCode': '400'}), 400);
+      });
+      final service = SupabaseFeedbackService(client: client);
+
+      expect(
+        () => service.signedAttachmentUrl('$_uid/t1/shot.png'),
+        throwsA(isA<FeedbackAttachmentRejectedFailure>()),
+      );
+    });
+  });
+
   group('listReplies', () {
     test('a ticket with no replies returns an empty list, not null', () async {
       final client = makeClient((req) async {

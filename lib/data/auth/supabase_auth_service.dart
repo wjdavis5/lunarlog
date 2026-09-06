@@ -38,6 +38,7 @@ import 'package:lunarlog/data/auth/auth_gateway.dart';
 import 'package:lunarlog/data/auth/auth_link_classifier.dart';
 import 'package:lunarlog/data/auth/google_sign_in_client.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
@@ -286,6 +287,14 @@ class SupabaseAuthService implements AuthService {
         reason == SignOutReason.sessionMissing;
     _setState(
         involuntary ? AuthSessionState.expired : AuthSessionState.signedOut);
+    // Every `signedOut` event ends this device's session with *some*
+    // account — a local sign-out, "sign out everywhere" landing here from
+    // another device, or gotrue detecting an expired/missing session on its
+    // own. `resetDevice` clears the ring for its own path (KTD16); this is
+    // the gate for every other one, so breadcrumbs recorded under the
+    // account that just left can never ride into a ticket filed by whoever
+    // is signed in next on a shared device.
+    defaultBreadcrumbLog.clear();
   }
 
   /// The state to report while a session exists: recovery wins until it
