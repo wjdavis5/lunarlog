@@ -28,6 +28,16 @@ enum ParentPostTransferRole {
         ParentPostTransferRole.coManager => 'Co-manager',
         ParentPostTransferRole.viewer => 'Viewer',
       };
+
+  /// Inverse of [toDb]. Returns `null` for anything else rather than
+  /// throwing, matching `ProfileRelationship.fromDb`'s tolerant-unknown-value
+  /// convention (used by [SupabaseOwnershipTransferService.getActiveTransfer]
+  /// when decoding a row read directly off `ownership_transfers`).
+  static ParentPostTransferRole? fromDb(String value) => switch (value) {
+        'co_parent' => ParentPostTransferRole.coManager,
+        'viewer' => ParentPostTransferRole.viewer,
+        _ => null,
+      };
 }
 
 /// Representation of a freshly armed ownership transfer.
@@ -126,6 +136,52 @@ class ClaimedProfileResult {
       Object.hash(profileId, profileName, parentRole, entriesTransferred);
 }
 
+/// A still-live transfer for a profile, as read back directly from
+/// `ownership_transfers` rather than returned by `createTransfer` (Review
+/// item #2, P1). The raw token is never stored server-side, so this cannot
+/// carry a working [GeneratedTransfer.claimUri] — it exists so a parent whose
+/// earlier `createTransfer` response never reached their device (a dropped
+/// connection, or the app restarting between the RPC committing and the
+/// response arriving) can still discover and [OwnershipTransferService.cancelTransfer]
+/// the orphaned transfer, rather than being locked out of the feature for up
+/// to its full TTL by `create_ownership_transfer`'s one-live-transfer
+/// constraint.
+@immutable
+class ActiveTransfer {
+  const ActiveTransfer({
+    required this.transferId,
+    required this.profileId,
+    required this.parentPostTransferRole,
+    required this.expiresAt,
+    this.recipientLabel,
+  });
+
+  final String transferId;
+  final String profileId;
+  final ParentPostTransferRole parentPostTransferRole;
+  final DateTime expiresAt;
+  final String? recipientLabel;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ActiveTransfer &&
+          other.transferId == transferId &&
+          other.profileId == profileId &&
+          other.parentPostTransferRole == parentPostTransferRole &&
+          other.expiresAt == expiresAt &&
+          other.recipientLabel == recipientLabel;
+
+  @override
+  int get hashCode => Object.hash(
+        transferId,
+        profileId,
+        parentPostTransferRole,
+        expiresAt,
+        recipientLabel,
+      );
+}
+
 /// Typed failures for ownership transfer operations (R20: an expired,
 /// cancelled, already-accepted, or self-presented token must be refused with
 /// a distinguishable reason).
@@ -140,6 +196,7 @@ sealed class TransferFailure implements Exception {
   const factory TransferFailure.alreadyAccepted() = TransferAlreadyAcceptedFailure;
   const factory TransferFailure.selfTransfer() = TransferSelfTransferFailure;
   const factory TransferFailure.staleOwner() = TransferStaleOwnerFailure;
+  const factory TransferFailure.alreadyArmed() = TransferAlreadyArmedFailure;
   const factory TransferFailure.unauthorized() = TransferUnauthorizedFailure;
   const factory TransferFailure.invalidToken() = TransferInvalidTokenFailure;
   const factory TransferFailure.other(String message) = TransferOtherFailure;
@@ -210,6 +267,21 @@ final class TransferStaleOwnerFailure extends TransferFailure {
   String toString() => 'TransferFailure.staleOwner';
 }
 
+/// Review item #2 (P1): `create_ownership_transfer`'s one-live-transfer
+/// constraint (23505) means a still-live transfer already exists for this
+/// profile — either genuinely pending, or orphaned by a lost response to an
+/// earlier `createTransfer` call. [OwnershipTransferService.getActiveTransfer]
+/// finds it so the parent can cancel it rather than being stuck for up to
+/// its full TTL.
+final class TransferAlreadyArmedFailure extends TransferFailure {
+  const TransferAlreadyArmedFailure();
+  @override
+  String get userFacingMessage =>
+      'A transfer is already pending for this profile. Cancel it before starting a new one.';
+  @override
+  String toString() => 'TransferFailure.alreadyArmed';
+}
+
 final class TransferUnauthorizedFailure extends TransferFailure {
   const TransferUnauthorizedFailure();
   @override
@@ -255,6 +327,13 @@ abstract interface class OwnershipTransferService {
 
   /// Cancels a live transfer (R9: only the arming parent may do this).
   Future<void> cancelTransfer({required String transferId});
+
+  /// Returns the still-live transfer for [profileId], if any (Review item
+  /// #2, P1) — read directly off `ownership_transfers` rather than tracked
+  /// client-side, so it survives a lost `createTransfer` response, an app
+  /// restart, or opening the transfer screen on a different device. `null`
+  /// when no transfer is currently armed for this profile.
+  Future<ActiveTransfer?> getActiveTransfer({required String profileId});
 
   /// Claims a transfer using the [rawToken], making the presenting signed-in
   /// user the profile's new owner (R11).

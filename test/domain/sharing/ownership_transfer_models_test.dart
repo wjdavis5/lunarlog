@@ -20,6 +20,72 @@ void main() {
         isNot(ParentPostTransferRole.viewer.label),
       );
     });
+
+    test('fromDb is the exact inverse of toDb for every value', () {
+      for (final role in ParentPostTransferRole.values) {
+        expect(ParentPostTransferRole.fromDb(role.toDb()), role);
+      }
+    });
+
+    test('fromDb returns null rather than throwing on an unknown value', () {
+      expect(ParentPostTransferRole.fromDb('grandparent'), isNull);
+    });
+  });
+
+  group('ActiveTransfer equality and hashCode', () {
+    final expiresAt = DateTime.utc(2026, 9, 10, 8, 0);
+
+    ActiveTransfer make({
+      String transferId = 'transfer-1',
+      String profileId = 'profile-1',
+      ParentPostTransferRole role = ParentPostTransferRole.coManager,
+      DateTime? expiry,
+      String? recipientLabel,
+    }) =>
+        ActiveTransfer(
+          transferId: transferId,
+          profileId: profileId,
+          parentPostTransferRole: role,
+          expiresAt: expiry ?? expiresAt,
+          recipientLabel: recipientLabel,
+        );
+
+    test('identical and equal instances compare equal', () {
+      final a = make();
+      final b = make();
+      expect(a, a);
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+    });
+
+    test('different type is not equal', () {
+      // ignore: unrelated_type_equality_checks
+      expect(make() == 'not a transfer', isFalse);
+    });
+
+    test('differing transferId compares unequal', () {
+      expect(make(), isNot(make(transferId: 'transfer-2')));
+    });
+
+    test('differing profileId compares unequal', () {
+      expect(make(), isNot(make(profileId: 'profile-2')));
+    });
+
+    test('differing parentPostTransferRole compares unequal', () {
+      expect(make(), isNot(make(role: ParentPostTransferRole.viewer)));
+    });
+
+    test('differing expiresAt compares unequal', () {
+      expect(make(), isNot(make(expiry: DateTime.utc(2026, 9, 11))));
+    });
+
+    test('differing recipientLabel compares unequal', () {
+      expect(make(), isNot(make(recipientLabel: 'Sam')));
+    });
+
+    test('null and non-null recipientLabel compare unequal', () {
+      expect(make(recipientLabel: null), isNot(make(recipientLabel: 'Sam')));
+    });
   });
 
   group('GeneratedTransfer equality and hashCode', () {
@@ -157,6 +223,8 @@ void main() {
           isA<TransferSelfTransferFailure>());
       expect(const TransferFailure.staleOwner(),
           isA<TransferStaleOwnerFailure>());
+      expect(const TransferFailure.alreadyArmed(),
+          isA<TransferAlreadyArmedFailure>());
       expect(const TransferFailure.unauthorized(),
           isA<TransferUnauthorizedFailure>());
       expect(const TransferFailure.invalidToken(),
@@ -172,6 +240,7 @@ void main() {
       TransferFailure.alreadyAccepted(),
       TransferFailure.selfTransfer(),
       TransferFailure.staleOwner(),
+      TransferFailure.alreadyArmed(),
       TransferFailure.unauthorized(),
       TransferFailure.invalidToken(),
       TransferFailure.other('boom'),
@@ -210,6 +279,8 @@ void main() {
           const TransferFailure.selfTransfer());
       expect(
           const TransferFailure.staleOwner(), const TransferFailure.staleOwner());
+      expect(const TransferFailure.alreadyArmed(),
+          const TransferFailure.alreadyArmed());
     });
 
     test('two instances of TransferOtherFailure with the same message are equal', () {

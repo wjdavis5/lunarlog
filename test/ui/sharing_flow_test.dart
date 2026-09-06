@@ -104,6 +104,11 @@ class FakeOwnershipTransferService implements OwnershipTransferService {
   }
 
   @override
+  Future<ActiveTransfer?> getActiveTransfer({required String profileId}) async {
+    throw UnimplementedError('not exercised by these tests');
+  }
+
+  @override
   Future<ClaimedProfileResult> claimProfile({
     required String rawToken,
     String? childDisplayName,

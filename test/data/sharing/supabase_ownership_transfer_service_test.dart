@@ -167,6 +167,91 @@ void main() {
     });
   });
 
+  group('createTransfer error mapping (Review item #2)', () {
+    test('23505 (unique_violation) maps to TransferAlreadyArmedFailure', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({'message': 'duplicate key value violates unique constraint', 'code': '23505'}),
+          400,
+        );
+      });
+
+      final service = SupabaseOwnershipTransferService(client: client, syncEngine: syncEngine);
+
+      await expectLater(
+        service.createTransfer(
+          profileId: 'p-1',
+          parentPostTransferRole: ParentPostTransferRole.viewer,
+        ),
+        throwsA(isA<TransferAlreadyArmedFailure>()),
+      );
+    });
+  });
+
+  group('getActiveTransfer (Review item #2)', () {
+    test('selects ownership_transfers directly, filtered to the still-live '
+        'row for the profile', () async {
+      final client = makeClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/rest/v1/ownership_transfers');
+        expect(req.url.queryParameters['profile_id'], 'eq.p-1');
+        expect(req.url.queryParameters['accepted_at'], 'is.null');
+        expect(req.url.queryParameters['cancelled_at'], 'is.null');
+        expect(req.url.queryParameters['select'], isNot(contains('token_hash')));
+
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'orphaned-1',
+              'profile_id': 'p-1',
+              'parent_post_transfer_role': 'co_parent',
+              'recipient_label': 'Sam',
+              'expires_at': '2026-09-10T08:00:00.000Z',
+            }
+          ]),
+          200,
+        );
+      });
+
+      final service = SupabaseOwnershipTransferService(client: client, syncEngine: syncEngine);
+
+      final active = await service.getActiveTransfer(profileId: 'p-1');
+
+      expect(active, isNotNull);
+      expect(active!.transferId, 'orphaned-1');
+      expect(active.profileId, 'p-1');
+      expect(active.parentPostTransferRole, ParentPostTransferRole.coManager);
+      expect(active.recipientLabel, 'Sam');
+      expect(active.expiresAt, DateTime.utc(2026, 9, 10, 8, 0));
+    });
+
+    test('returns null when no live transfer exists for the profile', () async {
+      final client = makeClient((req) async {
+        return http.Response(jsonEncode(<dynamic>[]), 200);
+      });
+
+      final service = SupabaseOwnershipTransferService(client: client, syncEngine: syncEngine);
+
+      expect(await service.getActiveTransfer(profileId: 'p-1'), isNull);
+    });
+
+    test('maps a postgrest error the same way as the other RPCs', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({'message': 'permission denied', 'code': '42501'}),
+          400,
+        );
+      });
+
+      final service = SupabaseOwnershipTransferService(client: client, syncEngine: syncEngine);
+
+      await expectLater(
+        service.getActiveTransfer(profileId: 'p-1'),
+        throwsA(isA<TransferUnauthorizedFailure>()),
+      );
+    });
+  });
+
   group('cancelTransfer', () {
     test('calls cancel_ownership_transfer RPC and requests sync (not full reconcile)', () async {
       final client = makeClient((req) async {
