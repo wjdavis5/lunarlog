@@ -6,6 +6,8 @@
 /// (#2 U2; KTD1); `signInWithOtp` and `verifyOTP` are the passwordless
 /// pair (#2 U7; KTD3); `linkIdentityWithIdToken` attaches a second
 /// identity to the current session's user (#2 U8; KTD5).
+/// `getUserIdentities`, `unlinkIdentity`, and `refreshSession` are the
+/// removal side of that same seam (#31 U2; KTD2).
 library;
 
 import 'package:app_links/app_links.dart';
@@ -68,6 +70,21 @@ abstract interface class AuthGateway {
     String? accessToken,
     String? nonce,
   });
+
+  /// The current user's identities, freshly read from the server (#31 U2;
+  /// KTD3) — never the possibly-stale local session.
+  Future<List<UserIdentity>> getUserIdentities();
+
+  /// Deletes [identity] from the current user's account (#31 U2; KTD2,
+  /// KTD3). Gated by the same dashboard "Allow manual linking" setting as
+  /// [linkIdentityWithIdToken]; the server refuses the account's last
+  /// identity with `single_identity_not_deletable`. Stores nothing locally.
+  Future<void> unlinkIdentity(UserIdentity identity);
+
+  /// Refreshes the current session so `currentSession.user.identities`
+  /// reflects a completed [unlinkIdentity] (#31 U2; KTD4) — `unlinkIdentity`
+  /// itself saves nothing.
+  Future<void> refreshSession();
 
   Future<void> signOut({required SignOutScope scope});
 
@@ -163,6 +180,16 @@ class GoTrueAuthGateway implements AuthGateway {
         accessToken: accessToken,
         nonce: nonce,
       );
+
+  @override
+  Future<List<UserIdentity>> getUserIdentities() => _auth.getUserIdentities();
+
+  @override
+  Future<void> unlinkIdentity(UserIdentity identity) =>
+      _auth.unlinkIdentity(identity);
+
+  @override
+  Future<void> refreshSession() => _auth.refreshSession();
 
   @override
   Future<void> signOut({required SignOutScope scope}) =>

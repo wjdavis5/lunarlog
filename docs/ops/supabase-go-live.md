@@ -78,7 +78,10 @@ passwordless email depends on custom SMTP above like every other email.
 - [ ] "Manual linking" **ON** (Authentication → Providers → "Allow manual
       linking"). The account section's "Add Google" / "Add Apple" actions
       call `linkIdentityWithIdToken`, which the server refuses while this is
-      off.
+      off — and the same setting gates the account section's "Remove
+      Google" / "Remove Apple" actions (`unlinkIdentity`, issue #31). A
+      refusal while it is off shows the generic failure copy; nothing in
+      the app names the setting.
 - [ ] Email templates (Authentication → Email Templates): **both** the
       *Magic Link* and the *Confirm signup* templates carry `{{ .Token }}`
       beside the link, plus a line saying the code and the link must never
@@ -122,10 +125,17 @@ passwordless email depends on custom SMTP above like every other email.
       succeed either way.
 - [ ] **Admin recovery for a rogue linked identity** (someone attached their
       Google or Apple identity to the operator's account from an unlocked
-      device or with an exfiltrated token; there is no in-app unlink):
-      Authentication → Users → the user → delete that identity from the
-      user, then revoke every session for that user from the same page. The
-      operator signs in again with a remaining method.
+      device or with an exfiltrated token). The in-app "Remove" action in
+      the account section (issue #31) is now the household path: it deletes
+      the identity and needs no dashboard access. Reserve this dashboard
+      route for the cases the app cannot reach — an operator locked out of
+      the device, or an identity attached to an account nobody can sign
+      into: Authentication → Users → the user → delete that identity from
+      the user, then **revoke every session for that user from the same
+      page regardless of which path removed the identity** — removing an
+      identity (in-app or from the dashboard) does not end sessions
+      established through it. The operator signs in again with a remaining
+      method.
 
 ### Sentry
 
@@ -429,6 +439,22 @@ household member's.
       prompt and pick a Google account with a different address: the methods
       line updates to Email and Google and the data is unchanged (same
       `auth.uid()`). Repeat on iOS with "Add Apple".
+- [ ] **Remove a method, declined (#31 F2, R4/R5).** Signed in with at
+      least two methods, tap "Remove Google", confirm the dialog, then
+      decline the device-credential prompt: `unlinkProvider` is never
+      called, the methods line is unchanged, and no error shows.
+- [ ] **Remove a method, granted (#31 F1, R7/R8).** Same, but pass the
+      credential prompt: the methods line drops Google, the "Remove Google"
+      tile is replaced by "Add Google", and the data and `auth.uid()` are
+      unchanged. Signing in afterwards with the removed Google account
+      produces the "Different account" screen rather than silently
+      re-attaching. Repeat on iOS with "Remove Apple".
+- [ ] **The last remaining method offers no Remove (#31 R2/R3).** An
+      account reduced to one method (email, or a single provider with no
+      email identity) renders no `Remove` tile for it.
+- [ ] **Removal succeeds with "Manual linking" ON (#31 AS1).** Confirms the
+      dashboard setting checked above actually gates `unlinkIdentity`, not
+      only `linkIdentityWithIdToken`.
 - [ ] **Magic link on this device (#2 F3, AE5).** In sign-in mode tap "Email
       me a sign-in link": the status tile and the sign-in screen show "check
       your email" with a code field. Open the link on this device: a session
@@ -629,12 +655,16 @@ pgTAP tests.
   id on an HTTPS domain the app owns serving `apple-app-site-association`
   and `assetlinks.json`, and that rp id is immutable once a passkey is
   enrolled, so file it only after the `https` App Links domain above exists.
-  **Unlinking a sign-in method** — needs a second identity and a
-  re-authentication story; until then the account keeps every method it has
-  and the dashboard recovery in the go-live section is the only removal.
+  **Unlinking a sign-in method** shipped as issue #31 (Google and Apple,
+  behind the same manual-linking dashboard setting and a device-credential
+  check); the dashboard recovery in this section's "Social logins and
+  passwordless" checklist is now the fallback for the cases the app cannot
+  reach, not the only removal. Removing the email/password method itself
+  remains deferred — it is the account's only recovery path and stays
+  un-removable until a provider-only recovery story exists.
   Also Google Sign-In on web (`google_sign_in_web` offers only its rendered
-  button) and security-notification emails for a linked identity or changed
-  password once custom SMTP exists (issue #18).
+  button) and security-notification emails for a linked **or unlinked**
+  identity, or a changed password, once custom SMTP exists (issue #18).
 - **Deferred from the account-deletion plan** (issue #17, Scope Boundaries):
   automated Deno test/lint coverage for `supabase/functions/**` in CI (Open
   Question Q2 — the function is smoke-tested, not unit-tested, and this is
@@ -642,8 +672,7 @@ pgTAP tests.
   while the local Drift store is the source of truth, KTD5); CSV/PDF export
   formats and scheduled backups; a grace period / soft-delete window before
   the account is destroyed; deleting a single profile (as opposed to the
-  whole account) from the app; unlinking an individual sign-in method
-  (still deferred from #2, above).
+  whole account) from the app.
 
 ## Multi-guardian migration runbook (20260904010000 + 20260904020000)
 

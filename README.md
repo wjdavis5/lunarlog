@@ -147,9 +147,11 @@ passwordless email — a sign-in link opened on the requesting device or the
 code from the same email typed into the app. Web builds have no Google
 button (`google_sign_in_web` cannot supply an ID token), and accounts are
 off on web anyway unless `LUNARLOG_WEB_SYNC=true`. A signed-in operator can
-see which methods the account has in the account section and add Google
-(or Apple on iOS) to it after a fresh device-credential check; methods
-cannot be removed in-app. Once the household is onboarded, sign-ups are
+see which methods the account has in the account section, add Google (or
+Apple on iOS) to it after a fresh device-credential check, and remove
+Google or Apple the same way once the account holds another method —
+email/password is never removable, since it is the account's only
+recovery path. Once the household is onboarded, sign-ups are
 closed in the dashboard and every create path says accounts are set up by
 the account owner. Passkeys are deferred (Supabase passkeys are beta and
 need an HTTPS relying-party domain the app does not yet have). The Google
@@ -161,6 +163,7 @@ device-credential check as adding a sign-in method; see
 [`PRIVACY.md`](PRIVACY.md) for what each does. Plans:
 [`docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md`](docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md),
 [`docs/plans/2026-09-03-001-feat-social-logins-plan.md`](docs/plans/2026-09-03-001-feat-social-logins-plan.md),
+[`docs/plans/2026-09-05-001-feat-remove-linked-sign-in-method-plan.md`](docs/plans/2026-09-05-001-feat-remove-linked-sign-in-method-plan.md),
 and
 [`docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md`](docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md).
 
