@@ -19,6 +19,8 @@ import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
+import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -31,6 +33,9 @@ import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_reminder_scheduler.dart';
+import '../support/fake_supabase_client.dart';
+import '../support/fake_sync_engine.dart';
+import '../support/fake_sync_transport.dart';
 import 'gate_test.dart' show FakeGate;
 import 'overview_test.dart' show seedEpisodes;
 
@@ -111,6 +116,75 @@ void main() {
     expect(controller, isNotNull);
     expect(controller!.pendingRecovery, isTrue,
         reason: 'latched in the service before the widget tree existed');
+
+    await disposeApp(tester, db);
+  });
+
+  testWidgets(
+      '(#17 KTD8) a supabaseClient builds a real '
+      'SupabaseAccountDeletionService and provides it down the tree, so '
+      'the delete-account tile is reachable in production - not just when '
+      'a test injects a fake deletion service directly', (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    final authService = FakeAuthService();
+    addTearDown(authService.dispose);
+    final transport = FakeSyncTransport();
+    final client = FakeSupabaseClient();
+    final engine = FakeSyncEngine();
+
+    await tester.pumpWidget(LunarLogRoot(
+      gate: FakeGate(requiresUnlock: false),
+      dbOpener: () async => db,
+      authService: authService,
+      syncTransport: transport,
+      supabaseClient: client,
+      syncEngineBuilder: ({
+        required db,
+        required authService,
+        required transport,
+        required gate,
+      }) =>
+          engine,
+    ));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final deletion = homeContext(tester).read<AccountDeletionService?>();
+    expect(deletion, isNotNull,
+        reason: 'issue #17: a supabaseClient must build and provide an '
+            'account deletion service, mirroring the sharing-service '
+            'wiring from issue #76/PR #83');
+    expect(deletion, isA<SupabaseAccountDeletionService>());
+
+    await disposeApp(tester, db);
+  });
+
+  testWidgets(
+      '(#17 R11) without a supabaseClient, no AccountDeletionService is '
+      'provided', (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    final authService = FakeAuthService();
+    addTearDown(authService.dispose);
+    final transport = FakeSyncTransport();
+    final engine = FakeSyncEngine();
+
+    await tester.pumpWidget(LunarLogRoot(
+      gate: FakeGate(requiresUnlock: false),
+      dbOpener: () async => db,
+      authService: authService,
+      syncTransport: transport,
+      syncEngineBuilder: ({
+        required db,
+        required authService,
+        required transport,
+        required gate,
+      }) =>
+          engine,
+    ));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(homeContext(tester).read<AccountDeletionService?>(), isNull);
 
     await disposeApp(tester, db);
   });

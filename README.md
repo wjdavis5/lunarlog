@@ -84,7 +84,7 @@ globally); Docker must be running.
 ```powershell
 npx supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
 npx supabase@2.116.0 db reset --local    # re-apply migrations from scratch
-npx supabase@2.116.0 test db --local     # 186 pgTAP tests
+npx supabase@2.116.0 test db --local     # 233 pgTAP tests
 npx supabase@2.116.0 stop --no-backup
 ```
 
@@ -153,10 +153,16 @@ cannot be removed in-app. Once the household is onboarded, sign-ups are
 closed in the dashboard and every create path says accounts are set up by
 the account owner. Passkeys are deferred (Supabase passkeys are beta and
 need an HTTPS relying-party domain the app does not yet have). The Google
-button is hidden in any build without both `GOOGLE_*` defines. Plans:
-[`docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md`](docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md)
+button is hidden in any build without both `GOOGLE_*` defines. A signed-in
+operator can also export a JSON copy of their profiles and entries, or
+delete the account outright (server rows, the account, an Apple revocation
+when applicable, then the device reset) — both behind the same
+device-credential check as adding a sign-in method; see
+[`PRIVACY.md`](PRIVACY.md) for what each does. Plans:
+[`docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md`](docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md),
+[`docs/plans/2026-09-03-001-feat-social-logins-plan.md`](docs/plans/2026-09-03-001-feat-social-logins-plan.md),
 and
-[`docs/plans/2026-09-03-001-feat-social-logins-plan.md`](docs/plans/2026-09-03-001-feat-social-logins-plan.md).
+[`docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md`](docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md).
 
 ## Config & credentials
 
@@ -231,16 +237,20 @@ Part of the home lab; the canonical inventory lives in the lab root's
   Never set it in CI.
 - Backup is account-based: a device signed in to an account keeps a copy of
   its data in that account and can restore it on another device. A device
-  that never signed in has no backup — losing it loses the data. There is no
-  file export.
-- In-app account deletion and data export are follow-up work, and they
-  **gate release**: no App Store submission and no Play `production`
-  dispatch until in-app account deletion has shipped (App Store guideline
-  5.1.1(v)). Mechanically enforced by
-  [`.github/scripts/check-release-gate.sh`](.github/scripts/check-release-gate.sh),
-  which fails closed until the `RELEASE_GATE_ACCOUNT_DELETION` repository
-  variable is set to `shipped`; a Play `production` dispatch also requires
-  typing `production` into `confirm_production`. Issue #17 flips the gate.
+  that never signed in has no backup — losing it loses the data. "Export my
+  data" (account section) saves a JSON file of profiles and entries through
+  the share sheet, but it is a manual, one-time export, not a backup
+  mechanism.
+- In-app account deletion and JSON export have shipped in code (issue
+  #17), but release itself still **gates** on the mechanically-enforced
+  check: no App Store submission and no Play `production` dispatch until
+  the `RELEASE_GATE_ACCOUNT_DELETION` repository variable is set to
+  `shipped` ([`.github/scripts/check-release-gate.sh`](.github/scripts/check-release-gate.sh)
+  fails closed until then; a Play `production` dispatch also requires
+  typing `production` into `confirm_production`). Flipping the variable —
+  once issue #17 has merged and the device checklist has passed — is a
+  separate, deliberate release action, not automatic from merging the
+  code.
 - "Sign out everywhere" revokes sessions, not tokens: other devices keep
   access until their JWT expires, which is why the project's JWT expiry is
   set to the dashboard minimum.

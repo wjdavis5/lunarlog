@@ -1,5 +1,12 @@
 /// U8 web guardrail tests (KTD9): non-dismissible banner, confirmation-
 /// guarded wipe, one-time blocking first-profile acknowledgment.
+///
+/// Also Issue #17 R11 (KTD9's own rule extended): "Export my data" and
+/// "Delete account" never ship on web, regardless of `LUNARLOG_WEB_SYNC`.
+/// `kIsWeb` cannot be forced true inside a `flutter test` VM run, so this
+/// uses [AccountSection.showExportAndDelete] as the injectable proxy for
+/// "is web", the same technique `showAddApple`/`showAddGoogle` already use
+/// for "is iOS" (`test/ui/account_test.dart`).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -8,7 +15,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/domain/account/account_deletion_service.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/ui/account/account_section.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
+import 'package:provider/provider.dart';
+
+import '../support/fake_auth_service.dart';
 
 const String kSyncedBannerCopy = 'Development build — this browser holds '
     'your synced family data unencrypted. Not for real data.';
@@ -203,4 +217,57 @@ void main() {
     expect(acknowledged, 0);
     expect(find.byType(AlertDialog), findsNothing);
   });
+
+  group('Issue #17 R11: export/delete never ship on web', () {
+    testWidgets('showExportAndDelete: false hides both tiles even with an '
+        'AccountDeletionService present; the null default (this VM test '
+        'platform, i.e. not web) shows them', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      final controller = AuthController(authService: auth);
+      addTearDown(controller.dispose);
+      final deletion = _FakeAccountDeletionService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<AuthController>.value(value: controller),
+              Provider<AccountDeletionService>.value(value: deletion),
+            ],
+            child: const Scaffold(
+              body: AccountSection(showExportAndDelete: false),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('account-export')), findsNothing);
+      expect(find.byKey(const ValueKey('account-delete')), findsNothing);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<AuthController>.value(value: controller),
+              Provider<AccountDeletionService>.value(value: deletion),
+            ],
+            child: const Scaffold(body: AccountSection()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('account-export')), findsOneWidget);
+      expect(find.byKey(const ValueKey('account-delete')), findsOneWidget);
+    });
+  });
+}
+
+class _FakeAccountDeletionService implements AccountDeletionService {
+  @override
+  Future<void> deleteAccount({String? appleAuthorizationCode}) async {}
 }

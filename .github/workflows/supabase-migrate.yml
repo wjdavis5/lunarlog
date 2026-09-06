@@ -1,14 +1,22 @@
 name: Supabase migrate
 
 # Pushes the tracked migrations under supabase/migrations to the cloud
-# project (KTD14). Runs only when supabase/** changes on main, inside the
+# project (KTD14), then deploys the delete-account Edge Function (Issue #17
+# U2/U7). Runs only when supabase/** changes on main, inside the
 # `production` GitHub environment, which must be configured with a required
 # reviewer and the environment-scoped secrets SUPABASE_ACCESS_TOKEN,
-# SUPABASE_DB_PASSWORD, and SUPABASE_PROJECT_REF. Before approving a run,
-# check the Supabase MCP `get_advisors` output for security or RLS findings
-# (there is no CLI equivalent).
+# SUPABASE_DB_PASSWORD, SUPABASE_PROJECT_REF, and the four Apple secrets the
+# function needs at runtime (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID,
+# APPLE_PRIVATE_KEY - see AGENTS.md's "Config & Credential Locations").
 #
-# The "Reconcile Realtime publication" step below re-invokes
+# The Apple-secret check is scoped to the account-deletion deploy steps
+# only (after "Push migrations"), not to the whole job: an unrelated
+# supabase/** push (a new migration, another function) must not fail purely
+# because an Apple signing key hasn't been provisioned yet - it still gets
+# its migrations pushed, and only the delete-account deploy step is skipped
+# with an actionable error.
+#
+# The "Reconcile Realtime publication" step re-invokes
 # public.reconcile_realtime_publication() after every push (Issue #77 / PR
 # #92 review). `db push` only applies migrations not yet recorded as applied
 # on the target project, so the drift guard baked into
@@ -18,8 +26,13 @@ name: Supabase migrate
 # fire on every ordinary deploy, catching a Supabase Studio "Enable
 # Realtime" toggle used against an already-migrated project. It is
 # idempotent and safe to run even when that migration was not part of this
-# push. There is still no *periodic* reconciliation between deploys -- see
-# the tracked follow-up in AGENTS.md's Migration Flow section.
+# push, and runs before the Apple-secret check so it is never skipped by a
+# missing Apple key. There is still no *periodic* reconciliation between
+# deploys -- see the tracked follow-up in AGENTS.md's Migration Flow
+# section.
+#
+# Before approving a run, check the Supabase MCP `get_advisors` output for
+# security or RLS findings (there is no CLI equivalent).
 
 on:
   push:
@@ -46,6 +59,10 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_KEY_ID: ${{ secrets.APPLE_KEY_ID }}
+      APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
+      APPLE_PRIVATE_KEY: ${{ secrets.APPLE_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -83,7 +100,28 @@ jobs:
         # header comment above and AGENTS.md's Migration Flow) -- `db push`
         # alone does not, because it only applies migrations not yet marked
         # applied on the target project. Safe to run unconditionally: the
-        # function is idempotent and a no-op when nothing has drifted.
+        # function is idempotent and a no-op when nothing has drifted. Runs
+        # before the Apple-secret check below so it is never skipped by a
+        # missing Apple key.
         run: |
           supabase db query --linked \
             "select public.reconcile_realtime_publication();"
+
+      - name: Check Apple secrets (account-deletion deploy only)
+        run: |
+          if [ -z "${APPLE_TEAM_ID:-}" ] || [ -z "${APPLE_KEY_ID:-}" ] || [ -z "${APPLE_CLIENT_ID:-}" ] || [ -z "${APPLE_PRIVATE_KEY:-}" ]; then
+            echo "::error::One or more Apple secrets (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY) are not set on the \`production\` environment. The delete-account function needs all four to revoke an Apple identity on deletion (Issue #17 KTD3) - add them (Environment secrets) and re-run. See AGENTS.md's 'Config & Credential Locations' for where each value comes from. This only blocks deploying delete-account - migrations for unrelated supabase/** changes already pushed successfully above."
+            exit 1
+          fi
+
+      - name: Set delete-account function secrets
+        run: |
+          supabase secrets set \
+            APPLE_TEAM_ID="$APPLE_TEAM_ID" \
+            APPLE_KEY_ID="$APPLE_KEY_ID" \
+            APPLE_CLIENT_ID="$APPLE_CLIENT_ID" \
+            APPLE_PRIVATE_KEY="$APPLE_PRIVATE_KEY" \
+            --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Deploy delete-account function
+        run: supabase functions deploy delete-account --project-ref "$SUPABASE_PROJECT_REF"
