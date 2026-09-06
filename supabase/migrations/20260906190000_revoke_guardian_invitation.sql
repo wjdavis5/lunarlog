@@ -1,4 +1,4 @@
--- Migration: 20260906160000_revoke_guardian_invitation.sql
+-- Migration: 20260906190000_revoke_guardian_invitation.sql
 -- Implements Issue #3 (gap-closure plan, Unit U1): per-invitation cancellation.
 --
 -- create_guardian_invitation mints a 48-hour link and nothing in the app can

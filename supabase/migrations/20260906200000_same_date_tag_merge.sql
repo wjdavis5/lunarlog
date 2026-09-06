@@ -1,4 +1,4 @@
--- Migration: 20260906170000_same_date_tag_merge.sql
+-- Migration: 20260906200000_same_date_tag_merge.sql
 -- Implements Issue #3 (gap-closure plan, Unit U4): delivers issue #8's R15
 -- exactly as written - "the latest timestamp wins for conflicting fields,
 -- while non-conflicting tags are unioned" - which the original

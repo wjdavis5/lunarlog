@@ -144,7 +144,7 @@ The winner/loser selection rule, the tombstone stamp, and the `flow`/`note` outc
 - **Requirements:** R2, R3, R4, R5
 - **Dependencies:** none
 - **Files:**
-  - `supabase/migrations/20260906160000_revoke_guardian_invitation.sql` (create)
+  - `supabase/migrations/20260906190000_revoke_guardian_invitation.sql` (create)
   - `supabase/tests/guardian_invitation_revocation_test.sql` (create)
 - **Approach:**
   1. Create `public.revoke_guardian_invitation(p_invitation_id uuid) returns jsonb`, `language plpgsql`, `security definer`, `set search_path = ''`.
@@ -249,7 +249,7 @@ The winner/loser selection rule, the tombstone stamp, and the `flow`/`note` outc
 - **Requirements:** R7, R8, R9, R10, R11, R12
 - **Dependencies:** none (independent of U1-U3)
 - **Files:**
-  - `supabase/migrations/20260906170000_same_date_tag_merge.sql` (create)
+  - `supabase/migrations/20260906200000_same_date_tag_merge.sql` (create)
   - `supabase/tests/same_date_tag_merge_test.sql` (create)
 - **Approach:**
   1. `create or replace function public.sync_push(jsonb, jsonb)` carrying the current body from `20260904020000_sync_push_and_invitations.sql` with only the same-date resolver block changed. Additive migration only; do not edit the merged file.
