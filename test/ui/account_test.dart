@@ -68,7 +68,7 @@ class AccountHarness {
         authService: auth,
         syncEngine: withEngine ? engine : null,
         // Mirrors the root's reset (test/ui/device_reset_test.dart proves
-        // the real order): local wipe first, server sign-out last.
+        // the real order): local wipe first, local sign-out last.
         resetDevice: () async {
           resets++;
           await db.wipeAllData();
