@@ -36,6 +36,16 @@ enum GuardianRole {
   bool get canEditProfile => this == primaryGuardian || this == coParent;
   bool get canManageGuardians => this == primaryGuardian || this == coParent;
   bool get canDeleteProfile => this == primaryGuardian;
+
+  /// Copy explaining why a role's day sheet is read-only (Issue #3
+  /// gap-closure plan, Unit U6; R13). Null for every role that [canLog] -
+  /// only a role that cannot log has a reason to surface, and it must read
+  /// distinctly from the archived-profile reason so a viewer session is
+  /// never mistaken for an archived one.
+  String? get readOnlyReason => switch (this) {
+        viewer => 'You have view-only access to this profile.',
+        _ => null,
+      };
 }
 
 enum GuardianStatus {
@@ -136,4 +146,24 @@ class ProfileGuardian {
   String toString() =>
       'ProfileGuardian($profileId $userId ${role.name} ${status.name}'
       '${displayName == null ? '' : ' $displayName'})';
+}
+
+/// The accepted guardian row for [currentUserId] among [guardians], or null
+/// when [currentUserId] is null, the rows haven't synced, or none match
+/// (Issue #3 gap-closure plan, Unit U6). Fails open by construction: every
+/// caller of this function must treat a null result as "not known to be
+/// anything in particular" - never as "known to be read-only" - since a
+/// local-only operator or a freshly created, not-yet-synced profile both
+/// pass no rows here.
+ProfileGuardian? acceptedGuardianFor(
+  List<ProfileGuardian> guardians,
+  String? currentUserId,
+) {
+  if (currentUserId == null) return null;
+  for (final g in guardians) {
+    if (g.userId == currentUserId && g.status == GuardianStatus.accepted) {
+      return g;
+    }
+  }
+  return null;
 }

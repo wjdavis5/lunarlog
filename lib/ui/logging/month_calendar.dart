@@ -138,6 +138,16 @@ class _MonthCalendarState extends State<MonthCalendar> {
     super.dispose();
   }
 
+  /// R14/R15: read-only when the profile is archived (existing
+  /// [MonthCalendar.readOnly]) OR the caller's accepted role is `viewer`.
+  /// Fails open on an unknown role - no guardian rows yet, no signed-in
+  /// operator, or no row matching the current user (Issue #3 gap-closure
+  /// plan, Unit U6) - mirroring the null-vs-empty discipline
+  /// `ManageGuardiansScreen._callerRoleOf` already uses; do not invert it.
+  bool get _effectiveReadOnly =>
+      widget.readOnly ||
+      acceptedGuardianFor(_guardians, _currentUserId)?.role.canLog == false;
+
   void _resetToTodaysMonth() {
     final today = widget.todayProvider();
     _displayedYear = today.year;
@@ -163,7 +173,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         date: date,
         existing: entry,
         today: widget.todayProvider(),
-        readOnly: widget.readOnly,
+        readOnly: _effectiveReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,
         guardians: _guardians,
@@ -273,7 +283,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         !bleed &&
         (entry.tags.isNotEmpty || entry.note != null);
     final isFuture = date.isAfter(today);
-    final selectable = !isFuture && (!widget.readOnly || entry != null);
+    final selectable = !isFuture && (!_effectiveReadOnly || entry != null);
     return (
       bleed: bleed,
       symptomOnly: symptomOnly,

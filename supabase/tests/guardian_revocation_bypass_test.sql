@@ -75,7 +75,11 @@ select is(
 -- throwing) if the upsert in accept_guardian_invitation went back to
 -- setting status = 'accepted' unconditionally.
 -- ---------------------------------------------------------------------------
-select tests.authenticate_as('mom');
+-- Issue #3 gap-closure plan (Unit U1, KTD2) withdrew the direct
+-- `update (revoked_at)` grant entirely, so this test-only rewind (never a
+-- capability the app itself has) now needs the table owner's bypass rather
+-- than an authenticated session.
+select tests.clear_authentication();
 update public.guardian_invitations
    set revoked_at = null
  where token_hash = '2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b';

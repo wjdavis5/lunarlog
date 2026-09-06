@@ -431,6 +431,170 @@ void main() {
     });
   });
 
+  group('same-date tag merge (Issue #3 gap-closure plan, Unit U5)', () {
+    test('a remote row that loses the same-date rule merges its tags into '
+        'the surviving local row and marks that row dirty with a bumped '
+        'localRev (R7/R11)', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final local = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-09-10',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: const ['cramps']);
+      await storage.markPushed(
+          table: SyncTable.dayEntries,
+          id: local.id,
+          localRevAtPush: local.localRev);
+
+      const remoteId = '01J0000000000000000000001M';
+      final older = local.updatedAt.subtract(const Duration(minutes: 5));
+      await storage.applyRemoteDayEntry(remoteEntry(remoteId,
+          profileId: p.id,
+          localDate: '2026-09-10',
+          tags: const ['heavy_flow'],
+          updatedAt: older));
+
+      final winner = await entryById(p.id, local.id);
+      expect(winner.tags, unorderedEquals(['cramps', 'heavy_flow']));
+      expect(winner.dirty, isTrue, reason: 'the merge must be pushed');
+      expect(winner.localRev, local.localRev + 1);
+      expect(winner.deletedAt, isNull);
+
+      final loser = await entryById(p.id, remoteId);
+      expect(loser.deletedAt, isNotNull, reason: 'the remote loser is a tombstone');
+      expect(loser.tags, isEmpty, reason: 'R12: tombstones are payload-free');
+      expect(loser.note, isNull);
+    });
+
+    test('a remote row that wins the same-date rule writes the union onto '
+        'the remote row and leaves the local loser a tombstone with empty '
+        'tags and null note (R7, R12)', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final local = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-09-11',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: const ['cramps'],
+          note: 'local note');
+      await storage.markPushed(
+          table: SyncTable.dayEntries,
+          id: local.id,
+          localRevAtPush: local.localRev);
+
+      const remoteId = '01J0000000000000000000001N';
+      final newer = local.updatedAt.add(const Duration(minutes: 5));
+      await storage.applyRemoteDayEntry(remoteEntry(remoteId,
+          profileId: p.id,
+          localDate: '2026-09-11',
+          tags: const ['heavy_flow'],
+          note: 'remote note',
+          updatedAt: newer));
+
+      final winner = await entryById(p.id, remoteId);
+      expect(winner.tags, unorderedEquals(['cramps', 'heavy_flow']));
+      expect(winner.note, 'remote note',
+          reason: 'R8: note stays last-writer-wins, unaffected by the tag merge');
+      expect(winner.deletedAt, isNull);
+
+      final loser = await entryById(p.id, local.id);
+      expect(loser.deletedAt, newer);
+      expect(loser.tags, isEmpty);
+      expect(loser.note, isNull);
+      expect(loser.dirty, isTrue, reason: 'a local loser must be pushed');
+    });
+
+    test('a remote tombstone for a date with a live local row never '
+        'attempts a merge - tombstones never compete', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final local = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-09-12',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: const ['cramps']);
+
+      const remoteId = '01J0000000000000000000001O';
+      final t = local.updatedAt.add(const Duration(minutes: 5));
+      await storage.applyRemoteDayEntry(remoteEntry(remoteId,
+          profileId: p.id,
+          localDate: '2026-09-12',
+          updatedAt: t,
+          deletedAt: t));
+
+      final unaffected = await entryById(p.id, local.id);
+      expect(unaffected.deletedAt, isNull);
+      expect(unaffected.tags, ['cramps'],
+          reason: 'a tombstone never merges tags into a live row');
+      final tomb = await entryById(p.id, remoteId);
+      expect(tomb.deletedAt, t);
+      expect(tomb.tags, isEmpty);
+    });
+
+    test('a same-id remote row that drops a tag still drops it locally - no '
+        'union on the same-id path (R10)', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final local = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-09-13',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: const ['a', 'b']);
+
+      final newer = local.updatedAt.add(const Duration(minutes: 5));
+      await storage.applyRemoteDayEntry(remoteEntry(local.id,
+          profileId: p.id,
+          localDate: '2026-09-13',
+          tags: const ['a'],
+          updatedAt: newer));
+
+      final row = await entryById(p.id, local.id);
+      expect(row.tags, ['a'], reason: 'the removed tag must stay removed');
+    });
+
+    test('three colliding rows converge to the union regardless of the '
+        'order they arrive in (R9)', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final tA = t0;
+      final tB = t0.add(const Duration(minutes: 1));
+      final tC = t0.add(const Duration(minutes: 2));
+
+      // Ascending arrival order.
+      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000201A',
+          profileId: p.id, localDate: '2026-09-14', tags: const ['a'], updatedAt: tA));
+      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000201B',
+          profileId: p.id, localDate: '2026-09-14', tags: const ['b'], updatedAt: tB));
+      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000201C',
+          profileId: p.id, localDate: '2026-09-14', tags: const ['c'], updatedAt: tC));
+      final ascendingLive = await liveFor(p.id, '2026-09-14');
+      expect(ascendingLive.single.tags, unorderedEquals(['a', 'b', 'c']));
+
+      // Descending arrival order, a different date so this run is
+      // independent of the one above.
+      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000202C',
+          profileId: p.id, localDate: '2026-09-15', tags: const ['c'], updatedAt: tC));
+      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000202B',
+          profileId: p.id, localDate: '2026-09-15', tags: const ['b'], updatedAt: tB));
+      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000202A',
+          profileId: p.id, localDate: '2026-09-15', tags: const ['a'], updatedAt: tA));
+      final descendingLive = await liveFor(p.id, '2026-09-15');
+      expect(descendingLive.single.tags, unorderedEquals(['a', 'b', 'c']));
+    });
+
+    test('a merge on a profile absent locally still raises before any merge '
+        'work runs - ordering unchanged', () async {
+      await expectLater(
+        storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000203A',
+            profileId: '01J000000000000000000203P',
+            tags: const ['a'],
+            updatedAt: t0)),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+      expect(await storage.isEmpty(), isTrue);
+    });
+  });
+
   group('applyResolved', () {
     test('unknown id is a no-op; known id takes the server copy with '
         'dirty = false', () async {

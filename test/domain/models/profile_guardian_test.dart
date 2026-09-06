@@ -107,5 +107,49 @@ void main() {
       expect(() => GuardianRole.fromDb('unknown'), throwsArgumentError);
       expect(() => GuardianStatus.fromDb('unknown'), throwsArgumentError);
     });
+
+    test('readOnlyReason is set only for the one role that cannot log '
+        '(Issue #3 gap-closure plan, U6)', () {
+      expect(GuardianRole.viewer.canLog, isFalse);
+      expect(GuardianRole.viewer.readOnlyReason, isNotNull);
+      expect(GuardianRole.viewer.readOnlyReason, isNotEmpty);
+      for (final role
+          in GuardianRole.values.where((r) => r != GuardianRole.viewer)) {
+        expect(role.canLog, isTrue);
+        expect(role.readOnlyReason, isNull);
+      }
+    });
+  });
+
+  group('acceptedGuardianFor', () {
+    test('returns null when currentUserId is null', () {
+      expect(acceptedGuardianFor([_guardian(userId: 'u1')], null), isNull);
+    });
+
+    test('returns null when the list is empty', () {
+      expect(acceptedGuardianFor(const [], 'u1'), isNull);
+    });
+
+    test('returns null when no row matches the current user', () {
+      expect(
+        acceptedGuardianFor([_guardian(userId: 'other')], 'u1'),
+        isNull,
+      );
+    });
+
+    test('returns null for a matching row that is not accepted', () {
+      expect(
+        acceptedGuardianFor(
+          [_guardian(userId: 'u1', status: GuardianStatus.revoked)],
+          'u1',
+        ),
+        isNull,
+      );
+    });
+
+    test('returns the matching accepted row', () {
+      final g = _guardian(userId: 'u1', role: GuardianRole.viewer);
+      expect(acceptedGuardianFor([g], 'u1'), g);
+    });
   });
 }

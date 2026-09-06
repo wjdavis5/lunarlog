@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -246,6 +247,150 @@ void main() {
           throwsA(isA<SharingFailure>()),
         );
       }
+    });
+  });
+
+  group('listPendingInvites', () {
+    test('maps a row set to PendingInvites in created_at order, parsing '
+        'expires_at to UTC', () async {
+      final client = makeClient((req) async {
+        expect(req.url.path, '/rest/v1/guardian_invitations');
+        expect(req.method, 'GET');
+        expect(req.url.queryParameters['profile_id'], 'eq.01JABCDEF01234567890123456');
+        expect(req.url.queryParameters['accepted_at'], 'is.null');
+        expect(req.url.queryParameters['revoked_at'], 'is.null');
+        expect(req.url.queryParameters['order'], 'created_at.asc.nullslast');
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'inv-1',
+              'profile_id': '01JABCDEF01234567890123456',
+              'role': 'caregiver',
+              'recipient_label': 'Sitter',
+              'created_at': '2026-09-06T10:00:00+00:00',
+              'expires_at': '2026-09-08T10:00:00+00:00',
+            },
+          ]),
+          200,
+        );
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      final invites = await service.listPendingInvites('01JABCDEF01234567890123456');
+
+      expect(invites, hasLength(1));
+      expect(invites.single.invitationId, 'inv-1');
+      expect(invites.single.profileId, '01JABCDEF01234567890123456');
+      expect(invites.single.role, GuardianRole.caregiver);
+      expect(invites.single.recipientLabel, 'Sitter');
+      expect(invites.single.createdAt, DateTime.utc(2026, 9, 6, 10));
+      expect(invites.single.expiresAt, DateTime.utc(2026, 9, 8, 10));
+      expect(invites.single.expiresAt.isUtc, isTrue);
+    });
+
+    test('returns an empty list when the profile has no live invitations', () async {
+      final client = makeClient((req) async {
+        return http.Response(jsonEncode(<Object?>[]), 200);
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      expect(await service.listPendingInvites('p1'), isEmpty);
+    });
+
+    test('never requests or exposes token_hash - a future edit that adds it '
+        'back to the selected column list fails this test', () async {
+      String? selectParam;
+      final client = makeClient((req) async {
+        selectParam = req.url.queryParameters['select'];
+        return http.Response(jsonEncode(<Object?>[]), 200);
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      await service.listPendingInvites('p1');
+
+      expect(selectParam, isNotNull);
+      expect(selectParam, isNot(contains('token_hash')));
+      expect(
+        selectParam!.split(','),
+        unorderedEquals(
+            ['id', 'profile_id', 'role', 'recipient_label', 'created_at', 'expires_at']),
+      );
+    });
+
+    test('maps a transport failure to SharingFailure.network', () async {
+      final client = SupabaseClient(
+        'https://example.supabase.co',
+        'anon-key',
+        httpClient: MockClient((request) async {
+          throw const SocketException('connection refused');
+        }),
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        postgrestOptions: const PostgrestClientOptions(retryEnabled: false),
+      );
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      expect(
+        () => service.listPendingInvites('p1'),
+        throwsA(isA<SharingNetworkFailure>()),
+      );
+    });
+  });
+
+  group('cancelInvite', () {
+    test('sends the invitation id as p_invitation_id and maps '
+        'outcome: "revoked" to InviteCancellation.revoked', () async {
+      final client = makeClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(req.url.path, '/rest/v1/rpc/revoke_guardian_invitation');
+        expect(body['p_invitation_id'], 'inv-1');
+        return http.Response(jsonEncode({'outcome': 'revoked', 'invitation_id': 'inv-1'}), 200);
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      expect(await service.cancelInvite('inv-1'), InviteCancellation.revoked);
+    });
+
+    test('maps each terminal outcome to its enum value rather than throwing (R5)', () async {
+      final outcomes = <String, InviteCancellation>{
+        'already_revoked': InviteCancellation.alreadyRevoked,
+        'already_accepted': InviteCancellation.alreadyAccepted,
+        'expired': InviteCancellation.expired,
+      };
+
+      for (final entry in outcomes.entries) {
+        final client = makeClient((req) async {
+          return http.Response(jsonEncode({'outcome': entry.key}), 200);
+        });
+        final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+        expect(await service.cancelInvite('inv-1'), entry.value,
+            reason: 'outcome "${entry.key}" must map cleanly, not throw');
+      }
+    });
+
+    test('maps a 42501/insufficient_privilege RPC error to SharingFailure.unauthorized', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({'message': 'caller lacks permission to cancel this invitation', 'code': '42501'}),
+          400,
+        );
+      });
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      expect(
+        () => service.cancelInvite('inv-1'),
+        throwsA(isA<SharingUnauthorizedFailure>()),
+      );
+    });
+
+    test('maps an unrecognised outcome string to SharingFailure.other rather '
+        'than silently reporting success', () async {
+      final client = makeClient((req) async {
+        return http.Response(jsonEncode({'outcome': 'not_a_real_outcome'}), 200);
+      });
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      expect(
+        () => service.cancelInvite('inv-1'),
+        throwsA(isA<SharingOtherFailure>()),
+      );
     });
   });
 }

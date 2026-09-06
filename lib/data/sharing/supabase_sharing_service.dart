@@ -138,6 +138,61 @@ class SupabaseSharingService implements SharingService {
     }
   }
 
+  @override
+  Future<List<PendingInvite>> listPendingInvites(String profileId) async {
+    try {
+      // Explicit column list (R6/enumeration): never select token_hash, so
+      // a future edit that adds it back to this query fails the coverage
+      // test that asserts on the selected columns rather than silently
+      // shipping a token to the client.
+      final rows = await client
+          .from('guardian_invitations')
+          .select('id, profile_id, role, recipient_label, created_at, expires_at')
+          .eq('profile_id', profileId)
+          .isFilter('accepted_at', null)
+          .isFilter('revoked_at', null)
+          .gt('expires_at', DateTime.now().toUtc().toIso8601String())
+          .order('created_at', ascending: true);
+
+      return [
+        for (final row in rows)
+          PendingInvite(
+            invitationId: row['id'] as String,
+            profileId: row['profile_id'] as String,
+            role: GuardianRole.fromDb(row['role'] as String),
+            recipientLabel: row['recipient_label'] as String?,
+            createdAt: DateTime.parse(row['created_at'] as String).toUtc(),
+            expiresAt: DateTime.parse(row['expires_at'] as String).toUtc(),
+          ),
+      ];
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  @override
+  Future<InviteCancellation> cancelInvite(String invitationId) async {
+    try {
+      final res = await client.rpc<dynamic>('revoke_guardian_invitation', params: {
+        'p_invitation_id': invitationId,
+      });
+      if (res is! Map) {
+        throw const SharingFailure.other();
+      }
+      final outcome = res['outcome'];
+      if (outcome is! String) {
+        throw const SharingFailure.other();
+      }
+      try {
+        return InviteCancellation.fromDb(outcome);
+      } on ArgumentError {
+        throw const SharingFailure.other();
+      }
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
   SharingFailure _mapError(Object error) {
     if (error is SharingFailure) return error;
     if (error is SocketException || error is http.ClientException) {
