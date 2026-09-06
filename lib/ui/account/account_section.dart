@@ -78,7 +78,7 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
       AccountDeletionAppleRevokeFailedFailure() =>
         'Your account data was deleted, but Apple could not confirm the '
             'sign-in revocation, so your account sign-in itself still '
-            'exists. Try deleting again to finish, or contact support if '
+            'exists. Try again to finish removing it, or contact support if '
             'you\'re concerned about the lingering Apple access.',
       AccountDeletionUnknownFailure() =>
         'Something went wrong. Your account was not deleted. Please try '

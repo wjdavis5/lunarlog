@@ -81,8 +81,22 @@ begin
   -- cascade; it does not touch logged_by_user_id, so the row still correctly
   -- reports the caller stamped it until that column separately nulls out via
   -- its own `on delete set null` FK (AE3).
--- (rehome step temporarily disabled for sanity check)
-
+  --
+  -- last_modified_by_user_id is stamped to v_uid (the caller performing this
+  -- re-home) rather than left untouched: the day_entries_attribution_update_
+  -- guard trigger (20260904010000_multi_guardian_schema.sql) rejects any
+  -- UPDATE whose resulting last_modified_by_user_id is not the executing
+  -- auth.uid(), so leaving a stale value (e.g. the profile owner's, if they
+  -- edited the row more recently than the caregiver who logged it) would
+  -- make this very re-home throw and abort the whole deletion.
+  update public.day_entries d
+     set user_id = p.user_id,
+         last_modified_by_user_id = v_uid
+    from public.profiles p
+   where d.profile_id = p.id
+     and d.user_id = v_uid
+     and p.user_id <> v_uid;
+  get diagnostics v_day_entries_rehomed = row_count;
 
   -- day_entries on profiles the caller owns. Deliberately not
   -- `day_entries.user_id = v_uid`: that column is stamped from auth.uid() at
