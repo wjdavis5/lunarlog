@@ -203,7 +203,6 @@ class _AccountSectionState extends State<AccountSection> {
     final theme = Theme.of(context);
     final user = auth.currentUser;
     final providers = user?.providers ?? const <String>[];
-    final linkError = _linkError;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -211,138 +210,173 @@ class _AccountSectionState extends State<AccountSection> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
           child: Text('Account', style: theme.textTheme.titleSmall),
         ),
-        if (signedIn) ...[
-          ListTile(
-            key: const ValueKey('account-identity'),
-            leading: const Icon(Icons.person_outline),
-            title: Text(user?.email == null
-                ? 'Signed in'
-                : 'Signed in as ${user!.email}'),
-            subtitle: providers.isEmpty
-                ? null
-                : Text('Sign-in methods: '
-                    '${providers.map(providerLabel).join(', ')}'),
-          ),
-          if (linkError != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                linkError,
-                key: const ValueKey('account-link-error'),
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ),
-          if (_canAddApple && !providers.contains(AuthProviders.apple))
-            _addMethodTile(
-              key: 'account-add-apple',
-              provider: AuthProviders.apple,
-              icon: Icons.apple,
-              label: 'Add Apple',
-              onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
-            ),
-          if (_canAddGoogle && !providers.contains(AuthProviders.google))
-            _addMethodTile(
-              key: 'account-add-google',
-              provider: AuthProviders.google,
-              icon: Icons.add_link,
-              label: 'Add Google',
-              onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
-            ),
-        ] else
-          ListTile(
-            key: const ValueKey('account-sign-in'),
-            leading: const Icon(Icons.login),
-            title: Text(auth.state == AuthSessionState.expired
-                ? 'Sign in again'
-                : 'Sign in'),
-            subtitle: const Text('Sync this device\'s data to an account.'),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const SignInScreen()),
-            ),
-          ),
+        if (signedIn)
+          ..._buildSignedInIdentityTiles(auth, user, providers, theme)
+        else
+          _buildSignInTile(context, auth),
         const SyncStatusTile(),
-        if (signedIn && sync != null)
-          ListTile(
-            key: const ValueKey('account-sync-now'),
-            leading: const Icon(Icons.sync),
-            title: const Text('Sync now'),
-            enabled: !isSyncRunning(sync.snapshot),
-            onTap: sync.requestSync,
-          ),
-        if (signedIn) ...[
-          ListTile(
-            key: const ValueKey('account-sign-out'),
-            leading: const Icon(Icons.logout),
-            title: const Text('Sign out'),
-            subtitle: const Text('Removes the data from this device.'),
-            onTap: () => _signOut(context),
-          ),
-          ListTile(
-            key: const ValueKey('account-sign-out-everywhere'),
-            leading: const Icon(Icons.devices_other),
-            title: const Text('Sign out everywhere'),
-            subtitle: const Text('Ends every session of this account.'),
-            onTap: () => _signOutEverywhere(context),
-          ),
-        ],
-        if (signedIn && _canExportAndDelete) ...[
-          ListTile(
-            key: const ValueKey('account-export'),
-            leading: const Icon(Icons.file_download_outlined),
-            title: const Text('Export my data'),
-            subtitle: const Text(
-                'Save your profiles and day entries as a JSON file.'),
-            enabled: _action == null,
-            trailing: _action == _AccountAction.export
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
-            onTap: _action == null ? () => _exportAccount(context) : null,
-          ),
-          if (_exportError != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                _exportError!,
-                key: const ValueKey('account-export-error'),
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ),
-          if (deletionService != null)
-            ListTile(
-              key: const ValueKey('account-delete'),
-              leading: Icon(Icons.delete_forever, color: theme.colorScheme.error),
-              title: Text('Delete account',
-                  style: TextStyle(color: theme.colorScheme.error)),
-              subtitle: const Text(
-                  'Removes the account, its server rows, and this device\'s data.'),
-              enabled: _action == null,
-              trailing: _action == _AccountAction.delete
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
-              onTap: _action == null
-                  ? () => _deleteAccount(context, providers)
-                  : null,
-            ),
-          if (_deleteError != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                _deleteError!,
-                key: const ValueKey('account-delete-error'),
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ),
-        ],
+        if (signedIn && sync != null) _buildSyncNowTile(sync),
+        if (signedIn) ..._buildSignOutTiles(context),
+        if (signedIn && _canExportAndDelete)
+          ..._buildExportAndDeleteTiles(
+              context, theme, deletionService, providers),
       ],
     );
+  }
+
+  /// The identity tile, any link-failure copy, and the "Add Apple"/"Add
+  /// Google" tiles for a signed-in operator.
+  List<Widget> _buildSignedInIdentityTiles(
+    AuthController auth,
+    AuthUser? user,
+    List<String> providers,
+    ThemeData theme,
+  ) {
+    final linkError = _linkError;
+    return [
+      ListTile(
+        key: const ValueKey('account-identity'),
+        leading: const Icon(Icons.person_outline),
+        title: Text(
+            user?.email == null ? 'Signed in' : 'Signed in as ${user!.email}'),
+        subtitle: providers.isEmpty
+            ? null
+            : Text('Sign-in methods: '
+                '${providers.map(providerLabel).join(', ')}'),
+      ),
+      if (linkError != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            linkError,
+            key: const ValueKey('account-link-error'),
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
+        ),
+      if (_canAddApple && !providers.contains(AuthProviders.apple))
+        _addMethodTile(
+          key: 'account-add-apple',
+          provider: AuthProviders.apple,
+          icon: Icons.apple,
+          label: 'Add Apple',
+          onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
+        ),
+      if (_canAddGoogle && !providers.contains(AuthProviders.google))
+        _addMethodTile(
+          key: 'account-add-google',
+          provider: AuthProviders.google,
+          icon: Icons.add_link,
+          label: 'Add Google',
+          onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
+        ),
+    ];
+  }
+
+  Widget _buildSignInTile(BuildContext context, AuthController auth) {
+    return ListTile(
+      key: const ValueKey('account-sign-in'),
+      leading: const Icon(Icons.login),
+      title: Text(
+          auth.state == AuthSessionState.expired ? 'Sign in again' : 'Sign in'),
+      subtitle: const Text('Sync this device\'s data to an account.'),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const SignInScreen()),
+      ),
+    );
+  }
+
+  Widget _buildSyncNowTile(SyncStatusController sync) {
+    return ListTile(
+      key: const ValueKey('account-sync-now'),
+      leading: const Icon(Icons.sync),
+      title: const Text('Sync now'),
+      enabled: !isSyncRunning(sync.snapshot),
+      onTap: sync.requestSync,
+    );
+  }
+
+  List<Widget> _buildSignOutTiles(BuildContext context) {
+    return [
+      ListTile(
+        key: const ValueKey('account-sign-out'),
+        leading: const Icon(Icons.logout),
+        title: const Text('Sign out'),
+        subtitle: const Text('Removes the data from this device.'),
+        onTap: () => _signOut(context),
+      ),
+      ListTile(
+        key: const ValueKey('account-sign-out-everywhere'),
+        leading: const Icon(Icons.devices_other),
+        title: const Text('Sign out everywhere'),
+        subtitle: const Text('Ends every session of this account.'),
+        onTap: () => _signOutEverywhere(context),
+      ),
+    ];
+  }
+
+  /// The export/delete tiles and their inline error copy (Issue #17 U6).
+  List<Widget> _buildExportAndDeleteTiles(
+    BuildContext context,
+    ThemeData theme,
+    AccountDeletionService? deletionService,
+    List<String> providers,
+  ) {
+    return [
+      ListTile(
+        key: const ValueKey('account-export'),
+        leading: const Icon(Icons.file_download_outlined),
+        title: const Text('Export my data'),
+        subtitle: const Text(
+            'Save your profiles and day entries as a JSON file.'),
+        enabled: _action == null,
+        trailing: _action == _AccountAction.export
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : null,
+        onTap: _action == null ? () => _exportAccount(context) : null,
+      ),
+      if (_exportError != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            _exportError!,
+            key: const ValueKey('account-export-error'),
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
+        ),
+      if (deletionService != null)
+        ListTile(
+          key: const ValueKey('account-delete'),
+          leading: Icon(Icons.delete_forever, color: theme.colorScheme.error),
+          title: Text('Delete account',
+              style: TextStyle(color: theme.colorScheme.error)),
+          subtitle: const Text(
+              'Removes the account, its server rows, and this device\'s data.'),
+          enabled: _action == null,
+          trailing: _action == _AccountAction.delete
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
+          onTap: _action == null
+              ? () => _deleteAccount(context, providers)
+              : null,
+        ),
+      if (_deleteError != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            _deleteError!,
+            key: const ValueKey('account-delete-error'),
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
+        ),
+    ];
   }
 
   ListTile _addMethodTile({
@@ -597,6 +631,20 @@ class _AccountSectionState extends State<AccountSection> {
       return;
     }
 
+    await _performDeletion(context, gate, service, providers);
+  }
+
+  /// The service call itself, once the credential and confirmation steps
+  /// have passed: a fresh Apple authorization code first when the account
+  /// carries an Apple identity (a cancelled Apple sheet aborts silently,
+  /// KTD3), then the deletion call, then the one device reset (R6, KTD16).
+  /// No reset runs on any failure (R12).
+  Future<void> _performDeletion(
+    BuildContext context,
+    GateController gate,
+    AccountDeletionService service,
+    List<String> providers,
+  ) async {
     setState(() => _action = _AccountAction.delete);
     try {
       String? appleCode;
@@ -606,7 +654,9 @@ class _AccountSectionState extends State<AccountSection> {
       }
       await service.deleteAccount(appleAuthorizationCode: appleCode);
     } on AccountDeletionFailure catch (failure) {
-      if (mounted) setState(() => _deleteError = accountDeletionFailureCopy(failure));
+      if (mounted) {
+        setState(() => _deleteError = accountDeletionFailureCopy(failure));
+      }
       return;
     } catch (error) {
       debugPrint('lunarlog account: delete failed (${error.runtimeType})');
