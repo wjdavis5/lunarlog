@@ -205,6 +205,11 @@ Part of the home lab; the canonical inventory lives in the lab root's
 
 ## Verified
 
+- 2026-09-06, Flutter 3.47.2 stable on Windows (branch `issue-50`):
+  `flutter analyze` clean (0 issues); `flutter test` 903/903 passed;
+  `dart run tool/quality_gate.dart` passed (90% coverage floor + per-method
+  CRAP gate). Not run in this environment: the pgTAP suite (needs Docker),
+  the iOS build (needs `Williams-Mini`), and the manual device checklist.
 - 2026-09-03, Flutter 3.47.2 stable on Windows (branch
   `feat/supabase-auth-cloud-sync`): `flutter analyze` clean (0 issues);
   `flutter test` 377/377 passed; `flutter build web --release` (no defines)
