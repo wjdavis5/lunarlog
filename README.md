@@ -237,9 +237,13 @@ Part of the home lab; the canonical inventory lives in the lab root's
   that never signed in has no backup — losing it loses the data. There is no
   file export.
 - In-app account deletion and data export are follow-up work, and they
-  **gate release**: no `version:` bump in `pubspec.yaml` and no
-  `submit_for_review` dispatch of `ios-release.yml` until in-app account
-  deletion has shipped (App Store guideline 5.1.1(v)).
+  **gate release**: no App Store submission and no Play `production`
+  dispatch until in-app account deletion has shipped (App Store guideline
+  5.1.1(v)). Mechanically enforced by
+  [`.github/scripts/check-release-gate.sh`](.github/scripts/check-release-gate.sh),
+  which fails closed until the `RELEASE_GATE_ACCOUNT_DELETION` repository
+  variable is set to `shipped`; a Play `production` dispatch also requires
+  typing `production` into `confirm_production`. Issue #17 flips the gate.
 - "Sign out everywhere" revokes sessions, not tokens: other devices keep
   access until their JWT expires, which is why the project's JWT expiry is
   set to the dashboard minimum.
