@@ -1,4 +1,7 @@
--- Migration: 20260905130000_feedback_attachments_bucket.sql
+-- Migration: 20260906140000_feedback_attachments_bucket.sql
+-- Renamed from an original 20260905130000_ prefix (PR #105 review, item 3;
+-- see 20260906130000_feedback_tickets.sql's header for why).
+--
 -- Implements Issue #6 (U2): the private feedback-attachments Storage bucket
 -- and its per-user object policies.
 --

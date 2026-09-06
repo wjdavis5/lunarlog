@@ -146,7 +146,9 @@ bucket, and the two admin-facing emails
 - [ ] `feedback-attachments` Storage bucket exists: private, 5 MiB
       (5242880-byte) file size limit, `allowed_mime_types` restricted to
       `image/png`, `image/jpeg`, `image/webp`. Normally created by
-      `20260905130000_feedback_attachments_bucket.sql`; if that migration's
+      `20260906140000_feedback_attachments_bucket.sql` (renamed from an
+      original `20260905130000_` prefix - PR #105 review, migration
+      ordering); if that migration's
       `to_regclass('storage.buckets')` guard ever reports the local stack
       (or, unexpectedly, the cloud project) has no storage schema, create the
       bucket by hand with these exact settings before U2's object policies
@@ -156,7 +158,15 @@ bucket, and the two admin-facing emails
       cascades its `feedback_replies`, but the corresponding Storage objects
       under `<uid>/<ticket_id>/` must be deleted separately (Storage →
       `feedback-attachments` → the ticket's folder) — there is no
-      retention-purge automation (Scope Boundaries, U2/U7).
+      retention-purge automation (Scope Boundaries, U2/U7). The same gap
+      applies to `feedback_tickets.user_id references auth.users(id) on
+      delete cascade`: `delete-account`'s `auth.admin.deleteUser` call
+      cascades the caller's own `feedback_tickets`/`feedback_replies` rows
+      automatically, but nothing deletes their attachment objects - once the
+      account is gone, no RLS-authorized caller can even list them (the
+      bucket's policies are all scoped to `auth.uid()`), so they become
+      orphaned rather than cleaned up (PRIVACY.md's "Support Ticket
+      Retention" documents this to users; PR #105 review item 4).
 - [ ] `feedback_replies` Database Webhook: Database → Webhooks → new webhook
       on `public.feedback_replies`, event `INSERT`, HTTP target the deployed
       `feedback-reply` Edge Function, with a custom header

@@ -20,7 +20,14 @@
 // Run locally with `deno test supabase/functions/feedback-notify/`.
 
 import { assertEquals } from "jsr:@std/assert@1";
-import { handleFeedbackNotify, type FeedbackNotifyDeps, type FeedbackTicketRow } from "./index.ts";
+import {
+  buildDeps,
+  handleFeedbackNotify,
+  type FeedbackNotifyDeps,
+  type FeedbackNotifyEnv,
+  type FeedbackTicketRow,
+  type SupabaseClientFactory,
+} from "./index.ts";
 import type { SendEmailResult } from "../_shared/email.ts";
 
 function baseTicket(overrides: Partial<FeedbackTicketRow> = {}): FeedbackTicketRow {
@@ -226,6 +233,127 @@ Deno.test(
     );
     assertEquals(firstResponse.status, 204);
     assertEquals(secondResponse.status, 204);
+  },
+);
+
+/** A minimal fake Supabase client factory whose `.from("feedback_tickets")`
+ * chain really enforces WHERE-clause filtering (`.eq`/`.is`) against an
+ * in-memory row - the same way a real `UPDATE ... WHERE id = $1 AND
+ * notified_at IS NULL` only matches while both conditions still hold. The
+ * fake has no special knowledge of which filters "should" apply; it applies
+ * only the ones the code under test actually calls. That is what makes the
+ * "production claim predicate" test below a real regression test for
+ * `buildDeps`'s `claimNotification` closure (PR #105 review round 6, the
+ * 3rd round with this exact live mutant) rather than a test double standing
+ * in for it: deleting `.is("notified_at", null)` from that closure changes
+ * what this fake actually returns.
+ */
+function fakeClientFactory(rows: FeedbackTicketRow[]): SupabaseClientFactory {
+  function asRecord(row: FeedbackTicketRow): Record<string, unknown> {
+    return row as unknown as Record<string, unknown>;
+  }
+
+  function makeFilterBuilder(patch?: Partial<FeedbackTicketRow>) {
+    const filters: Array<(row: FeedbackTicketRow) => boolean> = [];
+    function matches(): FeedbackTicketRow[] {
+      return rows.filter((row) => filters.every((f) => f(row)));
+    }
+    function applyPatch(matched: FeedbackTicketRow[]) {
+      if (patch) matched.forEach((row) => Object.assign(row, patch));
+    }
+    const builder = {
+      eq(column: string, value: unknown) {
+        filters.push((row) => asRecord(row)[column] === value);
+        return builder;
+      },
+      is(column: string, value: unknown) {
+        filters.push((row) => asRecord(row)[column] === value);
+        return builder;
+      },
+      select(_columns: string) {
+        return builder;
+      },
+      async single() {
+        const found = matches();
+        if (found.length !== 1) return { data: null, error: { message: "not found" } };
+        return { data: { ...found[0] }, error: null };
+      },
+      async maybeSingle() {
+        const found = matches();
+        if (found.length === 0) return { data: null, error: null };
+        applyPatch(found);
+        return { data: { id: found[0].id }, error: null };
+      },
+      // `releaseClaim` awaits `.update().eq(...)` directly, with no
+      // trailing `.select()` - the same shape a real PostgrestFilterBuilder
+      // has (it is itself thenable), so this builder must be too.
+      then(onFulfilled: (value: { error: null }) => unknown) {
+        applyPatch(matches());
+        return Promise.resolve({ error: null }).then(onFulfilled);
+      },
+    };
+    return builder;
+  }
+
+  const client = {
+    from(table: string) {
+      if (table !== "feedback_tickets") {
+        throw new Error(`fakeClientFactory: unexpected table ${table}`);
+      }
+      return {
+        select(_columns: string) {
+          return makeFilterBuilder();
+        },
+        update(patch: Partial<FeedbackTicketRow>) {
+          return makeFilterBuilder(patch);
+        },
+      };
+    },
+    auth: {
+      async getUser() {
+        return { data: { user: { id: "owner-1" } }, error: null };
+      },
+    },
+  };
+
+  return () => client;
+}
+
+const fullEnv: FeedbackNotifyEnv = {
+  supabaseUrl: "https://example.test",
+  anonKey: "anon-key",
+  serviceRoleKey: "service-role-key",
+  adminEmail: "admin@example.test",
+};
+
+Deno.test(
+  "production claim predicate: buildDeps' claimNotification really requires `.is(\"notified_at\", null)` - " +
+    "a second claim on an already-claimed ticket must fail",
+  async () => {
+    // Regression test for PR #105 review round 6: the previous two rounds
+    // of this test suite only ever exercised a hand-rolled `claimNotification`
+    // *fake* supplied directly as `FeedbackNotifyDeps` (see `fakeDeps` above)
+    // - the real production closure inside `buildDeps` (formerly buried
+    // under `import.meta.main`, which `deno test` never evaluates) was never
+    // actually called by any test, so deleting its `.is("notified_at",
+    // null)` guard clause left all 17 tests green. This test calls
+    // `buildDeps` itself and drives its returned `claimNotification` against
+    // a fake client that genuinely enforces WHERE-clause filtering, so it
+    // fails if that guard clause is ever removed from the real query again.
+    const rows: FeedbackTicketRow[] = [baseTicket()];
+    const deps = buildDeps(fullEnv, fakeClientFactory(rows));
+
+    const first = await deps.claimNotification("t-123");
+    const second = await deps.claimNotification("t-123");
+
+    assertEquals(first, true, "the first claim on an unclaimed ticket must succeed");
+    assertEquals(
+      second,
+      false,
+      "a second claim on the same now-claimed ticket must fail - if `.is(\"notified_at\", null)` is " +
+        "removed from the real claimNotification query, this fake (which applies only the filters the " +
+        "query under test actually calls) would let it re-match and this assertion would fail",
+    );
   },
 );
 

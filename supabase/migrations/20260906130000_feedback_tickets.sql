@@ -1,4 +1,11 @@
--- Migration: 20260905120000_feedback_tickets.sql
+-- Migration: 20260906130000_feedback_tickets.sql
+-- Renamed from an original 20260905120000_ prefix (PR #105 review, item 3):
+-- main already carries 20260906120000_account_deletion_final_rehome.sql
+-- (merged via PR #106) by the time this PR's feedback migrations landed, so
+-- this file (and the two after it) is renamed to sort after it rather than
+-- before - see AGENTS.md's Migration Flow section for the full rationale
+-- and what was/wasn't verifiable about the remote project's actual state.
+--
 -- Implements Issue #6 (U1): in-app feedback tickets and admin replies.
 -- 1. Create public.feedback_tickets with content, diagnostics, and status
 --    columns, an allowlist check on device_info, and length/shape checks.

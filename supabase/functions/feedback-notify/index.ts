@@ -35,6 +35,21 @@
 // real I/O call as an injected [FeedbackNotifyDeps] so the ownership check
 // and replay guard can be covered by `deno test` with fakes - no live
 // Supabase project or Resend key required (see index.test.ts).
+//
+// PR #105 review round 6: the *production* `FeedbackNotifyDeps` - including
+// the atomic-claim query itself - used to be built entirely inside the
+// `if (import.meta.main)` block below, which `deno test` never evaluates
+// (it is Deno's own guard against binding a real network listener under
+// `deno test`, which runs with no `--allow-net`). That meant deleting the
+// `.is("notified_at", null)` guard clause from the real claim query left
+// every test green: nothing in the suite ever ran that code path at all,
+// only a hand-rolled `claimNotification` fake standing in for it. `buildDeps`
+// below is that same construction pulled out as a plain function taking its
+// environment and a Supabase client factory as parameters, so it runs
+// (and can be asserted against) under `deno test` like anything else -
+// see index.test.ts's "production claim predicate" test, which exercises
+// this exact closure against a fake client that really enforces WHERE-clause
+// filtering, and fails if that guard clause is ever removed again.
 
 import { createClient } from "@supabase/supabase-js";
 import { buildAdminAlert, type FeedbackTicketSummary } from "../_shared/format.ts";
@@ -179,59 +194,98 @@ export async function handleFeedbackNotify(req: Request, deps: FeedbackNotifyDep
   return new Response(null, { status: 204 });
 }
 
-// Guarded so `index.test.ts` can import `handleFeedbackNotify` without this
-// module trying to bind a real network listener (which `deno test` runs
-// with no `--allow-net`, and would fail on) - `import.meta.main` is true
-// only when Deno runs this file directly, which is how the Supabase Edge
-// Runtime invokes it in production.
+/** The environment `buildDeps` needs. A plain object (rather than reading
+ * `Deno.env` itself) so tests can supply fixed values with no `--allow-env`
+ * permission and no dependency on the process's real environment. */
+export interface FeedbackNotifyEnv {
+  supabaseUrl: string | undefined;
+  anonKey: string | undefined;
+  serviceRoleKey: string | undefined;
+  adminEmail: string | undefined;
+}
+
+/** Creates a Supabase client given a URL, key, and optional per-call
+ * options (e.g. forwarding the caller's own `Authorization` header for
+ * `resolveCallerId`). Matches `createClient`'s call shape narrowly enough
+ * that a test's fake client - one that actually enforces WHERE-clause
+ * filtering rather than standing in for `claimNotification` wholesale - can
+ * satisfy it too. Loosely typed (`any` return) deliberately: this seam
+ * exists precisely so `buildDeps` never needs the full `SupabaseClient`
+ * generic surface, only the handful of calls it actually makes below. */
+// deno-lint-ignore no-explicit-any
+export type SupabaseClientFactory = (url: string, key: string, options?: Record<string, unknown>) => any;
+
+/** Builds the production `FeedbackNotifyDeps` - including the atomic claim
+ * query itself - as a plain function of its environment and a client
+ * factory, independent of `import.meta.main`/`Deno.serve`. This is what
+ * lets `deno test` actually evaluate the real claim predicate (see the
+ * header comment above and index.test.ts's "production claim predicate"
+ * test) instead of only ever running a test-only stand-in for it. */
+export function buildDeps(env: FeedbackNotifyEnv, clientFactory: SupabaseClientFactory): FeedbackNotifyDeps {
+  const { supabaseUrl, anonKey, serviceRoleKey, adminEmail } = env;
+  const configured = !!(supabaseUrl && anonKey && serviceRoleKey && adminEmail);
+
+  const client = configured ? clientFactory(supabaseUrl!, serviceRoleKey!) : null;
+
+  return {
+    configured,
+    resolveCallerId: async (authHeader) => {
+      const callerClient = clientFactory(supabaseUrl!, anonKey!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data, error } = await callerClient.auth.getUser();
+      const callerId = data?.user?.id;
+      return error || !callerId ? null : callerId;
+    },
+    getTicket: async (ticketId) => {
+      const { data, error } = await client!
+        .from("feedback_tickets")
+        .select("id, user_id, category, device_info, created_at, notified_at")
+        .eq("id", ticketId)
+        .single();
+      return error || !data ? null : (data as FeedbackTicketRow);
+    },
+    claimNotification: async (ticketId) => {
+      const { data, error } = await client!
+        .from("feedback_tickets")
+        .update({ notified_at: new Date().toISOString() })
+        .eq("id", ticketId)
+        .is("notified_at", null)
+        .select("id")
+        .maybeSingle();
+      return !error && !!data;
+    },
+    releaseClaim: async (ticketId) => {
+      const { error } = await client!
+        .from("feedback_tickets")
+        .update({ notified_at: null })
+        .eq("id", ticketId);
+      if (error) {
+        console.error(`feedback-notify: failed to release notified_at claim for ticket ${ticketId}: ${error.message}`);
+      }
+    },
+    sendEmail: (summary) => sendEmailReal(buildAdminAlert(summary, adminEmail!)),
+  };
+}
+
+// Guarded so `index.test.ts` can import `handleFeedbackNotify`/`buildDeps`
+// without this module trying to bind a real network listener (which
+// `deno test` runs with no `--allow-net`, and would fail on) -
+// `import.meta.main` is true only when Deno runs this file directly, which
+// is how the Supabase Edge Runtime invokes it in production. `buildDeps`
+// itself (above) carries none of that gating, which is the whole point of
+// round 6's fix - see this file's header comment.
 if (import.meta.main) {
   Deno.serve(async (req) => {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const adminEmail = Deno.env.get("FEEDBACK_ADMIN_EMAIL");
-    const configured = !!(supabaseUrl && anonKey && serviceRoleKey && adminEmail);
-
-    const client = configured ? createClient(supabaseUrl!, serviceRoleKey!) : null;
-
-    return handleFeedbackNotify(req, {
-      configured,
-      resolveCallerId: async (authHeader) => {
-        const callerClient = createClient(supabaseUrl!, anonKey!, {
-          global: { headers: { Authorization: authHeader } },
-        });
-        const { data, error } = await callerClient.auth.getUser();
-        const callerId = data?.user?.id;
-        return error || !callerId ? null : callerId;
+    const deps = buildDeps(
+      {
+        supabaseUrl: Deno.env.get("SUPABASE_URL"),
+        anonKey: Deno.env.get("SUPABASE_ANON_KEY"),
+        serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+        adminEmail: Deno.env.get("FEEDBACK_ADMIN_EMAIL"),
       },
-      getTicket: async (ticketId) => {
-        const { data, error } = await client!
-          .from("feedback_tickets")
-          .select("id, user_id, category, device_info, created_at, notified_at")
-          .eq("id", ticketId)
-          .single();
-        return error || !data ? null : (data as FeedbackTicketRow);
-      },
-      claimNotification: async (ticketId) => {
-        const { data, error } = await client!
-          .from("feedback_tickets")
-          .update({ notified_at: new Date().toISOString() })
-          .eq("id", ticketId)
-          .is("notified_at", null)
-          .select("id")
-          .maybeSingle();
-        return !error && !!data;
-      },
-      releaseClaim: async (ticketId) => {
-        const { error } = await client!
-          .from("feedback_tickets")
-          .update({ notified_at: null })
-          .eq("id", ticketId);
-        if (error) {
-          console.error(`feedback-notify: failed to release notified_at claim for ticket ${ticketId}: ${error.message}`);
-        }
-      },
-      sendEmail: (summary) => sendEmailReal(buildAdminAlert(summary, adminEmail!)),
-    });
+      createClient,
+    );
+    return handleFeedbackNotify(req, deps);
   });
 }

@@ -7,10 +7,13 @@ works fully without a network. An **optional account** (Supabase Auth) mirrors
 the local store into row-level-secured Postgres and syncs it offline-first
 across the operator's devices; nothing is uploaded until the operator signs in
 and, on a device that already holds data, explicitly consents to the upload.
-Exactly two parties receive data off-device, both only for app functionality:
-**Supabase** (the account email and the synced cycle rows) and **Sentry**
-(crash reports reduced to an allowlist — no user, no health content). No
-fertility features, by design. Targets iOS (iPhone first-class), Android, and
+Three parties receive data off-device, all only for app functionality:
+**Supabase** (the account email and the synced cycle rows), **Sentry**
+(crash reports reduced to an allowlist — no user, no health content), and
+**Resend** (transactional support email — an admin alert when you submit an
+in-app feedback ticket, and the reply email if the admin responds; never the
+ticket's message body or any attachment). No fertility features, by design.
+Targets iOS (iPhone first-class), Android, and
 an installable web PWA used for iteration only. The app holds sensitive health
 data, including minors'; this repo stays private and must never contain real
 personal or health data.
