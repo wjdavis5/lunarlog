@@ -163,12 +163,21 @@ operator can also export a JSON copy of their profiles and entries, or
 delete the account outright (server rows, the account, an Apple revocation
 when applicable, then the device reset) — both behind the same
 device-credential check as adding a sign-in method; see
-[`PRIVACY.md`](PRIVACY.md) for what each does. Plans:
+[`PRIVACY.md`](PRIVACY.md) for what each does. The parent who created a
+minor's profile can also **transfer ownership** of it to the minor's own
+account (Issue #4): a "Transfer profile" action on the caregivers screen
+lets the parent pick their own post-transfer role (co-manager or
+read-only), then produces a single-use, 72-hour claim link the child opens
+on their own device to sign in or create an account and confirm. Every
+past entry stays exactly where it was, still labelled with who logged it;
+the parent's continued access afterward is an ordinary, revocable
+membership rather than custodial control. Plans:
 [`docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md`](docs/plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md),
 [`docs/plans/2026-09-03-001-feat-social-logins-plan.md`](docs/plans/2026-09-03-001-feat-social-logins-plan.md),
 [`docs/plans/2026-09-05-001-feat-remove-linked-sign-in-method-plan.md`](docs/plans/2026-09-05-001-feat-remove-linked-sign-in-method-plan.md),
+[`docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md`](docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md),
 and
-[`docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md`](docs/plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md).
+[`docs/plans/2026-09-06-001-feat-child-ownership-transfer-plan.md`](docs/plans/2026-09-06-001-feat-child-ownership-transfer-plan.md).
 
 ## Config & credentials
 
