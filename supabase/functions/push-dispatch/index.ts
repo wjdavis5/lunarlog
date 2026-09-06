@@ -87,6 +87,20 @@ export interface DispatchResult {
  * device is disabled so it stops being tried. */
 export async function handlePushDispatch(deps: PushDispatchDeps): Promise<DispatchResult> {
   if (!deps.configured) {
+    // #2 (review fix): a missing secret must never be silent. Without this
+    // log, a totally misconfigured deployment (e.g. FCM_PRIVATE_KEY never
+    // set) is indistinguishable from a healthy one with nothing currently
+    // due -- both return 200 with { processed: 0 } -- and stays that way
+    // until someone happens to notice the outbox table filling up. Both
+    // callers (webhook, cron) still treat this function as best-effort, so
+    // the response itself is unchanged; this only makes the outage visible
+    // in the function's own logs.
+    console.error(
+      "push-dispatch: not configured -- missing one or more of SUPABASE_URL, " +
+        "SUPABASE_SERVICE_ROLE_KEY, FCM_PROJECT_ID, FCM_CLIENT_EMAIL, " +
+        "FCM_PRIVATE_KEY. Every alert is silently dropped until this function " +
+        "secret is set (see docs/ops/supabase-go-live.md).",
+    );
     return { processed: 0 };
   }
 

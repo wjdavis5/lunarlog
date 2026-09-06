@@ -2,6 +2,13 @@
 /// step with each active profile's local prediction, debounced and
 /// best-effort. Mirrors `lib/data/notifications/reminder_coordinator.dart`'s
 /// debounced stream-fan-in and disposal discipline.
+///
+/// #12 (review fix): a failed publish retries the same prediction on a
+/// bounded [retryDelay] rather than only on the next genuine prediction
+/// change - `scan_missed_entry_reminders()` inner-joins
+/// `profile_reminder_windows`, so a profile with no published row (or a
+/// stale one) is silently excluded from the missed-entry scan entirely
+/// until a publish for it eventually succeeds.
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -31,6 +38,7 @@ class ReminderWindowPublisher {
     required ReminderWindowUpsert upsert,
     required bool Function() isSignedIn,
     this.debounce = const Duration(milliseconds: 500),
+    this.retryDelay = const Duration(minutes: 5),
   })  : _activeProfiles = activeProfiles,
         _predictionFor = predictionFor,
         _upsert = upsert,
@@ -41,6 +49,16 @@ class ReminderWindowPublisher {
   final ReminderWindowUpsert _upsert;
   final bool Function() _isSignedIn;
   final Duration debounce;
+
+  /// #12 (review fix): how long to wait before retrying a *failed* publish
+  /// of an otherwise-unchanged prediction. Without this, a swallowed
+  /// failure left profile_reminder_windows with no row (or a stale one) for
+  /// the profile, and scan_missed_entry_reminders()'s inner join on that
+  /// table then excluded the profile from the missed-entry scan entirely --
+  /// "the next prediction change or app restart retries" is not bounded and
+  /// silently disables the feature for as long as the prediction happens
+  /// not to change and the app happens to stay running.
+  final Duration retryDelay;
 
   StreamSubscription<List<Profile>>? _profilesSub;
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
@@ -100,8 +118,20 @@ class ReminderWindowPublisher {
       );
     } catch (_) {
       // Best-effort background upkeep (R13): a failed publish must never
-      // surface to the UI or cancel the subscription. The next prediction
-      // change (or app restart) retries.
+      // surface to the UI or cancel the subscription.
+      //
+      // #12 (review fix): but it also must not go unaddressed until
+      // something else happens to change - re-arm this same prediction on
+      // a bounded retryDelay rather than only waiting for a genuinely new
+      // prediction (_onPrediction) or an app restart. If a fresh prediction
+      // arrives first, _onPrediction overwrites _pending and resets the
+      // timer to the normal (short) debounce anyway, so this retry never
+      // fights a real update.
+      if (_disposed) return;
+      _pending[profileId] = prediction;
+      _debounceTimers[profileId]?.cancel();
+      _debounceTimers[profileId] =
+          Timer(retryDelay, () => unawaited(_flush(profileId)));
     }
   }
 

@@ -175,6 +175,33 @@ Deno.test("missing config sends nothing", async () => {
   assertEquals(deps.sendCalls.length, 0);
 });
 
+Deno.test("#2 (review fix): missing config logs an error rather than staying completely silent", async () => {
+  const deps = fakeDeps({ rows: [row()], devices: { "user-1": [{ id: "device-1", token: "t" }] } });
+  deps.configured = false;
+
+  const originalError = console.error;
+  const calls: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  let result;
+  try {
+    result = await handlePushDispatch(deps);
+  } finally {
+    console.error = originalError;
+  }
+
+  assertEquals(result.processed, 0);
+  assertEquals(
+    calls.length,
+    1,
+    "a missing config must be logged -- without this, a totally misconfigured " +
+      "deployment (200, { processed: 0 }) is indistinguishable from a healthy " +
+      "one with nothing due, in both the HTTP response and the function logs",
+  );
+  assertEquals(String(calls[0][0]).includes("not configured"), true);
+});
+
 /** A minimal fake Supabase client factory whose `.from("notification_outbox")`
  * chain really enforces `.is`/`.lte`/`.lt`/`.eq` filtering against an
  * in-memory row set -- mirrors feedback-notify/index.test.ts's

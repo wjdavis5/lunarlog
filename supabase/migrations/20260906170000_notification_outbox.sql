@@ -82,7 +82,20 @@ begin
     return p_now;
   end if;
 
-  v_local_ts := p_now at time zone p_zone;
+  -- #3 (review): p_zone is a guardian-supplied IANA zone name
+  -- (lib/domain/util/timezone.dart, unvalidated at write time) resolved
+  -- here inside a day_entries AFTER trigger and inside the nightly scan
+  -- (#15). An unrecognized zone must never raise out of this function --
+  -- that would abort the profile holder's own entry write, or the
+  -- account-deletion re-home, or the whole nightly cron command for every
+  -- tenant, over one guardian's bad setting. Degrade to "no quiet hours"
+  -- exactly like a null zone.
+  begin
+    v_local_ts := p_now at time zone p_zone;
+  exception
+    when others then
+      return p_now;
+  end;
   v_local_date := v_local_ts::date;
   v_local_time := v_local_ts::time;
   v_wraps := p_quiet_start > p_quiet_end;
@@ -113,8 +126,10 @@ comment on function public.resolve_deliver_after(timestamptz, time, time, text) 
   'Resolves when an alert should actually deliver given the recipient''s '
   'quiet hours (KTD5, R12): p_now unchanged outside the window, or the '
   'window''s end (today or tomorrow, for a wrapped window) when inside it. '
-  'A null zone, null start/end, or a zero-length window means no quiet '
-  'hours.';
+  'A null zone, null start/end, a zero-length window, or an unrecognized '
+  'IANA zone name (#3/#15 review fix) all mean no quiet hours -- an '
+  'invalid p_zone degrades rather than raising, so it can never abort the '
+  'caller (the day_entries trigger or the nightly scan).';
 
 revoke all on function public.resolve_deliver_after(timestamptz, time, time, text)
   from public, anon, authenticated;
@@ -154,16 +169,23 @@ begin
 
   v_is_bleed := new.flow <> 'none';
 
+  -- #6 (review): lib/domain/episodes/episodes.dart's deriveEpisodes() merges
+  -- bleed dates at most 2 days apart into the same episode (a one-day
+  -- non-bleed gap does not split it) -- probing only local_date - 1 missed
+  -- that merge and flagged the day after a one-day gap as a false
+  -- cycle_start. Checking the full [local_date - 2, local_date - 1] window
+  -- for any prior bleed day matches deriveEpisodes' own rule exactly.
   select exists (
     select 1 from public.day_entries
      where profile_id = new.profile_id
-       and local_date = new.local_date - 1
+       and local_date >= new.local_date - 2
+       and local_date < new.local_date
        and deleted_at is null
        and flow <> 'none'
   ) into v_prev_bleed;
 
-  -- R7: a cycle start is a bleed day immediately preceded by a non-bleed
-  -- day (or by nothing at all -- v_prev_bleed is false either way).
+  -- R7: a cycle start is a bleed day with no bleed day in the merge window
+  -- (or nothing at all -- v_prev_bleed is false either way).
   v_is_cycle_start := v_is_bleed and not v_prev_bleed;
 
   -- Q1: no severity marker exists in the tag taxonomy; heavy flow alone
@@ -210,14 +232,48 @@ end;
 $$;
 
 comment on function public.enqueue_caregiver_alerts() is
-  'AFTER INSERT OR UPDATE trigger on day_entries (Issue #5, KTD4): fans a '
-  'live write out into one public.notification_outbox row per eligible, '
-  'non-writer guardian. Runs independently of '
+  'AFTER INSERT and AFTER UPDATE trigger function on day_entries (Issue #5, '
+  'KTD4; two separate triggers as of the #7 review fix, since a single '
+  'combined trigger cannot WHEN-filter both events with one expression): '
+  'fans a live write out into one public.notification_outbox row per '
+  'eligible, non-writer guardian. The UPDATE trigger''s WHEN clause skips '
+  'ownership-only updates and no-op resaves (#7). Runs independently of '
   'public.touch_sync_signal()''s sync_signals trigger -- the two write to '
   'different tables and neither depends on the other''s firing order.';
 
 revoke execute on function public.enqueue_caregiver_alerts() from public, anon, authenticated;
 
-create trigger day_entries_after_write_enqueue_alerts
-  after insert or update on public.day_entries
+-- #7 (review): a bare `after insert or update` fires on every write,
+-- including ones that carry no actual change to what was logged --
+-- rehome_stray_day_entries()'s ownership-only UPDATE (user_id,
+-- last_modified_by_user_id only) during account deletion, and an ordinary
+-- sync_push re-save that resolves to the same content the row already had.
+-- Neither is "someone logged an entry" from a guardian's point of view. The
+-- WHEN clause below scopes firing to an INSERT or an UPDATE that actually
+-- changes one of the columns enqueue_caregiver_alerts()'s own eligibility
+-- logic (cycle-start/high-severity detection) and a guardian's mental model
+-- of "an entry" depend on; attribution columns (user_id,
+-- last_modified_by_user_id) and server bookkeeping (created_at, updated_at,
+-- server_version) are deliberately excluded. Split into two triggers rather
+-- than one combined `after insert or update` with a single WHEN: Postgres
+-- rejects a WHEN clause that references OLD on the INSERT branch of a
+-- combined trigger (`INSERT trigger's WHEN condition cannot reference OLD
+-- values`, SQLSTATE 42P17), and a WHEN clause cannot reference TG_OP either
+-- (that's only visible inside the function body, evaluated after WHEN has
+-- already decided whether to fire) -- so there is no single WHEN
+-- expression that works for both events at once.
+create trigger day_entries_after_insert_enqueue_alerts
+  after insert on public.day_entries
   for each row execute function public.enqueue_caregiver_alerts();
+
+create trigger day_entries_after_update_enqueue_alerts
+  after update on public.day_entries
+  for each row
+  when (
+    new.local_date is distinct from old.local_date
+    or new.flow is distinct from old.flow
+    or new.tags is distinct from old.tags
+    or new.note is distinct from old.note
+    or new.deleted_at is distinct from old.deleted_at
+  )
+  execute function public.enqueue_caregiver_alerts();

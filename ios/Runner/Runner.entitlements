@@ -6,7 +6,12 @@
 	<array>
 		<string>Default</string>
 	</array>
-	<!-- Issue #5, U7: remote caregiver alerts via FCM/APNs. -->
+	<!-- Issue #5, U7: remote caregiver alerts via FCM/APNs. This file now
+	     backs the Release configuration only (App Store / distribution
+	     signing requires "production"); Debug and Profile use
+	     DebugProfile.entitlements' "development" value instead (review
+	     #11) - a development-signed build cannot be signed against a
+	     "production" aps-environment at all. -->
 	<key>aps-environment</key>
 	<string>production</string>
 </dict>

@@ -1,6 +1,14 @@
 -- RLS coverage for public.push_devices (Issue #5, Unit U1).
 begin;
-select plan(8);
+select plan(9);
+
+-- #14 (review fix): see the matching check in
+-- notification_preferences_rls_test.sql -- TRUNCATE bypasses RLS entirely.
+select is(
+  has_table_privilege('authenticated', 'public.push_devices', 'TRUNCATE'),
+  false,
+  'authenticated cannot TRUNCATE push_devices'
+);
 
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('dad');

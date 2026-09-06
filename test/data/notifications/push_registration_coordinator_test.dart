@@ -22,6 +22,7 @@ class _FakeRegistry implements PushDeviceRegistry {
   final List<_RegisterCall> registerCalls = [];
   final List<String> removeCalls = [];
   Object? nextRegisterError;
+  Object? nextRemoveError;
 
   @override
   Future<void> register(String deviceId, String token, {required String platform}) async {
@@ -35,6 +36,11 @@ class _FakeRegistry implements PushDeviceRegistry {
 
   @override
   Future<void> remove(String deviceId) async {
+    final error = nextRemoveError;
+    if (error != null) {
+      nextRemoveError = null;
+      throw error;
+    }
     removeCalls.add(deviceId);
   }
 }
@@ -216,6 +222,52 @@ void main() {
     await pumpEventQueue();
 
     expect(forwarded, ['profile-1']);
+
+    await coordinator.dispose();
+    await tokenSource.close();
+  });
+
+  test('removeRegistration (#1 review fix) removes this device\'s registration on demand, even while disposed', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry();
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+    );
+    await coordinator.start();
+    expect(registry.removeCalls, isEmpty);
+
+    await coordinator.removeRegistration();
+    expect(registry.removeCalls, [deviceId]);
+
+    // Callable even after dispose (app_lifecycle.dart's resetDevice calls
+    // this before dispose, but a defensive call afterwards must not throw).
+    await coordinator.dispose();
+    await coordinator.removeRegistration();
+    expect(registry.removeCalls, [deviceId, deviceId]);
+
+    await tokenSource.close();
+  });
+
+  test('removeRegistration swallows a registry failure (best-effort)', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry()..nextRemoveError = Exception('boom');
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+    );
+    await coordinator.start();
+
+    await expectLater(coordinator.removeRegistration(), completes);
+    expect(registry.removeCalls, isEmpty, reason: 'the one attempt threw');
 
     await coordinator.dispose();
     await tokenSource.close();
