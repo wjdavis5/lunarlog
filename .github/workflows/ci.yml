@@ -28,24 +28,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Each verification step below runs with `if: always()` (skipping only
+      # on cancellation) so one script's failure can never hide the rest --
+      # that was the P1 bug: a single red step used to short-circuit every
+      # step after it, leaving the release gate with zero executed coverage
+      # in CI. Every step's own pass/fail is now always visible.
       - name: Run extract-marketing-version tests
+        if: always()
         run: bash .github/scripts/tests/extract-marketing-version.test.sh
 
       - name: Run detect-version-bump tests
+        if: always()
         run: bash .github/scripts/tests/detect-version-bump.test.sh
 
       - name: Run check-release-gate tests
+        if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
       - name: Cache actionlint
         id: actionlint-cache
+        if: always()
         uses: actions/cache@v4
         with:
           path: actionlint
           key: actionlint-${{ runner.os }}-1.7.7
 
       - name: Install actionlint
-        if: steps.actionlint-cache.outputs.cache-hit != 'true'
+        if: always() && steps.actionlint-cache.outputs.cache-hit != 'true'
         env:
           ACTIONLINT_VERSION: '1.7.7'
         run: |
@@ -56,9 +65,11 @@ jobs:
           rm actionlint.tar.gz
 
       - name: Verify actionlint
+        if: always()
         run: ./actionlint -version
 
       - name: Lint workflows with actionlint
+        if: always()
         run: ./actionlint .github/workflows/*.yml
 
   release-guards-macos:
@@ -75,13 +86,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Same rationale as the release-guards job above: keep every script's
+      # result visible instead of letting an earlier failure hide the rest.
       - name: Run extract-marketing-version tests
+        if: always()
         run: bash .github/scripts/tests/extract-marketing-version.test.sh
 
       - name: Run detect-version-bump tests
+        if: always()
         run: bash .github/scripts/tests/detect-version-bump.test.sh
 
       - name: Run check-release-gate tests
+        if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
   check:
