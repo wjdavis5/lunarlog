@@ -628,7 +628,11 @@ class SupabaseAuthService implements AuthService {
       // `identities` is already the fresh read above; build the returned
       // user from it rather than the caller's stale pre-call snapshot, so
       // this idempotent branch cannot disagree with what the server
-      // actually has (consistent with the success path below).
+      // actually has (consistent with the success path below). But an
+      // empty read here is itself degraded (or identity-less), not proof
+      // the account has no providers — fall back to the pre-call snapshot
+      // rather than returning an empty provider list.
+      if (identities.isEmpty) return current;
       return AuthUser(
         id: current.id,
         email: current.email,

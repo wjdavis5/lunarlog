@@ -216,6 +216,34 @@ void main() {
     expect(c.currentUser?.providers, ['email']);
   });
 
+  test('a same-state signal (e.g. a userUpdated/token-refresh echo) '
+      're-syncs the adopted user, so a genuinely newer server user under '
+      'the same id is not masked for the rest of the session (#31 finding '
+      '2 round 2)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    service.unlinkLeavesCurrentUserStale = true;
+    final c = controller();
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    expect(c.currentUser?.providers, ['email'],
+        reason: 'adopted from the unlink call, since the fake\'s own '
+            'currentUser is left stale by the simulated refresh failure');
+
+    // A genuinely newer server user arrives under the same id and the
+    // same AuthSessionState — a real unlink elsewhere, or a session
+    // refresh's `userUpdated` echo. This must not be masked forever by
+    // the still-cached adopted user.
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'apple']));
+    await Future<void>.delayed(Duration.zero);
+    expect(c.currentUser?.providers, ['email', 'apple'],
+        reason: 'the same-state signal must clear the cached override so '
+            'currentUser re-reads the live service value instead of '
+            'serving the stale adopted one for the rest of the session');
+  });
+
   test('stops listening after dispose', () async {
     final c = AuthController(authService: service);
     var notifications = 0;

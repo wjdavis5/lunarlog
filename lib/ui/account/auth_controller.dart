@@ -161,7 +161,21 @@ class AuthController extends ChangeNotifier {
       _service.signOut(scope: scope);
 
   void _onState(AuthSessionState next) {
-    if (next == _state) return;
+    if (next == _state) {
+      // A same-state signal (e.g. Supabase's `userUpdated` event, or a
+      // token refresh) can still carry a genuinely newer user under the
+      // same id — e.g. a real unlink elsewhere. When a [_freshUser] is
+      // cached, drop it so [currentUser] re-reads the service's fresh
+      // value instead of serving a stale cached one for the rest of the
+      // app session (#31 finding 2 round 2); with nothing cached, a
+      // repeated identical state (a plain token refresh) still notifies
+      // no one, unchanged from before.
+      if (_freshUser != null) {
+        _freshUser = null;
+        notifyListeners();
+      }
+      return;
+    }
     _state = next;
     notifyListeners();
   }

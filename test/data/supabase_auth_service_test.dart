@@ -1882,6 +1882,30 @@ void main() {
       expect(gateway.refreshSessionCalls, 0);
     });
 
+    test('P2: an empty fresh-identities read on the not-found branch falls '
+        'back to the pre-call snapshot rather than an empty provider list',
+        () async {
+      // A degraded/identity-less fresh read (empty, not just missing the
+      // target provider) must not be trusted as "the account has no
+      // providers" — fall back to the pre-call `current` snapshot instead
+      // of building an empty-providers user from it.
+      gateway.session =
+          makeSession('u1', email: 'a@b.c', identities: ['email']);
+      final service = await started();
+      gateway.getUserIdentitiesOverride = const [];
+
+      final user = await service.unlinkProvider('google');
+
+      expect(
+          user,
+          const AuthUser(
+              id: 'u1', email: 'a@b.c', providers: ['email']),
+          reason: 'the fresh read came back empty (degraded), so the '
+              'pre-call snapshot is preferred over an empty provider list');
+      expect(gateway.unlinkIdentityCalls, isEmpty);
+      expect(gateway.refreshSessionCalls, 0);
+    });
+
     test('R9: unlinkProvider on the account\'s only identity throws '
         'lastSignInMethod and issues no delete', () async {
       gateway.session = makeSession('u1', identities: ['google']);
