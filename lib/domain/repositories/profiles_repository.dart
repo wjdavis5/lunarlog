@@ -4,13 +4,19 @@
 library;
 
 import '../models/profile.dart';
+import '../models/profile_relationship.dart';
 
 abstract interface class ProfilesRepository {
-  /// Creates a new profile (id assigned by storage).
+  /// Creates a new profile (id assigned by storage). [birthYear] and
+  /// [relationship] are optional, display/context-only subject metadata
+  /// (Issue #4 R1, R2, R3); neither is validated beyond the closed set
+  /// [ProfileRelationship] already enforces.
   Future<Profile> create({
     required String displayName,
     required bool isMinor,
     int sortOrder,
+    int? birthYear,
+    ProfileRelationship? relationship,
   });
 
   /// Persists edits to an existing profile (matched by id). Throws

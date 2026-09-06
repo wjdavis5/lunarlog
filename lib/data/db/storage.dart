@@ -131,6 +131,12 @@ class LunarLogStorage {
   /// Marks the row dirty and bumps `local_rev`. An update stamps
   /// `updated_at` strictly after the stored value. Throws [ArgumentError]
   /// for a [displayName] over [kMaxDisplayNameLength].
+  ///
+  /// [birthYear] and [relationship] are optional, display/context-only
+  /// subject metadata (Issue #4 R1, R3); [relationship] is the raw
+  /// `toDb()` string, not validated here (the domain enum's closed set and
+  /// the server's check constraint are the enforcement points). Neither is
+  /// device-local bookkeeping: both sync like any other profile column.
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
@@ -139,6 +145,8 @@ class LunarLogStorage {
     DateTime? archivedAt,
     DateTime? createdAt,
     DateTime? updatedAt,
+    int? birthYear,
+    String? relationship,
   }) async {
     // Async so validation failures surface as failed futures.
     _validateDisplayName(displayName);
@@ -160,6 +168,8 @@ class LunarLogStorage {
               updatedAt: now,
               dirty: const Value(true),
               localRev: const Value(1),
+              birthYear: Value(birthYear),
+              relationship: Value(relationship),
             ));
         return _profileById(rowId);
       }
@@ -174,6 +184,8 @@ class LunarLogStorage {
           deletedAt: const Value(null),
           dirty: const Value(true),
           localRev: Value(existing.localRev + 1),
+          birthYear: Value(birthYear),
+          relationship: Value(relationship),
         ),
       );
       return _profileById(rowId);
@@ -633,6 +645,9 @@ class LunarLogStorage {
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
             localRev: const Value(0),
+            birthYear: Value(remote.birthYear),
+            relationship: Value(remote.relationship),
+            transferredAt: Value(remote.transferredAt?.toUtc()),
           ));
       return true;
     }
@@ -646,6 +661,9 @@ class LunarLogStorage {
         updatedAt: Value(updatedAt),
         deletedAt: Value(deletedAt),
         dirty: const Value(false),
+        birthYear: Value(remote.birthYear),
+        relationship: Value(remote.relationship),
+        transferredAt: Value(remote.transferredAt?.toUtc()),
       ),
     );
     return true;

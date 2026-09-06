@@ -10,6 +10,7 @@ import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
+import 'package:lunarlog/domain/models/profile_relationship.dart' as domain;
 
 domain.Profile profileToDomain(db.Profile row) => domain.Profile(
       id: row.id,
@@ -20,6 +21,11 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
+      birthYear: row.birthYear,
+      relationship: row.relationship == null
+          ? null
+          : domain.ProfileRelationship.fromDb(row.relationship!),
+      transferredAt: row.transferredAt,
     );
 
 domain.FlowLevel flowToDomain(db.FlowLevel flow) =>

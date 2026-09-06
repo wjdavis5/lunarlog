@@ -9,12 +9,22 @@
 /// * `local_date` stays the `yyyy-MM-dd` string on both sides.
 /// * `tags` is a JSON array of strings; `flow` is the enum name.
 /// * `day_entries.created_at` is server-only: never emitted, never read.
+/// * `profiles.relationship` (Issue #4 R3) is validated against the closed
+///   set on decode: an unrecognised value normalises to null rather than
+///   surfacing garbage the app never asked for, since it is optional
+///   display metadata, not a security-relevant field like a guardian role.
+///   `profiles.transferred_at` (R5) is pulled but never pushed — server-
+///   owned, written only by `accept_ownership_transfer`.
 /// * Failures are a typed [RowCodecError] naming the table and field and
 ///   the kind of problem — never the offending value, never the row.
 ///
 /// Like `mappers.dart`, this is a place where storage types and another
-/// representation meet; nothing under `lib/domain` imports it.
+/// representation meet; nothing under `lib/domain` imports it (the reverse
+/// import below, of the small closed-set `ProfileRelationship` enum, is the
+/// normal data-depends-on-domain direction and does not violate that).
 library;
+
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 
 import '../db/db.dart';
 import '../db/tables.dart';
@@ -125,6 +135,10 @@ DateTime decodeTimestamp(
 
 /// The `p_profiles` element for [row]. Emits exactly the keys `sync_push`
 /// accepts; `dirty` and `local_rev` are device-local and never leave.
+/// `transferred_at` is deliberately omitted (Issue #4 R5/R21): it is
+/// server-owned, written only by `accept_ownership_transfer`, and
+/// `sync_push` tolerates but never reads it, so the client keeps the
+/// payload honest by never sending it.
 JsonRow encodeProfile(Profile row) {
   if (!isValidUlid(row.id)) {
     throw const RowCodecError(RowCodecErrorKind.invalidId,
@@ -139,6 +153,8 @@ JsonRow encodeProfile(Profile row) {
     'created_at': encodeTimestamp(row.createdAt),
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
+    'birth_year': row.birthYear,
+    'relationship': row.relationship,
   };
 }
 
@@ -193,8 +209,17 @@ RemoteProfileRow decodeProfile(JsonRow json) {
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),
     serverVersion: r.integerOr('server_version', 0),
+    birthYear: r.integerOrNull('birth_year'),
+    relationship: _decodeRelationship(r.stringOrNull('relationship')),
+    transferredAt: r.timestampOrNull('transferred_at'),
   );
 }
+
+/// Normalises a raw `relationship` string against the closed set: an
+/// unrecognised value (a future addition, a row from a newer client) comes
+/// back null rather than being passed through as garbage.
+String? _decodeRelationship(String? raw) =>
+    raw == null ? null : ProfileRelationship.fromDb(raw)?.toDb();
 
 /// Decodes a `day_entries` row. `created_at` and `user_id` are ignored;
 /// `server_version` defaults to 0 when absent.
@@ -299,6 +324,12 @@ class _Reader {
   int integerOr(String field, int fallback) {
     final value = json[field];
     if (value == null) return fallback;
+    return _asInt(value, field);
+  }
+
+  int? integerOrNull(String field) {
+    final value = json[field];
+    if (value == null) return null;
     return _asInt(value, field);
   }
 

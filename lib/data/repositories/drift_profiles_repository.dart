@@ -3,6 +3,7 @@ library;
 
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/models/profile.dart' as domain;
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 
 import 'mappers.dart';
@@ -19,12 +20,16 @@ class DriftProfilesRepository implements ProfilesRepository {
     required String displayName,
     required bool isMinor,
     int sortOrder = 0,
+    int? birthYear,
+    ProfileRelationship? relationship,
   }) =>
       _storage
           .upsertProfile(
             displayName: displayName,
             isMinor: isMinor,
             sortOrder: sortOrder,
+            birthYear: birthYear,
+            relationship: relationship?.toDb(),
           )
           .then(profileToDomain);
 
@@ -40,6 +45,8 @@ class DriftProfilesRepository implements ProfilesRepository {
       isMinor: profile.isMinor,
       sortOrder: profile.sortOrder,
       archivedAt: profile.archivedAt,
+      birthYear: profile.birthYear,
+      relationship: profile.relationship?.toDb(),
     ));
   }
 
@@ -72,6 +79,8 @@ class DriftProfilesRepository implements ProfilesRepository {
       isMinor: row.isMinor,
       sortOrder: row.sortOrder,
       archivedAt: archived ? _now() : null,
+      birthYear: row.birthYear,
+      relationship: row.relationship,
     );
   }
 

@@ -67,6 +67,24 @@ class Profiles extends Table {
   IntColumn get localRev =>
       integer().named('local_rev').withDefault(const Constant(0))();
 
+  /// Optional birth year of the profile subject (Issue #4 R1). Display and
+  /// context only — never gates, forces, or auto-schedules an ownership
+  /// transfer (R2).
+  IntColumn get birthYear => integer().named('birth_year').nullable()();
+
+  /// Optional closed-set relationship of the subject to the profile creator
+  /// (R3), mirrored by [domain.ProfileRelationship]. Stored as the raw
+  /// `toDb()` string; an unrecognised value decodes to null rather than
+  /// throwing (see `row_codec.dart`).
+  TextColumn get relationship => text().nullable()();
+
+  /// Instant this profile's ownership last moved via
+  /// `accept_ownership_transfer`, or null if it never has (R5). Never
+  /// client-writable — server-owned, pulled but never pushed (see
+  /// `encodeProfile` in `row_codec.dart`).
+  DateTimeColumn get transferredAt =>
+      dateTime().named('transferred_at').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
