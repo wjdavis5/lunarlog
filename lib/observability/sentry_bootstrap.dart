@@ -39,7 +39,11 @@ Future<void> runWithSentry({
     return;
   }
   await init(
-    (options) => configureSentryOptions(options, dsn: dsn),
+    (options) => configureSentryOptions(
+      options,
+      dsn: dsn,
+      tracesSampleRate: AppConfig.sentryTracesSampleRate,
+    ),
     appRunner: appRunner,
   );
 }
@@ -52,10 +56,34 @@ Future<void> runWithSentry({
 /// from the same already-scrubbed stream Sentry uses, so no new
 /// instrumentation is needed when Sentry is configured. Defaults to the
 /// shared [defaultBreadcrumbLog]; tests pass their own.
+///
+/// [tracesSampleRate] (U4; R9, R10, R14) is injectable for the same reason
+/// [dsn] is: [AppConfig.sentryTracesSampleRate] is not `const` (parsing and
+/// clamping cannot happen in a const initializer), so a default value here
+/// would still read the real build's dart-define — coupling every test
+/// that does not pass this parameter to whatever `flutter test` happened
+/// to be invoked with. Defaulting to `null` (tracing off) instead means a
+/// test suite run stays identical whether or not `--dart-define
+/// =SENTRY_TRACES_SAMPLE_RATE=…` was passed; only [runWithSentry]'s
+/// production call site passes the real [AppConfig] value.
+///
+/// [scrubEventFn]/[scrubTransactionFn] (round 2 of issue #7's review) are
+/// injectable for the same reason [breadcrumbLog] is: the fail-closed
+/// `beforeSend`/`beforeSendTransaction` try/catch below exists to catch a
+/// bug *in the scrubber itself*, and [scrubEvent]/[scrubTransaction] are
+/// pure functions over well-typed SDK objects with no reachable throw path
+/// through the public API -- so without a seam to substitute a throwing
+/// stand-in, that catch block would be untestable and a regression in it
+/// (the round-1 gap this closes) could ship green. Default to the real
+/// [scrubEvent]/[scrubTransaction]; only tests override them.
 void configureSentryOptions(
   SentryFlutterOptions options, {
   required String dsn,
   BreadcrumbLog? breadcrumbLog,
+  double? tracesSampleRate,
+  SentryEvent? Function(SentryEvent event) scrubEventFn = scrubEvent,
+  SentryTransaction? Function(SentryTransaction transaction)
+      scrubTransactionFn = scrubTransaction,
 }) {
   final log = breadcrumbLog ?? defaultBreadcrumbLog;
   options
@@ -70,24 +98,87 @@ void configureSentryOptions(
     ..attachViewHierarchy = false
     ..enableUserInteractionBreadcrumbs = false
     ..enableUserInteractionTracing = false
-    // Errors at 100% (R17, tiny user base); no performance or profiling
-    // data, which would carry route names and request URLs.
+    // Errors at 100% (R17, tiny user base); no profiling data, which would
+    // carry route names and request URLs.
     ..sampleRate = 1.0
-    ..tracesSampleRate = null
+    // U4 (R9, R14): null unless SENTRY_TRACES_SAMPLE_RATE is set, so an
+    // unconfigured build produces no transactions and no app-start
+    // measurement -- exactly today's behavior.
+    ..tracesSampleRate = tracesSampleRate
     // ignore: experimental_member_use
     ..profilesSampleRate = null
     // Release health (R17).
     ..enableAutoSessionTracking = true
     // Request bodies are never attached to captured HTTP failures.
-    ..maxRequestBodySize = MaxRequestBodySize.never;
-  // Allowlist scrubbing (R18).
-  options.beforeSend = (event, hint) => scrubEvent(event);
-  options.beforeBreadcrumb = (breadcrumb, hint) {
-    final scrubbed = scrubBreadcrumb(breadcrumb);
-    if (scrubbed != null) {
-      log.record(scrubbed.category ?? 'breadcrumb', scrubbed.message ?? '');
+    ..maxRequestBodySize = MaxRequestBodySize.never
+    // Native crash capture (U3; R6, R7, R8): every option set explicitly,
+    // following this cascade's existing "so a default change upstream
+    // cannot turn it on [or off]" convention.
+    ..anrEnabled = true
+    ..enableNativeCrashHandling = true
+    ..enableNdkScopeSync = true
+    ..enableAppHangTracking = true
+    ..enableWatchdogTerminationTracking = true
+    ..enableAutoNativeBreadcrumbs = true
+    // The only option here that is off by SDK default (KTD6). Turning it on
+    // would open an Android ApplicationExitInfo channel assembled natively
+    // -- outside this scrubber -- from a process that holds decrypted
+    // health strings in memory, and nobody has inspected what such a
+    // payload actually carries. Pinned false; the opt-in (after a real
+    // payload has been inspected) belongs to issue #19.
+    ..enableTombstone = false
+    // Print breadcrumbs are the only option left at the SDK default of
+    // `true` in this cascade -- pinned false instead. `DebugPrintIntegration`
+    // (sentry_flutter 9.28.0) turns every non-debug-mode `debugPrint` call
+    // into a `Breadcrumb.console` with the raw printed text as `message`
+    // and no `data`, so `containsDenyListedKey` (a key-name check) never
+    // sees it; the only guard the message gets is `scrubBreadcrumb`'s
+    // `mentionsDenyListedKey` word scan, which catches a literal key name
+    // like `note` appearing as a token but not an arbitrary sensitive
+    // *value* a caller happened to print -- e.g. `app_lifecycle.dart`'s
+    // reset-failure handler does `debugPrint('lunarlog reset failed:
+    // $error\n$stackTrace')`, and neither `error`'s message nor the stack
+    // trace is guaranteed to avoid health-adjacent content. Same posture
+    // as `enableTombstone` above: pin off until a real payload has been
+    // inspected (issue #19), rather than ship a value-based scrubber this
+    // file has never had reason to build.
+    ..enablePrintBreadcrumbs = false;
+  // Allowlist scrubbing (R18). scrubTransaction (U4) is inert while
+  // tracesSampleRate is null -- no transaction is ever produced for it to
+  // see -- and proven by unit tests long before an operator opts in.
+  //
+  // Every callback below fails closed: the SDK forwards the raw,
+  // unscrubbed event/transaction/breadcrumb when a `beforeSend*`/
+  // `beforeBreadcrumb` callback throws, so a bug in the scrubber itself
+  // (an unexpected field shape, a null the scrubber didn't anticipate)
+  // would otherwise leak exactly the payload this whole file exists to
+  // stop. Catching broadly and returning null (drop) is deliberate here --
+  // dropping a report is always safe, sending an unscrubbed one never is.
+  options.beforeSend = (event, hint) {
+    try {
+      return scrubEventFn(event);
+    } catch (_) {
+      return null;
     }
-    return scrubbed;
+  };
+  options.beforeSendTransaction = (transaction, hint) {
+    try {
+      return scrubTransactionFn(transaction);
+    } catch (_) {
+      return null;
+    }
+  };
+  options.beforeBreadcrumb = (breadcrumb, hint) {
+    try {
+      final scrubbed = scrubBreadcrumb(breadcrumb);
+      if (scrubbed != null) {
+        log.record(
+            scrubbed.category ?? 'breadcrumb', breadcrumbLabel(scrubbed));
+      }
+      return scrubbed;
+    } catch (_) {
+      return null;
+    }
   };
   // Session replay stays off: both sample rates null (the SDK default) means
   // `replay.isEnabled` is false. Set explicitly so a default change upstream
@@ -102,3 +193,48 @@ void configureSentryOptions(
 /// Sentry widget in its tree.
 Widget wrapWithSentry(Widget child) =>
     AppConfig.hasSentry ? SentryWidget(child: child) : child;
+
+/// [SentryNavigatorObserver]'s `routeNameExtractor` (KTD4). Extracted as a
+/// standalone top-level function -- rather than inlined in
+/// [sentryNavigatorObservers] -- so it can be unit-tested directly: under
+/// `flutter test`, [AppConfig.hasSentry] is always false (it is a compile-time
+/// `const`), so the closure passed to `SentryNavigatorObserver` in
+/// [sentryNavigatorObservers] never runs in that process and would otherwise
+/// be untestable.
+///
+/// This extractor is required, not merely defense in depth: while tracing is
+/// on, `SentryTracer.traceContext()` reads the transaction name directly off
+/// the live `SentryTracer` (built from the observer's route name) to populate
+/// the trace's Dynamic Sampling Context, which rides along on both the
+/// outgoing Sentry envelope header and the `baggage` header sent to Supabase.
+/// That DSC is assembled before an event ever reaches
+/// [scrubTransaction]/[scrubEvent] as `beforeSend*` callbacks, so
+/// [scrub.dart]'s scrubbers -- the enforcement point for every event field --
+/// never see it and cannot stop the raw route name from leaving the device.
+/// Routing [settings] through [scrubRouteName] here scrubs the name at the
+/// one point upstream of that leak, closing it for good. The returned
+/// [RouteSettings] carries only the scrubbed name -- `arguments` is dropped
+/// unconditionally, same as the navigation-breadcrumb handling above (KTD1):
+/// a scalar argument has no keys for a deny-list check to find.
+RouteSettings? sentryRouteNameExtractor(RouteSettings? settings) =>
+    settings == null ? null : RouteSettings(name: scrubRouteName(settings.name));
+
+/// The [NavigatorObserver] list for `MaterialApp.navigatorObservers` (U2;
+/// R1, R3, R4, R5, R13). Empty when Sentry is unconfigured, so an
+/// unconfigured build installs no observer — same gate as [wrapWithSentry].
+///
+/// `setRouteNameAsTransaction: true` puts the current screen's (scrubbed —
+/// KTD4) name on `event.transaction`; `enableAutoTransactions: true` is
+/// inert while `AppConfig.sentryTracesSampleRate` is null (U4) and starts
+/// producing route transactions only once an operator opts into tracing.
+/// [sentryRouteNameExtractor] closes the Dynamic Sampling Context leak
+/// documented on that function.
+List<NavigatorObserver> sentryNavigatorObservers() => AppConfig.hasSentry
+    ? [
+        SentryNavigatorObserver(
+          enableAutoTransactions: true,
+          setRouteNameAsTransaction: true,
+          routeNameExtractor: sentryRouteNameExtractor,
+        ),
+      ]
+    : const <NavigatorObserver>[];

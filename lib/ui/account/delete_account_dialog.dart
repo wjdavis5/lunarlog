@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/observability/route_names.dart';
 
 /// What the operator chose. `null` (from [showDeleteAccountDialog]) means
 /// the dialog was dismissed some other way (e.g. the system back button);
@@ -132,5 +133,6 @@ Future<DeleteAccountDecision?> showDeleteAccountDialog(
       // _exporting) - a barrier tap can't dismiss the dialog out from under
       // an in-flight export either.
       barrierDismissible: false,
+      routeSettings: const RouteSettings(name: kRouteDeleteAccountDialog),
       builder: (_) => DeleteAccountDialog(onExport: onExport),
     );

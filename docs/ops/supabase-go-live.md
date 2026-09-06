@@ -139,6 +139,10 @@ passwordless email depends on custom SMTP above like every other email.
 
 ### Sentry
 
+Owned by issue #19 (`needs-human-review`, not yet done); the code side that
+depends on these (issue #7, U1-U7) lands inert until they exist — see that
+plan's "Hard dependency on issue #19" section.
+
 - [ ] Sentry project created; DSN stored as the `SENTRY_DSN` repository
       secret and (locally) in `dart_defines.json`.
 - [ ] "Prevent storing of IP addresses" on (Project Settings → Security &
@@ -146,6 +150,29 @@ passwordless email depends on custom SMTP above like every other email.
 - [ ] Server-side data scrubbing on, with the default sensitive-field list
       plus `note`, `tags`, `display_name`, `local_date`, `email` (defense in
       depth behind the client allowlist in `lib/observability/scrub.dart`).
+- [ ] **Sentry symbol upload secrets** (issue #7 U5): `SENTRY_AUTH_TOKEN`,
+      `SENTRY_ORG`, `SENTRY_PROJECT` repository secrets.
+      `SENTRY_AUTH_TOKEN` must be an **organization auth token scoped to
+      `project:releases` only** — not `project:write`, not `org:read`, and
+      not a personal user token — owned by the maintainer account and
+      rotated whenever repository access changes, matching every other
+      credential in this document. Without these three, both release
+      workflows' symbol-upload steps warn and skip (they never fail the
+      release); with them, iOS `.dSYM` bundles and Android native `.so`
+      symbols upload automatically on every release build, and an Android
+      ProGuard `mapping.txt` uploads too once R8/minification is separately
+      enabled (not yet — see issue #7's Scope Boundaries).
+- [ ] **Alert rules**: a "new issue in this release" alert and an
+      error-rate-spike alert, both routed to the maintainer's email (no
+      Slack/Discord integration — see issue #7's Scope Boundaries on why).
+- [ ] **Release health**: confirm the crash-free-sessions view is populated
+      per release and set an internal target of **>99.9%** crash-free
+      sessions; note where the crash-free-users view lives in the dashboard
+      for the same check.
+- [ ] **"Upload debug files" retention** enabled (Project Settings →
+      Processing Issues / Debug Files), so uploaded dSYMs and native symbols
+      are retained long enough to symbolicate a crash reported after the
+      fact.
 
 ### Feedback (issue #6)
 
@@ -215,6 +242,9 @@ bucket, and the two admin-facing emails
       `SUPABASE_PROJECT_REF`) set as environment secrets on `production`
       (`supabase-migrate.yml` runs `supabase link` + `db push` there).
 - [ ] `SENTRY_DSN` repository secret added.
+- [ ] `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` repository secrets
+      added (issue #7 U5; see the Sentry checklist above for the required
+      token scope).
 - [ ] `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CLIENT_ID`, and
       `APPLE_PRIVATE_KEY` set as environment secrets on `production` (issue
       #17 — the `delete-account` Edge Function's Apple token revocation,
@@ -446,14 +476,35 @@ observation; record the date and build number next to it when it passes.
       database — never the fail-closed screen. Repeat for "Sign out
       everywhere" and confirm the other device's session ends within the JWT
       expiry window.
-- [ ] **Sentry smoke test (AE7).** In a dev build with `SENTRY_DSN` set,
-      throw a deliberate test exception from a `lib/data` path and a UI path.
-      In Sentry the events carry only `contexts.os`, `contexts.runtime`, and
+- [ ] **Sentry smoke test (AE7; re-baselined for issue #7's U1/U2/U3).** In a
+      dev build with `SENTRY_DSN` set, navigate through a couple of screens
+      (e.g. Profiles → Settings → Send feedback), then throw a deliberate
+      test exception from a `lib/data` path and a UI path. In Sentry the
+      events carry only `contexts.os`, `contexts.runtime`, and
       `contexts.app.version`; no user, no `extra`, no request query string,
       headers, or body; the `lib/data` exception is reduced to its type name;
       breadcrumbs carry no `note`, `tags`, `display_name`, `local_date`,
-      `email`, `record`, or `p_day_entries` keys and HTTP URLs are truncated at
-      `?`.
+      `email`, `record`, or `p_day_entries` keys and HTTP URLs are truncated
+      at `?`. **This is a payload shape change from before issue #7, not a
+      regression:** navigation breadcrumbs now carry `{state, from, to}` with
+      the screen's bare name (e.g. `to: SettingsScreen`) instead of an empty
+      `data` map; `event.transaction` now holds the current screen name
+      instead of being absent; and the SDK's `integrations` list gains
+      `UINavigationTracing`. An unrecognized or third-party route name reads
+      as `unknown` in either field — that is also expected, not an error.
+      No profile id, entry date, or route argument should ever appear in
+      either field; if one does, that is the actual regression to chase.
+- [ ] **Symbolicated native-crash test (issue #7's closing deliverable,
+      owned by issue #19).** After the three `SENTRY_AUTH_TOKEN`/`ORG`/
+      `PROJECT` secrets exist and a release build has run through the
+      guarded upload step in `ios-release.yml` / `play-store-release.yml`
+      (see the "Sentry symbol upload secrets" item above), force a native
+      crash in a release build on each platform (e.g. Android: trigger an
+      ANR or a native `SIGSEGV` via a debug-only test hook; iOS: force an
+      app hang past the watchdog threshold) and confirm the resulting
+      Sentry issue shows file names and line numbers rather than bare
+      addresses. Cross-reference issue #19's own checklist so the two
+      documents do not drift on what "done" means here.
 
 ### Social logins and passwordless (issue #2)
 
@@ -696,12 +747,18 @@ pgTAP tests.
 - **Deferred follow-ups** (from the plan's Scope Boundaries): Realtime
   "pull now" hint; Apple Sign-In on Android/web; client-side syncing of
   `settings`; `birth_year` / `color` profile attributes; client-side
-  encryption of `note` and `display_name`; Sentry debug-symbol upload
-  (`SENTRY_AUTH_TOKEN`); managing auth settings via `supabase config push`;
-  iCloud backup exclusion and the `ThisDeviceOnly` key-class migration;
-  `https` App Links; new-device sign-in email notice. (In-app account
-  deletion and JSON export shipped in issue #17 — see the "Release gate"
-  and "Account deletion (issue #17)" sections above.)
+  encryption of `note` and `display_name`; managing auth settings via
+  `supabase config push`; iCloud backup exclusion and the `ThisDeviceOnly`
+  key-class migration; `https` App Links; new-device sign-in email notice.
+  (In-app account deletion and JSON export shipped in issue #17 — see the
+  "Release gate" and "Account deletion (issue #17)" sections above.) Sentry
+  debug-symbol upload is **no longer deferred as of issue #7** — both
+  release workflows carry a guarded upload step; it activates once issue
+  #19 provisions `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` (see the
+  "Sentry" checklist above). Android ProGuard mapping upload is implemented
+  alongside it but is **a no-op until R8/minification is separately
+  enabled** — issue #7's Scope Boundaries defers that and no issue tracks
+  it yet.
 - **Deferred from the social-logins plan** (issue #2, Scope Boundaries):
   **passkeys** — Supabase passkeys are beta and the Dart API is
   `@experimental`; a native flow needs the `passkeys` plugin, a relying-party

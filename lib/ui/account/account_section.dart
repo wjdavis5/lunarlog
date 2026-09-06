@@ -48,6 +48,12 @@
 /// then the one device reset (`_reset`, KTD16). No reset runs on any
 /// failure (R12); each [AccountDeletionFailure] renders its own copy in
 /// `account-delete-error`.
+///
+/// Route naming (U2 Approach 2b): this file's four `showDialog` calls
+/// (remove-method confirm, the two sign-out confirms, sign-out-everywhere
+/// confirm) are deliberately left unnamed — each is a trivial confirm/
+/// cancel choice with no content beyond the consequence copy, not a
+/// distinct destination.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -62,6 +68,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/delete_account_dialog.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
@@ -330,7 +337,10 @@ class _AccountSectionState extends State<AccountSection> {
           auth.state == AuthSessionState.expired ? 'Sign in again' : 'Sign in'),
       subtitle: const Text('Sync this device\'s data to an account.'),
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const SignInScreen()),
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: kRouteSignInScreen),
+          builder: (_) => const SignInScreen(),
+        ),
       ),
     );
   }

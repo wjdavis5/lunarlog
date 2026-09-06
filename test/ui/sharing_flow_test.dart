@@ -11,6 +11,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
@@ -681,6 +682,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Luna Caregivers'), findsOneWidget);
+
+      // U2 route naming: the pushed route is named ManageGuardiansScreen.
+      final route = ModalRoute.of(
+        tester.element(find.byType(ManageGuardiansScreen)),
+      );
+      expect(route?.settings.name, kRouteManageGuardiansScreen);
+      expect(kSentryRouteNames, contains(kRouteManageGuardiansScreen));
+
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });

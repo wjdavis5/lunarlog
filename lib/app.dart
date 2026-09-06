@@ -31,6 +31,8 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;
+import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
@@ -125,6 +127,13 @@ class _LunarLogAppState extends State<LunarLogApp> {
   late final CyclePredictionService _prediction;
   late final NotificationPermissionState _permissionState;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  // U2 Approach 1b: allocated once, not per build. `build` re-runs on every
+  // `setState` (the invite-link and auth-change paths both trigger one),
+  // and Navigator.didUpdateWidget compares observers by identity -- a fresh
+  // list on every build would detach and re-attach a new observer each
+  // time, discarding any in-flight route transaction.
+  late final List<NavigatorObserver> _navigatorObservers =
+      sentryNavigatorObservers();
   ReminderCoordinator? _coordinator;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
@@ -223,6 +232,14 @@ class _LunarLogAppState extends State<LunarLogApp> {
       _profileIdOfPendingInvite = null;
     });
     unawaited(
+      // U2 Approach 2b: deliberately left unnamed. Every other modal route
+      // in this app is named for a static destination or a trivial
+      // confirm; this one's content varies per invite (a code and an
+      // optional profile), which is closer to the ProfileDetailScreen
+      // shape KTD3 already treats as "one name for the screen, whatever
+      // data it displays" -- naming it `AcceptInviteSheet` would be
+      // consistent with that rule. Left for a follow-up rather than
+      // bundled into this plan's explicit route list.
       showModalBottomSheet<void>(
         context: ctx,
         isScrollControlled: true,
@@ -341,6 +358,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
       ],
       child: MaterialApp(
         navigatorKey: _navigatorKey,
+        navigatorObservers: _navigatorObservers,
         title: 'lunarlog',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00696F)),
@@ -352,7 +370,23 @@ class _LunarLogAppState extends State<LunarLogApp> {
           navigatorKey: _navigatorKey,
           child: child ?? const SizedBox.shrink(),
         ),
-        home: const ProfileHomeGate(),
+        // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is
+        // always built with WidgetsApp.defaultRouteName, `/`, which
+        // scrubRouteName's shape check rejects), and `initialRoute`/
+        // `onGenerateInitialRoutes` cannot coexist with `home:` (WidgetsApp
+        // asserts the two are mutually exclusive). onGenerateRoute is the
+        // one mechanism that produces the registered ProfileHomeGate name
+        // for the initial route -- guarded to the default route name so it
+        // stays exactly that (this app never calls Navigator.pushNamed):
+        // returning null for any other name lets Flutter's own
+        // unknown-route handling fire instead of silently rendering the
+        // home screen under an unrelated route name.
+        onGenerateRoute: (settings) => settings.name == Navigator.defaultRouteName
+            ? MaterialPageRoute<void>(
+                settings: const RouteSettings(name: kRouteProfileHomeGate),
+                builder: (_) => const ProfileHomeGate(),
+              )
+            : null,
       ),
     );
   }

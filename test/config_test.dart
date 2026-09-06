@@ -115,6 +115,42 @@ void main() {
     });
   });
 
+  group('computeTracesSampleRate (issue #7 U4; KTD8)', () {
+    test('empty is null', () {
+      expect(computeTracesSampleRate(''), isNull);
+    });
+
+    test('unparseable is null', () {
+      expect(computeTracesSampleRate('abc'), isNull);
+    });
+
+    test('a value inside [0, 1] passes through unchanged', () {
+      expect(computeTracesSampleRate('0.2'), 0.2);
+      expect(computeTracesSampleRate('1'), 1.0);
+      expect(computeTracesSampleRate('0'), 0.0);
+    });
+
+    test('negative clamps to 0.0', () {
+      expect(computeTracesSampleRate('-1'), 0.0);
+    });
+
+    test('greater than 1 clamps to 1.0', () {
+      expect(computeTracesSampleRate('5'), 1.0);
+    });
+
+    // Code-review finding: double.tryParse accepts the literal tokens
+    // "NaN"/"Infinity" as successfully parsed (not null), and num.clamp
+    // maps NaN to the *upper* bound rather than rejecting it -- so a
+    // non-finite value must be treated the same as unparseable (off), not
+    // silently clamped into 100% tracing.
+    test('non-finite values (NaN, Infinity, -Infinity) are null, not '
+        'clamped to 1.0', () {
+      expect(computeTracesSampleRate('NaN'), isNull);
+      expect(computeTracesSampleRate('Infinity'), isNull);
+      expect(computeTracesSampleRate('-Infinity'), isNull);
+    });
+  });
+
   group('computeHasGoogle', () {
     test('is false when the iOS client id is empty', () {
       expect(
@@ -213,6 +249,13 @@ void main() {
           webClientId: AppConfig.googleWebClientId,
         ),
       );
+    });
+
+    test('sentryTracesSampleRate agrees with the pure function applied to '
+        'an empty raw define -- this test run passes none (issue #7 U4)',
+        () {
+      expect(AppConfig.sentryTracesSampleRate, isNull);
+      expect(AppConfig.sentryTracesSampleRate, computeTracesSampleRate(''));
     });
   });
 }

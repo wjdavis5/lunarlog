@@ -21,6 +21,11 @@ name: Play Store Release
 #   SUPABASE_ANON_KEY             Supabase publishable key (client-safe);
 #                                 passed as SUPABASE_PUBLISHABLE_KEY
 #   SENTRY_DSN                    Sentry DSN (client-safe; empty disables)
+#   SENTRY_AUTH_TOKEN             Sentry org auth token, project:releases scope
+#                                 only (issue #19); native-symbol upload warns
+#                                 and skips when this or the next two are empty
+#   SENTRY_ORG                    Sentry organization slug
+#   SENTRY_PROJECT                Sentry project slug
 
 on:
   workflow_dispatch:
@@ -206,6 +211,66 @@ jobs:
 
           echo "AAB size: $(du -h "$aab" | cut -f1)"
           echo "APK size: $(du -h "$apk" | cut -f1)"
+
+      - name: Set up sentry-cli (checksum-verified download)
+        # U5 (R15/R16/R17): warns and skips rather than failing the release
+        # when the upload secrets are absent -- true for every build today,
+        # since issue #19 has not provisioned them yet. sentry-cli is
+        # installed as a pinned, checksum-verified release binary, never
+        # `curl | bash` (KTD10). The guard/download/verify logic is shared
+        # with ios-release.yml via upload-sentry-symbols-setup.sh (tested in
+        # CI's release-guards jobs); only the download URL/checksum and the
+        # upload commands themselves are platform-specific.
+        #
+        # No `continue-on-error` here (round 2 of issue #7's review; KTD10):
+        # the script itself already warns-and-skips (exit 0) on a missing
+        # secret or a download that fails after its own retries, so only a
+        # genuine checksum mismatch -- a corrupted or tampered binary --
+        # reaches a non-zero exit here, and that must fail the job loudly,
+        # not be swallowed. `continue-on-error` is scoped to the next step,
+        # which makes the actual Sentry upload network calls.
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_CLI_DOWNLOAD_URL: https://github.com/getsentry/sentry-cli/releases/download/3.7.0/sentry-cli-Linux-x86_64
+          SENTRY_CLI_SHA256: cec71d46a7cc394c94b6e75f1601985c710d457376c546ef3975567b3671563b
+          SENTRY_CLI_CHECKSUM_TOOL: sha256sum
+        run: bash .github/scripts/upload-sentry-symbols-setup.sh
+
+      - name: Upload Sentry debug symbols (native + ProGuard mapping)
+        # continue-on-error (R15): once issue #19 provisions the secrets, a
+        # Sentry-side outage on these upload calls must degrade telemetry,
+        # never block a signed Play upload -- this is symbol upload, not the
+        # release artifact itself. Scoped to just these network calls, not
+        # the checksum verification in the previous step (round 2 of issue
+        # #7's review). The ProGuard upload is a documented no-op today:
+        # R8/minification is not enabled by this plan (see Scope
+        # Boundaries), so no mapping.txt exists yet; the conditional exists
+        # so enabling R8 later needs no workflow edit.
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -x ./sentry-cli ]; then
+            # Verified empirically against this toolchain's real
+            # `flutter build appbundle --release` output tree (Q2) -- AGP's
+            # merge-native-libs task nests an extra `mergeReleaseNativeLibs`
+            # segment that a naive guess at the path misses.
+            native_libs_dir="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
+            if [ -d "$native_libs_dir" ]; then
+              ./sentry-cli debug-files upload "$native_libs_dir"
+            else
+              echo "::warning::No native libs directory found at $native_libs_dir -- skipping native symbol upload."
+            fi
+
+            mapping="build/app/outputs/mapping/release/mapping.txt"
+            if [ -f "$mapping" ]; then
+              ./sentry-cli upload-proguard "$mapping"
+            fi
+          fi
 
       - name: Publish to Google Play Store
         uses: r0adkll/upload-google-play@v1

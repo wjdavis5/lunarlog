@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
-import 'package:lunarlog/ui/feedback/feedback_screen.dart' show kSupportEmailAddress;
+import 'package:lunarlog/ui/feedback/feedback_screen.dart'
+    show FeedbackScreen, kSupportEmailAddress;
+import 'package:lunarlog/ui/feedback/support_history_screen.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -253,5 +256,61 @@ void main() {
 
     expect(find.byKey(const ValueKey('support-history-tile')), findsOneWidget);
     expect(find.byKey(const ValueKey('support-history-unread-badge')), findsNothing);
+  });
+
+  group('U2 route naming', () {
+    testWidgets('pushing Send feedback names the route FeedbackScreen',
+        (tester) async {
+      final settingsStore = FakeSettingsStore();
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<SettingsStore>.value(value: settingsStore),
+            Provider<FeedbackService>.value(value: FakeFeedbackService()),
+            ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
+          ],
+          // Providers must sit above MaterialApp/Navigator, not inside
+          // `home:` -- a pushed route is a sibling of the initial route in
+          // the Navigator's stack, not a descendant of `home:`'s subtree.
+          child: const MaterialApp(home: SettingsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('send-feedback-tile')));
+      await tester.pumpAndSettle();
+
+      final route = ModalRoute.of(
+        tester.element(find.byType(FeedbackScreen)),
+      );
+      expect(route?.settings.name, kRouteFeedbackScreen);
+      expect(kSentryRouteNames, contains(kRouteFeedbackScreen));
+    });
+
+    testWidgets(
+        'pushing Support history names the route SupportHistoryScreen',
+        (tester) async {
+      final settingsStore = FakeSettingsStore();
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<SettingsStore>.value(value: settingsStore),
+            Provider<FeedbackService>.value(value: FakeFeedbackService()),
+            ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
+          ],
+          child: const MaterialApp(home: SettingsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('support-history-tile')));
+      await tester.pumpAndSettle();
+
+      final route = ModalRoute.of(
+        tester.element(find.byType(SupportHistoryScreen)),
+      );
+      expect(route?.settings.name, kRouteSupportHistoryScreen);
+      expect(kSentryRouteNames, contains(kRouteSupportHistoryScreen));
+    });
   });
 }
