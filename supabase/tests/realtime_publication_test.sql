@@ -30,7 +30,7 @@
 -- `sync_signals` (the trigger path Realtime's payload would ride on), and
 -- that a non-guardian cannot read another family's signal rows.
 begin;
-select plan(24);
+select plan(28);
 
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('stranger');
@@ -171,6 +171,52 @@ update public.day_entries
 select ok(
   exists(select 1 from public.sync_signals where profile_id = tests.ulid(401)),
   'updating a day_entries row re-touches its sync_signals row'
+);
+
+-- ---------------------------------------------------------------------------
+-- Orphan-cleanup fix (PR #92 review, round 2): a hard profile delete (e.g.
+-- account deletion cascading via profiles.user_id -> auth.users(id) on
+-- delete cascade) must not leave sync_signals with a row for a profile that
+-- no longer exists. Deliberately NOT proven by adding
+-- `references public.profiles(id) on delete cascade` to sync_signals --
+-- that was tried and reverted: the cascade would remove the sync_signals
+-- row first, then this trigger's own upsert would try to reinsert it
+-- against a profile that is already gone and error, aborting the whole
+-- profile deletion. Verified here (and separately against a real local
+-- Supabase run) that the delete-not-upsert branch in touch_sync_signal()
+-- avoids that failure entirely.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('mom');
+
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(405), 'Deletion Target', false, 0, now(), now());
+
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(406), tests.ulid(405), '2026-09-05', 'UTC', 'none', now());
+
+select ok(
+  exists(select 1 from public.sync_signals where profile_id = tests.ulid(405)),
+  'setup: the profile-to-be-deleted has a sync_signals row'
+);
+
+select tests.clear_authentication();
+
+select lives_ok(
+  $$delete from public.profiles where id = tests.ulid(405)$$,
+  'hard-deleting a profile with day_entries rows succeeds with no error -- '
+  || 'proves the orphan-cleanup delete branch does not conflict with the '
+  || 'cascaded day_entries deletion (the exact failure mode a sync_signals '
+  || 'FK cascade would have produced)'
+);
+
+select ok(
+  not exists(select 1 from public.day_entries where profile_id = tests.ulid(405)),
+  'day_entries rows for the deleted profile are gone (cascade, unchanged by this fix)'
+);
+
+select ok(
+  not exists(select 1 from public.sync_signals where profile_id = tests.ulid(405)),
+  'no orphaned sync_signals row remains for the deleted profile (PR #92 review fix)'
 );
 
 -- ---------------------------------------------------------------------------

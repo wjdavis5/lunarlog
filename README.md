@@ -283,11 +283,21 @@ Part of the home lab; the canonical inventory lives in the lab root's
   against a real local Realtime container and confirmed both halves: (a) the
   delivered `sync_signals` payload contains only `profile_id`/`updated_at`,
   and (b) Realtime refuses `day_entries`/`profiles` subscriptions outright
-  (`RealtimeDisabledForConfiguration`) rather than silently filtering them,
-  so no entry content reaches the websocket via those tables at all. This
-  check is deliberately not wired into CI — investigated (a `realtime`-
-  inclusive CI stack was prototyped) and found out of proportion for one
-  migration's regression coverage; see the plan's KTD4 for why.
+  (an "Unable to subscribe to changes..." `postgres_changes` system error)
+  rather than silently filtering them, so no entry content reaches the
+  websocket via those tables at all. The script asserts on this directly now
+  (PR #92 review round 2): every channel must genuinely settle a
+  `postgres_changes` system message (not just create a channel object) or
+  the script throws, and the `profiles` write it checks against happens
+  *after* subscribing — the original version wrote it before, which made
+  that half of the check structurally unable to fail. The script also creates
+  exactly one throwaway auth user/profile/day-entries row and deletes all
+  three (and the `sync_signals` row they generate) in a `finally`, so
+  repeated runs against the cloud project do not accumulate test data or
+  leave real-looking minor's-health-log content behind. This check is
+  deliberately not wired into CI — investigated (a `realtime`-inclusive CI
+  stack was prototyped) and found out of proportion for one migration's
+  regression coverage; see the plan's KTD4 for why.
 
 ## License
 

@@ -53,14 +53,26 @@
 -- OPERATIONAL WARNING: never use Supabase Studio's per-table "Enable
 -- Realtime" toggle on `public.profiles` or `public.day_entries` -- it issues
 -- a bare whole-row `alter publication ... add table`, which is exactly the
--- leak this migration exists to prevent, and once that toggle is used the
--- rest of this migration's guard (below) will notice and correct it back
--- out on the next `db push`/`db reset`, but the table is live-leaking in the
--- meantime. The guard checks membership, `puballtables`, and the published
--- column set for `sync_signals` every time it runs (not just "is it a
--- member"), and actively removes `profiles`/`day_entries` if either is ever
--- found published, so a Studio toggle is caught and reverted rather than
--- silently accepted as "already correct".
+-- leak this migration exists to prevent. The guard below (`select
+-- public.reconcile_realtime_publication();`, the last line of this file)
+-- checks membership, `puballtables`, and the published column set for
+-- `sync_signals` every time it *runs* (not just "is it a member"), and
+-- actively removes `profiles`/`day_entries` if either is ever found
+-- published -- but this migration file itself only runs once per
+-- environment (a fresh `db reset`, or a brand-new environment applying
+-- every migration from scratch). An ordinary `supabase db push` against an
+-- environment where this migration has already been applied does NOT
+-- re-run it -- `db push` only applies migrations not yet recorded as
+-- applied, so a Studio toggle used against an already-migrated environment
+-- would sit live-leaking until something else re-invokes the guard.
+-- `.github/workflows/supabase-migrate.yml` closes that gap operationally:
+-- its "Reconcile Realtime publication" step calls
+-- `select public.reconcile_realtime_publication();` via
+-- `supabase db query --linked` immediately after every `db push`, so drift
+-- introduced through the Studio toggle is caught and reverted on every
+-- deploy to `main`, not just on a from-scratch environment build. (There is
+-- still no *periodic* reconciliation between deploys -- see the tracked
+-- follow-up in AGENTS.md's Migration Flow section.)
 
 -- ---------------------------------------------------------------------------
 -- public.sync_signals: the dedicated wake-signal table. One row per profile,
@@ -117,6 +129,33 @@ begin
     v_profile_id := coalesce(new.profile_id, old.profile_id);
   end if;
 
+  -- Orphan cleanup for a hard profile delete (e.g. account deletion
+  -- cascading via profiles.user_id -> auth.users(id) on delete cascade),
+  -- PR #92 review round 2. Deliberately NOT solved by adding
+  -- `references public.profiles(id) on delete cascade` to sync_signals --
+  -- that was tried and reverted: the cascade removes the sync_signals row
+  -- first, then this trigger's own upsert below tries to reinsert it
+  -- against a profile that no longer exists and errors, aborting the whole
+  -- profile deletion.
+  --
+  -- Instead: whichever table fired this trigger, check whether the
+  -- profile itself currently exists, and delete-not-upsert if it doesn't.
+  -- This has to be an existence check rather than "only handle it in the
+  -- profiles branch, and rely on trigger firing order to run last" --
+  -- empirically, on a cascaded delete (profile + its day_entries in one
+  -- statement) the day_entries row's own AFTER DELETE trigger fires
+  -- *after* the profiles row's AFTER DELETE trigger, not before, so a
+  -- profiles-only delete branch got its cleanup silently undone by the
+  -- day_entries trigger's upsert running later in the same statement (this
+  -- was caught by supabase/tests/realtime_publication_test.sql, not
+  -- assumed). Checking existence here instead is correct regardless of
+  -- which trigger runs first or last: whichever one fires last still sees
+  -- the profile already gone and still deletes rather than upserts.
+  if not exists (select 1 from public.profiles where id = v_profile_id) then
+    delete from public.sync_signals where profile_id = v_profile_id;
+    return null;
+  end if;
+
   insert into public.sync_signals (profile_id, updated_at)
   values (v_profile_id, now())
   on conflict (profile_id) do update set updated_at = excluded.updated_at;
@@ -127,7 +166,10 @@ $$;
 
 comment on function public.touch_sync_signal() is
   'Upserts public.sync_signals(profile_id) on every profiles/day_entries '
-  'change, so Realtime has a content-free row to publish (Issue #77).';
+  'change, unless the owning profile no longer exists (a hard profile '
+  'delete), in which case it deletes the row instead -- so Realtime has a '
+  'content-free row to publish and profile deletion never leaves an '
+  'orphaned signal row behind (Issue #77).';
 
 revoke execute on function public.touch_sync_signal() from public, anon;
 

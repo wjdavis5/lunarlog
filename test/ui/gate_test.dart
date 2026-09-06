@@ -1513,6 +1513,17 @@ void main() {
           reason: 'issue #77: one Realtime channel per seeded profile');
       expect(client.createdChannels.keys.toSet(), hasLength(2),
           reason: 'channel topics are distinct per profile id');
+      // PR #92 review round 2: creating a channel object is not the same as
+      // actually subscribing it. Without this, deleting the coordinator's
+      // `.subscribe()` call would still pass every test above (channels are
+      // still created and torn down) even though live sync would silently
+      // stop working.
+      for (final ch in client.createdChannels.values) {
+        expect(ch.subscribeCalls, 1,
+            reason: 'issue #77: each channel must actually be subscribed, '
+                'not just constructed — a reverted .subscribe() call must '
+                'fail this test');
+      }
 
       // Unmounting the root disposes the coordinator before the database
       // closes, which must remove every channel it created.
