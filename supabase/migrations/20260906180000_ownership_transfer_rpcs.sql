@@ -24,6 +24,16 @@
 -- directly, and even a hypothetical leak of the GUC could not forge
 -- attribution, since the second conjunct forbids changing anything but the
 -- one column this whole feature exists to move.
+--
+-- Fix-forward from the plan's Approach sketch: that text scoped the
+-- day_entries re-home to `where user_id = v_transfer.initiated_by`, which
+-- would skip any entry a caregiver logged (their own user_id, not the
+-- parent's). R15 ("for every entry on the profile") and AE1 ("all 400
+-- carry user_id = B") are explicit that every entry moves, not only the
+-- ones the outgoing parent happened to hold - Product Contract requirements
+-- and acceptance examples outrank an Implementation Unit's own SQL sketch
+-- per this plan's stated authority hierarchy. accept_ownership_transfer
+-- below re-homes every day_entries row on the profile.
 
 -- ---------------------------------------------------------------------------
 -- 1. enforce_day_entry_attribution(): the KTD4 bypass case
@@ -327,14 +337,22 @@ begin
          updated_at = greatest(updated_at, clock_timestamp())
    where id = v_transfer.profile_id;
 
-  -- R15/R16/R17: re-point the cascade anchor only. No other column is
-  -- named, which is what satisfies the attribution guard's second
-  -- conjunct - logged_by_user_id and last_modified_by_user_id (and every
-  -- other column) are untouched on every row this UPDATE reaches.
+  -- R15/R16/R17: re-point the cascade anchor for EVERY entry on the
+  -- profile, not only the ones currently anchored to the arming parent.
+  -- day_entries.user_id already means "the profile's actual owner"
+  -- elsewhere in this schema (see rehome_stray_day_entries() and its
+  -- callers) - a caregiver's own logged entry on a shared profile can carry
+  -- day_entries.user_id = that caregiver (stamped from auth.uid() at insert
+  -- by sync_push) until something re-homes it, and R15/AE1 are explicit
+  -- that ALL of a profile's entries carry the new owner's user_id after a
+  -- transfer, not just the subset the outgoing parent happened to hold. No
+  -- other column is named, which is what satisfies the attribution guard's
+  -- second conjunct - logged_by_user_id and last_modified_by_user_id (and
+  -- every other column) are untouched on every row this UPDATE reaches,
+  -- including a caregiver's rows swept up by this broader predicate.
   update public.day_entries
      set user_id = v_uid
-   where profile_id = v_transfer.profile_id
-     and user_id = v_transfer.initiated_by;
+   where profile_id = v_transfer.profile_id;
   get diagnostics v_day_entries_rehomed = row_count;
 
   -- R14: demote the parent to their chosen role BEFORE promoting the child,
