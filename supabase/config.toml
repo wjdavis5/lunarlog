@@ -370,6 +370,12 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+[functions.delete-account]
+# In-app account deletion entry point (Issue #17, Unit U2). Requires a valid
+# caller JWT - the function's own first step returns 401 without one.
+enabled = true
+verify_jwt = true
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
