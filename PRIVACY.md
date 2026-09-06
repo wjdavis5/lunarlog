@@ -38,7 +38,16 @@ Creating an account is entirely optional. If you choose to enable cross-device s
 
 **Upload Consent:** When you sign in on a device that already holds local data, LunarLog asks for your explicit consent before uploading existing records to your account.
 
-### C. Technical & Crash Information (Diagnostics)
+### C. Support Ticket Information (Optional)
+
+If you use "Send feedback" (Settings, signed-in accounts only), we process:
+- **The message you write**, your category selection (bug, feature request, support, other), and the reply email address you provide (pre-filled from your account, editable).
+- **Diagnostics you approve:** app version, build number, OS name and version, device model, active locale, and up to 25 recent in-app navigation/error breadcrumbs — never health data, account identity, or credentials. The app shows you the exact diagnostics payload and lets you turn it off before you submit.
+- **An optional screenshot**, attached only after an explicit consent step naming the risk that a screenshot of this app usually contains cycle data for a family member.
+
+None of this leaves your device until you tap submit. A ticket you send is visible to the app's operator team and to you, in the app's Support history.
+
+### D. Technical & Crash Information (Diagnostics)
 To maintain app stability and diagnose crashes, LunarLog includes optional telemetry powered by Sentry. 
 - **Strict Privacy Floor:** Before any error or crash report leaves your device, an automated client-side scrubber (`lib/observability/scrub.dart`) removes all health information, dates, flow levels, notes, tags, profile names, user IDs, device names, auth tokens, and request payloads.
 - Crash data is anonymous, not linked to your identity or health records, and used solely for bug fixes and app performance.
@@ -66,6 +75,7 @@ LunarLog limits third-party integration to essential operational infrastructure:
 | **Sentry** | Crash reporting and error diagnostics | Anonymized stack traces, OS version, device architecture (all health/identity data stripped) | Client-side scrubbed; retained for a maximum of 90 days for debugging |
 | **Apple (Sign in with Apple)** | Optional identity provider on iOS/macOS | Apple user identifier, relay email address (if selected) | Governed by Apple Privacy Policy |
 | **Google (Google Sign-In)** | Optional identity provider | Google ID token (email and basic account identifier) | Governed by Google Privacy Policy |
+| **Resend** | Transactional support email (an admin alert when you submit a ticket; the admin's reply email to you) | Reply email address and, for the reply you receive, the reply text | Governed by Resend's Privacy Policy |
 
 No other third parties receive data from LunarLog.
 
@@ -98,6 +108,7 @@ You have complete control over your data:
 - **Sign Out & Local Wipe:** Signing out of your account gives you the option to discard all local database records from that device immediately.
 - **Sign Out Everywhere:** You can invalidate sessions across all devices from the Account settings.
 - **Account & Cloud Deletion:** You may request complete deletion of your Supabase account and all associated cloud data by emailing us at `will@wjdavis5.net` or using the in-app account deletion request. Upon request, all server records are permanently deleted within 30 days.
+- **Support Ticket Retention:** Feedback tickets and their reply threads are retained to support ongoing conversations and app improvement; you can request deletion of a ticket at any time by emailing `will@wjdavis5.net`. Deleting a ticket also deletes any attached screenshot.
 
 ---
 
