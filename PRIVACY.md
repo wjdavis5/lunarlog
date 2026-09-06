@@ -1,7 +1,7 @@
 # LunarLog Privacy Policy
 
 **Effective Date:** September 3, 2026  
-**Last Updated:** September 3, 2026  
+**Last Updated:** September 5, 2026  
 
 LunarLog ("we", "our", or "the app") is a privacy-first, local-first menstrual cycle and symptom tracker designed for individuals and families. We believe that reproductive and menstrual health data is deeply personal and sensitive. LunarLog is architected from the ground up to protect your privacy: your device is the primary source of truth, data is encrypted, and cloud synchronization is strictly optional.
 
@@ -91,13 +91,14 @@ We implement rigorous technical safeguards to ensure the security and confidenti
 
 ---
 
-## 7. Data Retention & Deletion Rights
+## 7. Data Export & Retention & Deletion Rights
 
 You have complete control over your data:
+- **Export Your Data:** From Settings → Account, "Export my data" saves a JSON file of your profiles and day entries (built entirely from the copy already on your device, so it works offline) and hands it to your device's normal share sheet - AirDrop, Files, email, or any app you choose. The file contains only your own data: no sync-protocol internals, no other account's identifiers, and no credentials.
 - **Local Deletion:** You can delete individual cycle entries or entire profiles from the app at any time. Deleted records are tombstoned and permanently removed upon sync.
 - **Sign Out & Local Wipe:** Signing out of your account gives you the option to discard all local database records from that device immediately.
 - **Sign Out Everywhere:** You can invalidate sessions across all devices from the Account settings.
-- **Account & Cloud Deletion:** You may request complete deletion of your Supabase account and all associated cloud data by emailing us at `will@wjdavis5.net` or using the in-app account deletion request. Upon request, all server records are permanently deleted within 30 days.
+- **Account & Cloud Deletion:** From Settings → Account, "Delete account" immediately and permanently deletes your account: every server row you own (profiles, day entries, settings, and your guardian memberships and invitations), the Supabase account itself (including, if you signed in with Apple, revoking that app's access via Apple's own revocation endpoint), and this device's local data. The confirmation offers "Export first" so you can save a copy before proceeding. This is not a request queued for later - the server-side rows and the account are normally gone by the time the confirmation completes. The one exception: for an Apple-signed-in account, your data rows are deleted first and then, if Apple cannot confirm the revocation, the account sign-in itself is deliberately left in place rather than deleted with a live Apple grant still attached - the app tells you what happened and lets you retry, which completes the deletion. You can still reach us at `will@wjdavis5.net` for any deletion the in-app flow does not cover (e.g. if you no longer have access to the device).
 
 ---
 
@@ -108,7 +109,7 @@ Depending on your jurisdiction (such as the European Economic Area, United Kingd
 - **Rectification:** Correct inaccurate or incomplete information.
 - **Erasure:** Request that your personal data be permanently erased ("Right to be Forgotten").
 - **Restrict or Object to Processing:** Object to or limit specific processing activities.
-- **Data Portability:** Receive your data in a structured, commonly used, and machine-readable format.
+- **Data Portability:** Receive your data in a structured, commonly used, and machine-readable format - in-app via "Export my data" (Settings → Account), which produces a JSON file of your profiles and day entries.
 - **Withdraw Consent:** Withdraw consent for cloud synchronization or error reporting at any time.
 
 To exercise any of these rights, please contact us at `will@wjdavis5.net`.

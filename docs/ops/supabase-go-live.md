@@ -2,10 +2,13 @@
 
 Operational record for the account + cloud-sync feature
 ([plan](../plans/2026-09-02-001-feat-supabase-auth-cloud-sync-plan.md),
-branch `feat/supabase-auth-cloud-sync`) and its social-logins follow-up
+branch `feat/supabase-auth-cloud-sync`), its social-logins follow-up
 ([plan](../plans/2026-09-03-001-feat-social-logins-plan.md), branch
-`feat/social-logins`; its IDs are cited with a `#2` prefix). Tick items here
-as they are done;
+`feat/social-logins`; its IDs are cited with a `#2` prefix), and its
+account-deletion-and-export follow-up
+([plan](../plans/2026-09-05-001-feat-account-deletion-and-json-export-plan.md),
+branch `issue-17`; its IDs are cited with a plain `#17` prefix, e.g.
+`#17 KTD3`). Tick items here as they are done;
 the "Not yet run" section is the honest list of what has not been exercised.
 Never record a credential value in this file.
 
@@ -149,6 +152,42 @@ passwordless email depends on custom SMTP above like every other email.
       `SUPABASE_PROJECT_REF`) set as environment secrets on `production`
       (`supabase-migrate.yml` runs `supabase link` + `db push` there).
 - [ ] `SENTRY_DSN` repository secret added.
+- [ ] `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CLIENT_ID`, and
+      `APPLE_PRIVATE_KEY` set as environment secrets on `production` (issue
+      #17 — the `delete-account` Edge Function's Apple token revocation,
+      KTD3). See "Account deletion (issue #17)" below for what each value is
+      and where it comes from; `supabase-migrate.yml`'s own "Check deploy
+      credentials" step fails the run with an actionable message if any of
+      the four is missing.
+
+### Account deletion (issue #17)
+
+Prerequisites for the `delete-account` Edge Function's Apple token
+revocation (KTD3) — nothing here is needed for deleting a non-Apple
+account, which works with no additional configuration beyond the base
+Supabase Auth setup above.
+
+- [ ] An Apple Sign in with Apple **key** (not a Services ID secret)
+      generated in the Apple Developer portal (Certificates, Identifiers &
+      Profiles → Keys → a key with the "Sign in with Apple" capability
+      enabled) and its `.p8` file downloaded once (Apple will not let it be
+      downloaded again — store it in the credential vault immediately).
+- [ ] The four values recorded as `production` environment secrets, never
+      in the repo (see the GitHub checklist item above and AGENTS.md's
+      "Config & Credential Locations"):
+      - `APPLE_TEAM_ID` — the Apple Developer Team ID (`5273C9R3V4` per
+        `README.md`'s iOS build section).
+      - `APPLE_KEY_ID` — the 10-character id of the key created above.
+      - `APPLE_CLIENT_ID` — the bundle id `com.wjdavis5.lunarlog` (the same
+        value already used as the Supabase Apple provider's client id).
+      - `APPLE_PRIVATE_KEY` — the full contents of the downloaded `.p8`
+        file, including the `BEGIN/END PRIVATE KEY` lines.
+- [ ] First `supabase-migrate.yml` run since #17 deploys `delete-account`
+      cleanly (its "Set delete-account function secrets" step runs
+      `supabase secrets set` for all four values before the deploy step).
+- [ ] The device checklist's Apple-account deletion item (below) passes on
+      a real Apple ID: the app disappears from Settings → Apple ID → Sign in
+      with Apple → apps using this Apple ID.
 
 ### Apple / Google store plumbing
 
@@ -162,8 +201,9 @@ passwordless email depends on custom SMTP above like every other email.
       linked to the user, for app functionality; Crash Data collected, not
       linked; no tracking.
 - [ ] Play Console Data safety updated to the same statement (health info and
-      email address, encrypted in transit, user can request deletion — see
-      the gate below).
+      email address, encrypted in transit, user can request deletion —
+      now true in-app via "Delete account" in the account section, issue
+      #17).
 
 ### Migrations
 
@@ -172,16 +212,77 @@ passwordless email depends on custom SMTP above like every other email.
 - [ ] `supabase db push --dry-run` on the linked project lists only
       `20260903014208_initial_sync_schema.sql` and `20260903014211_sync_push.sql`.
 - [ ] First `supabase-migrate.yml` run approved and green.
+- [ ] First `supabase-migrate.yml` run since issue #17 pushes
+      `20260905100000_account_deletion.sql` and reports the `delete-account`
+      function deployed (see "Account deletion (issue #17)" above for its
+      secrets prerequisite). **Open question (plan Q1, unresolved):** it is
+      not yet confirmed whether the `SUPABASE_ACCESS_TOKEN` already on the
+      `production` environment carries the scope `supabase functions deploy`
+      needs, as opposed to only `db push`. If the first post-#17 run's
+      "Deploy delete-account function" step fails on a permissions error,
+      the fix is a `production` access token with the function-deploy scope
+      (or a full-access personal access token) — this does not block
+      anything else in this checklist and is only discoverable by running
+      the workflow.
+
+### delete-account Edge Function runbook (issue #17)
+
+The Edge Function itself has no automated CI coverage yet (Open Question
+Q2 in the plan — this is the repo's first Edge Function and there is no
+Deno tooling in CI). Prove a change to it locally before merging:
+
+```powershell
+npx supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,logflare,vector,supavisor
+# edge-runtime must NOT be excluded above - it serves the function locally.
+npx supabase@2.116.0 db reset --local
+npx supabase@2.116.0 functions serve delete-account
+```
+
+Then, in another shell, against the local stack (`http://127.0.0.1:54321`):
+
+- No `Authorization` header → `401`, nothing touched (AE6). The local
+  gateway's own `verify_jwt = true` check answers this before the
+  function's code runs.
+- An invalid/malformed JWT → `401` (same gateway check).
+- Sign up a throwaway user (`POST /auth/v1/signup`), insert a profile as
+  that user, then `POST /functions/v1/delete-account` with that user's
+  access token and an empty JSON body (`{}`) → `{"ok":true}`, and the
+  profile row and the `auth.users` row are both gone.
+- The same call with an unrelated user id or an `appleAuthorizationCode`
+  key stuffed into the body → the caller's own rows are still the only
+  ones affected (AE6 — no field in the body is ever trusted for identity).
+- A simulated Apple identity (insert a row into `auth.identities` with
+  `provider = 'apple'` for the test user) with no `APPLE_*` secrets set
+  locally, called with a non-empty `appleAuthorizationCode` → `409
+  {"ok":false,"code":"apple_revoke_failed"}`, the profile/day-entry rows
+  are already gone (U1 ran first) but the `auth.users` row is still
+  present (KTD4); retrying the same call **without** a code completes the
+  deletion, proving the whole call is safe to retry.
+
+Deploying: `supabase-migrate.yml`'s "Set delete-account function secrets"
+step runs `supabase secrets set` for the four `APPLE_*` values, then
+"Deploy delete-account function" runs
+`supabase functions deploy delete-account --project-ref <ref>`. Both are
+gated by the "Check deploy credentials" step, which fails the run with an
+`::error::` if any Apple secret is missing rather than deploying a
+function that would silently treat every Apple revocation as
+`misconfigured`.
 
 ### Release gate
 
-- [ ] **Release gate: no `version:` bump in `pubspec.yaml` and no
-      `submit_for_review` dispatch of `ios-release.yml` until in-app account
-      deletion has shipped.** App Store guideline 5.1.1(v) makes deletion a
-      submission blocker once account creation exists. Account deletion (Edge
-      Function calling `auth.admin.deleteUser`, cascading rows, Apple token
-      revocation) and JSON data export are follow-up work; file the deletion
-      issue as a blocker of the first review submission.
+- [x] **Release gate cleared 2026-09-05: in-app account deletion (issue
+      #17) has shipped.** App Store guideline 5.1.1(v) made deletion a
+      submission blocker once account creation existed (issue #16); it no
+      longer is. The `delete-account` Edge Function calls
+      `public.delete_account_data()` for the row cascade, revokes the
+      Apple identity when the account has one, then deletes the
+      `auth.users` row last (KTD4), and the client runs the existing
+      `resetDevice()` afterward (KTD16). JSON data export ("Export my
+      data" in the account section) shipped alongside it.
+      **This does not itself bump `pubspec.yaml`'s `version:` or dispatch
+      `submit_for_review`** — those remain a separate, deliberate release
+      action once the "Account deletion (issue #17)" prerequisites above
+      and the device-checklist items below have all passed.
 
 ## Device checklist
 
@@ -346,6 +447,41 @@ household member's.
       `#1F1F1F` "Sign in with Google", 40 dp height. On iOS the Apple button
       comes first and is at least as large.
 
+### Account deletion and export (issue #17)
+
+Run on an iPhone build **and** an Android build, each with a throwaway
+account and fabricated profiles only.
+
+- [ ] **Delete a throwaway Apple account end-to-end (KTD3).** Sign in with
+      Apple, tap "Delete account" in the account section, pass the device
+      credential, confirm in the dialog, then grant the fresh Apple
+      authorization request that follows. The app lands on first-run. In
+      Settings → Apple ID → Sign in with Apple, the app no longer appears
+      under "Apps Using Your Apple ID" (proves the revocation actually
+      reached Apple, not just the local reset).
+- [ ] **Delete a throwaway Google or email account end-to-end.** Same flow,
+      no Apple ceremony: device credential → confirmation → first-run.
+      Confirm in the Supabase dashboard (Authentication → Users) that the
+      user row is gone.
+- [ ] **Export on iPhone and open the file.** Tap "Export my data", pick
+      Files (or AirDrop to a Mac) from the share sheet, and open the saved
+      `lunarlog-export-<timestamp>.json`: it parses, lists only that
+      operator's fabricated profiles and entries, and contains no
+      `user_id`, `server_version`, guardian ids, tokens, or emails (R9).
+- [ ] **Export on Android and open the file.** Same, saving through the
+      share sheet to Files (or Drive) and opening it there.
+- [ ] **Export first, then delete.** From the delete confirmation dialog,
+      tap "Export first": the file is produced and the dialog stays open
+      (nothing is deleted yet); then tap "Delete account" to proceed.
+- [ ] **Delete while offline.** Turn on airplane mode, tap "Delete account",
+      pass the device credential and confirm: a typed network failure
+      renders in the account section and the device is **not** reset
+      (R12) — reconnect and retry succeeds.
+- [ ] **Declined credential and cancelled dialog are silent (AE5).**
+      Declining the device-credential prompt, and separately cancelling the
+      confirmation dialog, each leave the account untouched with no error
+      copy and no server call.
+
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows
@@ -367,6 +503,25 @@ is a gate before go-live.
   — none configured or exercised as of 2026-09-03.
 - Android device runs for issue #2 (Google picker, Play-Services-less
   device): no Android device or emulator in the implementation environment.
+- The whole "Account deletion and export (issue #17)" device-checklist
+  section above: no iPhone or Android device in the implementation
+  environment. The Edge Function itself was smoke-tested against the local
+  Supabase stack (see the runbook above), including a simulated Apple
+  identity with no Apple secrets configured — that is not the same as
+  proving the real Apple revocation against `appleid.apple.com`, which
+  only the device checklist's first item does.
+- `supabase functions deploy delete-account` against the cloud project
+  (needs `SUPABASE_ACCESS_TOKEN` and the four `APPLE_*` secrets locally, or
+  the first `supabase-migrate.yml` run since issue #17).
+
+What **was** run (2026-09-05, Windows, issue #17): `flutter analyze` clean;
+`flutter test` green (722 tests); `dart run tool/quality_gate.dart` passed
+(coverage floor and CRAP gate); `npx supabase@2.116.0 start` + `db reset
+--local` + `test db --local`, 233/233 pgTAP tests (26 of them new, in
+`account_deletion_test.sql`); `npx supabase@2.116.0 functions serve
+delete-account` + manual `curl` against the local stack covering every
+scenario in the runbook above, including the simulated Apple-misconfigured
+retry story (KTD4).
 
 What **was** run (2026-09-03, Windows): `flutter analyze` clean; `flutter
 test` 377/377; `flutter build web --release` and `flutter build apk --debug`;
@@ -414,14 +569,15 @@ pgTAP tests.
   preferences under `allowBackup="false"`), so they never travel in a
   backup. Web keeps the SDK default (browser storage) and only when
   `LUNARLOG_WEB_SYNC=true`.
-- **Deferred follow-ups** (from the plan's Scope Boundaries): in-app account
-  deletion and JSON export (release gate); Realtime "pull now" hint; Apple
-  Sign-In on Android/web; client-side syncing of `settings`; `birth_year` /
-  `color` profile attributes; client-side encryption of `note` and
-  `display_name`; Sentry debug-symbol upload (`SENTRY_AUTH_TOKEN`); managing
-  auth settings via `supabase config push`; iCloud backup exclusion and the
-  `ThisDeviceOnly` key-class migration; `https` App Links; new-device sign-in
-  email notice.
+- **Deferred follow-ups** (from the plan's Scope Boundaries): Realtime
+  "pull now" hint; Apple Sign-In on Android/web; client-side syncing of
+  `settings`; `birth_year` / `color` profile attributes; client-side
+  encryption of `note` and `display_name`; Sentry debug-symbol upload
+  (`SENTRY_AUTH_TOKEN`); managing auth settings via `supabase config push`;
+  iCloud backup exclusion and the `ThisDeviceOnly` key-class migration;
+  `https` App Links; new-device sign-in email notice. (In-app account
+  deletion and JSON export shipped in issue #17 — see the "Release gate"
+  and "Account deletion (issue #17)" sections above.)
 - **Deferred from the social-logins plan** (issue #2, Scope Boundaries):
   **passkeys** — Supabase passkeys are beta and the Dart API is
   `@experimental`; a native flow needs the `passkeys` plugin, a relying-party
@@ -434,6 +590,15 @@ pgTAP tests.
   Also Google Sign-In on web (`google_sign_in_web` offers only its rendered
   button) and security-notification emails for a linked identity or changed
   password once custom SMTP exists (issue #18).
+- **Deferred from the account-deletion plan** (issue #17, Scope Boundaries):
+  automated Deno test/lint coverage for `supabase/functions/**` in CI (Open
+  Question Q2 — the function is smoke-tested, not unit-tested, and this is
+  the repo's only untested source tree); server-side export (unnecessary
+  while the local Drift store is the source of truth, KTD5); CSV/PDF export
+  formats and scheduled backups; a grace period / soft-delete window before
+  the account is destroyed; deleting a single profile (as opposed to the
+  whole account) from the app; unlinking an individual sign-in method
+  (still deferred from #2, above).
 
 ## Multi-guardian migration runbook (20260904010000 + 20260904020000)
 
