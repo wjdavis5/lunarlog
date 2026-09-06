@@ -60,6 +60,13 @@ class FakeAuthService implements AuthService {
   /// provider is removed from [providers] and the current user returned.
   AuthUser? unlinkResult;
 
+  /// When true, [unlinkProvider] still returns the correctly-computed
+  /// fresh user, but leaves this fake's own [providers]/[currentUser]
+  /// unchanged — mirroring a server-side post-delete refresh that fails
+  /// silently (KTD4), so a test can check that a caller prefers the
+  /// returned user over re-reading [currentUser] (#31 finding 2).
+  bool unlinkLeavesCurrentUserStale = false;
+
   /// Simulates a dismissed picker or dialog while linking: the current
   /// user is returned unchanged and nothing is recorded as linked.
   bool linkCancelled = false;
@@ -297,10 +304,18 @@ class FakeAuthService implements AuthService {
     await _maybeThrow();
     final result = unlinkResult;
     if (result != null) {
+      if (unlinkLeavesCurrentUserStale) return result;
       emit(_state, user: result);
       return result;
     }
-    providers = providers.where((existing) => existing != provider).toList();
+    final remaining =
+        providers.where((existing) => existing != provider).toList();
+    if (unlinkLeavesCurrentUserStale) {
+      final current = _user!;
+      return AuthUser(
+          id: current.id, email: current.email, providers: remaining);
+    }
+    providers = remaining;
     return currentUser!;
   }
 

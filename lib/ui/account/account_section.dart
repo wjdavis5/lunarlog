@@ -27,10 +27,13 @@
 /// unlike adding, removing is destructive — then the same
 /// [GateController.duringSystemUi] ceremony and busy guard as adding,
 /// tracked by the shared `_busyProvider` field so an add and a remove
-/// cannot run at once. Both directions adopt the [AuthUser] their call
-/// returns into `_freshUser` and prefer it over `auth.currentUser` (KTD6):
-/// a removal's session refresh can fail without being surfaced (KTD4), so
-/// re-reading `currentUser` there could show a stale methods list.
+/// cannot run at once. `auth.currentUser` already reflects the fresh
+/// result of both directions' calls — [AuthController] adopts it itself
+/// (#31 finding 2) — so this widget just re-reads `auth.currentUser`
+/// after `await`ing; it does not track that state locally, which would
+/// otherwise reset to stale on every Settings round trip (the section is
+/// disposed and rebuilt each time `SettingsScreen` is popped and pushed
+/// again).
 library;
 
 import 'package:flutter/foundation.dart';
@@ -79,13 +82,6 @@ class _AccountSectionState extends State<AccountSection> {
   String? _busyProvider;
   String? _linkError;
 
-  /// The user returned by the most recent successful add or remove
-  /// (#31 KTD6), preferred over `auth.currentUser` in [build]. Cleared
-  /// whenever the signed-in user id changes so a sign-out/sign-in cannot
-  /// show a previous account's methods.
-  AuthUser? _freshUser;
-  String? _freshUserOwnerId;
-
   bool get _canAddGoogle => widget.showAddGoogle ?? AppConfig.hasGoogle;
 
   bool get _canAddApple =>
@@ -99,9 +95,7 @@ class _AccountSectionState extends State<AccountSection> {
     final sync = Provider.of<SyncStatusController?>(context);
     final signedIn = _isSignedIn(auth.state);
     final theme = Theme.of(context);
-    final liveUser = auth.currentUser;
-    _syncFreshUser(liveUser);
-    final user = _freshUser ?? liveUser;
+    final user = auth.currentUser;
     final providers = user?.providers ?? const <String>[];
     final linkError = _linkError;
     return Column(
@@ -198,15 +192,6 @@ class _AccountSectionState extends State<AccountSection> {
   bool _isSignedIn(AuthSessionState state) =>
       state == AuthSessionState.signedIn ||
       state == AuthSessionState.passwordRecovery;
-
-  /// Clears the adopted [_freshUser] (#31 KTD6) whenever the signed-in
-  /// user id changes, so a sign-out/sign-in cannot show a previous
-  /// account's methods.
-  void _syncFreshUser(AuthUser? liveUser) {
-    if (liveUser?.id == _freshUserOwnerId) return;
-    _freshUser = null;
-    _freshUserOwnerId = liveUser?.id;
-  }
 
   String _identityTitle(AuthUser? user) =>
       user?.email == null ? 'Signed in' : 'Signed in as ${user!.email}';
@@ -311,8 +296,10 @@ class _AccountSectionState extends State<AccountSection> {
     if (!granted || !mounted) return;
     setState(() => _busyProvider = provider);
     try {
-      final user = await link();
-      if (mounted) setState(() => _freshUser = user);
+      // The controller adopts the returned user into `currentUser` itself
+      // and notifies (#31 finding 2); this widget listens via
+      // `Provider.of` in [build], so no local state update is needed here.
+      await link();
     } on AuthFailure catch (failure) {
       if (mounted) setState(() => _linkError = authFailureCopy(failure));
     } catch (error) {
@@ -374,8 +361,9 @@ class _AccountSectionState extends State<AccountSection> {
     if (!granted || !mounted) return;
     setState(() => _busyProvider = provider);
     try {
-      final user = await auth.unlinkProvider(provider);
-      if (mounted) setState(() => _freshUser = user);
+      // Same as adding: the controller adopts and notifies itself (#31
+      // finding 2), so no local state update is needed here.
+      await auth.unlinkProvider(provider);
     } on AuthFailure catch (failure) {
       if (mounted) setState(() => _linkError = authFailureCopy(failure));
     } catch (error) {

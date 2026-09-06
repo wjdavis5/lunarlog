@@ -169,8 +169,8 @@ void main() {
     expect(c.currentUser?.providers, ['email', 'google']);
   });
 
-  test('delegates unlinkProvider to the service and does not notify (#31 U3)',
-      () async {
+  test('delegates unlinkProvider to the service, adopts the returned user, '
+      'and notifies (#31 U3; finding 2)', () async {
     service.emit(AuthSessionState.signedIn,
         user: const AuthUser(id: 'u1', providers: ['email', 'google']));
     final c = controller();
@@ -180,14 +180,40 @@ void main() {
     final unlinked = await c.unlinkProvider('google');
     expect(unlinked.providers, ['email']);
     expect(service.unlinkCalls, ['google']);
-    expect(notifications, 0,
-        reason: 'a same-state update does not notify; callers re-read the '
-            'returned user');
+    expect(c.currentUser?.providers, ['email']);
+    expect(notifications, 1,
+        reason: 'the controller notifies itself once the returned user is '
+            'adopted, so every reader sees it — not just the caller that '
+            'happened to hold onto the returned value');
 
     service.nextFailure = const AuthFailure.lastSignInMethod();
     await expectLater(c.unlinkProvider('google'),
         throwsA(const AuthFailure.lastSignInMethod()),
         reason: 'the controller forwards the service\'s failure untouched');
+    expect(notifications, 1, reason: 'a failed call adopts nothing');
+  });
+
+  test('unlinkProvider\'s returned user is preferred over a currentUser a '
+      'failed post-delete refresh left stale, and keeps being served on '
+      'repeated reads — the way a re-created AccountSection reads it after '
+      'a Settings round trip (#31 finding 2)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    service.unlinkLeavesCurrentUserStale = true;
+    final c = controller();
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    expect(service.currentUser?.providers, ['email', 'google'],
+        reason: 'the service itself never updated — the simulated refresh '
+            'failure (KTD4)');
+
+    // A pushed SettingsScreen/AccountSection is disposed and rebuilt on a
+    // round trip; only the controller (provided above it) is still alive.
+    // Reading currentUser from it repeatedly must keep returning the fresh
+    // value, not fall back to the service's stale one.
+    expect(c.currentUser?.providers, ['email']);
+    expect(c.currentUser?.providers, ['email']);
   });
 
   test('stops listening after dispose', () async {

@@ -129,6 +129,14 @@ class FakeAuthGateway implements AuthGateway {
   /// [refreshSession] pulls a fresh session (#31 KTD3, KTD4).
   final _pendingUnlinkedIdentityIds = <String>[];
 
+  /// When set, [getUserIdentities] returns this list verbatim instead of
+  /// deriving it from [session] — independent of the local pre-call
+  /// snapshot, so a test can model the server's fresh read disagreeing
+  /// with the stale local `session` a caller took before the call (#31
+  /// P1: a real fresh-server-read-after-removal test needs this
+  /// divergence, which deriving from `session` alone cannot express).
+  List<UserIdentity>? getUserIdentitiesOverride;
+
   void _maybeThrow() {
     final error = nextError;
     if (error != null) {
@@ -275,11 +283,16 @@ class FakeAuthGateway implements AuthGateway {
 
   /// Fresh read, like gotrue's own `getUser()`-backed implementation: it
   /// sees a delete recorded by [unlinkIdentity] even before [refreshSession]
-  /// has applied it to [session] (#31 U2; KTD3).
+  /// has applied it to [session] (#31 U2; KTD3). When
+  /// [getUserIdentitiesOverride] is set it wins outright, independent of
+  /// [session] and any pending unlink, so a test can make the server's
+  /// answer diverge from the stale local snapshot taken before the call.
   @override
   Future<List<UserIdentity>> getUserIdentities() async {
     getUserIdentitiesCalls.add(null);
     _maybeThrow();
+    final override = getUserIdentitiesOverride;
+    if (override != null) return override;
     final identities = session?.user.identities ?? const <UserIdentity>[];
     if (_pendingUnlinkedIdentityIds.isEmpty) return identities;
     return identities
@@ -1840,6 +1853,32 @@ void main() {
 
       expect(user, const AuthUser(id: 'u1', providers: ['email']));
       expect(gateway.unlinkIdentityCalls, isEmpty);
+      expect(gateway.refreshSessionCalls, 0);
+    });
+
+    test('P1/P3: R10\'s not-found branch returns the fresh server read, not '
+        'the caller\'s stale pre-call session, when the two disagree',
+        () async {
+      // The caller's session (and therefore its pre-call `current`
+      // snapshot) still shows google present. The server's fresh read
+      // disagrees on both counts: google is already gone (so this hits
+      // the not-found/idempotent branch) and it reports 'apple', which
+      // the stale session never had at all. Only an override independent
+      // of `session` can express this divergence (#31 P1) — before that
+      // fix, `getUserIdentities` could only ever agree with `session`.
+      gateway.session =
+          makeSession('u1', email: 'a@b.c', identities: ['email', 'google']);
+      final service = await started();
+      gateway.getUserIdentitiesOverride =
+          makeUser('u1', identities: ['email', 'apple']).identities!;
+
+      final user = await service.unlinkProvider('google');
+
+      expect(user.providers, ['email', 'apple'],
+          reason: 'the fresh server read, not the stale pre-call session '
+              '(which still showed google and never had apple)');
+      expect(gateway.unlinkIdentityCalls, isEmpty,
+          reason: 'google is already gone server-side; no delete is issued');
       expect(gateway.refreshSessionCalls, 0);
     });
 

@@ -610,9 +610,11 @@ class SupabaseAuthService implements AuthService {
     return _guard(() => _removeIdentity(provider, current));
   }
 
-  /// Read -> guard -> delete -> refresh (KTD3). [current] is the caller's
-  /// pre-call snapshot, returned unchanged when the account no longer
-  /// holds [provider] (R10, idempotent removal).
+  /// Read -> guard -> delete -> refresh (KTD3). [current] is only used for
+  /// `id`/`email`; when the account no longer holds [provider] (R10,
+  /// idempotent removal) the returned providers still come from the fresh
+  /// read above, not from [current], so this branch cannot disagree with
+  /// what the server actually has.
   Future<AuthUser> _removeIdentity(String provider, AuthUser current) async {
     final identities = await _gateway.getUserIdentities();
     UserIdentity? target;
@@ -622,7 +624,17 @@ class SupabaseAuthService implements AuthService {
         break;
       }
     }
-    if (target == null) return current;
+    if (target == null) {
+      // `identities` is already the fresh read above; build the returned
+      // user from it rather than the caller's stale pre-call snapshot, so
+      // this idempotent branch cannot disagree with what the server
+      // actually has (consistent with the success path below).
+      return AuthUser(
+        id: current.id,
+        email: current.email,
+        providers: identities.map((identity) => identity.provider).toSet().toList(),
+      );
+    }
     if (identities.length < 2) throw const AuthFailure.lastSignInMethod();
     await _gateway.unlinkIdentity(target);
     // A refresh failure here does not undo the delete; the identity is
