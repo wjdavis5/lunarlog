@@ -35,7 +35,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 /// that a sign-in flow could put in a breadcrumb.
 ///
 /// Bare words such as `name`, `token`, `user`, `sub`, and `session` are
-/// deliberately absent: [_mentionsDenyListedKey] drops any message that
+/// deliberately absent: [mentionsDenyListedKey] drops any message that
 /// mentions a listed key, and those words appear in ordinary Drift, gotrue,
 /// and HTTP messages. A `session` breadcrumb is already covered by the token
 /// keys nested inside it.
@@ -132,7 +132,13 @@ bool containsDenyListedKey(Object? value) {
 
 /// True when [text] mentions a deny-listed key as a word or path segment
 /// (`day_entries.note`, `note:`, `displayName=`), in either spelling.
-bool _mentionsDenyListedKey(String text) {
+///
+/// Exported (not just used internally for Sentry messages/loggers) so other
+/// free-text sinks — `breadcrumbs.dart`'s `BreadcrumbLog.record`, in
+/// particular — can apply the same token-wise check to arbitrary printed
+/// strings (a raw error message, a SQL string with bound arguments), not
+/// just to a value that is itself exactly one deny-listed key.
+bool mentionsDenyListedKey(String text) {
   final tokens = text.split(RegExp(r'[^A-Za-z0-9_]+'));
   return tokens.any((token) => token.isNotEmpty && isDenyListedKey(token));
 }
@@ -202,8 +208,8 @@ SentryMessage? _scrubMessage(SentryMessage? message) {
   if (message == null) return null;
   final formatted = message.formatted;
   final template = message.template;
-  final tainted = _mentionsDenyListedKey(formatted) ||
-      (template != null && _mentionsDenyListedKey(template));
+  final tainted = mentionsDenyListedKey(formatted) ||
+      (template != null && mentionsDenyListedKey(template));
   // Params are the interpolated values (a note, a date) and are never kept.
   return tainted ? SentryMessage('[scrubbed]') : SentryMessage(formatted);
 }
@@ -230,7 +236,7 @@ SentryEvent? scrubEvent(SentryEvent event) {
     eventId: event.eventId,
     timestamp: event.timestamp,
     platform: event.platform,
-    logger: logger != null && _mentionsDenyListedKey(logger) ? null : logger,
+    logger: logger != null && mentionsDenyListedKey(logger) ? null : logger,
     release: event.release,
     dist: event.dist,
     environment: event.environment,

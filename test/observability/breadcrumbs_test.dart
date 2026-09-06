@@ -29,6 +29,20 @@ void main() {
       expect(log.snapshot(), isEmpty);
     });
 
+    test('a raw DB error whose free text merely mentions a deny-listed key '
+        'is not recorded (not just an exact-key match)', () {
+      final log = BreadcrumbLog();
+      // Shaped like the console breadcrumb sentry_flutter's
+      // DebugPrintIntegration builds from
+      // `debugPrint('lunarlog reset failed: $error\n$stackTrace')` in
+      // release builds: a SQL statement with a bound argument that names a
+      // health-log column, nowhere near being itself exactly `note`.
+      log.record('console',
+          'lunarlog reset failed: SqliteException: near "note": syntax '
+          'error, bound arguments: [note=feeling off today]');
+      expect(log.snapshot(), isEmpty);
+    });
+
     test('an ordinary breadcrumb is recorded', () {
       final log = BreadcrumbLog();
       log.record('nav', 'overview');

@@ -370,6 +370,35 @@ final class FeedbackOtherFailure extends FeedbackFailure {
   String toString() => 'FeedbackFailure.other';
 }
 
+/// Thrown by `SupabaseFeedbackService.submitTicket` when the ticket insert
+/// already committed but the follow-on attachment upload then failed. A bare
+/// rethrow of [attachmentFailure] at that point would read to the caller as
+/// total failure — nothing saved — and send the operator retyping their
+/// message and resubmitting straight into R17's 5/hour rate limit with a
+/// duplicate ticket. Carrying the already-created [ticket] instead makes the
+/// failure atomic *in effect*: the caller always knows the message was
+/// received and the ticket is recoverable (it already exists, without the
+/// attachment, and is visible in Support history) rather than orphaned and
+/// silent.
+final class FeedbackAttachmentUploadFailedFailure extends FeedbackFailure {
+  const FeedbackAttachmentUploadFailedFailure(this.ticket, this.attachmentFailure);
+
+  /// The ticket the insert already committed, before the attachment step
+  /// failed.
+  final FeedbackTicket ticket;
+
+  /// The mapped (never-raw; R11) failure the attachment upload raised.
+  final FeedbackFailure attachmentFailure;
+
+  @override
+  String get userFacingMessage =>
+      'Your message was sent — no need to resend it. The attachment did '
+      'not upload (${attachmentFailure.userFacingMessage}) You can find '
+      'your ticket in Support history.';
+  @override
+  String toString() => 'FeedbackFailure.attachmentUploadFailed';
+}
+
 /// Plugin-facing seam for picking a screenshot to attach (U7). The concrete
 /// adapter (`ImagePickerAttachmentSource`) is the only untestable-under-
 /// `flutter-test` piece; this interface itself stays pure Dart.

@@ -1,9 +1,13 @@
 /// Bounded in-memory breadcrumb ring for feedback diagnostics (Issue #6,
 /// U4; KTD9, R7, R8). Reduces every entry to a category and a name before
-/// keeping it — never a `data` map — and applies the same
-/// [isDenyListedKey] deny-list `scrub.dart` uses for Sentry, so this file
-/// can never become a second, unscrubbed leak of the same content Sentry's
-/// allowlist already keeps out.
+/// keeping it — never a `data` map — and applies the same token-wise
+/// [mentionsDenyListedKey] deny-list check `scrub.dart` uses for Sentry
+/// message text, so this file can never become a second, unscrubbed leak of
+/// the same content Sentry's allowlist already keeps out. A whole-string
+/// match alone would miss it: `sentry_flutter`'s `DebugPrintIntegration`
+/// turns every `debugPrint()` call into a `console` breadcrumb carrying the
+/// full printed string (which can embed a raw DB error or SQL with bound
+/// arguments), and that string is never itself exactly one deny-listed key.
 ///
 /// Entries are kept as already-formatted `"<category>: <name>"` strings
 /// rather than a dedicated record type: `sentry_flutter` exports its own
@@ -17,9 +21,10 @@ import 'package:lunarlog/observability/scrub.dart';
 const int kBreadcrumbLogCapacity = 25;
 
 /// A fixed-capacity ring of recent breadcrumbs (R8). `record` drops an entry
-/// whose category or name matches [isDenyListedKey] (the same allowlist
-/// `scrub.dart` enforces for Sentry) and evicts the oldest entry once the
-/// ring is full.
+/// whose category or name mentions a deny-listed key anywhere in its text
+/// ([mentionsDenyListedKey], the same token-wise check `scrub.dart` enforces
+/// on Sentry message text — not just an entry that *is* one) and evicts the
+/// oldest entry once the ring is full.
 class BreadcrumbLog {
   BreadcrumbLog({this.capacity = kBreadcrumbLogCapacity}) : assert(capacity > 0);
 
@@ -27,7 +32,7 @@ class BreadcrumbLog {
   final List<String> _entries = [];
 
   void record(String category, String name) {
-    if (isDenyListedKey(category) || isDenyListedKey(name)) return;
+    if (mentionsDenyListedKey(category) || mentionsDenyListedKey(name)) return;
     if (_entries.length >= capacity) {
       _entries.removeAt(0);
     }

@@ -267,7 +267,9 @@ void main() {
       );
     });
 
-    test('a Storage 413 yields attachmentTooLarge; a 415 yields attachmentRejected', () async {
+    test('a Storage 413 yields attachmentTooLarge; a 415 yields '
+        'attachmentRejected, wrapped so the already-created ticket rides '
+        'along rather than being lost', () async {
       Future<void> expectStorageFailure(String statusCode, Type expected) async {
         final client = makeClient((req) async {
           if (req.url.path == '/rest/v1/feedback_tickets') {
@@ -278,6 +280,9 @@ void main() {
               jsonEncode({'message': 'rejected', 'statusCode': statusCode}),
               int.parse(statusCode),
             );
+          }
+          if (req.url.path == '/functions/v1/feedback-notify') {
+            return http.Response('', 204);
           }
           fail('unexpected request: ${req.method} ${req.url}');
         });
@@ -295,12 +300,58 @@ void main() {
               filename: 'shot.png',
             ),
           ),
-          throwsA(isA<FeedbackFailure>().having((f) => f.runtimeType, 'type', expected)),
+          throwsA(isA<FeedbackAttachmentUploadFailedFailure>()
+              .having((f) => f.attachmentFailure.runtimeType, 'attachmentFailure type', expected)
+              .having((f) => f.ticket.id, 'ticket.id', 't5')),
         );
+        await pumpEventQueue();
       }
 
       await expectStorageFailure('413', FeedbackAttachmentTooLargeFailure);
       await expectStorageFailure('415', FeedbackAttachmentRejectedFailure);
+    });
+
+    test('an attachment upload failure does not orphan the ticket: the '
+        'already-created ticket rides along on the thrown failure instead '
+        'of the caller seeing total failure and re-filing a duplicate',
+        () async {
+      final client = makeClient((req) async {
+        if (req.url.path == '/rest/v1/feedback_tickets' && req.method == 'POST') {
+          return http.Response(jsonEncode(ticketRow(id: 't6', message: 'crashed again')), 200);
+        }
+        if (req.url.path.startsWith('/storage/v1/object/feedback-attachments/')) {
+          return http.Response(jsonEncode({'message': 'temporarily unavailable'}), 503);
+        }
+        if (req.url.path == '/functions/v1/feedback-notify') {
+          return http.Response('', 204);
+        }
+        fail('unexpected request: ${req.method} ${req.url}');
+      });
+      await _signIn(client);
+      final service = SupabaseFeedbackService(client: client);
+
+      try {
+        await service.submitTicket(
+          category: FeedbackCategory.bug,
+          message: 'crashed again',
+          replyEmail: 'a@example.com',
+          attachment: FeedbackAttachment(
+            bytes: List<int>.filled(10, 1),
+            mimeType: 'image/png',
+            filename: 'shot.png',
+          ),
+        );
+        fail('expected a FeedbackAttachmentUploadFailedFailure');
+      } on FeedbackAttachmentUploadFailedFailure catch (failure) {
+        expect(failure.ticket.id, 't6',
+            reason: 'the insert already committed; the ticket is not lost');
+        expect(failure.ticket.message, 'crashed again');
+        expect(failure.userFacingMessage, contains('Support history'),
+            reason: 'tells the operator the ticket is recoverable, not gone');
+        expect(failure.userFacingMessage, isNot(contains('temporarily unavailable')),
+            reason: 'R11: never a raw provider message');
+      }
+      await pumpEventQueue();
     });
 
     test('a signed-out client rejects locally with FeedbackFailure.unauthorized', () async {

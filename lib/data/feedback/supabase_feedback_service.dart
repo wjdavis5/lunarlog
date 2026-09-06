@@ -53,11 +53,24 @@ class SupabaseFeedbackService implements FeedbackService {
 
       var ticket = _ticketFromRow(row);
 
-      if (attachment != null) {
-        ticket = await _attachAndUpdate(ticket, uid, attachment);
-      }
-
+      // The insert above already committed: notify as soon as the ticket
+      // exists (matching the "immediately after a successful insert"
+      // contract), so an admin alert still fires even when the attachment
+      // step below fails.
       _notifyBestEffort(ticket.id);
+
+      if (attachment != null) {
+        try {
+          ticket = await _attachAndUpdate(ticket, uid, attachment);
+        } catch (attachmentError) {
+          // Do not let a bare rethrow here read as total failure: the
+          // ticket already exists (without the attachment) and is
+          // recoverable, not orphaned. Carrying it on the failure keeps the
+          // caller from treating this as "nothing happened" and resubmitting
+          // a duplicate against R17's 5/hour rate cap.
+          throw FeedbackAttachmentUploadFailedFailure(ticket, _mapError(attachmentError));
+        }
+      }
 
       return ticket;
     } catch (error) {
