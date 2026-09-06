@@ -264,4 +264,53 @@ void main() {
     expect(service.submitCalls, 2);
     expect(service.lastAttachment, isNull);
   });
+
+  testWidgets(
+      'a FeedbackAttachmentUploadFailedFailure clears the message and screenshot so a retry '
+      'cannot re-file a duplicate ticket with the same screenshot and no fresh consent',
+      (tester) async {
+    final ticket = FeedbackTicket(
+      id: 't1',
+      category: FeedbackCategory.bug,
+      message: 'it crashed',
+      replyEmail: 'me@example.com',
+      status: FeedbackTicketStatus.newTicket,
+      attachmentPaths: const [],
+      createdAt: DateTime.utc(2026, 9, 5),
+      updatedAt: DateTime.utc(2026, 9, 5),
+    );
+    final service = FakeFeedbackService()
+      ..failureToThrow = FeedbackAttachmentUploadFailedFailure(
+        ticket,
+        const FeedbackFailure.network(),
+      );
+    final attachmentSource = _FakeAttachmentSource()
+      ..nextResult = FeedbackAttachment(
+        bytes: List<int>.filled(1024, 1),
+        mimeType: 'image/png',
+        filename: 'shot.png',
+      );
+    await pumpFeedbackScreen(tester, service, attachmentSource: attachmentSource);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'it crashed');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.ensureVisible(find.byKey(const ValueKey('feedback-add-screenshot')));
+    await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
+    await tester.pumpAndSettle();
+
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
+    // The message text is gone — a retry composes a fresh submission
+    // rather than looking like a continuation of the one that already
+    // committed a ticket row.
+    expect(find.text('it crashed'), findsNothing);
+    // The screenshot picker reset too: no stale attachment survives to
+    // ride along, silently and without fresh consent, on the next submit.
+    expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsNothing);
+    expect(find.byKey(const ValueKey('feedback-add-screenshot')), findsOneWidget);
+  });
 }

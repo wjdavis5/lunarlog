@@ -3,6 +3,6 @@
     "@supabase/supabase-js": "npm:@supabase/supabase-js@2.45.4"
   },
   "test": {
-    "include": ["_shared/**/*.test.ts"]
+    "include": ["_shared/**/*.test.ts", "feedback-notify/**/*.test.ts"]
   }
 }

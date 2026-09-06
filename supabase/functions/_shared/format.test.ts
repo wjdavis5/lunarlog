@@ -1,6 +1,7 @@
 // _shared/format.test.ts (Issue #6, U9)
-// Run locally with `deno test supabase/functions/_shared/` (CI does not run
-// Deno; see the plan's Risks and Mitigations).
+// Run locally with `deno test supabase/functions/_shared/`. Also runs in CI
+// via the `edge-functions` job in `.github/workflows/ci.yml` (PR #105 review
+// round 3).
 
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { buildAdminAlert, buildReplyEmail, type FeedbackTicketSummary } from "./format.ts";

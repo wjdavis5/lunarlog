@@ -105,7 +105,24 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     try {
       await action();
     } on FeedbackFailure catch (failure) {
-      if (mounted) setState(() => _error = failure.userFacingMessage);
+      if (mounted) {
+        setState(() {
+          _error = failure.userFacingMessage;
+          if (failure is FeedbackAttachmentUploadFailedFailure) {
+            // The ticket row already committed with this message text —
+            // unlike every other FeedbackFailure case, a retry here is not
+            // a fresh attempt at the same submission, it starts a new
+            // ticket. Clearing the message keeps that new-ticket framing
+            // honest, and clearing the screenshot is mandatory: leaving it
+            // attached would silently re-upload and re-attach it (with no
+            // fresh consent) onto that new ticket, filing a duplicate
+            // ticket and firing a duplicate admin alert for one failure.
+            _message.clear();
+            _attachment = null;
+            _formGeneration++;
+          }
+        });
+      }
     } catch (error) {
       debugPrint('lunarlog feedback: submit failed (${error.runtimeType})');
       if (mounted) {
