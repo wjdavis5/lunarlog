@@ -10,17 +10,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/errors.dart';
 import 'package:lunarlog/data/db/key_store.dart';
 
-/// In-memory stand-in for [FlutterSecureStorage] that emulates the one
-/// real-Keychain behavior this migration depends on: `kSecAttrAccessible`
-/// is a *matching constraint* on reads (and deletes), not just a write-time
-/// attribute, so a value written under one accessibility is invisible to a
-/// read under another. Values are therefore bucketed by the accessibility
-/// requested on each call -- `null` (no override passed) is its own bucket,
-/// standing in for [SecureDbKeyStore]'s own configured (current)
-/// accessibility, exactly like a real call to `_storage.read(key: ...)`
-/// with no `iOptions` override resolves to the instance's configured
-/// options. This mirrors the real platform rather than a plain key-value
-/// map, which would hide this class of bug entirely.
+/// In-memory stand-in for [FlutterSecureStorage] that emulates the two
+/// real-Keychain behaviors this migration depends on:
+///
+/// * `kSecAttrAccessible` is a *matching constraint* on reads (and writes'
+///   own existence checks), not just a write-time attribute, so a value
+///   written under one accessibility is invisible to a read under another.
+///   Values are therefore bucketed by the accessibility requested on each
+///   call -- `null` (no override passed) is its own bucket, standing in for
+///   [SecureDbKeyStore]'s own configured (current) accessibility, exactly
+///   like a real call to `_storage.read(key: ...)` with no `iOptions`
+///   override resolves to the instance's configured options.
+/// * Delete is the opposite: `flutter_secure_storage_darwin`'s
+///   `performDelete` clears `accessibilityLevel` off the query before
+///   calling `SecItemDelete`, so a delete call is **account-wide** --
+///   it removes the key from every accessibility bucket, regardless of
+///   which `iOptions` was passed. A delete scoped to just the requested
+///   bucket would hide the ordering bug this migration depends on getting
+///   right (deleting the legacy item before, not after, writing the new
+///   one).
+///
+/// This mirrors the real platform rather than a plain key-value map, which
+/// would hide this class of bug entirely.
 class FakeSecureStorage implements FlutterSecureStorage {
   final Map<KeychainAccessibility?, Map<String, String>> _byAccessibility = {};
   final List<AppleOptions?> writeIOptions = [];
@@ -86,7 +97,12 @@ class FakeSecureStorage implements FlutterSecureStorage {
     WindowsOptions? wOptions,
   }) async {
     deleteIOptions.add(iOptions);
-    _byAccessibility[_bucketOf(iOptions)]?.remove(key);
+    // Account-wide, like the real plugin: `iOptions` is recorded (callers
+    // assert on it) but does NOT scope which bucket loses the key -- every
+    // bucket does.
+    for (final bucket in _byAccessibility.values) {
+      bucket.remove(key);
+    }
   }
 
   @override

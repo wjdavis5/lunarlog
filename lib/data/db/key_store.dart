@@ -120,16 +120,22 @@ class SecureDbKeyStore implements DbKeyStore {
       if (!isValidDbKeyHex(legacy)) {
         throw const CorruptDatabaseKeyError();
       }
-      // Re-persist under the current accessibility so every subsequent
-      // read (which uses _storage's own configured options) finds it
-      // directly, without this fallback ever running again.
-      await _storage.write(key: storageKey, value: legacy);
-      // Best-effort cleanup of the old item: whether the write above
-      // updated the existing Keychain entry in place or added a new one
-      // is a platform-implementation detail; deleting under the old
-      // accessibility removes a leftover duplicate if one exists, and is
-      // a harmless no-op if it doesn't.
+      // Delete the OLD item *before* writing the new one. This order is
+      // load-bearing: `flutter_secure_storage_darwin`'s `performDelete`
+      // clears `accessibilityLevel` off the query before calling
+      // `SecItemDelete` (see `FlutterSecureStorage.swift`), so
+      // `iOptions`/`accessibilityLevel` is *not* a matching constraint on
+      // delete the way it is on read/write — a delete call is account-wide
+      // and removes whichever item is currently stored for this account,
+      // regardless of which `iOptions` accessibility was passed. Deleting
+      // *after* the write (the previous, buggy order) therefore deleted the
+      // key that write had just persisted, not the legacy one: the app
+      // would open fine once, on the next launch fall through to a legacy
+      // read that fails to find anything, and mint a fresh key over the
+      // still-existing, now-unreadable encrypted database
+      // (`DatabaseQuarantineError` on that database's own next open).
       await _storage.delete(key: storageKey, iOptions: legacyOptions);
+      await _storage.write(key: storageKey, value: legacy);
       return legacy;
     }
 
