@@ -19,7 +19,14 @@ void main() {
   final micro = DateTime.utc(2026, 9, 1, 10, 0, 0, 123, 456);
   final later = DateTime.utc(2026, 9, 2, 8, 30, 15, 999, 999);
 
-  Profile makeProfile({DateTime? deletedAt, DateTime? archivedAt}) => Profile(
+  Profile makeProfile({
+    DateTime? deletedAt,
+    DateTime? archivedAt,
+    int? birthYear,
+    String? relationship,
+    DateTime? transferredAt,
+  }) =>
+      Profile(
         id: profileId,
         displayName: deletedAt == null ? 'Kid' : '',
         isMinor: true,
@@ -30,6 +37,9 @@ void main() {
         deletedAt: deletedAt,
         dirty: true,
         localRev: 7,
+        birthYear: birthYear,
+        relationship: relationship,
+        transferredAt: transferredAt,
       );
 
   DayEntry makeEntry({
@@ -106,13 +116,28 @@ void main() {
         'created_at': '2026-09-01T10:00:00.123456Z',
         'updated_at': '2026-09-02T08:30:15.999999Z',
         'deleted_at': null,
+        'birth_year': null,
+        'relationship': null,
       });
       expect(json.keys, isNot(contains('dirty')));
       expect(json.keys, isNot(contains('local_rev')));
     });
 
+    test('encode includes birth_year and relationship and omits '
+        'transferred_at (Issue #4 R5/R21: server-owned, never pushed)', () {
+      final json = encodeProfile(makeProfile(
+        birthYear: 2015,
+        relationship: 'daughter',
+        transferredAt: micro,
+      ));
+      expect(json['birth_year'], 2015);
+      expect(json['relationship'], 'daughter');
+      expect(json.keys, isNot(contains('transferred_at')));
+    });
+
     test('round-trips every column including microseconds', () {
-      final row = makeProfile(archivedAt: micro);
+      final row = makeProfile(
+          archivedAt: micro, birthYear: 2012, relationship: 'son');
       final decoded = decodeProfile({...encodeProfile(row), 'server_version': 12});
       expect(decoded.id, row.id);
       expect(decoded.displayName, row.displayName);
@@ -125,6 +150,36 @@ void main() {
       expect(decoded.serverVersion, 12);
       expect(decoded.table, SyncTable.profiles);
       expect(decoded.isTombstone, isFalse);
+      expect(decoded.birthYear, 2012);
+      expect(decoded.relationship, 'son');
+    });
+
+    test('decode reads birth_year, relationship and transferred_at when '
+        'the payload carries all three', () {
+      final decoded = decodeProfile({
+        ...encodeProfile(makeProfile(birthYear: 2010, relationship: 'child')),
+        'transferred_at': '2026-09-03T00:00:00.000000Z',
+      });
+      expect(decoded.birthYear, 2010);
+      expect(decoded.relationship, 'child');
+      expect(decoded.transferredAt, DateTime.utc(2026, 9, 3));
+    });
+
+    test('decode of an unknown relationship string yields null rather than '
+        'throwing', () {
+      final decoded = decodeProfile({
+        ...encodeProfile(makeProfile()),
+        'relationship': 'cousin',
+      });
+      expect(decoded.relationship, isNull);
+    });
+
+    test('decode of an absent birth_year/relationship/transferred_at yields '
+        'null for each', () {
+      final decoded = decodeProfile(encodeProfile(makeProfile()));
+      expect(decoded.birthYear, isNull);
+      expect(decoded.relationship, isNull);
+      expect(decoded.transferredAt, isNull);
     });
 
     test('round-trips a tombstone', () {
