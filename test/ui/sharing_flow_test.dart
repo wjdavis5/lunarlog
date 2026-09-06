@@ -16,6 +16,7 @@ import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 
 import '../support/fake_auth_service.dart';
+import '../support/fake_notification_preferences_service.dart';
 
 class FakeSharingService implements SharingService {
   GeneratedInvite? scriptedInvite;
@@ -544,6 +545,56 @@ void main() {
       expect(find.byIcon(Icons.person_add), findsOneWidget);
       expect(find.text('No caregivers linked yet'), findsOneWidget);
       expect(find.byIcon(Icons.remove_circle_outline), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+  });
+
+  group('ManageGuardiansScreen notification tile (Issue #5, U8)', () {
+    testWidgets(
+        'with a service provided, shows the Notifications tile and tapping it pushes the screen',
+        (tester) async {
+      final notificationPreferencesService = FakeNotificationPreferencesService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+            notificationPreferencesService: notificationPreferencesService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('notifications-action')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('notifications-action')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Notifications'), findsOneWidget);
+      expect(find.byKey(const ValueKey('discretion-copy')), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('with no service provided, the tile is absent', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('notifications-action')), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
