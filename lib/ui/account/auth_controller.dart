@@ -118,6 +118,13 @@ class AuthController extends ChangeNotifier {
   Future<GoogleSignInResult> signInWithGoogleNative() =>
       _service.signInWithGoogleNative();
 
+  /// Passkey sign-in (#30 U4; KTD5), mirroring
+  /// [signInWithGoogleNative]/[signInWithAppleNative] exactly: no adoption
+  /// step, since the resulting session's `signedIn` state arrives through
+  /// [states] like every other sign-in path.
+  Future<PasskeySignInResult> signInWithPasskey() =>
+      _service.signInWithPasskey();
+
   Future<void> sendMagicLink({
     required String email,
     required bool createAccount,
@@ -144,6 +151,21 @@ class AuthController extends ChangeNotifier {
   /// check first, and the returned user is adopted the same way.
   Future<AuthUser> unlinkProvider(String provider) =>
       _adopting(_service.unlinkProvider(provider));
+
+  /// Adds a passkey to the current account (#30 U4; KTD5). Unlike
+  /// [linkGoogle]/[linkApple], a passkey is never an identity provider
+  /// (R10), so [PasskeyRegistrationResult] — not a bare [AuthUser] — is the
+  /// return type; only a non-cancelled [PasskeyRegistrationSuccess] adopts
+  /// its user and notifies listeners, the same adoption [_adopting] gives
+  /// every other add-a-method call.
+  Future<PasskeyRegistrationResult> registerPasskey() async {
+    final result = await _service.registerPasskey();
+    if (result is PasskeyRegistrationSuccess) {
+      _adoptFreshUser(result.user);
+      notifyListeners();
+    }
+    return result;
+  }
 
   /// Awaits [call], adopts its result into [currentUser], and notifies
   /// listeners — shared by [linkGoogle], [linkApple], and

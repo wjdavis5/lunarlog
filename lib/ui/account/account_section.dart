@@ -172,6 +172,7 @@ class AccountSection extends StatefulWidget {
     super.key,
     this.showAddGoogle,
     this.showAddApple,
+    this.showAddPasskey,
     this.showExportAndDelete,
     this.exportAccount,
     this.appleAuthorizationCodeRequest,
@@ -183,6 +184,11 @@ class AccountSection extends StatefulWidget {
 
   /// Whether "Add Apple" may render; null means "iOS, not web" (#2 U5).
   final bool? showAddApple;
+
+  /// Whether "Add a passkey" may render; null means [AppConfig.hasPasskeys]
+  /// (#30 U4; KTD5). Injectable so widget tests can force the flag on even
+  /// though [AppConfig] is compile-time const.
+  final bool? showAddPasskey;
 
   /// Whether "Export my data" and "Delete account" may render at all; null
   /// means "not web" (Issue #17 R11 - neither tile ships on web, regardless
@@ -205,6 +211,12 @@ class AccountSection extends StatefulWidget {
 }
 
 class _AccountSectionState extends State<AccountSection> {
+  /// Not a real [AuthProviders] value — passkeys are not identity providers
+  /// and never appear in [AuthUser.providers] (#30 R10) — just the key
+  /// [_busyProvider] uses to track a mid-ceremony "Add a passkey" tap,
+  /// alongside the real `google`/`apple` provider ids.
+  static const _kPasskeyBusyKey = 'passkey';
+
   /// The provider whose link or remove call is in flight, or null (#31
   /// KTD8). One action at a time, in either direction: every method tile
   /// is disabled while this is set, and a second tap does nothing.
@@ -222,6 +234,8 @@ class _AccountSectionState extends State<AccountSection> {
   bool get _canAddApple =>
       widget.showAddApple ??
       (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+
+  bool get _canAddPasskey => widget.showAddPasskey ?? AppConfig.hasPasskeys;
 
   bool get _canExportAndDelete => widget.showExportAndDelete ?? !kIsWeb;
 
@@ -319,7 +333,31 @@ class _AccountSectionState extends State<AccountSection> {
           label: 'Add Google',
           onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
         ),
+      if (_canAddPasskey)
+        _addMethodTile(
+          key: 'account-add-passkey',
+          provider: _kPasskeyBusyKey,
+          icon: Icons.fingerprint,
+          label: 'Add a passkey',
+          onTap: () =>
+              _addMethod(_kPasskeyBusyKey, () => _registerPasskey(auth)),
+        ),
     ];
+  }
+
+  /// Adapts [AuthController.registerPasskey]'s
+  /// [PasskeyRegistrationResult] to the `Future<AuthUser>` shape
+  /// [_addMethod]/[_reauthenticateAndLink] share with [linkGoogle] and
+  /// [linkApple] (#30 U4; KTD5). A dismissed ceremony has no fresh user to
+  /// report — the controller adopted nothing — so the current user is
+  /// returned unchanged, exactly as a dismissed Google/Apple picker leaves
+  /// it (`_link` in `SupabaseAuthService`).
+  Future<AuthUser> _registerPasskey(AuthController auth) async {
+    final result = await auth.registerPasskey();
+    return switch (result) {
+      PasskeyRegistrationSuccess(:final user) => user,
+      PasskeyRegistrationCancelled() => auth.currentUser!,
+    };
   }
 
   Widget _buildSignInTile(BuildContext context, AuthController auth) {

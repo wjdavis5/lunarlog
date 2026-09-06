@@ -455,6 +455,70 @@ void main() {
 
   });
 
+  group('passkey sign-in (#30 U4; AE1, AE2, AE3)', () {
+    testWidgets('AE1: showPasskeys false and the null default (empty '
+        'config) render no passkey button; true renders it', (tester) async {
+      await pumpStandalone(tester, showPasskeys: false);
+      expect(key('auth-passkey'), findsNothing);
+
+      await pumpStandalone(tester);
+      expect(key('auth-passkey'), findsNothing,
+          reason: 'AppConfig.hasPasskeys is false without a relying-party '
+              'id');
+
+      await pumpStandalone(tester, showPasskeys: true);
+      expect(key('auth-passkey'), findsOneWidget);
+    });
+
+    testWidgets('AE2: a passkey session completes the screen exactly once',
+        (tester) async {
+      var completions = 0;
+      final s = await pumpStandalone(
+        tester,
+        showPasskeys: true,
+        embedded: true,
+        onSignedIn: () => completions++,
+      );
+      s.auth.passkeySignInResult =
+          const PasskeySignInSession(AuthUser(id: 'user-passkey'));
+
+      await tester.tap(key('auth-passkey'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.passkeySignInCalls, 1);
+      expect(completions, 1);
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('AE3: a dismissed ceremony returns with no error, no '
+        'spinner, and an editable form', (tester) async {
+      final s = await pumpStandalone(tester, showPasskeys: true);
+      // FakeAuthService defaults passkeySignInResult to cancelled.
+
+      await tester.tap(key('auth-passkey'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.passkeySignInCalls, 1);
+      expect(key('auth-error'), findsNothing);
+      expect(key('auth-pending'), findsNothing);
+      expect(tester.widget<TextField>(key('auth-email')).enabled, isTrue);
+      expect(s.controller.signedIn, isFalse);
+    });
+
+    testWidgets('AE4: providerUnavailable shows the generic copy naming no '
+        'provider', (tester) async {
+      final s = await pumpStandalone(tester, showPasskeys: true);
+      s.auth.nextFailure = const AuthFailure.providerUnavailable();
+
+      await tester.tap(key('auth-passkey'));
+      await tester.pumpAndSettle();
+
+      final copy = tester.widget<Text>(key('auth-error')).data!;
+      expect(copy, contains('email'));
+      expect(copy.toLowerCase(), isNot(contains('passkey')));
+      expect(copy.toLowerCase(), isNot(contains('google')));
+    });
+  });
 
   group('link-delivered sessions on the sign-in screen (#2 U3; AE5, R8)', () {
     testWidgets('the pushed screen pops when a session arrives without any '
@@ -1127,6 +1191,111 @@ void main() {
       );
       expect(find.text('Sign-in methods: Email'), findsOneWidget);
       expect(key('account-add-google'), findsOneWidget);
+    });
+  });
+
+  group('adding a passkey (#30 U4; AE4, AE5, R8, R10)', () {
+    testWidgets('the null default hides the tile in an unconfigured build; '
+        'true renders it regardless of AuthUser.providers (R10)', (
+      tester,
+    ) async {
+      await pumpSection(tester, providers: ['email']);
+      expect(key('account-add-passkey'), findsNothing);
+
+      await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddPasskey: true,
+      );
+      expect(key('account-add-passkey'), findsOneWidget);
+    });
+
+    testWidgets('AE5: a granted re-auth calls registerPasskey; a declined '
+        'one never touches the service', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddPasskey: true,
+      );
+      s.auth.passkeyRegistrationResult = const PasskeyRegistrationSuccess(
+        AuthUser(id: 'u1', email: 'a@b.c', providers: ['email']),
+      );
+
+      await tester.tap(key('account-add-passkey'));
+      await tester.pumpAndSettle();
+
+      expect(s.gate.requests, 1, reason: 'the device credential came first');
+      expect(s.auth.registerPasskeyCalls, 1);
+      // R10: passkeys are not identity providers, so the subtitle is
+      // unchanged and the tile keeps rendering (no management/removal UI).
+      expect(find.text('Sign-in methods: Email'), findsOneWidget);
+      expect(key('account-add-passkey'), findsOneWidget);
+
+      // A declined re-auth on a fresh pump never reaches the service.
+      final declined = await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddPasskey: true,
+        grantReauth: false,
+      );
+      await tester.tap(key('account-add-passkey'));
+      await tester.pumpAndSettle();
+      expect(declined.gate.requests, 1);
+      expect(declined.auth.registerPasskeyCalls, 0);
+      expect(key('account-link-error'), findsNothing);
+    });
+
+    testWidgets('AE4: providerUnavailable surfaces the generic copy naming '
+        'no provider, and no exception escapes', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddPasskey: true,
+      );
+      s.auth.nextFailure = const AuthFailure.providerUnavailable();
+
+      await tester.tap(key('account-add-passkey'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.registerPasskeyCalls, 1);
+      expect(key('account-link-error'), findsOneWidget);
+      final copy = tester.widget<Text>(key('account-link-error')).data!;
+      expect(copy.toLowerCase(), isNot(contains('passkey')));
+      expect(copy.toLowerCase(), isNot(contains('google')));
+    });
+
+    testWidgets('a dismissed ceremony leaves the tile as is, with no error '
+        'and no crash', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddPasskey: true,
+      );
+      // FakeAuthService defaults passkeyRegistrationResult to cancelled.
+
+      await tester.tap(key('account-add-passkey'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.registerPasskeyCalls, 1);
+      expect(key('account-link-error'), findsNothing);
+      expect(key('account-add-passkey'), findsOneWidget);
+    });
+
+    testWidgets('with no GateController provided, tapping does nothing: no '
+        'call and no crash', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddPasskey: true,
+        provideGate: false,
+      );
+
+      await tester.tap(key('account-add-passkey'));
+      await tester.pumpAndSettle();
+
+      expect(s.gate.requests, 0, reason: 'never reached: no gate to ask');
+      expect(s.auth.registerPasskeyCalls, 0);
+      expect(key('account-link-error'), findsNothing);
     });
   });
 
@@ -1859,6 +2028,7 @@ Future<StandaloneSection> pumpSection(
   List<String> providers = const ['email'],
   bool? showAddGoogle,
   bool? showAddApple,
+  bool? showAddPasskey,
   bool grantReauth = true,
   bool provideGate = true,
 }) async {
@@ -1891,6 +2061,7 @@ Future<StandaloneSection> pumpSection(
           body: AccountSection(
             showAddGoogle: showAddGoogle,
             showAddApple: showAddApple,
+            showAddPasskey: showAddPasskey,
           ),
         ),
       ),
@@ -1914,6 +2085,7 @@ Future<StandaloneSignIn> pumpStandalone(
   WidgetTester tester, {
   bool? showApple,
   bool? showGoogle,
+  bool? showPasskeys,
   bool embedded = false,
   VoidCallback? onSignedIn,
   Map<String, String>? seed,
@@ -1936,6 +2108,7 @@ Future<StandaloneSignIn> pumpStandalone(
         child: SignInScreen(
           showApple: showApple,
           showGoogle: showGoogle,
+          showPasskeys: showPasskeys,
           embedded: embedded,
           onSignedIn: onSignedIn,
         ),
