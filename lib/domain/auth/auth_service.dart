@@ -174,6 +174,66 @@ final class GoogleSignInCancelled extends GoogleSignInResult {
   String toString() => 'GoogleSignInCancelled';
 }
 
+/// Outcome of [AuthService.signInWithPasskey] (#30 U2; KTD4).
+sealed class PasskeySignInResult {
+  const PasskeySignInResult();
+}
+
+final class PasskeySignInSession extends PasskeySignInResult {
+  const PasskeySignInSession(this.user);
+
+  final AuthUser user;
+
+  @override
+  String toString() => 'PasskeySignInSession($user)';
+}
+
+/// The operator dismissed the platform passkey ceremony: not a failure,
+/// mirroring [GoogleSignInCancelled] (#30 R6).
+@immutable
+final class PasskeySignInCancelled extends PasskeySignInResult {
+  const PasskeySignInCancelled();
+
+  @override
+  bool operator ==(Object other) => other is PasskeySignInCancelled;
+
+  @override
+  int get hashCode => (PasskeySignInCancelled).hashCode;
+
+  @override
+  String toString() => 'PasskeySignInCancelled';
+}
+
+/// Outcome of [AuthService.registerPasskey] (#30 U2; KTD4).
+sealed class PasskeyRegistrationResult {
+  const PasskeyRegistrationResult();
+}
+
+final class PasskeyRegistrationSuccess extends PasskeyRegistrationResult {
+  const PasskeyRegistrationSuccess(this.user);
+
+  final AuthUser user;
+
+  @override
+  String toString() => 'PasskeyRegistrationSuccess($user)';
+}
+
+/// The operator dismissed the enrolment ceremony: not a failure, mirroring
+/// [PasskeySignInCancelled] (#30 R6).
+@immutable
+final class PasskeyRegistrationCancelled extends PasskeyRegistrationResult {
+  const PasskeyRegistrationCancelled();
+
+  @override
+  bool operator ==(Object other) => other is PasskeyRegistrationCancelled;
+
+  @override
+  int get hashCode => (PasskeyRegistrationCancelled).hashCode;
+
+  @override
+  String toString() => 'PasskeyRegistrationCancelled';
+}
+
 /// Typed failure thrown by every [AuthService] operation and surfaced for
 /// rejected links. Deliberately fieldless: no message, no code, no email.
 @immutable
@@ -373,6 +433,27 @@ abstract interface class AuthService {
   /// (#2 U8; KTD5, AS6). Same preconditions and outcomes as [linkGoogle];
   /// iOS only ([UnsupportedError] elsewhere).
   Future<AuthUser> linkApple();
+
+  /// Passkey sign-in (#30 U2; KTD1, KTD2, KTD4). Throws [UnsupportedError]
+  /// where the build has no passkey configuration (`AppConfig.hasPasskeys`
+  /// false); returns [PasskeySignInCancelled] when the operator dismisses
+  /// the platform ceremony; throws [AuthFailure] otherwise
+  /// ([AuthProviderUnavailableFailure] when no working platform ceremony is
+  /// available, R7). No Supabase or Flutter type crosses this boundary: the
+  /// server owns the relying-party id and the client never handles it.
+  Future<PasskeySignInResult> signInWithPasskey();
+
+  /// Adds a passkey as a sign-in method for the *current* account
+  /// (#30 U2; KTD1, KTD2, KTD4). Requires [state] to be
+  /// [AuthSessionState.signedIn] — otherwise throws [AuthUnknownFailure]
+  /// before touching the platform, as [linkGoogle] does. Throws
+  /// [UnsupportedError] where the build has no passkey configuration;
+  /// returns [PasskeyRegistrationCancelled] when the operator dismisses the
+  /// enrolment ceremony; throws [AuthFailure] otherwise
+  /// ([AuthProviderUnavailableFailure] for any platform-side failure, R7).
+  /// The device-credential check before registration is the caller's
+  /// concern, exactly as for [linkGoogle].
+  Future<PasskeyRegistrationResult> registerPasskey();
 
   /// Removes [provider] as a sign-in method from the current account
   /// (#31 U1; KTD1, KTD3). Requires [state] to be
