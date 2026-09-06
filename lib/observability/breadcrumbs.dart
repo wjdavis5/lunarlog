@@ -16,6 +16,29 @@
 library;
 
 import 'package:lunarlog/observability/scrub.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Breadcrumb;
+
+/// The label to feed [BreadcrumbLog.record] for [breadcrumb] (U1; KTD5).
+///
+/// `SentryNavigatorObserver` produces data-only breadcrumbs with a null
+/// `message` — feeding `breadcrumb.message ?? ''` to the log would record
+/// `navigation: ` with nothing after the colon. This derives a readable
+/// label instead: the message when present, else the already-scrubbed `to`
+/// route for a `navigation` breadcrumb (by the time this runs, [breadcrumb]
+/// has already passed [scrubBreadcrumb], so `to` is a screen name or
+/// `unknown`, never raw route data), else the empty string.
+///
+/// This is the only file under `lib/observability/` that imports
+/// `sentry_flutter`'s [Breadcrumb] type — needed for exactly this parameter.
+String breadcrumbLabel(Breadcrumb breadcrumb) {
+  final message = breadcrumb.message;
+  if (message != null && message.isNotEmpty) return message;
+  if (breadcrumb.category == 'navigation') {
+    final to = breadcrumb.data?['to'];
+    if (to is String) return to;
+  }
+  return '';
+}
 
 /// Default capacity: at most this many recent breadcrumbs are kept, per R8.
 const int kBreadcrumbLogCapacity = 25;

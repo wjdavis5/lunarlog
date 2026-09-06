@@ -278,8 +278,39 @@ void main() {
       final out = scrubEvent(_fullEvent())!;
       expect(out.breadcrumbs, hasLength(1));
       expect(out.breadcrumbs!.single.category, 'navigation');
-      expect(out.breadcrumbs!.single.data, isNull);
+      // U1: an unregistered, path-shaped `to` becomes 'unknown' rather than
+      // being dropped outright — the navigation shape survives.
+      expect(out.breadcrumbs!.single.data, {'state': 'unknown', 'to': 'unknown'});
       expect(_json(out), isNot(contains(_email)));
+    });
+
+    test('U1/KTD4: event.transaction is scrubbed through scrubRouteName', () {
+      final registered = scrubEvent(SentryEvent(transaction: 'SettingsScreen'))!;
+      expect(registered.transaction, 'SettingsScreen');
+
+      final pathShaped =
+          scrubEvent(SentryEvent(transaction: '/profiles/8f2c'))!;
+      expect(pathShaped.transaction, 'unknown');
+
+      final nullTransaction = scrubEvent(SentryEvent(transaction: null))!;
+      expect(nullTransaction.transaction, isNull);
+    });
+
+    test('U1: contexts.app is reduced to version even when it carries '
+        'view_names (FlutterEnricherEventProcessor output)', () {
+      final out = scrubEvent(SentryEvent(
+        contexts: Contexts(
+          app: SentryApp(
+            version: '1.0.0',
+            viewNames: ['SettingsScreen', 'ProfileDetailScreen'],
+          ),
+        ),
+      ))!;
+      final json = _json(out);
+      expect(json, isNot(contains('view_names')));
+      expect(json, isNot(contains('ProfileDetailScreen')));
+      expect(out.contexts.app?.version, '1.0.0');
+      expect(out.contexts.app?.viewNames, isNull);
     });
 
     test('the whole serialized full event carries none of the planted values',
@@ -308,14 +339,141 @@ void main() {
       expect(scrubBreadcrumb(null), isNull);
     });
 
-    test('navigation breadcrumb loses its data', () {
+    // U1/AE1: a navigation breadcrumb's state/from/to survive verbatim when
+    // they are registered, well-shaped route names.
+    test('AE1: navigation breadcrumb keeps state/from/to verbatim when '
+        'registered', () {
       final out = scrubBreadcrumb(Breadcrumb(
         category: 'navigation',
-        message: 'route',
-        data: {'from': '/', 'to': '/entry/2026-09-02'},
+        data: {
+          'state': 'didPush',
+          'from': 'ProfilePickerScreen',
+          'to': 'SettingsScreen',
+        },
       ))!;
       expect(out.category, 'navigation');
-      expect(out.message, 'route');
+      expect(out.data, {
+        'state': 'didPush',
+        'from': 'ProfilePickerScreen',
+        'to': 'SettingsScreen',
+      });
+    });
+
+    // U1/AE2: the single most important test in this plan. `to_arguments`
+    // arrives as a scalar string (RouteObserverBreadcrumb._formatArgs on a
+    // non-map argument) that containsDenyListedKey cannot see inside. The
+    // rebuild must drop the whole field regardless, not scan its value.
+    test('AE2: to_arguments as a scalar string carrying a profile id and a '
+        'date never survives, even though no deny-list key check can see '
+        'inside it', () {
+      const leaking =
+          '{profile: 8f2c-4a1b, local_date: 2026-09-06}';
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {
+          'state': 'didPush',
+          'from': 'ProfilePickerScreen',
+          'to': 'ProfileDetailScreen',
+          'to_arguments': leaking,
+        },
+      ))!;
+      expect(out.data!.keys.toSet(), {'state', 'from', 'to'});
+      final json = jsonEncode(out.toJson());
+      expect(json, isNot(contains('local_date')));
+      expect(json, isNot(contains('8f2c-4a1b')));
+    });
+
+    test('AE2: from_arguments as a scalar string never survives', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {
+          'state': 'didPush',
+          'from': 'ProfileDetailScreen',
+          'from_arguments': '{note: private thoughts, local_date: 2026-01-01}',
+          'to': 'SettingsScreen',
+        },
+      ))!;
+      expect(out.data!.keys.toSet(), {'state', 'from', 'to'});
+      final json = jsonEncode(out.toJson());
+      expect(json, isNot(contains('private thoughts')));
+      expect(json, isNot(contains('local_date')));
+    });
+
+    test('AE2: an additionalInfoProvider-style nested data map carrying a '
+        'note never survives — caught by containsDenyListedKey before the '
+        'navigation rebuild even runs, so the whole breadcrumb is dropped',
+        () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {
+          'state': 'didPush',
+          'to': 'SettingsScreen',
+          'data': {'note': 'private note'},
+        },
+      ));
+      expect(out, isNull);
+    });
+
+    // U1/AE2b: a MAP argument is the branch containsDenyListedKey does
+    // reach — it drops the whole breadcrumb via the early return, before
+    // the navigation rebuild ever runs.
+    test('AE2b: to_arguments as a map carrying local_date drops the whole '
+        'breadcrumb via containsDenyListedKey', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {
+          'state': 'didPush',
+          'to': 'ProfileDetailScreen',
+          'to_arguments': {'local_date': '2026-01-01'},
+        },
+      ));
+      expect(out, isNull);
+    });
+
+    // U1/AE3: an unregistered, path-shaped route name becomes 'unknown'.
+    test('AE3: a path-shaped route name becomes unknown', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {'to': '/profiles/8f2c-4a1b'},
+      ))!;
+      expect(out.data!['to'], 'unknown');
+    });
+
+    test('an unregistered route name that matches the shape is kept '
+        'verbatim', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {'to': 'SomeThirdPartyRoute'},
+      ))!;
+      expect(out.data!['to'], 'SomeThirdPartyRoute');
+    });
+
+    test('a shape-legal but deny-listed route name becomes unknown', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {'to': 'DisplayName'},
+      ))!;
+      expect(out.data!['to'], 'unknown');
+    });
+
+    test('a null to yields no to key, not a present unknown key', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {'state': 'didPush', 'from': 'SettingsScreen'},
+      ))!;
+      expect(out.data!.containsKey('to'), isFalse);
+    });
+
+    test('an unrecognized state becomes unknown', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {'state': 'somethingElse', 'to': 'SettingsScreen'},
+      ))!;
+      expect(out.data!['state'], 'unknown');
+    });
+
+    test('a navigation breadcrumb with null data yields null data', () {
+      final out = scrubBreadcrumb(Breadcrumb(category: 'navigation'))!;
       expect(out.data, isNull);
     });
 
@@ -597,6 +755,24 @@ void main() {
       );
 
       expect(log.snapshot(), isEmpty);
+    });
+
+    test('AE10 (unit half): a data-only navigation breadcrumb lands as '
+        '"navigation: SettingsScreen"', () {
+      final log = BreadcrumbLog();
+      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
+
+      options.beforeBreadcrumb!(
+        Breadcrumb(category: 'navigation', data: {
+          'state': 'didPush',
+          'from': 'ProfilePickerScreen',
+          'to': 'SettingsScreen',
+        }),
+        Hint(),
+      );
+
+      expect(log.snapshot(), ['navigation: SettingsScreen']);
     });
   });
 }
