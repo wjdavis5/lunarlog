@@ -8,7 +8,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:provider/provider.dart';
 
 /// 5 MiB, matching `feedback_attachments` bucket's `file_size_limit` (U2).
 const int kMaxAttachmentBytes = 5 * 1024 * 1024;
@@ -31,6 +33,17 @@ class AttachmentField extends StatefulWidget {
 class _AttachmentFieldState extends State<AttachmentField> {
   FeedbackAttachment? _attachment;
   String? _error;
+
+  /// Runs [action] inside the gate's system-UI window when a gate is in
+  /// scope (mirrors `sign_in_screen.dart`'s `_duringProviderUi`; #65 U2;
+  /// KTD6), so the platform image picker opened by [AttachmentSource]
+  /// cannot re-lock the app mid-pick and strand the operator at the lock
+  /// screen. The gate is read nullably: harnesses that mount this widget
+  /// without one have nothing to suppress anyway.
+  Future<T> _duringSystemUi<T>(Future<T> Function() action) {
+    final gate = context.read<GateController?>();
+    return gate == null ? action() : gate.duringSystemUi(action);
+  }
 
   Future<void> _addScreenshot() async {
     final consented = await showDialog<bool>(
@@ -57,7 +70,7 @@ class _AttachmentFieldState extends State<AttachmentField> {
     );
     if (consented != true) return;
 
-    final picked = await widget.source.pickImage();
+    final picked = await _duringSystemUi(widget.source.pickImage);
     if (picked == null) return;
 
     if (picked.sizeBytes > kMaxAttachmentBytes) {

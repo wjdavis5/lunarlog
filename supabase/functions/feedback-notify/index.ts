@@ -202,6 +202,14 @@ export interface FeedbackNotifyEnv {
   anonKey: string | undefined;
   serviceRoleKey: string | undefined;
   adminEmail: string | undefined;
+  /** Resend API key, threaded through to `_shared/email.ts`'s `sendEmail`
+   * as a plain parameter rather than that module reading `Deno.env` itself
+   * (PR #105 review round 7) - optional here since `buildDeps`'s
+   * `configured` gate doesn't depend on it; `sendEmail` degrades to
+   * `missing_email_config` on its own if it's absent. */
+  resendApiKey?: string;
+  /** `FEEDBACK_FROM_ADDRESS`, same reasoning as `resendApiKey`. */
+  fromAddress?: string;
 }
 
 /** Creates a Supabase client given a URL, key, and optional per-call
@@ -264,7 +272,8 @@ export function buildDeps(env: FeedbackNotifyEnv, clientFactory: SupabaseClientF
         console.error(`feedback-notify: failed to release notified_at claim for ticket ${ticketId}: ${error.message}`);
       }
     },
-    sendEmail: (summary) => sendEmailReal(buildAdminAlert(summary, adminEmail!)),
+    sendEmail: (summary) =>
+      sendEmailReal(buildAdminAlert(summary, adminEmail!), env.resendApiKey, env.fromAddress),
   };
 }
 
@@ -283,6 +292,8 @@ if (import.meta.main) {
         anonKey: Deno.env.get("SUPABASE_ANON_KEY"),
         serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
         adminEmail: Deno.env.get("FEEDBACK_ADMIN_EMAIL"),
+        resendApiKey: Deno.env.get("RESEND_API_KEY"),
+        fromAddress: Deno.env.get("FEEDBACK_FROM_ADDRESS"),
       },
       createClient,
     );

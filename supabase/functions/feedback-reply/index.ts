@@ -74,7 +74,11 @@ Deno.serve(async (req) => {
       createdAt: ticket.created_at as string,
       replyEmail: ticket.reply_email as string,
     };
-    await sendEmail(buildReplyEmail(summary, { message }));
+    await sendEmail(
+      buildReplyEmail(summary, { message }),
+      Deno.env.get("RESEND_API_KEY"),
+      Deno.env.get("FEEDBACK_FROM_ADDRESS"),
+    );
   } catch (_error) {
     // Degrade silently; the reply is already visible in Support history.
   }
