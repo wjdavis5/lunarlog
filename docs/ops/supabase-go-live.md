@@ -252,6 +252,60 @@ Supabase Auth setup above.
       a real Apple ID: the app disappears from Settings → Apple ID → Sign in
       with Apple → apps using this Apple ID.
 
+### Passkeys (issue #30)
+
+Everything code-side for passkey sign-in and enrolment shipped already,
+behind a flag that is empty in every build that exists today
+([plan](../plans/2026-09-06-001-feat-passkeys-groundwork-plan.md); its IDs
+are cited with a `#30` prefix). Until `PASSKEY_RP_ID` is set,
+`AppConfig.hasPasskeys` is false, no passkey button or "Add a passkey" tile
+renders anywhere, and the app is byte-for-byte unchanged — so the app ships
+ahead of all of this, and none of it blocks anything else in this checklist.
+
+- [ ] **Choose the relying-party domain: a bare HTTPS domain the household
+      controls (no scheme, e.g. `auth.wjd.io`, not `https://auth.wjd.io`).**
+      **This is a permanent decision, never inferred or defaulted by an
+      agent: the relying-party id is immutable once the first passkey is
+      enrolled — changing it later orphans every credential enrolled under
+      the old one**, with no in-app recovery (this plan deliberately adds no
+      passkey management UI; see Non-goals in the plan). Record the chosen
+      domain here once decided, before doing anything else on this list.
+- [ ] Serve `https://<domain>/.well-known/apple-app-site-association` (no
+      file extension, `application/json` content type, even though the path
+      has none) with a `webcredentials` entry for
+      `<Apple Team ID>.com.wjdavis5.lunarlog` — the Team ID is the same
+      `APPLE_TEAM_ID` recorded under "Account deletion (issue #17)" above.
+- [ ] Serve `https://<domain>/.well-known/assetlinks.json` with
+      `delegate_permission/common.get_login_creds`, the package name
+      `com.wjdavis5.lunarlog`, and the SHA-256 fingerprint of **every**
+      Android signing key — debug keystore, release keystore, and the Play
+      App Signing key (Play Console → App integrity). A missing fingerprint
+      fails silently the same way a missing Google SHA-1 does for Google
+      Sign-In (#2 KTD8): the ceremony closes as if the operator cancelled,
+      with no error naming the cause.
+- [ ] Add the Associated Domains capability to the `com.wjdavis5.lunarlog`
+      App ID (Apple Developer portal), add `webcredentials:<domain>` to
+      `ios/Runner/Runner.entitlements`, and regenerate
+      `IOS_PROVISION_PROFILE_BASE64` with the new capability — this profile
+      already needs regenerating for Sign in with Apple (see "Apple / Google
+      store plumbing" below), so do both capabilities in one trip.
+- [ ] Enable Passkeys in the Supabase dashboard (Authentication →
+      Configuration → Passkeys — a **beta** feature) and set its
+      relying-party id to the same domain chosen above.
+- [ ] Adopt a `PasskeyCeremonyClient` implementation (see
+      `lib/data/auth/passkey_ceremony_client.dart`) over a platform passkey
+      plugin (the plan's KTD2 evaluated the `passkeys` package at version
+      2.22.3), and confirm whether it raises `IPHONEOS_DEPLOYMENT_TARGET`
+      above the current 15.0 or Android `minSdk` above the current floor —
+      if it does, that is a separate, deliberate decision about which
+      devices the app still supports, not a side effect of adopting a
+      plugin.
+- [ ] Set `PASSKEY_RP_ID` as a repository secret and pass it as a
+      `--dart-define` in the release workflows (`ios-release.yml`,
+      `play-store-release.yml`) — **last, only once every item above is
+      true.** Adding this define is what turns `AppConfig.hasPasskeys` on;
+      nothing else in this checklist alone does.
+
 ### Apple / Google store plumbing
 
 - [ ] App Store provisioning profile regenerated with the Sign in with Apple
@@ -605,6 +659,34 @@ account and fabricated profiles only.
       Declining the device-credential prompt, and separately cancelling the
       confirmation dialog, each leave the account untouched with no error
       copy and no server call.
+
+### Passkeys (issue #30)
+
+**Runnable only after activation** — the "Passkeys (issue #30)" go-live
+section above is fully checked and `PASSKEY_RP_ID` is set in the build under
+test. Run on an iPhone build **and** an Android build, each with a
+throwaway account.
+
+- [ ] **Enrol a passkey on iPhone.** Signed in, tap "Add a passkey" in the
+      account section, pass the device-credential prompt, then complete the
+      platform ceremony (Face ID/Touch ID). No error, and the account
+      section shows no new tile for it (R10 — passkeys are never listed or
+      manageable in this build).
+- [ ] **Enrol a passkey on Android**, same flow, through Credential Manager.
+- [ ] **Sign in with the enrolled passkey on a fresh install.** From the
+      sign-in screen, tap the passkey option and complete the platform
+      ceremony: the session establishes and the device binds exactly as an
+      email or Google sign-in does.
+- [ ] **Dismiss the ceremony.** Cancel the platform prompt during either
+      enrolment or sign-in: the screen returns to rest with no error text
+      and no lingering spinner.
+- [ ] **Passkey sign-in on a device already bound to a different account.**
+      The existing "Different account" screen appears, naming the mismatch
+      the same way a Google or Apple mismatch does (R9's device binding is
+      inherited, not re-implemented).
+- [ ] **Sentry stays clean.** After every scenario above, confirm no
+      captured event or breadcrumb carries a credential, a WebAuthn
+      challenge, a relying-party id, or an email (R5).
 
 ## Not yet run
 
