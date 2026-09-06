@@ -1,15 +1,17 @@
 /// Sentry symbol-upload workflow guard (U5; KTD10, KTD11; R15, R16, R17,
 /// AE8, AE9). Mirrors `export_compliance_test.dart`'s shape: read the two
 /// release workflow files as text and assert the invariants that make the
-/// upload step safe to land before issue #19 provisions any secret.
+/// upload steps safe to land before issue #19 provisions any secret.
 ///
 /// The guard/download/checksum-verify logic itself lives in the shared
 /// `.github/scripts/upload-sentry-symbols-setup.sh` (its own truth table is
 /// `.github/scripts/tests/upload-sentry-symbols-setup.test.sh`, run in CI's
 /// release-guards jobs) -- both workflow files call it identically, so this
-/// file asserts the *delegation* shape: the script runs, the required env
-/// vars reach it, and the platform's upload command only runs after the
-/// script leaves `./sentry-cli` executable.
+/// file asserts the *delegation* shape: the setup step runs the script and
+/// receives its env, and the platform's upload command (a separate step,
+/// since round 2 of issue #7's review split them so `continue-on-error`
+/// stops covering the checksum verification -- see the shared script's own
+/// doc comment) only runs after the script leaves `./sentry-cli` executable.
 ///
 /// Comment lines are stripped before matching, the same trap
 /// `export_compliance_test.dart` documents: a commented-out step must not
@@ -25,23 +27,37 @@ const _androidWorkflowPath = '.github/workflows/play-store-release.yml';
 const _gradlePath = 'android/app/build.gradle.kts';
 const _sharedScriptPath = '.github/scripts/upload-sentry-symbols-setup.sh';
 
-/// The whole Sentry symbol-upload step body, matched from its `name:` line
-/// (case-insensitively naming "Sentry" and "symbol") up to (but not
-/// including) the next `- name:` step at the same indentation, or end of
-/// file.
-String _sentrySymbolStepBody(String strippedYaml) {
-  final stepStart = RegExp(
-    r'-\s*name:\s*.*Sentry.*symbol.*',
-    caseSensitive: false,
-  );
+/// Matches a step body from its `name:` line up to (but not including) the
+/// next `- name:` step at the same indentation, or end of file.
+String _stepBodyNamed(String strippedYaml, RegExp stepStart, String reason) {
   final match = stepStart.firstMatch(strippedYaml);
-  expect(match, isNotNull,
-      reason: 'expected a step whose name matches /Sentry.*symbol/i');
+  expect(match, isNotNull, reason: reason);
   final rest = strippedYaml.substring(match!.end);
   final nextStep = RegExp(r'\n\s*-\s*name:');
   final nextMatch = nextStep.firstMatch(rest);
   return nextMatch == null ? rest : rest.substring(0, nextMatch.start);
 }
+
+/// The sentry-cli setup step -- downloads and checksum-verifies the pinned
+/// binary via the shared script. Split from the upload step below (round 2
+/// of issue #7's review) precisely so it carries no `continue-on-error`: a
+/// checksum mismatch here must fail the job loudly.
+String _sentrySetupStepBody(String strippedYaml) => _stepBodyNamed(
+      strippedYaml,
+      RegExp(r'-\s*name:\s*.*Set up sentry-cli.*', caseSensitive: false),
+      'expected a step whose name matches /Set up sentry-cli/i',
+    );
+
+/// The whole Sentry symbol-upload step body, matched from its `name:` line
+/// (case-insensitively naming "Sentry" and "symbol") up to (but not
+/// including) the next `- name:` step at the same indentation, or end of
+/// file. This is the step that makes the actual Sentry upload network
+/// call(s) and is the only one of the two carrying `continue-on-error`.
+String _sentrySymbolStepBody(String strippedYaml) => _stepBodyNamed(
+      strippedYaml,
+      RegExp(r'-\s*name:\s*.*Sentry.*symbol.*', caseSensitive: false),
+      'expected a step whose name matches /Sentry.*symbol/i',
+    );
 
 /// The `run:` block only (the shell body actually executed), excluding the
 /// `env:` mapping above it -- `env: SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_
@@ -64,35 +80,63 @@ void main() {
       final path = entry.value;
 
       group(platform, () {
+        late String contents;
+        late String setupStepBody;
+        late String setupRunBlock;
         late String stepBody;
         late String runBlock;
 
         setUpAll(() {
-          final contents = stripHashComments(readRepoFile(path));
+          contents = stripHashComments(readRepoFile(path));
+          setupStepBody = _sentrySetupStepBody(contents);
+          setupRunBlock = _runBlockOf(setupStepBody);
           stepBody = _sentrySymbolStepBody(contents);
           runBlock = _runBlockOf(stepBody);
         });
 
-        test('all three upload secrets reach the step via env:, not '
-            'interpolated into the run body', () {
-          for (final secret in [
-            'SENTRY_AUTH_TOKEN',
-            'SENTRY_ORG',
-            'SENTRY_PROJECT',
-          ]) {
-            expect(stepBody, contains(secret), reason: secret);
+        test('all three upload secrets reach both steps via env:, not '
+            'interpolated into either run body', () {
+          for (final body in [setupStepBody, stepBody]) {
+            for (final secret in [
+              'SENTRY_AUTH_TOKEN',
+              'SENTRY_ORG',
+              'SENTRY_PROJECT',
+            ]) {
+              expect(body, contains(secret), reason: secret);
+            }
           }
-          expect(runBlock, isNot(contains(r'${{ secrets.SENTRY_')));
+          for (final block in [setupRunBlock, runBlock]) {
+            expect(block, isNot(contains(r'${{ secrets.SENTRY_')));
+          }
         });
 
-        test('delegates the guard/download/checksum-verify logic to the '
-            'shared script, before any sentry-cli invocation', () {
-          expect(runBlock, contains('bash $_sharedScriptPath'));
-          final scriptIndex = runBlock.indexOf(_sharedScriptPath);
-          final cliIndex = runBlock.indexOf('sentry-cli');
-          expect(cliIndex, greaterThan(scriptIndex),
-              reason: 'the shared script must run before sentry-cli is '
-                  'invoked directly');
+        test('the setup step delegates the guard/download/checksum-verify '
+            'logic to the shared script, and runs before the upload step '
+            'in the workflow file', () {
+          expect(setupRunBlock, contains('bash $_sharedScriptPath'));
+          final setupIndex = contents.indexOf(_sentrySetupStepBody(contents));
+          final uploadIndex = contents.indexOf(_sentrySymbolStepBody(contents));
+          expect(setupIndex, lessThan(uploadIndex),
+              reason: 'the setup step must appear before the upload step, '
+                  'so the checksum-verified binary already exists when the '
+                  'upload step\'s sentry-cli invocation runs');
+        });
+
+        test('the setup step never invokes sentry-cli directly -- only the '
+            'shared script (round 2 of issue #7\'s review: setup and '
+            'upload are separate steps)', () {
+          expect(setupRunBlock, isNot(contains('sentry-cli')));
+        });
+
+        test('the setup step carries no continue-on-error, so a checksum '
+            'mismatch fails the job loudly (round 2 of issue #7\'s '
+            'review)', () {
+          expect(setupStepBody, isNot(contains('continue-on-error')));
+        });
+
+        test('the upload step carries continue-on-error, scoped to just '
+            'the Sentry upload network call', () {
+          expect(stepBody, contains('continue-on-error: true'));
         });
 
         test('the upload command only runs when the shared script left '
@@ -100,32 +144,36 @@ void main() {
           expect(runBlock, contains(RegExp(r'if\s*\[\s*-x\s*\.?/?sentry-cli')));
         });
 
-        test('passes the download URL, checksum, and checksum tool as env, '
-            'not hard-coded inside the shared script', () {
+        test('passes the download URL, checksum, and checksum tool as env '
+            'to the setup step, not hard-coded inside the shared script', () {
           for (final key in [
             'SENTRY_CLI_DOWNLOAD_URL',
             'SENTRY_CLI_SHA256',
             'SENTRY_CLI_CHECKSUM_TOOL',
           ]) {
-            expect(stepBody, contains(key), reason: key);
+            expect(setupStepBody, contains(key), reason: key);
           }
         });
 
-        test('the step itself never inlines a curl | shell pipeline (that '
-            'logic is the shared script\'s alone)', () {
-          expect(runBlock, isNot(contains(RegExp(r'curl[^\n]*\|\s*(ba)?sh'))));
-          expect(runBlock, isNot(contains(RegExp(r'wget[^\n]*\|\s*(ba)?sh'))));
+        test('neither step inlines a curl | shell pipeline (that logic is '
+            'the shared script\'s alone)', () {
+          for (final block in [setupRunBlock, runBlock]) {
+            expect(block, isNot(contains(RegExp(r'curl[^\n]*\|\s*(ba)?sh'))));
+            expect(block, isNot(contains(RegExp(r'wget[^\n]*\|\s*(ba)?sh'))));
+          }
         });
 
         test('no TOKEN-named variable is ever echoed', () {
           final echoTokenPattern =
               RegExp(r'echo[^\n]*TOKEN', caseSensitive: false);
-          for (final match in echoTokenPattern.allMatches(stepBody)) {
-            final line = match.group(0)!;
-            expect(line, isNot(contains(r'$SENTRY_AUTH_TOKEN')),
-                reason: 'a line must never echo the token value: $line');
-            expect(line, isNot(contains(r'${SENTRY_AUTH_TOKEN')),
-                reason: 'a line must never echo the token value: $line');
+          for (final body in [setupStepBody, stepBody]) {
+            for (final match in echoTokenPattern.allMatches(body)) {
+              final line = match.group(0)!;
+              expect(line, isNot(contains(r'$SENTRY_AUTH_TOKEN')),
+                  reason: 'a line must never echo the token value: $line');
+              expect(line, isNot(contains(r'${SENTRY_AUTH_TOKEN')),
+                  reason: 'a line must never echo the token value: $line');
+            }
           }
         });
       });
