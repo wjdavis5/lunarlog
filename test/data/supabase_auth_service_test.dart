@@ -855,6 +855,29 @@ void main() {
       expect(service.state, AuthSessionState.signedOut);
       expect(defaultBreadcrumbLog.snapshot(), isEmpty);
     });
+
+    test('a signedIn event that REPLACES a live session with no preceding '
+        'signedOut (a magic link on a shared device, per vendored '
+        'gotrue-2.27.2\'s own comments on getSessionFromUrl) also clears '
+        'the breadcrumb log, so the incoming account cannot inherit the '
+        'outgoing account\'s breadcrumbs', () async {
+      addTearDown(defaultBreadcrumbLog.clear);
+      final service = await started();
+      gateway.session = makeSession('u1');
+      gateway.emit(AuthChangeEvent.signedIn);
+      await settle();
+      defaultBreadcrumbLog.record('nav', 'overview');
+      expect(defaultBreadcrumbLog.snapshot(), isNotEmpty);
+
+      // Account B's magic link exchange lands here directly — gotrue never
+      // emits signedOut for account A first.
+      gateway.session = makeSession('u2');
+      gateway.emit(AuthChangeEvent.signedIn);
+      await settle();
+
+      expect(service.state, AuthSessionState.signedIn);
+      expect(defaultBreadcrumbLog.snapshot(), isEmpty);
+    });
   });
 
   group('email + password', () {

@@ -265,6 +265,17 @@ class SupabaseAuthService implements AuthService {
       case AuthChangeEvent.initialSession:
         _setState(hasSession ? _sessionState : AuthSessionState.signedOut);
       case AuthChangeEvent.signedIn:
+        // gotrue emits `signedIn` directly when a magic link replaces a
+        // live session — no preceding `signedOut` (vendored gotrue-2.27.2's
+        // own comments on `getSessionFromUrl`). That silently ends whatever
+        // account was signed in before, so this is also a session-ending
+        // path (KTD7): without this clear, on a shared device the account
+        // signing in here would inherit the outgoing account's breadcrumbs,
+        // which then ride into *its own* support ticket `device_info` — the
+        // cross-account leak this file already guards against on every
+        // other transition.
+        defaultBreadcrumbLog.clear();
+        _setState(_sessionState);
       case AuthChangeEvent.tokenRefreshed:
       case AuthChangeEvent.userUpdated:
       case AuthChangeEvent.mfaChallengeVerified:
