@@ -155,11 +155,11 @@ void main() {
     expect(SecureDbKeyStore(), isA<DbKeyStore>());
   });
 
-  test('SecureDbKeyStore pins the Keychain accessibility to '
-      'unlocked_this_device -- device-bound like the flutter_secure_storage '
-      '`unlocked` default, never first_unlock_this_device '
-      '(docs/ops/ios-export-compliance.md)', () {
+  test('SecureDbKeyStore pins the Keychain accessibility to `unlocked` -- '
+      'the flutter_secure_storage default, not a device-pinned '
+      'accessibility, since the database file itself carries no matching '
+      'backup exclusion (docs/ops/ios-export-compliance.md)', () {
     final iOptions = SecureDbKeyStore().storage.iOptions;
-    expect(iOptions.accessibility, KeychainAccessibility.unlocked_this_device);
+    expect(iOptions.accessibility, KeychainAccessibility.unlocked);
   });
 }

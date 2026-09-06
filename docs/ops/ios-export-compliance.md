@@ -17,7 +17,11 @@ been obtained.
   encryption compiled into the binary, not OS-provided crypto.
 - **Per-install key.** A 256-bit `Random.secure()` key held in
   `flutter_secure_storage` (`lib/data/db/key_store.dart`) — iOS Keychain,
-  `unlocked_this_device`, non-syncable.
+  `unlocked`. Not device-pinned: the database file it protects carries no
+  backup exclusion, so a device-pinned key would go permanently unreadable
+  after an iCloud backup restores the file (but not the key) to a new
+  device; see the doc comment on `SecureDbKeyStore` and README.md's iOS
+  backup note.
 - **SHA-256** from `package:crypto` for OIDC nonces and invitation-token
   hashes.
 - **`pointycastle 4.0.0`**, bundled transitively through the Supabase/auth
