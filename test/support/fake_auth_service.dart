@@ -49,6 +49,19 @@ class FakeAuthService implements AuthService {
   GoogleSignInResult googleResult =
       const GoogleSignInSession(AuthUser(id: 'user-google'));
 
+  /// What [signInWithPasskey] returns (#30 U2).
+  PasskeySignInResult passkeySignInResult = const PasskeySignInCancelled();
+
+  /// What [registerPasskey] returns (#30 U2). Never touches [providers] —
+  /// passkeys are not identity providers and do not appear in
+  /// [AuthUser.providers] (R10).
+  PasskeyRegistrationResult passkeyRegistrationResult =
+      const PasskeyRegistrationCancelled();
+
+  /// Throw [UnsupportedError] from [signInWithPasskey] / [registerPasskey]
+  /// (build has no passkey configuration).
+  bool passkeyUnsupported = false;
+
   /// When set, every mutating call throws it once.
   AuthFailure? nextFailure;
 
@@ -100,6 +113,8 @@ class FakeAuthService implements AuthService {
   final unlinkCalls = <String>[];
   int appleCalls = 0;
   int googleCalls = 0;
+  int passkeySignInCalls = 0;
+  int registerPasskeyCalls = 0;
   int recoveryConsumed = 0;
   int linkFailureConsumed = 0;
 
@@ -232,6 +247,33 @@ class FakeAuthService implements AuthService {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
+  }
+
+  @override
+  Future<PasskeySignInResult> signInWithPasskey() async {
+    if (passkeyUnsupported) {
+      throw UnsupportedError('Passkeys are not available in this build');
+    }
+    passkeySignInCalls++;
+    await _maybeThrow();
+    final result = passkeySignInResult;
+    if (result is PasskeySignInSession) {
+      emit(AuthSessionState.signedIn, user: result.user);
+    }
+    return result;
+  }
+
+  @override
+  Future<PasskeyRegistrationResult> registerPasskey() async {
+    if (passkeyUnsupported) {
+      throw UnsupportedError('Passkeys are not available in this build');
+    }
+    if (_state != AuthSessionState.signedIn) {
+      throw const AuthFailure.unknown();
+    }
+    registerPasskeyCalls++;
+    await _maybeThrow();
+    return passkeyRegistrationResult;
   }
 
   @override

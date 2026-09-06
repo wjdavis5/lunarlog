@@ -65,8 +65,12 @@ String authFailureCopy(AuthFailure failure) => switch (failure) {
       AuthNetworkFailure() =>
         'Could not reach the server. Check your connection and try again.',
       AuthUnknownFailure() => _kUnknownFailureCopy,
+      // Generic on purpose (#30 U4; R5): this same fieldless kind now also
+      // covers a passkey ceremony that could not run, so the copy must
+      // never name Google, Apple, or "passkey" specifically.
       AuthProviderUnavailableFailure() =>
-        "Google Sign-In isn't available on this device. Use email instead.",
+        "That sign-in method isn't available on this device. Use email "
+            'instead.',
       AuthExpiredLinkFailure() ||
       AuthInvalidCodeFailure() ||
       AuthIdentityTakenFailure() ||
@@ -101,6 +105,7 @@ class SignInScreen extends StatefulWidget {
     super.key,
     this.showApple,
     this.showGoogle,
+    this.showPasskeys,
     this.embedded = false,
     this.onSignedIn,
     this.onNotNow,
@@ -112,6 +117,11 @@ class SignInScreen extends StatefulWidget {
   /// Whether the Google button renders; null means [AppConfig.hasGoogle]
   /// (#2 U4; R4).
   final bool? showGoogle;
+
+  /// Whether the passkey option renders; null means [AppConfig.hasPasskeys]
+  /// (#30 U4; KTD5). The nullable override is what lets widget tests force
+  /// the flag on even though [AppConfig] is compile-time const.
+  final bool? showPasskeys;
 
   /// First-run account step: no back button, a "Not now" action, and
   /// [onSignedIn] instead of popping.
@@ -147,6 +157,8 @@ class _SignInScreenState extends State<SignInScreen> {
       (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
 
   bool get _showGoogle => widget.showGoogle ?? AppConfig.hasGoogle;
+
+  bool get _showPasskeys => widget.showPasskeys ?? AppConfig.hasPasskeys;
 
   @override
   void didChangeDependencies() {
@@ -287,6 +299,22 @@ class _SignInScreenState extends State<SignInScreen> {
         }
       });
 
+  /// Passkey sign-in (#30 U4; KTD5). Mirrors [_google]/[_apple]: a
+  /// dismissed ceremony is not a failure (R6), and success completes the
+  /// screen through the exact same [_signedIn] path a Google sign-in takes
+  /// (R9), so the one-account device binding and account-mismatch screen
+  /// are inherited rather than re-implemented.
+  Future<void> _passkey() => _run(() async {
+        final auth = context.read<AuthController>();
+        final result = await _duringProviderUi(auth.signInWithPasskey);
+        switch (result) {
+          case PasskeySignInSession():
+            _signedIn();
+          case PasskeySignInCancelled():
+            break;
+        }
+      });
+
   /// The first-run explainer above everything else, embedded mode only
   /// (#2 U6).
   List<Widget> _buildEmbeddedIntro() => [
@@ -320,7 +348,15 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
           const SizedBox(height: 8),
         ],
-        if (_showApple || _showGoogle)
+        if (_showPasskeys) ...[
+          OutlinedButton(
+            key: const ValueKey('auth-passkey'),
+            onPressed: _busy ? null : _passkey,
+            child: const Text('Sign in with a passkey'),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (_showApple || _showGoogle || _showPasskeys)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Row(

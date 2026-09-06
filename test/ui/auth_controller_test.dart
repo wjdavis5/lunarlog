@@ -311,6 +311,54 @@ void main() {
             'keep serving the previous session\'s cached adopted user');
   });
 
+  test('signInWithPasskey delegates to the service with no adoption step '
+      '(#30 U4)', () async {
+    final c = controller();
+    service.passkeySignInResult =
+        const PasskeySignInSession(AuthUser(id: 'user-passkey'));
+
+    final result = await c.signInWithPasskey();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(result, isA<PasskeySignInSession>());
+    expect(service.passkeySignInCalls, 1);
+    expect(c.state, AuthSessionState.signedIn);
+  });
+
+  test('registerPasskey adopts the fresh user and notifies only on '
+      'success, never touching providers (#30 U4; R10)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email']));
+    final c = controller();
+    var notifications = 0;
+    c.addListener(() => notifications++);
+
+    service.passkeyRegistrationResult = const PasskeyRegistrationSuccess(
+        AuthUser(id: 'u1', email: 'a@b.c', providers: ['email']));
+    final result = await c.registerPasskey();
+
+    expect(result, isA<PasskeyRegistrationSuccess>());
+    expect(service.registerPasskeyCalls, 1);
+    expect(c.currentUser?.email, 'a@b.c');
+    expect(c.currentUser?.providers, ['email'],
+        reason: 'a passkey is never added to AuthUser.providers');
+    expect(notifications, 1);
+  });
+
+  test('registerPasskey adopts nothing and does not notify on a dismissed '
+      'ceremony (#30 U4; R6)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email']));
+    final c = controller();
+    var notifications = 0;
+    c.addListener(() => notifications++);
+
+    final result = await c.registerPasskey();
+
+    expect(result, const PasskeyRegistrationCancelled());
+    expect(notifications, 0);
+  });
+
   test('stops listening after dispose', () async {
     final c = AuthController(authService: service);
     var notifications = 0;

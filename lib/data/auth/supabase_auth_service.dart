@@ -37,6 +37,7 @@ import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/auth/auth_gateway.dart';
 import 'package:lunarlog/data/auth/auth_link_classifier.dart';
 import 'package:lunarlog/data/auth/google_sign_in_client.dart';
+import 'package:lunarlog/data/auth/passkey_ceremony_client.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -127,12 +128,16 @@ class SupabaseAuthService implements AuthService {
     bool? googleAvailable,
     GoogleSignInClient? googleClient,
     this._generateNonce = generateRawNonce,
+    bool? passkeysAvailable,
+    PasskeyCeremonyClient? passkeyClient,
   })  : _redirectTo =
             redirectTo ?? resolveAuthRedirectUrl(isWeb: kIsWeb, base: Uri.base),
         _appleAvailable = appleAvailable ??
             (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS),
         _googleAvailable = googleAvailable ?? (!kIsWeb && AppConfig.hasGoogle),
-        _googleClient = googleClient ?? PluginGoogleSignInClient();
+        _googleClient = googleClient ?? PluginGoogleSignInClient(),
+        _passkeysAvailable = passkeysAvailable ?? AppConfig.hasPasskeys,
+        _passkeyClient = passkeyClient ?? const UnsupportedPasskeyCeremonyClient();
 
   final AuthGateway _gateway;
   final AuthLinkSource _links;
@@ -142,6 +147,8 @@ class SupabaseAuthService implements AuthService {
   final bool _googleAvailable;
   final GoogleSignInClient _googleClient;
   final String Function() _generateNonce;
+  final bool _passkeysAvailable;
+  final PasskeyCeremonyClient _passkeyClient;
 
   /// The per-process Google nonce pair (#2 AS2): minted on the first
   /// Google call, the hash given to the client once, the raw value sent to
@@ -585,6 +592,54 @@ class SupabaseAuthService implements AuthService {
       idToken: idToken,
       nonce: rawNonce,
     );
+  }
+
+  /// Passkey sign-in (#30 U3; KTD1, KTD2, KTD4). No session required: start
+  /// -> hand the options to the ceremony client -> null means cancelled ->
+  /// verify. Every gateway and ceremony error is reduced to a typed
+  /// [AuthFailure] through [_guard]; a verify response with no session is
+  /// [AuthUnknownFailure], as every sibling sign-in method treats it.
+  @override
+  Future<PasskeySignInResult> signInWithPasskey() async {
+    _requirePasskeys();
+    final started = await _guard(() => _gateway.startPasskeyAuthentication());
+    final assertion = await _guard(() => _passkeyClient.get(started.options));
+    if (assertion == null) return const PasskeySignInCancelled();
+    final response = await _guard(() => _gateway.verifyPasskeyAuthentication(
+          challengeId: started.challengeId,
+          credential: assertion,
+        ));
+    final user = response.session?.user;
+    if (user == null) throw const AuthFailure.unknown();
+    return PasskeySignInSession(_toUser(user)!);
+  }
+
+  /// Adds a passkey for the current account (#30 U3; KTD1, KTD2, KTD4). The
+  /// signed-in check runs before any gateway or ceremony call, as
+  /// [linkGoogle]'s does. Passkeys are not identity providers (R10): unlike
+  /// [_link], this never touches `AuthUser.providers` — the returned user
+  /// is read fresh from [currentUser] after the verify call rather than a
+  /// value captured beforehand, so a caller never sees a stale snapshot.
+  @override
+  Future<PasskeyRegistrationResult> registerPasskey() async {
+    _requirePasskeys();
+    _requireSignedInUser();
+    final started = await _guard(() => _gateway.startPasskeyRegistration());
+    final credential = await _guard(() => _passkeyClient.create(started.options));
+    if (credential == null) return const PasskeyRegistrationCancelled();
+    await _guard(() => _gateway.verifyPasskeyRegistration(
+          challengeId: started.challengeId,
+          credential: credential,
+        ));
+    final user = currentUser;
+    if (user == null) throw const AuthFailure.unknown();
+    return PasskeyRegistrationSuccess(user);
+  }
+
+  void _requirePasskeys() {
+    if (!_passkeysAvailable) {
+      throw UnsupportedError('Passkeys are not available in this build');
+    }
   }
 
   /// The current user while [state] is `signedIn`; [AuthUnknownFailure]
