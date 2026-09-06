@@ -349,13 +349,19 @@ jobs:
 
           minimum="$(plutil -extract MinimumOSVersion raw -o - "$plist")"
           identifier="$(plutil -extract CFBundleIdentifier raw -o - "$plist")"
+          # ITSAppUsesNonExemptEncryption may legitimately be absent from a
+          # stale build, so extract it without letting set -e abort the step
+          # before the compliance-specific error can print (issue #48, U3).
+          encryption="$(plutil -extract ITSAppUsesNonExemptEncryption raw -o - "$plist" 2>/dev/null || echo "MISSING")"
 
-          echo "minimum OS: $minimum, bundle: $identifier"
+          echo "minimum OS: $minimum, bundle: $identifier, export compliance (uses non-exempt encryption): $encryption"
 
           [ "$identifier" = "$BUNDLE_ID" ] || { echo "::error::bundle id is $identifier, expected $BUNDLE_ID"; exit 1; }
           awk -v v="$minimum" 'BEGIN { split(v, p, "."); if (p[1] < 15) { print "::error::MinimumOSVersion " v " is below the 15.0 Apple requires"; exit 1 } }'
 
           [ -f "$app/PrivacyInfo.xcprivacy" ] || { echo "::error::privacy manifest missing from the bundle"; exit 1; }
+
+          [ "$encryption" = "true" ] || { echo "::error::ITSAppUsesNonExemptEncryption is '$encryption' in the exported Info.plist, expected true (see docs/ops/ios-export-compliance.md)"; exit 1; }
 
       - name: Upload to TestFlight
         env:

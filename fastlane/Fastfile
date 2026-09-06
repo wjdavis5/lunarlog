@@ -42,9 +42,19 @@ platform :ios do
       force: true,
       run_precheck_before_submit: false,
 
+      # ios/Runner/Info.plist's ITSAppUsesNonExemptEncryption is the
+      # authoritative export-compliance declaration (KTD2,
+      # docs/ops/ios-export-compliance.md) — it ships inside every binary,
+      # including TestFlight uploads this lane never touches. These answers
+      # exist only to agree with it, never to carry the decision alone.
       submission_information: {
         add_id_info_uses_idfa: false,
-        export_compliance_uses_encryption: false,
+        export_compliance_platform: "ios",
+        export_compliance_uses_encryption: true,
+        export_compliance_is_exempt: false,
+        export_compliance_contains_third_party_cryptography: true,
+        export_compliance_contains_proprietary_cryptography: false,
+        export_compliance_encryption_updated: false,
         content_rights_contains_third_party_content: false,
       },
     )

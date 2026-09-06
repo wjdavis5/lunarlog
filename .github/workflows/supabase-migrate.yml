@@ -7,6 +7,19 @@ name: Supabase migrate
 # SUPABASE_DB_PASSWORD, and SUPABASE_PROJECT_REF. Before approving a run,
 # check the Supabase MCP `get_advisors` output for security or RLS findings
 # (there is no CLI equivalent).
+#
+# The "Reconcile Realtime publication" step below re-invokes
+# public.reconcile_realtime_publication() after every push (Issue #77 / PR
+# #92 review). `db push` only applies migrations not yet recorded as applied
+# on the target project, so the drift guard baked into
+# supabase/migrations/20260905100000_realtime_publication.sql only runs
+# automatically on a from-scratch environment -- it does NOT re-run just
+# because `db push` ran again. This step is what makes the guard actually
+# fire on every ordinary deploy, catching a Supabase Studio "Enable
+# Realtime" toggle used against an already-migrated project. It is
+# idempotent and safe to run even when that migration was not part of this
+# push. There is still no *periodic* reconciliation between deploys -- see
+# the tracked follow-up in AGENTS.md's Migration Flow section.
 
 on:
   push:
@@ -64,3 +77,13 @@ jobs:
 
       - name: Push migrations
         run: supabase db push
+
+      - name: Reconcile Realtime publication
+        # Explicitly re-runs the drift guard after every push (see the
+        # header comment above and AGENTS.md's Migration Flow) -- `db push`
+        # alone does not, because it only applies migrations not yet marked
+        # applied on the target project. Safe to run unconditionally: the
+        # function is idempotent and a no-op when nothing has drifted.
+        run: |
+          supabase db query --linked \
+            "select public.reconcile_realtime_publication();"
