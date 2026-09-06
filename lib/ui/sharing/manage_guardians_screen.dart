@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 import '../../data/repositories/profile_guardians_repository.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/profile_guardian.dart';
+import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/sharing_service.dart';
 import 'invite_guardian_dialog.dart';
+import 'transfer_ownership_screen.dart';
 
 class ManageGuardiansScreen extends StatefulWidget {
   const ManageGuardiansScreen({
@@ -18,6 +20,7 @@ class ManageGuardiansScreen extends StatefulWidget {
     required this.guardiansRepository,
     required this.sharingService,
     required this.currentUserId,
+    this.ownershipTransferService,
   });
 
   final Profile profile;
@@ -27,6 +30,10 @@ class ManageGuardiansScreen extends StatefulWidget {
   /// The signed-in user's id, required for role gating (U8): viewers and
   /// caregivers never see the invite action or revocation controls.
   final String? currentUserId;
+
+  /// Null on an unconfigured build (R26) — the transfer-ownership entry
+  /// point is hidden whenever this is null, regardless of caller role.
+  final OwnershipTransferService? ownershipTransferService;
 
   @override
   State<ManageGuardiansScreen> createState() => _ManageGuardiansScreenState();
@@ -176,6 +183,36 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.profile.displayName} Caregivers'),
+        // R26: the transfer-ownership entry point is offered only to the
+        // profile's accepted primary guardian, and only when an
+        // OwnershipTransferService is actually configured on this build.
+        actions: [
+          StreamBuilder<List<ProfileGuardian>?>(
+            stream: _guardianRows,
+            builder: (context, snapshot) {
+              final rows = snapshot.data;
+              final callerRole = _callerRoleOf(rows);
+              final canTransfer =
+                  callerRole == GuardianRole.primaryGuardian &&
+                      widget.ownershipTransferService != null;
+              if (!canTransfer) {
+                return const SizedBox.shrink();
+              }
+              return IconButton(
+                tooltip: 'Transfer ownership',
+                icon: const Icon(Icons.compare_arrows),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => TransferOwnershipScreen(
+                      profile: widget.profile,
+                      service: widget.ownershipTransferService!,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       // U8: only the primary guardian and co-parents can invite; the
       // server enforces it too, so the button is not even offered. Rows
