@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -145,6 +146,9 @@ class ProfilePickerScreen extends StatelessWidget {
               currentUserId:
                   context.read<AuthController?>()?.currentUserId,
               ownershipTransferService: ownershipTransfer,
+              notificationPreferencesService:
+                  Provider.of<NotificationPreferencesService?>(
+                      context, listen: false),
             ),
           ),
         );
