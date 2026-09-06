@@ -5,7 +5,7 @@
 // with no `--allow-env`/`--allow-net` beyond the stubbed `fetch` below.
 
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { sendPush, type ServiceAccountCredentials } from "./push.ts";
+import { createPushSender, sendPush, type ServiceAccountCredentials } from "./push.ts";
 
 async function generateTestPrivateKeyPem(): Promise<string> {
   const keyPair = await crypto.subtle.generateKey(
@@ -129,5 +129,90 @@ Deno.test(
     );
     assertEquals(result.ok, false);
     assert(!sendAttempted, "a failed OAuth exchange must never reach the FCM send call");
+  },
+);
+
+// createPushSender (round-2 review #6, round-1 #13): one token per
+// invocation, reused across every send on the same closure.
+
+Deno.test(
+  "createPushSender: mints the OAuth token once and reuses it across multiple sends",
+  async () => {
+    const creds = await testCredsPromise;
+    let oauthCalls = 0;
+    let sendCalls = 0;
+    const send = createPushSender(creds);
+    const results = await withFetchStub(
+      (async (input: RequestInfo | URL) => {
+        if (isOauthTokenRequest(input)) {
+          oauthCalls++;
+          return oauthOk();
+        }
+        sendCalls++;
+        return new Response(JSON.stringify({ name: `projects/test/messages/${sendCalls}` }), { status: 200 });
+      }) as typeof fetch,
+      async () => [await send({ message: 1 }), await send({ message: 2 }), await send({ message: 3 })],
+    );
+    assertEquals(results, [{ ok: true }, { ok: true }, { ok: true }]);
+    assertEquals(sendCalls, 3, "every message must still reach FCM");
+    assertEquals(oauthCalls, 1, "one send closure must mint exactly one OAuth token for all three sends");
+  },
+);
+
+Deno.test(
+  "createPushSender: an FCM 401 on the cached token re-mints once, retries the same send, and caches the fresh token",
+  async () => {
+    const creds = await testCredsPromise;
+    let oauthCalls = 0;
+    let fcmCalls = 0;
+    const send = createPushSender(creds);
+    const results = await withFetchStub(
+      (async (input: RequestInfo | URL) => {
+        if (isOauthTokenRequest(input)) {
+          oauthCalls++;
+          return oauthOk();
+        }
+        fcmCalls++;
+        // The first two FCM calls (both from the first send()) simulate a
+        // rejected cached token; every call after that succeeds.
+        if (fcmCalls === 1) {
+          return new Response(JSON.stringify({ error: { status: "UNAUTHENTICATED" } }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ name: `projects/test/messages/${fcmCalls}` }), { status: 200 });
+      }) as typeof fetch,
+      async () => [await send({ message: 1 }), await send({ message: 2 })],
+    );
+    assertEquals(results, [{ ok: true }, { ok: true }], "the retry must succeed and be reported to the caller");
+    assertEquals(fcmCalls, 3, "first send: rejected attempt + retry; second send: one more call");
+    assertEquals(
+      oauthCalls,
+      2,
+      "one initial mint for the cached token, one re-mint after the 401 -- not one per send",
+    );
+  },
+);
+
+Deno.test(
+  "createPushSender: a non-auth FCM failure (unregistered) does not trigger a re-mint",
+  async () => {
+    const creds = await testCredsPromise;
+    let oauthCalls = 0;
+    const send = createPushSender(creds);
+    const result = await withFetchStub(
+      (async (input: RequestInfo | URL) => {
+        if (isOauthTokenRequest(input)) {
+          oauthCalls++;
+          return oauthOk();
+        }
+        return new Response(
+          JSON.stringify({ error: { status: "NOT_FOUND", message: "Requested entity was not found. (UNREGISTERED)" } }),
+          { status: 404 },
+        );
+      }) as typeof fetch,
+      () => send({ message: 1 }),
+    );
+    assertEquals(result.ok, false);
+    if (!result.ok) assertEquals(result.reason, "unregistered");
+    assertEquals(oauthCalls, 1, "an unregistered-device failure is not a token problem -- no re-mint");
   },
 );

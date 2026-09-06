@@ -1,6 +1,6 @@
 -- Migration: 20260906190000_account_deletion_notifications.sql
 -- Issue #5, Unit U4: extends account deletion and guardian revocation so
--- neither leaves a row behind in the three tables this feature added
+-- neither leaves a row behind in the four tables this feature added
 -- (R20), and so revocation stops a guardian's alerts "immediately" (R5),
 -- not merely "the next time something reads profile_guardians.status".
 --
@@ -10,6 +10,18 @@
 -- steps, mirroring how 20260906120000_account_deletion_final_rehome.sql and
 -- 20260905090000_close_guardian_revocation_bypass.sql each layered onto an
 -- earlier version of the same functions.
+--
+-- Round-2 review #8: this file's own `missed_entry_alert_state` (added by
+-- 20260906180000_reminder_windows_and_cron.sql, review #8) was itself never
+-- wired into either function below when first written -- neither the
+-- profile nor the revoked guardian's auth.users row is deleted by a plain
+-- revocation, so the stale `last_enqueued_for` marker survives it. A
+-- guardian who is revoked and later re-invited, with the same
+-- estimated_next_start still published, would be silently skipped by the
+-- scan's `is distinct from` dedupe gate -- re-creating exactly the
+-- co-guardian suppression bug review #8 was filed to remove. It is also
+-- residual data about a minor's profile retained for someone whose access
+-- was revoked (R5). Both `create or replace`s below add the missing delete.
 
 -- ---------------------------------------------------------------------------
 -- delete_account_data(): add the caller's own notification_preferences,
@@ -38,6 +50,7 @@ declare
   v_push_devices_deleted bigint := 0;
   v_notification_outbox_deleted bigint := 0;
   v_reminder_windows_deleted bigint := 0;
+  v_missed_entry_alert_state_deleted bigint := 0;
 begin
   if v_uid is null then
     raise exception 'authentication required' using errcode = 'insufficient_privilege';
@@ -109,6 +122,18 @@ begin
    where user_id = v_uid;
   get diagnostics v_push_devices_deleted = row_count;
 
+  -- Round-2 review #8: the caller's own missed-entry dedupe markers, on any
+  -- profile (their own, or one they merely guard) -- same scoping as
+  -- notification_preferences and push_devices above. Not covered by the
+  -- profiles delete's cascade below when the caller does not own the
+  -- profile (e.g. a caregiver deleting their own account while remaining a
+  -- guardian elsewhere is not this path, but a co-guardian's marker on a
+  -- profile the caller owns is a different row and must not be touched
+  -- here regardless).
+  delete from public.missed_entry_alert_state
+   where user_id = v_uid;
+  get diagnostics v_missed_entry_alert_state_deleted = row_count;
+
   -- The caller's own profiles. Cascades any day_entries,
   -- guardian_invitations, and profile_guardians rows still tied to these
   -- specific profiles (e.g. a co-parent's membership, or an invitation
@@ -136,7 +161,8 @@ begin
     'notification_preferences', v_notification_preferences_deleted,
     'push_devices', v_push_devices_deleted,
     'notification_outbox', v_notification_outbox_deleted,
-    'profile_reminder_windows', v_reminder_windows_deleted
+    'profile_reminder_windows', v_reminder_windows_deleted,
+    'missed_entry_alert_state', v_missed_entry_alert_state_deleted
   );
 end;
 $$;
@@ -144,8 +170,9 @@ $$;
 comment on function public.delete_account_data() is
   'Deletes every row the calling user (auth.uid()) owns across profiles, '
   'day_entries, settings, profile_guardians, guardian_invitations, '
-  'notification_preferences, push_devices, notification_outbox, and '
-  'profile_reminder_windows (Issue #5, U4; R20), first calling '
+  'notification_preferences, push_devices, notification_outbox, '
+  'profile_reminder_windows, and missed_entry_alert_state (Issue #5, U4; '
+  'R20; the last added by round-2 review #8), first calling '
   'public.rehome_stray_day_entries(auth.uid()) to re-home any day_entries '
   'this caller logged as a caregiver on a profile they do not own, so the '
   'auth.users on delete cascade the Edge Function triggers afterwards '
@@ -283,6 +310,18 @@ begin
      and recipient_user_id = p_target_user_id
      and sent_at is null;
 
+  -- Round-2 review #8: also drop the revoked guardian's missed-entry dedupe
+  -- marker for this profile. Without this, a guardian who is revoked and
+  -- later re-invited -- with the same estimated_next_start still published
+  -- on profile_reminder_windows -- is silently skipped by the scan's
+  -- `last_enqueued_for is distinct from estimated_next_start` gate,
+  -- re-creating exactly the co-guardian suppression bug review #8 was filed
+  -- to remove. It is also residual data about a minor's profile retained
+  -- for someone whose access was just revoked (R5).
+  delete from public.missed_entry_alert_state
+   where profile_id = p_profile_id
+     and user_id = p_target_user_id;
+
   return true;
 end;
 $$;
@@ -290,9 +329,12 @@ $$;
 comment on function public.revoke_guardian(text, uuid) is
   'Revokes p_target_user_id''s guardianship of p_profile_id (see prior '
   'migrations for the #81/#82 fixes), and, as of Issue #5 U4 (R5), also '
-  'deletes their notification_preferences row for this profile and any of '
-  'their unsent notification_outbox rows for it, so caregiver alerts stop '
-  'immediately rather than merely becoming unreadable.';
+  'deletes their notification_preferences row for this profile, any of '
+  'their unsent notification_outbox rows for it, and their '
+  'missed_entry_alert_state marker for it (round-2 review #8 -- otherwise a '
+  'revoked-then-re-invited guardian is silently skipped by the missed-entry '
+  'scan''s dedupe gate for the still-published window), so caregiver alerts '
+  'stop immediately rather than merely becoming unreadable.';
 
 revoke all on function public.revoke_guardian(text, uuid) from public, anon;
 grant execute on function public.revoke_guardian(text, uuid) to authenticated;

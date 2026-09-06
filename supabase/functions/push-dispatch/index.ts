@@ -23,7 +23,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { buildPushMessage } from "../_shared/notification_copy.ts";
-import { sendPush as sendPushReal, type ServiceAccountCredentials } from "../_shared/push.ts";
+import { createPushSender, type ServiceAccountCredentials } from "../_shared/push.ts";
 
 const WEBHOOK_SECRET_HEADER = "x-push-dispatch-webhook-secret";
 
@@ -173,6 +173,12 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
   const creds: ServiceAccountCredentials | null = configured
     ? { projectId: env.fcmProjectId!, clientEmail: env.fcmClientEmail!, privateKey: env.fcmPrivateKey! }
     : null;
+  // #6 (round-2 review; round-1 #13): one push sender -- and so one minted
+  // OAuth access token, reused across every send -- per buildDeps call, not
+  // one per (row, device). buildDeps is called once per function
+  // invocation (see the bottom of this file), so this closure's lifetime is
+  // exactly one invocation's batch.
+  const pushSender = configured ? createPushSender(creds!) : null;
 
   return {
     configured,
@@ -226,7 +232,7 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
     disableDevice: async (deviceId) => {
       await client!.from("push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceId);
     },
-    sendPush: (message) => sendPushReal(creds!, message),
+    sendPush: (message) => pushSender!(message),
   };
 }
 
@@ -239,6 +245,24 @@ if (import.meta.main) {
     const expectedSecret = Deno.env.get("PUSH_DISPATCH_WEBHOOK_SECRET");
     const providedSecret = req.headers.get(WEBHOOK_SECRET_HEADER);
     if (!expectedSecret || providedSecret !== expectedSecret) {
+      // #10 (round-2 review): the sibling not-configured branch above logs a
+      // missing secret; this branch must too. The Database Webhook config
+      // and the app.settings.push_dispatch_webhook_secret GUC (the cron
+      // path) are two independently-set copies of the same shared secret
+      // (docs/ops/supabase-go-live.md) -- drift between them silently kills
+      // every dispatch invocation with a bare 401 and no other signal
+      // anywhere, the same failure class #2 covers for the unconfigured
+      // branch.
+      console.error(
+        !expectedSecret
+          ? "push-dispatch: PUSH_DISPATCH_WEBHOOK_SECRET is not set -- every " +
+              "call is rejected with 401 until this function secret is set " +
+              "(see docs/ops/supabase-go-live.md)."
+          : "push-dispatch: rejected a call with a missing or mismatched " +
+              `${WEBHOOK_SECRET_HEADER} header -- check the Database Webhook ` +
+              "config and the app.settings.push_dispatch_webhook_secret GUC " +
+              "have not drifted (see docs/ops/supabase-go-live.md).",
+      );
       return new Response(null, { status: 401 });
     }
 

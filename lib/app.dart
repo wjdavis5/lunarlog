@@ -58,6 +58,7 @@ class LunarLogApp extends StatefulWidget {
     this.onTeardown,
     this.resetDevice,
     this.removePushRegistration,
+    this.removeAllPushRegistrations,
     this.showWebBanner = kIsWeb,
   });
 
@@ -130,6 +131,13 @@ class LunarLogApp extends StatefulWidget {
   /// a signed-out flow that has neither simply skips removal (push was
   /// never started).
   final RemovePushRegistrationCallback? removePushRegistration;
+
+  /// Explicit removal of every push registration for the current user,
+  /// across every device (round-2 review #9). Same override shape as
+  /// [removePushRegistration]: `LunarLogRoot` provides it above this widget
+  /// in production, an explicit value (tests) takes precedence, and a
+  /// signed-out flow that has neither simply skips it.
+  final RemoveAllPushRegistrationsCallback? removeAllPushRegistrations;
 
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
@@ -344,6 +352,9 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider.of<DeviceResetCallback?>(context, listen: false);
     final removePushRegistration = widget.removePushRegistration ??
         Provider.of<RemovePushRegistrationCallback?>(context, listen: false);
+    final removeAllPushRegistrations = widget.removeAllPushRegistrations ??
+        Provider.of<RemoveAllPushRegistrationsCallback?>(context,
+            listen: false);
     return MultiProvider(
       providers: [
         if (authController != null)
@@ -356,6 +367,11 @@ class _LunarLogAppState extends State<LunarLogApp> {
         if (removePushRegistration != null)
           Provider<RemovePushRegistrationCallback>.value(
             value: removePushRegistration,
+            updateShouldNotify: (_, _) => false,
+          ),
+        if (removeAllPushRegistrations != null)
+          Provider<RemoveAllPushRegistrationsCallback>.value(
+            value: removeAllPushRegistrations,
             updateShouldNotify: (_, _) => false,
           ),
         // Upload-consent counts (R14): the only place `lib/ui` learns how

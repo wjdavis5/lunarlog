@@ -57,12 +57,22 @@ class PushRegistrationCoordinator {
     if (_disposed) return;
     _signedIn = _currentAuthState() == AuthSessionState.signedIn;
     _authSub = _authStates.listen(_onAuthState);
-    _refreshSub = _tokenSource.tokenRefreshes().listen(_onTokenRefresh);
-    _tapSub = _tokenSource.taps().listen(_onTap == null
-        ? null
-        : (profileId) {
-            if (profileId != null) _onTap(profileId);
-          });
+    // Round-2 review #4: both source streams are `async*` generators that
+    // `await` FirebasePushTokenSource's init before their first yield -- an
+    // init failure surfaces as a stream *error* event, not a data event.
+    // With no onError here that would escape as an unhandled zone error
+    // (no runZonedGuarded wraps this app) instead of the best-effort
+    // swallow every other failure path in this class already gets.
+    _refreshSub =
+        _tokenSource.tokenRefreshes().listen(_onTokenRefresh, onError: (_) {});
+    _tapSub = _tokenSource.taps().listen(
+      _onTap == null
+          ? null
+          : (profileId) {
+              if (profileId != null) _onTap(profileId);
+            },
+      onError: (_) {},
+    );
     if (_signedIn) {
       await _registerCurrentToken();
     }
@@ -108,6 +118,21 @@ class PushRegistrationCoordinator {
       await _registry.remove(_deviceId);
     } catch (_) {
       // Best-effort.
+    }
+  }
+
+  /// Best-effort removal of every device this signed-in user has ever
+  /// registered, not just [_deviceId] (round-2 review #9). Callers use this
+  /// for a "sign out everywhere" flow: `signOut(scope: global)` revokes
+  /// every device's *session*, but nothing else stops another device's
+  /// `push_devices` row from surviving and continuing to receive this
+  /// user's caregiver alerts. Must be called while the session is still
+  /// authenticated, exactly like [removeRegistration] - see its doc comment.
+  Future<void> removeAllRegistrations() async {
+    try {
+      await _registry.removeAllForCurrentUser();
+    } catch (_) {
+      // Best-effort, mirroring _safeRemove above.
     }
   }
 
