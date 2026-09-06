@@ -119,8 +119,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          repo=$(ls supabase/migrations/*.sql 2>/dev/null \
-                 | xargs -n1 basename \
+          repo=$(find supabase/migrations -maxdepth 1 -name '*.sql' -printf '%f\n' 2>/dev/null \
                  | sed -E 's/^([0-9]+)_.*/\1/' | sort -u)
           if [ -z "$repo" ]; then
             echo "::error::No migrations found in supabase/migrations. Refusing to release without verifying schema state."
@@ -237,9 +236,10 @@ jobs:
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          mkdir -p ~/.appstoreconnect/private_keys
-          printf '%s' "$ASC_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
-          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          key_path="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_PRIVATE_KEY" > "$key_path"
+          chmod 600 "$key_path"
 
       - name: Configure signing keychain
         env:
@@ -270,7 +270,11 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$keychain_password" "$keychain" >/dev/null
 
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          existing_keychains=()
+          while IFS= read -r kc; do
+            existing_keychains+=("$kc")
+          done < <(security list-keychains -d user | tr -d '"')
+          security list-keychains -d user -s "$keychain" "${existing_keychains[@]}"
 
           echo "Imported identities:"
           security find-identity -v -p codesigning "$keychain"
