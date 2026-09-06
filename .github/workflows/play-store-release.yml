@@ -240,7 +240,11 @@ jobs:
           chmod +x sentry-cli
           ./sentry-cli --version
 
-          native_libs_dir="build/app/intermediates/merged_native_libs/release/out/lib"
+          # Verified empirically against this toolchain's real
+          # `flutter build appbundle --release` output tree (Q2) -- AGP's
+          # merge-native-libs task nests an extra `mergeReleaseNativeLibs`
+          # segment that a naive guess at the path misses.
+          native_libs_dir="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
           if [ -d "$native_libs_dir" ]; then
             ./sentry-cli debug-files upload "$native_libs_dir"
           else
