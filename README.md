@@ -258,6 +258,46 @@ Part of the home lab; the canonical inventory lives in the lab root's
   key is already device-only, and Android covers the equivalent with
   `allowBackup="false"`). The Supabase session and PKCE verifier are stored
   with `first_unlock_this_device` and never travel in a backup.
+- Realtime co-caregiver sync (issue #77) publishes only a dedicated
+  `public.sync_signals` table (profile_id, updated_at — no health content)
+  to `supabase_realtime`, never `public.profiles`/`public.day_entries`
+  themselves: Realtime's WALRUS decodes with wal2json, which only honors a
+  publication as a table-level membership list, so a narrow *publication*
+  column list on the source tables would not have kept `note`/`tags`/`flow`
+  off the websocket given this schema's table-wide `select` grant for
+  `authenticated` (`has_column_privilege`, the check Realtime actually
+  applies, passes regardless of the publication's declared columns). This
+  cannot be exercised end-to-end in CI: local and CI Supabase both start
+  with `-x realtime` (no Realtime container), so
+  `supabase/tests/realtime_publication_test.sql` proves catalog state (what
+  is/isn't published, `sync_signals`'s column list) and trigger behavior
+  (writes populate `sync_signals`; a non-guardian cannot read another
+  family's signal row; the publication guard corrects a simulated
+  Studio-toggle drift instead of skipping it) from pgTAP. **A manual,
+  empirical check against a real Realtime container is still required before
+  every merge that touches `supabase/migrations/20260905100000_realtime_publication.sql`
+  or the coordinator's subscription shape:** run
+  `supabase/tests/manual/verify_realtime_delivery.mjs` (see its header for
+  usage) against local Supabase started **without** excluding `realtime`
+  (Docker required), or against the cloud project. It was run for this PR
+  against a real local Realtime container and confirmed both halves: (a) the
+  delivered `sync_signals` payload contains only `profile_id`/`updated_at`,
+  and (b) Realtime refuses `day_entries`/`profiles` subscriptions outright
+  (an "Unable to subscribe to changes..." `postgres_changes` system error)
+  rather than silently filtering them, so no entry content reaches the
+  websocket via those tables at all. The script asserts on this directly now
+  (PR #92 review round 2): every channel must genuinely settle a
+  `postgres_changes` system message (not just create a channel object) or
+  the script throws, and the `profiles` write it checks against happens
+  *after* subscribing — the original version wrote it before, which made
+  that half of the check structurally unable to fail. The script also creates
+  exactly one throwaway auth user/profile/day-entries row and deletes all
+  three (and the `sync_signals` row they generate) in a `finally`, so
+  repeated runs against the cloud project do not accumulate test data or
+  leave real-looking minor's-health-log content behind. This check is
+  deliberately not wired into CI — investigated (a `realtime`-inclusive CI
+  stack was prototyped) and found out of proportion for one migration's
+  regression coverage; see the plan's KTD4 for why.
 
 ## License
 
