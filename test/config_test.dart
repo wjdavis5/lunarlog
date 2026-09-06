@@ -115,6 +115,30 @@ void main() {
     });
   });
 
+  group('computeTracesSampleRate (issue #7 U4; KTD8)', () {
+    test('empty is null', () {
+      expect(computeTracesSampleRate(''), isNull);
+    });
+
+    test('unparseable is null', () {
+      expect(computeTracesSampleRate('abc'), isNull);
+    });
+
+    test('a value inside [0, 1] passes through unchanged', () {
+      expect(computeTracesSampleRate('0.2'), 0.2);
+      expect(computeTracesSampleRate('1'), 1.0);
+      expect(computeTracesSampleRate('0'), 0.0);
+    });
+
+    test('negative clamps to 0.0', () {
+      expect(computeTracesSampleRate('-1'), 0.0);
+    });
+
+    test('greater than 1 clamps to 1.0', () {
+      expect(computeTracesSampleRate('5'), 1.0);
+    });
+  });
+
   group('computeHasGoogle', () {
     test('is false when the iOS client id is empty', () {
       expect(
@@ -212,6 +236,16 @@ void main() {
           iosClientId: AppConfig.googleIosClientId,
           webClientId: AppConfig.googleWebClientId,
         ),
+      );
+    });
+
+    test('sentryTracesSampleRate agrees with the pure function and is null '
+        'without a dart-define (issue #7 U4)', () {
+      expect(AppConfig.sentryTracesSampleRateRaw, isEmpty);
+      expect(AppConfig.sentryTracesSampleRate, isNull);
+      expect(
+        AppConfig.sentryTracesSampleRate,
+        computeTracesSampleRate(AppConfig.sentryTracesSampleRateRaw),
       );
     });
   });

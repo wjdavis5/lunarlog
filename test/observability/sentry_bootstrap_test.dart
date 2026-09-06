@@ -63,7 +63,11 @@ void main() {
       expect(o.replay.onErrorSampleRate, anyOf(isNull, 0.0));
       expect(o.enableUserInteractionBreadcrumbs, isFalse);
       expect(o.enableUserInteractionTracing, isFalse);
-      expect(o.tracesSampleRate, anyOf(isNull, 0.0));
+      // runWithSentry wires the real AppConfig.sentryTracesSampleRate
+      // (U4), so this legitimately reflects whatever dart-define this
+      // very test run was invoked with -- assert only that it stays in
+      // Sentry's valid [0, 1] range, not a specific value.
+      expect(o.tracesSampleRate, anyOf(isNull, inInclusiveRange(0.0, 1.0)));
       // ignore: experimental_member_use
       expect(o.profilesSampleRate, anyOf(isNull, 0.0));
       expect(o.sampleRate, 1.0);
@@ -137,6 +141,37 @@ void main() {
     test('AE4: empty when unconfigured (the default under flutter test, no '
         'SENTRY_DSN)', () {
       expect(sentryNavigatorObservers(), isEmpty);
+    });
+  });
+
+  group('configureSentryOptions tracing (U4; R9, R10, R14, AE5)', () {
+    test('AE5: with no tracesSampleRate passed (configureSentryOptions '
+        "defaults to off, decoupled from this test run's real dart-define), "
+        'tracesSampleRate is null and isTracingEnabled() is false', () {
+      final options =
+          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options, dsn: options.dsn!);
+
+      expect(options.tracesSampleRate, isNull);
+      expect(options.isTracingEnabled(), isFalse);
+    });
+
+    test('an explicit tracesSampleRate is set verbatim, whatever this test '
+        "run's real dart-define was", () {
+      final options =
+          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options, dsn: options.dsn!, tracesSampleRate: 0.2);
+
+      expect(options.tracesSampleRate, 0.2);
+      expect(options.isTracingEnabled(), isTrue);
+    });
+
+    test('beforeSendTransaction is wired to scrubTransaction', () {
+      final options =
+          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options, dsn: options.dsn!);
+
+      expect(options.beforeSendTransaction, isNotNull);
     });
   });
 

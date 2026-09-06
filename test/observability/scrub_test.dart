@@ -660,4 +660,213 @@ void main() {
     });
   });
 
+  group('scrubTransaction (U4; KTD9, R9, R10)', () {
+    /// Builds a real [SentryTransaction] the way the SDK actually does —
+    /// through a real [Hub]/tracer, not a hand-built object — and hands the
+    /// pre-scrub transaction back via [onCaptured] instead of letting it
+    /// reach a transport. This is AE6's "produced by a real tracer" half:
+    /// it is the only way to get a transaction whose `contexts.trace.data`
+    /// is populated the way the SDK's own constructor populates it.
+    Future<void> withRealTransaction(
+      void Function(ISentrySpan tracer) build,
+      void Function(SentryTransaction transaction) onCaptured,
+    ) async {
+      final options = SentryOptions(dsn: 'https://public@o0.ingest.sentry.io/1')
+        ..tracesSampleRate = 1.0
+        ..transport = _NoopTransport();
+      SentryTransaction? captured;
+      options.beforeSendTransaction = (transaction, hint) {
+        captured = transaction;
+        return null; // never actually sent
+      };
+      final hub = Hub(options);
+      final tracer = hub.startTransaction(
+        'SettingsScreen',
+        'navigation',
+        bindToScope: false,
+      );
+      build(tracer);
+      await tracer.finish();
+      expect(captured, isNotNull,
+          reason: 'beforeSendTransaction did not observe a transaction');
+      onCaptured(captured!);
+    }
+
+    test('AE6: a transaction with setData(route_settings_arguments, …) on '
+        'the tracer loses both copies of that data (extra and '
+        'contexts.trace.data), while trace id, span id, op, and the span '
+        'list survive', () async {
+      // Deliberately not a deny-listed key by name (no `note`/`local_date`)
+      // -- this proves scrubTransaction's wholesale extra/contexts.trace.data
+      // drop, not the deny-list scan, is what removes it. A profile id in
+      // route arguments is exactly the KTD1 case: a value that is sensitive
+      // in context but whose *key* is unremarkable.
+      const leakingArgs = {'profile': '8f2c-4a1b', 'date': '2026-01-01'};
+      late SentryId traceId;
+      late SpanId rootSpanId;
+
+      await withRealTransaction((tracer) {
+        traceId = tracer.context.traceId;
+        rootSpanId = tracer.context.spanId;
+        tracer.setData('route_settings_arguments', leakingArgs);
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+
+        // ignore: deprecated_member_use
+        expect(out.extra, isNull);
+        final json = _json(out);
+        expect(json, isNot(contains('8f2c-4a1b')));
+        expect(json, isNot(contains('route_settings_arguments')));
+
+        // contexts.trace.data carried the same map a second time (KTD9) —
+        // must be gone too, not just `extra`.
+        expect(out.contexts.trace?.data, isNull);
+        expect(json, isNot(contains('profile')));
+
+        // Identity survives: trace id, span id, op.
+        expect(out.contexts.trace?.traceId, traceId);
+        expect(out.contexts.trace?.spanId, rootSpanId);
+        expect(out.contexts.trace?.operation, 'navigation');
+      });
+    });
+
+    test('drops extra entirely', () async {
+      await withRealTransaction((tracer) {
+        tracer.setData('harmless', 'value');
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        // ignore: deprecated_member_use
+        expect(out.extra, isNull);
+      });
+    });
+
+    test('keeps exactly the allowlisted span-data keys, using the SDK\'s '
+        'real key names, and drops everything else', () async {
+      await withRealTransaction((tracer) {
+        final span = tracer.startChild('http.client', description: 'GET x');
+        span
+          ..setData('url', 'https://x.supabase.co/rest/v1/day_entries?a=1')
+          ..setData('http.request.method', 'GET')
+          ..setData('http.response.status_code', 200)
+          ..setData('http.response_content_length', 512)
+          ..setData('db.system', 'sqlite')
+          ..setData('db.operation', 'SELECT')
+          ..setData('http.query', 'a=1')
+          ..setData('http.fragment', 'frag')
+          // Not deny-listed by key -- proves the allowlist rebuild drops
+          // an unrecognized key on its own, independent of the deny-list
+          // early-return (that path is covered by the "drops the whole
+          // transaction" test below).
+          ..setData('span_kind', 'client');
+        // ignore: discarded_futures
+        span.finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        final spanData = out.spans.single.data;
+        expect(
+          spanData.keys.toSet(),
+          {
+            'url',
+            'http.request.method',
+            'http.response.status_code',
+            'http.response_content_length',
+            'db.system',
+            'db.operation',
+          },
+        );
+        expect(spanData['url'], 'https://x.supabase.co/rest/v1/day_entries');
+      });
+    });
+
+    test('truncates a span data[url] at ? and drops http.query/fragment',
+        () async {
+      await withRealTransaction((tracer) {
+        final span = tracer.startChild('http.client');
+        span.setData('url', 'https://x.supabase.co/rest/v1/day_entries?q=1');
+        // ignore: discarded_futures
+        span.finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        expect(out.spans.single.data['url'],
+            'https://x.supabase.co/rest/v1/day_entries');
+      });
+    });
+
+    test('reduces contexts to os/runtime/app.version, dropping device and '
+        'view_names', () async {
+      await withRealTransaction((tracer) {}, (transaction) {
+        transaction.contexts.operatingSystem =
+            SentryOperatingSystem(name: 'iOS', version: '18.0');
+        transaction.contexts.device = SentryDevice(name: 'Wills iPhone');
+        transaction.contexts.app =
+            SentryApp(version: '1.0.0', viewNames: ['SettingsScreen']);
+
+        final out = scrubTransaction(transaction)!;
+        expect(out.contexts.operatingSystem?.name, 'iOS');
+        expect(out.contexts.app?.version, '1.0.0');
+        expect(out.contexts.app?.viewNames, isNull);
+        expect(out.contexts.device, isNull);
+      });
+    });
+
+    test('applies _scrubTags to tags and scrubBreadcrumb to breadcrumbs',
+        () async {
+      await withRealTransaction((tracer) {}, (transaction) {
+        transaction.tags = {'note': _note, 'environment': 'development'};
+        transaction.breadcrumbs = [
+          Breadcrumb(category: 'auth', data: {'email': _email}),
+          Breadcrumb(category: 'console', message: 'ok'),
+        ];
+
+        final out = scrubTransaction(transaction)!;
+        expect(out.tags, {'environment': 'development'});
+        expect(out.breadcrumbs, hasLength(1));
+        expect(out.breadcrumbs!.single.message, 'ok');
+      });
+    });
+
+    test('drops the whole transaction when a span data key is deny-listed',
+        () async {
+      await withRealTransaction((tracer) {
+        final span = tracer.startChild('db.query');
+        span.setData('p_day_entries', {'note': _note});
+        // ignore: discarded_futures
+        span.finish();
+      }, (transaction) {
+        expect(scrubTransaction(transaction), isNull);
+      });
+    });
+
+    test('replaces a path-shaped transaction name with unknown and keeps a '
+        'registered one', () async {
+      await withRealTransaction((tracer) {}, (transaction) {
+        transaction.transaction = '/profiles/8f2c';
+        expect(scrubTransaction(transaction)!.transaction, 'unknown');
+      });
+
+      await withRealTransaction((tracer) {}, (transaction) {
+        transaction.transaction = 'SettingsScreen';
+        expect(scrubTransaction(transaction)!.transaction, 'SettingsScreen');
+      });
+    });
+
+    test('preserves the transaction\'s spans, span count, and trace '
+        'context', () async {
+      await withRealTransaction((tracer) {
+        // ignore: discarded_futures
+        tracer.startChild('http.client').finish();
+        // ignore: discarded_futures
+        tracer.startChild('db.query').finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        expect(out.spans, hasLength(2));
+        expect(out.contexts.trace, isNotNull);
+      });
+    });
+  });
+}
+
+class _NoopTransport implements Transport {
+  @override
+  Future<SentryId?> send(SentryEnvelope envelope) async => null;
 }

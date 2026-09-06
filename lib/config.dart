@@ -29,6 +29,21 @@ abstract final class AppConfig {
   /// Sentry DSN. Empty disables crash reporting entirely.
   static const String sentryDsn = String.fromEnvironment('SENTRY_DSN');
 
+  /// Raw value of `SENTRY_TRACES_SAMPLE_RATE` (issue #7 U4); mirrors the
+  /// `_webSyncRaw` idiom. Empty in `dart_defines.example.json` and in every
+  /// workflow — an operator opts a build into performance tracing locally
+  /// or by adding the flag deliberately, only after issue #19 exists.
+  static const String sentryTracesSampleRateRaw =
+      String.fromEnvironment('SENTRY_TRACES_SAMPLE_RATE');
+
+  /// The tracing sample rate to configure, or null when tracing stays off
+  /// (empty or unparseable define). [computeTracesSampleRate] does the
+  /// actual parsing/clamping — Dart forbids a function call in a `const`
+  /// initializer, so unlike [hasSupabase]/[hasSentry] this cannot itself be
+  /// `const`; `static final` still computes it exactly once.
+  static final double? sentryTracesSampleRate =
+      computeTracesSampleRate(sentryTracesSampleRateRaw);
+
   /// Raw value of `LUNARLOG_WEB_SYNC`; only the literal `true` opts a web
   /// build into account sign-in and sync. Never set in CI.
   static const String _webSyncRaw = String.fromEnvironment('LUNARLOG_WEB_SYNC');
@@ -99,6 +114,19 @@ bool computeHasSupabase({
 
 /// Pure decision behind [AppConfig.hasSentry]: any non-empty DSN.
 bool computeHasSentry(String dsn) => dsn.isNotEmpty;
+
+/// Pure decision behind [AppConfig.sentryTracesSampleRate] (issue #7 U4;
+/// KTD8). Empty or unparseable input means tracing stays off (`null`); a
+/// parseable value is clamped to `[0, 1]`, matching Sentry's own contract
+/// for `tracesSampleRate`.
+double? computeTracesSampleRate(String raw) {
+  if (raw.isEmpty) return null;
+  final parsed = double.tryParse(raw);
+  if (parsed == null) return null;
+  if (parsed < 0) return 0.0;
+  if (parsed > 1) return 1.0;
+  return parsed;
+}
 
 /// Pure decision behind [AppConfig.hasGoogle] (#2 U1; KTD2).
 ///

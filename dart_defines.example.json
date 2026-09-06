@@ -2,6 +2,7 @@
   "SUPABASE_URL": "https://<project-ref>.supabase.co",
   "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_...",
   "SENTRY_DSN": "",
+  "SENTRY_TRACES_SAMPLE_RATE": "",
   "LUNARLOG_WEB_SYNC": "false",
   "GOOGLE_IOS_CLIENT_ID": "",
   "GOOGLE_WEB_CLIENT_ID": ""
