@@ -3,7 +3,8 @@
 /// Provided by `LunarLogApp` only when the build has an auth service; an
 /// unconfigured build provides nothing and shows no account section.
 /// Delegates native Google Sign-In like Apple (#2 U2), the passwordless
-/// send and verify pair (#2 U7), and identity linking (#2 U8).
+/// send and verify pair (#2 U7), identity linking (#2 U8), and removing a
+/// linked identity (#31 U3).
 library;
 
 import 'dart:async';
@@ -100,6 +101,13 @@ class AuthController extends ChangeNotifier {
   Future<AuthUser> linkGoogle() => _service.linkGoogle();
 
   Future<AuthUser> linkApple() => _service.linkApple();
+
+  /// Removes a sign-in method from the current account (#31 U3). Like
+  /// [linkGoogle] / [linkApple], the caller runs the device-credential
+  /// check first; a same-state `userUpdated` does not notify, so it
+  /// re-reads [currentUser] itself.
+  Future<AuthUser> unlinkProvider(String provider) =>
+      _service.unlinkProvider(provider);
 
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local}) =>
       _service.signOut(scope: scope);

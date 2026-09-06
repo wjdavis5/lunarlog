@@ -12,6 +12,8 @@
 /// (#2 U2; KTD1, KTD4, KTD8); passwordless email — a sign-in link plus the
 /// code from the same email — from (#2 U7; KTD3, KTD4); the account's
 /// sign-in methods and in-app linking of a second one from (#2 U8; KTD5).
+/// Removing a linked method (`unlinkProvider`) comes from
+/// (#31 U1; KTD1, KTD6).
 library;
 
 import 'package:lunarlog/domain/util/list_equals.dart';
@@ -197,6 +199,8 @@ sealed class AuthFailure implements Exception {
 
   const factory AuthFailure.signUpClosed() = AuthSignUpClosedFailure;
 
+  const factory AuthFailure.lastSignInMethod() = AuthLastSignInMethodFailure;
+
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -280,6 +284,17 @@ final class AuthSignUpClosedFailure extends AuthFailure {
   String toString() => 'AuthFailure.signUpClosed';
 }
 
+/// The account holds only this one sign-in method; removing it would leave
+/// no way in (#31 R9). The UI never offers `Remove` for the last method,
+/// but a second device can win the race — this is the server's own
+/// refusal, surfaced with no provider name and no server message.
+final class AuthLastSignInMethodFailure extends AuthFailure {
+  const AuthLastSignInMethodFailure();
+
+  @override
+  String toString() => 'AuthFailure.lastSignInMethod';
+}
+
 /// The account seam. Constructed before the first frame by the bootstrap
 /// (KTD8) so a cold-start recovery link is latched before any widget
 /// exists; `null` in `lib/main.dart` when the build has no Supabase
@@ -358,6 +373,20 @@ abstract interface class AuthService {
   /// (#2 U8; KTD5, AS6). Same preconditions and outcomes as [linkGoogle];
   /// iOS only ([UnsupportedError] elsewhere).
   Future<AuthUser> linkApple();
+
+  /// Removes [provider] as a sign-in method from the current account
+  /// (#31 U1; KTD1, KTD3). Requires [state] to be
+  /// [AuthSessionState.signedIn] — otherwise throws [AuthUnknownFailure]
+  /// before any network call. [AuthProviders.email] is rejected the same
+  /// way, before any network call: it is the account's only recovery path
+  /// and is never removable in this build. A provider the account does not
+  /// currently hold completes as a no-op success, returning the current
+  /// user unchanged (R10). Removing the account's last remaining identity
+  /// throws [AuthLastSignInMethodFailure] instead of calling the provider
+  /// (R9). On success, returns the user rebuilt after the removal —
+  /// callers should prefer this return value over re-reading [currentUser],
+  /// which is not guaranteed to be fresh immediately afterward (KTD4).
+  Future<AuthUser> unlinkProvider(String provider);
 
   /// Throws [AuthFailure]; a [AuthSignOutScope.local] failure still leaves
   /// no session on this device.

@@ -1089,6 +1089,244 @@ void main() {
     });
   });
 
+  group('removing a sign-in method (#31)', () {
+    testWidgets('AE1: [email] renders no remove tile; [email, google] '
+        'renders account-remove-google and no account-remove-email', (
+      tester,
+    ) async {
+      await pumpSection(tester, providers: ['email'], showAddGoogle: true);
+      expect(key('account-remove-email'), findsNothing);
+      expect(key('account-remove-google'), findsNothing);
+
+      await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      expect(key('account-remove-google'), findsOneWidget);
+      expect(key('account-remove-email'), findsNothing);
+      expect(key('account-add-google'), findsNothing);
+    });
+
+    testWidgets('both remove tiles render for [email, google, apple] and '
+        'neither add tile does', (tester) async {
+      await pumpSection(
+        tester,
+        providers: ['email', 'google', 'apple'],
+        showAddGoogle: true,
+        showAddApple: true,
+      );
+      expect(key('account-remove-google'), findsOneWidget);
+      expect(key('account-remove-apple'), findsOneWidget);
+      expect(key('account-add-google'), findsNothing);
+      expect(key('account-add-apple'), findsNothing);
+    });
+
+    testWidgets('a provider-only account (no email identity) renders no '
+        'remove tile: the last method is pinned regardless of which '
+        'provider it is', (tester) async {
+      await pumpSection(tester, providers: ['google'], showAddGoogle: true);
+      expect(key('account-remove-google'), findsNothing);
+    });
+
+    testWidgets('AE2: cancelling the confirmation dialog never calls '
+        'reauthenticate or unlinkProvider', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove Google?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(s.gate.requests, 0);
+      expect(s.auth.unlinkCalls, isEmpty);
+      expect(key('account-link-error'), findsNothing);
+      expect(key('account-remove-google'), findsOneWidget);
+    });
+
+    testWidgets('AE3: confirming with a declined credential never calls '
+        'unlinkProvider and shows no copy', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+        grantReauth: false,
+      );
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-remove-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(s.gate.requests, 1);
+      expect(s.auth.unlinkCalls, isEmpty);
+      expect(key('account-link-error'), findsNothing);
+      expect(key('account-remove-google'), findsOneWidget);
+    });
+
+    testWidgets('AE4: confirming with a granted credential calls '
+        'unlinkProvider once, updates the subtitle, and brings back Add', (
+      tester,
+    ) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-remove-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(s.gate.requests, 1, reason: 'the device credential came first');
+      expect(s.auth.unlinkCalls, ['google']);
+      expect(find.text('Sign-in methods: Email'), findsOneWidget);
+      expect(key('account-remove-google'), findsNothing);
+      expect(key('account-add-google'), findsOneWidget);
+      expect(key('account-link-error'), findsNothing);
+    });
+
+    testWidgets('AE5: lastSignInMethod renders its copy, leaves the '
+        'subtitle unchanged, and re-enables the tile', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      s.auth.nextFailure = const AuthFailure.lastSignInMethod();
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-remove-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.unlinkCalls, ['google']);
+      expect(
+        find.descendant(
+          of: key('account-link-error'),
+          matching:
+              find.text(authFailureCopy(const AuthFailure.lastSignInMethod())),
+          matchRoot: true,
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Sign-in methods: Email, Google'), findsOneWidget);
+      expect(key('account-remove-google'), findsOneWidget);
+    });
+
+    testWidgets('a network failure renders its copy; a non-AuthFailure '
+        'error renders the unknown copy', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      s.auth.nextFailure = const AuthFailure.network();
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-remove-confirm')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: key('account-link-error'),
+          matching: find.text(authFailureCopy(const AuthFailure.network())),
+          matchRoot: true,
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a second tap while the first unlinkProvider call is held '
+        'does nothing, and disables the sibling Add/Remove tiles', (
+      tester,
+    ) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google', 'apple'],
+        showAddGoogle: true,
+        showAddApple: true,
+      );
+      s.auth.hold = Completer<void>();
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-remove-confirm')));
+      await pumpFew(tester);
+      expect(s.auth.unlinkCalls, ['google']);
+      expect(
+        find.descendant(
+          of: key('account-remove-google'),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(key('account-remove-apple'));
+      await pumpFew(tester);
+      expect(s.auth.unlinkCalls, ['google'],
+          reason: 'busy: the sibling tile is disabled');
+      expect(s.gate.requests, 1);
+
+      s.auth.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Sign-in methods: Email, Apple'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('with no GateController provided, tapping Remove does '
+        'nothing: no dialog, no reauthenticate, and no unlinkProvider call', (
+      tester,
+    ) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+        provideGate: false,
+      );
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove Google?'), findsNothing);
+      expect(s.gate.requests, 0);
+      expect(s.auth.unlinkCalls, isEmpty);
+      expect(key('account-remove-google'), findsOneWidget);
+    });
+
+    testWidgets('AE6: the whole remove ceremony runs inside one '
+        'duringSystemUi window: a background lifecycle event during the '
+        'credential prompt does not re-lock the app', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      final gate = s.gateController;
+      s.gate.grantNext = true;
+      await gate.unlock();
+      gate.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(gate.locked, isFalse);
+      s.auth.hold = Completer<void>();
+
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-remove-confirm')));
+      await tester.pump();
+      gate.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      await tester.pump();
+
+      expect(gate.locked, isFalse,
+          reason: 'the app opened this ceremony itself');
+      expect(gate.obscured, isTrue);
+
+      s.auth.hold!.complete();
+      s.auth.hold = null;
+      gate.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(s.auth.unlinkCalls, ['google']);
+      expect(gate.locked, isFalse);
+    });
+  });
+
   group('upload consent (R14, AS4)', () {
     testWidgets('renders counts and the duplicate-profile sentence; upload '
         'confirms; not now leaves the tappable tile that reopens it', (

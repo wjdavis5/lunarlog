@@ -169,6 +169,27 @@ void main() {
     expect(c.currentUser?.providers, ['email', 'google']);
   });
 
+  test('delegates unlinkProvider to the service and does not notify (#31 U3)',
+      () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    final c = controller();
+    var notifications = 0;
+    c.addListener(() => notifications++);
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    expect(service.unlinkCalls, ['google']);
+    expect(notifications, 0,
+        reason: 'a same-state update does not notify; callers re-read the '
+            'returned user');
+
+    service.nextFailure = const AuthFailure.lastSignInMethod();
+    await expectLater(c.unlinkProvider('google'),
+        throwsA(const AuthFailure.lastSignInMethod()),
+        reason: 'the controller forwards the service\'s failure untouched');
+  });
+
   test('stops listening after dispose', () async {
     final c = AuthController(authService: service);
     var notifications = 0;

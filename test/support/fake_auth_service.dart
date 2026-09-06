@@ -4,7 +4,8 @@
 /// knobs (#2 U2); the passwordless pair records its calls and signs in on
 /// a verified code like a password sign-in (#2 U7). Sign-in methods and
 /// linking (#2 U8) are a `providers` list the current user carries plus
-/// recorded `linkCalls`.
+/// recorded `linkCalls`. Removing one (#31 U3) is the same list in reverse,
+/// via `unlinkCalls`.
 library;
 
 import 'dart:async';
@@ -55,6 +56,10 @@ class FakeAuthService implements AuthService {
   /// provider is appended to [providers] and the current user returned.
   AuthUser? linkResult;
 
+  /// What [unlinkProvider] returns when set (#31 U3); otherwise the
+  /// provider is removed from [providers] and the current user returned.
+  AuthUser? unlinkResult;
+
   /// Simulates a dismissed picker or dialog while linking: the current
   /// user is returned unchanged and nothing is recorded as linked.
   bool linkCancelled = false;
@@ -79,6 +84,7 @@ class FakeAuthService implements AuthService {
   final magicLinkCalls = <({String email, bool createAccount})>[];
   final codeCalls = <({String email, String code})>[];
   final linkCalls = <String>[];
+  final unlinkCalls = <String>[];
   int appleCalls = 0;
   int googleCalls = 0;
   int recoveryConsumed = 0;
@@ -266,6 +272,26 @@ class FakeAuthService implements AuthService {
       return result;
     }
     if (!providers.contains(provider)) providers = [...providers, provider];
+    return currentUser!;
+  }
+
+  /// Mirrors [_link] in reverse (#31 U3): the signed-in check runs before
+  /// recording the call, so a not-signed-in caller never touches
+  /// [nextFailure] or [hold].
+  @override
+  Future<AuthUser> unlinkProvider(String provider) async {
+    if (provider == AuthProviders.email) throw const AuthFailure.unknown();
+    if (_state != AuthSessionState.signedIn) {
+      throw const AuthFailure.unknown();
+    }
+    unlinkCalls.add(provider);
+    await _maybeThrow();
+    final result = unlinkResult;
+    if (result != null) {
+      emit(_state, user: result);
+      return result;
+    }
+    providers = providers.where((existing) => existing != provider).toList();
     return currentUser!;
   }
 

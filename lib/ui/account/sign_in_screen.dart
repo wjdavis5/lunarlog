@@ -18,7 +18,8 @@
 ///
 /// [authFailureCopy] is the single, exhaustive copy table for every
 /// [AuthFailure], including the provider, identity, and closed-sign-up kinds
-/// (#2 U2; KTD4, R14).
+/// (#2 U2; KTD4, R14) and the last-remaining-method kind a removal can hit
+/// (#31 KTD5, R9).
 ///
 /// Provider buttons (#2 U4; KTD6, KTD8): the providers render above the
 /// email form — Apple (the package's HIG widget, iOS only) first, then
@@ -62,6 +63,9 @@ String authFailureCopy(AuthFailure failure) => switch (failure) {
         'That sign-in method already belongs to another account.',
       AuthSignUpClosedFailure() =>
         'New accounts for this app are set up by the account owner.',
+      AuthLastSignInMethodFailure() =>
+        'That is the only way left to sign in to this account. Add '
+            'another method first.',
     };
 
 class SignInScreen extends StatefulWidget {
