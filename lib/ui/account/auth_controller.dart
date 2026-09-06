@@ -161,17 +161,26 @@ class AuthController extends ChangeNotifier {
       _service.signOut(scope: scope);
 
   void _onState(AuthSessionState next) {
+    // Any incoming state notification — a same-state signal (e.g.
+    // Supabase's `userUpdated` event, or a token refresh) *or* a real
+    // transition — can carry a genuinely newer user under the same id:
+    // a real unlink elsewhere, or a round trip like
+    // signedIn -> passwordRecovery -> signedIn or
+    // signedIn -> signedOut -> signedIn that settles back under the same
+    // user. This clear must run unconditionally, above the dedupe
+    // early-return below, so it fires on transitions too — not just
+    // same-state echoes — and [currentUser] re-reads the service's fresh
+    // value instead of serving a stale cached one for the rest of the app
+    // session (#31 finding 2 round 3).
+    final hadFreshUser = _freshUser != null;
+    _freshUser = null;
+
     if (next == _state) {
-      // A same-state signal (e.g. Supabase's `userUpdated` event, or a
-      // token refresh) can still carry a genuinely newer user under the
-      // same id — e.g. a real unlink elsewhere. When a [_freshUser] is
-      // cached, drop it so [currentUser] re-reads the service's fresh
-      // value instead of serving a stale cached one for the rest of the
-      // app session (#31 finding 2 round 2); with nothing cached, a
-      // repeated identical state (a plain token refresh) still notifies
-      // no one, unchanged from before.
-      if (_freshUser != null) {
-        _freshUser = null;
+      // With nothing cached, a repeated identical state (a plain token
+      // refresh) still notifies no one, unchanged from before. When a
+      // [_freshUser] was just cleared above, that alone is a visible
+      // change, so notify for it even though the state itself didn't move.
+      if (hadFreshUser) {
         notifyListeners();
       }
       return;
