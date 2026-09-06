@@ -17,7 +17,10 @@
 /// [mapAuthError] stays pure and each operation wraps its own failures.
 /// Sign-in methods come from `User.identities` and linking a second one
 /// reuses the Google and Apple credential paths against
-/// `linkIdentityWithIdToken` (#2 U8; KTD5).
+/// `linkIdentityWithIdToken` (#2 U8; KTD5). Removing one (#31 U2; KTD2,
+/// KTD3, KTD4, KTD5) is read (`getUserIdentities`) -> guard (the last
+/// identity) -> delete (`unlinkIdentity`) -> refresh (`refreshSession`),
+/// with `single_identity_not_deletable` mapped beside the existing codes.
 library;
 
 import 'dart:async';
@@ -96,6 +99,8 @@ AuthFailure _mapGoTrueAuthException(AuthException error) {
       return const AuthFailure.signUpClosed();
     case 'identity_already_exists':
       return const AuthFailure.identityTaken();
+    case 'single_identity_not_deletable':
+      return const AuthFailure.lastSignInMethod();
   }
   // Older GoTrue servers send no code for a bad login, only the message.
   if (error.statusCode == '400' &&
@@ -591,6 +596,76 @@ class SupabaseAuthService implements AuthService {
         response.user;
     if (user == null) throw const AuthFailure.unknown();
     return _toUser(user)!;
+  }
+
+  /// Removes [provider] as a sign-in method (#31 U2; KTD1, KTD2, KTD3,
+  /// KTD4, KTD5). `email` is rejected before the signed-in check so the
+  /// UI's mistake never reaches the network (R11); every other branch runs
+  /// inside [_guard] so `single_identity_not_deletable` mapping stays in
+  /// one place.
+  @override
+  Future<AuthUser> unlinkProvider(String provider) async {
+    if (provider == AuthProviders.email) throw const AuthFailure.unknown();
+    final current = _requireSignedInUser();
+    return _guard(() => _removeIdentity(provider, current));
+  }
+
+  /// Read -> guard -> delete -> refresh (KTD3). [current] is only used for
+  /// `id`/`email`; when the account no longer holds [provider] (R10,
+  /// idempotent removal) the returned providers still come from the fresh
+  /// read above, not from [current], so this branch cannot disagree with
+  /// what the server actually has.
+  Future<AuthUser> _removeIdentity(String provider, AuthUser current) async {
+    final identities = await _gateway.getUserIdentities();
+    UserIdentity? target;
+    for (final identity in identities) {
+      if (identity.provider == provider) {
+        target = identity;
+        break;
+      }
+    }
+    if (target == null) {
+      // `identities` is already the fresh read above; build the returned
+      // user from it rather than the caller's stale pre-call snapshot, so
+      // this idempotent branch cannot disagree with what the server
+      // actually has (consistent with the success path below). But an
+      // empty read here is itself degraded (or identity-less), not proof
+      // the account has no providers — fall back to the pre-call snapshot
+      // rather than returning an empty provider list.
+      if (identities.isEmpty) return current;
+      return AuthUser(
+        id: current.id,
+        email: current.email,
+        providers: identities.map((identity) => identity.provider).toSet().toList(),
+      );
+    }
+    if (identities.length < 2) throw const AuthFailure.lastSignInMethod();
+    await _gateway.unlinkIdentity(target);
+    // A refresh failure here does not undo the delete; the identity is
+    // already gone server-side, so reporting an error for a completed
+    // action is worse than a brief stale `currentSession` (KTD4). Track
+    // success explicitly: `currentSession` is non-null either way while
+    // signed in, so its nullity cannot distinguish the two cases.
+    var refreshSucceeded = true;
+    try {
+      await _gateway.refreshSession();
+    } catch (error) {
+      refreshSucceeded = false;
+      debugPrint(
+          'lunarlog auth: post-unlink refresh failed (${error.runtimeType})');
+    }
+    if (refreshSucceeded) {
+      final refreshedUser = _gateway.currentSession?.user;
+      if (refreshedUser != null) return _toUser(refreshedUser)!;
+    }
+    final removedId = target.identityId;
+    final remaining = identities
+        .where((identity) => identity.identityId != removedId)
+        .map((identity) => identity.provider)
+        .toSet()
+        .toList();
+    return AuthUser(
+        id: current.id, email: current.email, providers: remaining);
   }
 
   /// Sends the sign-in email (#2 U7; KTD3). In sign-in mode the server's

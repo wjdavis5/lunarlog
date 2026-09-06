@@ -16,10 +16,24 @@
 /// tile disabled behind a spinner. Both steps run inside one
 /// [GateController.duringSystemUi] window (#65 U2; KTD4, KTD6), so
 /// neither the credential prompt nor the provider picker re-locks the app
-/// on the way through. Success
-/// re-reads `currentUser.providers` in `setState` (a same-state
-/// `userUpdated` does not notify); a failure renders its generic copy in
+/// on the way through. A failure renders its generic copy in
 /// `account-link-error` beneath the identity tile (R14).
+///
+/// Removing one (#31 U4; KTD6, KTD7, KTD8): "Remove Google"
+/// (`account-remove-google`) / "Remove Apple" (`account-remove-apple`)
+/// render whenever that method is present and the account holds at least
+/// one other (`email` is never removable). Tapping shows a confirmation
+/// dialog naming the consequence *before* the device-credential check —
+/// unlike adding, removing is destructive — then the same
+/// [GateController.duringSystemUi] ceremony and busy guard as adding,
+/// tracked by the shared `_busyProvider` field so an add and a remove
+/// cannot run at once. `auth.currentUser` already reflects the fresh
+/// result of both directions' calls — [AuthController] adopts it itself
+/// (#31 finding 2) — so this widget just re-reads `auth.currentUser`
+/// after `await`ing; it does not track that state locally, which would
+/// otherwise reset to stale on every Settings round trip (the section is
+/// disposed and rebuilt each time `SettingsScreen` is popped and pushed
+/// again).
 ///
 /// Export and delete (Issue #17 U6; R1-R3, R6, R10, R11): "Export my data"
 /// (`account-export`) and "Delete account" (`account-delete`, destructive)
@@ -191,9 +205,10 @@ class AccountSection extends StatefulWidget {
 }
 
 class _AccountSectionState extends State<AccountSection> {
-  /// The provider whose link call is in flight, or null. One action at a
-  /// time: the tapped tile is disabled and a second tap does nothing.
-  String? _linking;
+  /// The provider whose link or remove call is in flight, or null (#31
+  /// KTD8). One action at a time, in either direction: every method tile
+  /// is disabled while this is set, and a second tap does nothing.
+  String? _busyProvider;
   String? _linkError;
 
   /// Export/delete's shared busy flag (Issue #17 U6): one of those two
@@ -216,8 +231,7 @@ class _AccountSectionState extends State<AccountSection> {
     if (auth == null) return const SizedBox.shrink();
     final sync = Provider.of<SyncStatusController?>(context);
     final deletionService = Provider.of<AccountDeletionService?>(context);
-    final signedIn = auth.state == AuthSessionState.signedIn ||
-        auth.state == AuthSessionState.passwordRecovery;
+    final signedIn = _isSignedIn(auth.state);
     final theme = Theme.of(context);
     final user = auth.currentUser;
     final providers = user?.providers ?? const <String>[];
@@ -242,8 +256,16 @@ class _AccountSectionState extends State<AccountSection> {
     );
   }
 
-  /// The identity tile, any link-failure copy, and the "Add Apple"/"Add
-  /// Google" tiles for a signed-in operator.
+  /// `signedIn` also covers `passwordRecovery` for rendering purposes
+  /// (Scope Boundaries: the section treats recovery as signed in, a
+  /// pre-existing soft bucket this change inherits rather than fixes).
+  bool _isSignedIn(AuthSessionState state) =>
+      state == AuthSessionState.signedIn ||
+      state == AuthSessionState.passwordRecovery;
+
+  /// The identity tile, any link-failure copy, the "Remove Apple"/"Remove
+  /// Google" tiles (#31 U4), and the "Add Apple"/"Add Google" tiles for a
+  /// signed-in operator.
   List<Widget> _buildSignedInIdentityTiles(
     AuthController auth,
     AuthUser? user,
@@ -270,6 +292,16 @@ class _AccountSectionState extends State<AccountSection> {
             key: const ValueKey('account-link-error'),
             style: TextStyle(color: theme.colorScheme.error),
           ),
+        ),
+      if (_isRemovable(AuthProviders.apple, providers))
+        _removeMethodTile(
+          provider: AuthProviders.apple,
+          onTap: () => _removeMethod(AuthProviders.apple),
+        ),
+      if (_isRemovable(AuthProviders.google, providers))
+        _removeMethodTile(
+          provider: AuthProviders.google,
+          onTap: () => _removeMethod(AuthProviders.google),
         ),
       if (_canAddApple && !providers.contains(AuthProviders.apple))
         _addMethodTile(
@@ -404,13 +436,13 @@ class _AccountSectionState extends State<AccountSection> {
     required String label,
     required VoidCallback onTap,
   }) {
-    final busy = _linking == provider;
+    final busy = _busyProvider == provider;
     return ListTile(
       key: ValueKey(key),
       leading: Icon(icon),
       title: Text(label),
       subtitle: const Text('Sign in to this account another way.'),
-      enabled: _linking == null,
+      enabled: _busyProvider == null,
       trailing: busy
           ? const SizedBox(
               width: 20,
@@ -418,7 +450,36 @@ class _AccountSectionState extends State<AccountSection> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : null,
-      onTap: _linking == null ? onTap : null,
+      onTap: _busyProvider == null ? onTap : null,
+    );
+  }
+
+  /// A method is removable when it is not `email` and the account holds
+  /// at least one other method (#31 R2).
+  bool _isRemovable(String provider, List<String> providers) =>
+      provider != AuthProviders.email &&
+      providers.contains(provider) &&
+      providers.length >= 2;
+
+  ListTile _removeMethodTile({
+    required String provider,
+    required VoidCallback onTap,
+  }) {
+    final busy = _busyProvider == provider;
+    return ListTile(
+      key: ValueKey('account-remove-$provider'),
+      leading: Icon(provider == AuthProviders.apple ? Icons.apple : Icons.link_off),
+      title: Text('Remove ${providerLabel(provider)}'),
+      subtitle: const Text('Stop using this to sign in to this account.'),
+      enabled: _busyProvider == null,
+      trailing: busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
+      onTap: _busyProvider == null ? onTap : null,
     );
   }
 
@@ -432,7 +493,7 @@ class _AccountSectionState extends State<AccountSection> {
   /// app on the way through.
   Future<void> _addMethod(
       String provider, Future<AuthUser> Function() link) async {
-    if (_linking != null) return;
+    if (_busyProvider != null) return;
     final gate = context.read<GateController?>();
     if (gate == null) {
       debugPrint('lunarlog account: no gate to re-authenticate with');
@@ -447,11 +508,12 @@ class _AccountSectionState extends State<AccountSection> {
       Future<AuthUser> Function() link) async {
     final granted = await gate.reauthenticate();
     if (!granted || !mounted) return;
-    setState(() => _linking = provider);
+    setState(() => _busyProvider = provider);
     try {
+      // The controller adopts the returned user into `currentUser` itself
+      // and notifies (#31 finding 2); this widget listens via
+      // `Provider.of` in [build], so no local state update is needed here.
       await link();
-      // The controller does not notify on a same-state user update; the
-      // rebuild below re-reads `currentUser.providers`.
     } on AuthFailure catch (failure) {
       if (mounted) setState(() => _linkError = authFailureCopy(failure));
     } catch (error) {
@@ -461,7 +523,71 @@ class _AccountSectionState extends State<AccountSection> {
             () => _linkError = authFailureCopy(const AuthFailure.unknown()));
       }
     } finally {
-      if (mounted) setState(() => _linking = null);
+      if (mounted) setState(() => _busyProvider = null);
+    }
+  }
+
+  /// F1/F2/F3: confirmation dialog first (#31 KTD7) — before the
+  /// system-UI window, since it is Flutter UI, not system UI — then the
+  /// same device-credential-plus-provider-call ceremony as adding (KTD8).
+  /// Cancelling ends the action with no credential prompt, no service
+  /// call, and no copy (R4).
+  Future<void> _removeMethod(String provider) async {
+    if (_busyProvider != null) return;
+    final gate = context.read<GateController?>();
+    if (gate == null) {
+      debugPrint('lunarlog account: no gate to re-authenticate with');
+      return;
+    }
+    final auth = context.read<AuthController>();
+    setState(() => _linkError = null);
+    final label = providerLabel(provider);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Remove $label?'),
+        content: Text(
+          'You will no longer be able to sign in to this account with '
+          '$label. Your data and your other sign-in methods are '
+          'unchanged.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('account-remove-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await gate.duringSystemUi(
+        () => _reauthenticateAndRemove(gate, auth, provider));
+  }
+
+  Future<void> _reauthenticateAndRemove(
+      GateController gate, AuthController auth, String provider) async {
+    final granted = await gate.reauthenticate();
+    if (!granted || !mounted) return;
+    setState(() => _busyProvider = provider);
+    try {
+      // Same as adding: the controller adopts and notifies itself (#31
+      // finding 2), so no local state update is needed here.
+      await auth.unlinkProvider(provider);
+    } on AuthFailure catch (failure) {
+      if (mounted) setState(() => _linkError = authFailureCopy(failure));
+    } catch (error) {
+      debugPrint('lunarlog account: unlink failed (${error.runtimeType})');
+      if (mounted) {
+        setState(
+            () => _linkError = authFailureCopy(const AuthFailure.unknown()));
+      }
+    } finally {
+      if (mounted) setState(() => _busyProvider = null);
     }
   }
 

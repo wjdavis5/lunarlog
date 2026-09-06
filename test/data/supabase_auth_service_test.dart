@@ -116,6 +116,26 @@ class FakeAuthGateway implements AuthGateway {
     String? accessToken,
     String? nonce,
   })>[];
+  final unlinkIdentityCalls = <UserIdentity>[];
+  final getUserIdentitiesCalls = <void>[];
+  int refreshSessionCalls = 0;
+
+  /// When true, [refreshSession] throws instead of applying a pending
+  /// [unlinkIdentity] delete to [session] (#31 U2; KTD4).
+  bool refreshSessionShouldFail = false;
+
+  /// Identity ids deleted by [unlinkIdentity] but not yet applied to
+  /// [session] — mirrors gotrue: the delete stores nothing locally until
+  /// [refreshSession] pulls a fresh session (#31 KTD3, KTD4).
+  final _pendingUnlinkedIdentityIds = <String>[];
+
+  /// When set, [getUserIdentities] returns this list verbatim instead of
+  /// deriving it from [session] — independent of the local pre-call
+  /// snapshot, so a test can model the server's fresh read disagreeing
+  /// with the stale local `session` a caller took before the call (#31
+  /// P1: a real fresh-server-read-after-removal test needs this
+  /// divergence, which deriving from `session` alone cannot express).
+  List<UserIdentity>? getUserIdentitiesOverride;
 
   void _maybeThrow() {
     final error = nextError;
@@ -259,6 +279,65 @@ class FakeAuthGateway implements AuthGateway {
     );
     emit(AuthChangeEvent.userUpdated);
     return AuthResponse(session: session);
+  }
+
+  /// Fresh read, like gotrue's own `getUser()`-backed implementation: it
+  /// sees a delete recorded by [unlinkIdentity] even before [refreshSession]
+  /// has applied it to [session] (#31 U2; KTD3). When
+  /// [getUserIdentitiesOverride] is set it wins outright, independent of
+  /// [session] and any pending unlink, so a test can make the server's
+  /// answer diverge from the stale local snapshot taken before the call.
+  @override
+  Future<List<UserIdentity>> getUserIdentities() async {
+    getUserIdentitiesCalls.add(null);
+    _maybeThrow();
+    final override = getUserIdentitiesOverride;
+    if (override != null) return override;
+    final identities = session?.user.identities ?? const <UserIdentity>[];
+    if (_pendingUnlinkedIdentityIds.isEmpty) return identities;
+    return identities
+        .where((identity) =>
+            !_pendingUnlinkedIdentityIds.contains(identity.identityId))
+        .toList();
+  }
+
+  /// Like gotrue: a bare server-side delete that stores nothing locally
+  /// (#31 U2; KTD3, KTD4) — [refreshSession] is what updates [session].
+  @override
+  Future<void> unlinkIdentity(UserIdentity identity) async {
+    unlinkIdentityCalls.add(identity);
+    _maybeThrow();
+    if (session == null) {
+      throw const AuthException('no session to unlink');
+    }
+    _pendingUnlinkedIdentityIds.add(identity.identityId);
+  }
+
+  @override
+  Future<void> refreshSession() async {
+    refreshSessionCalls++;
+    if (refreshSessionShouldFail) {
+      throw AuthRetryableFetchException(message: 'offline');
+    }
+    final current = session;
+    if (current == null || _pendingUnlinkedIdentityIds.isEmpty) return;
+    final existing = current.user.identities ?? const <UserIdentity>[];
+    session = Session(
+      accessToken: current.accessToken,
+      tokenType: current.tokenType,
+      refreshToken: current.refreshToken,
+      user: makeUser(
+        current.user.id,
+        email: current.user.email,
+        identities: existing
+            .where((identity) =>
+                !_pendingUnlinkedIdentityIds.contains(identity.identityId))
+            .map((identity) => identity.provider)
+            .toList(),
+        appMetadata: current.user.appMetadata,
+      ),
+    );
+    _pendingUnlinkedIdentityIds.clear();
   }
 
   @override
@@ -1723,6 +1802,175 @@ void main() {
       expect(viaPassword, 'same-user');
       expect(viaGoogle, viaPassword);
       expect(viaCode, viaPassword);
+    });
+  });
+
+  group('removing a sign-in method (#31 U2; KTD2, KTD3, KTD4, KTD5)', () {
+    test('unlinkProvider deletes the identity, refreshes, and returns the '
+        'user with the provider removed', () async {
+      gateway.session =
+          makeSession('u1', email: 'a@b.c', identities: ['email', 'google']);
+      final service = await started();
+
+      final user = await service.unlinkProvider('google');
+
+      expect(user.providers, ['email']);
+      expect(service.currentUser?.providers, ['email']);
+      expect(gateway.unlinkIdentityCalls, hasLength(1));
+      expect(gateway.unlinkIdentityCalls.single.provider, 'google');
+      expect(gateway.refreshSessionCalls, 1);
+    });
+
+    test('unlinkProvider(email) throws unknown before any gateway call', () async {
+      gateway.session =
+          makeSession('u1', identities: ['email', 'google']);
+      final service = await started();
+
+      await expectLater(
+          service.unlinkProvider('email'), throwsA(const AuthFailure.unknown()));
+      expect(gateway.getUserIdentitiesCalls, isEmpty);
+      expect(gateway.unlinkIdentityCalls, isEmpty);
+      expect(gateway.refreshSessionCalls, 0);
+    });
+
+    test('unlinkProvider while signed out throws unknown before any '
+        'gateway call', () async {
+      final service = await started();
+      expect(service.state, AuthSessionState.signedOut);
+
+      await expectLater(
+          service.unlinkProvider('google'), throwsA(const AuthFailure.unknown()));
+      expect(gateway.getUserIdentitiesCalls, isEmpty);
+      expect(gateway.unlinkIdentityCalls, isEmpty);
+    });
+
+    test('R10: unlinkProvider for a provider the account does not hold '
+        'returns the current user unchanged and issues no delete', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final service = await started();
+
+      final user = await service.unlinkProvider('google');
+
+      expect(user, const AuthUser(id: 'u1', providers: ['email']));
+      expect(gateway.unlinkIdentityCalls, isEmpty);
+      expect(gateway.refreshSessionCalls, 0);
+    });
+
+    test('P1/P3: R10\'s not-found branch returns the fresh server read, not '
+        'the caller\'s stale pre-call session, when the two disagree',
+        () async {
+      // The caller's session (and therefore its pre-call `current`
+      // snapshot) still shows google present. The server's fresh read
+      // disagrees on both counts: google is already gone (so this hits
+      // the not-found/idempotent branch) and it reports 'apple', which
+      // the stale session never had at all. Only an override independent
+      // of `session` can express this divergence (#31 P1) — before that
+      // fix, `getUserIdentities` could only ever agree with `session`.
+      gateway.session =
+          makeSession('u1', email: 'a@b.c', identities: ['email', 'google']);
+      final service = await started();
+      gateway.getUserIdentitiesOverride =
+          makeUser('u1', identities: ['email', 'apple']).identities!;
+
+      final user = await service.unlinkProvider('google');
+
+      expect(user.providers, ['email', 'apple'],
+          reason: 'the fresh server read, not the stale pre-call session '
+              '(which still showed google and never had apple)');
+      expect(gateway.unlinkIdentityCalls, isEmpty,
+          reason: 'google is already gone server-side; no delete is issued');
+      expect(gateway.refreshSessionCalls, 0);
+    });
+
+    test('P2: an empty fresh-identities read on the not-found branch falls '
+        'back to the pre-call snapshot rather than an empty provider list',
+        () async {
+      // A degraded/identity-less fresh read (empty, not just missing the
+      // target provider) must not be trusted as "the account has no
+      // providers" — fall back to the pre-call `current` snapshot instead
+      // of building an empty-providers user from it.
+      gateway.session =
+          makeSession('u1', email: 'a@b.c', identities: ['email']);
+      final service = await started();
+      gateway.getUserIdentitiesOverride = const [];
+
+      final user = await service.unlinkProvider('google');
+
+      expect(
+          user,
+          const AuthUser(
+              id: 'u1', email: 'a@b.c', providers: ['email']),
+          reason: 'the fresh read came back empty (degraded), so the '
+              'pre-call snapshot is preferred over an empty provider list');
+      expect(gateway.unlinkIdentityCalls, isEmpty);
+      expect(gateway.refreshSessionCalls, 0);
+    });
+
+    test('R9: unlinkProvider on the account\'s only identity throws '
+        'lastSignInMethod and issues no delete', () async {
+      gateway.session = makeSession('u1', identities: ['google']);
+      final service = await started();
+
+      await expectLater(service.unlinkProvider('google'),
+          throwsA(const AuthFailure.lastSignInMethod()));
+      expect(gateway.unlinkIdentityCalls, isEmpty);
+    });
+
+    test('a gateway single_identity_not_deletable refusal surfaces as '
+        'lastSignInMethod', () async {
+      gateway.session =
+          makeSession('u1', identities: ['email', 'google']);
+      final service = await started();
+      gateway.nextError = const AuthApiException(
+        'The identity cannot be deleted',
+        statusCode: '422',
+        code: 'single_identity_not_deletable',
+      );
+
+      await expectLater(service.unlinkProvider('google'),
+          throwsA(const AuthFailure.lastSignInMethod()));
+      expect(gateway.refreshSessionCalls, 0,
+          reason: 'the delete itself failed; no refresh is attempted');
+    });
+
+    test('a network failure from unlinkIdentity surfaces as network and no '
+        'refresh is attempted', () async {
+      gateway.session =
+          makeSession('u1', identities: ['email', 'google']);
+      final service = await started();
+      gateway.nextError = AuthRetryableFetchException(message: 'down');
+
+      await expectLater(
+          service.unlinkProvider('google'), throwsA(const AuthFailure.network()));
+      expect(gateway.refreshSessionCalls, 0);
+    });
+
+    test('KTD4: a refreshSession failure after a successful delete does not '
+        'throw, and the returned user omits the removed provider', () async {
+      gateway.session =
+          makeSession('u1', email: 'a@b.c', identities: ['email', 'google']);
+      gateway.refreshSessionShouldFail = true;
+      final service = await started();
+
+      final user = await service.unlinkProvider('google');
+
+      expect(user.providers, ['email']);
+      expect(gateway.unlinkIdentityCalls, hasLength(1));
+      expect(gateway.refreshSessionCalls, 1);
+    });
+
+    test('mapAuthError: single_identity_not_deletable maps to '
+        'lastSignInMethod; an unrecognized unlink code maps to unknown', () {
+      expect(
+        mapAuthError(const AuthApiException('nope',
+            statusCode: '422', code: 'single_identity_not_deletable')),
+        const AuthFailure.lastSignInMethod(),
+      );
+      expect(
+        mapAuthError(const AuthApiException('nope',
+            statusCode: '400', code: 'some_other_unlink_code')),
+        const AuthFailure.unknown(),
+      );
     });
   });
 }

@@ -169,6 +169,148 @@ void main() {
     expect(c.currentUser?.providers, ['email', 'google']);
   });
 
+  test('delegates unlinkProvider to the service, adopts the returned user, '
+      'and notifies (#31 U3; finding 2)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    final c = controller();
+    var notifications = 0;
+    c.addListener(() => notifications++);
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    expect(service.unlinkCalls, ['google']);
+    expect(c.currentUser?.providers, ['email']);
+    expect(notifications, 1,
+        reason: 'the controller notifies itself once the returned user is '
+            'adopted, so every reader sees it — not just the caller that '
+            'happened to hold onto the returned value');
+
+    service.nextFailure = const AuthFailure.lastSignInMethod();
+    await expectLater(c.unlinkProvider('google'),
+        throwsA(const AuthFailure.lastSignInMethod()),
+        reason: 'the controller forwards the service\'s failure untouched');
+    expect(notifications, 1, reason: 'a failed call adopts nothing');
+  });
+
+  test('unlinkProvider\'s returned user is preferred over a currentUser a '
+      'failed post-delete refresh left stale, and keeps being served on '
+      'repeated reads — the way a re-created AccountSection reads it after '
+      'a Settings round trip (#31 finding 2)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    service.unlinkLeavesCurrentUserStale = true;
+    final c = controller();
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    expect(service.currentUser?.providers, ['email', 'google'],
+        reason: 'the service itself never updated — the simulated refresh '
+            'failure (KTD4)');
+
+    // A pushed SettingsScreen/AccountSection is disposed and rebuilt on a
+    // round trip; only the controller (provided above it) is still alive.
+    // Reading currentUser from it repeatedly must keep returning the fresh
+    // value, not fall back to the service's stale one.
+    expect(c.currentUser?.providers, ['email']);
+    expect(c.currentUser?.providers, ['email']);
+  });
+
+  test('a same-state signal (e.g. a userUpdated/token-refresh echo) '
+      're-syncs the adopted user, so a genuinely newer server user under '
+      'the same id is not masked for the rest of the session (#31 finding '
+      '2 round 2)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    service.unlinkLeavesCurrentUserStale = true;
+    final c = controller();
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    expect(c.currentUser?.providers, ['email'],
+        reason: 'adopted from the unlink call, since the fake\'s own '
+            'currentUser is left stale by the simulated refresh failure');
+
+    var notifications = 0;
+    c.addListener(() => notifications++);
+
+    // A genuinely newer server user arrives under the same id and the
+    // same AuthSessionState — a real unlink elsewhere, or a session
+    // refresh's `userUpdated` echo. This must not be masked forever by
+    // the still-cached adopted user, and dropping it must actually
+    // notify listeners — not just clear the field silently, which would
+    // leave a `Listenable`-based reader that only rebuilds on
+    // notification still showing the stale value.
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'apple']));
+    await Future<void>.delayed(Duration.zero);
+    expect(notifications, 1,
+        reason: 'clearing the stale cached _freshUser on a same-state '
+            'echo must notify listeners');
+    expect(c.currentUser?.providers, ['email', 'apple'],
+        reason: 'the same-state signal must clear the cached override so '
+            'currentUser re-reads the live service value instead of '
+            'serving the stale adopted one for the rest of the session');
+  });
+
+  test('a state transition round trip under the same user id (signedIn -> '
+      'passwordRecovery -> signedIn) also clears the cached adopted user, '
+      'not just a same-state echo (#31 finding 2 round 3)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    service.unlinkLeavesCurrentUserStale = true;
+    final c = controller();
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    expect(c.currentUser?.providers, ['email']);
+
+    // A recovery round trip under the same user id (e.g. the user opens
+    // a password-reset link while already signed in) genuinely changes
+    // state twice — signedIn -> passwordRecovery -> signedIn — before
+    // settling back. The newer server user must not still be masked by
+    // the adopted one once it does.
+    service.emit(AuthSessionState.passwordRecovery,
+        user: const AuthUser(id: 'u1', providers: ['email', 'apple']));
+    await Future<void>.delayed(Duration.zero);
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'apple']));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(c.currentUser?.providers, ['email', 'apple'],
+        reason: 'the cached adopted user must not survive a real state '
+            'transition under the same user id, only ever be masked by '
+            'a same-state echo would be too narrow a fix');
+  });
+
+  test('a state transition round trip under the same user id (signedIn -> '
+      'signedOut -> signedIn) also clears the cached adopted user, even '
+      'when nothing reads currentUser during the signedOut window (#31 '
+      'finding 2 round 3)', () async {
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'google']));
+    service.unlinkLeavesCurrentUserStale = true;
+    final c = controller();
+
+    final unlinked = await c.unlinkProvider('google');
+    expect(unlinked.providers, ['email']);
+    // Deliberately not reading c.currentUser here: the bug this guards
+    // against only shows up when nothing reads currentUser during the
+    // signedOut window, so the lazy owner-id sync in the getter itself
+    // never gets a chance to run — the clear has to happen in `_onState`.
+
+    await c.signOut();
+    await Future<void>.delayed(Duration.zero);
+
+    service.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', providers: ['email', 'apple']));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(c.currentUser?.providers, ['email', 'apple'],
+        reason: 'signing out and back in under the same user id must not '
+            'keep serving the previous session\'s cached adopted user');
+  });
+
   test('stops listening after dispose', () async {
     final c = AuthController(authService: service);
     var notifications = 0;

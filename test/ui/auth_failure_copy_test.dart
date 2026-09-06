@@ -20,6 +20,11 @@ void main() {
         'That sign-in method already belongs to another account.');
     expect(authFailureCopy(const AuthFailure.signUpClosed()),
         'New accounts for this app are set up by the account owner.');
+    expect(
+      authFailureCopy(const AuthFailure.lastSignInMethod()),
+      'That is the only way left to sign in to this account. Add '
+          'another method first.',
+    );
   });
 
   test('every kind has non-empty, email-free copy', () {
@@ -33,6 +38,7 @@ void main() {
       AuthFailure.providerUnavailable(),
       AuthFailure.identityTaken(),
       AuthFailure.signUpClosed(),
+      AuthFailure.lastSignInMethod(),
     ];
     for (final failure in failures) {
       final copy = authFailureCopy(failure);

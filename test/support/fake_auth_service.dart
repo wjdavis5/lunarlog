@@ -4,7 +4,8 @@
 /// knobs (#2 U2); the passwordless pair records its calls and signs in on
 /// a verified code like a password sign-in (#2 U7). Sign-in methods and
 /// linking (#2 U8) are a `providers` list the current user carries plus
-/// recorded `linkCalls`.
+/// recorded `linkCalls`. Removing one (#31 U3) is the same list in reverse,
+/// via `unlinkCalls`.
 library;
 
 import 'dart:async';
@@ -55,9 +56,26 @@ class FakeAuthService implements AuthService {
   /// provider is appended to [providers] and the current user returned.
   AuthUser? linkResult;
 
+  /// What [unlinkProvider] returns when set (#31 U3); otherwise the
+  /// provider is removed from [providers] and the current user returned.
+  AuthUser? unlinkResult;
+
+  /// When true, [unlinkProvider] still returns the correctly-computed
+  /// fresh user, but leaves this fake's own [providers]/[currentUser]
+  /// unchanged — mirroring a server-side post-delete refresh that fails
+  /// silently (KTD4), so a test can check that a caller prefers the
+  /// returned user over re-reading [currentUser] (#31 finding 2).
+  bool unlinkLeavesCurrentUserStale = false;
+
   /// Simulates a dismissed picker or dialog while linking: the current
   /// user is returned unchanged and nothing is recorded as linked.
   bool linkCancelled = false;
+
+  /// Throw a non-[AuthFailure] error from [unlinkProvider] before recording
+  /// a call, mirroring [googleUnsupported] for the link path (#31 U3):
+  /// exercises the account section's generic (non-`AuthFailure`) catch
+  /// branch for the remove ceremony.
+  bool unlinkThrowsGeneric = false;
 
   /// Throw [UnsupportedError] from [signInWithAppleNative] (non-iOS).
   bool appleUnsupported = false;
@@ -79,6 +97,7 @@ class FakeAuthService implements AuthService {
   final magicLinkCalls = <({String email, bool createAccount})>[];
   final codeCalls = <({String email, String code})>[];
   final linkCalls = <String>[];
+  final unlinkCalls = <String>[];
   int appleCalls = 0;
   int googleCalls = 0;
   int recoveryConsumed = 0;
@@ -266,6 +285,37 @@ class FakeAuthService implements AuthService {
       return result;
     }
     if (!providers.contains(provider)) providers = [...providers, provider];
+    return currentUser!;
+  }
+
+  /// Mirrors [_link] in reverse (#31 U3): the signed-in check runs before
+  /// recording the call, so a not-signed-in caller never touches
+  /// [nextFailure] or [hold].
+  @override
+  Future<AuthUser> unlinkProvider(String provider) async {
+    if (provider == AuthProviders.email) throw const AuthFailure.unknown();
+    if (_state != AuthSessionState.signedIn) {
+      throw const AuthFailure.unknown();
+    }
+    if (unlinkThrowsGeneric) {
+      throw StateError('unlink failed unexpectedly');
+    }
+    unlinkCalls.add(provider);
+    await _maybeThrow();
+    final result = unlinkResult;
+    if (result != null) {
+      if (unlinkLeavesCurrentUserStale) return result;
+      emit(_state, user: result);
+      return result;
+    }
+    final remaining =
+        providers.where((existing) => existing != provider).toList();
+    if (unlinkLeavesCurrentUserStale) {
+      final current = _user!;
+      return AuthUser(
+          id: current.id, email: current.email, providers: remaining);
+    }
+    providers = remaining;
     return currentUser!;
   }
 
