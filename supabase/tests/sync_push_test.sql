@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(87);
+select plan(88);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -129,7 +129,7 @@ insert into r select 'eq_b1', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(105), 'profile_id', tests.ulid(1), 'local_date', '2026-09-07',
     'tz', 'UTC', 'flow', 'none', 'note', 'stored-smaller', 'updated_at', pg_temp.ts_txt('t1'))));
-create temp table sv105 as select server_version from public.day_entries where id = tests.ulid(105);
+create temp table sv105 as select updated_at from public.day_entries where id = tests.ulid(105);
 insert into r select 'eq_b2', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(106), 'profile_id', tests.ulid(1), 'local_date', '2026-09-07',
@@ -137,8 +137,15 @@ insert into r select 'eq_b2', public.sync_push('[]'::jsonb,
     'updated_at', pg_temp.ts_txt('t1'))));
 select is((select deleted_at from public.day_entries where id = tests.ulid(105)), null,
   'equal ts: the smaller stored ULID stays live');
-select is((select server_version from public.day_entries where id = tests.ulid(105)),
-  (select server_version from sv105), 'equal ts: the stored winner is not rewritten');
+-- Issue #3 gap-closure plan (U4, R7/R11): the surviving winner now receives
+-- the incoming loser's tags as a set union - it is no longer left untouched
+-- ("not rewritten") the way it was before this plan. Its updated_at is
+-- still left alone by the merge (only tags + attribution change).
+select is((select updated_at from public.day_entries where id = tests.ulid(105)),
+  (select updated_at from sv105),
+  'equal ts: the stored winner''s updated_at is undisturbed by the tag merge (U4)');
+select is((select tags from public.day_entries where id = tests.ulid(105)), '["x"]'::jsonb,
+  'equal ts: the incoming loser''s tags are unioned onto the surviving winner (R7, U4)');
 select is((select deleted_at from public.day_entries where id = tests.ulid(106)), pg_temp.ts_at('t1'),
   'equal ts: the larger incoming ULID lands as a tombstone at the winner''s updated_at');
 select is((select note from public.day_entries where id = tests.ulid(106)), null,
