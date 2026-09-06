@@ -213,7 +213,7 @@ Supabase Auth setup above.
       `20260903014208_initial_sync_schema.sql` and `20260903014211_sync_push.sql`.
 - [ ] First `supabase-migrate.yml` run approved and green.
 - [ ] First `supabase-migrate.yml` run since issue #17 pushes
-      `20260905100000_account_deletion.sql` and reports the `delete-account`
+      `20260905110000_account_deletion.sql` and reports the `delete-account`
       function deployed (see "Account deletion (issue #17)" above for its
       secrets prerequisite). **Open question (plan Q1, unresolved):** it is
       not yet confirmed whether the `SUPABASE_ACCESS_TOKEN` already on the
