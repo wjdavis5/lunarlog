@@ -43,8 +43,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasAccount = Provider.of<AuthController?>(context) != null;
-    final hasFeedback = Provider.of<FeedbackService?>(context) != null;
+    final authController = Provider.of<AuthController?>(context);
+    final hasAccount = authController != null;
+    // R23: the in-app form needs a signed-in session (feedback tickets are
+    // written under RLS scoped to `auth.uid()`), not merely a configured
+    // `FeedbackService` — a signed-out tap must land on the support-email
+    // fallback below, not on a form that fails with a permission error. No
+    // `AuthController` at all means the session state can't be known, so
+    // that also falls back rather than risking the form.
+    final signedIn = authController?.signedIn ?? false;
+    final hasFeedback = Provider.of<FeedbackService?>(context) != null && signedIn;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(

@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart' show kSupportEmailAddress;
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
+import '../support/fake_auth_service.dart';
 import '../support/fake_feedback_service.dart';
 
 class FakeSettingsStore implements SettingsStore {
@@ -83,8 +86,19 @@ void main() {
     expect(find.text('LunarLog Privacy Policy'), findsNothing);
   });
 
-  testWidgets('shows send-feedback-tile when a FeedbackService is provided and hides it when none is',
-      (tester) async {
+  /// A signed-in [AuthController] so `hasFeedback` (R23) can turn true in a
+  /// test — feedback needs both a `FeedbackService` and a live session.
+  AuthController signedInAuth() {
+    final service = FakeAuthService()
+      ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1', email: 'a@b.c'));
+    addTearDown(service.dispose);
+    final controller = AuthController(authService: service);
+    addTearDown(controller.dispose);
+    return controller;
+  }
+
+  testWidgets('shows send-feedback-tile when signed in with a FeedbackService, and hides it '
+      'when no FeedbackService is provided', (tester) async {
     final settingsStore = FakeSettingsStore();
 
     await tester.pumpWidget(
@@ -93,6 +107,7 @@ void main() {
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
             Provider<FeedbackService>.value(value: FakeFeedbackService()),
+            ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
           ],
           child: const SettingsScreen(),
         ),
@@ -112,6 +127,39 @@ void main() {
       MaterialApp(
         home: Provider<SettingsStore>.value(
           value: settingsStore,
+          child: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send-feedback-tile')), findsNothing);
+    final supportTile = find.byKey(const ValueKey('contact-support-tile'));
+    expect(supportTile, findsOneWidget);
+
+    await tester.tap(supportTile);
+    await tester.pumpAndSettle();
+
+    expect(find.text(kSupportEmailAddress), findsOneWidget);
+  });
+
+  testWidgets('R23: a signed-out session with a configured FeedbackService still shows '
+      'contact-support-tile, not the form — a signed-out tap must not hit the '
+      'permission error a form submission would throw', (tester) async {
+    final settingsStore = FakeSettingsStore();
+    final auth = FakeAuthService(); // defaults to signedOut
+    addTearDown(auth.dispose);
+    final controller = AuthController(authService: auth);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MultiProvider(
+          providers: [
+            Provider<SettingsStore>.value(value: settingsStore),
+            Provider<FeedbackService>.value(value: FakeFeedbackService()),
+            ChangeNotifierProvider<AuthController>.value(value: controller),
+          ],
           child: const SettingsScreen(),
         ),
       ),
@@ -151,6 +199,7 @@ void main() {
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
             Provider<FeedbackService>.value(value: service),
+            ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
           ],
           child: const SettingsScreen(),
         ),
@@ -173,6 +222,7 @@ void main() {
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
             Provider<FeedbackService>.value(value: service),
+            ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
           ],
           child: const SettingsScreen(),
         ),
@@ -193,6 +243,7 @@ void main() {
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
             Provider<FeedbackService>.value(value: service),
+            ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
           ],
           child: const SettingsScreen(),
         ),

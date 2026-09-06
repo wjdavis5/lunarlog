@@ -57,6 +57,7 @@ import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/startup/startup.dart' as startup;
 import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
@@ -178,6 +179,15 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// closing, and would hand the sync engine an unlocked edge on a grant
   /// nobody re-verified.
   int _generation = 0;
+
+  /// Public read of [_generation], for a caller that runs its own operation
+  /// inside [duringSystemUi] without a dedicated result-checking wrapper
+  /// like [unlock] or [reauthenticate] — e.g. the feedback attachment
+  /// picker. Capture this before starting the operation and compare after
+  /// it resolves; a change means the deadline fired and re-locked the gate
+  /// while the operation was in flight, so its result is stale and must be
+  /// discarded rather than honoured.
+  int get generation => _generation;
   InactivityTimer? _systemUiTimer;
   InactivityTimer? _settleTimer;
 
@@ -875,6 +885,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
       final deleted = await _deleteDatabaseAndKey(db);
       if (!deleted) return;
       await _signOutLocally();
+      // Per-session diagnostics must not cross the account boundary this
+      // reset draws: on a shared device, a support ticket filed by whoever
+      // signs in next must never carry breadcrumbs recorded under the
+      // family that just signed out.
+      defaultBreadcrumbLog.clear();
       if (mounted) await _openDatabase();
     } finally {
       _resetting = false;

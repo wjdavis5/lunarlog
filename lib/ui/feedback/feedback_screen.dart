@@ -5,7 +5,9 @@
 ///
 /// Shaped like `lib/ui/account/sign_in_screen.dart`: the `_run(action)`
 /// busy/error/info wrapper, no `Form`/`TextFormField`, imperative validation
-/// before the service call, and every field kept intact on failure (R6).
+/// before the service call, and every field kept intact on an ordinary
+/// failure (R6) — except a [FeedbackAttachmentUploadFailedFailure], whose
+/// message and attachment are deliberately cleared (see `_run` below).
 library;
 
 import 'dart:async';

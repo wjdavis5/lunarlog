@@ -46,6 +46,13 @@ class _AttachmentFieldState extends State<AttachmentField> {
   }
 
   Future<void> _addScreenshot() async {
+    // Captured before the first `await` (the consent dialog itself is not a
+    // gate-suppressed system-UI window), so this is a synchronous
+    // `BuildContext` read rather than one crossing an async gap. Compared
+    // again once the picker resolves — see the comment at that check.
+    final gate = context.read<GateController?>();
+    final generation = gate?.generation;
+
     final consented = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -70,7 +77,14 @@ class _AttachmentFieldState extends State<AttachmentField> {
     );
     if (consented != true) return;
 
+    // Mirrors the generation guard `unlock()`/`reauthenticate()` run on their
+    // own credential prompts (`app_lifecycle.dart`'s `GateController`): if
+    // the system-UI deadline fires and re-locks the gate while the platform
+    // picker is still open, `_duringSystemUi` still lets the pick resolve,
+    // but its result belongs to a session the gate already closed and must
+    // not be stored into the form behind the (now re-locked) screen.
     final picked = await _duringSystemUi(widget.source.pickImage);
+    if (gate != null && gate.generation != generation) return;
     if (picked == null) return;
 
     if (picked.sizeBytes > kMaxAttachmentBytes) {

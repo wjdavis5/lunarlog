@@ -4,7 +4,7 @@
 // discriminated result rather than throwing, so a caller's best-effort
 // notify path never needs a try/catch around this call.
 //
-// PR #105 review round 5: `feedback-notify/index.ts` now claims
+// PR #105 review round 4: `feedback-notify/index.ts` now claims
 // `notified_at` *before* calling this function (see that file's header),
 // which is what closes the round-4 double-send race - but it also means an
 // unbounded `fetch` here could park the whole invocation indefinitely with
