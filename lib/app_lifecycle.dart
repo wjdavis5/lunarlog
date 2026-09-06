@@ -47,6 +47,7 @@ import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
@@ -55,6 +56,7 @@ import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
@@ -620,10 +622,12 @@ class LunarLogRoot extends StatefulWidget {
     this.sharingService,
     this.feedbackService,
     this.accountDeletionService,
+    this.ownershipTransferService,
     this.supabaseClient,
     this.inviteLinks,
     this.initialInviteCode,
     this.initialInviteProfileId,
+    this.initialInviteKind,
     this.syncEngineBuilder = defaultSyncEngineBuilder,
     this.deleteLocalDatabase = startup.deleteLocalDatabase,
     this.deleteDbKey = defaultDeleteDbKey,
@@ -667,13 +671,20 @@ class LunarLogRoot extends StatefulWidget {
   /// behind building both in the same place a `SupabaseClient` is in scope.
   final AccountDeletionService? accountDeletionService;
 
+  /// Child ownership transfer seam (Issue #4, U7), injectable for tests.
+  /// When null (and [supabaseClient] is present) the root constructs the
+  /// production [SupabaseOwnershipTransferService] alongside
+  /// [sharingService] — see issue #76/PR #83, the precedent behind
+  /// building both in the same place a `SupabaseClient` is in scope.
+  final OwnershipTransferService? ownershipTransferService;
+
   /// The Supabase client from the successful bootstrap. When present (and
-  /// [sharingService]/[feedbackService]/[accountDeletionService] were not
-  /// injected) the root constructs the production
-  /// [SupabaseSharingService], [SupabaseFeedbackService],
-  /// [SupabaseAccountDeletionService], and [RealtimeSyncCoordinator]
-  /// alongside the sync engine, so those features are live in production
-  /// builds.
+  /// [sharingService]/[feedbackService]/[accountDeletionService]/
+  /// [ownershipTransferService] were not injected) the root constructs the
+  /// production [SupabaseSharingService], [SupabaseFeedbackService],
+  /// [SupabaseAccountDeletionService], [SupabaseOwnershipTransferService],
+  /// and [RealtimeSyncCoordinator] alongside the sync engine, so those
+  /// features are live in production builds.
   final SupabaseClient? supabaseClient;
 
   /// `lunarlog://invite?code=...` links (U8; R9), filtered upstream by
@@ -686,6 +697,11 @@ class LunarLogRoot extends StatefulWidget {
 
   /// The `profile` parameter of the cold-start invite link, if any.
   final String? initialInviteProfileId;
+
+  /// The `kind` parameter of the cold-start invite link, if any (`claim`
+  /// for a child-ownership-transfer link; U10) — passed through to
+  /// [LunarLogApp.initialInviteKind].
+  final String? initialInviteKind;
 
   /// Test seam: how the engine is built once the database is open.
   @visibleForTesting
@@ -715,6 +731,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   SharingService? _builtSharingService;
   FeedbackService? _builtFeedbackService;
   AccountDeletionService? _builtAccountDeletionService;
+  OwnershipTransferService? _builtOwnershipTransferService;
   RealtimeSyncCoordinator? _realtimeCoordinator;
 
   /// The app subtree's teardown (reminder coordinator disposal), captured
@@ -802,6 +819,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
       _builtFeedbackService = SupabaseFeedbackService(client: client);
       _builtAccountDeletionService =
           SupabaseAccountDeletionService(client: client);
+      _builtOwnershipTransferService =
+          SupabaseOwnershipTransferService(client: client, syncEngine: engine);
       final coordinator = RealtimeSyncCoordinator(
         client: client,
         syncEngine: engine,
@@ -825,6 +844,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     _builtSharingService = null;
     _builtFeedbackService = null;
     _builtAccountDeletionService = null;
+    _builtOwnershipTransferService = null;
     final engine = _syncEngine;
     _syncEngine = null;
     await engine?.dispose();
@@ -971,9 +991,12 @@ class LunarLogRootState extends State<LunarLogRoot> {
         feedbackService: widget.feedbackService ?? _builtFeedbackService,
         accountDeletionService:
             widget.accountDeletionService ?? _builtAccountDeletionService,
+        ownershipTransferService:
+            widget.ownershipTransferService ?? _builtOwnershipTransferService,
         inviteLinks: widget.inviteLinks,
         initialInviteCode: widget.initialInviteCode,
         initialInviteProfileId: widget.initialInviteProfileId,
+        initialInviteKind: widget.initialInviteKind,
         onTeardown: (done) => _appTeardown = done,
       );
     } else if (_gate.locked) {

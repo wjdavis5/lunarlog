@@ -606,6 +606,27 @@ account and fabricated profiles only.
       confirmation dialog, each leave the account untouched with no error
       copy and no server call.
 
+### Ownership transfer (issue #4)
+
+Two devices, two throwaway accounts, fabricated profiles only.
+
+- [ ] **Parent creates a profile with a birth year and relationship, logs a
+      week of entries, and shares it with a caregiver who logs one more.**
+- [ ] **Parent arms a transfer choosing Viewer, shares the link by AirDrop.**
+- [ ] **Child opens the link on a signed-out device, creates an account, and
+      confirms.** The claim sheet states plainly what accepting means before
+      the confirm action is enabled.
+- [ ] **Child's device shows every entry, including the caregiver's, with
+      its original "Logged by" attribution**, without a manual refresh (R28).
+- [ ] **Parent's device shows the new role, cannot log, and shows the
+      transferred marker.**
+- [ ] **Child revokes the parent; the parent's device tombstones the
+      profile on the next sync.**
+- [ ] **Repeat the arm/claim steps with Co-manager instead of Viewer** and
+      confirm the parent can still log afterward.
+- [ ] **Arm a transfer and let it expire (or cancel it)**; confirm the
+      parent still owns the profile and the link is dead.
+
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows
@@ -818,3 +839,67 @@ Operational notes:
   cross-device updates fall back to periodic/foreground sync (acceptable
   degraded mode). If adding it, do so **after** migration 1 completes to
   avoid a fan-out storm from the backfill rewrites.
+
+## Ownership transfer migration runbook (20260906160000 + 20260906170000 + 20260906180000)
+
+Three migrations (Issue #4, plan
+[`docs/plans/2026-09-06-001-feat-child-ownership-transfer-plan.md`](../plans/2026-09-06-001-feat-child-ownership-transfer-plan.md)):
+profile subject metadata (`birth_year`/`relationship`/`transferred_at`), the
+`ownership_transfers` table, and the three transfer RPCs plus the
+attribution-guard bypass (KTD4). The middle migration adds a structural
+invariant (R22: exactly one accepted `primary_guardian` per profile) that
+did not previously exist — run the pre-flight audit below **before**
+`supabase db push`; any deviation stops the deploy.
+
+```sql
+-- R22 pre-flight: profiles with more than one accepted primary_guardian.
+-- The migration itself re-runs this exact check and raises loudly if it
+-- finds any (see 20260906170000_ownership_transfers.sql), so a manual run
+-- first is a dry run of the same gate, not a separate risk.
+select profile_id, count(*) as primaries
+  from public.profile_guardians
+ where role = 'primary_guardian' and status = 'accepted'
+ group by profile_id having count(*) > 1;
+```
+
+If this returns any rows, **do not push**. Resolve the duplicate primaries
+by hand (only one can remain `accepted`; demote or revoke the rest) and
+re-run the audit before retrying. Per the plan's Assumptions: no production
+project has ever received these migrations through CI to date (see
+`AGENTS.md`'s Migration Flow note on `SUPABASE_ACCESS_TOKEN`), so this
+audit is expected to find a clean dataset — it still runs, and still fails
+loudly if it does not.
+
+Post-push verification:
+
+```sql
+-- Both partial unique indexes exist.
+select indexname from pg_indexes
+ where tablename in ('profile_guardians', 'ownership_transfers')
+   and indexname in ('profile_guardians_one_primary_uq', 'ownership_transfers_one_live_uq');
+-- expect both rows
+
+-- authenticated cannot write profiles.transferred_at or ownership_transfers directly.
+select has_column_privilege('authenticated', 'public.profiles', 'transferred_at', 'update');  -- expect false
+```
+
+Operational notes:
+
+- **Deploy order is mandatory, same as the multi-guardian runbook above:**
+  server migrations first, app release second. An old client that has
+  never heard of `birth_year`/`relationship`/`transferred_at` keeps working
+  unchanged (`sync_push`'s key allowlist only grows); a new client calling
+  the transfer RPCs against an un-migrated server gets a clean "function
+  does not exist" failure, not data corruption.
+- **Rollback.** All three migrations are additive (new columns, a new
+  table, `create or replace function`) — nothing here rewrites or drops
+  existing data, so there is no backfill to worry about. Compensating SQL
+  (drop the three RPCs, drop `ownership_transfers`, drop the three
+  `profiles` columns, restore `enforce_day_entry_attribution()`'s prior
+  body) is safe to run at any time; the R22 index is the one exception —
+  dropping it re-opens the invariant it closed, so only do that
+  deliberately, not as a routine rollback step.
+- **No Realtime exposure.** `ownership_transfers` is deliberately never
+  added to the `supabase_realtime` publication (it carries a token hash) —
+  nothing to check here beyond confirming a Studio "Enable Realtime" toggle
+  was never used on it.

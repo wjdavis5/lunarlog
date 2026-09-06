@@ -65,6 +65,10 @@ Future<void> _runLunarlog() async {
   Stream<Uri>? inviteLinks;
   String? initialInviteCode;
   String? initialInviteProfileId;
+  // U10: `kind=claim` marks a child-ownership-transfer link (routed to
+  // ClaimProfileSheet downstream in app.dart, not here — `_isInviteLink`
+  // stays kind-agnostic per KTD10).
+  String? initialInviteKind;
   if (authService != null) {
     final appLinks = AppLinks();
     final initial = await appLinks.getInitialLink();
@@ -72,6 +76,7 @@ Future<void> _runLunarlog() async {
       final invite = initial as Uri;
       initialInviteCode = invite.queryParameters['code'];
       initialInviteProfileId = invite.queryParameters['profile'];
+      initialInviteKind = invite.queryParameters['kind'];
     }
     inviteLinks = appLinks.uriLinkStream.where(_isInviteLink);
   }
@@ -89,5 +94,6 @@ Future<void> _runLunarlog() async {
     inviteLinks: inviteLinks,
     initialInviteCode: initialInviteCode,
     initialInviteProfileId: initialInviteProfileId,
+    initialInviteKind: initialInviteKind,
   )));
 }

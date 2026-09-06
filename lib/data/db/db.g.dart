@@ -123,6 +123,40 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _birthYearMeta = const VerificationMeta(
+    'birthYear',
+  );
+  @override
+  late final GeneratedColumn<int> birthYear = GeneratedColumn<int>(
+    'birth_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _relationshipMeta = const VerificationMeta(
+    'relationship',
+  );
+  @override
+  late final GeneratedColumn<String> relationship = GeneratedColumn<String>(
+    'relationship',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _transferredAtMeta = const VerificationMeta(
+    'transferredAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> transferredAt =
+      GeneratedColumn<DateTime>(
+        'transferred_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -135,6 +169,9 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     deletedAt,
     dirty,
     localRev,
+    birthYear,
+    relationship,
+    transferredAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -218,6 +255,30 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
       );
     }
+    if (data.containsKey('birth_year')) {
+      context.handle(
+        _birthYearMeta,
+        birthYear.isAcceptableOrUnknown(data['birth_year']!, _birthYearMeta),
+      );
+    }
+    if (data.containsKey('relationship')) {
+      context.handle(
+        _relationshipMeta,
+        relationship.isAcceptableOrUnknown(
+          data['relationship']!,
+          _relationshipMeta,
+        ),
+      );
+    }
+    if (data.containsKey('transferred_at')) {
+      context.handle(
+        _transferredAtMeta,
+        transferredAt.isAcceptableOrUnknown(
+          data['transferred_at']!,
+          _transferredAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -267,6 +328,18 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.int,
         data['${effectivePrefix}local_rev'],
       )!,
+      birthYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}birth_year'],
+      ),
+      relationship: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relationship'],
+      ),
+      transferredAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}transferred_at'],
+      ),
     );
   }
 
@@ -295,6 +368,23 @@ class Profile extends DataClass implements Insertable<Profile> {
   /// synced. `markPushed` clears `dirty` only when it still matches the
   /// value read at push time (KTD4, AE11).
   final int localRev;
+
+  /// Optional birth year of the profile subject (Issue #4 R1). Display and
+  /// context only — never gates, forces, or auto-schedules an ownership
+  /// transfer (R2).
+  final int? birthYear;
+
+  /// Optional closed-set relationship of the subject to the profile creator
+  /// (R3), mirrored by [domain.ProfileRelationship]. Stored as the raw
+  /// `toDb()` string; an unrecognised value decodes to null rather than
+  /// throwing (see `row_codec.dart`).
+  final String? relationship;
+
+  /// Instant this profile's ownership last moved via
+  /// `accept_ownership_transfer`, or null if it never has (R5). Never
+  /// client-writable — server-owned, pulled but never pushed (see
+  /// `encodeProfile` in `row_codec.dart`).
+  final DateTime? transferredAt;
   const Profile({
     required this.id,
     required this.displayName,
@@ -306,6 +396,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     this.deletedAt,
     required this.dirty,
     required this.localRev,
+    this.birthYear,
+    this.relationship,
+    this.transferredAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -324,6 +417,15 @@ class Profile extends DataClass implements Insertable<Profile> {
     }
     map['dirty'] = Variable<bool>(dirty);
     map['local_rev'] = Variable<int>(localRev);
+    if (!nullToAbsent || birthYear != null) {
+      map['birth_year'] = Variable<int>(birthYear);
+    }
+    if (!nullToAbsent || relationship != null) {
+      map['relationship'] = Variable<String>(relationship);
+    }
+    if (!nullToAbsent || transferredAt != null) {
+      map['transferred_at'] = Variable<DateTime>(transferredAt);
+    }
     return map;
   }
 
@@ -343,6 +445,15 @@ class Profile extends DataClass implements Insertable<Profile> {
           : Value(deletedAt),
       dirty: Value(dirty),
       localRev: Value(localRev),
+      birthYear: birthYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(birthYear),
+      relationship: relationship == null && nullToAbsent
+          ? const Value.absent()
+          : Value(relationship),
+      transferredAt: transferredAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transferredAt),
     );
   }
 
@@ -362,6 +473,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       dirty: serializer.fromJson<bool>(json['dirty']),
       localRev: serializer.fromJson<int>(json['localRev']),
+      birthYear: serializer.fromJson<int?>(json['birthYear']),
+      relationship: serializer.fromJson<String?>(json['relationship']),
+      transferredAt: serializer.fromJson<DateTime?>(json['transferredAt']),
     );
   }
   @override
@@ -378,6 +492,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'dirty': serializer.toJson<bool>(dirty),
       'localRev': serializer.toJson<int>(localRev),
+      'birthYear': serializer.toJson<int?>(birthYear),
+      'relationship': serializer.toJson<String?>(relationship),
+      'transferredAt': serializer.toJson<DateTime?>(transferredAt),
     };
   }
 
@@ -392,6 +509,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     Value<DateTime?> deletedAt = const Value.absent(),
     bool? dirty,
     int? localRev,
+    Value<int?> birthYear = const Value.absent(),
+    Value<String?> relationship = const Value.absent(),
+    Value<DateTime?> transferredAt = const Value.absent(),
   }) => Profile(
     id: id ?? this.id,
     displayName: displayName ?? this.displayName,
@@ -403,6 +523,11 @@ class Profile extends DataClass implements Insertable<Profile> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     dirty: dirty ?? this.dirty,
     localRev: localRev ?? this.localRev,
+    birthYear: birthYear.present ? birthYear.value : this.birthYear,
+    relationship: relationship.present ? relationship.value : this.relationship,
+    transferredAt: transferredAt.present
+        ? transferredAt.value
+        : this.transferredAt,
   );
   Profile copyWithCompanion(ProfilesCompanion data) {
     return Profile(
@@ -420,6 +545,13 @@ class Profile extends DataClass implements Insertable<Profile> {
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       dirty: data.dirty.present ? data.dirty.value : this.dirty,
       localRev: data.localRev.present ? data.localRev.value : this.localRev,
+      birthYear: data.birthYear.present ? data.birthYear.value : this.birthYear,
+      relationship: data.relationship.present
+          ? data.relationship.value
+          : this.relationship,
+      transferredAt: data.transferredAt.present
+          ? data.transferredAt.value
+          : this.transferredAt,
     );
   }
 
@@ -435,7 +567,10 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
-          ..write('localRev: $localRev')
+          ..write('localRev: $localRev, ')
+          ..write('birthYear: $birthYear, ')
+          ..write('relationship: $relationship, ')
+          ..write('transferredAt: $transferredAt')
           ..write(')'))
         .toString();
   }
@@ -452,6 +587,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     deletedAt,
     dirty,
     localRev,
+    birthYear,
+    relationship,
+    transferredAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -466,7 +604,10 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.dirty == this.dirty &&
-          other.localRev == this.localRev);
+          other.localRev == this.localRev &&
+          other.birthYear == this.birthYear &&
+          other.relationship == this.relationship &&
+          other.transferredAt == this.transferredAt);
 }
 
 class ProfilesCompanion extends UpdateCompanion<Profile> {
@@ -480,6 +621,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<DateTime?> deletedAt;
   final Value<bool> dirty;
   final Value<int> localRev;
+  final Value<int?> birthYear;
+  final Value<String?> relationship;
+  final Value<DateTime?> transferredAt;
   final Value<int> rowid;
   const ProfilesCompanion({
     this.id = const Value.absent(),
@@ -492,6 +636,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
     this.localRev = const Value.absent(),
+    this.birthYear = const Value.absent(),
+    this.relationship = const Value.absent(),
+    this.transferredAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfilesCompanion.insert({
@@ -505,6 +652,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
     this.localRev = const Value.absent(),
+    this.birthYear = const Value.absent(),
+    this.relationship = const Value.absent(),
+    this.transferredAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        displayName = Value(displayName),
@@ -522,6 +672,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<DateTime>? deletedAt,
     Expression<bool>? dirty,
     Expression<int>? localRev,
+    Expression<int>? birthYear,
+    Expression<String>? relationship,
+    Expression<DateTime>? transferredAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -535,6 +688,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (dirty != null) 'dirty': dirty,
       if (localRev != null) 'local_rev': localRev,
+      if (birthYear != null) 'birth_year': birthYear,
+      if (relationship != null) 'relationship': relationship,
+      if (transferredAt != null) 'transferred_at': transferredAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -550,6 +706,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<DateTime?>? deletedAt,
     Value<bool>? dirty,
     Value<int>? localRev,
+    Value<int?>? birthYear,
+    Value<String?>? relationship,
+    Value<DateTime?>? transferredAt,
     Value<int>? rowid,
   }) {
     return ProfilesCompanion(
@@ -563,6 +722,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       deletedAt: deletedAt ?? this.deletedAt,
       dirty: dirty ?? this.dirty,
       localRev: localRev ?? this.localRev,
+      birthYear: birthYear ?? this.birthYear,
+      relationship: relationship ?? this.relationship,
+      transferredAt: transferredAt ?? this.transferredAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -600,6 +762,15 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     if (localRev.present) {
       map['local_rev'] = Variable<int>(localRev.value);
     }
+    if (birthYear.present) {
+      map['birth_year'] = Variable<int>(birthYear.value);
+    }
+    if (relationship.present) {
+      map['relationship'] = Variable<String>(relationship.value);
+    }
+    if (transferredAt.present) {
+      map['transferred_at'] = Variable<DateTime>(transferredAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -619,6 +790,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
           ..write('localRev: $localRev, ')
+          ..write('birthYear: $birthYear, ')
+          ..write('relationship: $relationship, ')
+          ..write('transferredAt: $transferredAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2871,6 +3045,9 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
   Value<int> localRev,
+  Value<int?> birthYear,
+  Value<String?> relationship,
+  Value<DateTime?> transferredAt,
   Value<int> rowid,
 });
 typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
@@ -2884,6 +3061,9 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
   Value<int> localRev,
+  Value<int?> birthYear,
+  Value<String?> relationship,
+  Value<DateTime?> transferredAt,
   Value<int> rowid,
 });
 
@@ -2987,6 +3167,21 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<int> get localRev => $composableBuilder(
     column: $table.localRev,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get birthYear => $composableBuilder(
+    column: $table.birthYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get relationship => $composableBuilder(
+    column: $table.relationship,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get transferredAt => $composableBuilder(
+    column: $table.transferredAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3099,6 +3294,21 @@ class $$ProfilesTableOrderingComposer
     column: $table.localRev,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get birthYear => $composableBuilder(
+    column: $table.birthYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get relationship => $composableBuilder(
+    column: $table.relationship,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get transferredAt => $composableBuilder(
+    column: $table.transferredAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -3143,6 +3353,19 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<int> get localRev =>
       $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  GeneratedColumn<int> get birthYear =>
+      $composableBuilder(column: $table.birthYear, builder: (column) => column);
+
+  GeneratedColumn<String> get relationship => $composableBuilder(
+    column: $table.relationship,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get transferredAt => $composableBuilder(
+    column: $table.transferredAt,
+    builder: (column) => column,
+  );
 
   Expression<T> dayEntriesRefs<T extends Object>(
     Expression<T> Function($$DayEntriesTableAnnotationComposer a) f,
@@ -3236,6 +3459,9 @@ class $$ProfilesTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
                 Value<int> localRev = const Value.absent(),
+                Value<int?> birthYear = const Value.absent(),
+                Value<String?> relationship = const Value.absent(),
+                Value<DateTime?> transferredAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion(
                 id: id,
@@ -3248,6 +3474,9 @@ class $$ProfilesTableTableManager
                 deletedAt: deletedAt,
                 dirty: dirty,
                 localRev: localRev,
+                birthYear: birthYear,
+                relationship: relationship,
+                transferredAt: transferredAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3262,6 +3491,9 @@ class $$ProfilesTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
                 Value<int> localRev = const Value.absent(),
+                Value<int?> birthYear = const Value.absent(),
+                Value<String?> relationship = const Value.absent(),
+                Value<DateTime?> transferredAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion.insert(
                 id: id,
@@ -3274,6 +3506,9 @@ class $$ProfilesTableTableManager
                 deletedAt: deletedAt,
                 dirty: dirty,
                 localRev: localRev,
+                birthYear: birthYear,
+                relationship: relationship,
+                transferredAt: transferredAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

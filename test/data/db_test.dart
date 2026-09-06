@@ -90,6 +90,77 @@ void seedV1(sqlite3.Database raw) {
   raw.execute('PRAGMA user_version = 1');
 }
 
+/// The exact schema-v3 DDL as drift generated it for the committed v3
+/// `db.g.dart` (dumped from `sqlite_master` on a fresh v4 database, with the
+/// v4-only `profiles` columns — `birth_year`, `relationship`,
+/// `transferred_at` — stripped back out of the `profiles` CREATE TABLE; the
+/// other four tables and the partial index are unchanged from v3 to v4).
+/// Tests execute it raw so the v3→v4 migration is exercised against a real
+/// v3 file, not against whatever the current data classes would create.
+const List<String> kV3Ddl = [
+  'CREATE TABLE "profiles" ("id" TEXT NOT NULL, "display_name" TEXT NOT NULL, '
+      '"is_minor" INTEGER NOT NULL CHECK ("is_minor" IN (0, 1)), '
+      '"sort_order" INTEGER NOT NULL DEFAULT 0, "archived_at" TEXT NULL, '
+      '"created_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, '
+      '"deleted_at" TEXT NULL, "dirty" INTEGER NOT NULL DEFAULT 0 '
+      'CHECK ("dirty" IN (0, 1)), "local_rev" INTEGER NOT NULL DEFAULT 0, '
+      'PRIMARY KEY ("id"))',
+  'CREATE TABLE "day_entries" ("id" TEXT NOT NULL, '
+      '"profile_id" TEXT NOT NULL REFERENCES profiles (id), '
+      '"local_date" TEXT NOT NULL, "tz" TEXT NOT NULL, "flow" TEXT NOT NULL, '
+      '"tags" TEXT NOT NULL DEFAULT \'[]\', "note" TEXT NULL, '
+      '"updated_at" TEXT NOT NULL, "deleted_at" TEXT NULL, '
+      '"dirty" INTEGER NOT NULL DEFAULT 0 CHECK ("dirty" IN (0, 1)), '
+      '"local_rev" INTEGER NOT NULL DEFAULT 0, "logged_by_user_id" TEXT NULL, '
+      '"last_modified_by_user_id" TEXT NULL, PRIMARY KEY ("id"))',
+  'CREATE TABLE "profile_guardians" ("id" TEXT NOT NULL, '
+      '"profile_id" TEXT NOT NULL REFERENCES profiles (id), '
+      '"user_id" TEXT NOT NULL, "role" TEXT NOT NULL, '
+      '"status" TEXT NOT NULL DEFAULT \'accepted\', "display_name" TEXT NULL, '
+      '"invited_by" TEXT NULL, "created_at" TEXT NOT NULL, '
+      '"updated_at" TEXT NOT NULL, PRIMARY KEY ("id"))',
+  'CREATE TABLE "app_settings" ("key" TEXT NOT NULL, "value" TEXT NOT NULL, '
+      '"updated_at" TEXT NOT NULL, PRIMARY KEY ("key"))',
+  'CREATE TABLE "sync_state" ("id" INTEGER NOT NULL CHECK("id" = 1), '
+      '"bound_user_id" TEXT NULL, "device_id" TEXT NOT NULL DEFAULT \'\', '
+      '"cursor_profiles" INTEGER NOT NULL DEFAULT 0, '
+      '"cursor_day_entries" INTEGER NOT NULL DEFAULT 0, '
+      '"last_full_pull_at" TEXT NULL, "last_sync_at" TEXT NULL, '
+      '"last_error" TEXT NULL, "server_clock_offset_ms" INTEGER NULL, '
+      'PRIMARY KEY ("id"))',
+  'CREATE UNIQUE INDEX uq_day_entries_profile_date_live ON day_entries '
+      '(profile_id, local_date) WHERE deleted_at IS NULL',
+];
+
+const String kV3ProfileId = '01JV3PROFILE00000000000000';
+const String kV3EntryId = '01JV3ENTRY0000000000000000';
+const String kV3GuardianId = 'v3-guardian-1';
+const String kV3Stamp = '2026-08-01T09:00:00.000000Z';
+
+/// Executes the v3 DDL plus a small fixture (one profile, one live entry
+/// with attribution, one profile_guardians row) on a raw sqlite3 handle and
+/// stamps `user_version = 3`.
+void seedV3(sqlite3.Database raw) {
+  for (final ddl in kV3Ddl) {
+    raw.execute(ddl);
+  }
+  raw.execute(
+      "INSERT INTO profiles (id, display_name, is_minor, sort_order, archived_at, "
+      "created_at, updated_at, deleted_at, dirty, local_rev) VALUES "
+      "('$kV3ProfileId', 'V3 Profile', 0, 0, NULL, '$kV3Stamp', '$kV3Stamp', NULL, 0, 0)");
+  raw.execute(
+      "INSERT INTO day_entries (id, profile_id, local_date, tz, flow, tags, note, "
+      "updated_at, deleted_at, dirty, local_rev, logged_by_user_id, last_modified_by_user_id) VALUES "
+      "('$kV3EntryId', '$kV3ProfileId', '2026-08-01', 'UTC', 'light', "
+      "'[]', NULL, '$kV3Stamp', NULL, 0, 0, 'u-v3', 'u-v3')");
+  raw.execute(
+      "INSERT INTO profile_guardians (id, profile_id, user_id, role, status, "
+      "display_name, invited_by, created_at, updated_at) VALUES "
+      "('$kV3GuardianId', '$kV3ProfileId', 'u-v3', 'primary_guardian', 'accepted', "
+      "NULL, NULL, '$kV3Stamp', '$kV3Stamp')");
+  raw.execute('PRAGMA user_version = 3');
+}
+
 /// Column names of [table] via `PRAGMA table_info`.
 Future<Set<String>> columnsOf(LunarLogDatabase db, String table) async {
   final rows = await db.customSelect('PRAGMA table_info($table)').get();
@@ -102,11 +173,12 @@ Future<int> userVersion(LunarLogDatabase db) async =>
         .read<int>('user_version');
 
 /// Asserts everything the v1 fixture held survived the upgrade with the
-/// new sync columns and profile_guardians table at their defaults.
-Future<void> expectUpgradedV2(LunarLogDatabase db) async {
-  expect(await userVersion(db), 3);
+/// new sync columns, profile_guardians table, and v4 profile subject
+/// metadata columns at their defaults.
+Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
+  expect(await userVersion(db), 4);
   expect(await columnsOf(db, 'profiles'),
-      containsAll(['dirty', 'local_rev']));
+      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at']));
   expect(await columnsOf(db, 'day_entries'),
       containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
 
@@ -120,6 +192,9 @@ Future<void> expectUpgradedV2(LunarLogDatabase db) async {
   expect(profile.updatedAt, stamp);
   expect(profile.dirty, isFalse);
   expect(profile.localRev, 0);
+  expect(profile.birthYear, isNull);
+  expect(profile.relationship, isNull);
+  expect(profile.transferredAt, isNull);
 
   final entries = await db.storage
       .getDayEntries(profileId: kV1ProfileId, includeTombstones: true);
@@ -205,10 +280,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 3 and database opens with the expected tables',
+    test('schema version is 4 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 3);
-      expect(await userVersion(db), 3);
+      expect(db.schemaVersion, 4);
+      expect(await userVersion(db), 4);
 
       final tables = (await db
               .customSelect(
@@ -219,7 +294,8 @@ void main() {
           .toSet();
       expect(tables,
           containsAll(['profiles', 'day_entries', 'profile_guardians', 'app_settings', 'sync_state']));
-      expect(await columnsOf(db, 'profiles'), containsAll(['dirty', 'local_rev']));
+      expect(await columnsOf(db, 'profiles'),
+          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at']));
       expect(
           await columnsOf(db, 'day_entries'), containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
       expect(
@@ -976,7 +1052,7 @@ void main() {
       seedV1(raw);
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
-      await expectUpgradedV2(db);
+      await expectFullyUpgraded(db);
 
       // The upgraded database is fully usable: local writes and sync
       // applies work against the migrated rows.
@@ -1000,7 +1076,7 @@ void main() {
 
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      await expectUpgradedV2(db);
+      await expectFullyUpgraded(db);
     });
 
     test('an upgrade step failing after the first addColumn leaves '
@@ -1061,12 +1137,13 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      await expectUpgradedV2(db);
+      await expectFullyUpgraded(db);
     });
 
-    test('a v3 database does not re-run the upgrade on reopen', () async {
+    test('a database already at the latest version does not re-run the '
+        'upgrade on reopen', () async {
       final dir = await freshTempDir('migration_noop');
-      final file = File('${dir.path}${Platform.pathSeparator}v3.db');
+      final file = File('${dir.path}${Platform.pathSeparator}v4.db');
       final first = LunarLogDatabase(NativeDatabase(file));
       await first.storage.upsertProfile(displayName: 'P', isMinor: false);
       await first.close();
@@ -1075,9 +1152,112 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 3);
+      expect(await userVersion(second), 4);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
+    });
+
+    test('a real v3 fixture (raw DDL, in memory) upgrades to v4 with rows '
+        'in profiles, day_entries and profile_guardians preserved and the '
+        'three new columns null', () async {
+      final raw = sqlite3.sqlite3.openInMemory();
+      seedV3(raw);
+      final db = LunarLogDatabase(NativeDatabase.opened(raw));
+      addTearDown(() => db.close());
+
+      expect(await userVersion(db), 4);
+      expect(await columnsOf(db, 'profiles'),
+          containsAll(['birth_year', 'relationship', 'transferred_at']));
+
+      final profile =
+          (await db.storage.getProfiles(includeTombstones: true)).single;
+      expect(profile.id, kV3ProfileId);
+      expect(profile.displayName, 'V3 Profile');
+      expect(profile.birthYear, isNull);
+      expect(profile.relationship, isNull);
+      expect(profile.transferredAt, isNull);
+
+      final entries = await db.storage
+          .getDayEntries(profileId: kV3ProfileId, includeTombstones: true);
+      expect(entries.map((e) => e.id), [kV3EntryId]);
+      expect(entries.single.loggedByUserId, 'u-v3');
+
+      final guardians = await db.storage.getGuardiansForProfile(kV3ProfileId);
+      expect(guardians.map((g) => g.id), [kV3GuardianId]);
+      expect(guardians.single.role, 'primary_guardian');
+
+      // The upgraded database is fully usable: a local write persists the
+      // new columns.
+      final edited = await db.storage.upsertProfile(
+          id: kV3ProfileId,
+          displayName: 'V3 Profile',
+          isMinor: false,
+          birthYear: 2015,
+          relationship: 'daughter');
+      expect(edited.birthYear, 2015);
+      expect(edited.relationship, 'daughter');
+    });
+
+    test('an upgrade step failing on profiles.relationship leaves the '
+        'database at v3 with no partially-added v4 column, and the next '
+        'open retries cleanly', () async {
+      final dir = await freshTempDir('migration_fail_v4');
+      final file = File('${dir.path}${Platform.pathSeparator}v3.db');
+      final raw = sqlite3.sqlite3.open(file.path);
+      seedV3(raw);
+      raw.close();
+
+      final completedSteps = <String>[];
+      final failing = LunarLogDatabase(NativeDatabase(file))
+        ..migrationStepHook = (step) async {
+          completedSteps.add(step);
+          if (step == 'profiles.relationship') {
+            throw StateError('injected failure after the second addColumn');
+          }
+        };
+      await expectLater(
+        failing.customSelect('SELECT 1').get(),
+        throwsA(isA<StateError>()),
+      );
+      await failing.close();
+      expect(completedSteps, ['profiles.birth_year', 'profiles.relationship'],
+          reason: 'birth_year landed before the injected failure on '
+              'relationship');
+
+      // Inspect the file with a raw handle: nothing half-applied.
+      final check = sqlite3.sqlite3.open(file.path);
+      try {
+        expect(check.select('PRAGMA user_version').first.values.first, 3);
+        final profileCols = check
+            .select('PRAGMA table_info(profiles)')
+            .map((r) => r['name'])
+            .toSet();
+        expect(profileCols, isNot(contains('birth_year')),
+            reason: 'the addColumn must have been rolled back');
+        expect(profileCols, isNot(contains('relationship')));
+        expect(profileCols, isNot(contains('transferred_at')));
+        expect(check.select('SELECT COUNT(*) AS n FROM profiles').first['n'], 1);
+        expect(
+            check.select('SELECT COUNT(*) AS n FROM day_entries').first['n'], 1);
+        expect(
+            check.select('SELECT COUNT(*) AS n FROM profile_guardians').first['n'],
+            1);
+      } finally {
+        check.close();
+      }
+
+      // Clean reopen: the upgrade retries and completes.
+      final db = LunarLogDatabase(NativeDatabase(file));
+      addTearDown(() => db.close());
+      expect(await userVersion(db), 4);
+      expect(await columnsOf(db, 'profiles'),
+          containsAll(['birth_year', 'relationship', 'transferred_at']));
+      final profile =
+          (await db.storage.getProfiles(includeTombstones: true)).single;
+      expect(profile.id, kV3ProfileId);
+      expect(profile.birthYear, isNull);
+      expect(profile.relationship, isNull);
+      expect(profile.transferredAt, isNull);
     });
   });
 
@@ -1267,7 +1447,7 @@ void main() {
           nativeDbFactory(file: file, keyStore: RecordingKeyStore(presetKey: key));
       final db = await factory.open();
       addTearDown(() => db.close());
-      await expectUpgradedV2(db);
+      await expectFullyUpgraded(db);
     });
 
     test('an encrypted v1 file whose upgrade fails mid-way is left at v1 and '
@@ -1297,7 +1477,7 @@ void main() {
           nativeDbFactory(file: file, keyStore: RecordingKeyStore(presetKey: key));
       final db = await factory.open();
       addTearDown(() => db.close());
-      await expectUpgradedV2(db);
+      await expectFullyUpgraded(db);
     });
   },
       skip: hostHasSqlcipher()

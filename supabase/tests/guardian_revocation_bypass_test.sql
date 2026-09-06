@@ -74,8 +74,15 @@ select is(
 -- redeeming an old token. Would fail (status flips to 'accepted' instead of
 -- throwing) if the upsert in accept_guardian_invitation went back to
 -- setting status = 'accepted' unconditionally.
--- ---------------------------------------------------------------------------
-select tests.authenticate_as('mom');
+--
+-- Issue #4 round-2 review item #1 made this transition (revoked_at:
+-- non-null -> null) terminal for any authenticated caller, mom included -
+-- see guardian_invitations_revocation_terminal_guard in
+-- 20260906180000_ownership_transfer_rpcs.sql - so this setup step must run
+-- with auth.uid() null (clear_authentication, not authenticate_as('mom')) to
+-- reach the "as if #81 had never run" state under test here without
+-- exercising that guard.
+select tests.clear_authentication();
 update public.guardian_invitations
    set revoked_at = null
  where token_hash = '2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b';

@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 
 Profile _profile({
   String id = 'p1',
@@ -16,6 +17,9 @@ Profile _profile({
   DateTime? createdAt,
   DateTime? updatedAt,
   DateTime? deletedAt,
+  int? birthYear,
+  ProfileRelationship? relationship,
+  DateTime? transferredAt,
 }) =>
     Profile(
       id: id,
@@ -26,6 +30,9 @@ Profile _profile({
       createdAt: createdAt ?? DateTime.utc(2026, 1, 1),
       updatedAt: updatedAt ?? DateTime.utc(2026, 1, 1),
       deletedAt: deletedAt,
+      birthYear: birthYear,
+      relationship: relationship,
+      transferredAt: transferredAt,
     );
 
 void main() {
@@ -51,6 +58,32 @@ void main() {
       expect(renamed.displayName, 'Jamie');
       expect(renamed.id, profile.id);
     });
+
+    test('copyWith() with no arguments preserves a set relationship', () {
+      final profile = _profile(relationship: ProfileRelationship.daughter);
+      expect(profile.copyWith().relationship, ProfileRelationship.daughter);
+    });
+
+    test('copyWith(relationship: null) clears a set relationship', () {
+      final profile = _profile(relationship: ProfileRelationship.son);
+      final cleared = profile.copyWith(relationship: null);
+      expect(cleared.relationship, isNull);
+    });
+
+    test('copyWith(birthYear: null) clears a set birth year, and other '
+        'fields are unaffected', () {
+      final profile = _profile(birthYear: 2015);
+      final cleared = profile.copyWith(birthYear: null);
+      expect(cleared.birthYear, isNull);
+      expect(cleared.displayName, profile.displayName);
+    });
+
+    test('copyWith(transferredAt: ...) sets the ownership-transfer instant', () {
+      final profile = _profile();
+      final transferred =
+          profile.copyWith(transferredAt: DateTime.utc(2026, 4, 1));
+      expect(transferred.transferredAt, DateTime.utc(2026, 4, 1));
+    });
   });
 
   group('Profile equality and hashCode', () {
@@ -68,6 +101,26 @@ void main() {
       expect(base, isNot(_profile(isMinor: true)));
       expect(base, isNot(_profile(archivedAt: DateTime.utc(2026, 3, 1))));
       expect(base, isNot(_profile(deletedAt: DateTime.utc(2026, 3, 1))));
+    });
+
+    test('two Profiles differing only in birthYear are unequal and hash '
+        'differently', () {
+      final a = _profile(birthYear: 2010);
+      final b = _profile(birthYear: 2015);
+      expect(a, isNot(b));
+      expect(a.hashCode, isNot(b.hashCode));
+    });
+
+    test('two Profiles differing only in relationship are unequal', () {
+      final a = _profile(relationship: ProfileRelationship.daughter);
+      final b = _profile(relationship: ProfileRelationship.son);
+      expect(a, isNot(b));
+    });
+
+    test('two Profiles differing only in transferredAt are unequal', () {
+      final a = _profile(transferredAt: DateTime.utc(2026, 4, 1));
+      final b = _profile(transferredAt: DateTime.utc(2026, 4, 2));
+      expect(a, isNot(b));
     });
   });
 

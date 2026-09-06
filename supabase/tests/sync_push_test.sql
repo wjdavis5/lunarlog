@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(87);
+select plan(104);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -430,6 +430,92 @@ select throws_ok(
   null,
   'table check constraint day_entries_tags_check rejects non-string tags'
 );
+
+-- ---------------------------------------------------------------------------
+-- U1: profile subject metadata (birth_year, relationship, transferred_at)
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('user_a');
+
+insert into r select 'meta_insert', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(120), 'display_name', 'Meta', 'birth_year', 2011, 'relationship', 'daughter',
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('meta_insert') -> 'rejected', '[]'::jsonb,
+  'U1: a push carrying birth_year and relationship is not rejected');
+select is((select birth_year from public.profiles where id = tests.ulid(120)), 2011::smallint,
+  'U1: birth_year round-trips through sync_push');
+select is((select relationship from public.profiles where id = tests.ulid(120)), 'daughter',
+  'U1: relationship round-trips through sync_push');
+
+insert into r select 'meta_bad_relationship', public.sync_push(
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(121), 'display_name', 'Cousin', 'relationship', 'cousin',
+      'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(122), 'display_name', 'Partner', 'relationship', 'partner',
+      'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(jsonb_array_length(pg_temp.resp('meta_bad_relationship') -> 'rejected'), 1,
+  'U1: an out-of-set relationship is rejected without aborting the batch');
+select is((select count(*) from public.profiles where id = tests.ulid(121)), 0::bigint,
+  'U1: the row with the invalid relationship does not land');
+select is((select count(*) from public.profiles where id = tests.ulid(122)), 1::bigint,
+  'U1: the valid row in the same batch still lands');
+
+insert into r select 'meta_bad_birth_year', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(123), 'display_name', 'TooOld', 'birth_year', 1800,
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(jsonb_array_length(pg_temp.resp('meta_bad_birth_year') -> 'rejected'), 1,
+  'U1: a birth_year outside 1900-2200 is rejected by the CHECK constraint');
+select is((select count(*) from public.profiles where id = tests.ulid(123)), 0::bigint,
+  'U1: the out-of-range birth_year row does not land');
+
+insert into r select 'meta_transferred_at', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(120), 'display_name', 'Meta2', 'birth_year', 2011, 'relationship', 'daughter',
+    'updated_at', pg_temp.ts_txt('t2'), 'transferred_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('meta_transferred_at') -> 'rejected', '[]'::jsonb,
+  'U1: a push carrying transferred_at is accepted (tolerated key)');
+select is((select transferred_at from public.profiles where id = tests.ulid(120)), null,
+  'U1: transferred_at is never written by sync_push, regardless of the pushed value');
+
+-- Review item #3 (P1) regression: a client built before U1 never sends
+-- birth_year/relationship at all - the key is absent, not present-with-null.
+-- The stored value must survive an otherwise-unrelated metadata edit.
+insert into r select 'meta_old_client_seed', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(124), 'display_name', 'OldClient', 'birth_year', 2012, 'relationship', 'son',
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('meta_old_client_seed') -> 'rejected', '[]'::jsonb,
+  'Review item #3 regression: seeding the old-client profile is not rejected');
+
+insert into r select 'meta_old_client_update', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(124), 'display_name', 'OldClient Renamed',
+    'updated_at', pg_temp.ts_txt('t2'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('meta_old_client_update') -> 'rejected', '[]'::jsonb,
+  'Review item #3 regression: an old-client push omitting birth_year/relationship is not rejected');
+select is((select display_name from public.profiles where id = tests.ulid(124)), 'OldClient Renamed',
+  'Review item #3 regression: the omitted-key push still applies the field it did send');
+select is((select birth_year from public.profiles where id = tests.ulid(124)), 2012::smallint,
+  'Review item #3: an old client omitting birth_year does not null out the already-stored value');
+select is((select relationship from public.profiles where id = tests.ulid(124)), 'son',
+  'Review item #3: an old client omitting relationship does not null out the already-stored value');
+
+select throws_ok(
+  $$update public.profiles set transferred_at = now() where id = tests.ulid(120)$$,
+  '42501', null,
+  'U1: authenticated has no column grant to write transferred_at directly'
+);
+
+update public.profiles set birth_year = 2010 where id = tests.ulid(120);
+select is((select birth_year from public.profiles where id = tests.ulid(120)), 2010::smallint,
+  'U1: authenticated can write birth_year directly on an owned profile');
 
 select * from finish();
 rollback;
