@@ -58,7 +58,13 @@ Future<void> pumpFeedbackScreen(
 /// diagnostics and attachment sections render, so the submit button needs
 /// scrolling into view before it can be tapped.
 Future<void> tapSubmit(WidgetTester tester, {bool warnIfMissed = true}) async {
-  final finder = find.byKey(const ValueKey('feedback-submit'));
+  // `skipOffstage: false`: a prior focus change (e.g. re-entering the
+  // message field) can leave the ListView scrolled far enough that the
+  // submit button's render object is fully outside the sliver's paint
+  // bounds, not just off-screen - the default skipOffstage:true finder
+  // treats that as "not found" rather than "found but needs scrolling",
+  // which is exactly the case `ensureVisible` exists to handle.
+  final finder = find.byKey(const ValueKey('feedback-submit'), skipOffstage: false);
   await tester.ensureVisible(finder);
   await tester.pump();
   await tester.tap(finder, warnIfMissed: warnIfMissed);
@@ -310,7 +316,34 @@ void main() {
     expect(find.text('it crashed'), findsNothing);
     // The screenshot picker reset too: no stale attachment survives to
     // ride along, silently and without fresh consent, on the next submit.
+    // This alone only pins `_formGeneration++` (it re-keys AttachmentField
+    // regardless of the parent's own `_attachment` field), so it would
+    // still pass even if `_attachment = null;` were deleted from the
+    // failure branch — the next two assertions close that gap by checking
+    // what the parent actually sends on a subsequent submit.
     expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsNothing);
     expect(find.byKey(const ValueKey('feedback-add-screenshot')), findsOneWidget);
+
+    // Retry without picking a new screenshot: only the *parent's* own
+    // `_attachment` field (not the picker widget's reset UI) decides what
+    // rides along with the next submission. If the failure branch stopped
+    // clearing it, this stale reference from the failed attempt would
+    // still be sent here even though the picker itself shows nothing
+    // attached.
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-message')),
+      'retry after upload failure',
+    );
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(service.submitCalls, 2);
+    expect(
+      service.lastAttachment,
+      isNull,
+      reason: 'a retry with no newly picked screenshot must not silently resend the '
+          'screenshot from the failed submission',
+    );
   });
 }

@@ -1,4 +1,4 @@
-// index.test.ts (Issue #6, U9; PR #105 review round 3)
+// index.test.ts (Issue #6, U9; PR #105 review rounds 3-4)
 //
 // Covers the ownership check and replay guard added in PR #105 review round
 // 2 (previously zero automated coverage - `deno.json` only discovered
@@ -6,6 +6,16 @@
 // function). `handleFeedbackNotify` takes all real I/O as injected
 // `FeedbackNotifyDeps`, so every case here runs with fakes: no live
 // Supabase project, no Resend key, no network.
+//
+// Round 4 moved the atomic `notified_at` claim to BEFORE `sendEmail` (it ran
+// after in round 3, which fixed the swallowed-send-failure bug but made the
+// pre-send check non-atomic: two overlapping calls could both observe
+// "not yet notified" before either `fetch` resolved, and both send). The
+// "concurrent/overlapping calls" test below directly pins that ordering by
+// interleaving two in-flight invocations around a single `await` inside
+// `sendEmail`, the same way two real overlapping HTTP requests would
+// interleave around `fetch`; it fails if the claim ever moves back to after
+// the send.
 //
 // Run locally with `deno test supabase/functions/feedback-notify/`.
 
@@ -41,12 +51,13 @@ function fakeDeps(overrides: {
   callerId?: string | null;
   ticket?: FeedbackTicketRow | null;
   sendResult?: SendEmailResult | ((call: number) => SendEmailResult);
-} = {}): FeedbackNotifyDeps & { sendEmailCalls: number; claimCalls: number } {
+} = {}): FeedbackNotifyDeps & { sendEmailCalls: number; claimCalls: number; releaseCalls: number } {
   const ticket = overrides.ticket === undefined ? baseTicket() : overrides.ticket;
   let sendEmailCalls = 0;
   let claimCalls = 0;
+  let releaseCalls = 0;
 
-  const deps: FeedbackNotifyDeps & { sendEmailCalls: number; claimCalls: number } = {
+  const deps: FeedbackNotifyDeps & { sendEmailCalls: number; claimCalls: number; releaseCalls: number } = {
     configured: true,
     resolveCallerId: async () => (overrides.callerId === undefined ? "owner-1" : overrides.callerId),
     getTicket: async (ticketId) => {
@@ -59,6 +70,12 @@ function fakeDeps(overrides: {
       ticket.notified_at = new Date().toISOString();
       return true;
     },
+    releaseClaim: async (ticketId) => {
+      releaseCalls++;
+      if (ticket && ticket.id === ticketId) {
+        ticket.notified_at = null;
+      }
+    },
     sendEmail: async () => {
       const result = overrides.sendResult ?? { ok: true };
       const resolved = typeof result === "function" ? result(sendEmailCalls) : result;
@@ -70,6 +87,9 @@ function fakeDeps(overrides: {
     },
     get claimCalls() {
       return claimCalls;
+    },
+    get releaseCalls() {
+      return releaseCalls;
     },
   };
   return deps;
@@ -127,7 +147,7 @@ Deno.test("replay guard: three calls in a row still send exactly one email", asy
   assertEquals(deps.sendEmailCalls, 1);
 });
 
-Deno.test("a failed send is not claimed as notified, so a later retry can still succeed", async () => {
+Deno.test("a failed send releases its claim, so a later retry can still succeed", async () => {
   const deps = fakeDeps({
     callerId: "owner-1",
     ticket: baseTicket(),
@@ -136,12 +156,78 @@ Deno.test("a failed send is not claimed as notified, so a later retry can still 
 
   const first = await handleFeedbackNotify(postRequest("t-123"), deps);
   assertEquals(first.status, 502);
-  assertEquals(deps.claimCalls, 0, "a failed send must never claim notified_at");
+  assertEquals(deps.claimCalls, 1, "the claim happens before the send is attempted");
+  assertEquals(deps.releaseCalls, 1, "a failed send must release the claim it just won");
 
   const second = await handleFeedbackNotify(postRequest("t-123"), deps);
   assertEquals(second.status, 204);
   assertEquals(deps.sendEmailCalls, 2, "the retry after a failed send must actually attempt to send again");
+  assertEquals(deps.claimCalls, 2, "the retry must claim again after the release");
 });
+
+Deno.test(
+  "atomic claim: two concurrent/overlapping calls for the same ticket send only one email",
+  async () => {
+    // Regression test for PR #105 review round 4: round 3 claimed
+    // notified_at only AFTER sendEmail succeeded, so two calls that
+    // overlap around their own `await sendEmail(...)` (a guaranteed yield
+    // point, same as a real `await fetch`) could both pass the pre-send
+    // check and both send. This deps fake makes that window explicit and
+    // controllable: sendEmail blocks on a shared gate until the test
+    // releases it, so both invocations can be parked mid-flight together
+    // before either is allowed to finish.
+    const ticket = baseTicket();
+    let sendEmailCalls = 0;
+    let claimCalls = 0;
+    let releaseCalls = 0;
+    let releaseGate: (() => void) | null = null;
+    const sendGate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+
+    const deps: FeedbackNotifyDeps = {
+      configured: true,
+      resolveCallerId: async () => "owner-1",
+      getTicket: async (ticketId) => (ticket.id === ticketId ? { ...ticket } : null),
+      claimNotification: async (ticketId) => {
+        claimCalls++;
+        if (ticket.id !== ticketId || ticket.notified_at) return false;
+        ticket.notified_at = new Date().toISOString();
+        return true;
+      },
+      releaseClaim: async (ticketId) => {
+        releaseCalls++;
+        if (ticket.id === ticketId) ticket.notified_at = null;
+      },
+      sendEmail: async () => {
+        sendEmailCalls++;
+        await sendGate;
+        return { ok: true };
+      },
+    };
+
+    const first = handleFeedbackNotify(postRequest("t-123"), deps);
+    // Flush microtasks so `first` runs past its ownership check and (with
+    // the fix) its claim, parking inside sendEmail on the shared gate -
+    // the same window a real overlapping request would occupy mid-`fetch`.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const second = handleFeedbackNotify(postRequest("t-123"), deps);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    releaseGate!();
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+
+    assertEquals(
+      sendEmailCalls,
+      1,
+      "only the invocation that wins the atomic claim may ever call sendEmail - " +
+        "if the claim moved back to after the send, both overlapping calls would send",
+    );
+    assertEquals(firstResponse.status, 204);
+    assertEquals(secondResponse.status, 204);
+  },
+);
 
 Deno.test("missing config degrades to 204 with no send attempted", async () => {
   const deps = fakeDeps({ callerId: "owner-1", ticket: baseTicket() });

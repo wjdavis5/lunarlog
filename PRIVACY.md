@@ -108,7 +108,7 @@ You have complete control over your data:
 - **Sign Out & Local Wipe:** Signing out of your account gives you the option to discard all local database records from that device immediately.
 - **Sign Out Everywhere:** You can invalidate sessions across all devices from the Account settings.
 - **Account & Cloud Deletion:** You may request complete deletion of your Supabase account and all associated cloud data by emailing us at `will@wjdavis5.net` or using the in-app account deletion request. Upon request, all server records are permanently deleted within 30 days.
-- **Support Ticket Retention:** Feedback tickets and their reply threads are retained to support ongoing conversations and app improvement; you can request deletion of a ticket at any time by emailing `will@wjdavis5.net`. Deleting a ticket also deletes any attached screenshot.
+- **Support Ticket Retention:** Feedback tickets and their reply threads are retained to support ongoing conversations and app improvement; you can request deletion of a ticket at any time by emailing `will@wjdavis5.net`. Deleting a ticket removes the ticket and reply-thread records; an attached screenshot is stored separately and is deleted as part of the same request rather than automatically alongside the ticket row.
 
 ---
 

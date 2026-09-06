@@ -13,14 +13,18 @@
 //      could pass an arbitrary or guessed ticket_id and get an admin email
 //      sent on someone else's behalf.
 //   2. Replay/rate: an atomic `UPDATE ... WHERE notified_at IS NULL` claims
-//      the notification; a ticket can only ever be claimed once, so calling
-//      this repeatedly for the same ticket (accidentally or to flood the
-//      admin inbox / burn the Resend quota) sends at most one email. That
-//      claim runs only AFTER `sendEmail` reports success - claiming first
-//      and sending second would let a failed send get claimed as sent
-//      anyway, permanently and silently suppressing that ticket's alert
-//      (notified_at has no authenticated grant, so nothing could ever
-//      un-claim it and retry).
+//      the notification BEFORE `sendEmail` is even attempted, so exactly one
+//      concurrent/overlapping invocation for a given ticket ever wins the
+//      claim - every other one (racing in, or a plain sequential retry)
+//      matches zero rows, gets `claimed = false`, and returns 204 without
+//      ever calling `sendEmail`. `await fetch` inside `sendEmail` is a
+//      guaranteed yield point, so claiming *after* the send (as an earlier
+//      version of this function did) is not atomic: two overlapping calls
+//      can both observe "not yet notified" before either one's `fetch`
+//      resolves, and both send. Claiming first and releasing the claim if
+//      the send then fails (see below) gets both properties at once: no
+//      duplicate sends under concurrency, and no failed send silently and
+//      permanently swallowed.
 //
 // A missing/invalid caller identity, an unowned or already-notified ticket,
 // and a not-found ticket all degrade to the same 204 - this endpoint never
@@ -67,9 +71,16 @@ export interface FeedbackNotifyDeps {
   resolveCallerId(authHeader: string): Promise<string | null>;
   /** Reads the ticket via the service-role client. Null if not found. */
   getTicket(ticketId: string): Promise<FeedbackTicketRow | null>;
-  /** Atomically claims notified_at (`UPDATE ... WHERE notified_at IS NULL`).
-   * Resolves true only if this call was the one that set it. */
+  /** Atomically claims notified_at (`UPDATE ... WHERE notified_at IS NULL`),
+   * called BEFORE `sendEmail` is attempted. Resolves true only if this call
+   * was the one that set it - every other concurrent/overlapping call for
+   * the same ticket resolves false and must not send. */
   claimNotification(ticketId: string): Promise<boolean>;
+  /** Releases a claim this same invocation just won, after its `sendEmail`
+   * attempt failed (clears `notified_at` back to null) so a legitimate
+   * retry - by the client, or a later manual invocation - can still claim
+   * and send. Never called except by the claim's own winner. */
+  releaseClaim(ticketId: string): Promise<void>;
   /** Sends the admin alert; resolves rather than throws on failure. */
   sendEmail(summary: FeedbackTicketSummary): Promise<SendEmailResult>;
 }
@@ -77,8 +88,8 @@ export interface FeedbackNotifyDeps {
 /** The full request-handling logic (Issue #6, U9). See the header comment
  * for the ownership/replay-guard contract; every branch below preserves the
  * original check ordering (method -> body -> config -> caller identity ->
- * ownership -> replay -> send -> claim) so a config-check short-circuit
- * can never mask a malformed-request response or vice versa. */
+ * ownership -> claim -> send -> release-on-failure) so a config-check
+ * short-circuit can never mask a malformed-request response or vice versa. */
 export async function handleFeedbackNotify(req: Request, deps: FeedbackNotifyDeps): Promise<Response> {
   if (req.method !== "POST") {
     return new Response(null, { status: 405 });
@@ -122,11 +133,18 @@ export async function handleFeedbackNotify(req: Request, deps: FeedbackNotifyDep
       return new Response(null, { status: 204 });
     }
 
-    // Cheap pre-send replay check: if a prior call already sent the alert,
-    // don't send another. This alone isn't the atomic claim (that happens
-    // below, after the send) - it just short-circuits the common sequential
-    // retry case before spending a Resend call on it.
-    if (ticket.notified_at) {
+    // Replay/rate guard: atomically claim the notification BEFORE
+    // attempting to send anything. This update matches the row only the
+    // first time it runs for this ticket - every other concurrent or
+    // sequential call (racing in, retried by the client, or invoked again
+    // on purpose) matches zero rows, gets `claimed = false`, and must not
+    // send. Doing this before `sendEmail` (rather than after) is what makes
+    // it atomic: `await fetch` inside `sendEmail` is a guaranteed yield
+    // point, so a claim taken only after a successful send can't stop two
+    // overlapping invocations from both passing a pre-send check and both
+    // sending.
+    const claimed = await deps.claimNotification(ticketId);
+    if (!claimed) {
       return new Response(null, { status: 204 });
     }
 
@@ -140,28 +158,18 @@ export async function handleFeedbackNotify(req: Request, deps: FeedbackNotifyDep
     const sendResult = await deps.sendEmail(summary);
 
     if (!sendResult.ok) {
-      // Do NOT claim notified_at: the alert was never actually sent, so
-      // claiming here would permanently and silently suppress it (no log,
-      // no retry path, ever - notified_at has no authenticated grant, so
-      // nothing else can ever clear it). Logging + a non-2xx response at
-      // least surfaces the failure in this function's own logs, even
-      // though the client itself ignores this invocation's result (R21's
-      // best-effort contract).
+      // The alert was never actually sent, so release the claim this
+      // invocation just won: leaving notified_at set would permanently and
+      // silently suppress the ticket's alert (notified_at has no
+      // authenticated grant, so nothing else could ever clear it and
+      // retry). Logging + a non-2xx response also surfaces the failure in
+      // this function's own logs, even though the client itself ignores
+      // this invocation's result (R21's best-effort contract).
       console.error(
         `feedback-notify: sendEmail failed for ticket ${ticketId}: ${sendResult.reason}`,
       );
+      await deps.releaseClaim(ticketId);
       return new Response(null, { status: 502 });
-    }
-
-    // Replay/rate guard: atomically claim the notification now that the
-    // send actually succeeded. This update matches the row only the first
-    // time it runs for this ticket - every later call (retried by the
-    // client, or invoked again on purpose) matches zero rows and is a
-    // no-op. Claiming only after a successful send means a failed send is
-    // always retryable rather than permanently and silently swallowed.
-    const claimed = await deps.claimNotification(ticketId);
-    if (!claimed) {
-      console.error(`feedback-notify: failed to claim notified_at for ticket ${ticketId}`);
     }
   } catch (_error) {
     // Never surface provider detail; this endpoint's contract is 204
@@ -213,6 +221,15 @@ if (import.meta.main) {
           .select("id")
           .maybeSingle();
         return !error && !!data;
+      },
+      releaseClaim: async (ticketId) => {
+        const { error } = await client!
+          .from("feedback_tickets")
+          .update({ notified_at: null })
+          .eq("id", ticketId);
+        if (error) {
+          console.error(`feedback-notify: failed to release notified_at claim for ticket ${ticketId}: ${error.message}`);
+        }
       },
       sendEmail: (summary) => sendEmailReal(buildAdminAlert(summary, adminEmail!)),
     });
