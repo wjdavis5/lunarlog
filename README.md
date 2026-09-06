@@ -134,6 +134,10 @@ Store review (primary) is handled by
 [`.github/workflows/ios-release.yml`](.github/workflows/ios-release.yml)
 (mirrored from `taxiGame`). Automated Android release to Google Play is handled
 by [`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml).
+The iOS release declares non-exempt encryption usage (SQLCipher) to App Store
+Connect; see
+[`docs/ops/ios-export-compliance.md`](docs/ops/ios-export-compliance.md) for
+the classification and the operator's recurring filing duties.
 
 ## Accounts
 
@@ -254,10 +258,18 @@ Part of the home lab; the canonical inventory lives in the lab root's
   notification-permission prompt is not yet covered by this and still
   re-locks.
 - iOS: the database file is not explicitly excluded from iCloud backups
-  (skipped in U7 — it needs AppDelegate work on the Mac; the keychain-stored
-  key is already device-only, and Android covers the equivalent with
-  `allowBackup="false"`). The Supabase session and PKCE verifier are stored
-  with `first_unlock_this_device` and never travel in a backup.
+  (skipped in U7 — it needs AppDelegate work on the Mac; Android covers the
+  equivalent with `allowBackup="false"`). The database key is deliberately
+  **not** device-pinned either (`unlocked`, not a `ThisDeviceOnly`
+  accessibility) for exactly this reason: pinning the key while the file it
+  protects still rides backups would make the key unrecoverable after a
+  restore to a new device while the (still-encrypted, now permanently
+  unopenable) file arrives intact — see the doc comment on
+  `SecureDbKeyStore` in `lib/data/db/key_store.dart`. Excluding the database
+  file from backups and re-pinning the key to the device are deferred
+  together (docs/ops/supabase-go-live.md). The Supabase session and PKCE
+  verifier are stored with `first_unlock_this_device` and never travel in a
+  backup.
 - Realtime co-caregiver sync (issue #77) publishes only a dedicated
   `public.sync_signals` table (profile_id, updated_at — no health content)
   to `supabase_realtime`, never `public.profiles`/`public.day_entries`
