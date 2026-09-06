@@ -1,0 +1,12 @@
+{
+  "name": "lunarlog-manual-realtime-verify",
+  "private": true,
+  "type": "module",
+  "description": "Manual, non-CI end-to-end proof of what public.sync_signals's Realtime publication actually delivers over a websocket (Issue #77 / PR #92 review). See verify_realtime_delivery.mjs for usage.",
+  "scripts": {
+    "verify": "node verify_realtime_delivery.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

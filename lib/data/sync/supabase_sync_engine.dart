@@ -554,8 +554,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         SyncTransportOtherError() => SyncErrorKind.other,
       };
 
-  String? _confirmedUid() =>
-      _auth.state == AuthSessionState.signedIn ? _auth.currentUserId : null;
+  String? _confirmedUid() => _auth.confirmedUserId;
 
   SyncPhase _phase(SyncPhase active) =>
       _restoring ? SyncPhase.restoring : active;
