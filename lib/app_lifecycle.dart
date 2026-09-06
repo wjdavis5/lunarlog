@@ -44,12 +44,14 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -604,6 +606,7 @@ class LunarLogRoot extends StatefulWidget {
     this.authService,
     this.syncTransport,
     this.sharingService,
+    this.feedbackService,
     this.supabaseClient,
     this.inviteLinks,
     this.initialInviteCode,
@@ -639,10 +642,16 @@ class LunarLogRoot extends StatefulWidget {
 
   final SharingService? sharingService;
 
+  /// In-app feedback service (Issue #6, U6), injectable for tests. When
+  /// null (and a Supabase client is present) the root constructs the
+  /// production [SupabaseFeedbackService] alongside [sharingService].
+  final FeedbackService? feedbackService;
+
   /// The Supabase client from the successful bootstrap. When present (and
-  /// [sharingService] was not injected) the root constructs the production
-  /// [SupabaseSharingService] and [RealtimeSyncCoordinator] alongside the
-  /// sync engine, so the sharing feature is live in production builds.
+  /// [sharingService]/[feedbackService] were not injected) the root
+  /// constructs the production [SupabaseSharingService],
+  /// [SupabaseFeedbackService], and [RealtimeSyncCoordinator] alongside the
+  /// sync engine, so those features are live in production builds.
   final SupabaseClient? supabaseClient;
 
   /// `lunarlog://invite?code=...` links (U8; R9), filtered upstream by
@@ -682,6 +691,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   LunarLogDatabase? _db;
   SyncEngine? _syncEngine;
   SharingService? _builtSharingService;
+  FeedbackService? _builtFeedbackService;
   RealtimeSyncCoordinator? _realtimeCoordinator;
 
   /// The app subtree's teardown (reminder coordinator disposal), captured
@@ -765,6 +775,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     if (client != null) {
       _builtSharingService =
           SupabaseSharingService(client: client, syncEngine: engine);
+      _builtFeedbackService = SupabaseFeedbackService(client: client);
       final coordinator = RealtimeSyncCoordinator(
         client: client,
         syncEngine: engine,
@@ -785,6 +796,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     _realtimeCoordinator = null;
     await coordinator?.dispose();
     _builtSharingService = null;
+    _builtFeedbackService = null;
     final engine = _syncEngine;
     _syncEngine = null;
     await engine?.dispose();
@@ -923,6 +935,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
         authService: widget.authService,
         syncEngine: _syncEngine,
         sharingService: widget.sharingService ?? _builtSharingService,
+        feedbackService: widget.feedbackService ?? _builtFeedbackService,
         inviteLinks: widget.inviteLinks,
         initialInviteCode: widget.initialInviteCode,
         initialInviteProfileId: widget.initialInviteProfileId,

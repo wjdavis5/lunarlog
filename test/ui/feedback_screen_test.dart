@@ -1,0 +1,211 @@
+/// Widget tests for the in-app feedback form (Issue #6, U6; R1-R6, R10, R11).
+library;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
+import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/feedback/feedback_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
+
+import '../support/fake_feedback_service.dart';
+
+/// A collector wired entirely from fakes: the real [DeviceDiagnosticsCollector]
+/// touches platform channels that never answer under `flutter test`'s
+/// default binary messenger, so every widget test injects this instead.
+DeviceDiagnosticsCollector _fakeCollector() => DeviceDiagnosticsCollector(
+      packageInfoReader: () async => PackageInfo(
+        appName: 'lunarlog',
+        packageName: 'com.wjdavis5.lunarlog',
+        version: '1.0.0',
+        buildNumber: '1',
+      ),
+      deviceInfoReader: () async => throw StateError('no fake device info in this test'),
+      localeSupplier: () => const Locale('en', 'US'),
+      platform: TargetPlatform.iOS,
+      breadcrumbLog: BreadcrumbLog(),
+    );
+
+Future<void> pumpFeedbackScreen(WidgetTester tester, FakeFeedbackService service) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Provider<FeedbackService>.value(
+        value: service,
+        child: FeedbackScreen(diagnosticsCollector: _fakeCollector()),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// The form grows taller than the default test viewport once the
+/// diagnostics and attachment sections render, so the submit button needs
+/// scrolling into view before it can be tapped.
+Future<void> tapSubmit(WidgetTester tester, {bool warnIfMissed = true}) async {
+  final finder = find.byKey(const ValueKey('feedback-submit'));
+  await tester.ensureVisible(finder);
+  await tester.pump();
+  await tester.tap(finder, warnIfMissed: warnIfMissed);
+}
+
+void main() {
+  testWidgets('submit is disabled while the message field is empty', (tester) async {
+    final service = FakeFeedbackService();
+    await pumpFeedbackScreen(tester, service);
+
+    final submitButton = tester.widget<FilledButton>(find.byKey(const ValueKey('feedback-submit')));
+    expect(submitButton.onPressed, isNull);
+  });
+
+  testWidgets('a message longer than 4000 characters shows an inline error and makes no service call',
+      (tester) async {
+    final service = FakeFeedbackService();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'x' * 4001);
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
+    expect(service.submitCalls, 0);
+  });
+
+  testWidgets('a malformed reply email shows an inline error and makes no service call', (tester) async {
+    final service = FakeFeedbackService();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'It crashed');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'not-an-email');
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
+    expect(service.submitCalls, 0);
+  });
+
+  testWidgets('happy path: submit calls the service once with the selected category, trimmed message, '
+      'reply email, and the diagnostics payload', (tester) async {
+    final service = FakeFeedbackService();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.tap(find.byKey(const ValueKey('feedback-category-support')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), '  How do I export my data?  ');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(service.submitCalls, 1);
+    expect(service.lastCategory, FeedbackCategory.support);
+    expect(service.lastMessage, 'How do I export my data?');
+    expect(service.lastReplyEmail, 'me@example.com');
+    expect(service.lastDiagnostics, isNotNull);
+    expect(find.byKey(const ValueKey('feedback-info')), findsOneWidget);
+  });
+
+  testWidgets('diagnostics toggle off submits with no diagnostics attached', (tester) async {
+    final service = FakeFeedbackService();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.tap(find.byKey(const ValueKey('feedback-diagnostics-toggle')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'no diagnostics please');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(service.submitCalls, 1);
+    expect(service.lastDiagnostics, isNull);
+  });
+
+  testWidgets('the diagnostics panel renders every previewLines entry', (tester) async {
+    final service = FakeFeedbackService();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.tap(find.byKey(const ValueKey('feedback-diagnostics-preview-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('feedback-diagnostics-preview')), findsOneWidget);
+    // Every payload includes a locale line regardless of platform-plugin
+    // availability under `flutter test` (the collector falls back to
+    // 'unknown' rather than throwing).
+    expect(find.textContaining('Locale:'), findsOneWidget);
+  });
+
+  testWidgets('Covers AE8: a thrown FeedbackFailure.network renders its userFacingMessage, '
+      'leaves the message text in place, and re-enables submit', (tester) async {
+    final service = FakeFeedbackService()..failureToThrow = const FeedbackFailure.network();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'still typed here');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    final errorText = tester.widget<Text>(find.byKey(const ValueKey('feedback-error')));
+    expect(errorText.data, const FeedbackFailure.network().userFacingMessage);
+    expect(find.text('still typed here'), findsOneWidget);
+
+    final submitButton = tester.widget<FilledButton>(find.byKey(const ValueKey('feedback-submit')));
+    expect(submitButton.onPressed, isNotNull);
+  });
+
+  testWidgets('FeedbackFailure.rateLimited renders copy distinct from the network failure copy',
+      (tester) async {
+    final service = FakeFeedbackService()..failureToThrow = const FeedbackFailure.rateLimited();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'again');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.pump();
+    await tapSubmit(tester);
+    await tester.pumpAndSettle();
+
+    final errorText = tester.widget<Text>(find.byKey(const ValueKey('feedback-error')));
+    expect(errorText.data, const FeedbackFailure.rateLimited().userFacingMessage);
+    expect(
+      const FeedbackFailure.rateLimited().userFacingMessage,
+      isNot(const FeedbackFailure.network().userFacingMessage),
+    );
+  });
+
+  testWidgets('double-tapping submit while busy issues exactly one service call', (tester) async {
+    final service = FakeFeedbackService()..holdNextSubmit();
+    await pumpFeedbackScreen(tester, service);
+
+    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'slow submit');
+    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.pump();
+
+    await tapSubmit(tester);
+    await tester.pump();
+    // The button is now disabled (busy); a second tap must be a no-op.
+    await tapSubmit(tester, warnIfMissed: false);
+    await tester.pump();
+
+    expect(service.submitCalls, 1);
+
+    service.completeSubmit(service.lastCategory == null
+        ? throw StateError('submit was never called')
+        : FeedbackTicket(
+            id: 't1',
+            category: service.lastCategory!,
+            message: service.lastMessage!,
+            replyEmail: service.lastReplyEmail!,
+            status: FeedbackTicketStatus.newTicket,
+            attachmentPaths: const [],
+            createdAt: DateTime.utc(2026, 9, 5),
+            updatedAt: DateTime.utc(2026, 9, 5),
+          ));
+    await tester.pumpAndSettle();
+
+    expect(service.submitCalls, 1);
+  });
+}

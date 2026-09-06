@@ -5,10 +5,15 @@
 /// profile picker.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/feedback/feedback_screen.dart';
+import 'package:lunarlog/ui/feedback/support_history_screen.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -39,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final hasAccount = Provider.of<AuthController?>(context) != null;
+    final hasFeedback = Provider.of<FeedbackService?>(context) != null;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -47,6 +53,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const AccountSection(),
             const Divider(),
           ],
+          if (hasFeedback)
+            ListTile(
+              key: const ValueKey('send-feedback-tile'),
+              leading: const Icon(Icons.feedback_outlined),
+              title: const Text('Send feedback'),
+              subtitle: const Text('Report a bug, ask a question, or share an idea'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
+              ),
+            )
+          else
+            ListTile(
+              key: const ValueKey('contact-support-tile'),
+              leading: const Icon(Icons.feedback_outlined),
+              title: const Text('Contact support'),
+              subtitle: const Text('Email us with a bug or question'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showContactSupport(context),
+            ),
+          if (hasFeedback) const _SupportHistoryTile(),
+          const Divider(),
           SwitchListTile(
             key: const ValueKey('relock-toggle'),
             title: const Text('Relock after inactivity'),
@@ -81,6 +109,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// R23: shown instead of the feedback form on an unconfigured build, a
+  /// signed-out session, or a web build without `LUNARLOG_WEB_SYNC=true`
+  /// (R24 hides the feedback tile entirely in exactly those cases, matching
+  /// the account-section gating idiom above). `SelectableText` avoids
+  /// adding `url_launcher` for a single `mailto:` link.
+  void _showContactSupport(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Contact support'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Email us with a bug report, question, or idea:'),
+            SizedBox(height: 8),
+            SelectableText(kSupportEmailAddress),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showPrivacyPolicy(BuildContext context) {
     showDialog<void>(
       context: context,
@@ -107,6 +164,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('Close'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "Support history" tile (U8): a light background check against
+/// [FeedbackService.listTickets] compares [newestReplyActivityAt] to the
+/// stored [SettingsKeys.feedbackLastSeenAt] and shows an unread dot when a
+/// reply landed since the operator last opened the screen.
+class _SupportHistoryTile extends StatefulWidget {
+  const _SupportHistoryTile();
+
+  @override
+  State<_SupportHistoryTile> createState() => _SupportHistoryTileState();
+}
+
+class _SupportHistoryTileState extends State<_SupportHistoryTile> {
+  bool _unread = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_checkUnread());
+  }
+
+  Future<void> _checkUnread() async {
+    try {
+      final service = context.read<FeedbackService>();
+      final settings = context.read<SettingsStore>();
+      final tickets = await service.listTickets();
+      final newest = newestReplyActivityAt(tickets);
+      if (newest == null) return;
+      final lastSeenRaw = await settings.get(SettingsKeys.feedbackLastSeenAt);
+      final lastSeen = lastSeenRaw == null ? null : DateTime.tryParse(lastSeenRaw);
+      final unread = lastSeen == null || newest.isAfter(lastSeen);
+      if (mounted) setState(() => _unread = unread);
+    } catch (error) {
+      // Best-effort badge only; a failure here just means no badge shows.
+      debugPrint('lunarlog feedback: unread check failed (${error.runtimeType})');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      key: const ValueKey('support-history-tile'),
+      leading: const Icon(Icons.history_outlined),
+      title: const Text('Support history'),
+      subtitle: const Text('See replies and continue a conversation'),
+      trailing: _unread
+          ? const Icon(Icons.circle, key: ValueKey('support-history-unread-badge'), size: 10, color: Colors.red)
+          : const Icon(Icons.chevron_right),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const SupportHistoryScreen()),
       ),
     );
   }

@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/ui/feedback/feedback_screen.dart' show kSupportEmailAddress;
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
+
+import '../support/fake_feedback_service.dart';
 
 class FakeSettingsStore implements SettingsStore {
   final Map<String, String> _values = {};
@@ -77,5 +81,126 @@ void main() {
 
     // Verify dialog closed
     expect(find.text('LunarLog Privacy Policy'), findsNothing);
+  });
+
+  testWidgets('shows send-feedback-tile when a FeedbackService is provided and hides it when none is',
+      (tester) async {
+    final settingsStore = FakeSettingsStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MultiProvider(
+          providers: [
+            Provider<SettingsStore>.value(value: settingsStore),
+            Provider<FeedbackService>.value(value: FakeFeedbackService()),
+          ],
+          child: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send-feedback-tile')), findsOneWidget);
+    expect(find.byKey(const ValueKey('contact-support-tile')), findsNothing);
+  });
+
+  testWidgets('shows contact-support-tile when no FeedbackService is provided, and the dialog '
+      'contains the support address', (tester) async {
+    final settingsStore = FakeSettingsStore();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Provider<SettingsStore>.value(
+          value: settingsStore,
+          child: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send-feedback-tile')), findsNothing);
+    final supportTile = find.byKey(const ValueKey('contact-support-tile'));
+    expect(supportTile, findsOneWidget);
+
+    await tester.tap(supportTile);
+    await tester.pumpAndSettle();
+
+    expect(find.text(kSupportEmailAddress), findsOneWidget);
+  });
+
+  FeedbackTicket repliedTicket(DateTime updatedAt) => FeedbackTicket(
+        id: 't1',
+        category: FeedbackCategory.bug,
+        message: 'crashed',
+        replyEmail: 'a@example.com',
+        status: FeedbackTicketStatus.replied,
+        attachmentPaths: const [],
+        createdAt: updatedAt,
+        updatedAt: updatedAt,
+      );
+
+  testWidgets('support-history-tile shows the unread badge when a reply is newer than the '
+      'stored feedbackLastSeenAt', (tester) async {
+    final settingsStore = FakeSettingsStore()
+      .._values[SettingsKeys.feedbackLastSeenAt] = DateTime.utc(2026, 1, 1).toIso8601String();
+    final service = FakeFeedbackService()..ticketsToReturn = [repliedTicket(DateTime.utc(2026, 9, 5))];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MultiProvider(
+          providers: [
+            Provider<SettingsStore>.value(value: settingsStore),
+            Provider<FeedbackService>.value(value: service),
+          ],
+          child: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('support-history-unread-badge')), findsOneWidget);
+  });
+
+  testWidgets('support-history-tile has no unread badge when feedbackLastSeenAt is already '
+      'as new as the newest reply', (tester) async {
+    final newest = DateTime.utc(2026, 9, 5);
+    final settingsStore = FakeSettingsStore().._values[SettingsKeys.feedbackLastSeenAt] = newest.toIso8601String();
+    final service = FakeFeedbackService()..ticketsToReturn = [repliedTicket(newest)];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MultiProvider(
+          providers: [
+            Provider<SettingsStore>.value(value: settingsStore),
+            Provider<FeedbackService>.value(value: service),
+          ],
+          child: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('support-history-unread-badge')), findsNothing);
+  });
+
+  testWidgets('support-history-tile swallows a listTickets failure and shows no badge', (tester) async {
+    final settingsStore = FakeSettingsStore();
+    final service = FakeFeedbackService()..failWithOnListTickets = const FeedbackFailure.network();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MultiProvider(
+          providers: [
+            Provider<SettingsStore>.value(value: settingsStore),
+            Provider<FeedbackService>.value(value: service),
+          ],
+          child: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('support-history-tile')), findsOneWidget);
+    expect(find.byKey(const ValueKey('support-history-unread-badge')), findsNothing);
   });
 }

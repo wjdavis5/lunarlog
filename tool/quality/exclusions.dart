@@ -58,6 +58,12 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'and cannot run under flutter test. NoopReminderScheduler is pure '
         'and gets a direct unit test anyway, same treatment as key_store.dart.',
   ),
+  const CoverageExclusion(
+    'lib/data/feedback/image_picker_attachment_source.dart',
+    'ImagePickerAttachmentSource wraps the image_picker plugin and cannot '
+        'run under flutter test; it holds no branching logic worth testing '
+        'in isolation, same treatment as google_sign_in_client.dart.',
+  ),
 ];
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');
