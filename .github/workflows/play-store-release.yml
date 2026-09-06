@@ -212,25 +212,23 @@ jobs:
           echo "AAB size: $(du -h "$aab" | cut -f1)"
           echo "APK size: $(du -h "$apk" | cut -f1)"
 
-      - name: Upload Sentry debug symbols (native + ProGuard mapping)
+      - name: Set up sentry-cli (checksum-verified download)
         # U5 (R15/R16/R17): warns and skips rather than failing the release
         # when the upload secrets are absent -- true for every build today,
         # since issue #19 has not provisioned them yet. sentry-cli is
         # installed as a pinned, checksum-verified release binary, never
-        # `curl | bash` (KTD10). The ProGuard upload is a documented no-op
-        # today: R8/minification is not enabled by this plan (see Scope
-        # Boundaries), so no mapping.txt exists yet; the conditional exists
-        # so enabling R8 later needs no workflow edit. The guard/download/
-        # verify logic is shared with ios-release.yml via
-        # upload-sentry-symbols-setup.sh (tested in CI's release-guards
-        # jobs); only the download URL/checksum and the upload commands
-        # themselves are platform-specific.
+        # `curl | bash` (KTD10). The guard/download/verify logic is shared
+        # with ios-release.yml via upload-sentry-symbols-setup.sh (tested in
+        # CI's release-guards jobs); only the download URL/checksum and the
+        # upload commands themselves are platform-specific.
         #
-        # continue-on-error (R15): once issue #19 provisions the secrets, a
-        # Sentry hiccup (download timeout, transient 5xx, a yanked release
-        # asset) must degrade telemetry, never block a signed Play upload --
-        # this is symbol upload, not the release artifact itself.
-        continue-on-error: true
+        # No `continue-on-error` here (round 2 of issue #7's review; KTD10):
+        # the script itself already warns-and-skips (exit 0) on a missing
+        # secret or a download that fails after its own retries, so only a
+        # genuine checksum mismatch -- a corrupted or tampered binary --
+        # reaches a non-zero exit here, and that must fail the job loudly,
+        # not be swallowed. `continue-on-error` is scoped to the next step,
+        # which makes the actual Sentry upload network calls.
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -238,8 +236,24 @@ jobs:
           SENTRY_CLI_DOWNLOAD_URL: https://github.com/getsentry/sentry-cli/releases/download/3.7.0/sentry-cli-Linux-x86_64
           SENTRY_CLI_SHA256: cec71d46a7cc394c94b6e75f1601985c710d457376c546ef3975567b3671563b
           SENTRY_CLI_CHECKSUM_TOOL: sha256sum
+        run: bash .github/scripts/upload-sentry-symbols-setup.sh
+
+      - name: Upload Sentry debug symbols (native + ProGuard mapping)
+        # continue-on-error (R15): once issue #19 provisions the secrets, a
+        # Sentry-side outage on these upload calls must degrade telemetry,
+        # never block a signed Play upload -- this is symbol upload, not the
+        # release artifact itself. Scoped to just these network calls, not
+        # the checksum verification in the previous step (round 2 of issue
+        # #7's review). The ProGuard upload is a documented no-op today:
+        # R8/minification is not enabled by this plan (see Scope
+        # Boundaries), so no mapping.txt exists yet; the conditional exists
+        # so enabling R8 later needs no workflow edit.
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
-          bash .github/scripts/upload-sentry-symbols-setup.sh
           if [ -x ./sentry-cli ]; then
             # Verified empirically against this toolchain's real
             # `flutter build appbundle --release` output tree (Q2) -- AGP's

@@ -66,11 +66,24 @@ Future<void> runWithSentry({
 /// test suite run stays identical whether or not `--dart-define
 /// =SENTRY_TRACES_SAMPLE_RATE=…` was passed; only [runWithSentry]'s
 /// production call site passes the real [AppConfig] value.
+///
+/// [scrubEventFn]/[scrubTransactionFn] (round 2 of issue #7's review) are
+/// injectable for the same reason [breadcrumbLog] is: the fail-closed
+/// `beforeSend`/`beforeSendTransaction` try/catch below exists to catch a
+/// bug *in the scrubber itself*, and [scrubEvent]/[scrubTransaction] are
+/// pure functions over well-typed SDK objects with no reachable throw path
+/// through the public API -- so without a seam to substitute a throwing
+/// stand-in, that catch block would be untestable and a regression in it
+/// (the round-1 gap this closes) could ship green. Default to the real
+/// [scrubEvent]/[scrubTransaction]; only tests override them.
 void configureSentryOptions(
   SentryFlutterOptions options, {
   required String dsn,
   BreadcrumbLog? breadcrumbLog,
   double? tracesSampleRate,
+  SentryEvent? Function(SentryEvent event) scrubEventFn = scrubEvent,
+  SentryTransaction? Function(SentryTransaction transaction)
+      scrubTransactionFn = scrubTransaction,
 }) {
   final log = breadcrumbLog ?? defaultBreadcrumbLog;
   options
@@ -143,14 +156,14 @@ void configureSentryOptions(
   // dropping a report is always safe, sending an unscrubbed one never is.
   options.beforeSend = (event, hint) {
     try {
-      return scrubEvent(event);
+      return scrubEventFn(event);
     } catch (_) {
       return null;
     }
   };
   options.beforeSendTransaction = (transaction, hint) {
     try {
-      return scrubTransaction(transaction);
+      return scrubTransactionFn(transaction);
     } catch (_) {
       return null;
     }
@@ -181,6 +194,31 @@ void configureSentryOptions(
 Widget wrapWithSentry(Widget child) =>
     AppConfig.hasSentry ? SentryWidget(child: child) : child;
 
+/// [SentryNavigatorObserver]'s `routeNameExtractor` (KTD4). Extracted as a
+/// standalone top-level function -- rather than inlined in
+/// [sentryNavigatorObservers] -- so it can be unit-tested directly: under
+/// `flutter test`, [AppConfig.hasSentry] is always false (it is a compile-time
+/// `const`), so the closure passed to `SentryNavigatorObserver` in
+/// [sentryNavigatorObservers] never runs in that process and would otherwise
+/// be untestable.
+///
+/// This extractor is required, not merely defense in depth: while tracing is
+/// on, `SentryTracer.traceContext()` reads the transaction name directly off
+/// the live `SentryTracer` (built from the observer's route name) to populate
+/// the trace's Dynamic Sampling Context, which rides along on both the
+/// outgoing Sentry envelope header and the `baggage` header sent to Supabase.
+/// That DSC is assembled before an event ever reaches
+/// [scrubTransaction]/[scrubEvent] as `beforeSend*` callbacks, so
+/// [scrub.dart]'s scrubbers -- the enforcement point for every event field --
+/// never see it and cannot stop the raw route name from leaving the device.
+/// Routing [settings] through [scrubRouteName] here scrubs the name at the
+/// one point upstream of that leak, closing it for good. The returned
+/// [RouteSettings] carries only the scrubbed name -- `arguments` is dropped
+/// unconditionally, same as the navigation-breadcrumb handling above (KTD1):
+/// a scalar argument has no keys for a deny-list check to find.
+RouteSettings? sentryRouteNameExtractor(RouteSettings? settings) =>
+    settings == null ? null : RouteSettings(name: scrubRouteName(settings.name));
+
 /// The [NavigatorObserver] list for `MaterialApp.navigatorObservers` (U2;
 /// R1, R3, R4, R5, R13). Empty when Sentry is unconfigured, so an
 /// unconfigured build installs no observer — same gate as [wrapWithSentry].
@@ -189,14 +227,14 @@ Widget wrapWithSentry(Widget child) =>
 /// KTD4) name on `event.transaction`; `enableAutoTransactions: true` is
 /// inert while `AppConfig.sentryTracesSampleRate` is null (U4) and starts
 /// producing route transactions only once an operator opts into tracing.
-/// No `routeNameExtractor` is supplied: [scrub.dart]'s `scrubRouteName` is
-/// the enforcement point regardless of what the observer reports, so a
-/// second extraction layer here would be redundant, not safer.
+/// [sentryRouteNameExtractor] closes the Dynamic Sampling Context leak
+/// documented on that function.
 List<NavigatorObserver> sentryNavigatorObservers() => AppConfig.hasSentry
     ? [
         SentryNavigatorObserver(
           enableAutoTransactions: true,
           setRouteNameAsTransaction: true,
+          routeNameExtractor: sentryRouteNameExtractor,
         ),
       ]
     : const <NavigatorObserver>[];

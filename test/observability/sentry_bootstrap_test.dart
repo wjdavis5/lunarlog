@@ -5,6 +5,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
@@ -23,6 +24,36 @@ class _ThrowingBreadcrumbLog extends BreadcrumbLog {
   @override
   void record(String category, String name) =>
       throw StateError('boom');
+}
+
+/// Never actually sends -- mirrors `scrub_test.dart`'s helper of the same
+/// name/purpose, used here to build a real [SentryTransaction] (the way the
+/// SDK actually produces one, through a [Hub]/tracer) without needing a
+/// network transport.
+class _NoopTransport implements Transport {
+  @override
+  Future<SentryId?> send(SentryEnvelope envelope) async => null;
+}
+
+/// Builds a real [SentryTransaction] via a real [Hub]/tracer (same approach
+/// as `scrub_test.dart`'s `withRealTransaction`) so the throw-path test
+/// below exercises [configureSentryOptions]'s `beforeSendTransaction` with
+/// the same shape of object the SDK hands it, not a hand-built stand-in.
+Future<SentryTransaction> _realTransaction() async {
+  final captureOptions =
+      SentryOptions(dsn: 'https://public@o0.ingest.sentry.io/1')
+        ..tracesSampleRate = 1.0
+        ..transport = _NoopTransport();
+  SentryTransaction? captured;
+  captureOptions.beforeSendTransaction = (transaction, hint) {
+    captured = transaction;
+    return null; // never actually sent
+  };
+  final hub = Hub(captureOptions);
+  final tracer =
+      hub.startTransaction('SettingsScreen', 'navigation', bindToScope: false);
+  await tracer.finish();
+  return captured!;
 }
 
 void main() {
@@ -174,12 +205,76 @@ void main() {
           options.beforeSend!(SentryEvent(message: SentryMessage('ok')), Hint());
       expect(result, isA<SentryEvent>());
     });
+
+    test('beforeSend returns null, not the raw event, when scrubEvent '
+        'itself throws (round 2 of issue #7\'s review: this catch had no '
+        'throw-path test)', () {
+      final options =
+          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(
+        options,
+        dsn: options.dsn!,
+        scrubEventFn: (event) => throw StateError('boom'),
+      );
+
+      final result =
+          options.beforeSend!(SentryEvent(message: SentryMessage('ok')), Hint());
+
+      expect(result, isNull);
+    });
+
+    test('beforeSendTransaction returns null, not the raw transaction, when '
+        'scrubTransaction itself throws (round 2 of issue #7\'s review: '
+        'this catch had no throw-path test)', () async {
+      final transaction = await _realTransaction();
+
+      final options =
+          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(
+        options,
+        dsn: options.dsn!,
+        scrubTransactionFn: (transaction) => throw StateError('boom'),
+      );
+
+      final result = options.beforeSendTransaction!(transaction, Hint());
+
+      expect(result, isNull);
+    });
   });
 
   group('sentryNavigatorObservers (U2; R13, AE4)', () {
     test('AE4: empty when unconfigured (the default under flutter test, no '
         'SENTRY_DSN)', () {
       expect(sentryNavigatorObservers(), isEmpty);
+    });
+  });
+
+  group('sentryRouteNameExtractor (KTD4)', () {
+    // sentryNavigatorObservers() only wires this in when AppConfig.hasSentry
+    // is true, which flutter test never is (it is a compile-time const) --
+    // so this group exercises the extractor directly, standing in for the
+    // SentryTracer/DSC path this function protects (see its own doc comment).
+    test('null settings pass through as null', () {
+      expect(sentryRouteNameExtractor(null), isNull);
+    });
+
+    test('a registered route name is kept verbatim', () {
+      final result =
+          sentryRouteNameExtractor(const RouteSettings(name: 'SettingsScreen'));
+      expect(result?.name, 'SettingsScreen');
+    });
+
+    test('an unrecognized/unsafe route name becomes "unknown", same as '
+        'scrubRouteName', () {
+      final result = sentryRouteNameExtractor(
+          const RouteSettings(name: '/profile/123'));
+      expect(result?.name, 'unknown');
+    });
+
+    test('arguments are dropped unconditionally, even for a kept name', () {
+      final result = sentryRouteNameExtractor(
+          const RouteSettings(name: 'SettingsScreen', arguments: 'secret'));
+      expect(result?.arguments, isNull);
     });
   });
 

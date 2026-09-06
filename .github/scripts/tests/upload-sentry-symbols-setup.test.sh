@@ -92,6 +92,47 @@ assert_eq "empty SENTRY_PROJECT leaves no sentry-cli file" "false" "$LAST_CLI_PR
 run_case "" "" "" "$FIXTURE_SHA256" "sha256sum"
 assert_eq "all three secrets empty exits 0" 0 "$LAST_EXIT"
 
+# --- A download failure is a network hiccup, not a security event: warn-and-skip, never fail the job (round 2 of issue #7's review) ---
+
+# A file:// URL pointing at a file that does not exist makes curl fail
+# --fail immediately -- no real network call, no retry delay, and it
+# exercises the same curl failure path a timeout/5xx/connection-refused
+# would hit after this script's own retries are exhausted.
+if command -v cygpath >/dev/null 2>&1; then
+  MISSING_URL="file:///$(cygpath -m "$WORKDIR/does-not-exist")"
+else
+  MISSING_URL="file://$WORKDIR/does-not-exist"
+fi
+run_case_with_url() {
+  local token="$1" org="$2" project="$3" sha="$4" tool="$5" url="$6"
+  local rundir logfile
+  rundir="$(mktemp -d)"
+  logfile="$(mktemp)"
+  set +e
+  (
+    cd "$rundir"
+    export SENTRY_AUTH_TOKEN="$token"
+    export SENTRY_ORG="$org"
+    export SENTRY_PROJECT="$project"
+    export SENTRY_CLI_DOWNLOAD_URL="$url"
+    export SENTRY_CLI_SHA256="$sha"
+    export SENTRY_CLI_CHECKSUM_TOOL="$tool"
+    bash "$SCRIPT"
+  ) >"$logfile" 2>&1
+  LAST_EXIT=$?
+  set -e
+  LAST_LOG="$(cat "$logfile")"
+  LAST_CLI_PRESENT="false"
+  if [ -e "$rundir/sentry-cli" ]; then LAST_CLI_PRESENT="true"; fi
+  rm -f "$logfile"
+  rm -rf "$rundir"
+}
+
+run_case_with_url "token" "org" "proj" "$FIXTURE_SHA256" "sha256sum" "$MISSING_URL"
+assert_eq "download failure exits 0 (warn-and-skip, not a job failure)" 0 "$LAST_EXIT"
+assert_contains "download failure warns rather than erroring" "$LAST_LOG" "::warning::"
+assert_eq "download failure leaves no sentry-cli file" "false" "$LAST_CLI_PRESENT"
+
 # --- Secrets present: download, verify, chmod, execute ---
 
 run_case "token" "org" "proj" "$FIXTURE_SHA256" "sha256sum"
