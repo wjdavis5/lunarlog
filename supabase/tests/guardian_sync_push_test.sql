@@ -1,6 +1,6 @@
 -- Unit test for guardian sync_push and invitations RPCs (Issue #8, Unit U2).
 begin;
-select plan(26);
+select plan(32);
 
 -- ---------------------------------------------------------------------------
 -- Setup test users: mom (creator), dad (co-parent), nanny (caregiver), doc (viewer), eve (attacker)
@@ -362,6 +362,83 @@ select is(
   (select status from public.profile_guardians where profile_id = tests.ulid(301) and user_id = tests.get_supabase_uid('dad')),
   'revoked',
   'Dad status is now revoked after self-leave'
+);
+
+-- ---------------------------------------------------------------------------
+-- AE4 / R24 regression (plan 2026-09-06-001, Unit U4): a stale offline
+-- parent client cannot reclaim ownership by pushing a profile row with
+-- user_id set back to itself through sync_push. sync_push's UPDATE path has
+-- never included user_id in its SET list (see
+-- 20260904020000_sync_push_and_invitations.sql) - this pins that behavior
+-- specifically against a *post-transfer* co_parent, so a future sync_push
+-- edit cannot silently reopen it. Uses co_parent rather than viewer for the
+-- push (R7's other role) so the push clears the "role can edit metadata"
+-- check and this assertion actually exercises the update path, not just an
+-- authorization refusal.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('kid');
+
+select tests.authenticate_as('mom');
+select is(
+  public.sync_push(
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(310), 'display_name', 'Riley', 'is_minor', true, 'sort_order', 0,
+      'updated_at', '2026-09-06T09:00:00Z')),
+    '[]'::jsonb
+  ) -> 'rejected',
+  '[]'::jsonb,
+  'AE4 setup: Mom creates a fresh profile via sync_push'
+);
+
+select public.create_ownership_transfer(
+  tests.ulid(310), 'co_parent',
+  '9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a', null, 72
+);
+
+select tests.authenticate_as('kid');
+select is(
+  public.accept_ownership_transfer(
+    '9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a', 'Kid', 'Mom'
+  ) ->> 'profile_id',
+  tests.ulid(310),
+  'AE4 setup: Kid accepts the transfer and becomes owner'
+);
+
+select is(
+  (select user_id from public.profiles where id = tests.ulid(310)),
+  tests.get_supabase_uid('kid'),
+  'AE4 setup: profiles.user_id is now Kid''s'
+);
+
+select tests.authenticate_as('mom');
+-- accept_ownership_transfer stamped profiles.updated_at to clock_timestamp()
+-- (the real wall clock, not this file's fictional 2026-09-06 timestamps), so
+-- the reclaim push's own updated_at must be computed relative to the stored
+-- row rather than hardcoded, or LWW would silently decline it as stale.
+select is(
+  public.sync_push(
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(310), 'display_name', 'Reclaimed', 'is_minor', true, 'sort_order', 0,
+      'user_id', tests.get_supabase_uid('mom'),
+      'updated_at', to_char(
+        (select updated_at from public.profiles where id = tests.ulid(310)) + interval '1 minute',
+        'YYYY-MM-DD"T"HH24:MI:SS"Z"'))),
+    '[]'::jsonb
+  ) -> 'rejected',
+  '[]'::jsonb,
+  'AE4: a post-transfer co_parent''s push carrying user_id back to itself is accepted for the metadata columns'
+);
+
+select is(
+  (select display_name from public.profiles where id = tests.ulid(310)),
+  'Reclaimed',
+  'AE4: the metadata columns the push actually named do update'
+);
+
+select is(
+  (select user_id from public.profiles where id = tests.ulid(310)),
+  tests.get_supabase_uid('kid'),
+  'AE4 / R24: profiles.user_id is still Kid''s - sync_push never writes user_id, tolerated-but-never-read'
 );
 
 rollback;
