@@ -357,17 +357,38 @@ async function teardown({ channels, authed, profileId, dayEntryId, userId }) {
   // action would. Order matters only for tidiness (profiles delete already
   // cascades day_entries via the FK; deleting the day_entries row first
   // just avoids relying on that cascade for this script's own cleanup).
+  //
+  // A cleanup failure is a FAILURE OF THE RUN, not a footnote: it means a
+  // day_entries row carrying `note`/`tags`/`flow` (or the profile it hangs
+  // off) is still sitting in the target project -- against the cloud project
+  // that is exactly the outcome this script's header promises cannot happen.
+  // Logging it while exiting 0 would let a PASS banner sit on top of leaked
+  // content, so each failed delete forces a distinct non-zero exit code
+  // instead (PR #92 review round 3, #10).
+  let cleanupFailed = false;
+  const failed = (what, error) => {
+    cleanupFailed = true;
+    console.error(`[teardown] failed to delete ${what}:`, error.message);
+  };
   if (dayEntryId) {
     const { error } = await admin.from('day_entries').delete().eq('id', dayEntryId);
-    if (error) console.error('[teardown] failed to delete day_entries row:', error.message);
+    if (error) failed('day_entries row', error);
   }
   if (profileId) {
     const { error } = await admin.from('profiles').delete().eq('id', profileId);
-    if (error) console.error('[teardown] failed to delete profile row:', error.message);
+    if (error) failed('profile row', error);
   }
   if (userId) {
     const { error } = await admin.auth.admin.deleteUser(userId);
-    if (error) console.error('[teardown] failed to delete auth user:', error.message);
+    if (error) failed('auth user', error);
+  }
+  if (cleanupFailed) {
+    console.error(
+      '[teardown] INCOMPLETE -- throwaway rows may still be present in the target '
+        + 'project; delete them by hand before re-running.'
+    );
+    process.exitCode = process.exitCode || 3;
+    return;
   }
   console.log('[teardown] done.');
 }
