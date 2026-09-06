@@ -123,9 +123,7 @@ double? computeTracesSampleRate(String raw) {
   if (raw.isEmpty) return null;
   final parsed = double.tryParse(raw);
   if (parsed == null) return null;
-  if (parsed < 0) return 0.0;
-  if (parsed > 1) return 1.0;
-  return parsed;
+  return parsed.clamp(0.0, 1.0).toDouble();
 }
 
 /// Pure decision behind [AppConfig.hasGoogle] (#2 U1; KTD2).

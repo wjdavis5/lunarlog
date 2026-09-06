@@ -1,9 +1,15 @@
 /// Sentry symbol-upload workflow guard (U5; KTD10, KTD11; R15, R16, R17,
 /// AE8, AE9). Mirrors `export_compliance_test.dart`'s shape: read the two
 /// release workflow files as text and assert the invariants that make the
-/// upload step safe to land before issue #19 provisions any secret --
-/// guarded (never fails the release), checksum-verified before invoking
-/// `sentry-cli`, never `curl | bash`, and never echoing a secret.
+/// upload step safe to land before issue #19 provisions any secret.
+///
+/// The guard/download/checksum-verify logic itself lives in the shared
+/// `.github/scripts/upload-sentry-symbols-setup.sh` (its own truth table is
+/// `.github/scripts/tests/upload-sentry-symbols-setup.test.sh`, run in CI's
+/// release-guards jobs) -- both workflow files call it identically, so this
+/// file asserts the *delegation* shape: the script runs, the required env
+/// vars reach it, and the platform's upload command only runs after the
+/// script leaves `./sentry-cli` executable.
 ///
 /// Comment lines are stripped before matching, the same trap
 /// `export_compliance_test.dart` documents: a commented-out step must not
@@ -17,6 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 const _iosWorkflowPath = '.github/workflows/ios-release.yml';
 const _androidWorkflowPath = '.github/workflows/play-store-release.yml';
 const _gradlePath = 'android/app/build.gradle.kts';
+const _sharedScriptPath = '.github/scripts/upload-sentry-symbols-setup.sh';
 
 String _readRepoFile(String path) {
   final file = File(path);
@@ -75,51 +82,61 @@ void main() {
 
       group(platform, () {
         late String stepBody;
+        late String runBlock;
 
         setUpAll(() {
           final contents = _stripYamlComments(_readRepoFile(path));
           stepBody = _sentrySymbolStepBody(contents);
+          runBlock = _runBlockOf(stepBody);
         });
 
-        test('the guard checks all three secrets before any sentry-cli '
-            'invocation appears', () {
-          final guardIndex = stepBody.indexOf('SENTRY_AUTH_TOKEN');
-          final cliIndex = stepBody.indexOf('sentry-cli');
-          expect(guardIndex, greaterThanOrEqualTo(0));
-          expect(cliIndex, greaterThan(guardIndex));
-
+        test('all three upload secrets reach the step via env:, not '
+            'interpolated into the run body', () {
           for (final secret in [
             'SENTRY_AUTH_TOKEN',
             'SENTRY_ORG',
             'SENTRY_PROJECT',
           ]) {
             expect(stepBody, contains(secret), reason: secret);
-            final secretIndex = stepBody.indexOf(secret);
-            expect(secretIndex, lessThan(cliIndex),
-                reason: '$secret must be checked before sentry-cli runs');
+          }
+          expect(runBlock, isNot(contains(r'${{ secrets.SENTRY_')));
+        });
+
+        test('delegates the guard/download/checksum-verify logic to the '
+            'shared script, before any sentry-cli invocation', () {
+          expect(runBlock, contains('bash $_sharedScriptPath'));
+          final scriptIndex = runBlock.indexOf(_sharedScriptPath);
+          final cliIndex = runBlock.indexOf('sentry-cli');
+          expect(cliIndex, greaterThan(scriptIndex),
+              reason: 'the shared script must run before sentry-cli is '
+                  'invoked directly');
+        });
+
+        test('the upload command only runs when the shared script left '
+            './sentry-cli executable', () {
+          expect(runBlock, contains(RegExp(r'if\s*\[\s*-x\s*\.?/?sentry-cli')));
+        });
+
+        test('passes the download URL, checksum, and checksum tool as env, '
+            'not hard-coded inside the shared script', () {
+          for (final key in [
+            'SENTRY_CLI_DOWNLOAD_URL',
+            'SENTRY_CLI_SHA256',
+            'SENTRY_CLI_CHECKSUM_TOOL',
+          ]) {
+            expect(stepBody, contains(key), reason: key);
           }
         });
 
-        test("the guard's early exit is exit 0, not exit 1", () {
-          final guardBlock = stepBody.substring(
-            0,
-            stepBody.indexOf('sentry-cli'),
-          );
-          expect(guardBlock, contains('exit 0'));
-          expect(guardBlock, isNot(contains('exit 1')));
-        });
-
-        test('no bare secrets.SENTRY_ interpolation appears in the run '
-            'body -- secrets reach the shell only via env:', () {
-          expect(_runBlockOf(stepBody), isNot(contains(r'${{ secrets.SENTRY_')));
+        test('the step itself never inlines a curl | shell pipeline (that '
+            'logic is the shared script\'s alone)', () {
+          expect(runBlock, isNot(contains(RegExp(r'curl[^\n]*\|\s*(ba)?sh'))));
+          expect(runBlock, isNot(contains(RegExp(r'wget[^\n]*\|\s*(ba)?sh'))));
         });
 
         test('no TOKEN-named variable is ever echoed', () {
           final echoTokenPattern =
               RegExp(r'echo[^\n]*TOKEN', caseSensitive: false);
-          // The only permitted mention is the warning line naming the
-          // secret keys by name, not their values -- assert no `echo`
-          // interpolates a shell variable containing "TOKEN".
           for (final match in echoTokenPattern.allMatches(stepBody)) {
             final line = match.group(0)!;
             expect(line, isNot(contains(r'$SENTRY_AUTH_TOKEN')),
@@ -127,28 +144,6 @@ void main() {
             expect(line, isNot(contains(r'${SENTRY_AUTH_TOKEN')),
                 reason: 'a line must never echo the token value: $line');
           }
-        });
-
-        test('sentry-cli is installed as a pinned, checksum-verified '
-            'download, never curl | bash', () {
-          expect(stepBody, isNot(contains(RegExp(r'curl[^\n]*\|\s*(ba)?sh'))));
-          expect(stepBody, isNot(contains(RegExp(r'wget[^\n]*\|\s*(ba)?sh'))));
-          expect(
-            stepBody,
-            anyOf(contains('sha256sum -c'), contains('shasum -a 256 -c')),
-            reason: 'expected a checksum-verification step before invoking '
-                'the downloaded binary',
-          );
-        });
-
-        test('the checksum verification runs before sentry-cli --version',
-            () {
-          final checksumIndex = stepBody.contains('sha256sum -c')
-              ? stepBody.indexOf('sha256sum -c')
-              : stepBody.indexOf('shasum -a 256 -c');
-          final versionIndex = stepBody.indexOf('--version');
-          expect(checksumIndex, greaterThanOrEqualTo(0));
-          expect(versionIndex, greaterThan(checksumIndex));
         });
       });
     }
@@ -180,6 +175,15 @@ void main() {
       final gradle = _readRepoFile(_gradlePath);
       expect(gradle, contains('io.sentry:sentry-native-ndk'));
       expect(gradle, contains('prefab = true'));
+    });
+
+    test('the shared script exists and is referenced from both workflows',
+        () {
+      _readRepoFile(_sharedScriptPath); // asserts existence/non-empty
+      for (final path in [_iosWorkflowPath, _androidWorkflowPath]) {
+        expect(_readRepoFile(path), contains(_sharedScriptPath),
+            reason: path);
+      }
     });
   });
 }
