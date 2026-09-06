@@ -17,11 +17,14 @@ class FakeOwnershipTransferService implements OwnershipTransferService {
   GeneratedTransfer? scriptedTransfer;
   Object? scriptedCreateError;
   Object? scriptedCancelError;
+  ActiveTransfer? scriptedActiveTransfer;
+  Object? scriptedGetActiveTransferError;
 
   String? lastCreatedProfileId;
   ParentPostTransferRole? lastCreatedRole;
   String? lastCreatedRecipientLabel;
   String? lastCancelledTransferId;
+  String? lastGetActiveTransferProfileId;
 
   @override
   Future<GeneratedTransfer> createTransfer({
@@ -64,6 +67,15 @@ class FakeOwnershipTransferService implements OwnershipTransferService {
     String? parentDisplayName,
   }) {
     throw UnimplementedError('not exercised by this unit');
+  }
+
+  @override
+  Future<ActiveTransfer?> getActiveTransfer({required String profileId}) async {
+    lastGetActiveTransferProfileId = profileId;
+    if (scriptedGetActiveTransferError != null) {
+      throw scriptedGetActiveTransferError!;
+    }
+    return scriptedActiveTransfer;
   }
 }
 
@@ -393,6 +405,216 @@ void main() {
       );
       expect(button.onPressed, isNotNull);
       expect(find.text('Transfer Ready'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'Review item #2: an active transfer discovered on open shows the '
+        'pending-cancel body instead of the armable form', (tester) async {
+      final withActive = FakeOwnershipTransferService()
+        ..scriptedActiveTransfer = ActiveTransfer(
+          transferId: 'orphaned-1',
+          profileId: testProfile.id,
+          parentPostTransferRole: ParentPostTransferRole.coManager,
+          expiresAt: DateTime.utc(2026, 9, 10, 8, 0),
+        );
+
+      await pumpTransferScreen(tester, service: withActive);
+
+      expect(withActive.lastGetActiveTransferProfileId, testProfile.id);
+      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(find.text('What changes'), findsNothing);
+      expect(
+        find.textContaining(formatTransferExpiry(DateTime.utc(2026, 9, 10, 8, 0))),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Cancel Pending Transfer'));
+      await tester.pumpAndSettle();
+
+      expect(withActive.lastCancelledTransferId, 'orphaned-1');
+      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('What changes'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'Review item #2: a TransferAlreadyArmedFailure from createTransfer '
+        'falls back to showing the discovered active transfer', (tester) async {
+      final failing = FakeOwnershipTransferService()
+        ..scriptedCreateError = const TransferFailure.alreadyArmed();
+
+      // Nothing active on open (the initState check below sees null) - the
+      // transfer becomes discoverable only once the create attempt below
+      // hits the alreadyArmed failure, mirroring a transfer that was armed
+      // by a lost createTransfer response *during* this session.
+      await pumpTransferScreen(tester, service: failing);
+      expect(find.text('What changes'), findsOneWidget);
+
+      failing.scriptedActiveTransfer = ActiveTransfer(
+        transferId: 'orphaned-2',
+        profileId: testProfile.id,
+        parentPostTransferRole: ParentPostTransferRole.viewer,
+        expiresAt: DateTime.utc(2026, 9, 11, 9, 0),
+        recipientLabel: 'Sam',
+      );
+
+      await tester.tap(find.text(ParentPostTransferRole.coManager.label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(
+        find.textContaining(formatTransferExpiry(DateTime.utc(2026, 9, 11, 9, 0))),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'Review item #2: a TransferAlreadyArmedFailure with no discoverable '
+        'active transfer (e.g. it was cancelled just after) still renders '
+        'the failure message on the armable form', (tester) async {
+      final failing = FakeOwnershipTransferService()
+        ..scriptedCreateError = const TransferFailure.alreadyArmed();
+
+      await pumpTransferScreen(tester, service: failing);
+
+      await tester.tap(find.text(ParentPostTransferRole.coManager.label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'A transfer is already pending for this profile. Cancel it before starting a new one.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('What changes'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'Review item #2: a TransferFailure from the fallback getActiveTransfer '
+        'call renders its own message', (tester) async {
+      final failing = FakeOwnershipTransferService()
+        ..scriptedCreateError = const TransferFailure.alreadyArmed()
+        ..scriptedGetActiveTransferError = const TransferFailure.network();
+
+      await pumpTransferScreen(tester, service: failing);
+
+      await tester.tap(find.text(ParentPostTransferRole.coManager.label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Network error. Please check your connection.'),
+        findsOneWidget,
+      );
+      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('What changes'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'Review item #2: a non-TransferFailure error from the fallback '
+        'getActiveTransfer call still renders the original alreadyArmed '
+        'message', (tester) async {
+      final failing = FakeOwnershipTransferService()
+        ..scriptedCreateError = const TransferFailure.alreadyArmed()
+        ..scriptedGetActiveTransferError = StateError('boom');
+
+      await pumpTransferScreen(tester, service: failing);
+
+      await tester.tap(find.text(ParentPostTransferRole.coManager.label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'A transfer is already pending for this profile. Cancel it before starting a new one.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('What changes'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'Review item #2: a failed cancel of the discovered active transfer '
+        'renders its message and leaves the pending body visible',
+        (tester) async {
+      final withActive = FakeOwnershipTransferService()
+        ..scriptedActiveTransfer = ActiveTransfer(
+          transferId: 'orphaned-3',
+          profileId: testProfile.id,
+          parentPostTransferRole: ParentPostTransferRole.coManager,
+          expiresAt: DateTime.utc(2026, 9, 12, 8, 0),
+        )
+        ..scriptedCancelError = const TransferFailure.network();
+
+      await pumpTransferScreen(tester, service: withActive);
+      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel Pending Transfer'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Network error. Please check your connection.'),
+        findsOneWidget,
+      );
+      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'Review item #2: a non-TransferFailure error cancelling the '
+        'discovered active transfer shows the generic message', (tester) async {
+      final withActive = FakeOwnershipTransferService()
+        ..scriptedActiveTransfer = ActiveTransfer(
+          transferId: 'orphaned-4',
+          profileId: testProfile.id,
+          parentPostTransferRole: ParentPostTransferRole.viewer,
+          expiresAt: DateTime.utc(2026, 9, 13, 8, 0),
+        )
+        ..scriptedCancelError = StateError('boom');
+
+      await pumpTransferScreen(tester, service: withActive);
+      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel Pending Transfer'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
+      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

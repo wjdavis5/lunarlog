@@ -93,6 +93,44 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
   }
 
   @override
+  Future<ActiveTransfer?> getActiveTransfer({required String profileId}) async {
+    // Review item #2 (P1): direct table SELECT, not an RPC — U2's RLS policy
+    // already grants it (initiated_by = caller or the profile's accepted
+    // primary_guardian), so this needs no new server-side surface. Only the
+    // columns a client may legitimately see are selected; token_hash never
+    // leaves the server.
+    try {
+      final rows = await client
+          .from('ownership_transfers')
+          .select('id, profile_id, parent_post_transfer_role, recipient_label, expires_at')
+          .eq('profile_id', profileId)
+          .filter('accepted_at', 'is', null)
+          .filter('cancelled_at', 'is', null);
+
+      // At most one row: ownership_transfers_one_live_uq (KTD6) enforces
+      // exactly this "accepted_at is null and cancelled_at is null" shape as
+      // a partial unique index on profile_id.
+      if (rows.isEmpty) return null;
+      final row = rows.first;
+
+      final role = ParentPostTransferRole.fromDb(row['parent_post_transfer_role'] as String);
+      if (role == null) {
+        throw const TransferFailure.other('unexpected parent_post_transfer_role value');
+      }
+
+      return ActiveTransfer(
+        transferId: row['id'] as String,
+        profileId: row['profile_id'] as String,
+        parentPostTransferRole: role,
+        expiresAt: DateTime.parse(row['expires_at'] as String).toUtc(),
+        recipientLabel: row['recipient_label'] as String?,
+      );
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  @override
   Future<ClaimedProfileResult> claimProfile({
     required String rawToken,
     String? childDisplayName,
@@ -185,11 +223,12 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
   TransferFailure? _mapBusinessError(String code, String msg) {
     if (code == 'P0002') return const TransferFailure.notFound();
     // 23505 (unique_violation) on create means a live transfer already
-    // exists for this profile; there is no dedicated "already armed"
-    // failure in U6's taxonomy, so it maps to TransferFailure.other with a
-    // diagnostic message rather than being conflated with any of the
-    // claim-side failures below.
-    if (code == '23505') return TransferFailure.other(_diagnostic(code, msg));
+    // exists for this profile (Review item #2, P1) — either genuinely
+    // pending, or orphaned by a lost response to an earlier createTransfer
+    // call. TransferAlreadyArmedFailure is the caller's signal to fall back
+    // to getActiveTransfer and offer cancelling the existing one, rather
+    // than a dead end that leaves the parent locked out until the TTL lapses.
+    if (code == '23505') return const TransferFailure.alreadyArmed();
     if (code == '22023') return _mapInvalidParameter(code, msg);
     return _mapBusinessMessage(msg);
   }

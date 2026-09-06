@@ -19,6 +19,14 @@
 --    existing user_id/server_version entries) so a client that pulls the
 --    column back down and echoes it in a later push is not rejected for
 --    carrying an "unknown key".
+-- 3. Review item #3 (P1): sync_push's UPDATE path writes birth_year and
+--    relationship only when the incoming row's jsonb actually carries that
+--    key (`v_row ? 'birth_year'` / `v_row ? 'relationship'`), falling back to
+--    the already-stored value otherwise. Without this, a client built before
+--    U1 - which never sends these keys at all - would silently null out an
+--    already-set birth_year/relationship on every ordinary profile edit
+--    (e.g. a rename), since `v_row ->> 'key'` cannot distinguish "key
+--    omitted" from "key present with an explicit null".
 --
 -- Filename ordering (AGENTS.md Migration Flow step 7): 20260906160000 sorts
 -- after this branch's parent, 20260906150000_feedback_tickets_notified_at.sql
@@ -174,7 +182,11 @@ begin
       -- U1: birth_year/relationship are ordinary optional profile metadata,
       -- validated by the table's own CHECK constraints (an invalid value
       -- lands this row in `rejected` via the exception handler below, same
-      -- as an over-length display_name).
+      -- as an over-length display_name). These two parsed values feed the
+      -- INSERT path unconditionally (a brand-new row has nothing to
+      -- preserve) and the UPDATE path guarded by a jsonb `?` containment
+      -- check below (review item #3) so an old client that omits these keys
+      -- entirely does not silently null out an already-stored value.
       v_birth_year := (v_row ->> 'birth_year')::smallint;
       v_relationship := v_row ->> 'relationship';
       if v_deleted_at is not null then
@@ -236,8 +248,18 @@ begin
                  created_at = v_created_at,
                  updated_at = v_updated_at,
                  deleted_at = v_deleted_at,
-                 birth_year = v_birth_year,
-                 relationship = v_relationship
+                 -- Review item #3 (P1): an old client that predates U1 omits
+                 -- birth_year/relationship from its payload entirely, rather
+                 -- than sending them as null - v_row ->> 'key' cannot tell
+                 -- "omitted" from "explicitly cleared" apart, and both parse
+                 -- to the same null in v_birth_year/v_relationship above. The
+                 -- jsonb `?` containment operator can tell them apart: only
+                 -- overwrite the stored value when the incoming row actually
+                 -- carries the key, so an old client's push preserves
+                 -- whatever birth_year/relationship the profile already has
+                 -- instead of silently nulling it on every metadata edit.
+                 birth_year = case when v_row ? 'birth_year' then v_birth_year else v_stored_profile.birth_year end,
+                 relationship = case when v_row ? 'relationship' then v_relationship else v_stored_profile.relationship end
            where id = v_id;
         elsif v_updated_at = v_stored_profile.updated_at
               and v_deleted_at is not null

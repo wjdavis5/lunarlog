@@ -4,7 +4,7 @@
 -- handover transaction, sovereignty after transfer, the attribution-guard
 -- bypass, and the cascade proofs that motivated R15.
 begin;
-select plan(62);
+select plan(71);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -221,6 +221,24 @@ insert into r select 'accept1', public.accept_ownership_transfer(pg_temp.token(1
 select is(pg_temp.resp('accept1') ->> 'profile_id', tests.ulid(401), 'accept_ownership_transfer returns the profile id');
 select is((pg_temp.resp('accept1') ->> 'day_entries_rehomed')::int, 2, 'AE1: both of the profile''s entries are rehomed');
 
+-- Review item #5 (P1): every check below this point runs after
+-- tests.clear_authentication(), which returns to the session's own
+-- superuser role and therefore bypasses RLS entirely - none of them actually
+-- exercise the SELECT policies a real client would be subject to. Prove
+-- post-transfer RLS positively, authenticated as the child, before dropping
+-- to the superuser bypass for the column-by-column snapshot below.
+select tests.authenticate_as('kid');
+select is(
+  (select count(*) from public.profiles where id = tests.ulid(401)),
+  1::bigint,
+  'Review item #5: the child, authenticated via RLS (not the superuser bypass), can read the profile they now own'
+);
+select is(
+  (select count(*) from public.day_entries where profile_id = tests.ulid(401)),
+  2::bigint,
+  'Review item #5: the child, authenticated via RLS, can read the profile''s day_entries'
+);
+
 select tests.clear_authentication();
 select is(
   (select user_id from public.profiles where id = tests.ulid(401)),
@@ -331,6 +349,16 @@ insert into r select 'arm_viewer', public.create_ownership_transfer(tests.ulid(4
 select tests.authenticate_as('jess');
 select public.accept_ownership_transfer(pg_temp.token(16), 'Jess', 'Dad');
 
+-- Review item #5 (P1): the positive-read/write-denial pair for the viewer
+-- role, mirroring the co_parent family's checks above - jess (the child) can
+-- read her own profile via RLS, and dad2 (now a viewer) is denied a direct
+-- write below (not just through sync_push).
+select is(
+  (select count(*) from public.profiles where id = tests.ulid(402)),
+  1::bigint,
+  'Review item #5: the child, authenticated via RLS, can read the profile they now own (viewer post-role family)'
+);
+
 -- sync_push never lets a per-row authorization failure escape as a real SQL
 -- exception (each row runs inside its own exception handler, opaquely
 -- rejecting the row) - so the proof here is the row landing in `rejected`,
@@ -353,7 +381,8 @@ select is(
 select throws_ok(
   format($$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at) values (%L, %L, '2026-09-06', 'UTC', 'light', now())$$,
     tests.ulid(422), tests.ulid(402)),
-  '42501', null, 'RLS itself (not just sync_push) denies a viewer a direct day_entries insert'
+  '42501', null,
+  'Review item #5: RLS itself (not just sync_push) denies a viewer a direct day_entries insert - the write-denial mirror of jess''s positive read above'
 );
 
 -- ---------------------------------------------------------------------------
@@ -529,6 +558,97 @@ select is(
   (select count(*) from public.day_entries where id in (tests.ulid(411), tests.ulid(412))),
   2::bigint,
   'R15 no-orphan proof: after a completed transfer, deleting the ex-parent leaves its at-transfer-time entries intact'
+);
+
+-- ---------------------------------------------------------------------------
+-- 11. Review item #1 (P0): revoke_guardian closes the ownership-transfer
+-- bypass, with accept_ownership_transfer's acceptor-freshness check as
+-- defence in depth. Mirrors guardian_revocation_bypass_test.sql's #81/#82
+-- isolation idiom.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('gigi');
+select tests.create_supabase_user('uncle');
+select tests.authenticate_as('gigi');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(405), 'Drew', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_guardian_invitation(tests.ulid(405), 'co_parent', 'Uncle', pg_temp.token(19), 48);
+select tests.authenticate_as('uncle');
+select public.accept_guardian_invitation(pg_temp.token(19), 'Uncle');
+
+select tests.authenticate_as('gigi');
+insert into r select 'arm_bypass', public.create_ownership_transfer(tests.ulid(405), 'co_parent', pg_temp.token(20), 'Drew', 72);
+
+-- (a) revoking Uncle - unrelated to the transfer's actual intended
+-- recipient - cancels the still-live transfer too. Would fail (cancelled_at
+-- stays null, and the accept attempt below would succeed instead of
+-- throwing) if this fix regressed and revoke_guardian went back to leaving
+-- ownership_transfers untouched.
+select public.revoke_guardian(tests.ulid(405), tests.get_supabase_uid('uncle'));
+select isnt(
+  (select cancelled_at from public.ownership_transfers where token_hash = pg_temp.token(20)),
+  null,
+  'Review item #1: revoke_guardian cancels a still-live ownership transfer for the profile'
+);
+
+select tests.authenticate_as('uncle');
+select throws_ok(
+  format($$select public.accept_ownership_transfer(%L)$$, pg_temp.token(20)),
+  '55000', null,
+  'Review item #1: the transfer is no longer redeemable after the unrelated revocation'
+);
+
+-- (b) acceptor-freshness check, isolated from (a): undo the revoke_guardian
+-- cancellation on the transfer (as if it had never run) to prove the
+-- freshness guard inside accept_ownership_transfer does not depend on it.
+select tests.clear_authentication();
+update public.ownership_transfers set cancelled_at = null
+ where token_hash = pg_temp.token(20);
+
+select tests.authenticate_as('uncle');
+select throws_ok(
+  format($$select public.accept_ownership_transfer(%L)$$, pg_temp.token(20)),
+  '55000', null,
+  'Review item #1: a revoked guardian is refused even if the transfer is somehow still live (acceptor-freshness defence in depth)'
+);
+
+select tests.clear_authentication();
+select is(
+  (select user_id from public.profiles where id = tests.ulid(405)),
+  tests.get_supabase_uid('gigi'),
+  'Review item #1: the profile is still gigi''s after both blocked redemption attempts'
+);
+
+-- ---------------------------------------------------------------------------
+-- 12. Review item #4 (P1): accept_ownership_transfer cancels the ex-parent's
+-- own still-live guardian invitations for the profile.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('grandma');
+select tests.create_supabase_user('finn');
+select tests.create_supabase_user('sitter');
+select tests.authenticate_as('grandma');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(406), 'Finn Jr', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+-- A still-live invitation grandma sent before arming the transfer.
+select public.create_guardian_invitation(tests.ulid(406), 'caregiver', 'Sitter', pg_temp.token(21), 48);
+insert into r select 'arm_invite_cancel', public.create_ownership_transfer(tests.ulid(406), 'co_parent', pg_temp.token(22), 'Finn', 72);
+
+select tests.authenticate_as('finn');
+select public.accept_ownership_transfer(pg_temp.token(22), 'Finn', 'Grandma');
+
+select tests.clear_authentication();
+select isnt(
+  (select revoked_at from public.guardian_invitations where token_hash = pg_temp.token(21)),
+  null,
+  'Review item #4: acceptance cancels the ex-parent''s still-live guardian invitation for the profile'
+);
+
+select tests.authenticate_as('sitter');
+select throws_ok(
+  format($$select public.accept_guardian_invitation(%L)$$, pg_temp.token(21)),
+  '55000', null,
+  'Review item #4: the cancelled invitation is no longer redeemable after the handover'
 );
 
 select * from finish();

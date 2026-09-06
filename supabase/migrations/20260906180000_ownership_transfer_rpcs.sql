@@ -256,6 +256,7 @@ declare
   v_uid uuid := (select auth.uid());
   v_transfer public.ownership_transfers%rowtype;
   v_profile public.profiles%rowtype;
+  v_existing public.profile_guardians%rowtype;
   v_day_entries_rehomed bigint := 0;
 begin
   if v_uid is null then
@@ -319,6 +320,30 @@ begin
   if not public.is_guardian_with_roles(v_transfer.profile_id, v_transfer.initiated_by, array['primary_guardian']) then
     raise exception 'the arming parent is no longer the primary guardian of this profile; the link is stale'
       using errcode = 'object_not_in_prerequisite_state';
+  end if;
+
+  -- Review item #1 (P0), acceptor-freshness check: the mirror of
+  -- accept_guardian_invitation's #82 guard, applied to the acceptor rather
+  -- than the arming parent. revoke_guardian (below) now cancels every live
+  -- transfer for a profile the moment any guardian on it is revoked, but a
+  -- transfer row revoked before that fix existed, or a race between the two
+  -- calls, must not leave a back door: if the accepting user already holds a
+  -- *revoked* profile_guardians row for this profile, and this transfer's
+  -- created_at predates that revocation, the token is stale and must be
+  -- refused - exactly as a stale guardian_invitations token is. A transfer
+  -- armed *after* the revocation (a deliberate handover to someone
+  -- previously removed) still works, matching #82's carve-out.
+  select * into v_existing
+    from public.profile_guardians
+   where profile_id = v_transfer.profile_id
+     and user_id = v_uid
+   for update;
+
+  if found and v_existing.status = 'revoked' then
+    if v_existing.revoked_at is null or v_transfer.created_at <= v_existing.revoked_at then
+      raise exception 'guardian access to this profile was revoked; a new transfer link is required'
+        using errcode = 'object_not_in_prerequisite_state';
+    end if;
   end if;
 
   -- KTD4: arm the transaction-local bypass so the re-home below can move
@@ -399,6 +424,22 @@ begin
      and accepted_at is null
      and cancelled_at is null;
 
+  -- Review item #4 (P1): the ex-parent's own still-live guardian invitations
+  -- for this profile are decisions made under an ownership that no longer
+  -- holds. guardian_invitations carries no invitee identity (see #81's
+  -- rationale in 20260905090000_close_guardian_revocation_bypass.sql), so
+  -- there is no way to tell which of them the new owner would still want
+  -- honored - the safe default, matching #81, is to cancel every still-live
+  -- one for the profile rather than leave a side door the new owner never
+  -- consented to. A co_parent's own invite permission (create_guardian_invitation's
+  -- R3) means this is not limited to invitations the arming parent personally
+  -- sent, same as #81's own scope.
+  update public.guardian_invitations
+     set revoked_at = clock_timestamp()
+   where profile_id = v_transfer.profile_id
+     and accepted_at is null
+     and revoked_at is null;
+
   return jsonb_build_object(
     'profile_id', v_transfer.profile_id,
     'profile_name', v_profile.display_name,
@@ -419,3 +460,150 @@ comment on function public.accept_ownership_transfer(text, text, text) is
 
 revoke all on function public.accept_ownership_transfer(text, text, text) from public, anon;
 grant execute on function public.accept_ownership_transfer(text, text, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. revoke_guardian - cancel the profile's live ownership transfers too
+--    (review item #1, P0)
+-- ---------------------------------------------------------------------------
+--
+-- Fix-forward per the "do not edit a merged migration in place" rule: this
+-- function was last defined (with the #81/#82 fixes) in
+-- 20260905090000_close_guardian_revocation_bypass.sql, which predates this
+-- feature and is already merged - so this is a `create or replace`, not an
+-- edit to that file. Full body carried forward verbatim other than the one
+-- new block called out inline below.
+--
+-- Without this, a revoked guardian who holds (or later obtains) the raw
+-- token of a still-live ownership transfer for the profile could call
+-- accept_ownership_transfer and become the profile's sole owner - the
+-- revocation closed their membership but left the transfer row untouched.
+-- ownership_transfers has no invitee identity either (same as
+-- guardian_invitations - see #81 below), so the safe default mirrors #81
+-- exactly: cancel every still-live transfer for the profile whenever any
+-- revocation happens on it, not just one provably addressed to the revoked
+-- user. accept_ownership_transfer's own acceptor-freshness check (this
+-- migration, section 4) is the defence-in-depth backstop for a transfer
+-- revoked before this fix existed, or a race between the two calls.
+create or replace function public.revoke_guardian(
+  p_profile_id text,
+  p_target_user_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_caller_role text;
+  v_target_role text;
+  v_now timestamptz;
+begin
+  if v_uid is null then
+    raise exception 'authentication required' using errcode = 'insufficient_privilege';
+  end if;
+
+  select role into v_caller_role
+    from public.profile_guardians
+   where profile_id = p_profile_id
+     and user_id = v_uid
+     and status = 'accepted';
+
+  if v_caller_role is null then
+    raise exception 'caller is not a guardian of this profile'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  select role into v_target_role
+    from public.profile_guardians
+   where profile_id = p_profile_id
+     and user_id = p_target_user_id
+     and status = 'accepted';
+
+  if v_target_role is null then
+    -- Already not an active guardian
+    return true;
+  end if;
+
+  -- Self-leave is always allowed unless caller is the sole primary_guardian
+  if v_uid = p_target_user_id then
+    if v_caller_role = 'primary_guardian' and (
+      select count(*) from public.profile_guardians
+       where profile_id = p_profile_id and role = 'primary_guardian' and status = 'accepted'
+    ) <= 1 then
+      raise exception 'the sole primary guardian cannot leave the profile'
+        using errcode = 'object_not_in_prerequisite_state';
+    end if;
+  else
+    -- Revoking another user:
+    -- primary_guardian can revoke anyone
+    -- co_parent can revoke caregiver and viewer only
+    if v_caller_role = 'primary_guardian' then
+      null;
+    elsif v_caller_role = 'co_parent' and v_target_role in ('caregiver', 'viewer') then
+      null;
+    else
+      raise exception 'insufficient permission to revoke this guardian'
+        using errcode = 'insufficient_privilege';
+    end if;
+  end if;
+
+  v_now := clock_timestamp();
+
+  -- Review item #1 (P0): close the ownership-transfer bypass. This update
+  -- runs first, ahead of the guardian_invitations and profile_guardians
+  -- updates below, so the lock order here - ownership_transfers, then
+  -- guardian_invitations, then profile_guardians - matches
+  -- accept_ownership_transfer's own order (transfer row, then profiles,
+  -- then profile_guardians; see this migration's header) and the two RPCs
+  -- cannot deadlock against each other.
+  update public.ownership_transfers
+     set cancelled_at = v_now
+   where profile_id = p_profile_id
+     and accepted_at is null
+     and cancelled_at is null;
+
+  -- #81: revocation must close every door, not just the one the revoked
+  -- user already walked through. guardian_invitations binds to a token
+  -- (see 20260904010000_multi_guardian_schema.sql) rather than a recipient
+  -- identity - there is no invitee column, only accepted_by, which stays
+  -- null until redemption - so a live, unaccepted invitation cannot be
+  -- reliably tied to p_target_user_id before it is redeemed. The safe
+  -- default is to cancel every still-live invitation for the profile
+  -- whenever any revocation happens on it, not just one provably addressed
+  -- to the revoked user; the cost is that an unrelated pending invitation
+  -- (e.g. to a caregiver the target never touched) also gets canceled and
+  -- must be re-sent, which is an acceptable trade for closing the bypass.
+  --
+  -- This update runs before the profile_guardians update below (not after)
+  -- so the lock order here - guardian_invitations row(s), then the
+  -- profile_guardians row - matches accept_guardian_invitation's own order
+  -- and the two RPCs cannot deadlock against each other.
+  update public.guardian_invitations
+     set revoked_at = v_now
+   where profile_id = p_profile_id
+     and accepted_at is null
+     and revoked_at is null;
+
+  update public.profile_guardians
+     set status = 'revoked',
+         updated_at = v_now,
+         revoked_at = v_now
+   where profile_id = p_profile_id
+     and user_id = p_target_user_id;
+
+  return true;
+end;
+$$;
+
+comment on function public.revoke_guardian(text, uuid) is
+  'Revokes a guardian''s membership and, in the same transaction, cancels
+   every still-live guardian_invitations row (#81) and ownership_transfers
+   row (Issue #4 review item #1) for the profile - both invitation and
+   transfer tokens carry no invitee identity, so neither can be reliably
+   tied to the revoked user before redemption, and the safe default is to
+   close every outstanding door whenever any revocation happens on the
+   profile.';
+
+revoke all on function public.revoke_guardian(text, uuid) from public, anon;
+grant execute on function public.revoke_guardian(text, uuid) to authenticated;

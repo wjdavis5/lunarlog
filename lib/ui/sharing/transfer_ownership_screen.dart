@@ -5,6 +5,8 @@
 /// guardian, and only when an [OwnershipTransferService] is configured.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -42,7 +44,38 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
 
   bool _loading = false;
   GeneratedTransfer? _transfer;
+  // Review item #2 (P1): a transfer discovered via getActiveTransfer rather
+  // than just-created — carries no rawToken/claimUri (the server never
+  // stores it), so it renders as "cancel this, then arm a fresh one" rather
+  // than a shareable link.
+  ActiveTransfer? _activeTransfer;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Review item #2 (P1): check on open, not only after a failed create -
+    // otherwise a parent revisiting this screen after an earlier
+    // createTransfer response was lost (a dropped connection, or the app
+    // restarting between the RPC committing and the response arriving)
+    // would have to attempt (and fail) a new transfer before ever seeing a
+    // way out. Best-effort and silent: a failure here just leaves the
+    // ordinary armable form, which still works via the reactive
+    // TransferAlreadyArmedFailure path in _armTransfer.
+    unawaited(_checkForActiveTransferOnOpen());
+  }
+
+  Future<void> _checkForActiveTransferOnOpen() async {
+    try {
+      final active =
+          await widget.service.getActiveTransfer(profileId: widget.profile.id);
+      if (mounted && active != null) {
+        setState(() => _activeTransfer = active);
+      }
+    } catch (_) {
+      // Best-effort only - see initState's comment.
+    }
+  }
 
   @override
   void dispose() {
@@ -102,8 +135,83 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       if (mounted) {
         setState(() {
           _transfer = transfer;
+          _activeTransfer = null;
           _loading = false;
         });
+      }
+    } on TransferAlreadyArmedFailure catch (f) {
+      // Review item #2 (P1): a live transfer already exists for this
+      // profile — either genuinely pending, or orphaned by a lost response
+      // to an earlier createTransfer call (a dropped connection, or the app
+      // restarting between the RPC committing and the response arriving).
+      // Without this, the parent would be stuck seeing only f's generic
+      // message with no way to act, for up to the orphaned transfer's full
+      // TTL. Look it up so they can cancel it and try again.
+      await _loadActiveTransfer(fallbackMessage: f.userFacingMessage);
+    } on TransferFailure catch (f) {
+      if (mounted) {
+        setState(() {
+          _error = f.userFacingMessage;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Something went wrong. Please try again.';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadActiveTransfer({required String fallbackMessage}) async {
+    try {
+      final active = await widget.service.getActiveTransfer(
+        profileId: widget.profile.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _activeTransfer = active;
+        _error = active == null ? fallbackMessage : null;
+        _loading = false;
+      });
+    } on TransferFailure catch (f) {
+      if (mounted) {
+        setState(() {
+          _error = f.userFacingMessage;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = fallbackMessage;
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _cancelActiveTransfer() async {
+    final active = _activeTransfer;
+    if (active == null) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await widget.service.cancelTransfer(transferId: active.transferId);
+      if (mounted) {
+        setState(() {
+          _activeTransfer = null;
+          _loading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pending transfer cancelled')),
+        );
       }
     } on TransferFailure catch (f) {
       if (mounted) {
@@ -187,9 +295,11 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: _transfer == null
-            ? _armableBody(context)
-            : _liveTransferBody(context),
+        child: _transfer != null
+            ? _liveTransferBody(context)
+            : _activeTransfer != null
+                ? _orphanedTransferBody(context)
+                : _armableBody(context),
       ),
     );
   }
@@ -279,6 +389,49 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
           ],
         ),
       );
+
+  /// Review item #2 (P1): rendered when a transfer already exists for this
+  /// profile but was discovered via getActiveTransfer rather than just
+  /// created here — its raw token was never stored server-side, so there is
+  /// no link to show, only a way out: cancel it, then arm a fresh one.
+  Widget _orphanedTransferBody(BuildContext context) {
+    final theme = Theme.of(context);
+    final active = _activeTransfer!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('A Transfer Is Already Pending', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Text(
+          'A transfer for ${widget.profile.displayName} is already pending, '
+          'but its link is not available on this screen (it may have been '
+          'created earlier or on another device). Cancel it to start a new '
+          'one.',
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Expires ${formatTransferExpiry(active.expiresAt)}',
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+        ),
+        const SizedBox(height: 20),
+        if (_error != null) ...[
+          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          const SizedBox(height: 12),
+        ],
+        FilledButton(
+          onPressed: _loading ? null : _cancelActiveTransfer,
+          style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error),
+          child: _loading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Cancel Pending Transfer'),
+        ),
+      ],
+    );
+  }
 
   Widget _liveTransferBody(BuildContext context) {
     final theme = Theme.of(context);

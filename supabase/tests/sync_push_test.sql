@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(99);
+select plan(104);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -481,6 +481,31 @@ select is(pg_temp.resp('meta_transferred_at') -> 'rejected', '[]'::jsonb,
   'U1: a push carrying transferred_at is accepted (tolerated key)');
 select is((select transferred_at from public.profiles where id = tests.ulid(120)), null,
   'U1: transferred_at is never written by sync_push, regardless of the pushed value');
+
+-- Review item #3 (P1) regression: a client built before U1 never sends
+-- birth_year/relationship at all - the key is absent, not present-with-null.
+-- The stored value must survive an otherwise-unrelated metadata edit.
+insert into r select 'meta_old_client_seed', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(124), 'display_name', 'OldClient', 'birth_year', 2012, 'relationship', 'son',
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('meta_old_client_seed') -> 'rejected', '[]'::jsonb,
+  'Review item #3 regression: seeding the old-client profile is not rejected');
+
+insert into r select 'meta_old_client_update', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(124), 'display_name', 'OldClient Renamed',
+    'updated_at', pg_temp.ts_txt('t2'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('meta_old_client_update') -> 'rejected', '[]'::jsonb,
+  'Review item #3 regression: an old-client push omitting birth_year/relationship is not rejected');
+select is((select display_name from public.profiles where id = tests.ulid(124)), 'OldClient Renamed',
+  'Review item #3 regression: the omitted-key push still applies the field it did send');
+select is((select birth_year from public.profiles where id = tests.ulid(124)), 2012::smallint,
+  'Review item #3: an old client omitting birth_year does not null out the already-stored value');
+select is((select relationship from public.profiles where id = tests.ulid(124)), 'son',
+  'Review item #3: an old client omitting relationship does not null out the already-stored value');
 
 select throws_ok(
   $$update public.profiles set transferred_at = now() where id = tests.ulid(120)$$,
