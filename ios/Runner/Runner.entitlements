@@ -6,5 +6,8 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- Issue #5, U7: remote caregiver alerts via FCM/APNs. -->
+	<key>aps-environment</key>
+	<string>production</string>
 </dict>
 </plist>

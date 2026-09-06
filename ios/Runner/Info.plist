@@ -99,5 +99,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Issue #5, U7: lets a caregiver alert wake the app to handle a
+	     silent/data push; the visible notification itself is delivered by
+	     the system regardless of this key. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

@@ -75,6 +75,47 @@ abstract final class AppConfig {
       !kIsWeb &&
       googleIosClientId != '' &&
       googleWebClientId != '';
+
+  /// Firebase project id, shared by both platforms (Issue #5, U7).
+  static const String fcmProjectId = String.fromEnvironment('FCM_PROJECT_ID');
+
+  /// Firebase Cloud Messaging sender id (the GCM/FCM project number).
+  static const String fcmSenderId = String.fromEnvironment('FCM_SENDER_ID');
+
+  /// Android `google-services.json`'s `current_key` equivalent — client-safe
+  /// per Firebase's own model, but still a define so forks/PR builds compile
+  /// with an empty value (KTD6, mirroring Google Sign-In's #2 U1 precedent).
+  static const String fcmAndroidApiKey =
+      String.fromEnvironment('FCM_ANDROID_API_KEY');
+
+  /// Android Firebase app id (`1:...:android:...`).
+  static const String fcmAndroidAppId =
+      String.fromEnvironment('FCM_ANDROID_APP_ID');
+
+  /// iOS `GoogleService-Info.plist`'s `API_KEY` equivalent.
+  static const String fcmIosApiKey = String.fromEnvironment('FCM_IOS_API_KEY');
+
+  /// iOS Firebase app id (`1:...:ios:...`).
+  static const String fcmIosAppId = String.fromEnvironment('FCM_IOS_APP_ID');
+
+  /// True when push is configured for this build and platform: Supabase
+  /// configured, not web, and every `FCM_*` define supplied (R17, R18).
+  /// `Firebase.initializeApp(options:)` is built from these — never from a
+  /// checked-in `google-services.json`/`GoogleService-Info.plist` (KTD6) —
+  /// so an unconfigured build (empty defines) never touches Firebase at all.
+  ///
+  /// Kept as a `const` expression (Dart forbids function calls in constant
+  /// initializers) so unconfigured code paths tree-shake; [computeHasPush]
+  /// is the same rule as a testable function, and `test/config_test.dart`
+  /// asserts the two agree.
+  static const bool hasPush = hasSupabase &&
+      !kIsWeb &&
+      fcmProjectId != '' &&
+      fcmSenderId != '' &&
+      fcmAndroidApiKey != '' &&
+      fcmAndroidAppId != '' &&
+      fcmIosApiKey != '' &&
+      fcmIosAppId != '';
 }
 
 /// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.
@@ -113,5 +154,27 @@ bool computeHasGoogle({
 }) {
   if (!hasSupabase || isWeb) return false;
   if (iosClientId.isEmpty || webClientId.isEmpty) return false;
+  return true;
+}
+
+/// Pure decision behind [AppConfig.hasPush] (Issue #5, U7).
+///
+/// Requires [hasSupabase], a non-web platform, and every `FCM_*` value
+/// non-empty. Exposed as a function so the rule is unit-testable even
+/// though the production inputs are compile-time constants.
+bool computeHasPush({
+  required bool hasSupabase,
+  required bool isWeb,
+  required String projectId,
+  required String senderId,
+  required String androidApiKey,
+  required String androidAppId,
+  required String iosApiKey,
+  required String iosAppId,
+}) {
+  if (!hasSupabase || isWeb) return false;
+  if (projectId.isEmpty || senderId.isEmpty) return false;
+  if (androidApiKey.isEmpty || androidAppId.isEmpty) return false;
+  if (iosApiKey.isEmpty || iosAppId.isEmpty) return false;
   return true;
 }

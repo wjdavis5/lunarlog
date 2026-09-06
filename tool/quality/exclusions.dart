@@ -73,6 +73,14 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'unit-tested directly; this file is proven by the U7 device '
         'checklist instead, same treatment as google_sign_in_client.dart.',
   ),
+  const CoverageExclusion(
+    'lib/data/notifications/firebase_push_token_source.dart',
+    'FirebasePushTokenSource wraps firebase_core/firebase_messaging and '
+        'cannot run under flutter test; it is a pure plugin adapter with no '
+        'branching logic worth testing in isolation, same treatment as '
+        'google_sign_in_client.dart. PushRegistrationCoordinator (the '
+        'testable logic) is covered directly against a fake PushTokenSource.',
+  ),
 ];
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');

@@ -150,19 +150,27 @@ class SupabaseNotificationPreferencesService
       return const NotificationPreferencesFailure.network();
     }
     if (error is PostgrestException) {
-      final code = error.code ?? '';
-      final msg = error.message.toLowerCase();
-      if (code == 'PGRST301' ||
-          code == '42501' ||
-          msg.contains('permission') ||
-          msg.contains('unauthorized')) {
-        return const NotificationPreferencesFailure.unauthorized();
-      }
-      final status = int.tryParse(code);
-      if (status != null && status >= 500) {
-        return const NotificationPreferencesFailure.network();
-      }
+      return _mapPostgrestError(error);
     }
     return const NotificationPreferencesFailure.other();
   }
+
+  NotificationPreferencesFailure _mapPostgrestError(PostgrestException error) {
+    final code = error.code ?? '';
+    final msg = error.message.toLowerCase();
+    if (_isUnauthorized(code, msg)) {
+      return const NotificationPreferencesFailure.unauthorized();
+    }
+    final status = int.tryParse(code);
+    if (status != null && status >= 500) {
+      return const NotificationPreferencesFailure.network();
+    }
+    return const NotificationPreferencesFailure.other();
+  }
+
+  bool _isUnauthorized(String code, String msg) =>
+      code == 'PGRST301' ||
+      code == '42501' ||
+      msg.contains('permission') ||
+      msg.contains('unauthorized');
 }

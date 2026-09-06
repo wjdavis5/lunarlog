@@ -40,11 +40,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunarlog/app.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
+import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
+import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
@@ -64,6 +68,7 @@ import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
+import 'package:uuid/uuid.dart';
 
 /// Platform channel used to set Android FLAG_SECURE (snapshot/screenshot
 /// suppression at the window level). Best effort — see
@@ -600,6 +605,31 @@ typedef DeviceResetCallback = Future<void> Function();
 /// Default native key deletion for [LunarLogRoot.deleteDbKey].
 Future<void> defaultDeleteDbKey() => SecureDbKeyStore().deleteKey();
 
+/// This install's stable push-registration device id (Issue #5, U7; R19):
+/// read from [settings] if already generated, otherwise minted once and
+/// persisted. Split out of [LunarLogRootState._startPushRegistration] so the
+/// id-resolution branch is directly unit-testable against a fake
+/// [SettingsStore].
+@visibleForTesting
+Future<String> resolvePushDeviceId(
+  SettingsStore settings, {
+  String Function() generateId = _defaultGenerateDeviceId,
+}) async {
+  final existing = await settings.get(SettingsKeys.pushDeviceId);
+  if (existing != null && existing.isNotEmpty) return existing;
+  final generated = generateId();
+  await settings.set(SettingsKeys.pushDeviceId, generated);
+  return generated;
+}
+
+String _defaultGenerateDeviceId() => const Uuid().v4();
+
+/// `'ios'` or `'android'` — the value `push_devices.platform` stores
+/// (Issue #5, U7). Split out for the same reason as [resolvePushDeviceId].
+@visibleForTesting
+String pushPlatformName() =>
+    defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
+
 /// App root and state machine: locked → (credential) → database open →
 /// app; or locked forever on repeated declines; or fail-closed screen on
 /// any open/quarantine/key failure. The database is opened only after the
@@ -716,6 +746,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   FeedbackService? _builtFeedbackService;
   AccountDeletionService? _builtAccountDeletionService;
   RealtimeSyncCoordinator? _realtimeCoordinator;
+  PushRegistrationCoordinator? _pushCoordinator;
 
   /// The app subtree's teardown (reminder coordinator disposal), captured
   /// when [LunarLogApp] unmounts so a device reset (KTD16) can await it
@@ -810,7 +841,42 @@ class LunarLogRootState extends State<LunarLogRoot> {
       );
       _realtimeCoordinator = coordinator;
       coordinator.start();
+
+      // Issue #5, U7: push registration. Gated by AppConfig.hasPush (R17,
+      // R18) — an unconfigured or web build never constructs any of this,
+      // so it never touches firebase_messaging.
+      if (AppConfig.hasPush && !widget.isWeb) {
+        unawaited(_startPushRegistration(db, authService, client));
+      }
     }
+  }
+
+  /// Resolves (generating and persisting once) this install's stable
+  /// push-registration device id, then starts the coordinator (R19). Split
+  /// from [resolvePushDeviceId] and [pushPlatformName] so this method's own
+  /// branching stays low — the id-resolution and platform-name decisions are
+  /// unit-tested directly, since this method itself only ever runs behind
+  /// `AppConfig.hasPush`, which is always false under `flutter test`.
+  Future<void> _startPushRegistration(
+    LunarLogDatabase db,
+    AuthService authService,
+    SupabaseClient client,
+  ) async {
+    final deviceId =
+        await resolvePushDeviceId(DriftSettingsStore(db.storage));
+    if (!mounted) return;
+
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: FirebasePushTokenSource(),
+      registry: SupabasePushDeviceRegistry(client: client),
+      deviceId: deviceId,
+      platform: pushPlatformName(),
+      authStates: authService.states,
+      currentAuthState: () => authService.state,
+      onTap: _gate.setPendingLaunchProfileId,
+    );
+    _pushCoordinator = coordinator;
+    await coordinator.start();
   }
 
   /// Stops the engine and waits for its in-flight batch or page, so the
@@ -822,6 +888,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
     final coordinator = _realtimeCoordinator;
     _realtimeCoordinator = null;
     await coordinator?.dispose();
+    final pushCoordinator = _pushCoordinator;
+    _pushCoordinator = null;
+    await pushCoordinator?.dispose();
     _builtSharingService = null;
     _builtFeedbackService = null;
     _builtAccountDeletionService = null;

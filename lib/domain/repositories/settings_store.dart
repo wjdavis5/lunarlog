@@ -35,4 +35,9 @@ abstract final class SettingsKeys {
   /// this against the newest reply it can see and shows an unread badge
   /// when that reply is newer.
   static const String feedbackLastSeenAt = 'feedback_last_seen_at';
+
+  /// This install's stable push-registration device id (Issue #5, U7; R19).
+  /// Generated once and persisted so a token refresh upserts the same
+  /// `push_devices` row instead of creating a new one.
+  static const String pushDeviceId = 'push_device_id';
 }
