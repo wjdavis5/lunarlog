@@ -78,6 +78,32 @@ class FakeSharingService implements SharingService {
     }
     lastRevokedUserId = targetUserId;
   }
+
+  List<PendingInvite> scriptedPendingInvites = const [];
+  Object? scriptedListError;
+  int listPendingInvitesCallCount = 0;
+
+  @override
+  Future<List<PendingInvite>> listPendingInvites(String profileId) async {
+    listPendingInvitesCallCount++;
+    if (scriptedListError != null) {
+      throw scriptedListError!;
+    }
+    return scriptedPendingInvites;
+  }
+
+  InviteCancellation scriptedCancelOutcome = InviteCancellation.revoked;
+  Object? scriptedCancelError;
+  String? lastCancelledInvitationId;
+
+  @override
+  Future<InviteCancellation> cancelInvite(String invitationId) async {
+    lastCancelledInvitationId = invitationId;
+    if (scriptedCancelError != null) {
+      throw scriptedCancelError!;
+    }
+    return scriptedCancelOutcome;
+  }
 }
 
 /// Hand-written [OwnershipTransferService] fake for U10's claim-sheet and
