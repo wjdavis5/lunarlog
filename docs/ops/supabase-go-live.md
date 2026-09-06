@@ -134,6 +134,46 @@ passwordless email depends on custom SMTP above like every other email.
       plus `note`, `tags`, `display_name`, `local_date`, `email` (defense in
       depth behind the client allowlist in `lib/observability/scrub.dart`).
 
+### Feedback (issue #6)
+
+Dashboard prerequisites for in-app feedback, its `feedback-attachments`
+bucket, and the two admin-facing emails
+([plan](../plans/2026-09-05-001-feat-in-app-feedback-support-plan.md)).
+
+- [ ] `feedback-attachments` Storage bucket exists: private, 5 MiB
+      (5242880-byte) file size limit, `allowed_mime_types` restricted to
+      `image/png`, `image/jpeg`, `image/webp`. Normally created by
+      `20260905110000_feedback_attachments_bucket.sql`; if that migration's
+      `to_regclass('storage.buckets')` guard ever reports the local stack
+      (or, unexpectedly, the cloud project) has no storage schema, create the
+      bucket by hand with these exact settings before U2's object policies
+      can do anything useful.
+- [ ] Manual attachment purge path documented for support: an attachment is
+      never auto-deleted. Deleting a `feedback_tickets` row (Table Editor)
+      cascades its `feedback_replies`, but the corresponding Storage objects
+      under `<uid>/<ticket_id>/` must be deleted separately (Storage →
+      `feedback-attachments` → the ticket's folder) — there is no
+      retention-purge automation (Scope Boundaries, U2/U7).
+- [ ] `feedback_replies` Database Webhook: Database → Webhooks → new webhook
+      on `public.feedback_replies`, event `INSERT`, HTTP target the deployed
+      `feedback-reply` Edge Function, with a custom header
+      `x-feedback-webhook-secret: <value>` whose value matches the
+      `FEEDBACK_WEBHOOK_SECRET` function secret below (U9). Its absence
+      degrades to "no reply email sent" rather than a broken thread — the
+      reply is still visible in the app's Support history.
+- [ ] Four feedback function secrets set by name only (via
+      `supabase secrets set`, never committed): `RESEND_API_KEY`,
+      `FEEDBACK_FROM_ADDRESS`, `FEEDBACK_ADMIN_EMAIL`, and
+      `FEEDBACK_WEBHOOK_SECRET` (a CSPRNG value shared only with the
+      Database Webhook's custom header above). `SUPABASE_URL` and
+      `SUPABASE_SERVICE_ROLE_KEY` are platform-injected into every Edge
+      Function automatically and need no `supabase secrets set` call.
+- [ ] A Resend sending domain under `wjd.io` verified. If this cannot be
+      completed before U9 ships, record it as an open ops gap — the in-app
+      Support history still satisfies R22 without the reply email.
+- [ ] `PRIVACY.md` support-ticket disclosure (section 2/4/7) reviewed and
+      live before the feedback form is enabled in a shipped build (R25).
+
 ### GitHub
 
 - [ ] **Prerequisite — configure this before the secrets below.**
