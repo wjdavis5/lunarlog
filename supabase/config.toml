@@ -407,6 +407,19 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/feedback-reply/index.ts"
 
+# Issue #5, U5: drains public.notification_outbox to FCM HTTP v1.
+[functions.push-dispatch]
+enabled = true
+# Invoked by a Database Webhook on notification_outbox insert (immediacy)
+# and by pg_net from the nightly pg_cron job (quiet-hours releases, retries,
+# stuck-claim recovery) — neither carries a Supabase JWT, matching
+# feedback-reply's shape. The handler validates its own shared
+# `x-push-dispatch-webhook-secret` header instead (see
+# 20260906180000_reminder_windows_and_cron.sql and
+# docs/ops/supabase-go-live.md for the Database Webhook + GUC setup).
+verify_jwt = false
+entrypoint = "./functions/push-dispatch/index.ts"
+
 [analytics]
 enabled = true
 port = 54327

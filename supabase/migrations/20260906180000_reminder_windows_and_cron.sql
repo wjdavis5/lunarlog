@@ -215,10 +215,13 @@ revoke all on function public.sweep_notification_outbox() from public, anon, aut
 -- AGENTS.md's `supabase start -x ...` exclusion list) sees this whole block
 -- no-op rather than failing db reset. Dispatching push-dispatch itself is
 -- read from GUC settings (app.settings.push_dispatch_url /
--- app.settings.push_dispatch_service_key) rather than hardcoded, since a
--- migration file cannot know the deployed project's function URL or
--- service-role key; docs/ops/supabase-go-live.md (U9) documents setting
--- those with `alter database postgres set ...` as a go-live step. A missing
+-- app.settings.push_dispatch_webhook_secret) rather than hardcoded, since a
+-- migration file cannot know the deployed project's function URL or shared
+-- webhook secret; docs/ops/supabase-go-live.md (U9) documents setting those
+-- with `alter database postgres set ...` as a go-live step. The secret is
+-- sent the same way the Database Webhook config sends it -- a custom
+-- `x-push-dispatch-webhook-secret` header, matching push-dispatch/index.ts's
+-- own check and the feedback-reply precedent (see that function). A missing
 -- setting degrades to "scan and sweep still ran, dispatch skipped" rather
 -- than failing the whole job.
 -- ---------------------------------------------------------------------------
@@ -230,10 +233,10 @@ set search_path = ''
 as $$
 declare
   v_url text := current_setting('app.settings.push_dispatch_url', true);
-  v_key text := current_setting('app.settings.push_dispatch_service_key', true);
+  v_secret text := current_setting('app.settings.push_dispatch_webhook_secret', true);
 begin
-  if v_url is null or v_url = '' or v_key is null or v_key = '' then
-    raise notice 'trigger_push_dispatch: app.settings.push_dispatch_url/_service_key not configured, skipping (see docs/ops/supabase-go-live.md)';
+  if v_url is null or v_url = '' or v_secret is null or v_secret = '' then
+    raise notice 'trigger_push_dispatch: app.settings.push_dispatch_url/_webhook_secret not configured, skipping (see docs/ops/supabase-go-live.md)';
     return;
   end if;
 
@@ -246,7 +249,7 @@ begin
     url := v_url,
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || v_key
+      'x-push-dispatch-webhook-secret', v_secret
     ),
     body := '{}'::jsonb
   );
