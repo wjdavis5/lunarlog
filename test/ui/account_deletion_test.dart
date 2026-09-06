@@ -422,8 +422,8 @@ void main() {
       });
     }
 
-    testWidgets('appleRevokeFailed explains the account was not deleted and '
-        'the action can be retried', (tester) async {
+    testWidgets('appleRevokeFailed explains the data WAS deleted, only Apple '
+        'revocation failed, and the action can be retried', (tester) async {
       const failure = AccountDeletionFailure.appleRevokeFailed();
       final service = FakeAccountDeletionService()..nextError = failure;
       final h = DeletionHarness(deletionService: service);
@@ -436,8 +436,14 @@ void main() {
       await tester.pumpAndSettle();
 
       final copy = accountDeletionFailureCopy(failure);
-      expect(copy, contains('not deleted'));
+      // By this point the server rows are already gone (KTD4) - the copy
+      // must say so truthfully, not claim "nothing was removed".
+      expect(copy, isNot(contains('Nothing was removed')));
+      expect(copy, isNot(contains('not deleted')));
+      expect(copy.toLowerCase(), contains('deleted'));
+      expect(copy.toLowerCase(), contains('sign-in'));
       expect(copy.toLowerCase(), contains('try again'));
+      expect(copy.toLowerCase(), contains('support'));
     });
   });
 

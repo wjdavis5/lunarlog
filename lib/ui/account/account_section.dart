@@ -76,8 +76,10 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
         'Your session has expired. Sign in again and retry - your account '
             'was not deleted.',
       AccountDeletionAppleRevokeFailedFailure() =>
-        'Your account was not deleted: Apple could not confirm the '
-            'revocation. Nothing was removed - you can try again.',
+        'Your account data was deleted, but Apple could not confirm the '
+            'sign-in revocation, so your account sign-in itself still '
+            'exists. Try deleting again to finish, or contact support if '
+            'you\'re concerned about the lingering Apple access.',
       AccountDeletionUnknownFailure() =>
         'Something went wrong. Your account was not deleted. Please try '
             'again.',

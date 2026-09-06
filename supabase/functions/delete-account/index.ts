@@ -3,9 +3,13 @@
 // The authenticated HTTP entry point for in-app account deletion. Thin by
 // design: authenticate the caller from the Authorization header, run U1's
 // `delete_account_data()` RPC as the caller (so RLS/auth.uid() semantics
-// hold), optionally revoke Apple (U3), then delete the `auth.users` row
-// last - the only irreversible, non-retryable step (KTD4). A revoke failure
-// stops before that last step so the whole call stays retryable.
+// hold), revoke Apple when the account has an Apple identity (U3), then
+// delete the `auth.users` row last - the only irreversible, non-retryable
+// step (KTD4). An Apple identity with no authorization code supplied fails
+// closed exactly like a failed revocation - it never falls through to
+// deleting the user with revocation silently skipped. Either way, a revoke
+// failure (or a missing code) stops before that last step so the whole call
+// stays retryable.
 //
 // Never echoes Supabase/Apple error text, tokens, emails, or row content
 // into the response or the log: only a stable error `code`, an HTTP status,
@@ -107,15 +111,24 @@ Deno.serve(async (req: Request) => {
     return errorResponse("unknown", 500);
   }
 
-  // Step 4: Apple revocation, only when the account actually has an Apple
-  // identity and the client supplied a fresh code. A revoke failure stops
-  // here - before the user row is touched - so the whole call is safe to
-  // retry (KTD4). Rows are already gone at this point; retrying re-runs
-  // U1's RPC idempotently (it reports zero counts the second time) and
-  // retries the Apple step.
+  // Step 4: Apple revocation, required whenever the account has an Apple
+  // identity. Fail closed: an Apple identity with no code supplied (e.g. a
+  // client bug, or a stale request replayed without a fresh code) stops
+  // here exactly like a failed revocation, rather than proceeding to delete
+  // the user with no revocation attempted at all. Either way this stops
+  // before the user row is touched - so the whole call is safe to retry
+  // (KTD4). Rows are already gone at this point; retrying re-runs U1's RPC
+  // idempotently (it reports zero counts the second time) and retries the
+  // Apple step.
   const providers = (user.identities ?? []).map((identity) => identity.provider);
   const appleCode = body.appleAuthorizationCode;
-  if (providers.includes("apple") && appleCode) {
+  if (providers.includes("apple")) {
+    if (!appleCode) {
+      console.error(
+        "delete-account: apple identity present but no authorization code supplied; rows already removed",
+      );
+      return errorResponse("apple_revoke_failed", 409);
+    }
     const revoked = await revokeAppleToken(appleCode);
     if (revoked.kind !== "ok") {
       console.error(

@@ -252,21 +252,32 @@ Then, in another shell, against the local stack (`http://127.0.0.1:54321`):
   key stuffed into the body → the caller's own rows are still the only
   ones affected (AE6 — no field in the body is ever trusted for identity).
 - A simulated Apple identity (insert a row into `auth.identities` with
-  `provider = 'apple'` for the test user) with no `APPLE_*` secrets set
-  locally, called with a non-empty `appleAuthorizationCode` → `409
-  {"ok":false,"code":"apple_revoke_failed"}`, the profile/day-entry rows
-  are already gone (U1 ran first) but the `auth.users` row is still
-  present (KTD4); retrying the same call **without** a code completes the
-  deletion, proving the whole call is safe to retry.
+  `provider = 'apple'` for the test user) with an empty JSON body
+  (`appleAuthorizationCode` omitted entirely) → `409
+  {"ok":false,"code":"apple_revoke_failed"}` with **no** call to Apple at
+  all - failing closed rather than silently skipping revocation and
+  deleting the user anyway. The profile/day-entry rows are already gone
+  (U1 ran first) but the `auth.users` row is still present (KTD4).
+- The same simulated Apple identity, now with no `APPLE_*` secrets set
+  locally, called with a non-empty `appleAuthorizationCode` → the same
+  `409 apple_revoke_failed` (a `misconfigured` revoke result), `auth.users`
+  still present. Retrying is only ever safe, never silently destructive:
+  calling again with no code, or with secrets still missing, returns the
+  same 409 every time; only supplying a fresh code once `APPLE_*` secrets
+  are configured lets the retry actually revoke and complete the deletion.
 
 Deploying: `supabase-migrate.yml`'s "Set delete-account function secrets"
 step runs `supabase secrets set` for the four `APPLE_*` values, then
 "Deploy delete-account function" runs
 `supabase functions deploy delete-account --project-ref <ref>`. Both are
-gated by the "Check deploy credentials" step, which fails the run with an
-`::error::` if any Apple secret is missing rather than deploying a
-function that would silently treat every Apple revocation as
-`misconfigured`.
+gated by a dedicated "Check Apple secrets (account-deletion deploy only)"
+step that runs *after* migrations have already been pushed, which fails the
+run with an `::error::` if any Apple secret is missing rather than
+deploying a function that would silently treat every Apple revocation as
+`misconfigured`. Scoping the check to just these two steps (rather than the
+whole job, as it once did) means an unrelated `supabase/**` push still gets
+its migrations pushed even before an Apple signing key is provisioned; only
+the account-deletion deploy itself is skipped.
 
 ### Release gate
 

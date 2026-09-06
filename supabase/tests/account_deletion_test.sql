@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(26);
+select plan(31);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -197,6 +197,8 @@ select is(
 
 select is(pg_temp.snap('a_result') -> 'profiles', '2'::jsonb, 'result: profiles count is 2');
 select is(pg_temp.snap('a_result') -> 'day_entries', '5'::jsonb, 'result: day_entries count is 5');
+select is(pg_temp.snap('a_result') -> 'day_entries_rehomed', '0'::jsonb,
+  'result: day_entries_rehomed is 0 (A owns every profile these entries are on)');
 select is(pg_temp.snap('a_result') -> 'settings', '3'::jsonb, 'result: settings count is 3');
 select is(pg_temp.snap('a_result') -> 'guardian_invitations', '1'::jsonb, 'result: guardian_invitations count is 1');
 select is(pg_temp.snap('a_result') -> 'profile_guardians', '2'::jsonb,
@@ -210,7 +212,7 @@ select tests.authenticate_as('user_a');
 select is(
   public.delete_account_data(),
   jsonb_build_object(
-    'day_entries', 0, 'guardian_invitations', 0,
+    'day_entries', 0, 'day_entries_rehomed', 0, 'guardian_invitations', 0,
     'profile_guardians', 0, 'profiles', 0, 'settings', 0
   ),
   'calling delete_account_data twice reports zero counts the second time'
@@ -319,6 +321,79 @@ select is(
   (select count(*) from public.profile_guardians where user_id = tests.get_supabase_uid('user_f')),
   0::bigint,
   'a revoked membership row for the caller is also removed'
+);
+
+-- ---------------------------------------------------------------------------
+-- 8. P0 regression: day_entries.user_id is `not null references auth.users
+--    (id) on delete cascade`. AE3 above never actually deletes D's
+--    auth.users row (only calls the RPC), so it could not have caught this:
+--    before the fix, deleting a caregiver's real auth.users row cascaded
+--    away every day_entries row still stamped with their user_id, including
+--    ones logged on a profile they do not own - silently and irreversibly
+--    destroying another family's minors' health data, exactly what R7
+--    forbids. This exercises the real end-to-end order: the RPC first, then
+--    the auth.users row gone for real, mirroring what the delete-account
+--    Edge Function does last (KTD4).
+-- ---------------------------------------------------------------------------
+
+select tests.create_supabase_user('user_g'); -- owner
+select tests.create_supabase_user('user_h'); -- caregiver, deleted for real
+
+select tests.authenticate_as('user_g');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(6), 'Riley G', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_guardian_invitation(
+  tests.ulid(6), 'caregiver', 'H',
+  'abababababababababababababababababababababababababababababababab', 48
+);
+
+select tests.authenticate_as('user_h');
+select public.accept_guardian_invitation(
+  'abababababababababababababababababababababababababababababababab', 'H'
+);
+
+-- H logs an entry directly on G's shared profile: user_id defaults to
+-- auth.uid() at insert time (H), per the initial sync schema - the exact
+-- caregiver-on-someone-else's-profile row this fix re-homes.
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(40), tests.ulid(6), '2026-09-05', 'UTC', 'medium', '2026-09-05T00:00:00Z',
+        tests.get_supabase_uid('user_h'), tests.get_supabase_uid('user_h'));
+
+-- H deletes their account: the RPC first (as the Edge Function does), then
+-- the auth.users row for real (unlike section 6's AE3 fixture above, which
+-- only calls the RPC) - exactly the order the delete-account Edge Function
+-- runs in (KTD4). Clear authentication before the auth.users delete: in
+-- production this runs via auth.admin.deleteUser on GoTrue's own service
+-- connection, which carries no JWT claims (auth.uid() is null there, same
+-- as the migration/operational-tooling exemption
+-- enforce_day_entry_attribution documents) - not H's session. Deleting
+-- while still authenticated as H would make the FK's own
+-- logged_by_user_id -> null cascade look like H forging their own
+-- attribution column and trip that trigger's guard, which is a test-fixture
+-- artifact, not a real production path.
+select public.delete_account_data();
+select tests.clear_authentication();
+select tests.delete_supabase_user('user_h');
+
+select is(
+  (select count(*) from public.profiles where id = tests.ulid(6)),
+  1::bigint, 'P0: G''s profile survives H''s real auth.users deletion'
+);
+select is(
+  (select count(*) from public.day_entries where profile_id = tests.ulid(6)),
+  1::bigint,
+  'P0: the entry H logged on G''s profile survives H''s real auth.users deletion'
+);
+select is(
+  (select user_id from public.day_entries where id = tests.ulid(40)),
+  tests.get_supabase_uid('user_g'),
+  'P0: the entry is re-homed to G (the profile''s actual owner), so the auth.users cascade no longer reaches it'
+);
+select is(
+  (select logged_by_user_id from public.day_entries where id = tests.ulid(40)),
+  null,
+  'P0: logged_by_user_id still nulls out via its own on-delete-set-null FK once H''s auth.users row is gone'
 );
 
 select * from finish();

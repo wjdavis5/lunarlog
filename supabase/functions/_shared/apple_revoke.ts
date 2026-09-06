@@ -32,6 +32,16 @@ const APPLE_REVOKE_URL = "https://appleid.apple.com/auth/revoke";
 /** Short-lived (KTD3: built fresh per call, never cached or persisted). */
 const CLIENT_SECRET_TTL_SECONDS = 300;
 
+/**
+ * Both Apple calls below are made mid-deletion, after the row-deletion RPC
+ * has already run: a hung Apple endpoint must not strand the account
+ * indefinitely between "rows gone" and "user gone" (the Edge Function's
+ * ordering, KTD4). A timed-out fetch throws the same way a network error
+ * does, so it is caught by the existing try/catch and resolves to `network`
+ * - handled identically to any other revocation failure (fail closed).
+ */
+const APPLE_FETCH_TIMEOUT_MS = 10_000;
+
 function readConfig(): AppleRevokeConfig | null {
   const teamId = Deno.env.get("APPLE_TEAM_ID");
   const keyId = Deno.env.get("APPLE_KEY_ID");
@@ -115,6 +125,7 @@ async function exchangeCodeForRefreshToken(
         code: authorizationCode,
         grant_type: "authorization_code",
       }),
+      signal: AbortSignal.timeout(APPLE_FETCH_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, result: { kind: "network" } };
@@ -151,6 +162,7 @@ async function revokeRefreshToken(
         token: refreshToken,
         token_type_hint: "refresh_token",
       }),
+      signal: AbortSignal.timeout(APPLE_FETCH_TIMEOUT_MS),
     });
   } catch {
     return { kind: "network" };

@@ -8,6 +8,14 @@ name: Supabase migrate
 # SUPABASE_DB_PASSWORD, SUPABASE_PROJECT_REF, and the four Apple secrets the
 # function needs at runtime (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID,
 # APPLE_PRIVATE_KEY - see AGENTS.md's "Config & Credential Locations").
+#
+# The Apple-secret check is scoped to the account-deletion deploy steps
+# only (after "Push migrations"), not to the whole job: an unrelated
+# supabase/** push (a new migration, another function) must not fail purely
+# because an Apple signing key hasn't been provisioned yet - it still gets
+# its migrations pushed, and only the delete-account deploy step is skipped
+# with an actionable error.
+#
 # Before approving a run, check the Supabase MCP `get_advisors` output for
 # security or RLS findings (there is no CLI equivalent).
 
@@ -62,10 +70,6 @@ jobs:
             echo "::error::SUPABASE_PROJECT_REF is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
             exit 1
           fi
-          if [ -z "${APPLE_TEAM_ID:-}" ] || [ -z "${APPLE_KEY_ID:-}" ] || [ -z "${APPLE_CLIENT_ID:-}" ] || [ -z "${APPLE_PRIVATE_KEY:-}" ]; then
-            echo "::error::One or more Apple secrets (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY) are not set on the \`production\` environment. The delete-account function needs all four to revoke an Apple identity on deletion (Issue #17 KTD3) - add them (Environment secrets) and re-run. See AGENTS.md's 'Config & Credential Locations' for where each value comes from."
-            exit 1
-          fi
 
       - name: Link project
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
@@ -75,6 +79,13 @@ jobs:
 
       - name: Push migrations
         run: supabase db push
+
+      - name: Check Apple secrets (account-deletion deploy only)
+        run: |
+          if [ -z "${APPLE_TEAM_ID:-}" ] || [ -z "${APPLE_KEY_ID:-}" ] || [ -z "${APPLE_CLIENT_ID:-}" ] || [ -z "${APPLE_PRIVATE_KEY:-}" ]; then
+            echo "::error::One or more Apple secrets (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY) are not set on the \`production\` environment. The delete-account function needs all four to revoke an Apple identity on deletion (Issue #17 KTD3) - add them (Environment secrets) and re-run. See AGENTS.md's 'Config & Credential Locations' for where each value comes from. This only blocks deploying delete-account - migrations for unrelated supabase/** changes already pushed successfully above."
+            exit 1
+          fi
 
       - name: Set delete-account function secrets
         run: |

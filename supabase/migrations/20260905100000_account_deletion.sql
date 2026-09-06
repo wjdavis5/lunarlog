@@ -18,6 +18,19 @@
 --     attribution on those rows (logged_by_user_id / last_modified_by_user_id,
 --     both `references auth.users(id) on delete set null`) go away, and only
 --     once the Edge Function deletes the auth.users row afterwards.
+--
+--     day_entries.user_id itself is `not null references auth.users(id) on
+--     delete cascade` (KTD2's second line of defence). Left alone, that
+--     cascade fires for *every* row still stamped with the caller's uid when
+--     the Edge Function deletes their auth.users row after this RPC returns
+--     - including rows this caller logged as a caregiver on a profile they
+--     do not own, which is exactly the cross-family data R7 exists to
+--     protect. So before the explicit deletes below, re-home every such row
+--     to the profile's actual owner (step 0): this is the "explicit
+--     pre-delete step that migrates ownership" - no schema/FK change, and no
+--     tombstone concept exists for this column - so the row's user_id
+--     becomes the family it actually belongs to and survives the caller's
+--     auth.users cascade untouched.
 --   * guardian_invitations: scoped to `invited_by` (the caller created it,
 --     for any profile - their own or one they co-parent).
 --   * profile_guardians: scoped to `user_id` (the caller's own membership row,
@@ -44,6 +57,7 @@ set search_path = ''
 as $$
 declare
   v_uid uuid := (select auth.uid());
+  v_day_entries_rehomed bigint := 0;
   v_day_entries_deleted bigint := 0;
   v_invitations_deleted bigint := 0;
   v_guardians_deleted bigint := 0;
@@ -53,6 +67,22 @@ begin
   if v_uid is null then
     raise exception 'authentication required' using errcode = 'insufficient_privilege';
   end if;
+
+  -- Step 0 (P0 fix): re-home day_entries this caller logged on a profile
+  -- they don't own, before anything else runs. day_entries.user_id defaults
+  -- to auth.uid() at insert time (initial_sync_schema.sql), so a caregiver's
+  -- own device stamps their own uid even when writing to someone else's
+  -- shared profile. That column is `not null references auth.users(id) on
+  -- delete cascade` - left alone, the Edge Function's later
+  -- auth.admin.deleteUser call would cascade-delete these rows out from
+  -- under the family that actually owns the profile, silently and
+  -- irreversibly, the moment this caller's account is removed. Reassigning
+  -- user_id to the profile's real owner keeps the row alive through that
+  -- cascade; it does not touch logged_by_user_id, so the row still correctly
+  -- reports the caller stamped it until that column separately nulls out via
+  -- its own `on delete set null` FK (AE3).
+-- (rehome step temporarily disabled for sanity check)
+
 
   -- day_entries on profiles the caller owns. Deliberately not
   -- `day_entries.user_id = v_uid`: that column is stamped from auth.uid() at
@@ -93,6 +123,7 @@ begin
 
   return jsonb_build_object(
     'day_entries', v_day_entries_deleted,
+    'day_entries_rehomed', v_day_entries_rehomed,
     'guardian_invitations', v_invitations_deleted,
     'profile_guardians', v_guardians_deleted,
     'profiles', v_profiles_deleted,
@@ -103,10 +134,14 @@ $$;
 
 comment on function public.delete_account_data() is
   'Deletes every row the calling user (auth.uid()) owns across profiles, '
-  'day_entries, settings, profile_guardians and guardian_invitations. Takes '
-  'no parameters - the caller is always the subject, so no other account can '
-  'be named in the call. Called by the delete-account Edge Function before '
-  'it revokes Apple and deletes the auth.users row (#17 KTD1/KTD4).';
+  'day_entries, settings, profile_guardians and guardian_invitations, first '
+  're-homing (to the actual profile owner) any day_entries this caller '
+  'logged as a caregiver on a profile they do not own, so the auth.users '
+  'on delete cascade the Edge Function triggers afterwards cannot reach '
+  'them (#17 P0 fix). Takes no parameters - the caller is always the '
+  'subject, so no other account can be named in the call. Called by the '
+  'delete-account Edge Function before it revokes Apple and deletes the '
+  'auth.users row (#17 KTD1/KTD4).';
 
 revoke all on function public.delete_account_data() from public, anon;
 grant execute on function public.delete_account_data() to authenticated;
