@@ -7,7 +7,13 @@
 /// pair (#2 U7; KTD3); `linkIdentityWithIdToken` attaches a second
 /// identity to the current session's user (#2 U8; KTD5).
 /// `getUserIdentities`, `unlinkIdentity`, and `refreshSession` are the
-/// removal side of that same seam (#31 U2; KTD2).
+/// removal side of that same seam (#31 U2; KTD2). The four passkey
+/// ceremony methods join it over `_auth.passkey` (#30 U3; KTD1) — `gotrue`
+/// annotates the whole `GoTruePasskeyApi` surface `@experimental`, and this
+/// file is deliberately where that risk is confined; the file-level ignore
+/// below only relaxes the analyzer's warning about that already-accepted,
+/// already-documented risk.
+// ignore_for_file: experimental_member_use
 library;
 
 import 'package:app_links/app_links.dart';
@@ -92,6 +98,30 @@ abstract interface class AuthGateway {
   /// stores the session (KTD8: the service calls this itself because
   /// `detectSessionInUri` is off).
   Future<AuthSessionUrlResponse> getSessionFromUrl(Uri uri);
+
+  /// Starts passkey registration for the current session's user
+  /// (#30 U3; KTD1). The returned `options` embed the relying-party id —
+  /// the client never names it.
+  Future<PasskeyRegistrationOptionsResponse> startPasskeyRegistration();
+
+  /// Completes passkey registration with the credential a
+  /// [PasskeyCeremonyClient] produced from the options above (#30 U3;
+  /// KTD1).
+  Future<Passkey> verifyPasskeyRegistration({
+    required String challengeId,
+    required Map<String, dynamic> credential,
+  });
+
+  /// Starts a passkey sign-in; needs no session (#30 U3; KTD1).
+  Future<PasskeyAuthenticationOptionsResponse> startPasskeyAuthentication();
+
+  /// Completes a passkey sign-in with the assertion a
+  /// [PasskeyCeremonyClient] produced from the options above, returning the
+  /// new session (#30 U3; KTD1).
+  Future<AuthResponse> verifyPasskeyAuthentication({
+    required String challengeId,
+    required Map<String, dynamic> credential,
+  });
 }
 
 /// Production gateway over `Supabase.instance.client.auth`.
@@ -198,6 +228,34 @@ class GoTrueAuthGateway implements AuthGateway {
   @override
   Future<AuthSessionUrlResponse> getSessionFromUrl(Uri uri) =>
       _auth.getSessionFromUrl(uri);
+
+  @override
+  Future<PasskeyRegistrationOptionsResponse> startPasskeyRegistration() =>
+      _auth.passkey.startRegistration();
+
+  @override
+  Future<Passkey> verifyPasskeyRegistration({
+    required String challengeId,
+    required Map<String, dynamic> credential,
+  }) =>
+      _auth.passkey.verifyRegistration(
+        challengeId: challengeId,
+        credential: credential,
+      );
+
+  @override
+  Future<PasskeyAuthenticationOptionsResponse> startPasskeyAuthentication() =>
+      _auth.passkey.startAuthentication();
+
+  @override
+  Future<AuthResponse> verifyPasskeyAuthentication({
+    required String challengeId,
+    required Map<String, dynamic> credential,
+  }) =>
+      _auth.passkey.verifyAuthentication(
+        challengeId: challengeId,
+        credential: credential,
+      );
 }
 
 /// Where incoming links come from.
