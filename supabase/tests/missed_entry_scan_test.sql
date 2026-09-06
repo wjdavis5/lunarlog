@@ -5,7 +5,7 @@
 -- are exercised directly, proving KTD9's guard: the scan/sweep logic never
 -- depends on the cron schedule actually existing.
 begin;
-select plan(26);
+select plan(33);
 
 create function pg_temp.outbox_count(p_profile text, p_recipient uuid) returns bigint
 language sql security definer set search_path = '' as $$
@@ -284,6 +284,164 @@ select is(pg_temp.outbox_count(tests.ulid(510), tests.get_supabase_uid('step_s10
   '#8: step gets her own row on the second scan -- not silently suppressed by dad''s already-set marker for the same window');
 select is(pg_temp.outbox_count(tests.ulid(510), tests.get_supabase_uid('dad_s10')), 1::bigint,
   '#8: dad still has exactly one row -- per-guardian dedupe still holds for him across the second scan');
+
+-- ---------------------------------------------------------------------------
+-- Group 511 (round-2 review #7): per-row exception isolation. A trigger
+-- forces the notification_outbox insert to fail for exactly one recipient
+-- on the profile; the sibling co-guardian's row in the same scan loop must
+-- still be enqueued, and the scan call itself must not raise. This actually
+-- fails against pre-fix code (the loop body has no begin/exception), unlike
+-- the earlier lives_ok smoke calls on the cron wrappers above, which never
+-- set anything up to fail.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('mom_s11');
+select tests.create_supabase_user('dad_s11');
+select tests.create_supabase_user('step_s11');
+
+select tests.authenticate_as('mom_s11');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(511), 'S11', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select public.create_guardian_invitation(
+  tests.ulid(511), 'co_parent', 'Dad',
+  '6969696969696969696969696969696969696969696969696969696969696969', 48
+);
+select tests.authenticate_as('dad_s11');
+select public.accept_guardian_invitation(
+  '6969696969696969696969696969696969696969696969696969696969696969', 'Dad'
+);
+select tests.authenticate_as('mom_s11');
+select public.create_guardian_invitation(
+  tests.ulid(511), 'caregiver', 'Step',
+  '7070707070707070707070707070707070707070707070707070707070707070', 48
+);
+select tests.authenticate_as('step_s11');
+select public.accept_guardian_invitation(
+  '7070707070707070707070707070707070707070707070707070707070707070', 'Step'
+);
+
+select tests.authenticate_as('dad_s11');
+insert into public.notification_preferences (user_id, profile_id, missed_entry_days)
+values (tests.get_supabase_uid('dad_s11'), tests.ulid(511), 1);
+select tests.authenticate_as('step_s11');
+insert into public.notification_preferences (user_id, profile_id, missed_entry_days)
+values (tests.get_supabase_uid('step_s11'), tests.ulid(511), 1);
+select public.upsert_reminder_window(tests.ulid(511), (current_date - 1), false);
+
+select tests.authenticate_as('mom_s11');
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(5110), tests.ulid(511), (current_date - 3), 'UTC', 'medium', now());
+
+-- Forces the notification_outbox insert to fail for dad's row only --
+-- step's row on the same profile, in the same scan invocation, is untouched.
+-- CREATE TRIGGER needs the table owner's privilege, not merely a grant --
+-- tests.clear_authentication() drops back to the session's own (postgres)
+-- role for this DDL, same as every other pg_temp helper's setup in this
+-- suite.
+select tests.clear_authentication();
+create function pg_temp.explode_for_dad_s11() returns trigger
+language plpgsql as $$
+begin
+  if new.recipient_user_id = tests.get_supabase_uid('dad_s11') then
+    raise exception 'forced row failure (round-2 review #7 test)';
+  end if;
+  return new;
+end;
+$$;
+create trigger explode_for_dad_s11
+  before insert on public.notification_outbox
+  for each row execute function pg_temp.explode_for_dad_s11();
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select lives_ok(
+  $$select public.scan_missed_entry_reminders()$$,
+  '#7: the scan survives one recipient''s row raising -- it does not abort the whole loop'
+);
+select is(pg_temp.outbox_count(tests.ulid(511), tests.get_supabase_uid('dad_s11')), 0::bigint,
+  '#7: dad''s own row failed and enqueued nothing for him');
+select is(pg_temp.outbox_count(tests.ulid(511), tests.get_supabase_uid('step_s11')), 1::bigint,
+  '#7: step''s row on the same profile still got enqueued despite dad''s row raising first');
+
+select tests.clear_authentication();
+drop trigger explode_for_dad_s11 on public.notification_outbox;
+drop function pg_temp.explode_for_dad_s11();
+
+-- ---------------------------------------------------------------------------
+-- Group 513 (round-2 review #8): a guardian revoked and then re-invited,
+-- with the same estimated_next_start still published, must not be silently
+-- skipped by the scan's dedupe gate. Before the #8 follow-up fix (deleting
+-- missed_entry_alert_state in revoke_guardian()), the stale marker from
+-- before the revocation would survive it and block this second alert.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('mom_s13');
+select tests.create_supabase_user('dad_s13');
+
+select tests.authenticate_as('mom_s13');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(513), 'S13', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select public.create_guardian_invitation(
+  tests.ulid(513), 'co_parent', 'Dad',
+  '7171717171717171717171717171717171717171717171717171717171717171', 48
+);
+select tests.authenticate_as('dad_s13');
+select public.accept_guardian_invitation(
+  '7171717171717171717171717171717171717171717171717171717171717171', 'Dad'
+);
+insert into public.notification_preferences (user_id, profile_id, missed_entry_days)
+values (tests.get_supabase_uid('dad_s13'), tests.ulid(513), 1);
+select public.upsert_reminder_window(tests.ulid(513), (current_date - 1), false);
+
+select tests.authenticate_as('mom_s13');
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(5130), tests.ulid(513), (current_date - 3), 'UTC', 'medium', now());
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select public.scan_missed_entry_reminders();
+select is(pg_temp.outbox_count(tests.ulid(513), tests.get_supabase_uid('dad_s13')), 1::bigint,
+  '#8: dad gets his one row before being revoked');
+
+-- Revoke, then re-invite and re-accept -- same estimated_next_start still
+-- published on profile_reminder_windows the whole time, so a stale marker
+-- would otherwise silently block the alert a second time.
+select tests.authenticate_as('mom_s13');
+select public.revoke_guardian(tests.ulid(513), tests.get_supabase_uid('dad_s13'));
+
+-- missed_entry_alert_state has no authenticated grant at all (mirrors
+-- notification_outbox's posture) -- read it as service_role.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select is(
+  (select count(*) from public.missed_entry_alert_state
+    where profile_id = tests.ulid(513) and user_id = tests.get_supabase_uid('dad_s13')),
+  0::bigint,
+  '#8: revoke_guardian deleted dad''s missed_entry_alert_state marker'
+);
+-- revoke_guardian's existing behavior (predating #8) also deletes any of
+-- the revoked guardian's unsent outbox rows for the profile, so the one
+-- row from before the revocation is gone too -- the second scan below
+-- starts from zero, not one.
+select is(pg_temp.outbox_count(tests.ulid(513), tests.get_supabase_uid('dad_s13')), 0::bigint,
+  '#8: revoke_guardian also removed dad''s pre-revocation unsent outbox row (pre-existing behavior)');
+
+select tests.authenticate_as('mom_s13');
+select public.create_guardian_invitation(
+  tests.ulid(513), 'co_parent', 'Dad Again',
+  '7272727272727272727272727272727272727272727272727272727272727272', 48
+);
+select tests.authenticate_as('dad_s13');
+select public.accept_guardian_invitation(
+  '7272727272727272727272727272727272727272727272727272727272727272', 'Dad Again'
+);
+insert into public.notification_preferences (user_id, profile_id, missed_entry_days)
+values (tests.get_supabase_uid('dad_s13'), tests.ulid(513), 1)
+on conflict (user_id, profile_id) do update set missed_entry_days = excluded.missed_entry_days;
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select public.scan_missed_entry_reminders();
+select is(pg_temp.outbox_count(tests.ulid(513), tests.get_supabase_uid('dad_s13')), 1::bigint,
+  '#8: after revoke-then-re-invite, dad gets a fresh row -- not silently suppressed by a stale pre-revocation marker (would stay 0 without the #8 follow-up fix)');
 
 -- ---------------------------------------------------------------------------
 -- Group 507: RLS on upsert_reminder_window.

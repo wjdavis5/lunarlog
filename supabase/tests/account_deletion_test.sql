@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(56);
+select plan(61);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -215,7 +215,8 @@ select is(
     'day_entries', 0, 'day_entries_rehomed', 0, 'guardian_invitations', 0,
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,
-    'notification_outbox', 0, 'profile_reminder_windows', 0
+    'notification_outbox', 0, 'profile_reminder_windows', 0,
+    'missed_entry_alert_state', 0
   ),
   'calling delete_account_data twice reports zero counts the second time'
 );
@@ -536,7 +537,11 @@ select tests.clear_authentication();
 
 -- ---------------------------------------------------------------------------
 -- 10. Issue #5, U4: account deletion cleanup for the three caregiver-alert
---     tables plus profile_reminder_windows.
+--     tables plus profile_reminder_windows and missed_entry_alert_state
+--     (the latter added by round-2 review #8 -- missed_entry_alert_state
+--     is owned exclusively by scan_missed_entry_reminders(), with no
+--     authenticated grants at all, hence the direct service_role inserts
+--     below rather than going through RLS).
 -- ---------------------------------------------------------------------------
 
 select tests.create_supabase_user('user_k'); -- owns profile K, co-guardian on nothing else
@@ -566,6 +571,19 @@ select public.accept_guardian_invitation(
 insert into public.notification_preferences (user_id, profile_id, alert_on_log)
 values (tests.get_supabase_uid('user_l'), tests.ulid(51), true);
 select public.upsert_reminder_window(tests.ulid(51), '2026-09-12', false);
+
+-- Round-2 review #8: missed_entry_alert_state markers -- two of L's own
+-- (one on the profile L owns, one on the profile L merely co-guards) and
+-- one of K's own on the co-guarded profile, which must survive L's account
+-- deletion below (same "own row only" rule notification_preferences
+-- already proves).
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+insert into public.missed_entry_alert_state (profile_id, user_id, last_enqueued_for)
+values
+  (tests.ulid(50), tests.get_supabase_uid('user_l'), '2026-09-05'),
+  (tests.ulid(51), tests.get_supabase_uid('user_l'), '2026-09-06'),
+  (tests.ulid(51), tests.get_supabase_uid('user_k'), '2026-09-07');
 
 -- K logs an entry: both guardians have alert_on_log, so L (not the writer)
 -- gets an outbox row.
@@ -604,6 +622,10 @@ select is(
   pg_temp.snap('l_result') -> 'profile_reminder_windows', '1'::jsonb,
   'U4: result includes a non-zero profile_reminder_windows count (L''s own profile)'
 );
+select is(
+  pg_temp.snap('l_result') -> 'missed_entry_alert_state', '2'::jsonb,
+  '#8: result includes L''s two missed_entry_alert_state markers (one on each profile)'
+);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -639,6 +661,17 @@ select is(
   1::bigint,
   'U4: profile_reminder_windows for a profile the caller merely guarded survives'
 );
+select is(
+  (select count(*) from public.missed_entry_alert_state where user_id = tests.get_supabase_uid('user_l')),
+  0::bigint,
+  '#8: after delete_account_data, the caller has zero missed_entry_alert_state rows, on either profile'
+);
+select is(
+  (select count(*) from public.missed_entry_alert_state
+    where profile_id = tests.ulid(51) and user_id = tests.get_supabase_uid('user_k')),
+  1::bigint,
+  '#8: a co-guardian''s missed_entry_alert_state marker on a profile the deleted caller also guarded survives'
+);
 
 -- ---------------------------------------------------------------------------
 -- 11. Issue #5, U4: revoke_guardian removes the revoked guardian's
@@ -670,6 +703,17 @@ select public.accept_guardian_invitation(
 insert into public.notification_preferences (user_id, profile_id, alert_on_log)
 values (tests.get_supabase_uid('user_o'), tests.ulid(53), true);
 
+-- Round-2 review #8: a missed_entry_alert_state marker for O on each
+-- profile, mirroring the notification_preferences fixture immediately
+-- above -- one on the profile being revoked from, one on a different
+-- profile O still guards.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+insert into public.missed_entry_alert_state (profile_id, user_id, last_enqueued_for)
+values
+  (tests.ulid(53), tests.get_supabase_uid('user_o'), '2026-09-08'),
+  (tests.ulid(52), tests.get_supabase_uid('user_o'), '2026-09-09');
+
 select tests.authenticate_as('user_n');
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(530), tests.ulid(53), '2026-09-01', 'UTC', 'none', now(),
@@ -697,6 +741,18 @@ select is(
     where profile_id = tests.ulid(52) and user_id = tests.get_supabase_uid('user_o')),
   1::bigint,
   'U4: the revoked guardian''s preference row for a different profile they still guard survives'
+);
+select is(
+  (select count(*) from public.missed_entry_alert_state
+    where profile_id = tests.ulid(53) and user_id = tests.get_supabase_uid('user_o')),
+  0::bigint,
+  '#8: after revoke_guardian, the revoked guardian''s missed_entry_alert_state marker for that profile is gone'
+);
+select is(
+  (select count(*) from public.missed_entry_alert_state
+    where profile_id = tests.ulid(52) and user_id = tests.get_supabase_uid('user_o')),
+  1::bigint,
+  '#8: the revoked guardian''s missed_entry_alert_state marker for a different profile they still guard survives'
 );
 
 select tests.clear_authentication();

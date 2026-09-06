@@ -180,32 +180,47 @@ begin
      where p.missed_entry_days is not null
        and g.status = 'accepted'
   loop
-    select max(local_date) into v_newest
-      from public.day_entries
-     where profile_id = v_row.profile_id
-       and deleted_at is null;
+    -- #7 (round-2 review): round-1 #15 asked for two things -- splitting
+    -- the cron statements (done, see run_nightly_caregiver_alerts_job()
+    -- below) *and* per-row exception isolation in this loop. Only the cron
+    -- split landed the first time. Without this begin/exception, any error
+    -- on one tenant's row (a concurrent profile or user deletion racing the
+    -- notification_outbox FK insert, for instance -- #3's fix removed the
+    -- only *known* raise source, but not every possible one) aborts the
+    -- whole cross-tenant scan, silently starving every other guardian's
+    -- missed-entry reminder for that run.
+    begin
+      select max(local_date) into v_newest
+        from public.day_entries
+       where profile_id = v_row.profile_id
+         and deleted_at is null;
 
-    if v_newest is not null
-       and (v_today - v_newest) > v_row.missed_entry_days
-       and (v_row.estimated_next_start <= v_today or coalesce(v_row.episode_open, false))
-       and v_row.last_enqueued_for is distinct from v_row.estimated_next_start
-    then
-      insert into public.notification_outbox
-        (profile_id, recipient_user_id, kind, deliver_after)
-      values (
-        v_row.profile_id, v_row.user_id, 'missed_entry',
-        public.resolve_deliver_after(
-          now(), v_row.quiet_hours_start, v_row.quiet_hours_end, v_row.time_zone
-        )
-      );
+      if v_newest is not null
+         and (v_today - v_newest) > v_row.missed_entry_days
+         and (v_row.estimated_next_start <= v_today or coalesce(v_row.episode_open, false))
+         and v_row.last_enqueued_for is distinct from v_row.estimated_next_start
+      then
+        insert into public.notification_outbox
+          (profile_id, recipient_user_id, kind, deliver_after)
+        values (
+          v_row.profile_id, v_row.user_id, 'missed_entry',
+          public.resolve_deliver_after(
+            now(), v_row.quiet_hours_start, v_row.quiet_hours_end, v_row.time_zone
+          )
+        );
 
-      insert into public.missed_entry_alert_state (profile_id, user_id, last_enqueued_for)
-      values (v_row.profile_id, v_row.user_id, v_row.estimated_next_start)
-      on conflict (profile_id, user_id) do update
-        set last_enqueued_for = excluded.last_enqueued_for;
+        insert into public.missed_entry_alert_state (profile_id, user_id, last_enqueued_for)
+        values (v_row.profile_id, v_row.user_id, v_row.estimated_next_start)
+        on conflict (profile_id, user_id) do update
+          set last_enqueued_for = excluded.last_enqueued_for;
 
-      v_count := v_count + 1;
-    end if;
+        v_count := v_count + 1;
+      end if;
+    exception
+      when others then
+        raise notice 'scan_missed_entry_reminders: profile % / user % failed: %',
+          v_row.profile_id, v_row.user_id, sqlerrm;
+    end;
   end loop;
 
   return v_count;
@@ -219,7 +234,9 @@ comment on function public.scan_missed_entry_reminders() is
   '(R14). Deduped per (profile, guardian) via missed_entry_alert_state '
   '(KTD8, #8 review fix), so a re-run before a fresh window is published '
   'enqueues nothing (R15), and one guardian being enqueued never suppresses '
-  'a co-guardian with a different threshold on the same profile.';
+  'a co-guardian with a different threshold on the same profile. Each row '
+  'is isolated in its own begin/exception block (round-2 review #7) so one '
+  'tenant''s failure can never abort the scan for every other tenant.';
 
 revoke all on function public.scan_missed_entry_reminders() from public, anon, authenticated;
 

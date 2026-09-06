@@ -21,8 +21,10 @@ class _RegisterCall {
 class _FakeRegistry implements PushDeviceRegistry {
   final List<_RegisterCall> registerCalls = [];
   final List<String> removeCalls = [];
+  int removeAllCalls = 0;
   Object? nextRegisterError;
   Object? nextRemoveError;
+  Object? nextRemoveAllError;
 
   @override
   Future<void> register(String deviceId, String token, {required String platform}) async {
@@ -42,6 +44,16 @@ class _FakeRegistry implements PushDeviceRegistry {
       throw error;
     }
     removeCalls.add(deviceId);
+  }
+
+  @override
+  Future<void> removeAllForCurrentUser() async {
+    final error = nextRemoveAllError;
+    if (error != null) {
+      nextRemoveAllError = null;
+      throw error;
+    }
+    removeAllCalls++;
   }
 }
 
@@ -268,6 +280,86 @@ void main() {
 
     await expectLater(coordinator.removeRegistration(), completes);
     expect(registry.removeCalls, isEmpty, reason: 'the one attempt threw');
+
+    await coordinator.dispose();
+    await tokenSource.close();
+  });
+
+  test('removeAllRegistrations (#9 review fix) removes every device for the current user, even while disposed', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry();
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+    );
+    await coordinator.start();
+    expect(registry.removeAllCalls, 0);
+
+    await coordinator.removeAllRegistrations();
+    expect(registry.removeAllCalls, 1);
+    expect(registry.removeCalls, isEmpty,
+        reason: 'removeAllRegistrations goes through removeAllForCurrentUser, '
+            'not the single-device remove');
+
+    // Callable even after dispose, mirroring removeRegistration.
+    await coordinator.dispose();
+    await coordinator.removeAllRegistrations();
+    expect(registry.removeAllCalls, 2);
+
+    await tokenSource.close();
+  });
+
+  test('removeAllRegistrations swallows a registry failure (best-effort)', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry()..nextRemoveAllError = Exception('boom');
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+    );
+    await coordinator.start();
+
+    await expectLater(coordinator.removeAllRegistrations(), completes);
+    expect(registry.removeAllCalls, 0, reason: 'the one attempt threw');
+
+    await coordinator.dispose();
+    await tokenSource.close();
+  });
+
+  test('a tokenRefreshes()/taps() stream error (#4 review fix) does not '
+      'escape uncaught and does not stop registration from having already '
+      'happened', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry();
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+    );
+    await coordinator.start();
+    expect(registry.registerCalls, hasLength(1));
+
+    // Simulates FirebasePushTokenSource's real tokenRefreshes()/taps()
+    // surfacing a poisoned _initFuture as a stream error -- without an
+    // onError on these listen() calls, this would escape as an unhandled
+    // zone error and fail the test.
+    tokenSource.emitRefreshError(Exception('init failed'));
+    tokenSource.emitTapError(Exception('init failed'));
+    await pumpEventQueue();
+
+    // No crash reached this point; the registration already made before
+    // the error is unaffected.
+    expect(registry.registerCalls, hasLength(1));
 
     await coordinator.dispose();
     await tokenSource.close();

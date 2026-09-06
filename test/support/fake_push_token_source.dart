@@ -31,6 +31,14 @@ class FakePushTokenSource implements PushTokenSource {
 
   void emitTap(String? profileId) => _taps.add(profileId);
 
+  /// Round-2 review #4: FirebasePushTokenSource's real `tokenRefreshes()`/
+  /// `taps()` are `async*` generators that surface an init failure as a
+  /// stream *error* event (not a data event) -- these let coordinator tests
+  /// exercise that without touching the real, plugin-bound class.
+  void emitRefreshError(Object error) => _refreshes.addError(error);
+
+  void emitTapError(Object error) => _taps.addError(error);
+
   Future<void> close() async {
     await _refreshes.close();
     await _taps.close();

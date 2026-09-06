@@ -70,7 +70,21 @@ class FirebasePushTokenSource implements PushTokenSource {
   // await the same one initialization.
   Future<void>? _initFuture;
 
-  Future<void> _ensureInitialized() => _initFuture ??= _initialize();
+  // Round-2 review #4: a bare `_initFuture ??= _initialize()` memoizes the
+  // *rejected* Future forever once Firebase.initializeApp() or
+  // requestPermission() throws (a transient network blip is enough) --
+  // every later currentToken()/tokenRefreshes()/taps() call re-awaits that
+  // same failure, silently disabling push for the rest of the process. The
+  // catchError here clears _initFuture back to null before rethrowing, so
+  // the *next* call starts a fresh attempt instead of replaying the same
+  // dead one, restoring the "a later refresh or app restart retries"
+  // contract PushRegistrationCoordinator's own comment already promises.
+  Future<void> _ensureInitialized() {
+    return _initFuture ??= _initialize().catchError((Object error, StackTrace stackTrace) {
+      _initFuture = null;
+      Error.throwWithStackTrace(error, stackTrace);
+    });
+  }
 
   Future<void> _initialize() async {
     final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
