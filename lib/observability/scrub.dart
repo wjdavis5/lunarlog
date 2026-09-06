@@ -262,6 +262,100 @@ Contexts _scrubContexts(Contexts contexts) {
   );
 }
 
+/// [_scrubContexts] plus a rebuilt `contexts.trace` (U4; KTD9): trace id,
+/// span id, operation, status, and sampled survive; the trace's `data` map
+/// is dropped entirely. That `data` map is the second copy of the tracer's
+/// raw data — see [scrubTransaction]'s doc comment.
+Contexts _scrubTransactionContexts(Contexts contexts) {
+  final scrubbed = _scrubContexts(contexts);
+  final trace = contexts.trace;
+  if (trace != null) {
+    scrubbed.trace = SentryTraceContext(
+      traceId: trace.traceId,
+      spanId: trace.spanId,
+      operation: trace.operation,
+      status: trace.status,
+      sampled: trace.sampled,
+    );
+  }
+  return scrubbed;
+}
+
+/// KTD9: rebuilds one span's `data` under an allowlist, using the SDK's
+/// real key names — `url` (truncated at `?`), `http.request.method`,
+/// `http.response.status_code`, `http.response_content_length`,
+/// `db.system`, `db.operation`. `http.query`/`http.fragment` and every
+/// other key are dropped. Mutates [span.data] in place: `SentrySpan.data`'s
+/// getter returns the live field, and mutating it directly is the only way
+/// to change a span's data once the transaction has already finished (its
+/// own `setData`/`removeData` methods no-op on a finished span).
+void _scrubSpanDataInPlace(SentrySpan span) {
+  final data = span.data;
+  final url = data['url'];
+  final allowed = <String, dynamic>{
+    if (url is String) 'url': stripQueryString(url),
+    for (final key in const [
+      'http.request.method',
+      'http.response.status_code',
+      'http.response_content_length',
+      'db.system',
+      'db.operation',
+    ])
+      if (data.containsKey(key)) key: data[key],
+  };
+  data
+    ..clear()
+    ..addAll(allowed);
+}
+
+/// Reduces [transaction] to the same KTD12 allowlist [scrubEvent] applies
+/// to an event, through mutation rather than reconstruction (U4; KTD9).
+///
+/// [SentryTransaction] cannot be rebuilt through [SentryEvent]'s
+/// constructor without erasing its spans and changing its type. There is
+/// no reconstruction path either: its only constructor requires the
+/// `@internal` [SentryTracer] (reachable only through an
+/// `implementation_imports` violation), and `copyWith` is
+/// `@Deprecated('Assign values directly to the instance.')` — the SDK's
+/// own guidance. So this is the one function in this library that mutates
+/// its argument in place and returns it (or null to drop it), rather than
+/// building a new value; every other function here is pure.
+///
+/// The non-obvious part, verified against `sentry` 9.28.0's
+/// `SentryTransaction` constructor: it sets `extra: extra ?? tracer.data`
+/// and then `contexts.trace = spanContext.toTraceContext(…, data: data)`
+/// with that *same* map — so the tracer's data (which
+/// `SentryNavigatorObserver` populates with raw route arguments via
+/// `transaction.setData('route_settings_arguments', arguments)`) appears
+/// in both places. Dropping `extra` alone would leave the second copy,
+/// `contexts.trace.data`, on the wire; [_scrubTransactionContexts] is what
+/// closes that.
+SentryTransaction? scrubTransaction(SentryTransaction transaction) {
+  // ignore: deprecated_member_use
+  if (containsDenyListedKey(transaction.extra)) return null;
+  for (final span in transaction.spans) {
+    if (containsDenyListedKey(span.data)) return null;
+  }
+
+  transaction.user = null;
+  // ignore: deprecated_member_use
+  transaction.extra = null;
+  transaction.contexts = _scrubTransactionContexts(transaction.contexts);
+  transaction.request = _scrubRequest(transaction.request);
+  transaction.transaction = transaction.transaction == null
+      ? null
+      : scrubRouteName(transaction.transaction);
+  transaction.tags = _scrubTags(transaction.tags);
+  transaction.breadcrumbs = transaction.breadcrumbs
+      ?.map(scrubBreadcrumb)
+      .whereType<Breadcrumb>()
+      .toList(growable: false);
+  for (final span in transaction.spans) {
+    _scrubSpanDataInPlace(span);
+  }
+  return transaction;
+}
+
 SentryRequest? _scrubRequest(SentryRequest? request) {
   if (request == null) return null;
   final url = request.url;

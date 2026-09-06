@@ -39,7 +39,11 @@ Future<void> runWithSentry({
     return;
   }
   await init(
-    (options) => configureSentryOptions(options, dsn: dsn),
+    (options) => configureSentryOptions(
+      options,
+      dsn: dsn,
+      tracesSampleRate: AppConfig.sentryTracesSampleRate,
+    ),
     appRunner: appRunner,
   );
 }
@@ -52,10 +56,21 @@ Future<void> runWithSentry({
 /// from the same already-scrubbed stream Sentry uses, so no new
 /// instrumentation is needed when Sentry is configured. Defaults to the
 /// shared [defaultBreadcrumbLog]; tests pass their own.
+///
+/// [tracesSampleRate] (U4; R9, R10, R14) is injectable for the same reason
+/// [dsn] is: [AppConfig.sentryTracesSampleRate] is not `const` (parsing and
+/// clamping cannot happen in a const initializer), so a default value here
+/// would still read the real build's dart-define — coupling every test
+/// that does not pass this parameter to whatever `flutter test` happened
+/// to be invoked with. Defaulting to `null` (tracing off) instead means a
+/// test suite run stays identical whether or not `--dart-define
+/// =SENTRY_TRACES_SAMPLE_RATE=…` was passed; only [runWithSentry]'s
+/// production call site passes the real [AppConfig] value.
 void configureSentryOptions(
   SentryFlutterOptions options, {
   required String dsn,
   BreadcrumbLog? breadcrumbLog,
+  double? tracesSampleRate,
 }) {
   final log = breadcrumbLog ?? defaultBreadcrumbLog;
   options
@@ -70,10 +85,13 @@ void configureSentryOptions(
     ..attachViewHierarchy = false
     ..enableUserInteractionBreadcrumbs = false
     ..enableUserInteractionTracing = false
-    // Errors at 100% (R17, tiny user base); no performance or profiling
-    // data, which would carry route names and request URLs.
+    // Errors at 100% (R17, tiny user base); no profiling data, which would
+    // carry route names and request URLs.
     ..sampleRate = 1.0
-    ..tracesSampleRate = null
+    // U4 (R9, R14): null unless SENTRY_TRACES_SAMPLE_RATE is set, so an
+    // unconfigured build produces no transactions and no app-start
+    // measurement -- exactly today's behavior.
+    ..tracesSampleRate = tracesSampleRate
     // ignore: experimental_member_use
     ..profilesSampleRate = null
     // Release health (R17).
@@ -96,8 +114,12 @@ void configureSentryOptions(
     // payload actually carries. Pinned false; the opt-in (after a real
     // payload has been inspected) belongs to issue #19.
     ..enableTombstone = false;
-  // Allowlist scrubbing (R18).
+  // Allowlist scrubbing (R18). scrubTransaction (U4) is inert while
+  // tracesSampleRate is null -- no transaction is ever produced for it to
+  // see -- and proven by unit tests long before an operator opts in.
   options.beforeSend = (event, hint) => scrubEvent(event);
+  options.beforeSendTransaction =
+      (transaction, hint) => scrubTransaction(transaction);
   options.beforeBreadcrumb = (breadcrumb, hint) {
     final scrubbed = scrubBreadcrumb(breadcrumb);
     if (scrubbed != null) {
