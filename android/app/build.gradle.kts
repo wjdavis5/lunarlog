@@ -82,10 +82,17 @@ kotlin {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-    // U3 (R7): real Android NDK crash capture. Versionless -- inherits from
-    // io.sentry:sentry-android, which sentry_flutter's own Android module
-    // already brings in as `api` (KTD7).
-    implementation("io.sentry:sentry-native-ndk")
+    // U3 (R7): real Android NDK crash capture. `sentry-native-ndk` carries
+    // its own independent version series (0.x), separate from
+    // `io.sentry:sentry-android`'s (8.x) -- a versionless declaration fails
+    // to resolve (verified), and so does guessing the sentry-android
+    // version. Pinned to 0.16.2, the exact version `io.sentry:sentry-
+    // android-ndk:8.53.0` depends on internally per sentry-java's own
+    // gradle/libs.versions.toml at that tag (sentry_flutter 9.28.0 pulls
+    // sentry-android 8.53.0 as `api`, transitively pulling
+    // sentry-android-ndk 8.53.0). Re-check this pin whenever sentry_flutter
+    // is upgraded.
+    implementation("io.sentry:sentry-native-ndk:0.16.2")
 }
 
 flutter {
