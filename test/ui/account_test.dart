@@ -1238,6 +1238,38 @@ void main() {
       );
     });
 
+    testWidgets('a non-AuthFailure error from the unlink call still surfaces '
+        'the generic copy in account-link-error', (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      s.auth.unlinkThrowsGeneric = true;
+      await tester.tap(key('account-remove-google'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-remove-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(s.gate.requests, 1, reason: 'the device credential came first');
+      expect(
+        s.auth.unlinkCalls,
+        isEmpty,
+        reason: 'the fake throws before recording an unlink call',
+      );
+      expect(key('account-link-error'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: key('account-link-error'),
+          matching: find.text(authFailureCopy(const AuthFailure.unknown())),
+          matchRoot: true,
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Sign-in methods: Email, Google'), findsOneWidget);
+      expect(key('account-remove-google'), findsOneWidget);
+    });
+
     testWidgets('a second tap while the first unlinkProvider call is held '
         'does nothing, and disables the sibling Add/Remove tiles', (
       tester,

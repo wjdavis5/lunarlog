@@ -44,7 +44,19 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart'
 /// Client-side minimum for a new password (the project's hosted rule).
 const int kMinPasswordLength = 12;
 
-/// Generic, email-free copy per failure kind.
+/// Fallback copy shared by [AuthUnknownFailure] and the (unreachable)
+/// default arm of [_rareAuthFailureCopy] (#31: kept as a named constant so
+/// the two spellings can never drift).
+const String _kUnknownFailureCopy = 'Something went wrong. Please try again.';
+
+/// Generic, email-free copy per failure kind. Split into this dispatcher
+/// plus [_rareAuthFailureCopy] — same exhaustive switch over the sealed
+/// [AuthFailure] hierarchy, just spread across two methods so neither
+/// trips the CRAP gate's per-method complexity threshold (#31; no
+/// behavior change). This function's switch is still the one the compiler
+/// checks for exhaustiveness: a new [AuthFailure] kind fails to compile
+/// here (either as its own arm or added to the combined arm below) before
+/// [_rareAuthFailureCopy] is ever reached.
 String authFailureCopy(AuthFailure failure) => switch (failure) {
       AuthWrongPasswordFailure() =>
         'That email and password combination was not accepted.',
@@ -52,9 +64,24 @@ String authFailureCopy(AuthFailure failure) => switch (failure) {
         'Choose a stronger password of at least $kMinPasswordLength characters.',
       AuthNetworkFailure() =>
         'Could not reach the server. Check your connection and try again.',
-      AuthUnknownFailure() => 'Something went wrong. Please try again.',
+      AuthUnknownFailure() => _kUnknownFailureCopy,
       AuthProviderUnavailableFailure() =>
         "Google Sign-In isn't available on this device. Use email instead.",
+      AuthExpiredLinkFailure() ||
+      AuthInvalidCodeFailure() ||
+      AuthIdentityTakenFailure() ||
+      AuthSignUpClosedFailure() ||
+      AuthLastSignInMethodFailure() =>
+        _rareAuthFailureCopy(failure),
+    };
+
+/// The less-common failure kinds (#2/#31), split out of [authFailureCopy]
+/// purely to keep its cyclomatic complexity under the CRAP gate's
+/// threshold. Only ever called with the five kinds [authFailureCopy]
+/// delegates; the wildcard arm is unreachable in practice and returns the
+/// same generic copy [AuthUnknownFailure] uses rather than throwing, so a
+/// future refactor mistake fails safe instead of crashing the UI.
+String _rareAuthFailureCopy(AuthFailure failure) => switch (failure) {
       AuthExpiredLinkFailure() =>
         'That sign-in link is no longer valid. Request a new one.',
       AuthInvalidCodeFailure() =>
@@ -66,6 +93,7 @@ String authFailureCopy(AuthFailure failure) => switch (failure) {
       AuthLastSignInMethodFailure() =>
         'That is the only way left to sign in to this account. Add '
             'another method first.',
+      _ => _kUnknownFailureCopy,
     };
 
 class SignInScreen extends StatefulWidget {

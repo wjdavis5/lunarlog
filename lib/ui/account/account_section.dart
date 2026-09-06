@@ -97,14 +97,10 @@ class _AccountSectionState extends State<AccountSection> {
     final auth = Provider.of<AuthController?>(context);
     if (auth == null) return const SizedBox.shrink();
     final sync = Provider.of<SyncStatusController?>(context);
-    final signedIn = auth.state == AuthSessionState.signedIn ||
-        auth.state == AuthSessionState.passwordRecovery;
+    final signedIn = _isSignedIn(auth.state);
     final theme = Theme.of(context);
     final liveUser = auth.currentUser;
-    if (liveUser?.id != _freshUserOwnerId) {
-      _freshUser = null;
-      _freshUserOwnerId = liveUser?.id;
-    }
+    _syncFreshUser(liveUser);
     final user = _freshUser ?? liveUser;
     final providers = user?.providers ?? const <String>[];
     final linkError = _linkError;
@@ -119,13 +115,8 @@ class _AccountSectionState extends State<AccountSection> {
           ListTile(
             key: const ValueKey('account-identity'),
             leading: const Icon(Icons.person_outline),
-            title: Text(user?.email == null
-                ? 'Signed in'
-                : 'Signed in as ${user!.email}'),
-            subtitle: providers.isEmpty
-                ? null
-                : Text('Sign-in methods: '
-                    '${providers.map(providerLabel).join(', ')}'),
+            title: Text(_identityTitle(user)),
+            subtitle: _identitySubtitle(providers),
           ),
           if (linkError != null)
             Padding(
@@ -146,7 +137,7 @@ class _AccountSectionState extends State<AccountSection> {
               provider: AuthProviders.google,
               onTap: () => _removeMethod(AuthProviders.google),
             ),
-          if (_canAddApple && !providers.contains(AuthProviders.apple))
+          if (_shouldShowAddApple(providers))
             _addMethodTile(
               key: 'account-add-apple',
               provider: AuthProviders.apple,
@@ -154,7 +145,7 @@ class _AccountSectionState extends State<AccountSection> {
               label: 'Add Apple',
               onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
             ),
-          if (_canAddGoogle && !providers.contains(AuthProviders.google))
+          if (_shouldShowAddGoogle(providers))
             _addMethodTile(
               key: 'account-add-google',
               provider: AuthProviders.google,
@@ -166,21 +157,19 @@ class _AccountSectionState extends State<AccountSection> {
           ListTile(
             key: const ValueKey('account-sign-in'),
             leading: const Icon(Icons.login),
-            title: Text(auth.state == AuthSessionState.expired
-                ? 'Sign in again'
-                : 'Sign in'),
+            title: Text(_signInTitle(auth.state)),
             subtitle: const Text('Sync this device\'s data to an account.'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const SignInScreen()),
             ),
           ),
         const SyncStatusTile(),
-        if (signedIn && sync != null)
+        if (_shouldShowSyncNow(signedIn: signedIn, sync: sync))
           ListTile(
             key: const ValueKey('account-sync-now'),
             leading: const Icon(Icons.sync),
             title: const Text('Sync now'),
-            enabled: !isSyncRunning(sync.snapshot),
+            enabled: !isSyncRunning(sync!.snapshot),
             onTap: sync.requestSync,
           ),
         if (signedIn) ...[
@@ -202,6 +191,44 @@ class _AccountSectionState extends State<AccountSection> {
       ],
     );
   }
+
+  /// `signedIn` also covers `passwordRecovery` for rendering purposes
+  /// (Scope Boundaries: the section treats recovery as signed in, a
+  /// pre-existing soft bucket this change inherits rather than fixes).
+  bool _isSignedIn(AuthSessionState state) =>
+      state == AuthSessionState.signedIn ||
+      state == AuthSessionState.passwordRecovery;
+
+  /// Clears the adopted [_freshUser] (#31 KTD6) whenever the signed-in
+  /// user id changes, so a sign-out/sign-in cannot show a previous
+  /// account's methods.
+  void _syncFreshUser(AuthUser? liveUser) {
+    if (liveUser?.id == _freshUserOwnerId) return;
+    _freshUser = null;
+    _freshUserOwnerId = liveUser?.id;
+  }
+
+  String _identityTitle(AuthUser? user) =>
+      user?.email == null ? 'Signed in' : 'Signed in as ${user!.email}';
+
+  Widget? _identitySubtitle(List<String> providers) => providers.isEmpty
+      ? null
+      : Text('Sign-in methods: ${providers.map(providerLabel).join(', ')}');
+
+  String _signInTitle(AuthSessionState state) =>
+      state == AuthSessionState.expired ? 'Sign in again' : 'Sign in';
+
+  bool _shouldShowAddApple(List<String> providers) =>
+      _canAddApple && !providers.contains(AuthProviders.apple);
+
+  bool _shouldShowAddGoogle(List<String> providers) =>
+      _canAddGoogle && !providers.contains(AuthProviders.google);
+
+  bool _shouldShowSyncNow({
+    required bool signedIn,
+    required SyncStatusController? sync,
+  }) =>
+      signedIn && sync != null;
 
   ListTile _addMethodTile({
     required String key,

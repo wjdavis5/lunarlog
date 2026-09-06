@@ -64,6 +64,12 @@ class FakeAuthService implements AuthService {
   /// user is returned unchanged and nothing is recorded as linked.
   bool linkCancelled = false;
 
+  /// Throw a non-[AuthFailure] error from [unlinkProvider] before recording
+  /// a call, mirroring [googleUnsupported] for the link path (#31 U3):
+  /// exercises the account section's generic (non-`AuthFailure`) catch
+  /// branch for the remove ceremony.
+  bool unlinkThrowsGeneric = false;
+
   /// Throw [UnsupportedError] from [signInWithAppleNative] (non-iOS).
   bool appleUnsupported = false;
 
@@ -283,6 +289,9 @@ class FakeAuthService implements AuthService {
     if (provider == AuthProviders.email) throw const AuthFailure.unknown();
     if (_state != AuthSessionState.signedIn) {
       throw const AuthFailure.unknown();
+    }
+    if (unlinkThrowsGeneric) {
+      throw StateError('unlink failed unexpectedly');
     }
     unlinkCalls.add(provider);
     await _maybeThrow();
