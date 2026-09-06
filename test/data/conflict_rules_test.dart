@@ -72,4 +72,31 @@ void main() {
       });
     }
   });
+
+  group('mergeTags (Issue #3 gap-closure plan, U4/U5) - mirrors '
+      'merge_tag_arrays exactly', () {
+    test('disjoint inputs return the union, sorted, no duplicates', () {
+      expect(mergeTags(['b', 'a'], ['c']), ['a', 'b', 'c']);
+    });
+
+    test('overlapping inputs deduplicate', () {
+      expect(mergeTags(['a', 'b'], ['b', 'c']), ['a', 'b', 'c']);
+    });
+
+    test('empty and single-sided inputs', () {
+      expect(mergeTags([], []), <String>[]);
+      expect(mergeTags([], ['a']), ['a']);
+      expect(mergeTags(['a'], []), ['a']);
+    });
+
+    test('is commutative', () {
+      expect(mergeTags(['c'], ['b', 'a']), mergeTags(['b', 'a'], ['c']));
+    });
+
+    test('is idempotent when applied to its own output (R9)', () {
+      final once = mergeTags(['a'], ['b']);
+      expect(mergeTags(once, ['a', 'b']), once);
+      expect(mergeTags(once, once), once);
+    });
+  });
 }

@@ -3,7 +3,10 @@
 /// One rule, two implementations: the server's `sync_push` RPC applies the
 /// same decisions in SQL. Timestamps are compared as absolute instants
 /// (microsecond precision), never as ISO strings — Postgres renders
-/// `.123+00:00` where Dart renders `.123000Z` for the same instant.
+/// `.123+00:00` where Dart renders `.123000Z` for the same instant. The
+/// same-date tag merge (Issue #3 gap-closure plan, Unit U4/U5) is a third
+/// such rule: [mergeTags] here must compute the identical set union as the
+/// server's `public.merge_tag_arrays` SQL function.
 library;
 
 /// Compares two instants by absolute time. Zone-insensitive.
@@ -56,4 +59,15 @@ DayEntryCandidate? sameDateWinner(DayEntryCandidate a, DayEntryCandidate b) {
   if (byTime > 0) return a;
   if (byTime < 0) return b;
   return a.id.compareTo(b.id) <= 0 ? a : b;
+}
+
+/// R7/R9: the set union of two tag lists for the same-date collision path,
+/// deduplicated and sorted for a deterministic, order-independent,
+/// idempotent result - mirrors the server's `public.merge_tag_arrays` SQL
+/// function exactly (KTD4/KTD6). This is the tag rule; it is never applied
+/// on the same-id convergence path (R10), where an empty `tags` legitimately
+/// means "the user removed these tags".
+List<String> mergeTags(List<String> a, List<String> b) {
+  final merged = {...a, ...b}.toList()..sort();
+  return merged;
 }
