@@ -332,19 +332,45 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
+  /// R13 copy: when the caller's own accepted role is the reason this sheet
+  /// is read-only (not an archived profile - the two reasons are additive,
+  /// R14), name that reason explicitly so a viewer session is never
+  /// mistaken for an archive. Derived from the same `guardians`/
+  /// `currentUserId` data already passed in for the attribution badge, per
+  /// [acceptedGuardianFor]'s null-vs-empty discipline - an unmatched or
+  /// unknown caller has no reason to show here.
+  String? get _readOnlyReason =>
+      acceptedGuardianFor(widget.guardians, widget.currentUserId)
+          ?.role
+          .readOnlyReason;
+
   Widget _readOnlyBody() {
     final theme = Theme.of(context);
+    final reason = _readOnlyReason;
     final existing = widget.existing;
     if (existing == null) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Text('No entry for this day.', style: theme.textTheme.bodyMedium),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (reason != null) ...[
+              Text(reason, style: theme.textTheme.bodyMedium),
+              const SizedBox(height: 4),
+            ],
+            Text('No entry for this day.', style: theme.textTheme.bodyMedium),
+          ],
+        ),
       );
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (reason != null) ...[
+          Text(reason, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline)),
+          const SizedBox(height: 8),
+        ],
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [

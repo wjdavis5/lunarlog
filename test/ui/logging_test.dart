@@ -21,6 +21,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -1125,6 +1126,215 @@ void main() {
               'user-mom, the badge falls back to the generic label — this '
               'fails if the sign-out leg of _onAuthChanged is ignored');
       await disposeLogging(tester, h);
+    });
+  });
+
+  group('viewer role read-only (U6)', () {
+    testWidgets(
+        'caller is an accepted viewer: tapping a day opens the read-only '
+        'sheet, with no flow selector, tag chips, or note field (R13)',
+        (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-doc'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-doc', 'user-doc', 'viewer'),
+          ]);
+          await db.storage.applyRemoteRows([
+            dayEntryRow(profileId, 'e-1', kToday),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DaySheet), findsOneWidget);
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(find.byType(FilterChip), findsNothing);
+      expect(find.byKey(const ValueKey('note-field')), findsNothing);
+      expect(find.byKey(const ValueKey('save-button')), findsNothing);
+      expect(find.text(GuardianRole.viewer.readOnlyReason!), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('caller is an accepted caregiver: the day sheet is writable',
+        (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-sitter'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-sitter', 'user-sitter', 'caregiver'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'caller is an accepted co_parent or primary_guardian: writable',
+        (tester) async {
+      for (final role in ['co_parent', 'primary_guardian']) {
+        final auth = FakeAuthService()
+          ..emit(AuthSessionState.signedIn,
+              user: const AuthUser(id: 'user-parent'));
+        final h = await pumpLogging(
+          tester,
+          authService: auth,
+          withStorage: true,
+          seed: (db, profileId) async {
+            await db.storage.applyRemoteRows([
+              guardianRow(profileId, 'g-parent', 'user-parent', role),
+            ]);
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('save-button')), findsOneWidget,
+            reason: '$role must be writable');
+        await tester.tapAt(const Offset(20, 20));
+        await tester.pumpAndSettle();
+        await disposeLogging(tester, h);
+      }
+    });
+
+    testWidgets(
+        'caller is a viewer on an archived profile: read-only, and the copy '
+        'names the view-only reason rather than only the archive reason '
+        '(R14)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-doc'));
+      final h = await pumpLogging(
+        tester,
+        readOnly: true,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-doc', 'user-doc', 'viewer'),
+            dayEntryRow(profileId, 'e-1', LocalDate(2026, 3, 1)),
+          ]);
+        },
+      );
+
+      await showMonth(tester, 2026, 3);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-03-01')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DaySheet), findsOneWidget);
+      expect(find.text(GuardianRole.viewer.readOnlyReason!), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'guardian rows have not synced (empty list): writable, not '
+        'read-only (R15)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'currentUserId is null (no account, local-only operator): writable '
+        '(R15)', (tester) async {
+      final h = await pumpLogging(tester, withStorage: true);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'guardian rows exist but none match the current user: writable '
+        '(R15)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-doc', 'user-doc', 'viewer'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        "the caller's row exists with status revoked: this path does not "
+        'additionally crash on a missing accepted role', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-doc'));
+      final h = await pumpLogging(
+        tester,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-doc', 'user-doc', 'viewer',
+                status: 'revoked'),
+          ]);
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DaySheet), findsOneWidget);
+      expect(find.byKey(const ValueKey('save-button')), findsOneWidget,
+          reason: 'a non-accepted row is not a viewer - fails open (R15)');
+      await disposeLogging(tester, h);
+    });
+
+    test('the read-only copy for the viewer case is asserted from '
+        'GuardianRole, not from a literal in the widget', () {
+      expect(GuardianRole.viewer.readOnlyReason,
+          'You have view-only access to this profile.');
+      for (final role
+          in GuardianRole.values.where((r) => r != GuardianRole.viewer)) {
+        expect(role.readOnlyReason, isNull,
+            reason: '$role can log, so it has no read-only reason to show');
+      }
     });
   });
 }
