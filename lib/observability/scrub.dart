@@ -8,7 +8,10 @@
 /// objects and safe to call when Sentry is not initialized.
 ///
 /// What survives an event: id, timestamp, platform, release, dist,
-/// environment, level, transaction, culprit, fingerprint, sdk, debug images,
+/// environment, level, transaction (scrubbed through [scrubRouteName] —
+/// U1/KTD4; this is the field `SentryNavigatorObserver`'s
+/// `setRouteNameAsTransaction` feeds, and it appears on every event, not
+/// just navigation breadcrumbs), culprit, fingerprint, sdk, debug images,
 /// modules, threads (frames only; Dart never fills locals), `contexts.os`,
 /// `contexts.runtime`, `contexts.app.version`, the request URL up to `?` and
 /// its method, exception type names with their stack frames, and breadcrumbs
@@ -17,6 +20,7 @@
 /// do.
 library;
 
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Keys whose presence anywhere in a breadcrumb's `data` (any depth) drops
@@ -143,6 +147,69 @@ bool mentionsDenyListedKey(String text) {
   return tokens.any((token) => token.isNotEmpty && isDenyListedKey(token));
 }
 
+/// KTD2's shape fallback for a route name that is not in [kSentryRouteNames]:
+/// a bare identifier starting with an uppercase letter, matching the
+/// class-name convention `route_names.dart` uses. Rejects anything
+/// containing `/`, `_`, or a lowercase leading character, so a path
+/// (`/profiles/8f2c-…`) or a snake_case data key can never pass through as
+/// if it were a screen name.
+final RegExp kSentryRouteNamePattern = RegExp(r'^[A-Z][A-Za-z0-9]{0,63}$');
+
+/// KTD2: the two-stage route-name check every `navigation` breadcrumb's
+/// `from`/`to` and every `event.transaction` (KTD4) pass through. A `null`
+/// name, or one that fails both stages, becomes `'unknown'` rather than
+/// being passed through or silently dropped — the navigation shape survives
+/// even when the name cannot be trusted.
+///
+/// 1. Registry membership ([kSentryRouteNames]) is the real gate: a
+///    registered name is always kept, whatever its shape.
+/// 2. Otherwise the name must match [kSentryRouteNamePattern] **and** not
+///    itself be a deny-listed key (`DisplayName` is shape-legal but still
+///    normalizes to the deny-listed `display_name`) to survive — this lets
+///    a third-party route (a plugin's dialog) through as a name without
+///    admitting a path, an id, or a health-adjacent key.
+String scrubRouteName(String? name) {
+  if (name == null) return 'unknown';
+  if (kSentryRouteNames.contains(name)) return name;
+  if (kSentryRouteNamePattern.hasMatch(name) && !isDenyListedKey(name)) {
+    return name;
+  }
+  return 'unknown';
+}
+
+/// KTD1: `state` is one of the three navigation-type strings
+/// `RouteObserverBreadcrumb` produces (`didPush`, `didPop`, `didReplace`),
+/// or `'unknown'` — never passed through unchecked.
+String scrubNavigationState(Object? state) {
+  const known = {'didPush', 'didPop', 'didReplace'};
+  return state is String && known.contains(state) ? state : 'unknown';
+}
+
+/// KTD1: rebuilds a navigation breadcrumb's `data` map key by key — `state`,
+/// `from`, `to` only, each of `from`/`to` passed through [scrubRouteName].
+/// `from_arguments`, `to_arguments`, and any `data` sub-map are dropped
+/// unconditionally, never inspected for deny-listed content: this is the
+/// hole [containsDenyListedKey] cannot see. `RouteObserverBreadcrumb`
+/// stringifies a non-map route argument (`RouteSettings(arguments: profile)`)
+/// into a single scalar string via `toString()`, and a scalar has no keys
+/// for a deny-list check to find (KTD1). Dropping the whole field, rather
+/// than scanning its value, is what actually protects it.
+///
+/// Extracted from [scrubBreadcrumb] (rather than inlined) to keep that
+/// function's McCabe complexity under `tool/quality/crap_gate.dart`'s
+/// threshold — see U1's Approach note; this is a quality-gate requirement,
+/// not a style preference.
+Map<String, dynamic>? scrubNavigationData(Map<String, dynamic>? data) {
+  if (data == null) return null;
+  final from = data['from'];
+  final to = data['to'];
+  return {
+    'state': scrubNavigationState(data['state']),
+    if (from != null) 'from': scrubRouteName(from is String ? from : null),
+    if (to != null) 'to': scrubRouteName(to is String ? to : null),
+  };
+}
+
 /// Cuts a URL at its first `?`, dropping the query string and anything after.
 String stripQueryString(String url) {
   final index = url.indexOf('?');
@@ -242,7 +309,13 @@ SentryEvent? scrubEvent(SentryEvent event) {
     environment: event.environment,
     modules: event.modules,
     message: _scrubMessage(event.message),
-    transaction: event.transaction,
+    // KTD4: `SentryNavigatorObserver`'s `setRouteNameAsTransaction` writes
+    // the raw route name here on every event, not just navigation
+    // breadcrumbs — this is the one field present everywhere that a
+    // dynamically-named or third-party route could otherwise bypass both
+    // the registry and the shape check.
+    transaction:
+        event.transaction == null ? null : scrubRouteName(event.transaction),
     // The decorated throwable keeps the SDK's mechanism bookkeeping; the
     // throwable itself is never serialized.
     throwable: event.throwableMechanism,
@@ -270,7 +343,8 @@ String? _scrubBreadcrumbMessage(String? message) =>
 
 /// Applies the KTD12 breadcrumb rules. Returns null (drop) when the
 /// breadcrumb's `data` carries a deny-listed key at any depth; otherwise a
-/// new breadcrumb with navigation `data` removed, `http` URLs cut at `?`,
+/// new breadcrumb with navigation `data` rebuilt under an allowlist (U1;
+/// KTD1/KTD2 — see [scrubNavigationData]), `http` URLs cut at `?`,
 /// and `message` scrubbed via [_scrubBreadcrumbMessage] — raw
 /// console/debugPrint text can itself carry health-log content or a DB
 /// error with bound arguments, and this breadcrumb goes to the Sentry SDK
@@ -285,8 +359,9 @@ Breadcrumb? scrubBreadcrumb(Breadcrumb? breadcrumb) {
   final isHttp = category == 'http' || breadcrumb.type == 'http';
   final Map<String, dynamic>? scrubbedData;
   if (category == 'navigation') {
-    // Route names and arguments can carry an entry date or profile id.
-    scrubbedData = null;
+    // Route names survive under an allowlist (KTD1/KTD2); arguments never
+    // do, whatever shape they take — see scrubNavigationData.
+    scrubbedData = scrubNavigationData(data);
   } else if (isHttp && data != null) {
     scrubbedData = <String, dynamic>{
       for (final entry in data.entries)

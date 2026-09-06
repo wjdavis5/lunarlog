@@ -85,7 +85,7 @@ void configureSentryOptions(
   options.beforeBreadcrumb = (breadcrumb, hint) {
     final scrubbed = scrubBreadcrumb(breadcrumb);
     if (scrubbed != null) {
-      log.record(scrubbed.category ?? 'breadcrumb', scrubbed.message ?? '');
+      log.record(scrubbed.category ?? 'breadcrumb', breadcrumbLabel(scrubbed));
     }
     return scrubbed;
   };

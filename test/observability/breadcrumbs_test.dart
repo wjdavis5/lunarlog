@@ -2,6 +2,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 void main() {
   group('BreadcrumbLog', () {
@@ -65,6 +66,48 @@ void main() {
       log.record('nav', 'overview');
       log.clear();
       expect(log.snapshot(), isEmpty);
+    });
+  });
+
+  group('breadcrumbLabel (U1; KTD5)', () {
+    test('returns the message when present, ignoring category', () {
+      expect(
+        breadcrumbLabel(Breadcrumb(category: 'navigation', message: 'hi')),
+        'hi',
+      );
+    });
+
+    test('returns the already-scrubbed to route for a data-only navigation '
+        'breadcrumb', () {
+      expect(
+        breadcrumbLabel(
+          Breadcrumb(category: 'navigation', data: {'to': 'SettingsScreen'}),
+        ),
+        'SettingsScreen',
+      );
+    });
+
+    test('returns empty string for a data-only breadcrumb of any other '
+        'category', () {
+      expect(
+        breadcrumbLabel(Breadcrumb(category: 'http', data: {'to': 'x'})),
+        '',
+      );
+    });
+
+    test('returns empty string for a navigation breadcrumb with no message '
+        'and no to', () {
+      expect(
+        breadcrumbLabel(
+          Breadcrumb(category: 'navigation', data: {'state': 'didPop'}),
+        ),
+        '',
+      );
+    });
+
+    test('returns empty string for a breadcrumb with no message and no '
+        'data at all', () {
+      expect(breadcrumbLabel(Breadcrumb(category: 'console')), '');
     });
   });
 }
