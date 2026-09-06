@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -35,6 +36,7 @@ import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
+import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
@@ -48,9 +50,11 @@ class LunarLogApp extends StatefulWidget {
     this.sharingService,
     this.feedbackService,
     this.accountDeletionService,
+    this.ownershipTransferService,
     this.inviteLinks,
     this.initialInviteCode,
     this.initialInviteProfileId,
+    this.initialInviteKind,
     this.onTeardown,
     this.resetDevice,
     this.showWebBanner = kIsWeb,
@@ -70,6 +74,12 @@ class LunarLogApp extends StatefulWidget {
   /// `LUNARLOG_WEB_SYNC=true`) the tile is absent.
   final AccountDeletionService? accountDeletionService;
 
+  /// Child ownership transfer seam (Issue #4, U7). Provided down the tree
+  /// when present so the arm/cancel/claim UI (a later unit) can reach it via
+  /// `context.read<OwnershipTransferService>()`; when null nothing
+  /// ownership-transfer-related is provided.
+  final OwnershipTransferService? ownershipTransferService;
+
   /// `lunarlog://invite?code=...` links (U8; R9/F2), filtered by main.dart
   /// (or injected by tests). When present and a sharing service exists,
   /// an incoming link presents [AcceptInviteSheet] - after sign-in if the
@@ -82,6 +92,10 @@ class LunarLogApp extends StatefulWidget {
 
   /// The `profile` parameter of the cold-start invite link, if any.
   final String? initialInviteProfileId;
+
+  /// The `kind` parameter of the cold-start invite link, if any (`claim`
+  /// routes to [ClaimProfileSheet] instead of [AcceptInviteSheet]; U10).
+  final String? initialInviteKind;
 
   /// Reminder scheduler; defaults to the flutter_local_notifications
   /// implementation on native platforms and the no-op on web (KTD9).
@@ -130,6 +144,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
   String? _profileIdOfPendingInvite;
+  String? _pendingInviteKind;
   bool _inviteSheetOpen = false;
 
   /// The repositories below capture [LunarLogApp.db] once, so swapping the
@@ -180,7 +195,11 @@ class _LunarLogAppState extends State<LunarLogApp> {
     if (initialInviteCode != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _maybePresentInvite(initialInviteCode, widget.initialInviteProfileId);
+        _maybePresentInvite(
+          initialInviteCode,
+          widget.initialInviteProfileId,
+          widget.initialInviteKind,
+        );
       });
     }
   }
@@ -189,20 +208,42 @@ class _LunarLogAppState extends State<LunarLogApp> {
     if (!mounted) return;
     final code = uri.queryParameters['code'];
     if (code == null || code.isEmpty) return;
-    _maybePresentInvite(code, uri.queryParameters['profile']);
+    _maybePresentInvite(
+      code,
+      uri.queryParameters['profile'],
+      uri.queryParameters['kind'],
+    );
   }
 
-  void _maybePresentInvite(String code, String? profileId) {
-    if (widget.sharingService == null || _inviteSheetOpen) return;
+  /// U10: `kind == 'claim'` routes to [ClaimProfileSheet] (needs
+  /// [widget.ownershipTransferService]); anything else (null or
+  /// unrecognised) keeps the ordinary [AcceptInviteSheet] path (needs
+  /// [widget.sharingService]) unchanged.
+  void _maybePresentInvite(String code, String? profileId, String? kind) {
+    final isClaim = kind == 'claim';
+    final collaboratorPresent = isClaim
+        ? widget.ownershipTransferService != null
+        : widget.sharingService != null;
+    if (!collaboratorPresent || _inviteSheetOpen) return;
     if (_authController?.signedIn ?? false) {
-      _showInviteSheet(code, profileId);
+      _presentSheet(code, profileId, kind);
     } else {
-      // R9: an unauthenticated recipient signs in (or creates an account)
-      // first; the code stays latched until the session appears.
+      // R9/R27: an unauthenticated recipient signs in (or creates an
+      // account) first; the code (and its kind) stays latched until the
+      // session appears.
       setState(() {
         _pendingInviteCode = code;
         _profileIdOfPendingInvite = profileId;
+        _pendingInviteKind = kind;
       });
+    }
+  }
+
+  void _presentSheet(String code, String? profileId, String? kind) {
+    if (kind == 'claim') {
+      _showClaimSheet(code, profileId);
+    } else {
+      _showInviteSheet(code, profileId);
     }
   }
 
@@ -214,6 +255,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
       setState(() {
         _pendingInviteCode = code;
         _profileIdOfPendingInvite = profileId;
+        _pendingInviteKind = null;
       });
       return;
     }
@@ -221,6 +263,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
     setState(() {
       _pendingInviteCode = null;
       _profileIdOfPendingInvite = null;
+      _pendingInviteKind = null;
     });
     unawaited(
       showModalBottomSheet<void>(
@@ -230,6 +273,41 @@ class _LunarLogAppState extends State<LunarLogApp> {
         builder: (_) => AcceptInviteSheet(
           rawToken: code,
           sharingService: sharing,
+          initialProfileId: profileId,
+        ),
+      ).whenComplete(() => _inviteSheetOpen = false),
+    );
+  }
+
+  /// U10 (R11/R27): the `kind=claim` counterpart of [_showInviteSheet],
+  /// sharing the same [_inviteSheetOpen] re-entrancy guard so only one
+  /// invite/claim sheet is ever open at once.
+  void _showClaimSheet(String code, String? profileId) {
+    final service = widget.ownershipTransferService;
+    if (service == null || _inviteSheetOpen) return;
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) {
+      setState(() {
+        _pendingInviteCode = code;
+        _profileIdOfPendingInvite = profileId;
+        _pendingInviteKind = 'claim';
+      });
+      return;
+    }
+    _inviteSheetOpen = true;
+    setState(() {
+      _pendingInviteCode = null;
+      _profileIdOfPendingInvite = null;
+      _pendingInviteKind = null;
+    });
+    unawaited(
+      showModalBottomSheet<void>(
+        context: ctx,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => ClaimProfileSheet(
+          rawToken: code,
+          service: service,
           initialProfileId: profileId,
         ),
       ).whenComplete(() => _inviteSheetOpen = false),
@@ -262,7 +340,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
       _clearAwaitingConfirmation();
       final code = _pendingInviteCode;
       if (code != null) {
-        _showInviteSheet(code, _profileIdOfPendingInvite);
+        _presentSheet(code, _profileIdOfPendingInvite, _pendingInviteKind);
       }
     }
   }
@@ -318,6 +396,9 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider<LunarLogStorage>.value(value: widget.db.storage),
         if (widget.sharingService != null)
           Provider<SharingService>.value(value: widget.sharingService!),
+        if (widget.ownershipTransferService != null)
+          Provider<OwnershipTransferService>.value(
+              value: widget.ownershipTransferService!),
         if (widget.feedbackService != null)
           Provider<FeedbackService>.value(value: widget.feedbackService!),
         if (widget.accountDeletionService != null)

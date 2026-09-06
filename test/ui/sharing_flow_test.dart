@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,8 +12,10 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
+import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 
@@ -72,6 +76,54 @@ class FakeSharingService implements SharingService {
       throw scriptedRevokeError!;
     }
     lastRevokedUserId = targetUserId;
+  }
+}
+
+/// Hand-written [OwnershipTransferService] fake for U10's claim-sheet and
+/// deep-link routing tests. Only [claimProfile] is exercised here; the
+/// arm/cancel paths belong to U9's own tests.
+class FakeOwnershipTransferService implements OwnershipTransferService {
+  ClaimedProfileResult? scriptedClaim;
+  Object? scriptedClaimError;
+  final claimCalls =
+      <({String rawToken, String? childDisplayName, String? parentDisplayName})>[];
+
+  @override
+  Future<GeneratedTransfer> createTransfer({
+    required String profileId,
+    required ParentPostTransferRole parentPostTransferRole,
+    String? recipientLabel,
+    Duration ttl = const Duration(hours: 72),
+  }) async {
+    throw UnimplementedError('not exercised by these tests');
+  }
+
+  @override
+  Future<void> cancelTransfer({required String transferId}) async {
+    throw UnimplementedError('not exercised by these tests');
+  }
+
+  @override
+  Future<ClaimedProfileResult> claimProfile({
+    required String rawToken,
+    String? childDisplayName,
+    String? parentDisplayName,
+  }) async {
+    claimCalls.add((
+      rawToken: rawToken,
+      childDisplayName: childDisplayName,
+      parentDisplayName: parentDisplayName,
+    ));
+    if (scriptedClaimError != null) {
+      throw scriptedClaimError!;
+    }
+    return scriptedClaim ??
+        const ClaimedProfileResult(
+          profileId: 'p-1',
+          profileName: 'Luna',
+          parentRole: 'co_parent',
+          entriesTransferred: 12,
+        );
   }
 }
 
@@ -557,15 +609,19 @@ void main() {
       Stream<Uri>? inviteLinks,
       String? initialInviteCode,
       String? initialInviteProfileId,
+      String? initialInviteKind,
       bool useSharing = true,
+      OwnershipTransferService? ownershipTransferService,
     }) async {
       await tester.pumpWidget(LunarLogApp(
         db: db,
         authService: auth,
         sharingService: useSharing ? sharingService : null,
+        ownershipTransferService: ownershipTransferService,
         inviteLinks: inviteLinks,
         initialInviteCode: initialInviteCode,
         initialInviteProfileId: initialInviteProfileId,
+        initialInviteKind: initialInviteKind,
       ));
       await tester.pumpAndSettle();
     }
@@ -640,6 +696,133 @@ void main() {
       );
 
       expect(find.text('Join Shared Profile'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'a kind=claim link while signed in opens ClaimProfileSheet, not '
+        'AcceptInviteSheet', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'));
+      final transferService = FakeOwnershipTransferService();
+
+      await pumpAppWithInvite(
+        tester,
+        auth,
+        ownershipTransferService: transferService,
+        inviteLinks: Stream.value(Uri.parse(
+            'lunarlog://invite?code=raw-token&profile=p-1&kind=claim')),
+      );
+
+      expect(find.byType(ClaimProfileSheet), findsOneWidget);
+      expect(find.byType(AcceptInviteSheet), findsNothing);
+      expect(find.text('Become the Owner'), findsOneWidget);
+      expect(find.text('Join Shared Profile'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'a link with an unrecognised kind still opens AcceptInviteSheet',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-dad'));
+
+      await pumpAppWithInvite(
+        tester,
+        auth,
+        inviteLinks: Stream.value(Uri.parse(
+            'lunarlog://invite?code=raw-token&profile=p-1&kind=something-else')),
+      );
+
+      expect(find.byType(AcceptInviteSheet), findsOneWidget);
+      expect(find.byType(ClaimProfileSheet), findsNothing);
+      expect(find.text('Join Shared Profile'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'a claim link received while signed out is latched, and opens the '
+        'claim sheet once signed in (R27)', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transferService = FakeOwnershipTransferService();
+
+      await pumpAppWithInvite(
+        tester,
+        auth,
+        ownershipTransferService: transferService,
+        inviteLinks: Stream.value(Uri.parse(
+            'lunarlog://invite?code=cold-claim-token&profile=p-1&kind=claim')),
+      );
+
+      expect(find.byType(ClaimProfileSheet), findsNothing);
+      expect(find.byType(AcceptInviteSheet), findsNothing);
+
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ClaimProfileSheet), findsOneWidget);
+      expect(find.byType(AcceptInviteSheet), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'a cold-start claim link supplied as the initial link opens the '
+        'sheet after the first frame', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'));
+      final transferService = FakeOwnershipTransferService();
+
+      await pumpAppWithInvite(
+        tester,
+        auth,
+        ownershipTransferService: transferService,
+        initialInviteCode: 'cold-claim-token',
+        initialInviteProfileId: 'p-1',
+        initialInviteKind: 'claim',
+      );
+
+      expect(find.byType(ClaimProfileSheet), findsOneWidget);
+      expect(find.byType(AcceptInviteSheet), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('two claim links in quick succession open one sheet, not two',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'));
+      final transferService = FakeOwnershipTransferService();
+      final controller = StreamController<Uri>();
+      addTearDown(controller.close);
+
+      await pumpAppWithInvite(
+        tester,
+        auth,
+        ownershipTransferService: transferService,
+        inviteLinks: controller.stream,
+      );
+
+      controller.add(Uri.parse(
+          'lunarlog://invite?code=raw-token&profile=p-1&kind=claim'));
+      controller.add(Uri.parse(
+          'lunarlog://invite?code=raw-token-2&profile=p-1&kind=claim'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ClaimProfileSheet), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
