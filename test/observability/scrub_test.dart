@@ -778,6 +778,69 @@ void main() {
       });
     });
 
+    test(
+        'scrubs a TTID/TTFD span description down to the route-name prefix, '
+        'keeping the "initial display"/"full display" suffix verbatim',
+        () async {
+      await withRealTransaction((tracer) {
+        final ttid = tracer.startChild('ui.load.initial_display',
+            description: '/profiles/8f2c-4a1b initial display');
+        // ignore: discarded_futures
+        ttid.finish();
+        final ttfd = tracer.startChild('ui.load.full_display',
+            description: 'SettingsScreen full display');
+        // ignore: discarded_futures
+        ttfd.finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        final descriptions =
+            out.spans.map((span) => span.context.description).toList();
+        expect(descriptions, contains('unknown initial display'));
+        expect(descriptions, contains('SettingsScreen full display'));
+        final json = _json(out);
+        expect(json, isNot(contains('8f2c-4a1b')));
+      });
+    });
+
+    test(
+        'a non-TTID span description mentioning a deny-listed key is '
+        'scrubbed wholesale, matching _scrubMessage', () async {
+      await withRealTransaction((tracer) {
+        final span = tracer.startChild('db.query',
+            description: 'writing note for day_entries');
+        // ignore: discarded_futures
+        span.finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        expect(out.spans.single.context.description, '[scrubbed]');
+      });
+    });
+
+    test('an ordinary span description with nothing deny-listed passes '
+        'through unchanged', () async {
+      await withRealTransaction((tracer) {
+        final span = tracer.startChild('http.client', description: 'GET x');
+        // ignore: discarded_futures
+        span.finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        expect(out.spans.single.context.description, 'GET x');
+      });
+    });
+
+    test('drops deny-listed span tags but keeps the rest', () async {
+      await withRealTransaction((tracer) {
+        final span = tracer.startChild('db.query')
+          ..setTag('display_name', 'Alice')
+          ..setTag('environment', 'production');
+        // ignore: discarded_futures
+        span.finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        expect(out.spans.single.tags, {'environment': 'production'});
+      });
+    });
+
     test('truncates a span data[url] at ? and drops http.query/fragment',
         () async {
       await withRealTransaction((tracer) {

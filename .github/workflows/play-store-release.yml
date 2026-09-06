@@ -225,6 +225,12 @@ jobs:
         # upload-sentry-symbols-setup.sh (tested in CI's release-guards
         # jobs); only the download URL/checksum and the upload commands
         # themselves are platform-specific.
+        #
+        # continue-on-error (R15): once issue #19 provisions the secrets, a
+        # Sentry hiccup (download timeout, transient 5xx, a yanked release
+        # asset) must degrade telemetry, never block a signed Play upload --
+        # this is symbol upload, not the release artifact itself.
+        continue-on-error: true
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}

@@ -15,6 +15,16 @@ const _email = 'kid@example.com';
 
 String _json(SentryEvent event) => jsonEncode(event.toJson());
 
+/// Proves `beforeBreadcrumb`'s fail-closed wrapping covers the whole body,
+/// not just the call into `scrubBreadcrumb` -- the tee's own `log.record`
+/// call runs inside the same try block and must drop the breadcrumb, not
+/// propagate, when it throws.
+class _ThrowingBreadcrumbLog extends BreadcrumbLog {
+  @override
+  void record(String category, String name) =>
+      throw StateError('boom');
+}
+
 void main() {
   group('runWithSentry', () {
     test('empty DSN runs the app without calling init', () async {
@@ -137,6 +147,35 @@ void main() {
     });
   });
 
+  group('fail-closed beforeSend*/beforeBreadcrumb (code review; the SDK '
+      'forwards the raw event when a callback throws)', () {
+    test('beforeBreadcrumb returns null, not the scrubbed breadcrumb, when '
+        'the tee itself throws', () {
+      final options =
+          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options,
+          dsn: options.dsn!, breadcrumbLog: _ThrowingBreadcrumbLog());
+
+      final result = options.beforeBreadcrumb!(
+        Breadcrumb(category: 'navigation', message: 'overview'),
+        Hint(),
+      );
+
+      expect(result, isNull);
+    });
+
+    test('beforeSend on a well-formed event still returns the scrubbed '
+        'event (the try/catch does not swallow the success path)', () {
+      final options =
+          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      configureSentryOptions(options, dsn: options.dsn!);
+
+      final result =
+          options.beforeSend!(SentryEvent(message: SentryMessage('ok')), Hint());
+      expect(result, isA<SentryEvent>());
+    });
+  });
+
   group('sentryNavigatorObservers (U2; R13, AE4)', () {
     test('AE4: empty when unconfigured (the default under flutter test, no '
         'SENTRY_DSN)', () {
@@ -196,6 +235,12 @@ void main() {
       // tombstone is assembled natively, outside this scrubber, from a
       // process holding decrypted health strings in memory.
       expect(options.enableTombstone, isFalse);
+      // Pinned false, not left at the SDK default of true (code review):
+      // print-breadcrumb text only ever reaches scrubBreadcrumb's
+      // deny-listed-word scan, which cannot see an arbitrary sensitive
+      // *value* a caller printed (see app_lifecycle.dart's reset-failure
+      // debugPrint).
+      expect(options.enablePrintBreadcrumbs, isFalse);
     });
 
     test('maxBreadcrumbs stays at the SDK default of 100, not reduced -- a '
