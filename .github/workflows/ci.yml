@@ -18,6 +18,88 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-guards:
+    # Proves the release-guard scripts (issue #41) on every PR instead of
+    # by pushing to main. No Flutter, Java, or Supabase toolchain and no
+    # secrets, so this stays fast.
+    name: Release guard scripts (unit tests + actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Each verification step below runs with `if: always()` (skipping only
+      # on cancellation) so one script's failure can never hide the rest --
+      # that was the P1 bug: a single red step used to short-circuit every
+      # step after it, leaving the release gate with zero executed coverage
+      # in CI. Every step's own pass/fail is now always visible.
+      - name: Run extract-marketing-version tests
+        if: always()
+        run: bash .github/scripts/tests/extract-marketing-version.test.sh
+
+      - name: Run detect-version-bump tests
+        if: always()
+        run: bash .github/scripts/tests/detect-version-bump.test.sh
+
+      - name: Run check-release-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-release-gate.test.sh
+
+      - name: Cache actionlint
+        id: actionlint-cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: actionlint
+          key: actionlint-${{ runner.os }}-1.7.7
+
+      - name: Install actionlint
+        if: always() && steps.actionlint-cache.outputs.cache-hit != 'true'
+        env:
+          ACTIONLINT_VERSION: '1.7.7'
+        run: |
+          set -euo pipefail
+          curl -sSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf actionlint.tar.gz actionlint
+          rm actionlint.tar.gz
+
+      - name: Verify actionlint
+        if: always()
+        run: ./actionlint -version
+
+      - name: Lint workflows with actionlint
+        if: always()
+        run: ./actionlint .github/workflows/*.yml
+
+  release-guards-macos:
+    # The guard scripts actually execute on ios-release.yml's macos-latest
+    # runner, which ships a frozen Bash 3.2 (no bash-4+ syntax) -- a real
+    # bash-4-only construct (${var,,}) slipped into check-release-gate.sh
+    # during this same branch's development and would have crashed the
+    # TestFlight pipeline silently, since the ubuntu-only release-guards job
+    # above cannot see a macOS-only shell incompatibility. Same three test
+    # scripts, no actionlint (that check is OS-independent).
+    name: Release guard scripts on macOS (bash 3.2 compatibility)
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same rationale as the release-guards job above: keep every script's
+      # result visible instead of letting an earlier failure hide the rest.
+      - name: Run extract-marketing-version tests
+        if: always()
+        run: bash .github/scripts/tests/extract-marketing-version.test.sh
+
+      - name: Run detect-version-bump tests
+        if: always()
+        run: bash .github/scripts/tests/detect-version-bump.test.sh
+
+      - name: Run check-release-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-release-gate.test.sh
+
   check:
     name: Analyze, test, build web
     runs-on: ubuntu-latest

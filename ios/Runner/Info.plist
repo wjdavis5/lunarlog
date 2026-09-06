@@ -47,6 +47,13 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Export compliance (issue #48, docs/ops/ios-export-compliance.md): the
+	     app compiles SQLCipher (AES-256 at-rest database encryption, see
+	     pubspec.yaml's sqlite3 build hook) into the binary, so this must be
+	     true. Do not add a compliance-code key here unless the operator has
+	     actually obtained one; see the ops doc's R7 note. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<!-- U7: why the app requests Face ID (device-credential gate). -->

@@ -293,19 +293,28 @@ the account-deletion deploy itself is skipped.
 
 ### Release gate
 
-- [x] **Release gate cleared 2026-09-05: in-app account deletion (issue
-      #17) has shipped.** App Store guideline 5.1.1(v) made deletion a
-      submission blocker once account creation existed (issue #16); it no
-      longer is. The `delete-account` Edge Function calls
-      `public.delete_account_data()` for the row cascade, revokes the
-      Apple identity when the account has one, then deletes the
-      `auth.users` row last (KTD4), and the client runs the existing
-      `resetDevice()` afterward (KTD16). JSON data export ("Export my
-      data" in the account section) shipped alongside it.
-      **This does not itself bump `pubspec.yaml`'s `version:` or dispatch
-      `submit_for_review`** — those remain a separate, deliberate release
-      action once the "Account deletion (issue #17)" prerequisites above
-      and the device-checklist items below have all passed.
+- [x] **Account deletion and export implemented (issue #17, code-complete
+      2026-09-06):** in-app account deletion and JSON export have shipped
+      in code, closing the functional gap behind App Store guideline
+      5.1.1(v) (deletion required once account creation existed, issue
+      #16). The `delete-account` Edge Function checks the Apple-code
+      precondition, calls `public.delete_account_data()` for the row
+      cascade, revokes the Apple identity when the account has one,
+      re-homes any stray `day_entries` a second time immediately before
+      the last step, then deletes the `auth.users` row last (KTD4), and
+      the client runs the existing `resetDevice()` afterward (KTD16). JSON
+      data export ("Export my data" in the account section) shipped
+      alongside it.
+- [ ] **Release gate: still mechanically closed.** No App Store submission
+      and no Play `production` dispatch until an operator sets the
+      `RELEASE_GATE_ACCOUNT_DELETION` repository variable to `shipped`
+      (`.github/scripts/check-release-gate.sh` fails closed until then; a
+      Play `production` dispatch also requires typing `production` into
+      `confirm_production`). Flipping the variable — once issue #17 has
+      merged and the device-checklist items below have all passed — is a
+      separate, deliberate release action, not automatic from merging the
+      code. It also does not itself bump `pubspec.yaml`'s `version:` or
+      dispatch `submit_for_review` — those are separate actions still.
 
 ## Device checklist
 
