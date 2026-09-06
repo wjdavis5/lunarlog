@@ -272,8 +272,8 @@ sequenceDiagram
 
 | U-ID | Title | Key files | Depends on |
 |---|---|---|---|
-| U1 | Feedback tables, RLS, grants, triggers | `supabase/migrations/20260905100000_feedback_tickets.sql`, `supabase/tests/feedback_rls_test.sql` | - |
-| U2 | Attachment bucket and object policies | `supabase/migrations/20260905110000_feedback_attachments_bucket.sql`, `supabase/tests/feedback_attachments_rls_test.sql` | U1 |
+| U1 | Feedback tables, RLS, grants, triggers | `supabase/migrations/20260905120000_feedback_tickets.sql`, `supabase/tests/feedback_rls_test.sql` | - |
+| U2 | Attachment bucket and object policies | `supabase/migrations/20260905130000_feedback_attachments_bucket.sql`, `supabase/tests/feedback_attachments_rls_test.sql` | U1 |
 | U3 | Domain contract and models | `lib/domain/feedback/feedback_service.dart` | - |
 | U4 | Diagnostics collector and breadcrumb ring | `lib/data/diagnostics/device_diagnostics_collector.dart`, `lib/observability/breadcrumbs.dart` | U3 |
 | U5 | Supabase feedback service | `lib/data/feedback/supabase_feedback_service.dart` | U1, U3 |
@@ -291,7 +291,7 @@ sequenceDiagram
 - **Requirements:** R9, R12, R13, R14, R15, R17, R18
 - **Dependencies:** None
 - **Files:**
-  - `supabase/migrations/20260905100000_feedback_tickets.sql` (create)
+  - `supabase/migrations/20260905120000_feedback_tickets.sql` (create)
   - `supabase/tests/feedback_rls_test.sql` (create)
 - **Approach:**
   1. Open with the house header block: filename, numbered manifest, issue and requirement ids, and the no-edit-a-merged-migration note.
@@ -331,7 +331,7 @@ sequenceDiagram
 - **Requirements:** R16
 - **Dependencies:** U1
 - **Files:**
-  - `supabase/migrations/20260905110000_feedback_attachments_bucket.sql` (create)
+  - `supabase/migrations/20260905130000_feedback_attachments_bucket.sql` (create)
   - `supabase/tests/feedback_attachments_rls_test.sql` (create)
   - `docs/ops/supabase-go-live.md` (modify)
 - **Approach:**

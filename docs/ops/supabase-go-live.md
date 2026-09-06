@@ -143,7 +143,7 @@ bucket, and the two admin-facing emails
 - [ ] `feedback-attachments` Storage bucket exists: private, 5 MiB
       (5242880-byte) file size limit, `allowed_mime_types` restricted to
       `image/png`, `image/jpeg`, `image/webp`. Normally created by
-      `20260905110000_feedback_attachments_bucket.sql`; if that migration's
+      `20260905130000_feedback_attachments_bucket.sql`; if that migration's
       `to_regclass('storage.buckets')` guard ever reports the local stack
       (or, unexpectedly, the cloud project) has no storage schema, create the
       bucket by hand with these exact settings before U2's object policies
@@ -215,13 +215,17 @@ bucket, and the two admin-facing emails
 
 ### Release gate
 
-- [ ] **Release gate: no `version:` bump in `pubspec.yaml` and no
-      `submit_for_review` dispatch of `ios-release.yml` until in-app account
-      deletion has shipped.** App Store guideline 5.1.1(v) makes deletion a
-      submission blocker once account creation exists. Account deletion (Edge
-      Function calling `auth.admin.deleteUser`, cascading rows, Apple token
-      revocation) and JSON data export are follow-up work; file the deletion
-      issue as a blocker of the first review submission.
+- [ ] **Release gate: no App Store submission and no Play `production`
+      dispatch until in-app account deletion has shipped.** App Store
+      guideline 5.1.1(v) makes deletion a submission blocker once account
+      creation exists. Account deletion (Edge Function calling
+      `auth.admin.deleteUser`, cascading rows, Apple token revocation) and
+      JSON data export are follow-up work (issue #17); file the deletion
+      issue as a blocker of the first review submission. Mechanically
+      enforced by `.github/scripts/check-release-gate.sh`, which fails
+      closed until the `RELEASE_GATE_ACCOUNT_DELETION` repository variable
+      is set to `shipped`; a Play `production` dispatch also requires
+      typing `production` into `confirm_production`.
 
 ## Device checklist
 

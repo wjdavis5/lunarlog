@@ -134,6 +134,10 @@ Store review (primary) is handled by
 [`.github/workflows/ios-release.yml`](.github/workflows/ios-release.yml)
 (mirrored from `taxiGame`). Automated Android release to Google Play is handled
 by [`.github/workflows/play-store-release.yml`](.github/workflows/play-store-release.yml).
+The iOS release declares non-exempt encryption usage (SQLCipher) to App Store
+Connect; see
+[`docs/ops/ios-export-compliance.md`](docs/ops/ios-export-compliance.md) for
+the classification and the operator's recurring filing duties.
 
 ## Accounts
 
@@ -230,9 +234,13 @@ Part of the home lab; the canonical inventory lives in the lab root's
   that never signed in has no backup — losing it loses the data. There is no
   file export.
 - In-app account deletion and data export are follow-up work, and they
-  **gate release**: no `version:` bump in `pubspec.yaml` and no
-  `submit_for_review` dispatch of `ios-release.yml` until in-app account
-  deletion has shipped (App Store guideline 5.1.1(v)).
+  **gate release**: no App Store submission and no Play `production`
+  dispatch until in-app account deletion has shipped (App Store guideline
+  5.1.1(v)). Mechanically enforced by
+  [`.github/scripts/check-release-gate.sh`](.github/scripts/check-release-gate.sh),
+  which fails closed until the `RELEASE_GATE_ACCOUNT_DELETION` repository
+  variable is set to `shipped`; a Play `production` dispatch also requires
+  typing `production` into `confirm_production`. Issue #17 flips the gate.
 - "Sign out everywhere" revokes sessions, not tokens: other devices keep
   access until their JWT expires, which is why the project's JWT expiry is
   set to the dashboard minimum.
@@ -254,10 +262,58 @@ Part of the home lab; the canonical inventory lives in the lab root's
   notification-permission prompt is not yet covered by this and still
   re-locks.
 - iOS: the database file is not explicitly excluded from iCloud backups
-  (skipped in U7 — it needs AppDelegate work on the Mac; the keychain-stored
-  key is already device-only, and Android covers the equivalent with
-  `allowBackup="false"`). The Supabase session and PKCE verifier are stored
-  with `first_unlock_this_device` and never travel in a backup.
+  (skipped in U7 — it needs AppDelegate work on the Mac; Android covers the
+  equivalent with `allowBackup="false"`). The database key is deliberately
+  **not** device-pinned either (`unlocked`, not a `ThisDeviceOnly`
+  accessibility) for exactly this reason: pinning the key while the file it
+  protects still rides backups would make the key unrecoverable after a
+  restore to a new device while the (still-encrypted, now permanently
+  unopenable) file arrives intact — see the doc comment on
+  `SecureDbKeyStore` in `lib/data/db/key_store.dart`. Excluding the database
+  file from backups and re-pinning the key to the device are deferred
+  together (docs/ops/supabase-go-live.md). The Supabase session and PKCE
+  verifier are stored with `first_unlock_this_device` and never travel in a
+  backup.
+- Realtime co-caregiver sync (issue #77) publishes only a dedicated
+  `public.sync_signals` table (profile_id, updated_at — no health content)
+  to `supabase_realtime`, never `public.profiles`/`public.day_entries`
+  themselves: Realtime's WALRUS decodes with wal2json, which only honors a
+  publication as a table-level membership list, so a narrow *publication*
+  column list on the source tables would not have kept `note`/`tags`/`flow`
+  off the websocket given this schema's table-wide `select` grant for
+  `authenticated` (`has_column_privilege`, the check Realtime actually
+  applies, passes regardless of the publication's declared columns). This
+  cannot be exercised end-to-end in CI: local and CI Supabase both start
+  with `-x realtime` (no Realtime container), so
+  `supabase/tests/realtime_publication_test.sql` proves catalog state (what
+  is/isn't published, `sync_signals`'s column list) and trigger behavior
+  (writes populate `sync_signals`; a non-guardian cannot read another
+  family's signal row; the publication guard corrects a simulated
+  Studio-toggle drift instead of skipping it) from pgTAP. **A manual,
+  empirical check against a real Realtime container is still required before
+  every merge that touches `supabase/migrations/20260905100000_realtime_publication.sql`
+  or the coordinator's subscription shape:** run
+  `supabase/tests/manual/verify_realtime_delivery.mjs` (see its header for
+  usage) against local Supabase started **without** excluding `realtime`
+  (Docker required), or against the cloud project. It was run for this PR
+  against a real local Realtime container and confirmed both halves: (a) the
+  delivered `sync_signals` payload contains only `profile_id`/`updated_at`,
+  and (b) Realtime refuses `day_entries`/`profiles` subscriptions outright
+  (an "Unable to subscribe to changes..." `postgres_changes` system error)
+  rather than silently filtering them, so no entry content reaches the
+  websocket via those tables at all. The script asserts on this directly now
+  (PR #92 review round 2): every channel must genuinely settle a
+  `postgres_changes` system message (not just create a channel object) or
+  the script throws, and the `profiles` write it checks against happens
+  *after* subscribing — the original version wrote it before, which made
+  that half of the check structurally unable to fail. The script also creates
+  exactly one throwaway auth user/profile/day-entries row and deletes all
+  three (and the `sync_signals` row they generate) in a `finally`, so
+  repeated runs against the cloud project do not accumulate test data or
+  leave real-looking minor's-health-log content behind. This check is
+  deliberately not wired into CI — investigated (a `realtime`-inclusive CI
+  stack was prototyped) and found out of proportion for one migration's
+  regression coverage; see the plan's KTD4 for why.
 
 ## License
 

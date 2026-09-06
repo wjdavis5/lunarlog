@@ -1,4 +1,4 @@
--- Migration: 20260905100000_feedback_tickets.sql
+-- Migration: 20260905120000_feedback_tickets.sql
 -- Implements Issue #6 (U1): in-app feedback tickets and admin replies.
 -- 1. Create public.feedback_tickets with content, diagnostics, and status
 --    columns, an allowlist check on device_info, and length/shape checks.

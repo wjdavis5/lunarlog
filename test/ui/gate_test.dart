@@ -1497,6 +1497,189 @@ void main() {
 
       await harness.dispose();
     });
+
+    testWidgets(
+        '(#77) a supabaseClient builds and starts a RealtimeSyncCoordinator '
+        'that subscribes one channel per profile and disposes them before '
+        'the database closes — a revert of that wiring must fail this test',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final client = FakeSupabaseClient();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        supabaseClient: client,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+
+      expect(client.createdChannels, hasLength(2),
+          reason: 'issue #77: one Realtime channel per seeded profile');
+      expect(client.createdChannels.keys.toSet(), hasLength(2),
+          reason: 'channel topics are distinct per profile id');
+      // PR #92 review round 2: creating a channel object is not the same as
+      // actually subscribing it. Without this, deleting the coordinator's
+      // `.subscribe()` call would still pass every test above (channels are
+      // still created and torn down) even though live sync would silently
+      // stop working.
+      for (final ch in client.createdChannels.values) {
+        expect(ch.subscribeCalls, 1,
+            reason: 'issue #77: each channel must actually be subscribed, '
+                'not just constructed — a reverted .subscribe() call must '
+                'fail this test');
+      }
+
+      // Unmounting the root disposes the coordinator before the database
+      // closes, which must remove every channel it created.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(client.createdChannels, isEmpty);
+      expect(client.removedChannels, hasLength(2));
+      await harness.db.close();
+    });
+
+    testWidgets(
+        '(#77) with no supabaseClient the sync engine still starts but no '
+        'Realtime channel is ever created', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+
+      expect(engine.startCalls, 1);
+      // No supabaseClient means no coordinator; FakeSupabaseClient is never
+      // even constructed, so there is nothing to assert channels against —
+      // the absence of a crash and the engine starting normally is the
+      // proof.
+
+      await harness.dispose();
+    });
+
+    testWidgets(
+        '(#77) a profile added after unlock gets its own channel without '
+        'recreating the existing ones', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final client = FakeSupabaseClient();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        supabaseClient: client,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+      expect(client.createdChannels, hasLength(2));
+      final existingTopics = client.createdChannels.keys.toSet();
+
+      await DriftProfilesRepository(harness.db.storage)
+          .create(displayName: 'Cammie', isMinor: true);
+      await harness.drainIsolateTraffic(tester);
+
+      expect(client.createdChannels, hasLength(3));
+      expect(client.createdChannels.keys.toSet().containsAll(existingTopics),
+          isTrue,
+          reason: 'existing channels are not recreated');
+
+      await harness.dispose();
+    });
+
+    testWidgets(
+        '(#77) a device that opened the database signed out gets live '
+        'channels once the user signs in, without an app restart',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final transport = FakeSyncTransport();
+      final client = FakeSupabaseClient();
+      final engine = FakeSyncEngine();
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump(
+        grant: false,
+        authService: auth,
+        syncTransport: transport,
+        supabaseClient: client,
+        syncEngineBuilder: ({
+          required db,
+          required authService,
+          required transport,
+          required gate,
+        }) =>
+            engine,
+      );
+
+      harness.gate.grantNext = true;
+      await harness.unlockViaButton();
+      await harness.drainIsolateTraffic(tester);
+      expect(client.createdChannels, hasLength(2),
+          reason: 'signed out (R9-style: configured but no session) still '
+              'subscribes from the local profile set');
+      expect(client.removedChannels, isEmpty);
+
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'guardian-a'));
+      await tester.pump();
+      await harness.drainIsolateTraffic(tester);
+
+      expect(client.removedChannels, hasLength(2),
+          reason: 'the pre-sign-in channels are torn down (R4)');
+      expect(client.createdChannels, hasLength(2),
+          reason: 'and re-created under the signed-in identity, with no '
+              'app restart');
+
+      await harness.dispose();
+    });
   });
 
   group('settings screen (v1: exactly one control)', () {
