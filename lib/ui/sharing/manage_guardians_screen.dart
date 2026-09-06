@@ -1,6 +1,11 @@
 /// Screen for viewing, inviting, and revoking caregivers for a profile (U8;
 /// R1, R3, R4, R6, R8). Guardian rows come from [ProfileGuardiansRepository]
 /// (R14/R16): no Drift row type crosses into this file.
+///
+/// Issue #3 gap-closure plan (Unit U3) adds a pending-invitations section
+/// below the guardian list: it lists outstanding invitations and lets an
+/// authorized guardian cancel one. It is a `Future`-backed section, not a
+/// stream (KTD3) - there is no local table behind pending invitations.
 library;
 
 import 'package:flutter/material.dart';
@@ -33,6 +38,24 @@ class ManageGuardiansScreen extends StatefulWidget {
 }
 
 class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
+  /// The pending-invitations section's data (U3; R1, R6). Loaded once on
+  /// init, and reloaded after a create or cancel - there is no stream
+  /// behind it (KTD3).
+  late Future<List<PendingInvite>> _pendingInvitesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPendingInvites();
+  }
+
+  void _loadPendingInvites() {
+    setState(() {
+      _pendingInvitesFuture =
+          widget.sharingService.listPendingInvites(widget.profile.id);
+    });
+  }
+
   /// Every guardian row for this profile, any status; null means the
   /// initial pull hasn't landed locally yet (#13). Nothing writes a local
   /// guardian row when a profile is created, so a freshly created or
@@ -166,6 +189,176 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         profileName: widget.profile.displayName,
         sharingService: widget.sharingService,
       ),
+      // A newly created invitation should appear in the pending list as
+      // soon as the dialog closes, whether the operator created one or
+      // just dismissed the dialog - re-listing is cheap and harmless
+      // either way.
+    ).then((_) {
+      if (mounted) _loadPendingInvites();
+    });
+  }
+
+  /// R3 invitation-cancellation ladder, mirroring [_canRevoke]'s guardian
+  /// ladder: the primary guardian may cancel any invitation on the
+  /// profile; a co-parent may cancel a caregiver or viewer invitation, but
+  /// never a co_parent one - only the primary guardian can create a
+  /// co_parent invitation in the first place (`create_guardian_invitation`
+  /// forbids a co-parent from inviting a co-parent), so a co-parent could
+  /// never have created one to cancel. A caregiver or viewer may cancel
+  /// nothing.
+  bool _canCancelInvite(PendingInvite invite, GuardianRole? callerRole) {
+    if (callerRole == GuardianRole.primaryGuardian) return true;
+    if (callerRole == GuardianRole.coParent) {
+      return invite.role != GuardianRole.coParent;
+    }
+    return false;
+  }
+
+  /// Relative time remaining until [expiresAt], clamped at "expired" rather
+  /// than rendering a negative duration for a stale load (Q2/U3 test list).
+  String _expiryLabel(DateTime expiresAt) {
+    final remaining = expiresAt.difference(DateTime.now().toUtc());
+    if (remaining.isNegative) return 'expired';
+    if (remaining.inHours >= 1) return 'expires in ${remaining.inHours}h';
+    final minutes = remaining.inMinutes;
+    return 'expires in ${minutes < 1 ? 1 : minutes}m';
+  }
+
+  Future<void> _cancelInvite(PendingInvite invite) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+            'Cancel invitation for ${invite.recipientLabel?.isNotEmpty == true ? invite.recipientLabel! : invite.role.label}?'),
+        content: const Text(
+            'The invite link will stop working immediately. You can send a new one any time.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep Invitation'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('Cancel Invitation'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final outcome = await widget.sharingService.cancelInvite(invite.invitationId);
+      if (!mounted) return;
+      final message = switch (outcome) {
+        InviteCancellation.revoked => 'Invitation cancelled',
+        InviteCancellation.alreadyAccepted =>
+          'That invitation was already accepted',
+        InviteCancellation.alreadyRevoked =>
+          'That invitation was already cancelled',
+        InviteCancellation.expired => 'That invitation had already expired',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      // Every outcome is terminal for this row (R5): refresh regardless, so
+      // an already-accepted invitation never lingers as a stale pending
+      // row - the accepted guardian itself shows up via the live guardian
+      // stream, which needs no action here.
+      _loadPendingInvites();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to cancel invitation. Check connection.')),
+        );
+      }
+    }
+  }
+
+  Widget _pendingInvitesSection(List<ProfileGuardian>? rows, GuardianRole? callerRole) {
+    final theme = Theme.of(context);
+    // Mirrors the FAB gate's null-vs-empty discipline: rows still null
+    // (not yet synced) must not collapse this into "not a manager".
+    final knownNonManager =
+        rows != null && callerRole?.canManageGuardians != true;
+    if (knownNonManager) {
+      return const SizedBox.shrink();
+    }
+
+    return FutureBuilder<List<PendingInvite>>(
+      future: _pendingInvitesFuture,
+      builder: (context, snapshot) {
+        Widget content;
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          content = const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+                child:
+                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+          );
+        } else if (snapshot.hasError) {
+          content = Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Could not load pending invitations.',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                ),
+                TextButton(onPressed: _loadPendingInvites, child: const Text('Retry')),
+              ],
+            ),
+          );
+        } else {
+          final invites = snapshot.data ?? const [];
+          content = invites.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'No pending invitations',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (final invite in invites)
+                      _pendingInviteTile(invite, callerRole),
+                  ],
+                );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text('Pending invitations', style: theme.textTheme.titleSmall),
+            ),
+            content,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _pendingInviteTile(PendingInvite invite, GuardianRole? callerRole) {
+    final label = invite.recipientLabel?.isNotEmpty == true
+        ? invite.recipientLabel!
+        : invite.role.label;
+    return ListTile(
+      key: ValueKey('pending-invite-${invite.invitationId}'),
+      leading: const Icon(Icons.mail_outline),
+      title: Text(label),
+      subtitle: Text('${invite.role.label} • ${_expiryLabel(invite.expiresAt)}'),
+      trailing: _canCancelInvite(invite, callerRole)
+          ? IconButton(
+              icon: const Icon(Icons.cancel_outlined),
+              tooltip: 'Cancel invitation',
+              onPressed: () => _cancelInvite(invite),
+            )
+          : null,
     );
   }
 
@@ -209,33 +402,50 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           final activeGuardians = _acceptedOf(rows);
           final callerRole = _callerRoleOf(rows);
 
-          if (activeGuardians.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.people_outline, size: 48, color: theme.colorScheme.outline),
-                  const SizedBox(height: 12),
-                  Text('No caregivers linked yet', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Invite a co-parent or caregiver to sync and share tracking.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+          final guardianList = activeGuardians.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.people_outline, size: 48, color: theme.colorScheme.outline),
+                        const SizedBox(height: 12),
+                        Text('No caregivers linked yet', style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Invite a co-parent or caregiver to sync and share tracking.',
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            );
-          }
+                )
+              : ListView.separated(
+                  // U3: the pending-invitations section sits below this
+                  // list, in the same scrollable column - shrinkWrap lets
+                  // this list size to its own content inside that outer
+                  // scroll view instead of claiming unbounded height.
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: activeGuardians.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) => _guardianTile(
+                    context,
+                    activeGuardians[index],
+                    callerRole,
+                    activeGuardians,
+                  ),
+                );
 
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: activeGuardians.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) => _guardianTile(
-              context,
-              activeGuardians[index],
-              callerRole,
-              activeGuardians,
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                guardianList,
+                _pendingInvitesSection(rows, callerRole),
+              ],
             ),
           );
         },

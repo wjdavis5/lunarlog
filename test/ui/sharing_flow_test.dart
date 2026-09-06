@@ -97,6 +97,13 @@ class FakeSharingService implements SharingService {
     if (scriptedCancelError != null) {
       throw scriptedCancelError!;
     }
+    // Every outcome is terminal (R5): the row would no longer satisfy a
+    // fresh listPendingInvites' live-invitation filter either way, so a
+    // scripted fake mirrors that instead of requiring each test to
+    // manually re-script the list after cancelling.
+    scriptedPendingInvites = scriptedPendingInvites
+        .where((i) => i.invitationId != invitationId)
+        .toList();
     return scriptedCancelOutcome;
   }
 }
@@ -573,6 +580,407 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    group('pending invitations (Issue #3 gap-closure plan, Unit U3)', () {
+      PendingInvite pendingInvite({
+        String id = 'inv-1',
+        GuardianRole role = GuardianRole.caregiver,
+        String? recipientLabel = 'Sitter',
+        DateTime? expiresAt,
+      }) =>
+          PendingInvite(
+            invitationId: id,
+            profileId: testProfile.id,
+            role: role,
+            recipientLabel: recipientLabel,
+            createdAt: DateTime.now().toUtc(),
+            expiresAt:
+                expiresAt ?? DateTime.now().toUtc().add(const Duration(hours: 6)),
+          );
+
+      testWidgets(
+          'primary guardian sees the pending section listing invitations '
+          'with their roles and labels', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', role: GuardianRole.caregiver, recipientLabel: 'Sitter'),
+          pendingInvite(id: 'inv-2', role: GuardianRole.viewer, recipientLabel: 'Grandma'),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pending invitations'), findsOneWidget);
+        expect(find.text('Sitter'), findsOneWidget);
+        expect(find.text('Grandma'), findsOneWidget);
+        expect(find.textContaining('Caregiver'), findsWidgets);
+        expect(find.textContaining('Viewer'), findsWidgets);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'co-parent sees the pending section (R3 allows them to cancel '
+          'some invitations)', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', role: GuardianRole.caregiver, recipientLabel: 'Sitter'),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-dad',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pending invitations'), findsOneWidget);
+        expect(find.text('Sitter'), findsOneWidget);
+        expect(find.byIcon(Icons.cancel_outlined), findsOneWidget,
+            reason: 'a co-parent may cancel a caregiver invitation (R3)');
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets('caregiver does not see the pending section at all',
+          (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-2', 'user-sitter', 'caregiver', 'Sue'),
+        ]);
+        sharingService.scriptedPendingInvites = [pendingInvite()];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-sitter',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pending invitations'), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets('viewer does not see the pending section at all',
+          (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-3', 'user-aunt', 'viewer', 'Aunt'),
+        ]);
+        sharingService.scriptedPendingInvites = [pendingInvite()];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-aunt',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pending invitations'), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'guardian rows not yet synced does not collapse the section into '
+          'a not-a-manager state', (tester) async {
+        // No applyRemoteRows call, matching "before any guardian row has
+        // synced" above (#13's null-vs-empty discipline).
+        sharingService.scriptedPendingInvites = [pendingInvite()];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pending invitations'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'tapping cancel shows a confirmation dialog; dismissing it makes '
+          'no service call', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.cancel_outlined));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Cancel invitation for Sitter?'), findsOneWidget);
+        await tester.tap(find.widgetWithText(TextButton, 'Keep Invitation'));
+        await tester.pumpAndSettle();
+
+        expect(sharingService.lastCancelledInvitationId, isNull);
+        expect(find.text('Sitter'), findsOneWidget,
+            reason: 'dismissing the dialog leaves the row in place');
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          "confirming cancel calls cancelInvite with that invitation's id "
+          'and removes the row on refresh', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+        ];
+        sharingService.scriptedCancelOutcome = InviteCancellation.revoked;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.cancel_outlined));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Cancel Invitation'));
+        await tester.pumpAndSettle();
+
+        expect(sharingService.lastCancelledInvitationId, 'inv-1');
+        expect(find.text('Sitter'), findsNothing);
+        expect(find.text('No pending invitations'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'a co-parent viewing a co_parent invitation created by the '
+          'primary guardian sees no cancel control on that row (R3)',
+          (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', role: GuardianRole.coParent, recipientLabel: 'Second Co-Parent'),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-dad',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Second Co-Parent'), findsOneWidget,
+            reason: 'visible but not actionable (Q2)');
+        expect(find.byIcon(Icons.cancel_outlined), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'cancelInvite returning alreadyAccepted refreshes rather than '
+          'leaving a stale pending row on screen', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+        ];
+        sharingService.scriptedCancelOutcome = InviteCancellation.alreadyAccepted;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.cancel_outlined));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Cancel Invitation'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sitter'), findsNothing);
+        expect(find.text('That invitation was already accepted'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'a listPendingInvites failure renders the retry affordance and '
+          'leaves the guardian list rendered', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedListError = Exception('offline');
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Mom'), findsOneWidget,
+            reason: 'the guardian list (local Drift) keeps working offline');
+        expect(find.text('Could not load pending invitations.'), findsOneWidget);
+        expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+
+        sharingService.scriptedListError = null;
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+        ];
+        await tester.tap(find.widgetWithText(TextButton, 'Retry'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sitter'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'no widget in the section renders a token, hash, or invite URI',
+          (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('lunarlog://'), findsNothing);
+        expect(find.textContaining('token'), findsNothing);
+        expect(find.textContaining('hash'), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets(
+          'an expired invitation returned by a stale load renders without '
+          'crashing (negative time remaining is clamped)', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(
+            id: 'inv-1',
+            recipientLabel: 'Sitter',
+            expiresAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
+          ),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: ProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('expired'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
     });
   });
 
