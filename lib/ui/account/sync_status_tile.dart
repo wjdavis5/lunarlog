@@ -10,6 +10,7 @@ import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
@@ -287,6 +288,8 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
             onTap: pendingConsent
                 ? () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
+                      settings:
+                          const RouteSettings(name: kRouteUploadConsentScreen),
                       builder: (routeContext) => UploadConsentScreen(
                         onNotNow: () => Navigator.of(routeContext).pop(),
                       ),

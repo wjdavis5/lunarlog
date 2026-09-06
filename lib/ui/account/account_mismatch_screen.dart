@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart' show DeviceResetCallback;
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:provider/provider.dart';
 
@@ -50,6 +51,7 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
     if (reset == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
+      routeSettings: const RouteSettings(name: kRouteAccountMismatchDialog),
       builder: (dialogContext) => AlertDialog(
         title: const Text("Remove this device's data?"),
         content: const Text(

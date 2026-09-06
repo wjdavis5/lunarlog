@@ -79,7 +79,23 @@ void configureSentryOptions(
     // Release health (R17).
     ..enableAutoSessionTracking = true
     // Request bodies are never attached to captured HTTP failures.
-    ..maxRequestBodySize = MaxRequestBodySize.never;
+    ..maxRequestBodySize = MaxRequestBodySize.never
+    // Native crash capture (U3; R6, R7, R8): every option set explicitly,
+    // following this cascade's existing "so a default change upstream
+    // cannot turn it on [or off]" convention.
+    ..anrEnabled = true
+    ..enableNativeCrashHandling = true
+    ..enableNdkScopeSync = true
+    ..enableAppHangTracking = true
+    ..enableWatchdogTerminationTracking = true
+    ..enableAutoNativeBreadcrumbs = true
+    // The only option here that is off by SDK default (KTD6). Turning it on
+    // would open an Android ApplicationExitInfo channel assembled natively
+    // -- outside this scrubber -- from a process that holds decrypted
+    // health strings in memory, and nobody has inspected what such a
+    // payload actually carries. Pinned false; the opt-in (after a real
+    // payload has been inspected) belongs to issue #19.
+    ..enableTombstone = false;
   // Allowlist scrubbing (R18).
   options.beforeSend = (event, hint) => scrubEvent(event);
   options.beforeBreadcrumb = (breadcrumb, hint) {
@@ -102,3 +118,23 @@ void configureSentryOptions(
 /// Sentry widget in its tree.
 Widget wrapWithSentry(Widget child) =>
     AppConfig.hasSentry ? SentryWidget(child: child) : child;
+
+/// The [NavigatorObserver] list for `MaterialApp.navigatorObservers` (U2;
+/// R1, R3, R4, R5, R13). Empty when Sentry is unconfigured, so an
+/// unconfigured build installs no observer — same gate as [wrapWithSentry].
+///
+/// `setRouteNameAsTransaction: true` puts the current screen's (scrubbed —
+/// KTD4) name on `event.transaction`; `enableAutoTransactions: true` is
+/// inert while `AppConfig.sentryTracesSampleRate` is null (U4) and starts
+/// producing route transactions only once an operator opts into tracing.
+/// No `routeNameExtractor` is supplied: [scrub.dart]'s `scrubRouteName` is
+/// the enforcement point regardless of what the observer reports, so a
+/// second extraction layer here would be redundant, not safer.
+List<NavigatorObserver> sentryNavigatorObservers() => AppConfig.hasSentry
+    ? [
+        SentryNavigatorObserver(
+          enableAutoTransactions: true,
+          setRouteNameAsTransaction: true,
+        ),
+      ]
+    : const <NavigatorObserver>[];

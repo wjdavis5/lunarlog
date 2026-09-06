@@ -18,8 +18,11 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/settings/settings_screen.dart';
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_engine.dart';
@@ -589,6 +592,92 @@ void main() {
 
       expect(find.text('Profiles'), findsOneWidget);
       expect(find.text('Alice'), findsOneWidget);
+      await disposeApp(tester, db);
+    });
+  });
+
+  group('U2 route naming', () {
+    testWidgets('opening Settings from the picker names the route '
+        'SettingsScreen', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+      });
+
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+
+      final route =
+          ModalRoute.of(tester.element(find.byType(SettingsScreen)));
+      expect(route?.settings.name, kRouteSettingsScreen);
+      expect(kSentryRouteNames, contains(kRouteSettingsScreen));
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('viewing an archived profile names the route '
+        'ProfileDetailScreen', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await seedTwoProfiles(db, extra: (aId, bId) async {
+          await DriftProfilesRepository(db.storage).setArchived(aId, true);
+        });
+      });
+
+      await tester.tap(find.text('Archived (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Alice'));
+      await tester.pumpAndSettle();
+
+      final route =
+          ModalRoute.of(tester.element(find.byType(ProfileDetailScreen)));
+      expect(route?.settings.name, kRouteProfileDetailScreen);
+      expect(kSentryRouteNames, contains(kRouteProfileDetailScreen));
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('the rename dialog names the route ProfileEditDialog',
+        (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+      });
+
+      final aliceTile = find.ancestor(
+          of: find.text('Alice'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+
+      final route = ModalRoute.of(
+          tester.element(find.widgetWithText(TextFormField, 'Alice')));
+      expect(route?.settings.name, kRouteProfileEditDialog);
+      expect(kSentryRouteNames, contains(kRouteProfileEditDialog));
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('the archive confirmation names the route '
+        'ProfileArchiveDialog', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await seedTwoProfiles(db);
+      });
+
+      final aliceTile = find.ancestor(
+          of: find.text('Alice'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+
+      final route =
+          ModalRoute.of(tester.element(find.text('Archive Alice?')));
+      expect(route?.settings.name, kRouteProfileArchiveDialog);
+      expect(kSentryRouteNames, contains(kRouteProfileArchiveDialog));
+
+      // Dismiss before disposing, matching the other archive tests' pattern.
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
       await disposeApp(tester, db);
     });
   });

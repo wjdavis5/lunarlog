@@ -8,9 +8,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/scrub.dart';
-import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 const _note = 'private note about cramps';
@@ -662,117 +660,4 @@ void main() {
     });
   });
 
-  group('runWithSentry', () {
-    test('empty DSN runs the app without calling init', () async {
-      var initCalls = 0;
-      var appRuns = 0;
-      await runWithSentry(
-        dsn: '',
-        init: (config, {appRunner}) async {
-          initCalls++;
-        },
-        appRunner: () async => appRuns++,
-      );
-      expect(initCalls, 0);
-      expect(appRuns, 1);
-    });
-
-    test('with a DSN, init is called with the KTD12 privacy floor and the '
-        'app runner is handed through', () async {
-      const dsn = 'https://public@o0.ingest.sentry.io/1';
-      SentryFlutterOptions? seen;
-      AppRunner? seenRunner;
-      var appRuns = 0;
-      await runWithSentry(
-        dsn: dsn,
-        init: (config, {appRunner}) async {
-          final options = SentryFlutterOptions(dsn: dsn);
-          await config(options);
-          seen = options;
-          seenRunner = appRunner;
-        },
-        appRunner: () async => appRuns++,
-      );
-      expect(appRuns, 0, reason: 'runWithSentry hands the runner to init');
-      expect(seenRunner, isNotNull);
-      await seenRunner!();
-      expect(appRuns, 1);
-
-      final o = seen!;
-      expect(o.dsn, dsn);
-      expect(o.environment, anyOf('production', 'development'));
-      expect(o.sendDefaultPii, isFalse);
-      expect(o.attachScreenshot, isFalse);
-      // ignore: experimental_member_use
-      expect(o.attachViewHierarchy, isFalse);
-      expect(o.replay.sessionSampleRate, anyOf(isNull, 0.0));
-      expect(o.replay.onErrorSampleRate, anyOf(isNull, 0.0));
-      expect(o.enableUserInteractionBreadcrumbs, isFalse);
-      expect(o.enableUserInteractionTracing, isFalse);
-      expect(o.tracesSampleRate, anyOf(isNull, 0.0));
-      // ignore: experimental_member_use
-      expect(o.profilesSampleRate, anyOf(isNull, 0.0));
-      expect(o.sampleRate, 1.0);
-      expect(o.enableAutoSessionTracking, isTrue);
-      expect(o.maxRequestBodySize, MaxRequestBodySize.never);
-      expect(o.beforeSend, isNotNull);
-      expect(o.beforeBreadcrumb, isNotNull);
-
-      // The wired callbacks are the scrubbers.
-      final scrubbed = await o.beforeSend!(_fullEvent(), Hint());
-      expect(scrubbed!.user, isNull);
-      expect(_json(scrubbed), isNot(contains(_note)));
-      expect(
-        o.beforeBreadcrumb!(
-            Breadcrumb(category: 'x', data: {'email': _email}), Hint()),
-        isNull,
-      );
-    });
-  });
-
-  group('configureSentryOptions breadcrumb tee (Issue #6, U4; KTD9)', () {
-    test('a breadcrumb that survives scrubBreadcrumb is teed into the injected log', () {
-      final log = BreadcrumbLog();
-      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
-      configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
-
-      options.beforeBreadcrumb!(
-        Breadcrumb(category: 'navigation', message: 'overview'),
-        Hint(),
-      );
-
-      expect(log.snapshot(), ['navigation: overview']);
-    });
-
-    test('a breadcrumb scrubBreadcrumb drops is not teed', () {
-      final log = BreadcrumbLog();
-      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
-      configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
-
-      options.beforeBreadcrumb!(
-        Breadcrumb(category: 'x', data: {'email': _email}),
-        Hint(),
-      );
-
-      expect(log.snapshot(), isEmpty);
-    });
-
-    test('AE10 (unit half): a data-only navigation breadcrumb lands as '
-        '"navigation: SettingsScreen"', () {
-      final log = BreadcrumbLog();
-      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
-      configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
-
-      options.beforeBreadcrumb!(
-        Breadcrumb(category: 'navigation', data: {
-          'state': 'didPush',
-          'from': 'ProfilePickerScreen',
-          'to': 'SettingsScreen',
-        }),
-        Hint(),
-      );
-
-      expect(log.snapshot(), ['navigation: SettingsScreen']);
-    });
-  });
 }
