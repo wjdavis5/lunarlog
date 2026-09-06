@@ -607,3 +607,64 @@ comment on function public.revoke_guardian(text, uuid) is
 
 revoke all on function public.revoke_guardian(text, uuid) from public, anon;
 grant execute on function public.revoke_guardian(text, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. guardian_invitations: make revocation terminal (round 2, review item #1,
+--    P1)
+-- ---------------------------------------------------------------------------
+--
+-- Section 4's fix cancels the ex-parent's still-live guardian_invitations
+-- rows on handover by setting revoked_at. That alone is defeatable:
+-- 20260904010000_multi_guardian_schema.sql (section 9) grants
+-- `update (revoked_at)` on guardian_invitations to `authenticated`, and the
+-- guardian_invitations_update policy gates only on invited_by = auth.uid() -
+-- a condition the ex-parent still satisfies after the handover, since
+-- ownership_transfers carries no memory of who used to own the profile.
+-- Without this trigger the ex-parent could PATCH revoked_at: null in one
+-- PostgREST call, reopening the invitation - and because the accept RPCs
+-- take a token *hash*, not the raw token, whoever still holds the raw token
+-- becomes a guardian on the minor's profile without the new owner's consent,
+-- exactly the bypass sections 4/5 exist to close.
+--
+-- A BEFORE UPDATE trigger, not a narrower grant or a new RPC: dropping the
+-- column grant would also remove the client's only current way to revoke an
+-- invitation going forward (null -> non-null), and a dedicated
+-- revoke_guardian_invitation RPC would duplicate the grant/policy surface
+-- this table already has for exactly one direction of one column. Rejecting
+-- only the non-null -> null transition keeps that forward path working
+-- under the existing grant and policy, and makes the reverse (un-revoke)
+-- impossible for anyone holding a JWT. A null auth.uid() (migrations,
+-- service role - none of this file's SECURITY DEFINER RPCs ever write
+-- guardian_invitations.revoked_at back to null) is exempt, matching
+-- enforce_day_entry_attribution's own migrations/service-role carve-out
+-- (section 1 above).
+create or replace function public.enforce_guardian_invitation_revocation_terminal()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if (select auth.uid()) is not null
+     and old.revoked_at is not null
+     and new.revoked_at is null then
+    raise exception 'a revoked guardian invitation cannot be un-revoked'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end;
+$$;
+
+comment on function public.enforce_guardian_invitation_revocation_terminal() is
+  'BEFORE UPDATE guard on guardian_invitations: once revoked_at is set, no
+   authenticated client can clear it back to NULL. Closes round-2 review
+   item #1 (Issue #4) - the guardian_invitations_update policy alone
+   (invited_by = auth.uid()) does not stop an ex-parent from un-revoking an
+   invitation they created before an ownership transfer, since that
+   condition survives the handover.';
+
+create trigger guardian_invitations_revocation_terminal_guard
+  before update on public.guardian_invitations
+  for each row execute function public.enforce_guardian_invitation_revocation_terminal();
+
+revoke execute on function public.enforce_guardian_invitation_revocation_terminal() from public, anon;

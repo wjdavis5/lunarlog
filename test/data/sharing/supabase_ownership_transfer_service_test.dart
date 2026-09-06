@@ -197,6 +197,9 @@ void main() {
         expect(req.url.queryParameters['profile_id'], 'eq.p-1');
         expect(req.url.queryParameters['accepted_at'], 'is.null');
         expect(req.url.queryParameters['cancelled_at'], 'is.null');
+        // Round 2 review item #2 (P2): a lapsed-but-uncancelled transfer
+        // must not read back as active — see the service's own comment.
+        expect(req.url.queryParameters['expires_at'], startsWith('gt.'));
         expect(req.url.queryParameters['select'], isNot(contains('token_hash')));
 
         return http.Response(

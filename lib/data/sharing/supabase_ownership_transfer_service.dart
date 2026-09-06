@@ -99,13 +99,27 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     // primary_guardian), so this needs no new server-side surface. Only the
     // columns a client may legitimately see are selected; token_hash never
     // leaves the server.
+    //
+    // Round 2 review item #2 (P2): a transfer can lapse (expires_at in the
+    // past) without ever being cancelled. ownership_transfers_one_live_uq
+    // (KTD6) can't itself exclude an expired row - now() isn't
+    // immutable - so create_ownership_transfer instead auto-cancels the
+    // caller's own outstanding-but-expired row as part of arming a new one;
+    // that self-heals the *insert* path, but this SELECT still returned
+    // that lapsed row as "active" until this filter, so the screen rendered
+    // _orphanedTransferBody and forced a Cancel tap before the (already
+    // self-healing) re-arm form ever appeared, even though the lapsed link
+    // can no longer be accepted by anyone (accept_ownership_transfer's own
+    // expiry check refuses it). Filtering it out here lets a parent go
+    // straight to the armable form instead.
     try {
       final rows = await client
           .from('ownership_transfers')
           .select('id, profile_id, parent_post_transfer_role, recipient_label, expires_at')
           .eq('profile_id', profileId)
           .filter('accepted_at', 'is', null)
-          .filter('cancelled_at', 'is', null);
+          .filter('cancelled_at', 'is', null)
+          .gt('expires_at', DateTime.now().toUtc().toIso8601String());
 
       // At most one row: ownership_transfers_one_live_uq (KTD6) enforces
       // exactly this "accepted_at is null and cancelled_at is null" shape as
