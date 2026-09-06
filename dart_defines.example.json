@@ -7,5 +7,11 @@
   "GOOGLE_IOS_CLIENT_ID": "",
   "GOOGLE_WEB_CLIENT_ID": "",
   "_PASSKEY_RP_ID_NOTE": "PASSKEY_RP_ID is a bare HTTPS domain, immutable once a passkey is enrolled - do not set until docs/ops/supabase-go-live.md's Passkeys checklist is complete",
-  "PASSKEY_RP_ID": ""
+  "PASSKEY_RP_ID": "",
+  "FCM_PROJECT_ID": "",
+  "FCM_SENDER_ID": "",
+  "FCM_ANDROID_API_KEY": "",
+  "FCM_ANDROID_APP_ID": "",
+  "FCM_IOS_API_KEY": "",
+  "FCM_IOS_APP_ID": ""
 }

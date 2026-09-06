@@ -138,6 +138,35 @@ void main() {
       );
     });
 
+    test('a PostgREST 5xx status maps to the network failure', () async {
+      final client = makeClient((req) async =>
+          http.Response(jsonEncode({'message': 'internal error', 'code': '500'}), 500));
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      await expectLater(
+        service.save(_profileId, CaregiverAlertPreferences.off),
+        throwsA(isA<NotificationPreferencesNetworkFailure>()),
+      );
+    });
+
+    test('an http.ClientException maps to the network failure', () async {
+      final client = SupabaseClient(
+        'https://example.supabase.co',
+        'anon-key',
+        httpClient: MockClient((request) async => throw http.ClientException('connection reset')),
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        postgrestOptions: const PostgrestClientOptions(retryEnabled: false),
+      );
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      await expectLater(
+        service.save(_profileId, CaregiverAlertPreferences.off),
+        throwsA(isA<NotificationPreferencesNetworkFailure>()),
+      );
+    });
+
     test('a socket error maps to the network failure', () async {
       final client = SupabaseClient(
         'https://example.supabase.co',

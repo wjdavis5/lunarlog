@@ -49,6 +49,13 @@ void main() {
     test('a null window contains nothing', () {
       expect(QuietHours.containsIn(null, 9 * 60), isFalse);
     });
+
+    test('copyWith updates each field independently', () {
+      const window = QuietHours(startMinutes: 60, endMinutes: 120);
+      expect(window.copyWith(startMinutes: 0), const QuietHours(startMinutes: 0, endMinutes: 120));
+      expect(window.copyWith(endMinutes: 200), const QuietHours(startMinutes: 60, endMinutes: 200));
+      expect(window.copyWith(), window);
+    });
   });
 
   group('CaregiverAlertPreferences', () {

@@ -1734,4 +1734,33 @@ void main() {
       await harness.dispose();
     });
   });
+
+  group('push registration device id (Issue #5, U7)', () {
+    test('generates and persists a device id when none is stored yet', () async {
+      final settings = FakeSettingsStore();
+      final id = await resolvePushDeviceId(settings, generateId: () => 'generated-id');
+
+      expect(id, 'generated-id');
+      expect(await settings.get(SettingsKeys.pushDeviceId), 'generated-id');
+    });
+
+    test('reuses the already-stored device id without generating a new one', () async {
+      final settings = FakeSettingsStore({SettingsKeys.pushDeviceId: 'existing-id'});
+      var generateCalls = 0;
+      final id = await resolvePushDeviceId(
+        settings,
+        generateId: () {
+          generateCalls++;
+          return 'new-id';
+        },
+      );
+
+      expect(id, 'existing-id');
+      expect(generateCalls, 0);
+    });
+
+    test('pushPlatformName reports a non-empty platform name', () {
+      expect(pushPlatformName(), isIn(['ios', 'android']));
+    });
+  });
 }
