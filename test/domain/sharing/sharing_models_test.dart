@@ -138,6 +138,22 @@ void main() {
     test('an unknown value fails loudly rather than defaulting to success', () {
       expect(() => InviteCancellation.fromDb('unknown'), throwsArgumentError);
     });
+
+    test('every outcome has non-empty user-facing copy', () {
+      for (final outcome in InviteCancellation.values) {
+        expect(outcome.userFacingMessage, isNotEmpty);
+      }
+    });
+
+    test('userFacingMessage is pinned per outcome', () {
+      expect(InviteCancellation.revoked.userFacingMessage, 'Invitation cancelled');
+      expect(InviteCancellation.alreadyAccepted.userFacingMessage,
+          'That invitation was already accepted');
+      expect(InviteCancellation.alreadyRevoked.userFacingMessage,
+          'That invitation was already cancelled');
+      expect(InviteCancellation.expired.userFacingMessage,
+          'That invitation had already expired');
+    });
   });
 
   group('SharingFailure types', () {

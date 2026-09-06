@@ -128,6 +128,16 @@ enum InviteCancellation {
         _ => throw ArgumentError.value(
             value, 'value', 'unknown invite cancellation outcome'),
       };
+
+  /// User-facing copy for the outcome (R5), on the domain type per this
+  /// repo's copy convention rather than hardcoded in the widget - mirrors
+  /// [SharingFailure.userFacingMessage].
+  String get userFacingMessage => switch (this) {
+        revoked => 'Invitation cancelled',
+        alreadyAccepted => 'That invitation was already accepted',
+        alreadyRevoked => 'That invitation was already cancelled',
+        expired => 'That invitation had already expired',
+      };
 }
 
 /// Result returned upon accepting an invitation.

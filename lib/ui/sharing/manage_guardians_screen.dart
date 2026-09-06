@@ -251,15 +251,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     try {
       final outcome = await widget.sharingService.cancelInvite(invite.invitationId);
       if (!mounted) return;
-      final message = switch (outcome) {
-        InviteCancellation.revoked => 'Invitation cancelled',
-        InviteCancellation.alreadyAccepted =>
-          'That invitation was already accepted',
-        InviteCancellation.alreadyRevoked =>
-          'That invitation was already cancelled',
-        InviteCancellation.expired => 'That invitation had already expired',
-      };
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(outcome.userFacingMessage)));
       // Every outcome is terminal for this row (R5): refresh regardless, so
       // an already-accepted invitation never lingers as a stale pending
       // row - the accepted guardian itself shows up via the live guardian
