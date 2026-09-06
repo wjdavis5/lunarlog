@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -383,7 +384,7 @@ void main() {
       await tester.tap(find.byTooltip('Add profile'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField), '   ');
+      await tester.enterText(find.byType(TextFormField).first, '   ');
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
       expect(find.text('Name cannot be empty'), findsOneWidget);
@@ -398,7 +399,7 @@ void main() {
 
       await tester.tap(find.byTooltip('Add profile'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField), 'Same');
+      await tester.enterText(find.byType(TextFormField).first, 'Same');
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
 
@@ -427,9 +428,10 @@ void main() {
       await tester.tap(find.byTooltip('Add profile'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField), 'x' * 81);
+      await tester.enterText(find.byType(TextFormField).first, 'x' * 81);
       await tester.pumpAndSettle();
-      final field = tester.widget<TextFormField>(find.byType(TextFormField));
+      final field =
+          tester.widget<TextFormField>(find.byType(TextFormField).first);
       expect(field.controller!.text.length, 80);
 
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
@@ -459,7 +461,7 @@ void main() {
 
       expect(find.widgetWithText(TextFormField, 'Alice'), findsOneWidget,
           reason: 'rename dialog prefilled');
-      await tester.enterText(find.byType(TextFormField), 'Alicia');
+      await tester.enterText(find.byType(TextFormField).first, 'Alicia');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
@@ -483,7 +485,7 @@ void main() {
       await tester.tap(find.text('Rename'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField), 'Alicia');
+      await tester.enterText(find.byType(TextFormField).first, 'Alicia');
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
 
@@ -491,6 +493,159 @@ void main() {
       expect(find.text('Alice'), findsOneWidget,
           reason: 'cancelling the dialog never calls renameProfile');
       expect(find.text('Alicia'), findsNothing);
+      await disposeApp(tester, db);
+    });
+  });
+
+  group('profile metadata (Issue #4 R1, R2, R3)', () {
+    testWidgets('creating a profile with a birth year and relationship set '
+        'via the Add-profile dialog persists both', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Seed', isMinor: false);
+      });
+
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).first, 'Luna');
+      await tester.enterText(find.byType(TextFormField).last, '2015');
+      await tester.tap(find.byType(DropdownButton<ProfileRelationship?>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Daughter').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      final luna = profiles.singleWhere((p) => p.displayName == 'Luna');
+      expect(luna.birthYear, 2015);
+      expect(luna.relationship, ProfileRelationship.daughter);
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('creating a profile with both fields left empty succeeds '
+        'and stores nulls', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Seed', isMinor: false);
+      });
+
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).first, 'Luna');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      final luna = profiles.singleWhere((p) => p.displayName == 'Luna');
+      expect(luna.birthYear, isNull);
+      expect(luna.relationship, isNull);
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('a non-numeric birth year shows a validation message and '
+        'blocks submission', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Seed', isMinor: false);
+      });
+
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).first, 'Luna');
+      await tester.enterText(find.byType(TextFormField).last, 'abcd');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enter a valid year'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget,
+          reason: 'dialog stays open on invalid input');
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      expect(profiles.any((p) => p.displayName == 'Luna'), isFalse,
+          reason: 'nothing was created from the invalid birth year');
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('an out-of-range birth year (18) shows a validation '
+        'message and blocks submission', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Seed', isMinor: false);
+      });
+
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).first, 'Luna');
+      await tester.enterText(find.byType(TextFormField).last, '18');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enter a year between 1900 and 2200'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget,
+          reason: 'dialog stays open on invalid input');
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('a birth year of 2200 is accepted and 2201 is rejected, '
+        'matching the server check', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Seed', isMinor: false);
+      });
+
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).first, 'Luna');
+      await tester.enterText(find.byType(TextFormField).last, '2201');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a year between 1900 and 2200'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField).last, '2200');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      final luna = profiles.singleWhere((p) => p.displayName == 'Luna');
+      expect(luna.birthYear, 2200);
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('editing a profile clears a previously set relationship '
+        'back to null', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage).create(
+          displayName: 'Alice',
+          isMinor: false,
+          relationship: ProfileRelationship.daughter,
+        );
+      });
+
+      final aliceTile =
+          find.ancestor(of: find.text('Alice'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Daughter'), findsOneWidget,
+          reason: 'dropdown prefilled from the existing relationship');
+
+      await tester.tap(find.byType(DropdownButton<ProfileRelationship?>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('None').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      final alice = profiles.singleWhere((p) => p.displayName == 'Alice');
+      expect(alice.relationship, isNull);
       await disposeApp(tester, db);
     });
   });
