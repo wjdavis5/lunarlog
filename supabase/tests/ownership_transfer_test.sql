@@ -4,7 +4,7 @@
 -- handover transaction, sovereignty after transfer, the attribution-guard
 -- bypass, and the cascade proofs that motivated R15.
 begin;
-select plan(71);
+select plan(74);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -649,6 +649,37 @@ select throws_ok(
   format($$select public.accept_guardian_invitation(%L)$$, pg_temp.token(21)),
   '55000', null,
   'Review item #4: the cancelled invitation is no longer redeemable after the handover'
+);
+
+-- ---------------------------------------------------------------------------
+-- 13. Round-2 review item #1 (P1): revocation of a guardian_invitations row
+-- is terminal. Without guardian_invitations_revocation_terminal_guard, the
+-- ex-parent (grandma) still satisfies the guardian_invitations_update
+-- policy's invited_by = auth.uid() check after the handover in section 12 -
+-- so a direct PATCH revoked_at: null would silently reopen the invitation
+-- section 12 just proved cancelled, and whoever holds token 21's raw token
+-- could still redeem it. Reuses grandma/finn/sitter and token(21) from
+-- section 12.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('grandma');
+select throws_ok(
+  format($$update public.guardian_invitations set revoked_at = null where token_hash = %L$$, pg_temp.token(21)),
+  '42501', null,
+  'Review item #1 (round 2): the ex-parent cannot un-revoke a guardian invitation by direct PATCH'
+);
+
+select tests.clear_authentication();
+select isnt(
+  (select revoked_at from public.guardian_invitations where token_hash = pg_temp.token(21)),
+  null,
+  'Review item #1 (round 2): the un-revoke attempt left revoked_at untouched'
+);
+
+select tests.authenticate_as('sitter');
+select throws_ok(
+  format($$select public.accept_guardian_invitation(%L)$$, pg_temp.token(21)),
+  '55000', null,
+  'Review item #1 (round 2): the token stays refused after the blocked un-revoke attempt'
 );
 
 select * from finish();
