@@ -41,8 +41,18 @@ async function withFetchStub<T>(stub: typeof fetch, run: () => Promise<T>): Prom
   }
 }
 
-function urlOf(input: RequestInfo | URL): string {
-  return typeof input === "string" ? input : input.toString();
+/** True only when [input]'s hostname is exactly the OAuth token host --
+ * a hostname comparison, not a substring match, so a URL like
+ * `https://evil.test/oauth2.googleapis.com` or
+ * `https://oauth2.googleapis.com.evil.test` can never be mistaken for it
+ * (CodeQL js/incomplete-url-substring-sanitization). */
+function isOauthTokenRequest(input: RequestInfo | URL): boolean {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  try {
+    return new URL(url).hostname === "oauth2.googleapis.com";
+  } catch {
+    return false;
+  }
 }
 
 const oauthOk = () => new Response(JSON.stringify({ access_token: "fake-token" }), { status: 200 });
@@ -52,7 +62,7 @@ Deno.test("sendPush: a stubbed fetch returning 200 yields success", async () => 
   let sendAttempted = false;
   const result = await withFetchStub(
     (async (input: RequestInfo | URL) => {
-      if (urlOf(input).includes("oauth2.googleapis.com")) return oauthOk();
+      if (isOauthTokenRequest(input)) return oauthOk();
       sendAttempted = true;
       return new Response(JSON.stringify({ name: "projects/test/messages/1" }), { status: 200 });
     }) as typeof fetch,
@@ -66,7 +76,7 @@ Deno.test("sendPush: a 404 with FCM's UNREGISTERED error yields unregistered", a
   const creds = await testCredsPromise;
   const result = await withFetchStub(
     (async (input: RequestInfo | URL) => {
-      if (urlOf(input).includes("oauth2.googleapis.com")) return oauthOk();
+      if (isOauthTokenRequest(input)) return oauthOk();
       return new Response(
         JSON.stringify({ error: { status: "NOT_FOUND", message: "Requested entity was not found. (UNREGISTERED)" } }),
         { status: 404 },
@@ -82,7 +92,7 @@ Deno.test("sendPush: an aborting fetch yields timeout", async () => {
   const creds = await testCredsPromise;
   const result = await withFetchStub(
     (async (input: RequestInfo | URL) => {
-      if (urlOf(input).includes("oauth2.googleapis.com")) return oauthOk();
+      if (isOauthTokenRequest(input)) return oauthOk();
       throw new DOMException("The signal has been aborted", "TimeoutError");
     }) as typeof fetch,
     () => sendPush(creds, { message: {} }),
@@ -94,7 +104,7 @@ Deno.test("sendPush: a thrown network error yields network_error", async () => {
   const creds = await testCredsPromise;
   const result = await withFetchStub(
     (async (input: RequestInfo | URL) => {
-      if (urlOf(input).includes("oauth2.googleapis.com")) return oauthOk();
+      if (isOauthTokenRequest(input)) return oauthOk();
       throw new TypeError("network down");
     }) as typeof fetch,
     () => sendPush(creds, { message: {} }),
@@ -109,7 +119,7 @@ Deno.test(
     let sendAttempted = false;
     const result = await withFetchStub(
       (async (input: RequestInfo | URL) => {
-        if (urlOf(input).includes("oauth2.googleapis.com")) {
+        if (isOauthTokenRequest(input)) {
           return new Response(null, { status: 401 });
         }
         sendAttempted = true;
