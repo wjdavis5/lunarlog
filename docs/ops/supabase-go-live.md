@@ -256,11 +256,16 @@ Supabase Auth setup above.
 
 - [x] App Store provisioning profile regenerated with the Sign in with Apple
       capability on the `com.wjdavis5.lunarlog` App ID, and
-      `IOS_PROVISION_PROFILE_BASE64` replaced. `ios-release.yml` now signs
-      cleanly; the run is currently blocked at the upload step instead, by
-      App Store Connect error 90592 ("Invalid Export Compliance Code") —
-      see [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md)
-      for the pending `ITSEncryptionExportComplianceCode` step.
+      `IOS_PROVISION_PROFILE_BASE64` replaced. Signing itself works cleanly on
+      a run that reaches it, but two blockers currently keep any run from
+      getting there or past it: a `Verify Supabase migrations are applied`
+      gate (issue #47) skips the build entirely when production is missing a
+      migration the repo expects (as it currently is), and on a run where
+      that gate passes, the upload step fails at App Store Connect error
+      90592 ("Invalid Export Compliance Code") — see
+      [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md) for
+      what to do if App Store Connect asks for compliance documentation or a
+      code.
 - [ ] App Privacy details in App Store Connect updated to match
       `ios/Runner/PrivacyInfo.xcprivacy`: Health and Email Address collected,
       linked to the user, for app functionality; Crash Data collected, not
@@ -622,10 +627,13 @@ is a gate before go-live.
   entitlements file, and the whole device checklist above.
 - Sentry smoke test (no DSN configured yet).
 - ~~Provisioning profile regeneration with the Sign in with Apple
-  capability~~ — done; `ios-release.yml` now signs cleanly. Obtaining the
-  real `ITSEncryptionExportComplianceCode` (see
-  [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md)) to unblock
-  the TestFlight upload step (ASC error 90592) is still not done.
+  capability~~ — done; signing itself works cleanly on a run that reaches
+  it. Two blockers still keep a run from getting there or past it: the
+  `Verify Supabase migrations are applied` gate (issue #47, currently
+  failing against production) and App Store Connect error 90592 ("Invalid
+  Export Compliance Code") at the upload step — see
+  [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md) for what
+  to do if App Store Connect asks for compliance documentation or a code.
 - The whole "Social logins and passwordless (issue #2)" go-live section
   (Google Cloud clients, Supabase Google provider, manual linking, both
   email templates, OTP expiry and length, sign-up closure, the Info.plist
