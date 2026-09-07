@@ -8,7 +8,8 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/app_lifecycle.dart' show DeviceResetCallback;
+import 'package:lunarlog/app_lifecycle.dart'
+    show DeviceResetCallback, RemovePushRegistrationCallback;
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -30,6 +31,10 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
     setState(() => _busy = true);
     final auth = context.read<AuthController>();
     try {
+      // #1 (review fix): remove this device's push registration while the
+      // session is still authenticated, before signOut() clears it - see
+      // RemovePushRegistrationCallback's doc comment.
+      await context.read<RemovePushRegistrationCallback?>()?.call();
       await auth.signOut(scope: AuthSignOutScope.local);
     } on AuthFailure catch (failure) {
       // The local session is gone regardless (service contract).

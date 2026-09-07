@@ -259,6 +259,48 @@ void main() {
     });
   });
 
+  group('computeHasPush', () {
+    Map<String, String> fullSet() => {
+          'projectId': 'proj-1',
+          'senderId': '1234567890',
+          'androidApiKey': 'android-key',
+          'androidAppId': '1:1234567890:android:abc',
+          'iosApiKey': 'ios-key',
+          'iosAppId': '1:1234567890:ios:abc',
+        };
+
+    bool call(Map<String, String> fields, {bool hasSupabase = true, bool isWeb = false}) =>
+        computeHasPush(
+          hasSupabase: hasSupabase,
+          isWeb: isWeb,
+          projectId: fields['projectId']!,
+          senderId: fields['senderId']!,
+          androidApiKey: fields['androidApiKey']!,
+          androidAppId: fields['androidAppId']!,
+          iosApiKey: fields['iosApiKey']!,
+          iosAppId: fields['iosAppId']!,
+        );
+
+    test('is false with any single FCM_* define empty', () {
+      for (final key in fullSet().keys) {
+        final fields = fullSet()..[key] = '';
+        expect(call(fields), isFalse, reason: 'empty $key must disable push');
+      }
+    });
+
+    test('is false on web even with every define set', () {
+      expect(call(fullSet(), isWeb: true), isFalse);
+    });
+
+    test('is false without hasSupabase', () {
+      expect(call(fullSet(), hasSupabase: false), isFalse);
+    });
+
+    test('is true only with the full set, natively, with Supabase configured', () {
+      expect(call(fullSet()), isTrue);
+    });
+  });
+
   group('AppConfig (compile-time values in this test run)', () {
     // The test runner passes no dart-defines, so every value is unconfigured.
     test('is unconfigured without dart-defines', () {
@@ -273,6 +315,13 @@ void main() {
       expect(AppConfig.hasGoogle, isFalse);
       expect(AppConfig.passkeyRelyingPartyId, isEmpty);
       expect(AppConfig.hasPasskeys, isFalse);
+      expect(AppConfig.fcmProjectId, isEmpty);
+      expect(AppConfig.fcmSenderId, isEmpty);
+      expect(AppConfig.fcmAndroidApiKey, isEmpty);
+      expect(AppConfig.fcmAndroidAppId, isEmpty);
+      expect(AppConfig.fcmIosApiKey, isEmpty);
+      expect(AppConfig.fcmIosAppId, isEmpty);
+      expect(AppConfig.hasPush, isFalse);
     });
 
     test('hasSupabase agrees with the pure function for this platform', () {
@@ -315,6 +364,22 @@ void main() {
         () {
       expect(AppConfig.sentryTracesSampleRate, isNull);
       expect(AppConfig.sentryTracesSampleRate, computeTracesSampleRate(''));
+    });
+
+    test('hasPush agrees with the pure function for this platform', () {
+      expect(
+        AppConfig.hasPush,
+        computeHasPush(
+          hasSupabase: AppConfig.hasSupabase,
+          isWeb: kIsWeb,
+          projectId: AppConfig.fcmProjectId,
+          senderId: AppConfig.fcmSenderId,
+          androidApiKey: AppConfig.fcmAndroidApiKey,
+          androidAppId: AppConfig.fcmAndroidAppId,
+          iosApiKey: AppConfig.fcmIosApiKey,
+          iosAppId: AppConfig.fcmIosAppId,
+        ),
+      );
     });
   });
 }

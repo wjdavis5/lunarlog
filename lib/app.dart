@@ -15,6 +15,7 @@ import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
+import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
@@ -22,6 +23,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -55,12 +57,16 @@ class LunarLogApp extends StatefulWidget {
     this.feedbackService,
     this.accountDeletionService,
     this.ownershipTransferService,
+    this.notificationPreferencesService,
+    this.reminderWindowUpsert,
     this.inviteLinks,
     this.initialInviteCode,
     this.initialInviteProfileId,
     this.initialInviteKind,
     this.onTeardown,
     this.resetDevice,
+    this.removePushRegistration,
+    this.removeAllPushRegistrations,
     this.showWebBanner = kIsWeb,
   });
 
@@ -83,6 +89,17 @@ class LunarLogApp extends StatefulWidget {
   /// `context.read<OwnershipTransferService>()`; when null nothing
   /// ownership-transfer-related is provided.
   final OwnershipTransferService? ownershipTransferService;
+
+  /// Caregiver alert preference service (Issue #5, U8). When present,
+  /// Manage guardians gains a "Notifications" entry (R1, R3, R4); when null
+  /// (an unconfigured build, or push unavailable) it is absent (R17) and
+  /// [reminderWindowUpsert] is never called.
+  final NotificationPreferencesService? notificationPreferencesService;
+
+  /// Publishes the client's cycle prediction to the server (Issue #5, U6;
+  /// R13). Null together with [notificationPreferencesService] on a build
+  /// without push.
+  final ReminderWindowUpsert? reminderWindowUpsert;
 
   /// `lunarlog://invite?code=...` links (U8; R9/F2), filtered by main.dart
   /// (or injected by tests). When present and a sharing service exists,
@@ -126,6 +143,20 @@ class LunarLogApp extends StatefulWidget {
   /// to [LunarLogDatabase.wipeAllData] alone.
   final DeviceResetCallback? resetDevice;
 
+  /// Explicit push-device-registration removal (#1 review fix). Same
+  /// override shape as [resetDevice]: `LunarLogRoot` provides it above this
+  /// widget in production, an explicit value (tests) takes precedence, and
+  /// a signed-out flow that has neither simply skips removal (push was
+  /// never started).
+  final RemovePushRegistrationCallback? removePushRegistration;
+
+  /// Explicit removal of every push registration for the current user,
+  /// across every device (round-2 review #9). Same override shape as
+  /// [removePushRegistration]: `LunarLogRoot` provides it above this widget
+  /// in production, an explicit value (tests) takes precedence, and a
+  /// signed-out flow that has neither simply skips it.
+  final RemoveAllPushRegistrationsCallback? removeAllPushRegistrations;
+
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
 
@@ -151,6 +182,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
   late final List<NavigatorObserver> _navigatorObservers =
       sentryNavigatorObservers();
   ReminderCoordinator? _coordinator;
+  ReminderWindowPublisher? _reminderWindowPublisher;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
@@ -197,6 +229,23 @@ class _LunarLogAppState extends State<LunarLogApp> {
     // no notification machinery is touched at all.
     if (widget.scheduler != null) {
       unawaited(_startReminders());
+    }
+    // Issue #5, U6/U8: keep the server's reminder-window snapshot in step
+    // with the local prediction. Both collaborators come from the same
+    // AppConfig.hasPush gate (app_lifecycle.dart), so this either starts
+    // with both present or not at all - R17 holds with zero conditionals
+    // beyond this null check.
+    final reminderWindowUpsert = widget.reminderWindowUpsert;
+    if (widget.notificationPreferencesService != null &&
+        reminderWindowUpsert != null) {
+      final publisher = ReminderWindowPublisher(
+        activeProfiles: _profiles.watch(),
+        predictionFor: _prediction.watch,
+        upsert: reminderWindowUpsert,
+        isSignedIn: () => _authController?.signedIn ?? false,
+      );
+      _reminderWindowPublisher = publisher;
+      publisher.start();
     }
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
@@ -375,8 +424,13 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _inviteSub = null;
     _authController?.dispose();
     _authController = null;
-    final teardown = _coordinator?.dispose() ?? Future<void>.value();
+    final coordinatorTeardown = _coordinator?.dispose() ?? Future<void>.value();
     _coordinator = null;
+    final publisherTeardown =
+        _reminderWindowPublisher?.dispose() ?? Future<void>.value();
+    _reminderWindowPublisher = null;
+    final teardown =
+        Future.wait([coordinatorTeardown, publisherTeardown]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {
       onTeardown(teardown);
@@ -393,6 +447,11 @@ class _LunarLogAppState extends State<LunarLogApp> {
     final syncEngine = widget.syncEngine;
     final resetDevice = widget.resetDevice ??
         Provider.of<DeviceResetCallback?>(context, listen: false);
+    final removePushRegistration = widget.removePushRegistration ??
+        Provider.of<RemovePushRegistrationCallback?>(context, listen: false);
+    final removeAllPushRegistrations = widget.removeAllPushRegistrations ??
+        Provider.of<RemoveAllPushRegistrationsCallback?>(context,
+            listen: false);
     return MultiProvider(
       providers: [
         if (authController != null)
@@ -400,6 +459,16 @@ class _LunarLogAppState extends State<LunarLogApp> {
         if (resetDevice != null)
           Provider<DeviceResetCallback>.value(
             value: resetDevice,
+            updateShouldNotify: (_, _) => false,
+          ),
+        if (removePushRegistration != null)
+          Provider<RemovePushRegistrationCallback>.value(
+            value: removePushRegistration,
+            updateShouldNotify: (_, _) => false,
+          ),
+        if (removeAllPushRegistrations != null)
+          Provider<RemoveAllPushRegistrationsCallback>.value(
+            value: removeAllPushRegistrations,
             updateShouldNotify: (_, _) => false,
           ),
         // Upload-consent counts (R14): the only place `lib/ui` learns how
@@ -423,6 +492,9 @@ class _LunarLogAppState extends State<LunarLogApp> {
         if (widget.accountDeletionService != null)
           Provider<AccountDeletionService>.value(
               value: widget.accountDeletionService!),
+        if (widget.notificationPreferencesService != null)
+          Provider<NotificationPreferencesService>.value(
+              value: widget.notificationPreferencesService!),
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<SettingsStore>.value(value: _settings),

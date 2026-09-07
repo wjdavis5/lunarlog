@@ -40,11 +40,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunarlog/app.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
+import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
+import 'package:lunarlog/data/notifications/reminder_window_publisher.dart'
+    show ReminderWindowUpsert;
+import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
+import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
@@ -55,6 +62,7 @@ import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
@@ -66,6 +74,7 @@ import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
+import 'package:uuid/uuid.dart';
 
 /// Platform channel used to set Android FLAG_SECURE (snapshot/screenshot
 /// suppression at the window level). Best effort — see
@@ -599,8 +608,90 @@ SyncEngine defaultSyncEngineBuilder({
 /// directly without passing one.
 typedef DeviceResetCallback = Future<void> Function();
 
+/// Explicit push-device-registration removal (#1 review fix), provided
+/// alongside [DeviceResetCallback] so a sign-out UI flow that does *not* go
+/// through [LunarLogRootState.resetDevice] (e.g. `AccountMismatchScreen`'s
+/// "Switch account", `AccountSection`'s "sign out everywhere") can still
+/// remove this device's push registration while the session is still
+/// authenticated, before calling the auth service's own signOut(). Always
+/// best-effort (never throws) and a no-op when push was never started
+/// (unconfigured build, web, or no session yet). Null in harnesses that
+/// mount `LunarLogApp` directly without passing one, exactly like
+/// [DeviceResetCallback].
+///
+/// Deliberately a wrapper class, not a bare `typedef ... = Future&lt;void&gt;
+/// Function()` (as first written, and as [DeviceResetCallback] itself is):
+/// Dart's generics use *structural* equality for function types, so a
+/// second same-shaped typedef used as a distinct `Provider<T>` type is
+/// indistinguishable at runtime from [DeviceResetCallback] - both reify to
+/// `Provider<Future<void> Function()>` - and one silently shadows the other
+/// in the provider tree depending on nesting order. `Provider.of`/
+/// `context.read` would then hand an `AccountMismatchScreen` calling
+/// `context.read<DeviceResetCallback?>()` this callback instead, or vice
+/// versa, with no compile-time or runtime signal that anything was wrong.
+/// Caught by `test/ui/account_test.dart`'s sign-out order assertions during
+/// review; the wrapper class gives this a distinct nominal type so it can
+/// never collide with [DeviceResetCallback] or any future same-shaped
+/// callback.
+class RemovePushRegistrationCallback {
+  const RemovePushRegistrationCallback(this._call);
+
+  final Future<void> Function() _call;
+
+  Future<void> call() => _call();
+}
+
+/// Removes every push registration for the current user across every
+/// device, not just this one (round-2 review #9) - provided alongside
+/// [RemovePushRegistrationCallback] for flows where the user explicitly
+/// asked to be signed out *everywhere* (`AccountSection`'s "sign out
+/// everywhere", which already calls `signOut(scope: global)` to revoke
+/// every device's session server-side). Without this, another device's
+/// `push_devices` row and FCM token survive that call and keep receiving
+/// this user's caregiver alerts, since that device's own coordinator only
+/// reacts to its *own* auth-state stream noticing the revoked session -
+/// which by then runs as anon (no grant on `push_devices` at all) - or
+/// never reacts at all if the app is not foregrounded before the session
+/// is next used. Same wrapper-class rationale as
+/// [RemovePushRegistrationCallback] (see its doc comment) - a bare
+/// same-shaped typedef would collide with it and [DeviceResetCallback] in
+/// the provider tree. Null in harnesses that mount `LunarLogApp` directly
+/// without passing one.
+class RemoveAllPushRegistrationsCallback {
+  const RemoveAllPushRegistrationsCallback(this._call);
+
+  final Future<void> Function() _call;
+
+  Future<void> call() => _call();
+}
+
 /// Default native key deletion for [LunarLogRoot.deleteDbKey].
 Future<void> defaultDeleteDbKey() => SecureDbKeyStore().deleteKey();
+
+/// This install's stable push-registration device id (Issue #5, U7; R19):
+/// read from [settings] if already generated, otherwise minted once and
+/// persisted. Split out of [LunarLogRootState._startPushRegistration] so the
+/// id-resolution branch is directly unit-testable against a fake
+/// [SettingsStore].
+@visibleForTesting
+Future<String> resolvePushDeviceId(
+  SettingsStore settings, {
+  String Function() generateId = _defaultGenerateDeviceId,
+}) async {
+  final existing = await settings.get(SettingsKeys.pushDeviceId);
+  if (existing != null && existing.isNotEmpty) return existing;
+  final generated = generateId();
+  await settings.set(SettingsKeys.pushDeviceId, generated);
+  return generated;
+}
+
+String _defaultGenerateDeviceId() => const Uuid().v4();
+
+/// `'ios'` or `'android'` — the value `push_devices.platform` stores
+/// (Issue #5, U7). Split out for the same reason as [resolvePushDeviceId].
+@visibleForTesting
+String pushPlatformName() =>
+    defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
 
 /// App root and state machine: locked → (credential) → database open →
 /// app; or locked forever on repeated declines; or fail-closed screen on
@@ -623,6 +714,7 @@ class LunarLogRoot extends StatefulWidget {
     this.feedbackService,
     this.accountDeletionService,
     this.ownershipTransferService,
+    this.notificationPreferencesService,
     this.supabaseClient,
     this.inviteLinks,
     this.initialInviteCode,
@@ -678,6 +770,13 @@ class LunarLogRoot extends StatefulWidget {
   /// building both in the same place a `SupabaseClient` is in scope.
   final OwnershipTransferService? ownershipTransferService;
 
+  /// Caregiver alert preference service (Issue #5, U6/U8), injectable for
+  /// tests. When null the root constructs the production
+  /// [SupabaseNotificationPreferencesService] only when `AppConfig.hasPush`
+  /// (R17) - an unconfigured build never provides one, so Manage guardians'
+  /// Notifications tile is absent with zero conditionals in the caller.
+  final NotificationPreferencesService? notificationPreferencesService;
+
   /// The Supabase client from the successful bootstrap. When present (and
   /// [sharingService]/[feedbackService]/[accountDeletionService]/
   /// [ownershipTransferService] were not injected) the root constructs the
@@ -732,7 +831,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
   FeedbackService? _builtFeedbackService;
   AccountDeletionService? _builtAccountDeletionService;
   OwnershipTransferService? _builtOwnershipTransferService;
+  NotificationPreferencesService? _builtNotificationPreferencesService;
+  ReminderWindowUpsert? _reminderWindowUpsert;
   RealtimeSyncCoordinator? _realtimeCoordinator;
+  PushRegistrationCoordinator? _pushCoordinator;
 
   /// The app subtree's teardown (reminder coordinator disposal), captured
   /// when [LunarLogApp] unmounts so a device reset (KTD16) can await it
@@ -829,7 +931,53 @@ class LunarLogRootState extends State<LunarLogRoot> {
       );
       _realtimeCoordinator = coordinator;
       coordinator.start();
+
+      // Issue #5, U7/U8: push registration and the Notifications screen.
+      // Gated by AppConfig.hasPush (R17, R18) — an unconfigured or web
+      // build never constructs any of this, so it never touches
+      // firebase_messaging and Manage guardians shows no Notifications tile.
+      if (AppConfig.hasPush && !widget.isWeb) {
+        unawaited(_startPushRegistration(db, authService, client));
+        _builtNotificationPreferencesService =
+            SupabaseNotificationPreferencesService(client: client);
+        _reminderWindowUpsert =
+            (profileId, estimatedNextStartIso, episodeOpen) async {
+          await client.rpc<dynamic>('upsert_reminder_window', params: {
+            'p_profile_id': profileId,
+            'p_estimated_next_start': estimatedNextStartIso,
+            'p_episode_open': episodeOpen,
+          });
+        };
+      }
     }
+  }
+
+  /// Resolves (generating and persisting once) this install's stable
+  /// push-registration device id, then starts the coordinator (R19). Split
+  /// from [resolvePushDeviceId] and [pushPlatformName] so this method's own
+  /// branching stays low — the id-resolution and platform-name decisions are
+  /// unit-tested directly, since this method itself only ever runs behind
+  /// `AppConfig.hasPush`, which is always false under `flutter test`.
+  Future<void> _startPushRegistration(
+    LunarLogDatabase db,
+    AuthService authService,
+    SupabaseClient client,
+  ) async {
+    final deviceId =
+        await resolvePushDeviceId(DriftSettingsStore(db.storage));
+    if (!mounted) return;
+
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: FirebasePushTokenSource(),
+      registry: SupabasePushDeviceRegistry(client: client),
+      deviceId: deviceId,
+      platform: pushPlatformName(),
+      authStates: authService.states,
+      currentAuthState: () => authService.state,
+      onTap: _gate.setPendingLaunchProfileId,
+    );
+    _pushCoordinator = coordinator;
+    await coordinator.start();
   }
 
   /// Stops the engine and waits for its in-flight batch or page, so the
@@ -841,10 +989,15 @@ class LunarLogRootState extends State<LunarLogRoot> {
     final coordinator = _realtimeCoordinator;
     _realtimeCoordinator = null;
     await coordinator?.dispose();
+    final pushCoordinator = _pushCoordinator;
+    _pushCoordinator = null;
+    await pushCoordinator?.dispose();
     _builtSharingService = null;
     _builtFeedbackService = null;
     _builtAccountDeletionService = null;
     _builtOwnershipTransferService = null;
+    _builtNotificationPreferencesService = null;
+    _reminderWindowUpsert = null;
     final engine = _syncEngine;
     _syncEngine = null;
     await engine?.dispose();
@@ -898,6 +1051,13 @@ class LunarLogRootState extends State<LunarLogRoot> {
     if (_resetting) return;
     _resetting = true;
     try {
+      // #1 (review fix): explicitly remove this device's push registration
+      // while the session is still authenticated - before _disposeSyncEngine
+      // below disposes the coordinator (cancelling its auth-state
+      // subscription, so it would otherwise never see the sign-out that
+      // follows) and before _signOutLocally clears the session (after which
+      // any registry call would run as anon and RLS would silently deny it).
+      await _pushCoordinator?.removeRegistration();
       await _disposeSyncEngine();
       final db = _db;
       await _detachDatabaseFromTree(db);
@@ -994,6 +1154,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
             widget.accountDeletionService ?? _builtAccountDeletionService,
         ownershipTransferService:
             widget.ownershipTransferService ?? _builtOwnershipTransferService,
+        notificationPreferencesService: widget.notificationPreferencesService ??
+            _builtNotificationPreferencesService,
+        reminderWindowUpsert: _reminderWindowUpsert,
         inviteLinks: widget.inviteLinks,
         initialInviteCode: widget.initialInviteCode,
         initialInviteProfileId: widget.initialInviteProfileId,
@@ -1017,13 +1180,44 @@ class LunarLogRootState extends State<LunarLogRoot> {
       child: Provider<DeviceResetCallback>.value(
         value: resetDevice,
         updateShouldNotify: (_, _) => false,
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: GateShell(controller: _gate, child: content),
+        child: Provider<RemovePushRegistrationCallback>.value(
+          value: _removePushRegistrationCallback,
+          updateShouldNotify: (_, _) => false,
+          child: Provider<RemoveAllPushRegistrationsCallback>.value(
+            value: _removeAllPushRegistrationsCallback,
+            updateShouldNotify: (_, _) => false,
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: GateShell(controller: _gate, child: content),
+            ),
+          ),
         ),
       ),
     );
   }
+
+  // The two getters below are split out of build() (rather than inlined, as
+  // RemovePushRegistrationCallback's originally was) so each null-aware
+  // `_pushCoordinator?....() ?? Future.value()` closure's own decision point
+  // scores against its own tiny method under the CRAP gate (tool/quality/
+  // crap_gate.dart) instead of compounding onto build()'s own already-large
+  // complexity/coverage budget - `_pushCoordinator` is always null under
+  // `flutter test` (AppConfig.hasPush is compile-time false there), so
+  // neither closure body can ever be driven to full coverage by this
+  // suite, and build() is exactly the kind of large, branch-heavy method
+  // where one more permanently-uncovered branch tips its CRAP score over
+  // the gate's threshold.
+
+  RemovePushRegistrationCallback get _removePushRegistrationCallback =>
+      RemovePushRegistrationCallback(
+        () async => _pushCoordinator?.removeRegistration() ?? Future.value(),
+      );
+
+  RemoveAllPushRegistrationsCallback get _removeAllPushRegistrationsCallback =>
+      RemoveAllPushRegistrationsCallback(
+        () async =>
+            _pushCoordinator?.removeAllRegistrations() ?? Future.value(),
+      );
 }
 
 /// Wraps the app content with the activity listener and the lock/cover
