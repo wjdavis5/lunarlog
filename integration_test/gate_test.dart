@@ -208,19 +208,28 @@ Future<void> main() async {
     // The field defect, end to end: Face ID succeeds, and the lock screen
     // used to stay up with no error because the prompt's own `inactive`
     // report was read as the operator leaving.
+    //
+    // Cold start presents the credential automatically (app_lifecycle.dart's
+    // initState postFrameCallback, F3) -- there is no button tap before the
+    // first attempt, so `onPrompt` must be wired *before* pumpWidget to be
+    // in place when that automatic attempt fires. An earlier version of
+    // this test asserted a lock-screen was present immediately after the
+    // first pump/pumpAndSettle, before wiring onPrompt or tapping anything;
+    // that assumed cold start waits for an explicit tap, which it does not
+    // (and never has, since issue #65's own fix) -- the assertion only
+    // looked correct on host-mode's own timing and was never actually
+    // exercised against a real device until this suite ran on one.
     final db = await seededDb();
     final gate = FakeGate();
+    gate.onPrompt = () => tester.binding
+        .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+
     await tester.pumpWidget(LunarLogRoot(
       gate: gate,
       dbOpener: () async => db,
     ));
     await tester.pump();
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('lock-screen')), findsOneWidget);
-
-    gate.onPrompt = () => tester.binding
-        .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    await unlockViaButton(tester);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     await drainIsolateTraffic(tester);
