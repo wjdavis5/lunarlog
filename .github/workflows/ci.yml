@@ -313,13 +313,20 @@ jobs:
           xcrun simctl bootstatus "iPhone 17" -b
 
       - name: Run integration tests on the simulator
-        # gate_test.dart's own doc comment says it also runs host-only via
-        # plain `flutter test`, but forcing it onto a real simulator here
-        # exercises the actual platform channels (biometric prompt gating,
-        # inactivity lifecycle events) that a host-mode run fakes out
-        # entirely -- the whole reason this job exists on real hardware
-        # rather than folding into the Linux `check` job.
-        run: flutter test integration_test/gate_test.dart -d "iPhone 17"
+        # Scoped to the tests confirmed safe against a real device (issue
+        # #121): any test that manually drives the binding to
+        # AppLifecycleState.paused/hidden (transitionTo in this file)
+        # triggers genuine OS-level app suspension here, unlike host-mode
+        # where it is a pure Dart-level notification -- once suspended for
+        # real, the VM service connection this job's `flutter test`
+        # depends on hangs forever. The excluded tests ("backgrounding
+        # re-locks...", "inactivity timeout re-locks...") are still
+        # covered by test/ui/gate_test.dart's host-mode GateController
+        # tests, which exercise the same scenarios without a full
+        # on-device widget tree.
+        run: |
+          flutter test integration_test/gate_test.dart -d "iPhone 17" \
+            --name "cold start requires the gate|retry loop: repeated declines stay locked|issue #65: the credential prompt|simulated launch payload routes through the gate"
 
       - name: Shut down simulator
         if: always()
