@@ -1,8 +1,8 @@
 /// U6 / KTD16 / AE10: `LunarLogRoot.resetDevice()` is one ordered
 /// operation — engine disposed, app tree unmounted, database closed, file
-/// deleted before key, the best-effort server sign-out, and only then the
-/// reopen through `dbOpener` (fresh key) so the new database never binds to
-/// the account being signed out. The database, engine, file and
+/// deleted before key, the best-effort local-only sign-out, and only then
+/// the reopen through `dbOpener` (fresh key) so the new database never binds
+/// to the account being signed out. The database, engine, file and
 /// key primitives are all recorders so the order is asserted literally.
 library;
 
@@ -139,7 +139,7 @@ void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
   testWidgets('native reset: engine dispose → unmount → close → delete file '
-      '→ delete key → best-effort server sign-out → reopen; the tree lands '
+      '→ delete key → best-effort local sign-out → reopen; the tree lands '
       'on first-run', (tester) async {
     final h = ResetHarness(tester);
     h.auth.emit(AuthSessionState.signedIn,
