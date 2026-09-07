@@ -513,9 +513,10 @@ class LunarLogStorage {
   /// other live local row for that (profile, date) first: a local loser is
   /// tombstoned with the winner's timestamp and marked dirty; a remote loser
   /// is stored as a tombstone (not dirty — the server resolves it when the
-  /// local winner is pushed). The partial unique index is therefore never
-  /// violated. Throws [RetryableSyncApplyError] when the entry's profile is
-  /// not held locally yet.
+  /// local winner is pushed). When a remote winner absorbs tags from a local
+  /// loser, it is marked dirty so the merge reaches the server. The partial
+  /// unique index is therefore never violated. Throws [RetryableSyncApplyError]
+  /// when the entry's profile is not held locally yet.
   Future<bool> applyRemoteDayEntry(RemoteDayEntryRow remote) =>
       db.transaction(() => _applyDayEntry(remote, onlyExisting: false));
 
@@ -785,8 +786,11 @@ class LunarLogStorage {
 
     var updatedAt = remote.updatedAt.toUtc();
     var deletedAt = remote.deletedAt?.toUtc();
+    var tags = remote.tags;
+    var dirty = false;
     if (deletedAt == null) {
-      (updatedAt, deletedAt) = await _resolveSameDateConflicts(remote, updatedAt);
+      (updatedAt, deletedAt, tags, dirty) =
+          await _resolveSameDateConflicts(remote, updatedAt);
     }
     final tombstone = deletedAt != null;
     if (local == null) {
@@ -796,12 +800,12 @@ class LunarLogStorage {
             localDate: remote.localDate,
             tz: remote.tz,
             flow: remote.flow,
-            tags: Value(_dayEntryTags(tombstone, remote)),
+            tags: Value(_dayEntryTags(tombstone, tags)),
             note: Value(_dayEntryNote(tombstone, remote)),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
-            localRev: const Value(0),
+            dirty: Value(dirty),
+            localRev: Value(dirty ? 1 : 0),
             loggedByUserId: Value(remote.loggedByUserId),
             lastModifiedByUserId: Value(remote.lastModifiedByUserId),
           ));
@@ -813,11 +817,12 @@ class LunarLogStorage {
       localDate: Value(remote.localDate),
       tz: Value(remote.tz),
       flow: Value(remote.flow),
-      tags: Value(_dayEntryTags(tombstone, remote)),
+      tags: Value(_dayEntryTags(tombstone, tags)),
       note: Value(_dayEntryNote(tombstone, remote)),
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),
-      dirty: const Value(false),
+      dirty: Value(dirty),
+      localRev: dirty ? Value(local.localRev + 1) : const Value.absent(),
       loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
       lastModifiedByUserId: Value(remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
     ));
@@ -852,17 +857,34 @@ class LunarLogStorage {
     }
   }
 
+  static bool _tagsEqual(List<String> a, List<String> b) {
+    if (identical(a, b)) return true;
+    final setA = a.toSet();
+    final setB = b.toSet();
+    if (setA.length != setB.length) return false;
+    return setA.containsAll(setB);
+  }
+
   /// Runs the same-date rule against every other live local row for
   /// [remote]'s (profile, date), starting from [updatedAt] (only called
   /// while [remote] itself is not already a tombstone). A local loser is
   /// tombstoned in place with the winner's timestamp and marked dirty so
   /// the resolution is pushed; a remote loser makes [remote] itself the
   /// tombstone, stamped with the local winner's timestamp (>=
-  /// `remote.updatedAt` by the rule). Returns the `updated_at` /
-  /// `deleted_at` pair [remote] should be written with.
-  Future<(DateTime, DateTime?)> _resolveSameDateConflicts(
+  /// `remote.updatedAt` by the rule). Either way, R7/R11 (issue #3
+  /// gap-closure plan, Unit U5): the loser's tags are unioned onto whichever
+  /// row survives, mirroring the server's `sync_push` resolver exactly
+  /// (KTD4/KTD6), rather than being discarded. Returns the `updated_at` /
+  /// `deleted_at` / `tags` / `dirty` quadruple [remote] should be written
+  /// with — when [remote] survives and absorbed tags from a local loser,
+  /// [dirty] is true so the client-computed merge is pushed to the server
+  /// (matching how the sibling branch marks its local survivor dirty). The
+  /// `tags` value is meaningless when `deleted_at` is non-null, since
+  /// tombstones are always written payload-free (R12) regardless.
+  Future<(DateTime, DateTime?, List<String>, bool)> _resolveSameDateConflicts(
       RemoteDayEntryRow remote, DateTime updatedAt) async {
     DateTime? deletedAt;
+    var tags = remote.tags;
     final incoming = DayEntryCandidate(id: remote.id, updatedAt: updatedAt);
     final others = (await _liveDayEntries(remote.profileId, remote.localDate))
         .where((row) => row.id != remote.id);
@@ -873,7 +895,9 @@ class LunarLogStorage {
       )!;
       if (winner.id == remote.id) {
         // Local loser: tombstone with the winner's timestamp, dirty so the
-        // resolution is pushed.
+        // resolution is pushed. R7: union its tags onto the incoming
+        // (surviving) row instead of discarding them.
+        tags = mergeTags(tags, other.tags);
         await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
             .write(DayEntriesCompanion(
           note: const Value(null),
@@ -885,17 +909,29 @@ class LunarLogStorage {
         ));
       } else {
         // Remote loser: store it as a tombstone stamped with the local
-        // winner's timestamp (>= remote.updatedAt by the rule).
+        // winner's timestamp (>= remote.updatedAt by the rule). R7/R11: the
+        // union of both rows' tags is written onto the surviving local
+        // winner in the same write that already touches it, and it is
+        // marked dirty with a bumped localRev so the merge is pushed -
+        // matching how the local-loser branch above already marks its
+        // tombstone dirty.
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
+            .write(DayEntriesCompanion(
+          tags: Value(mergeTags(other.tags, tags)),
+          dirty: const Value(true),
+          localRev: Value(other.localRev + 1),
+        ));
         updatedAt = other.updatedAt.toUtc();
         deletedAt = updatedAt;
       }
     }
-    return (updatedAt, deletedAt);
+    final hasNewTags = !_tagsEqual(tags, remote.tags);
+    return (updatedAt, deletedAt, tags, hasNewTags && deletedAt == null);
   }
 
   /// The `tags` to write for a day entry row: cleared for a tombstone.
-  List<String> _dayEntryTags(bool tombstone, RemoteDayEntryRow remote) =>
-      tombstone ? const <String>[] : remote.tags;
+  List<String> _dayEntryTags(bool tombstone, List<String> tags) =>
+      tombstone ? const <String>[] : tags;
 
   /// The `note` to write for a day entry row: cleared for a tombstone.
   String? _dayEntryNote(bool tombstone, RemoteDayEntryRow remote) =>

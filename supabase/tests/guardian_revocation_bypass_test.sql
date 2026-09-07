@@ -82,6 +82,11 @@ select is(
 -- with auth.uid() null (clear_authentication, not authenticate_as('mom')) to
 -- reach the "as if #81 had never run" state under test here without
 -- exercising that guard.
+-- ---------------------------------------------------------------------------
+-- Issue #3 gap-closure plan (Unit U1, KTD2) withdrew the direct
+-- `update (revoked_at)` grant entirely, so this test-only rewind (never a
+-- capability the app itself has) now needs the table owner's bypass rather
+-- than an authenticated session.
 select tests.clear_authentication();
 update public.guardian_invitations
    set revoked_at = null

@@ -89,6 +89,73 @@ void main() {
     });
   });
 
+  group('PendingInvite equality and hashCode', () {
+    final now = DateTime.utc(2026, 9, 6);
+    final expires = DateTime.utc(2026, 9, 8);
+    PendingInvite invite({String recipientLabel = 'Grandma'}) => PendingInvite(
+          invitationId: 'inv-1',
+          profileId: 'p-1',
+          role: GuardianRole.viewer,
+          recipientLabel: recipientLabel,
+          createdAt: now,
+          expiresAt: expires,
+        );
+
+    test('identical and equal instances compare equal', () {
+      expect(invite(), invite());
+      expect(invite().hashCode, invite().hashCode);
+    });
+
+    test('differing fields compare unequal', () {
+      expect(invite(), isNot(invite(recipientLabel: 'Grandpa')));
+      expect(
+        invite(),
+        isNot(PendingInvite(
+          invitationId: 'inv-2',
+          profileId: 'p-1',
+          role: GuardianRole.viewer,
+          recipientLabel: 'Grandma',
+          createdAt: now,
+          expiresAt: expires,
+        )),
+      );
+    });
+
+    test('different type is not equal', () {
+      // ignore: unrelated_type_equality_checks
+      expect(invite() == 'not an invite', isFalse);
+    });
+  });
+
+  group('InviteCancellation.fromDb', () {
+    test('round-trips every known outcome', () {
+      expect(InviteCancellation.fromDb('revoked'), InviteCancellation.revoked);
+      expect(InviteCancellation.fromDb('already_revoked'), InviteCancellation.alreadyRevoked);
+      expect(InviteCancellation.fromDb('already_accepted'), InviteCancellation.alreadyAccepted);
+      expect(InviteCancellation.fromDb('expired'), InviteCancellation.expired);
+    });
+
+    test('an unknown value fails loudly rather than defaulting to success', () {
+      expect(() => InviteCancellation.fromDb('unknown'), throwsArgumentError);
+    });
+
+    test('every outcome has non-empty user-facing copy', () {
+      for (final outcome in InviteCancellation.values) {
+        expect(outcome.userFacingMessage, isNotEmpty);
+      }
+    });
+
+    test('userFacingMessage is pinned per outcome', () {
+      expect(InviteCancellation.revoked.userFacingMessage, 'Invitation cancelled');
+      expect(InviteCancellation.alreadyAccepted.userFacingMessage,
+          'That invitation was already accepted');
+      expect(InviteCancellation.alreadyRevoked.userFacingMessage,
+          'That invitation was already cancelled');
+      expect(InviteCancellation.expired.userFacingMessage,
+          'That invitation had already expired');
+    });
+  });
+
   group('SharingFailure types', () {
     test('constructors and message descriptions', () {
       expect(const SharingFailure.expired(), isA<SharingExpiredFailure>());

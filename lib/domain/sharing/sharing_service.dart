@@ -65,6 +65,81 @@ class GeneratedInvite {
       );
 }
 
+/// An outstanding (not accepted, not revoked, not expired) invitation,
+/// read on demand from the server and never persisted locally (KTD3; R1,
+/// R6). Carries no token or hash - a screenshot of the pending list must
+/// never be redeemable.
+@immutable
+class PendingInvite {
+  const PendingInvite({
+    required this.invitationId,
+    required this.profileId,
+    required this.role,
+    this.recipientLabel,
+    required this.createdAt,
+    required this.expiresAt,
+  });
+
+  final String invitationId;
+  final String profileId;
+  final GuardianRole role;
+  final String? recipientLabel;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PendingInvite &&
+          other.invitationId == invitationId &&
+          other.profileId == profileId &&
+          other.role == role &&
+          other.recipientLabel == recipientLabel &&
+          other.createdAt == createdAt &&
+          other.expiresAt == expiresAt;
+
+  @override
+  int get hashCode => Object.hash(
+        invitationId,
+        profileId,
+        role,
+        recipientLabel,
+        createdAt,
+        expiresAt,
+      );
+}
+
+/// Outcome of cancelling a pending invitation, mirroring
+/// `revoke_guardian_invitation`'s returned `outcome` (R2, R5). Every
+/// terminal state is a value here, never an exception: cancelling an
+/// already-cancelled, already-accepted, or already-expired invitation
+/// reports its outcome cleanly instead of throwing.
+enum InviteCancellation {
+  revoked,
+  alreadyRevoked,
+  alreadyAccepted,
+  expired;
+
+  static InviteCancellation fromDb(String value) => switch (value) {
+        'revoked' => revoked,
+        'already_revoked' => alreadyRevoked,
+        'already_accepted' => alreadyAccepted,
+        'expired' => expired,
+        _ => throw ArgumentError.value(
+            value, 'value', 'unknown invite cancellation outcome'),
+      };
+
+  /// User-facing copy for the outcome (R5), on the domain type per this
+  /// repo's copy convention rather than hardcoded in the widget - mirrors
+  /// [SharingFailure.userFacingMessage].
+  String get userFacingMessage => switch (this) {
+        revoked => 'Invitation cancelled',
+        alreadyAccepted => 'That invitation was already accepted',
+        alreadyRevoked => 'That invitation was already cancelled',
+        expired => 'That invitation had already expired',
+      };
+}
+
 /// Result returned upon accepting an invitation.
 @immutable
 class AcceptedInviteResult {
@@ -199,4 +274,12 @@ abstract interface class SharingService {
     required String profileId,
     required String targetUserId,
   });
+
+  /// Lists [profileId]'s outstanding invitations (R1), ordered by creation
+  /// time. Read on demand - never synced into local storage (KTD3, R6).
+  Future<List<PendingInvite>> listPendingInvites(String profileId);
+
+  /// Cancels a single outstanding invitation (R2), after which its token
+  /// can never be redeemed. Idempotent (R5) - see [InviteCancellation].
+  Future<InviteCancellation> cancelInvite(String invitationId);
 }
