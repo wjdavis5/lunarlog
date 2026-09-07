@@ -36,8 +36,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   singleton (KTD4).
   /// * 3 — `logged_by_user_id` + `last_modified_by_user_id` on day_entries;
   ///   `profile_guardians` table (Issue #8).
+  /// * 4 — `birth_year` + `relationship` + `transferred_at` on profiles
+  ///   (Issue #4, parent-first custodianship and ownership transfer).
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -56,7 +58,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// the step just completed (`profiles.dirty`, `profiles.local_rev`,
   /// `day_entries.dirty`, `day_entries.local_rev`, `sync_state`,
   /// `day_entries.logged_by_user_id`, `day_entries.last_modified_by_user_id`,
-  /// `profile_guardians`). A hook
+  /// `profile_guardians`, `profiles.birth_year`, `profiles.relationship`,
+  /// `profiles.transferred_at`). A hook
   /// that throws proves the transaction wrapper rolls the whole upgrade
   /// back. Must be set before the first query. Null in production.
   @visibleForTesting
@@ -100,6 +103,16 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('day_entries.last_modified_by_user_id');
         await m.createTable(profileGuardians);
         await migrationStepHook?.call('profile_guardians');
+      });
+    }
+    if (from < 4) {
+      await transaction(() async {
+        await m.addColumn(profiles, profiles.birthYear);
+        await migrationStepHook?.call('profiles.birth_year');
+        await m.addColumn(profiles, profiles.relationship);
+        await migrationStepHook?.call('profiles.relationship');
+        await m.addColumn(profiles, profiles.transferredAt);
+        await migrationStepHook?.call('profiles.transferred_at');
       });
     }
   }

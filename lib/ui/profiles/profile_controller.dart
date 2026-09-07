@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
@@ -85,17 +86,28 @@ class ProfileController extends ChangeNotifier {
   Future<Profile> createProfile({
     required String displayName,
     required bool isMinor,
+    int? birthYear,
+    ProfileRelationship? relationship,
   }) =>
-      _profiles.create(displayName: _validated(displayName), isMinor: isMinor);
+      _profiles.create(
+        displayName: _validated(displayName),
+        isMinor: isMinor,
+        birthYear: birthYear,
+        relationship: relationship,
+      );
 
   Future<void> renameProfile(
     Profile profile, {
     required String displayName,
     required bool isMinor,
+    int? birthYear,
+    ProfileRelationship? relationship,
   }) =>
       _profiles.update(profile.copyWith(
         displayName: _validated(displayName),
         isMinor: isMinor,
+        birthYear: birthYear,
+        relationship: relationship,
       ));
 
   Future<void> selectProfile(String id) async {

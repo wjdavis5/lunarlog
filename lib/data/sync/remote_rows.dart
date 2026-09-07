@@ -43,6 +43,9 @@ final class RemoteProfileRow extends RemoteRow {
     required this.updatedAt,
     required this.deletedAt,
     this.serverVersion = 0,
+    this.birthYear,
+    this.relationship,
+    this.transferredAt,
   });
 
   @override
@@ -58,6 +61,22 @@ final class RemoteProfileRow extends RemoteRow {
   final DateTime? deletedAt;
   @override
   final int serverVersion;
+
+  /// Issue #4 R1. Raw, undecoded: only `row_codec.dart`'s decode reads it
+  /// off the wire; converting to a domain type happens in `mappers.dart`.
+  final int? birthYear;
+
+  /// Issue #4 R3. The raw `toDb()` string. `row_codec.dart`'s `decodeProfile`
+  /// already normalises an unrecognised value to null against the closed
+  /// set before constructing this row; `mappers.dart`'s
+  /// `ProfileRelationship.fromDb` normalises again on the way to the
+  /// domain model, so a row built directly (tests) with a raw, unvalidated
+  /// string still degrades safely.
+  final String? relationship;
+
+  /// Issue #4 R5. Server-owned; pulled here but never pushed by
+  /// `encodeProfile`.
+  final DateTime? transferredAt;
 
   @override
   SyncTable get table => SyncTable.profiles;
