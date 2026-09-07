@@ -269,6 +269,23 @@ begin
 
   v_now := clock_timestamp();
 
+  -- Issue #4, U3, review item #1 (P0): close the ownership-transfer bypass.
+  -- A revoked guardian could otherwise still redeem a still-live
+  -- ownership-transfer link (arming parents and transfer tokens carry no
+  -- invitee identity, exactly like guardian_invitations) and take sole
+  -- ownership of the profile out from under the guardian who just revoked
+  -- them. This update runs first, ahead of the guardian_invitations and
+  -- profile_guardians updates below, so the lock order here -
+  -- ownership_transfers, then guardian_invitations, then profile_guardians
+  -- - matches accept_ownership_transfer's own order (transfer row, then
+  -- profiles, then profile_guardians; see 20260906180000_ownership_transfer_rpcs.sql's
+  -- header) and the two RPCs cannot deadlock against each other.
+  update public.ownership_transfers
+     set cancelled_at = v_now
+   where profile_id = p_profile_id
+     and accepted_at is null
+     and cancelled_at is null;
+
   -- #81: revocation must close every door, not just the one the revoked
   -- user already walked through. guardian_invitations binds to a token
   -- (see 20260904010000_multi_guardian_schema.sql) rather than a recipient
