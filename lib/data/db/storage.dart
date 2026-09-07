@@ -92,6 +92,19 @@ void _validateNote(String? note) {
   }
 }
 
+void _validateTags(List<String> tags) {
+  if (tags.length > kMaxTagCount) {
+    throw ArgumentError.value(tags.length, 'tags',
+        'must have at most $kMaxTagCount elements');
+  }
+  for (final tag in tags) {
+    if (tag.length > kMaxTagLength) {
+      throw ArgumentError.value(tag.length, 'tags',
+          'must be at most $kMaxTagLength characters');
+    }
+  }
+}
+
 /// The `sync_state` row as read when none has been written yet.
 const SyncStateRow kDefaultSyncState = SyncStateRow(
   id: 1,
@@ -248,7 +261,8 @@ class LunarLogStorage {
   ///   full-fidelity reads for sync; the new ULID row wins UI reads.
   ///
   /// Marks the row dirty and bumps `local_rev`. Throws [ArgumentError] for
-  /// a [note] over [kMaxNoteLength].
+  /// a [note] over [kMaxNoteLength], a [tags] list over [kMaxTagCount]
+  /// elements, or a [tags] element over [kMaxTagLength].
   Future<DayEntry> upsertDayEntry({
     required String profileId,
     required String localDate,
@@ -262,6 +276,7 @@ class LunarLogStorage {
     // throws, for callers awaiting the result.
     _validateLocalDate(localDate);
     _validateNote(note);
+    _validateTags(tags);
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
       final live = await _liveDayEntry(profileId, localDate);
