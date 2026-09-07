@@ -1,7 +1,8 @@
 name: CI
 
-# Validation for pushes to main and pull requests. There is no release
-# pipeline yet, so this workflow is the only consumer of runner minutes.
+# Validation for pushes to main and pull requests. Delivery is handled by
+# separate workflows: ios-release.yml (TestFlight/App Store), play-store-release.yml
+# (Google Play), and supabase-migrate.yml (database migrations).
 
 on:
   push:

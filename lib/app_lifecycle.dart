@@ -930,11 +930,12 @@ class LunarLogRootState extends State<LunarLogRoot> {
     }
   }
 
-  /// Best-effort local + server sign-out, run *before* the reopen so the
-  /// fresh database's first sync cycle never sees the account being signed
-  /// out and binds to it. A server-side failure never skips the local step
-  /// (the local session is removed by the service regardless of the
-  /// server's answer), so it is only logged, never rethrown.
+  /// Local-only sign-out, run *before* the reopen so the fresh database's
+  /// first sync cycle never sees the account being signed out and binds to
+  /// it. `AuthSignOutScope.local` clears only this device's session; it does
+  /// **not** revoke sessions on the user's other devices. The call can still
+  /// throw (network or plugin failure) — the catch swallows it so the reset
+  /// always completes, logging the failure rather than surfacing it.
   Future<void> _signOutLocally() async {
     final auth = widget.authService;
     if (auth == null) return;
@@ -942,7 +943,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       await auth.signOut(scope: AuthSignOutScope.local);
     } catch (error) {
       debugPrint(
-          'lunarlog reset: server sign-out failed (${error.runtimeType})');
+          'lunarlog reset: local sign-out failed (${error.runtimeType})');
     }
   }
 

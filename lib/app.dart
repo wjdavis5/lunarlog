@@ -1,8 +1,10 @@
 /// App composition root: constructs the drift-backed repositories over the
 /// opened database and provides them plus the profile controller (KTD4),
 /// the reminder coordinator (KTD7/U8) and the web guardrails (KTD9).
-/// This is the only lib/ui-adjacent file that touches `lib/data` types
-/// (besides `lib/app_lifecycle.dart`, which is composition-root territory).
+/// This file wires the `lib/data` repositories for the rest of the app;
+/// it is not the only place `lib/data` types are imported — UI screens,
+/// `lib/app_lifecycle.dart`, `lib/main.dart`, and `lib/startup/*` import
+/// them directly where they need them.
 library;
 
 import 'dart:async';
