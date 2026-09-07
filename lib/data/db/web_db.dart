@@ -1,10 +1,4 @@
-/// Web database wiring: unencrypted drift over WASM SQLite with IndexedDB
-/// persistence.
-///
-/// Deliberately no key storage: this file does not import `key_store.dart`
-/// or `flutter_secure_storage`, and the factory it builds has
-/// `requireEncryption: false` — browser-local storage is the platform's
-/// responsibility (v1 threat model).
+/// Web database wiring: drift over WASM SQLite with IndexedDB persistence.
 ///
 /// `WasmDatabase.open` picks the best storage the current browser offers.
 /// Without COOP/COEP headers it falls back to IndexedDB-backed modes
@@ -26,9 +20,7 @@ LunarLogDbFactory webDbFactory({
   final driftWorker = driftWorkerUri ?? Uri.parse('drift_worker.js');
   return LunarLogDbFactory(
     databasePath: 'web:$databaseName',
-    requireEncryption: false,
-    // No keyStore, no preflight: web never touches key storage.
-    plainExecutorBuilder: () async {
+    executorBuilder: () async {
       final result = await WasmDatabase.open(
         databaseName: databaseName,
         sqlite3Uri: sqlite3Wasm,

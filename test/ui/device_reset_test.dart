@@ -1,9 +1,9 @@
 /// U6 / KTD16 / AE10: `LunarLogRoot.resetDevice()` is one ordered
 /// operation — engine disposed, app tree unmounted, database closed, file
-/// deleted before key, the best-effort local-only sign-out, and only then
-/// the reopen through `dbOpener` (fresh key) so the new database never binds
-/// to the account being signed out. The database, engine, file and
-/// key primitives are all recorders so the order is asserted literally.
+/// deleted, the best-effort local-only sign-out, and only then the reopen
+/// through `dbOpener` so the new database never binds to the account being
+/// signed out. The database, engine and file primitives are all recorders
+/// so the order is asserted literally.
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -114,7 +114,6 @@ class ResetHarness {
         return engine;
       },
       deleteLocalDatabase: () async => log.add('delete-file'),
-      deleteDbKey: () async => log.add('delete-key'),
       isWeb: isWeb,
     ));
     await tester.pump();
@@ -139,7 +138,7 @@ void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
   testWidgets('native reset: engine dispose → unmount → close → delete file '
-      '→ delete key → best-effort local sign-out → reopen; the tree lands '
+      '→ best-effort local sign-out → reopen; the tree lands '
       'on first-run', (tester) async {
     final h = ResetHarness(tester);
     h.auth.emit(AuthSessionState.signedIn,
@@ -162,7 +161,6 @@ void main() {
       'engine.dispose:done',
       'close',
       'delete-file',
-      'delete-key',
       'signOut',
       'open',
     ]);
@@ -198,7 +196,6 @@ void main() {
       'engine.dispose:done',
       'close',
       'delete-file',
-      'delete-key',
       'signOut',
       'open',
     ]);

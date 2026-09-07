@@ -1,5 +1,5 @@
-/// Conditional export: native platforms get the SQLCipher factory
-/// (native_db.dart), web gets the unencrypted WASM factory (web_db.dart).
+/// Conditional export: native platforms get the file-backed factory
+/// (native_db.dart), web gets the WASM factory (web_db.dart).
 ///
 /// App bootstrap (a later unit) resolves the database file location and key
 /// store, then calls `.open()` on the factory from here.

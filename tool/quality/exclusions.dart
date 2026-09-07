@@ -46,17 +46,11 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'so nothing testable is lost by excluding the whole file.',
   ),
   const CoverageExclusion(
-    'lib/data/db/key_store.dart',
-    'SecureDbKeyStore wraps flutter_secure_storage and cannot run under '
-        'flutter test. isValidDbKeyHex and generateKey() are pure and get '
-        'direct unit tests anyway — exclusion only removes this file from '
-        'the gate denominator, not from the test suite.',
-  ),
-  const CoverageExclusion(
     'lib/data/notifications/notification_scheduler.dart',
     'FlutterLocalNotificationsScheduler wraps flutter_local_notifications '
         'and cannot run under flutter test. NoopReminderScheduler is pure '
-        'and gets a direct unit test anyway, same treatment as key_store.dart.',
+        'and gets a direct unit test anyway, same treatment as '
+        'google_sign_in_client.dart.',
   ),
   const CoverageExclusion(
     'lib/data/feedback/image_picker_attachment_source.dart',
@@ -85,9 +79,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'touched before Firebase.initializeApp() completed) from ever being '
         'exercised. buildFirebaseOptions(), the one piece of pure branching '
         'this file has, is now a directly unit-tested top-level function '
-        '(same treatment key_store.dart gives isValidDbKeyHex) despite '
-        'living in this excluded file. PushRegistrationCoordinator (the '
-        'ordering/lifecycle logic) is covered directly against a fake '
+        'despite living in this excluded file. PushRegistrationCoordinator '
+        '(the ordering/lifecycle logic) is covered directly against a fake '
         'PushTokenSource.',
   ),
 ];

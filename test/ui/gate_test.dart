@@ -1260,35 +1260,6 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
-    testWidgets('malformed key failure gets the key-specific message',
-        (tester) async {
-      await tester.pumpWidget(LunarLogRoot(
-        gate: FakeGate(),
-        dbOpener: () async => throw const CorruptDatabaseKeyError(),
-      ));
-      await tester.pump();
-      await tester.pumpAndSettle();
-
-      expect(find.text('lunarlog could not read its unlock key'),
-          findsOneWidget);
-      expect(find.text('lunarlog could not open your data'), findsNothing,
-          reason: 'distinct message per failure class');
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
-
-    testWidgets('missing encryption support gets its own message',
-        (tester) async {
-      await tester.pumpWidget(LunarLogRoot(
-        gate: FakeGate(),
-        dbOpener: () async => throw const EncryptionUnavailableError(),
-      ));
-      await tester.pump();
-      await tester.pumpAndSettle();
-
-      expect(find.text('This build cannot protect data'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
-
     testWidgets('generic failures get the generic message and the operator '
         'detail is selectable', (tester) async {
       await tester.pumpWidget(LunarLogRoot(

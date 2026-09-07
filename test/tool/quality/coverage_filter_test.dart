@@ -28,7 +28,6 @@ void main() {
         'lib/data/db/db.g.dart',
         'lib/data/auth/google_sign_in_client.dart',
         'lib/data/auth/auth_gateway.dart',
-        'lib/data/db/key_store.dart',
         'lib/data/notifications/notification_scheduler.dart',
       ];
       for (final path in realExcludedPaths) {
@@ -39,7 +38,6 @@ void main() {
     test('do not over-match near-miss paths', () {
       const nearMisses = [
         'lib/data/db/tables.dart', // not db.g.dart
-        'lib/data/db/key_store_test.dart', // test file, not the adapter
         'lib/data/auth/auth_gateway_test.dart',
         'lib/data/auth/supabase_auth_service.dart', // different auth file
         'lib/data/notifications/scheduling.dart', // not notification_scheduler.dart

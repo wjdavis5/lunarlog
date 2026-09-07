@@ -6,37 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/db_factory.dart';
 import 'package:lunarlog/data/db/errors.dart';
-import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/db/native_db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
-
-/// Key store fake that records every call — used to prove the web flavor of
-/// the factory never touches key storage.
-class RecordingKeyStore implements DbKeyStore {
-  RecordingKeyStore({this.presetKey});
-
-  final String? presetKey;
-  int calls = 0;
-  int deletes = 0;
-
-  @override
-  Future<String> getOrCreateDbKey() async {
-    calls++;
-    if (presetKey != null) return presetKey!;
-    return List<int>.generate(32, (_) => 0x0A)
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
-  }
-
-  @override
-  Future<void> deleteKey() async {
-    deletes++;
-  }
-}
 
 /// The exact schema-v1 DDL as drift generated it for the committed v1
 /// `db.g.dart` (dumped from `sqlite_master` before the v2 change). Tests
@@ -239,17 +214,6 @@ class FixedClock {
   DateTime call() => now;
 }
 
-/// Whether the host VM's sqlite3 library was built with SQLCipher support
-/// (i.e. whether the `source: sqlcipher` hook took effect for `flutter test`).
-bool hostHasSqlcipher() {
-  final mem = sqlite3.sqlite3.openInMemory();
-  try {
-    return mem.select('PRAGMA cipher_version').isNotEmpty;
-  } finally {
-    mem.close();
-  }
-}
-
 Future<Directory> freshTempDir(String name) async {
   final dir =
       Directory.systemTemp.createTempSync('lunarlog_test_${name}_');
@@ -264,13 +228,6 @@ void main() {
   // debug-mode duplicate-instance warning does not apply to that (each test
   // closes its database). Documented approach: drift.simonbinder.eu/faq.
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-
-  test('host sqlite3 cipher availability is observed and reported', () {
-    // Informational: records what the SQLCipher hook does on this test host.
-    // The real-cipher tests below are skipped when this is false.
-    // ignore: avoid_print
-    print('HOST SQLCIPHER AVAILABLE: ${hostHasSqlcipher()}');
-  });
 
   group('schema', () {
     late LunarLogDatabase db;
@@ -1261,98 +1218,18 @@ void main() {
     });
   });
 
-  group('cipher assertion (fail-closed)', () {
-    test('assertCipherActive throws EncryptionUnavailableError when the '
-        'library reports no cipher', () {
-      expect(() => assertCipherActive(const []),
-          throwsA(isA<EncryptionUnavailableError>()));
-      expect(() => assertCipherActive([null]),
-          throwsA(isA<EncryptionUnavailableError>()));
-    });
-
-    test('assertCipherActive accepts a reported cipher version', () {
-      expect(() => assertCipherActive(['4.9.3 community']), returnsNormally);
-    });
-
-    test('host observation: sqlcipher hook availability', () {
-      // Runs the real probe. If the hook did not apply on this host, the
-      // real-file cipher tests below are skipped; this test records which
-      // branch we are in without failing either way.
-      final available = hostHasSqlcipher();
-      expect(() => assertCipherActive(
-          available ? ['observed'] : const <Object?>[]),
-          available ? returnsNormally : throwsA(isA<EncryptionUnavailableError>()));
-    });
-  });
-
   group('database factory', () {
-    test('web mode: unencrypted executor, key store never called', () async {
-      final recorder = RecordingKeyStore();
+    test('opens via the injected executor builder', () async {
       final factory = LunarLogDbFactory(
-        databasePath: 'test:web-mode',
-        requireEncryption: false,
-        plainExecutorBuilder: () => NativeDatabase.memory(),
-        keyStore: recorder, // injected fake that records calls
+        databasePath: 'test:in-memory',
+        executorBuilder: () => NativeDatabase.memory(),
       );
       final db = await factory.open();
       addTearDown(() => db.close());
 
-      expect(recorder.calls, 0,
-          reason: 'web mode must never touch key storage');
       final profile =
           await db.storage.upsertProfile(displayName: 'Web', isMinor: true);
       expect((await db.storage.getProfiles()).single.id, profile.id);
-    });
-
-    test('encrypted mode fetches the key exactly once and opens', () async {
-      final recorder = RecordingKeyStore();
-      final factory = LunarLogDbFactory(
-        databasePath: 'test:encrypted-mode',
-        requireEncryption: true,
-        keyStore: recorder,
-        // In-memory executor: key applied through the setup callback.
-        encryptedExecutorBuilder: (keyHex) => NativeDatabase.memory(
-          setup: (rawDb) {
-            assertCipherActive(
-                rawDb.select('PRAGMA cipher_version').map((r) => r.values.first));
-            rawDb.execute("PRAGMA key = \"x'$keyHex'\";");
-          },
-        ),
-        preflight: hostHasSqlcipher() ? assertSqlcipherAvailable : null,
-      );
-      if (!hostHasSqlcipher()) {
-        // Without a cipher-capable library on the host, the real encrypted
-        // open is exercised by the skipped group below; here we only assert
-        // the fail-closed behavior.
-        await expectLater(
-            factory.open(), throwsA(isA<EncryptionUnavailableError>()));
-        expect(recorder.calls, 0);
-        return;
-      }
-      final db = await factory.open();
-      addTearDown(() => db.close());
-      expect(recorder.calls, 1, reason: 'exactly one key per install/open');
-      await db.storage.upsertProfile(displayName: 'E', isMinor: false);
-      expect(await db.storage.getProfiles(), hasLength(1));
-    });
-
-    test('malformed persisted key fails closed and is never overwritten',
-        () async {
-      final recorder = RecordingKeyStore(presetKey: 'not-hex');
-      final factory = LunarLogDbFactory(
-        databasePath: 'test:bad-key',
-        requireEncryption: true,
-        keyStore: recorder,
-        encryptedExecutorBuilder: (keyHex) => NativeDatabase.memory(),
-        preflight: hostHasSqlcipher() ? assertSqlcipherAvailable : null,
-      );
-      if (hostHasSqlcipher()) {
-        await expectLater(
-            factory.open(), throwsA(isA<CorruptDatabaseKeyError>()));
-      } else {
-        await expectLater(
-            factory.open(), throwsA(isA<EncryptionUnavailableError>()));
-      }
     });
 
     test('garbage existing file raises DatabaseQuarantineError and is never '
@@ -1362,11 +1239,7 @@ void main() {
       final garbage = 'this is definitely not a sqlite database file'.codeUnits;
       file.writeAsBytesSync(garbage);
 
-      final factory = nativeDbFactory(
-        file: file,
-        keyStore: RecordingKeyStore(),
-        requireEncryption: false, // cipher-independent: tests quarantine logic
-      );
+      final factory = nativeDbFactory(file: file);
       await expectLater(
           factory.open(), throwsA(isA<DatabaseQuarantineError>()));
 
@@ -1378,110 +1251,10 @@ void main() {
     test('first-run creation over a non-existent file is normal', () async {
       final dir = await freshTempDir('firstrun');
       final file = File('${dir.path}${Platform.pathSeparator}fresh.db');
-      final factory = nativeDbFactory(
-        file: file,
-        keyStore: RecordingKeyStore(),
-        requireEncryption: false,
-      );
+      final factory = nativeDbFactory(file: file);
       final db = await factory.open();
       await db.close();
       expect(file.existsSync(), isTrue, reason: 'fresh database file created');
     });
-  },
-      skip: false);
-
-  group('real SQLCipher file (host hook)', () {
-    test('mobile factory writes a non-plaintext database file; wrong key '
-        'quarantines instead of opening', () async {
-      final dir = await freshTempDir('cipher');
-      final file = File('${dir.path}${Platform.pathSeparator}enc.db');
-      const goodKey =
-          '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
-
-      final factory = nativeDbFactory(
-          file: file, keyStore: RecordingKeyStore(presetKey: goodKey));
-      final db = await factory.open();
-      final profile =
-          await db.storage.upsertProfile(displayName: 'Cipher', isMinor: false);
-      await db.close();
-
-      // File must not start with the plaintext SQLite header.
-      final header = file.openSync()..setPositionSync(0);
-      final bytes = header.readSync(16);
-      header.closeSync();
-      const plaintextHeader = 'SQLite format 3\x00';
-      expect(String.fromCharCodes(bytes), isNot(equals(plaintextHeader)),
-          reason: 'database file at rest must not be plaintext SQLite');
-
-      // Reopening with the correct key works and data survived.
-      final reopened = await factory.open();
-      final stored = await reopened.storage.getProfiles();
-      expect(stored.single.id, profile.id);
-      await reopened.close();
-
-      // Reopening with a wrong key is an open failure over an existing file:
-      // typed quarantine error, never a silent unencrypted open.
-      final wrongFactory = nativeDbFactory(
-        file: file,
-        keyStore: RecordingKeyStore(
-            presetKey:
-                'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'),
-      );
-      await expectLater(
-          wrongFactory.open(), throwsA(isA<DatabaseQuarantineError>()));
-      expect(file.readAsBytesSync().length, greaterThan(0));
-    });
-
-    test('a real v1 fixture in an encrypted file upgrades to v2 through the '
-        'mobile factory', () async {
-      final dir = await freshTempDir('cipher_migration');
-      final file = File('${dir.path}${Platform.pathSeparator}v1enc.db');
-      const key =
-          '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
-      final raw = sqlite3.sqlite3.open(file.path);
-      raw.execute("PRAGMA key = \"x'$key'\";");
-      seedV1(raw);
-      raw.close();
-
-      final factory =
-          nativeDbFactory(file: file, keyStore: RecordingKeyStore(presetKey: key));
-      final db = await factory.open();
-      addTearDown(() => db.close());
-      await expectFullyUpgraded(db);
-    });
-
-    test('an encrypted v1 file whose upgrade fails mid-way is left at v1 and '
-        'is not quarantined on the next open', () async {
-      final dir = await freshTempDir('cipher_migration_fail');
-      final file = File('${dir.path}${Platform.pathSeparator}v1enc.db');
-      const key =
-          '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
-      final raw = sqlite3.sqlite3.open(file.path);
-      raw.execute("PRAGMA key = \"x'$key'\";");
-      seedV1(raw);
-      raw.close();
-
-      // Drive the failing open through the real executor builder but with
-      // the hook installed on the database class the factory creates: the
-      // factory has no seam for that, so open the executor directly.
-      final failing = LunarLogDatabase(NativeDatabase(file,
-          setup: (db) => db.execute("PRAGMA key = \"x'$key'\";")))
-        ..migrationStepHook = (step) async {
-          if (step == 'profiles.dirty') throw StateError('injected');
-        };
-      await expectLater(
-          failing.customSelect('SELECT 1').get(), throwsA(isA<StateError>()));
-      await failing.close();
-
-      final factory =
-          nativeDbFactory(file: file, keyStore: RecordingKeyStore(presetKey: key));
-      final db = await factory.open();
-      addTearDown(() => db.close());
-      await expectFullyUpgraded(db);
-    });
-  },
-      skip: hostHasSqlcipher()
-          ? false
-          : 'sqlcipher native library not active on this host '
-              '(hook observed: default sqlite3 build loaded)');
+  });
 }

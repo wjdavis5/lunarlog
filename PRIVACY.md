@@ -12,7 +12,7 @@ This Privacy Policy explains what information LunarLog processes, how that infor
 ## 1. Core Principles
 
 - **Local-First & Offline:** LunarLog operates entirely offline without requiring an account. All cycle tracking, notes, symptoms, and profiles function without an internet connection.
-- **Encrypted at Rest:** All data stored on your device is encrypted at rest using SQLCipher (AES-256) behind device-level biometric or passcode authentication.
+- **Protected at Rest:** All data stored on your device relies on your operating system's own at-rest protection (iOS Data Protection / Android device encryption) and is only shown behind device-level biometric or passcode authentication.
 - **No Advertising or Data Brokers:** We do not display advertisements, sell your data, monetize your health information, or share data with data brokers or tracking networks.
 - **No Fertility Tracking or Algorithms:** By design, LunarLog does not contain ovulation prediction, fertility forecasting, conception algorithms, or pregnancy-related data sharing.
 - **Minimal, Scrubbed Telemetry:** Crash and diagnostic reports are strictly scrubbed on your device before transmission to ensure no health data, personal notes, dates, or user identities ever leave your device.
@@ -95,7 +95,7 @@ LunarLog is intended to be operated by a parent, legal guardian, or adult indivi
 ## 6. Security Protections
 
 We implement rigorous technical safeguards to ensure the security and confidentiality of your data:
-- **Device Encryption:** SQLite database encrypted using SQLCipher with AES-256 encryption.
+- **Device Encryption:** The local database relies on your device's own operating-system-level encryption (iOS Data Protection / Android device encryption), shown to you only after biometric or passcode authentication.
 - **Biometric Security:** Biometric authentication (Face ID / Touch ID / Android Biometrics) required to unlock the app.
 - **Inactivity Timeout:** Configurable automatic relocking after inactivity, plus immediate locking upon backgrounding. The one exception is while a sign-in or unlock prompt the app itself opened is on screen: the system reports those the same way it reports you leaving, so locking is deferred for their duration. The app's contents stay masked throughout, the app relocks as soon as the prompt closes if you have left, and a prompt left open relocks the app after two minutes regardless of the inactivity setting.
 - **Screen Obfuscation:** App switcher and lock screen previews are masked to prevent unauthorized viewing.

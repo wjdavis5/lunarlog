@@ -1,7 +1,7 @@
 /// The drift database for lunarlog: one class, one schema version, and a
 /// migration framework ready for step-by-step upgrades.
 ///
-/// Platform differences (SQLCipher on mobile, plain WASM/IndexedDB on web)
+/// Platform differences (a plain file on mobile, WASM/IndexedDB on web)
 /// live entirely in the [QueryExecutor] handed to the constructor — see
 /// `db_factory.dart`, `native_db.dart` and `web_db.dart`.
 library;

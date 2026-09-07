@@ -41,19 +41,6 @@ class FailClosedScreen extends StatelessWidget {
               'changed and nothing was deleted — the data file was left '
               'exactly as it was, untouched.',
         );
-      case CorruptDatabaseKeyError():
-        return (
-          'lunarlog could not read its unlock key',
-          'The key that decrypts your data on this device is damaged. '
-              'Nothing was changed. Do not reinstall or reset the app '
-              'unless losing the data is acceptable.',
-        );
-      case EncryptionUnavailableError():
-        return (
-          'This build cannot protect data',
-          'Encryption support is missing from this build of the app, so no '
-              'data can be opened or created. Install a proper build.',
-        );
       default:
         return (
           'lunarlog could not start',
