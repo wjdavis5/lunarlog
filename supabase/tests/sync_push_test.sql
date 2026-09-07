@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(104);
+select plan(105);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;

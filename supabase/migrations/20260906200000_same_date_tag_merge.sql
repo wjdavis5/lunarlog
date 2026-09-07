@@ -12,10 +12,15 @@
 -- both order-independent and meaningful).
 --
 -- Per "do not edit a merged migration in place", this create-or-replaces
--- sync_push (20260904020000_sync_push_and_invitations.sql) with only the
--- same-date resolver block changed - the winner/loser selection rule, the
--- tombstone stamps, the role checks, the attribution stamping, the advisory
--- lock, the row-count caps, and the key allow-lists are all untouched.
+-- sync_push with only the same-date resolver block changed - the
+-- winner/loser selection rule, the tombstone stamps, the role checks, the
+-- attribution stamping, the advisory lock, the row-count caps, and the key
+-- allow-lists are all untouched. Rebased onto
+-- 20260906160000_profile_subject_metadata.sql's sync_push body (not
+-- 20260904020000_sync_push_and_invitations.sql, which it had superseded by
+-- the time this migration was renamed to run after it) so U1's
+-- birth_year/relationship handling is not silently reverted by this
+-- create-or-replace.
 
 -- ---------------------------------------------------------------------------
 -- 1. merge_tag_arrays helper - the tag-union rule in one place, so both the
@@ -69,8 +74,10 @@ declare
   c_profile_keys constant text[] := array[
     'id', 'display_name', 'is_minor', 'sort_order', 'archived_at',
     'created_at', 'updated_at', 'deleted_at',
+    -- U1: profile subject metadata, syncable like any other profile column
+    'birth_year', 'relationship',
     -- tolerated but never read
-    'user_id', 'server_version'];
+    'user_id', 'server_version', 'transferred_at'];
   c_day_entry_keys constant text[] := array[
     'id', 'profile_id', 'local_date', 'tz', 'flow', 'tags', 'note',
     'updated_at', 'deleted_at',
@@ -91,6 +98,8 @@ declare
   v_display_name text;
   v_is_minor boolean;
   v_sort_order integer;
+  v_birth_year smallint;
+  v_relationship text;
   v_profile_id text;
   v_local_date date;
   v_tz text;
@@ -155,6 +164,16 @@ begin
       v_archived_at := (v_row ->> 'archived_at')::timestamptz;
       v_is_minor := coalesce((v_row ->> 'is_minor')::boolean, false);
       v_sort_order := coalesce((v_row ->> 'sort_order')::integer, 0);
+      -- U1: birth_year/relationship are ordinary optional profile metadata,
+      -- validated by the table's own CHECK constraints (an invalid value
+      -- lands this row in `rejected` via the exception handler below, same
+      -- as an over-length display_name). These two parsed values feed the
+      -- INSERT path unconditionally (a brand-new row has nothing to
+      -- preserve) and the UPDATE path guarded by a jsonb `?` containment
+      -- check below (review item #3) so an old client that omits these keys
+      -- entirely does not silently null out an already-stored value.
+      v_birth_year := (v_row ->> 'birth_year')::smallint;
+      v_relationship := v_row ->> 'relationship';
       if v_deleted_at is not null then
         -- tombstones carry no payload
         v_display_name := '';
@@ -171,9 +190,11 @@ begin
       if not found then
         -- New profile insertion: creator becomes primary_guardian via trigger
         insert into public.profiles
-          (id, display_name, is_minor, sort_order, archived_at, created_at, updated_at, deleted_at)
+          (id, display_name, is_minor, sort_order, archived_at, created_at, updated_at, deleted_at,
+           birth_year, relationship)
         values
-          (v_id, v_display_name, v_is_minor, v_sort_order, v_archived_at, v_created_at, v_updated_at, v_deleted_at);
+          (v_id, v_display_name, v_is_minor, v_sort_order, v_archived_at, v_created_at, v_updated_at, v_deleted_at,
+           v_birth_year, v_relationship);
       else
         -- Profile exists: check guardian role of caller
         select role into v_caller_role
@@ -211,7 +232,19 @@ begin
                  archived_at = v_archived_at,
                  created_at = v_created_at,
                  updated_at = v_updated_at,
-                 deleted_at = v_deleted_at
+                 deleted_at = v_deleted_at,
+                 -- Review item #3 (P1): an old client that predates U1 omits
+                 -- birth_year/relationship from its payload entirely, rather
+                 -- than sending them as null - v_row ->> 'key' cannot tell
+                 -- "omitted" from "explicitly cleared" apart, and both parse
+                 -- to the same null in v_birth_year/v_relationship above. The
+                 -- jsonb `?` containment operator can tell them apart: only
+                 -- overwrite the stored value when the incoming row actually
+                 -- carries the key, so an old client's push preserves
+                 -- whatever birth_year/relationship the profile already has
+                 -- instead of silently nulling it on every metadata edit.
+                 birth_year = case when v_row ? 'birth_year' then v_birth_year else v_stored_profile.birth_year end,
+                 relationship = case when v_row ? 'relationship' then v_relationship else v_stored_profile.relationship end
            where id = v_id;
         elsif v_updated_at = v_stored_profile.updated_at
               and v_deleted_at is not null
@@ -419,7 +452,7 @@ end;
 $$;
 
 comment on function public.sync_push(jsonb, jsonb) is
-  'Batch upsert of profiles then day entries under guardian role permissions with authoritative attribution stamping. Same-date collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins.';
+  'Batch upsert of profiles then day entries under guardian role permissions with authoritative attribution stamping. U1: profiles carries birth_year/relationship through this path; transferred_at is tolerated-but-never-read (ownership state, written only by accept_ownership_transfer). Same-date collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins.';
 
 revoke execute on function public.sync_push(jsonb, jsonb) from public, anon;
 grant execute on function public.sync_push(jsonb, jsonb) to authenticated;
