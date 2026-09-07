@@ -42,7 +42,6 @@ import 'package:flutter/services.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
-import 'package:lunarlog/data/db/key_store.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
@@ -665,9 +664,6 @@ class RemoveAllPushRegistrationsCallback {
   Future<void> call() => _call();
 }
 
-/// Default native key deletion for [LunarLogRoot.deleteDbKey].
-Future<void> defaultDeleteDbKey() => SecureDbKeyStore().deleteKey();
-
 /// This install's stable push-registration device id (Issue #5, U7; R19):
 /// read from [settings] if already generated, otherwise minted once and
 /// persisted. Split out of [LunarLogRootState._startPushRegistration] so the
@@ -722,7 +718,6 @@ class LunarLogRoot extends StatefulWidget {
     this.initialInviteKind,
     this.syncEngineBuilder = defaultSyncEngineBuilder,
     this.deleteLocalDatabase = startup.deleteLocalDatabase,
-    this.deleteDbKey = defaultDeleteDbKey,
     this.isWeb = kIsWeb,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
@@ -806,12 +801,11 @@ class LunarLogRoot extends StatefulWidget {
   @visibleForTesting
   final SyncEngineBuilder syncEngineBuilder;
 
-  /// Device-reset primitives (KTD16), injectable for tests. On native the
-  /// defaults delete this install's database file (and siblings) and then
-  /// its key; on web ([isWeb]) neither runs and the database is wiped
-  /// table by table instead.
+  /// Device-reset primitive (KTD16), injectable for tests. On native the
+  /// default deletes this install's database file and siblings; on web
+  /// ([isWeb]) it does not run and the database is wiped table by table
+  /// instead.
   final Future<void> Function() deleteLocalDatabase;
-  final Future<void> Function() deleteDbKey;
   final bool isWeb;
 
   final Duration inactivityTimeout;
@@ -1062,7 +1056,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       final db = _db;
       await _detachDatabaseFromTree(db);
       await _awaitAppTeardown();
-      final deleted = await _deleteDatabaseAndKey(db);
+      final deleted = await _deleteDatabase(db);
       if (!deleted) return;
       await _signOutLocally();
       // Per-session diagnostics must not cross the account boundary this
@@ -1087,11 +1081,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
   }
 
   /// Wipes (web) and closes [db], then on native deletes the database file
-  /// and its siblings *then* the key, so a crash in between can never leave
-  /// a keyed file that would quarantine the next open. Returns whether the
-  /// step succeeded; on failure it records `_error` (fail-closed) and the
-  /// caller must stop [resetDevice] before sign-out and reopen.
-  Future<bool> _deleteDatabaseAndKey(LunarLogDatabase? db) async {
+  /// and its siblings. Returns whether the step succeeded; on failure it
+  /// records `_error` (fail-closed) and the caller must stop [resetDevice]
+  /// before sign-out and reopen.
+  Future<bool> _deleteDatabase(LunarLogDatabase? db) async {
     try {
       if (db != null) {
         if (widget.isWeb) await db.wipeAllData();
@@ -1099,7 +1092,6 @@ class LunarLogRootState extends State<LunarLogRoot> {
       }
       if (!widget.isWeb) {
         await widget.deleteLocalDatabase();
-        await widget.deleteDbKey();
       }
       return true;
     } catch (error, stackTrace) {

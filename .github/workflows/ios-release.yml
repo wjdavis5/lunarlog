@@ -402,7 +402,7 @@ jobs:
 
           [ -f "$app/PrivacyInfo.xcprivacy" ] || { echo "::error::privacy manifest missing from the bundle"; exit 1; }
 
-          [ "$encryption" = "true" ] || { echo "::error::ITSAppUsesNonExemptEncryption is '$encryption' in the exported Info.plist, expected true (see docs/ops/ios-export-compliance.md)"; exit 1; }
+          [ "$encryption" = "false" ] || { echo "::error::ITSAppUsesNonExemptEncryption is '$encryption' in the exported Info.plist, expected false (see docs/ops/ios-export-compliance.md)"; exit 1; }
 
       - name: Set up sentry-cli (checksum-verified download)
         # U5 (R15/R16): warns and skips rather than failing the release when

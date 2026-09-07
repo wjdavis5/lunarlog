@@ -33,11 +33,10 @@ import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/notifications/push_registration.dart';
 
 /// Pure branching, directly unit-testable despite living in this otherwise
-/// plugin-excluded file (#10 review fix; same treatment `key_store.dart`
-/// gives `isValidDbKeyHex`): which platform's FCM identifiers feed
-/// [FirebaseOptions]. [FirebaseOptions] itself is a plain value class from
-/// `firebase_core` with no platform-channel dependency, so constructing and
-/// comparing it runs fine under `flutter test`.
+/// plugin-excluded file (#10 review fix): which platform's FCM identifiers
+/// feed [FirebaseOptions]. [FirebaseOptions] itself is a plain value class
+/// from `firebase_core` with no platform-channel dependency, so
+/// constructing and comparing it runs fine under `flutter test`.
 FirebaseOptions buildFirebaseOptions({
   required bool isIOS,
   required String iosApiKey,

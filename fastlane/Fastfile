@@ -47,13 +47,13 @@ platform :ios do
       # docs/ops/ios-export-compliance.md) — it ships inside every binary,
       # including TestFlight uploads this lane never touches. These answers
       # exist only to agree with it, never to carry the decision alone.
+      # No third-party at-rest cipher is compiled in (the sqlcipher build
+      # hook was removed); the only cryptography present is TLS and
+      # OS-provided/authentication-only primitives.
       submission_information: {
         add_id_info_uses_idfa: false,
         export_compliance_platform: "ios",
-        export_compliance_uses_encryption: true,
-        export_compliance_is_exempt: false,
-        export_compliance_contains_third_party_cryptography: true,
-        export_compliance_contains_proprietary_cryptography: false,
+        export_compliance_uses_encryption: false,
         export_compliance_encryption_updated: false,
         content_rights_contains_third_party_content: false,
       },
