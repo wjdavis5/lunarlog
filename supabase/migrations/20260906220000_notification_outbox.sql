@@ -1,4 +1,8 @@
--- Migration: 20260906170000_notification_outbox.sql
+-- Migration: 20260906220000_notification_outbox.sql (renamed from an
+-- original `20260906170000_` prefix to avoid a `schema_migrations`
+-- primary-key collision with `20260906170000_ownership_transfers.sql`, an
+-- independent branch merged after the fact -- the two touch disjoint
+-- tables/functions and have no interaction)
 -- Issue #5, Unit U2: the content-free caregiver-alert outbox (KTD1) and the
 -- day_entries AFTER trigger that fans a live write out into one row per
 -- eligible guardian (R6-R9, R12).

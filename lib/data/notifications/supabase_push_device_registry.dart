@@ -1,7 +1,7 @@
 /// [PushDeviceRegistry] implementation over Supabase (Issue #5, U7).
 ///
 /// [register] calls the `register_push_device` SECURITY DEFINER RPC
-/// (`supabase/migrations/20260906160000_notification_preferences.sql`)
+/// (`supabase/migrations/20260906210000_notification_preferences.sql`)
 /// rather than upserting directly (round-2 review #1): a plain upsert
 /// conflicting on `id` cannot recover from a stale row a previous account
 /// on this install left behind (a failed sign-out deregistration is the

@@ -1,4 +1,8 @@
--- Migration: 20260906180000_reminder_windows_and_cron.sql
+-- Migration: 20260906230000_reminder_windows_and_cron.sql (renamed from an
+-- original `20260906180000_` prefix to avoid a `schema_migrations`
+-- primary-key collision with `20260906180000_ownership_transfer_rpcs.sql`,
+-- an independent branch merged after the fact -- the two touch disjoint
+-- tables/functions and have no interaction)
 -- Issue #5, Unit U3: the client-published reminder-window snapshot, the
 -- missed-entry scan that reads it, the outbox sweep that recovers a stuck
 -- claim (KTD2's documented residual risk), and the nightly pg_cron job that

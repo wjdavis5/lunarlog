@@ -415,7 +415,7 @@ enabled = true
 # stuck-claim recovery) — neither carries a Supabase JWT, matching
 # feedback-reply's shape. The handler validates its own shared
 # `x-push-dispatch-webhook-secret` header instead (see
-# 20260906180000_reminder_windows_and_cron.sql and
+# 20260906230000_reminder_windows_and_cron.sql and
 # docs/ops/supabase-go-live.md for the Database Webhook + GUC setup).
 verify_jwt = false
 entrypoint = "./functions/push-dispatch/index.ts"

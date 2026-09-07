@@ -1,4 +1,8 @@
--- Migration: 20260906160000_notification_preferences.sql
+-- Migration: 20260906210000_notification_preferences.sql (renamed from an
+-- original `20260906160000_` prefix to avoid a `schema_migrations`
+-- primary-key collision with `20260906160000_profile_subject_metadata.sql`,
+-- an independent branch merged after the fact -- the two touch disjoint
+-- tables/functions and have no interaction)
 -- Issue #5, Unit U1: the two guardian-owned tables behind caregiver alerts
 -- and reminders -- notification_preferences (what a guardian wants to be
 -- told, per profile) and push_devices (where to tell them). Neither table

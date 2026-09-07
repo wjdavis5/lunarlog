@@ -1,4 +1,8 @@
--- Migration: 20260906190000_account_deletion_notifications.sql
+-- Migration: 20260906240000_account_deletion_notifications.sql (renamed
+-- from an original `20260906190000_` prefix to avoid a `schema_migrations`
+-- primary-key collision with `20260906190000_revoke_guardian_invitation.sql`,
+-- an independent branch merged after the fact -- the two touch disjoint
+-- tables/functions and have no interaction)
 -- Issue #5, Unit U4: extends account deletion and guardian revocation so
 -- neither leaves a row behind in the four tables this feature added
 -- (R20), and so revocation stops a guardian's alerts "immediately" (R5),
@@ -12,7 +16,7 @@
 -- earlier version of the same functions.
 --
 -- Round-2 review #8: this file's own `missed_entry_alert_state` (added by
--- 20260906180000_reminder_windows_and_cron.sql, review #8) was itself never
+-- 20260906230000_reminder_windows_and_cron.sql, review #8) was itself never
 -- wired into either function below when first written -- neither the
 -- profile nor the revoked guardian's auth.users row is deleted by a plain
 -- revocation, so the stale `last_enqueued_for` marker survives it. A

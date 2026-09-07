@@ -394,7 +394,7 @@ registers no device, and shows no Notifications entry (R17).
       `notification_preferences`, `push_devices`, `notification_outbox`,
       `profile_reminder_windows`, or `missed_entry_alert_state`.
 - [ ] `pg_cron`/`pg_net` extensions enabled on the cloud project (they are
-      guarded to no-op locally per `20260906180000_reminder_windows_and_cron.sql`'s
+      guarded to no-op locally per `20260906230000_reminder_windows_and_cron.sql`'s
       header, but the cloud project needs them enabled for real - Database
       → Extensions).
 - [ ] `PRIVACY.md`'s Firebase Cloud Messaging disclosure (section 4) is live

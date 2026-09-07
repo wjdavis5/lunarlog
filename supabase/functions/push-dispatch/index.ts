@@ -7,7 +7,7 @@
 // public.sweep_notification_outbox()). Both send the same shared secret in
 // the `x-push-dispatch-webhook-secret` header (dashboard-configured for the
 // webhook; a GUC setting for the cron path -- see
-// 20260906180000_reminder_windows_and_cron.sql and
+// 20260906230000_reminder_windows_and_cron.sql and
 // docs/ops/supabase-go-live.md), the same pattern feedback-reply already
 // uses for its own webhook-only invocation.
 //

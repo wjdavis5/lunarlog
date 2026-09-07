@@ -1,6 +1,6 @@
 -- RLS coverage for public.push_devices (Issue #5, Unit U1). Also covers
 -- public.register_push_device() (round-2 review #1 / round-1 #1 half (b),
--- 20260906160000_notification_preferences.sql).
+-- 20260906210000_notification_preferences.sql).
 begin;
 select plan(15);
 
