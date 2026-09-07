@@ -122,10 +122,13 @@ Credentials and environment variables live in:
   - A `production` dispatch is gated by the release gate above before any build runs.
   - Automatically resolves monotonic build numbers from GitHub run count offset (`$(( github.run_number + 1000 ))`).
   - Generates both signed `.aab` (uploaded to Google Play) and `.apk` (saved as run artifact).
-- **iOS Local Device Builds:** Run on a macOS build machine with Xcode:
-  ```bash
-  flutter build ipa --release --no-codesign
-  xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-  xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ios/ipa
-  ```
+- **iOS Local Device Builds:** Run on `Williams-Mini`, the lab's Mac mini (`192.168.0.9`, hostname `Williams-Mac-mini.local`) — macOS 26.5.1, Xcode 26.6 at `/Applications/Xcode-26.6.0.app`, Homebrew Flutter 3.47.2 / Dart 3.13.2 (matches this repo's pinned SDK), CocoaPods 1.17.0. Not tied to this box's hardware the way Plex/`imageAnalysis` are — it's the only machine in the lab with Xcode, which iOS builds require.
+  - **Access:** SSH as `williamdavis` from this desktop with the dedicated key: `ssh -i ~/.ssh/williams_mini_ed25519 williamdavis@192.168.0.9`. That key's public half is installed in `williamdavis`'s `~/.ssh/authorized_keys` on the Mac (see root `CLAUDE.md`'s Credential locations table). A plain non-interactive `ssh '<cmd>'` runs a non-login shell, so Homebrew's `flutter`/`pod`/`brew` are **not** on `$PATH` — wrap remote commands in a login shell, e.g. `ssh -i ~/.ssh/williams_mini_ed25519 williamdavis@192.168.0.9 'zsh -l -c "flutter --version"'`.
+  - **Repo:** already checked out at `~/git/lunarlog` on the Mac (`origin` = `wjdavis5/lunarlog`, HTTPS). `git pull` (or check out the branch you need) before building — it is not kept auto-synced with this desktop's checkout.
+  - **Build commands** (run remotely via the login-shell wrapper above, from `~/git/lunarlog` on the Mac):
+    ```bash
+    flutter build ipa --release --no-codesign
+    xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+    xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ios/ipa
+    ```
   - **`aps-environment` per configuration (PR #109 review #11):** `ios/Runner/Runner.entitlements` (`aps-environment: production`) backs the **Release** configuration only — App Store/distribution signing requires it. Debug and Profile use `ios/Runner/DebugProfile.entitlements` (`aps-environment: development`) instead, wired via each config's own `CODE_SIGN_ENTITLEMENTS` in `ios/Runner.xcodeproj/project.pbxproj`: a development-signed on-device Debug build cannot be signed against a `production` `aps-environment` at all, which is exactly what blocked the U7 device checklist before this split existed.
