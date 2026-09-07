@@ -7,7 +7,12 @@
 /// (#2 U7; KTD3, KTD4; AE3) covers the uniform unknown-email response and
 /// the by-operation mapping of link and code failures. Sign-in methods and
 /// identity linking (#2 U8; KTD5; AE6, R15) run the same credential paths
-/// against `linkIdentityWithIdToken` on the fake gateway.
+/// against `linkIdentityWithIdToken` on the fake gateway. Passkey
+/// registration and sign-in (#30 U3; KTD1, KTD2, KTD4) run over the same
+/// fake gateway's four passkey delegations and a fake
+/// [PasskeyCeremonyClient], proving the null-means-cancelled convention and
+/// that no test ever needs to know a relying-party id.
+// ignore_for_file: experimental_member_use
 library;
 
 import 'dart:async';
@@ -20,6 +25,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:lunarlog/data/auth/auth_gateway.dart';
 import 'package:lunarlog/data/auth/auth_link_classifier.dart';
 import 'package:lunarlog/data/auth/google_sign_in_client.dart';
+import 'package:lunarlog/data/auth/passkey_ceremony_client.dart';
 import 'package:lunarlog/data/auth/supabase_auth_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
@@ -137,6 +143,42 @@ class FakeAuthGateway implements AuthGateway {
   /// P1: a real fresh-server-read-after-removal test needs this
   /// divergence, which deriving from `session` alone cannot express).
   List<UserIdentity>? getUserIdentitiesOverride;
+
+  // --- Passkeys (#30 U3; KTD1) ---
+
+  int startPasskeyRegistrationCalls = 0;
+  int startPasskeyAuthenticationCalls = 0;
+  final verifyPasskeyRegistrationCalls =
+      <({String challengeId, Map<String, dynamic> credential})>[];
+  final verifyPasskeyAuthenticationCalls =
+      <({String challengeId, Map<String, dynamic> credential})>[];
+
+  /// The relying-party id never appears here or anywhere else in this
+  /// fake — the server (this class, standing in for it) is the only party
+  /// that would ever hold one (#30 KTD1).
+  Map<String, dynamic> passkeyRegistrationOptions = const {
+    'challenge': 'reg-challenge-bytes',
+  };
+  Map<String, dynamic> passkeyAuthenticationOptions = const {
+    'challenge': 'auth-challenge-bytes',
+  };
+
+  /// What [verifyPasskeyRegistration] returns. A session change is not
+  /// expected here (R10): registering a passkey never mutates `session`.
+  Passkey passkeyRegistrationResult = Passkey(
+    id: 'passkey-1',
+    createdAt: DateTime.utc(2026, 9, 6),
+  );
+
+  /// Overrides the session [verifyPasskeyAuthentication] establishes;
+  /// defaults to a session for `fixedUserId ?? 'passkey'`, mirroring
+  /// [signInWithIdToken].
+  Session? passkeyAuthenticationSessionOverride;
+
+  /// When true, [verifyPasskeyAuthentication] returns a response carrying
+  /// no session, exercising the sibling "verify response with no session"
+  /// unknown-failure branch every other sign-in path also has.
+  bool passkeyAuthenticationNoSession = false;
 
   void _maybeThrow() {
     final error = nextError;
@@ -378,6 +420,56 @@ class FakeAuthGateway implements AuthGateway {
     emit(AuthChangeEvent.signedIn);
     return AuthResponse(session: session);
   }
+
+  @override
+  Future<PasskeyRegistrationOptionsResponse>
+      startPasskeyRegistration() async {
+    startPasskeyRegistrationCalls++;
+    _maybeThrow();
+    return PasskeyRegistrationOptionsResponse(
+      challengeId: 'reg-challenge-1',
+      options: passkeyRegistrationOptions,
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+    );
+  }
+
+  @override
+  Future<Passkey> verifyPasskeyRegistration({
+    required String challengeId,
+    required Map<String, dynamic> credential,
+  }) async {
+    verifyPasskeyRegistrationCalls
+        .add((challengeId: challengeId, credential: credential));
+    _maybeThrow();
+    return passkeyRegistrationResult;
+  }
+
+  @override
+  Future<PasskeyAuthenticationOptionsResponse>
+      startPasskeyAuthentication() async {
+    startPasskeyAuthenticationCalls++;
+    _maybeThrow();
+    return PasskeyAuthenticationOptionsResponse(
+      challengeId: 'auth-challenge-1',
+      options: passkeyAuthenticationOptions,
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+    );
+  }
+
+  @override
+  Future<AuthResponse> verifyPasskeyAuthentication({
+    required String challengeId,
+    required Map<String, dynamic> credential,
+  }) async {
+    verifyPasskeyAuthenticationCalls
+        .add((challengeId: challengeId, credential: credential));
+    _maybeThrow();
+    if (passkeyAuthenticationNoSession) return AuthResponse();
+    session = passkeyAuthenticationSessionOverride ??
+        makeSession(fixedUserId ?? 'passkey');
+    emit(AuthChangeEvent.signedIn);
+    return AuthResponse(session: session);
+  }
 }
 
 /// Records `initialize` arguments and returns a configured credential or
@@ -423,6 +515,36 @@ class FakeGoogleSignInClient implements GoogleSignInClient {
   }
 }
 
+/// Records the options each method was called with and returns a
+/// configured credential/assertion, or null to simulate a dismissed
+/// ceremony (#30 U3; KTD2 — this is the seam a real plugin adapter would
+/// implement; this fake never involves a plugin).
+class FakePasskeyCeremonyClient implements PasskeyCeremonyClient {
+  Map<String, dynamic>? createResult = const {'id': 'created-credential'};
+  Map<String, dynamic>? getResult = const {'id': 'assertion-credential'};
+  Object? createError;
+  Object? getError;
+
+  final createCalls = <Map<String, dynamic>>[];
+  final getCalls = <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>?> create(Map<String, dynamic> options) async {
+    createCalls.add(options);
+    final error = createError;
+    if (error != null) throw error;
+    return createResult;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> get(Map<String, dynamic> options) async {
+    getCalls.add(options);
+    final error = getError;
+    if (error != null) throw error;
+    return getResult;
+  }
+}
+
 class FakeLinkSource implements AuthLinkSource {
   FakeLinkSource({this.initial});
 
@@ -464,6 +586,8 @@ void main() {
     bool googleAvailable = false,
     GoogleSignInClient? googleClient,
     String Function()? generateNonce,
+    bool passkeysAvailable = false,
+    PasskeyCeremonyClient? passkeyClient,
   }) async {
     final service = SupabaseAuthService(
       gateway: gateway,
@@ -479,6 +603,8 @@ void main() {
             authenticateError: StateError('not expected'),
           ),
       generateNonce: generateNonce ?? generateRawNonce,
+      passkeysAvailable: passkeysAvailable,
+      passkeyClient: passkeyClient ?? const UnsupportedPasskeyCeremonyClient(),
     );
     addTearDown(service.dispose);
     await service.start();
@@ -2034,6 +2160,157 @@ void main() {
             statusCode: '400', code: 'some_other_unlink_code')),
         const AuthFailure.unknown(),
       );
+    });
+  });
+
+  group('Passkeys (#30 U3; KTD1, KTD2, KTD4)', () {
+    test('sign-in: options and a fake ceremony credential sign the operator '
+        'in, and verify receives the start call\'s challenge id', () async {
+      final ceremony = FakePasskeyCeremonyClient();
+      final service =
+          await started(passkeysAvailable: true, passkeyClient: ceremony);
+
+      final result = await service.signInWithPasskey();
+
+      expect(result, isA<PasskeySignInSession>());
+      expect(gateway.startPasskeyAuthenticationCalls, 1);
+      expect(ceremony.getCalls.single, gateway.passkeyAuthenticationOptions);
+      expect(gateway.verifyPasskeyAuthenticationCalls.single.challengeId,
+          'auth-challenge-1');
+      expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('sign-in: a dismissed ceremony returns cancelled and never calls '
+        'verify', () async {
+      final ceremony = FakePasskeyCeremonyClient()..getResult = null;
+      final service =
+          await started(passkeysAvailable: true, passkeyClient: ceremony);
+
+      final result = await service.signInWithPasskey();
+
+      expect(result, const PasskeySignInCancelled());
+      expect(gateway.verifyPasskeyAuthenticationCalls, isEmpty);
+      expect(service.state, AuthSessionState.signedOut);
+    });
+
+    test('sign-in: a gateway AuthException maps to a fieldless AuthFailure '
+        'carrying no message from the exception', () async {
+      final service = await started(
+          passkeysAvailable: true,
+          passkeyClient: FakePasskeyCeremonyClient());
+      gateway.nextError = const AuthApiException('secret-server-detail',
+          statusCode: '400', code: 'weird_passkey_code');
+
+      Object? error;
+      try {
+        await service.signInWithPasskey();
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error, isA<AuthFailure>());
+      expect(error.toString(), isNot(contains('secret-server-detail')));
+    });
+
+    test('sign-in: a network-shaped error maps to AuthNetworkFailure',
+        () async {
+      final service = await started(
+          passkeysAvailable: true,
+          passkeyClient: FakePasskeyCeremonyClient());
+      gateway.nextError = AuthRetryableFetchException(message: 'offline');
+
+      await expectLater(
+          service.signInWithPasskey(), throwsA(const AuthFailure.network()));
+    });
+
+    test('sign-in: a verify response with no session throws unknown',
+        () async {
+      gateway.passkeyAuthenticationNoSession = true;
+      final service = await started(
+          passkeysAvailable: true,
+          passkeyClient: FakePasskeyCeremonyClient());
+
+      await expectLater(
+          service.signInWithPasskey(), throwsA(const AuthFailure.unknown()));
+    });
+
+    test('registration: called while signed out throws unknown before the '
+        'gateway or the ceremony client is touched', () async {
+      final ceremony = FakePasskeyCeremonyClient();
+      final service =
+          await started(passkeysAvailable: true, passkeyClient: ceremony);
+
+      await expectLater(
+          service.registerPasskey(), throwsA(const AuthFailure.unknown()));
+      expect(gateway.startPasskeyRegistrationCalls, 0);
+      expect(ceremony.createCalls, isEmpty);
+    });
+
+    test('registration: success returns the user rebuilt after enrolment '
+        'rather than a stale currentUser', () async {
+      gateway.session = makeSession('u1', email: 'a@b.c');
+      final ceremony = FakePasskeyCeremonyClient();
+      final service =
+          await started(passkeysAvailable: true, passkeyClient: ceremony);
+
+      final result = await service.registerPasskey();
+
+      expect(result, isA<PasskeyRegistrationSuccess>());
+      final success = result as PasskeyRegistrationSuccess;
+      expect(success.user, service.currentUser);
+      expect(gateway.verifyPasskeyRegistrationCalls.single.challengeId,
+          'reg-challenge-1');
+    });
+
+    test('registration: a dismissed ceremony returns cancelled and never '
+        'calls verify', () async {
+      gateway.session = makeSession('u1');
+      final ceremony = FakePasskeyCeremonyClient()..createResult = null;
+      final service =
+          await started(passkeysAvailable: true, passkeyClient: ceremony);
+
+      final result = await service.registerPasskey();
+
+      expect(result, const PasskeyRegistrationCancelled());
+      expect(gateway.verifyPasskeyRegistrationCalls, isEmpty);
+    });
+
+    test('registration does not add "passkey" to AuthUser.providers (R10)',
+        () async {
+      gateway.session =
+          makeSession('u1', identities: ['email'], email: 'a@b.c');
+      final service = await started(
+          passkeysAvailable: true,
+          passkeyClient: FakePasskeyCeremonyClient());
+
+      final result = await service.registerPasskey() as PasskeyRegistrationSuccess;
+
+      expect(result.user.providers, ['email']);
+    });
+
+    test('a SupabaseAuthService built with no explicit ceremony client uses '
+        'the unsupported default, so a flag-on build with no adapter fails '
+        'as providerUnavailable rather than crashing', () async {
+      gateway.session = makeSession('u1');
+      final service = await started(passkeysAvailable: true);
+
+      await expectLater(service.registerPasskey(),
+          throwsA(const AuthFailure.providerUnavailable()));
+    });
+
+    test('signInWithPasskey/registerPasskey throw UnsupportedError when the '
+        'build has no passkey configuration', () async {
+      final service = await started();
+
+      await expectLater(
+          service.signInWithPasskey(), throwsA(isA<UnsupportedError>()));
+    });
+
+    test('no client, gateway, or test ever handles a relying-party id — '
+        'the server owns it (KTD1)', () {
+      expect(gateway.passkeyRegistrationOptions.containsKey('rpId'), isFalse);
+      expect(
+          gateway.passkeyAuthenticationOptions.containsKey('rpId'), isFalse);
     });
   });
 }

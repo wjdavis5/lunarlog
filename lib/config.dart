@@ -75,6 +75,43 @@ abstract final class AppConfig {
       !kIsWeb &&
       googleIosClientId != '' &&
       googleWebClientId != '';
+
+  /// Passkey relying-party id: a bare HTTPS domain (e.g. `example.com`, no
+  /// scheme), supplied by `PASSKEY_RP_ID`.
+  ///
+  /// This value is **immutable once the first passkey is enrolled** for that
+  /// domain - changing it later orphans every credential enrolled against
+  /// the old id. It is chosen by a human release operator, never inferred or
+  /// defaulted (#30 U1; KTD3). See `docs/ops/supabase-go-live.md`'s Passkeys
+  /// section for the full activation checklist.
+  ///
+  /// No workflow (`ci.yml`, `ios-release.yml`, `play-store-release.yml`)
+  /// passes this define today, so [hasPasskeys] resolves to `false` in every
+  /// build that exists - CI, forks, PR builds, TestFlight, and Play
+  /// internal. Do **not** "fix" that omission by adding the define to a
+  /// workflow; turning the feature on is a deliberate, separate release
+  /// action gated on the human prerequisites in `docs/ops/supabase-go-live.md`.
+  ///
+  /// The client never sends this value to the server - Supabase's
+  /// `gotrue` returns the relying-party id inside the WebAuthn options it
+  /// issues (#30 KTD1). It is held here because the iOS Associated Domains
+  /// entitlement and the Android manifest need the same literal at
+  /// activation, and because it is the honest name for "which relying party
+  /// is this build for".
+  static const String passkeyRelyingPartyId =
+      String.fromEnvironment('PASSKEY_RP_ID');
+
+  /// True when passkey support is available for this build and platform:
+  /// Supabase configured, not web, and a relying-party id supplied (#30 U1;
+  /// KTD3). Web passkeys are out of scope (Non-goals) so web is excluded
+  /// outright, on the same terms as [hasGoogle].
+  ///
+  /// Kept as a `const` expression (Dart forbids function calls in constant
+  /// initializers) so unconfigured code paths tree-shake; [computeHasPasskeys]
+  /// is the same rule as a testable function, and `test/config_test.dart`
+  /// asserts the two agree.
+  static const bool hasPasskeys =
+      hasSupabase && !kIsWeb && passkeyRelyingPartyId != '';
 }
 
 /// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.
@@ -113,5 +150,20 @@ bool computeHasGoogle({
 }) {
   if (!hasSupabase || isWeb) return false;
   if (iosClientId.isEmpty || webClientId.isEmpty) return false;
+  return true;
+}
+
+/// Pure decision behind [AppConfig.hasPasskeys] (#30 U1; KTD3).
+///
+/// Requires [hasSupabase], a non-web platform, and a non-empty relying-party
+/// id. Exposed as a function so the rule is unit-testable even though the
+/// production inputs are compile-time constants.
+bool computeHasPasskeys({
+  required bool hasSupabase,
+  required bool isWeb,
+  required String relyingPartyId,
+}) {
+  if (!hasSupabase || isWeb) return false;
+  if (relyingPartyId.isEmpty) return false;
   return true;
 }

@@ -177,6 +177,52 @@ void main() {
     });
   });
 
+  group('computeHasPasskeys', () {
+    test('is false when the relying-party id is empty', () {
+      expect(
+        computeHasPasskeys(
+          hasSupabase: true,
+          isWeb: false,
+          relyingPartyId: '',
+        ),
+        isFalse,
+      );
+    });
+
+    test('is false when Supabase is unconfigured', () {
+      expect(
+        computeHasPasskeys(
+          hasSupabase: false,
+          isWeb: false,
+          relyingPartyId: 'example.com',
+        ),
+        isFalse,
+      );
+    });
+
+    test('is false on web even when the id is set', () {
+      expect(
+        computeHasPasskeys(
+          hasSupabase: true,
+          isWeb: true,
+          relyingPartyId: 'example.com',
+        ),
+        isFalse,
+      );
+    });
+
+    test('is true when Supabase is configured, not web, and id is set', () {
+      expect(
+        computeHasPasskeys(
+          hasSupabase: true,
+          isWeb: false,
+          relyingPartyId: 'example.com',
+        ),
+        isTrue,
+      );
+    });
+  });
+
   group('AppConfig (compile-time values in this test run)', () {
     // The test runner passes no dart-defines, so every value is unconfigured.
     test('is unconfigured without dart-defines', () {
@@ -189,6 +235,8 @@ void main() {
       expect(AppConfig.googleIosClientId, isEmpty);
       expect(AppConfig.googleWebClientId, isEmpty);
       expect(AppConfig.hasGoogle, isFalse);
+      expect(AppConfig.passkeyRelyingPartyId, isEmpty);
+      expect(AppConfig.hasPasskeys, isFalse);
     });
 
     test('hasSupabase agrees with the pure function for this platform', () {
@@ -211,6 +259,17 @@ void main() {
           isWeb: kIsWeb,
           iosClientId: AppConfig.googleIosClientId,
           webClientId: AppConfig.googleWebClientId,
+        ),
+      );
+    });
+
+    test('hasPasskeys agrees with the pure function for this platform', () {
+      expect(
+        AppConfig.hasPasskeys,
+        computeHasPasskeys(
+          hasSupabase: AppConfig.hasSupabase,
+          isWeb: kIsWeb,
+          relyingPartyId: AppConfig.passkeyRelyingPartyId,
         ),
       );
     });
