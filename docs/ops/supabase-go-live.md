@@ -257,12 +257,13 @@ Supabase Auth setup above.
 - [x] App Store provisioning profile regenerated with the Sign in with Apple
       capability on the `com.wjdavis5.lunarlog` App ID, and
       `IOS_PROVISION_PROFILE_BASE64` replaced. Signing itself works cleanly on
-      a run that reaches it, but two blockers currently keep any run from
-      getting there or past it: a `Verify Supabase migrations are applied`
-      gate (issue #47) skips the build entirely when production is missing a
-      migration the repo expects (as it currently is), and on a run where
-      that gate passes, the upload step fails at App Store Connect error
-      90592 ("Invalid Export Compliance Code") — see
+      a run that reaches it. A `Verify Supabase migrations are applied` gate
+      (issue #47) runs first and skips the build entirely whenever production
+      is missing a migration the repo expects — check the latest
+      `ios-release.yml` run's `Verify Supabase migrations are applied` job
+      for current status. Even on a run where that gate passes, the upload
+      step currently fails at App Store Connect error 90592 ("Invalid Export
+      Compliance Code") — see
       [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md) for
       what to do if App Store Connect asks for compliance documentation or a
       code.
@@ -628,10 +629,12 @@ is a gate before go-live.
 - Sentry smoke test (no DSN configured yet).
 - ~~Provisioning profile regeneration with the Sign in with Apple
   capability~~ — done; signing itself works cleanly on a run that reaches
-  it. Two blockers still keep a run from getting there or past it: the
-  `Verify Supabase migrations are applied` gate (issue #47, currently
-  failing against production) and App Store Connect error 90592 ("Invalid
-  Export Compliance Code") at the upload step — see
+  it. The `Verify Supabase migrations are applied` gate (issue #47) fails
+  closed whenever production is missing a migration the repo expects — check
+  the latest `ios-release.yml` run's `Verify Supabase migrations are
+  applied` job for current status — and App Store Connect error 90592
+  ("Invalid Export Compliance Code") at the upload step still keeps a run
+  from completing — see
   [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md) for what
   to do if App Store Connect asks for compliance documentation or a code.
 - The whole "Social logins and passwordless (issue #2)" go-live section
