@@ -3,6 +3,10 @@
 /// backgrounding always re-locks regardless) and, when the build provides
 /// an [AuthController], the Account section (U6). Reachable from the
 /// profile picker.
+///
+/// Route naming (U2 Approach 2b): the "Contact support" and "Privacy
+/// policy" `showDialog` calls are deliberately left unnamed — both are
+/// informational-only (no action beyond Close), not distinct destinations.
 library;
 
 import 'dart:async';
@@ -10,6 +14,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
@@ -69,7 +74,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: const Text('Report a bug, ask a question, or share an idea'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
+                MaterialPageRoute<void>(
+                  settings: const RouteSettings(name: kRouteFeedbackScreen),
+                  builder: (_) => const FeedbackScreen(),
+                ),
               ),
             )
           else
@@ -225,7 +233,10 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
           ? const Icon(Icons.circle, key: ValueKey('support-history-unread-badge'), size: 10, color: Colors.red)
           : const Icon(Icons.chevron_right),
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const SupportHistoryScreen()),
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: kRouteSupportHistoryScreen),
+          builder: (_) => const SupportHistoryScreen(),
+        ),
       ),
     );
   }

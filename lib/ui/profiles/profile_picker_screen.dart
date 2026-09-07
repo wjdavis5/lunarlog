@@ -11,6 +11,7 @@ import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
@@ -38,7 +39,10 @@ class ProfilePickerScreen extends StatelessWidget {
     final archived = controller.archivedProfiles;
     final hasSync = Provider.of<SyncStatusController?>(context) != null;
     void openSettings() => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+          MaterialPageRoute<void>(
+            settings: const RouteSettings(name: kRouteSettingsScreen),
+            builder: (_) => const SettingsScreen(),
+          ),
         );
     return Scaffold(
       appBar: AppBar(
@@ -87,6 +91,8 @@ class ProfilePickerScreen extends StatelessWidget {
                         Text('Created ${formatCreatedDate(profile.createdAt)}'),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
+                        settings:
+                            const RouteSettings(name: kRouteProfileDetailScreen),
                         builder: (_) => ProfileDetailScreen(
                           profile: profile,
                           readOnly: true,
@@ -130,6 +136,8 @@ class ProfilePickerScreen extends StatelessWidget {
       if (storage != null && sharing != null) {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
+            settings:
+                const RouteSettings(name: kRouteManageGuardiansScreen),
             builder: (_) => ManageGuardiansScreen(
               profile: profile,
               guardiansRepository: ProfileGuardiansRepository(storage),

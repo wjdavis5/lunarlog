@@ -48,8 +48,10 @@ If you use "Send feedback" (Settings, signed-in accounts only), we process:
 None of this leaves your device until you tap submit. A ticket you send is visible to the app's operator team and to you, in the app's Support history.
 
 ### D. Technical & Crash Information (Diagnostics)
-To maintain app stability and diagnose crashes, LunarLog includes optional telemetry powered by Sentry. 
-- **Strict Privacy Floor:** Before any error or crash report leaves your device, an automated client-side scrubber (`lib/observability/scrub.dart`) removes all health information, dates, flow levels, notes, tags, profile names, user IDs, device names, auth tokens, and request payloads.
+To maintain app stability and diagnose crashes, LunarLog includes optional telemetry powered by Sentry.
+- **Strict Privacy Floor:** Before any error or crash report leaves your device, an automated client-side scrubber (`lib/observability/scrub.dart`) removes all health information, dates, flow levels, notes, tags, profile names, user IDs, device names, auth tokens, and request payloads. A crash report may additionally carry the *names of the screens you visited* before the crash (e.g. "Settings", "Feedback") — never their contents or arguments; an unrecognized or third-party screen name is reported as "unknown" rather than passed through.
+- **Native crash reports bypass this on-device scrubber.** An Android app freeze, an Android native (NDK) crash, an iOS app hang, or an iOS watchdog termination is assembled and sent by the operating system's crash-reporting layer, not by this app's code — it never passes through the scrubber described above. These reports carry device, thread, and stack state, not app content (no note, tag, date, or profile name is ever held in a form a native crash report can capture), and the same server-side scrubbing and IP suppression covers them.
+- **Optional performance measurement:** if the operator running the app has separately enabled it, LunarLog can also measure how long the app takes to start and how long some in-app operations take. When enabled, this carries operation timings and HTTP status codes — never a URL's query string, never a request body, and never anything from the allowlist above. This measurement is off by default in every release build.
 - Crash data is anonymous, not linked to your identity or health records, and used solely for bug fixes and app performance.
 
 ---
@@ -72,7 +74,7 @@ LunarLog limits third-party integration to essential operational infrastructure:
 | Service | Purpose | Data Received | Location / Security |
 | :--- | :--- | :--- | :--- |
 | **Supabase** | Cloud authentication and database sync (optional) | Account email, encrypted cycle entries, authentication tokens | Encrypted in transit (TLS 1.3) and at rest (AES-256); Row-Level Security enforced |
-| **Sentry** | Crash reporting and error diagnostics | Anonymized stack traces, OS version, device architecture (all health/identity data stripped) | Client-side scrubbed; retained for a maximum of 90 days for debugging |
+| **Sentry** | Crash reporting and error diagnostics | Anonymized stack traces, OS version, device architecture, the names of screens visited before a crash, and (only when separately enabled) operation timings (all health/identity data stripped) | Client-side scrubbed for app-originated reports; a native crash report (Android NDK/ANR, iOS app hang/watchdog termination) is assembled by the operating system and is instead covered by server-side scrubbing and IP suppression; retained for a maximum of 90 days for debugging |
 | **Apple (Sign in with Apple)** | Optional identity provider on iOS/macOS | Apple user identifier, relay email address (if selected) | Governed by Apple Privacy Policy |
 | **Google (Google Sign-In)** | Optional identity provider | Google ID token (email and basic account identifier) | Governed by Google Privacy Policy |
 | **Resend** | Transactional support email (an admin alert when you submit a ticket; the admin's reply email to you) | Reply email address and, for the reply you receive, the reply text | Governed by Resend's Privacy Policy |

@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:provider/provider.dart';
 
 /// 5 MiB, matching `feedback_attachments` bucket's `file_size_limit` (U2).
@@ -55,6 +56,7 @@ class _AttachmentFieldState extends State<AttachmentField> {
 
     final consented = await showDialog<bool>(
       context: context,
+      routeSettings: const RouteSettings(name: kRouteAttachmentConsentDialog),
       builder: (context) => AlertDialog(
         title: const Text('Attach a screenshot?'),
         content: const Text(

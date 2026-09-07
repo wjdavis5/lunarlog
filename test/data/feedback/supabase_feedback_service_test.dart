@@ -183,8 +183,19 @@ void main() {
         replyEmail: 'a@example.com',
       );
 
-      // The notify call is fire-and-forget; flush the microtask/event queue.
-      await pumpEventQueue();
+      // The notify call is fire-and-forget; flush the microtask/event queue
+      // until it resolves rather than assuming a fixed number of
+      // `pumpEventQueue` rounds covers it. `flutter test --coverage`'s
+      // instrumentation adds real hops to the notify chain (session lookup,
+      // request building, the mocked HTTP round trip), which can exceed
+      // `pumpEventQueue`'s default 20 event-loop turns even though the same
+      // test is reliably green without `--coverage` (seen in CI: this test
+      // is the only failure under `dart run tool/quality_gate.dart`, which
+      // runs `flutter test --coverage`, while plain `flutter test` passes).
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (notifiedTicketId == null && DateTime.now().isBefore(deadline)) {
+        await pumpEventQueue();
+      }
       expect(notifiedTicketId, 't3');
     });
 

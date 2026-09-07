@@ -24,6 +24,11 @@ name: iOS Release
 #   SUPABASE_ANON_KEY             Supabase publishable key (client-safe);
 #                                 passed as SUPABASE_PUBLISHABLE_KEY
 #   SENTRY_DSN                    Sentry DSN (client-safe; empty disables)
+#   SENTRY_AUTH_TOKEN             Sentry org auth token, project:releases scope
+#                                 only (issue #19); dSYM upload warns and
+#                                 skips when this or the next two are empty
+#   SENTRY_ORG                    Sentry organization slug
+#   SENTRY_PROJECT                Sentry project slug
 
 on:
   push:
@@ -392,6 +397,54 @@ jobs:
           [ -f "$app/PrivacyInfo.xcprivacy" ] || { echo "::error::privacy manifest missing from the bundle"; exit 1; }
 
           [ "$encryption" = "true" ] || { echo "::error::ITSAppUsesNonExemptEncryption is '$encryption' in the exported Info.plist, expected true (see docs/ops/ios-export-compliance.md)"; exit 1; }
+
+      - name: Set up sentry-cli (checksum-verified download)
+        # U5 (R15/R16): warns and skips rather than failing the release when
+        # the upload secrets are absent -- true for every build today, since
+        # issue #19 has not provisioned them yet. sentry-cli is installed as
+        # a pinned, checksum-verified release binary, never `curl | bash`
+        # (KTD10): this step runs after the signing keychain and
+        # provisioning profile are installed, so an unpinned remote script
+        # here would run with the full signing credential set in reach. The
+        # guard/download/verify logic is shared with play-store-release.yml
+        # via upload-sentry-symbols-setup.sh (tested in CI's release-guards
+        # jobs); only the download URL/checksum and the upload command
+        # itself are platform-specific.
+        #
+        # No `continue-on-error` here (round 2 of issue #7's review; KTD10):
+        # the script itself already warns-and-skips (exit 0) on a missing
+        # secret or a download that fails after its own retries, so only a
+        # genuine checksum mismatch -- a corrupted or tampered binary --
+        # reaches a non-zero exit here, and that must fail the job loudly,
+        # not be swallowed. `continue-on-error` is scoped to the next step,
+        # which makes the actual Sentry upload network call.
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_CLI_DOWNLOAD_URL: https://github.com/getsentry/sentry-cli/releases/download/3.7.0/sentry-cli-Darwin-universal
+          SENTRY_CLI_SHA256: 10ccaaa39e6eee2b52034546f5f617533fdc76c64aa75c3038887045da1a367d
+          SENTRY_CLI_CHECKSUM_TOOL: shasum
+        run: bash .github/scripts/upload-sentry-symbols-setup.sh
+
+      - name: Upload Sentry debug symbols (dSYMs)
+        # continue-on-error (R15): once issue #19 provisions the secrets, a
+        # Sentry-side outage on this upload call must degrade telemetry,
+        # never block a signed TestFlight upload -- this is symbol upload,
+        # not the release artifact itself. Scoped to just this network call,
+        # not the checksum verification in the previous step (round 2 of
+        # issue #7's review).
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -x ./sentry-cli ]; then
+            # No --include-sources: this app's source files would upload to
+            # a third party for no symbolication benefit (KTD10).
+            ./sentry-cli debug-files upload build/ios/archive/Runner.xcarchive/dSYMs
+          fi
 
       - name: Upload to TestFlight
         env:

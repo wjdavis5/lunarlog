@@ -5,6 +5,11 @@
 /// sheet re-checks), archived profiles get a read-only view with no
 /// save/delete affordances, and a repository save/delete failure keeps the
 /// sheet open with all entered values intact plus an inline retry error.
+///
+/// Route naming (U2 Approach 2b): the sheet itself is named
+/// `DaySheetScreen` at its push site (`month_calendar.dart`). Its internal
+/// "Delete this entry?" `showDialog` is deliberately left unnamed — a
+/// trivial confirm/cancel choice, not a distinct destination.
 library;
 
 import 'package:flutter/material.dart';

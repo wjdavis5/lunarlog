@@ -20,6 +20,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // U3 (R7): Prefab lets sentry-native-ndk consume sentry-android's
+    // prefab-packaged native libs. Without this, enableNativeCrashHandling
+    // in sentry_bootstrap.dart is a switch on a capability the build never
+    // compiled in -- NDK crashes would not actually be captured.
+    buildFeatures {
+        prefab = true
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.wjdavis5.lunarlog"
@@ -74,6 +82,17 @@ kotlin {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // U3 (R7): real Android NDK crash capture. `sentry-native-ndk` carries
+    // its own independent version series (0.x), separate from
+    // `io.sentry:sentry-android`'s (8.x) -- a versionless declaration fails
+    // to resolve (verified), and so does guessing the sentry-android
+    // version. Pinned to 0.16.2, the exact version `io.sentry:sentry-
+    // android-ndk:8.53.0` depends on internally per sentry-java's own
+    // gradle/libs.versions.toml at that tag (sentry_flutter 9.28.0 pulls
+    // sentry-android 8.53.0 as `api`, transitively pulling
+    // sentry-android-ndk 8.53.0). Re-check this pin whenever sentry_flutter
+    // is upgraded.
+    implementation("io.sentry:sentry-native-ndk:0.16.2")
 }
 
 flutter {

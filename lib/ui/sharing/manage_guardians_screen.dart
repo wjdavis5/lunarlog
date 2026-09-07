@@ -1,6 +1,12 @@
 /// Screen for viewing, inviting, and revoking caregivers for a profile (U8;
 /// R1, R3, R4, R6, R8). Guardian rows come from [ProfileGuardiansRepository]
 /// (R14/R16): no Drift row type crosses into this file.
+///
+/// Route naming (U2 Approach 2b): the "Remove guardian?" confirm is a
+/// trivial confirm/cancel choice, deliberately left unnamed.
+/// [InviteGuardianDialog] is a real form, not a bare confirm, but is left
+/// unnamed here too — not on this plan's explicit route list; worth naming
+/// in a follow-up if invite-flow crashes need their own triage dimension.
 library;
 
 import 'package:flutter/material.dart';
