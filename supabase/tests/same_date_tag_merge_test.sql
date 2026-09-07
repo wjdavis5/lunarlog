@@ -6,7 +6,7 @@
 -- assertions, untouched) are the characterization suite for everything else
 -- sync_push does and must keep passing unmodified.
 begin;
-select plan(25);
+select plan(28);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -56,6 +56,14 @@ select is(public.merge_tag_arrays('[]'::jsonb, '["a"]'::jsonb), '["a"]'::jsonb,
   'merge_tag_arrays([], ["a"]) = ["a"]');
 select is(public.merge_tag_arrays('["a", "a"]'::jsonb, '["a"]'::jsonb), '["a"]'::jsonb,
   'merge_tag_arrays deduplicates a tag already present on both sides');
+select is(
+  jsonb_array_length(public.merge_tag_arrays(
+    (select jsonb_agg('tag_' || lpad(i::text, 2, '0')) from generate_series(0, 19) i),
+    (select jsonb_agg('tag_' || lpad(i::text, 2, '0')) from generate_series(15, 34) i)
+  )),
+  32,
+  'merge_tag_arrays caps at 32 tags (day_entries_tags_check)'
+);
 
 -- ---------------------------------------------------------------------------
 -- Setup: Mom's profile (P1), shared with Dad (co-parent) and Doctor (viewer).
@@ -271,6 +279,32 @@ select is(
     where profile_id = tests.ulid(901) and local_date = '2026-09-09' and deleted_at is null),
   '["a", "b", "c"]'::jsonb,
   'three-way collision (descending push order) converges to the identical union (R9)'
+);
+
+-- ---------------------------------------------------------------------------
+-- Colliding write against a 32-tag entry succeeds and caps at 32 instead of
+-- failing day_entries_tags_check with 23514 (Review item #2).
+-- ---------------------------------------------------------------------------
+insert into r select 'tag_cap_collision', public.sync_push('[]'::jsonb,
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(950), 'profile_id', tests.ulid(901), 'local_date', '2026-09-10',
+      'tz', 'UTC', 'flow', 'none',
+      'tags', (select jsonb_agg('tag_' || lpad(i::text, 2, '0')) from generate_series(0, 31) i),
+      'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(951), 'profile_id', tests.ulid(901), 'local_date', '2026-09-10',
+      'tz', 'UTC', 'flow', 'none',
+      'tags', '["extra_tag"]'::jsonb,
+      'updated_at', pg_temp.ts_txt('t2'))
+  ));
+select is(
+  (select jsonb_array_length(pg_temp.resp('tag_cap_collision') -> 'rejected')),
+  0,
+  'colliding write against a 32-tag entry is not rejected by day_entries_tags_check'
+);
+select is(
+  (select jsonb_array_length(tags) from public.day_entries where id = tests.ulid(951)),
+  32,
+  'surviving row carries exactly 32 tags'
 );
 
 rollback;

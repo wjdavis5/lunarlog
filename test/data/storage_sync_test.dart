@@ -497,6 +497,8 @@ void main() {
       expect(winner.note, 'remote note',
           reason: 'R8: note stays last-writer-wins, unaffected by the tag merge');
       expect(winner.deletedAt, isNull);
+      expect(winner.dirty, isTrue, reason: 'the merge must be pushed');
+      expect(winner.localRev, 1);
 
       final loser = await entryById(p.id, local.id);
       expect(loser.deletedAt, newer);

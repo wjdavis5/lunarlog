@@ -98,5 +98,14 @@ void main() {
       expect(mergeTags(once, ['a', 'b']), once);
       expect(mergeTags(once, once), once);
     });
+
+    test('caps at 32 tags matching day_entries_tags_check', () {
+      final a = List.generate(20, (i) => 'tag_${i.toString().padLeft(2, '0')}');
+      final b = List.generate(20, (i) => 'tag_${(i + 15).toString().padLeft(2, '0')}');
+      final result = mergeTags(a, b);
+      expect(result.length, 32);
+      expect(result.first, 'tag_00');
+      expect(result.last, 'tag_31');
+    });
   });
 }

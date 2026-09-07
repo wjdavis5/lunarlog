@@ -3,7 +3,7 @@
 -- idempotency (R5), that a cancelled token is actually dead, and that the
 -- withdrawn direct-update grant / policy are gone (R4).
 begin;
-select plan(24);
+select plan(26);
 
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('dad');
@@ -11,6 +11,8 @@ select tests.create_supabase_user('sitter');
 select tests.create_supabase_user('doctor');
 select tests.create_supabase_user('nanny');
 select tests.create_supabase_user('stranger');
+select tests.create_supabase_user('pending_guardian');
+select tests.create_supabase_user('revoked_guardian');
 
 -- ---------------------------------------------------------------------------
 -- Setup: Mom's profile (P1) with an accepted co-parent (dad), an accepted
@@ -80,8 +82,16 @@ select public.create_guardian_invitation(
   tests.ulid(801), 'viewer', 'Grandma',
   '0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d', 48
 );
+select public.create_guardian_invitation(
+  tests.ulid(801), 'caregiver', 'Aunt',
+  '3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a', 48
+);
 
 select tests.clear_authentication();
+insert into public.profile_guardians (profile_id, user_id, role, status)
+values
+  (tests.ulid(801), tests.get_supabase_uid('pending_guardian'), 'co_parent', 'pending'),
+  (tests.ulid(801), tests.get_supabase_uid('revoked_guardian'), 'co_parent', 'revoked');
 insert into public.guardian_invitations
   (profile_id, invited_by, token_hash, role, recipient_label, expires_at)
 values
@@ -187,6 +197,36 @@ select throws_ok(
   )$$,
   '42501', 'caller lacks permission to cancel this invitation',
   'Viewer cannot cancel any invitation (R3)'
+);
+
+-- ---------------------------------------------------------------------------
+-- 6a. Pending-status guardian attempts to cancel -> insufficient_privilege.
+--     Asserts the status = 'accepted' filter: role survives in profile_guardians,
+--     so without status = 'accepted' a pending co-parent could cancel (Review item #3).
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('pending_guardian');
+select throws_ok(
+  $$select public.revoke_guardian_invitation(
+    (select id from public.guardian_invitations where token_hash =
+      '3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a')
+  )$$,
+  '42501', 'caller lacks permission to cancel this invitation',
+  'Pending-status guardian cannot cancel an invitation (status = accepted guard)'
+);
+
+-- ---------------------------------------------------------------------------
+-- 6b. Revoked-status guardian attempts to cancel -> insufficient_privilege.
+--     Asserts the status = 'accepted' filter: role survives revocation, so
+--     without status = 'accepted' a revoked co-parent could cancel (Review item #3).
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('revoked_guardian');
+select throws_ok(
+  $$select public.revoke_guardian_invitation(
+    (select id from public.guardian_invitations where token_hash =
+      '3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a')
+  )$$,
+  '42501', 'caller lacks permission to cancel this invitation',
+  'Revoked-status guardian cannot cancel an invitation (status = accepted guard)'
 );
 
 -- ---------------------------------------------------------------------------

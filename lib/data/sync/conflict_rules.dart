@@ -66,8 +66,12 @@ DayEntryCandidate? sameDateWinner(DayEntryCandidate a, DayEntryCandidate b) {
 /// idempotent result - mirrors the server's `public.merge_tag_arrays` SQL
 /// function exactly (KTD4/KTD6). This is the tag rule; it is never applied
 /// on the same-id convergence path (R10), where an empty `tags` legitimately
-/// means "the user removed these tags".
+/// means "the user removed these tags". Capped at 32 tags matching
+/// `day_entries_tags_check`.
 List<String> mergeTags(List<String> a, List<String> b) {
   final merged = {...a, ...b}.toList()..sort();
+  if (merged.length > 32) {
+    return merged.sublist(0, 32);
+  }
   return merged;
 }

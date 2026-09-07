@@ -36,16 +36,20 @@ as $$
   select coalesce(
     (select jsonb_agg(tag order by tag)
        from (
-         select tag from jsonb_array_elements_text(coalesce(a, '[]'::jsonb)) as tag
-         union
-         select tag from jsonb_array_elements_text(coalesce(b, '[]'::jsonb)) as tag
+         select tag from (
+           select tag from jsonb_array_elements_text(coalesce(a, '[]'::jsonb)) as tag
+           union
+           select tag from jsonb_array_elements_text(coalesce(b, '[]'::jsonb)) as tag
+         ) u
+         order by tag
+         limit 32
        ) t),
     '[]'::jsonb
   );
 $$;
 
 comment on function public.merge_tag_arrays(jsonb, jsonb) is
-  'Set union of two tag arrays, deduplicated and sorted for a deterministic,
+  'Set union of two tag arrays, deduplicated, sorted, and capped at 32 tags (day_entries_tags_check) for a deterministic,
    order-independent, idempotent result (R9). Returns [] when both inputs
    are null/empty. See docs/plans/2026-09-06-001-feat-family-sharing-invitations-plan.md (U4).';
 
