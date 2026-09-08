@@ -144,7 +144,7 @@ Today lunarlog is fully local: an encrypted SQLCipher database behind a device-c
 - Family sharing, invitations, multi-user access to one profile (issue #3).
 - Custodianship transfer and reciprocal sharing (issue #4).
 - Caregiver alerts and reminder coordination changes (issue #5).
-- Any fertility feature (repo rule, unchanged).
+- Any fertility feature (out of scope for this plan; the repo-wide no-fertility rule this line once cited was later removed by #142 — fertility estimation and signal logging are now tracked in #143/#144).
 
 **Deferred to Follow-Up Work**
 

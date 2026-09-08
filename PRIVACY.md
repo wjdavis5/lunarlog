@@ -1,7 +1,7 @@
 # LunarLog Privacy Policy
 
-**Effective Date:** September 3, 2026  
-**Last Updated:** September 6, 2026 (added Firebase Cloud Messaging disclosure for caregiver push alerts)  
+**Effective Date:** September 7, 2026  
+**Last Updated:** September 7, 2026 (removed the "No Fertility Tracking or Algorithms" principle — see the Change History in Section 10)  
 
 LunarLog ("we", "our", or "the app") is a privacy-first, local-first menstrual cycle and symptom tracker designed for individuals and families. We believe that reproductive and menstrual health data is deeply personal and sensitive. LunarLog is architected from the ground up to protect your privacy: your device is the primary source of truth, data is encrypted, and cloud synchronization is strictly optional.
 
@@ -14,7 +14,7 @@ This Privacy Policy explains what information LunarLog processes, how that infor
 - **Local-First & Offline:** LunarLog operates entirely offline without requiring an account. All cycle tracking, notes, symptoms, and profiles function without an internet connection.
 - **Protected at Rest:** All data stored on your device relies on your operating system's own at-rest protection (iOS Data Protection / Android device encryption) and is only shown behind device-level biometric or passcode authentication.
 - **No Advertising or Data Brokers:** We do not display advertisements, sell your data, monetize your health information, or share data with data brokers or tracking networks.
-- **No Fertility Tracking or Algorithms:** By design, LunarLog does not contain ovulation prediction, fertility forecasting, conception algorithms, or pregnancy-related data sharing.
+- **Estimates From Your Own Logged Data:** LunarLog estimates the timing of the next period from the cycle history you log, computed entirely on your device; a guardian who can see a profile's cycle data can see its estimates. Fertility-related estimation (fertile-window and ovulation estimates, derived from the profile's own logged cycle history) is part of the product's intended scope — it does not exist in the app as of this update — and when it ships it will follow these same protections and the same guardian-visibility and ownership-transfer rules as all other cycle data (Section 5). An earlier version of this policy guaranteed that no fertility feature would ever exist; that guarantee was removed by owner decision in September 2026 (see the Change History in Section 10). Conception and pregnancy features remain outside the product's scope.
 - **Minimal, Scrubbed Telemetry:** Crash and diagnostic reports are strictly scrubbed on your device before transmission to ensure no health data, personal notes, dates, or user identities ever leave your device.
 
 ---
@@ -89,6 +89,7 @@ No other third parties receive data from LunarLog.
 LunarLog is intended to be operated by a parent, legal guardian, or adult individual. 
 - **Two-stage custodian model:** A profile starts under the adult who created it, who holds both `profiles.user_id` (the account that can delete the record) and the profile's primary-guardian membership. That parent can later **transfer ownership** of a minor's profile to the minor's own account once they are ready to hold it themselves. Transferring moves both facts together to the child's account in a single operation and stamps the profile with when the move happened; every past entry keeps its original "logged by" attribution unchanged, so the record's history is never rewritten. The parent chooses, at the moment they initiate the transfer, whether they keep logging as a co-manager or drop to read-only; either way the parent's continued access afterward is an ordinary membership, not custodial control — the child can revoke it at any time, the same way any guardian can be removed from a shared profile. A parent who deletes their own account no longer removes a profile they have transferred away; conversely, if the child later deletes their own account, the profile and its history go with it, exactly as they would for any account holder.
 - **No Direct Marketing or Tracking:** We do not knowingly collect personal data directly from children under 13 (or under 16 in certain jurisdictions) without parental consent. Minor profiles receive the same end-to-end encryption and protections as adult profiles and are never shared or analyzed.
+- **Fertility Data Follows Cycle Data:** Fertility-related data and estimates, when they exist, receive no special-case handling of any kind: a guardian who can already see a profile's cycle data sees that profile's fertility data and estimates too, and fertility data transfers with the profile in an ownership transfer exactly like every other entry on it. The same feature set is available on every profile, including minor profiles, with no restriction — an explicit owner decision (September 2026), not a default.
 
 ---
 
@@ -142,6 +143,12 @@ In compliance with Apple App Store Guidelines (including Guideline 5.1.1 and `Pr
 ## 10. Changes to this Privacy Policy
 
 We may update this Privacy Policy from time to time to reflect improvements to the app, legal requirements, or architectural changes. The "Last Updated" date at the top of this document will always indicate when changes were made. Substantial changes will be highlighted in app release notes.
+
+### Change History
+
+- **September 7, 2026:** Removed the "No Fertility Tracking or Algorithms" Core Principle. The product owner decided (issues #123 and #142) to pursue full parity with a full cycle-tracking product, including ovulation and fertile-window estimation, so this policy no longer guarantees that fertility features will never exist. Those features do not exist in the app as of this date — today the app tracks cycles and flow and estimates the next period — and when they ship, fertility-related data and estimates will follow the same local-first protections and the same guardian-visibility and ownership-transfer rules as all other cycle data (Section 5). Conception and pregnancy features remain outside the product's scope.
+- **September 6, 2026:** Added the Firebase Cloud Messaging disclosure for caregiver push alerts.
+- **September 3, 2026:** Initial policy.
 
 ---
 

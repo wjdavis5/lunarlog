@@ -14,7 +14,7 @@ execution: code
 
 - **Objective:** The operator plans months ahead from the calendar, logs in seconds, trusts estimates after irregular cycles, gets useful nudges, hands the phone to a teen without worry, exports for a clinician, deletes the account in-app, and reads the app day or night.
 - **Means:** One phased roadmap plan over seven workstreams with seven public-issue payloads (KTD1).
-- **Authority:** PRIVACY.md (no fertility scope, local-first) outranks AGENTS.md (gates, migration flow), which outranks this plan on mechanism.
+- **Authority:** PRIVACY.md (privacy commitments, local-first) outranks AGENTS.md (gates, migration flow), which outranks this plan on mechanism.
 - **Stop conditions:** Stop a unit when its acceptance in the Verification Contract passes; stop the roadmap when the Definition of Done holds.
 - **Execution profile:** code; per-workstream worktree and branch per repo rule.
 - **Tail ownership:** ce-work or a human implementer, unit by unit in phase order.
@@ -107,12 +107,12 @@ Lunarlog today is a minimal honest tracker: one light theme, one-month calendar 
 ### Scope Boundaries
 
 - Deferred to Follow-Up Work: remote caregiver push with new server dispatch and store push services; chained numerals beyond the first predicted cycle; QR invite sharing; wearable overlays; a hosted article library.
-- Outside this product's identity: fertility windows, ovulation prediction, conception and pregnancy modes, temperature-based ovulation charting.
+- Moved in scope after this plan was written (owner decision, issues #123/#142 — the former no-fertility boundary no longer holds): fertility windows and ovulation prediction (#143) and temperature-based fertility-signal charting (#144, BBT/cervical mucus/ovulation tests), on all profiles including minor ones. Still outside this product's identity: conception and pregnancy modes (per #143, parity target is fertile-window awareness, not a reproductive-planning suite).
 
 ### Sources
 
 - Open issues on reminders, deletion with export, and sharing (expanded in place per this plan).
-- AGENTS.md (gates, migration flow, worktree rule), PRIVACY.md (no-fertility rule, portability promise), docs/ops/supabase-go-live.md (release gate).
+- AGENTS.md (gates, migration flow, worktree rule), PRIVACY.md (privacy commitments, portability promise), docs/ops/supabase-go-live.md (release gate).
 - The prioritized gap analysis behind this roadmap is a local-only ideation artifact deliberately kept out of the public repo; it carries no implementation authority beyond what this plan restates.
 
 ---

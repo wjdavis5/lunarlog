@@ -12,7 +12,10 @@ Three parties receive data off-device, all only for app functionality:
 (crash reports reduced to an allowlist — no user, no health content), and
 **Resend** (transactional support email — an admin alert when you submit an
 in-app feedback ticket, and the reply email if the admin responds; never the
-ticket's message body or any attachment). No fertility features, by design.
+ticket's message body or any attachment). Today the app tracks cycles and flow
+and estimates the next period; fertility-related estimation (fertile-window and
+ovulation) is part of the product's intended scope but does not exist in the
+app yet (issues #142 and #143).
 Targets iOS (iPhone first-class), Android, and
 an installable web PWA used for iteration only. The app holds sensitive health
 data, including minors'; this repo stays private and must never contain real
@@ -310,7 +313,13 @@ Part of the home lab; the canonical inventory lives in the lab root's
 - "Sign out everywhere" revokes sessions, not tokens: other devices keep
   access until their JWT expires, which is why the project's JWT expiry is
   set to the dashboard minimum.
-- No fertility features, by design; do not add them.
+- The former "no fertility features, by design; do not add them" commitment
+  was removed (#142, following the owner decision in #123): fertile-window and
+  ovulation estimation (#143) and fertility-signal logging — BBT, cervical
+  mucus, ovulation tests (#144) — are planned on all profiles, including
+  minors'. None of it is built yet; nothing in the app claims it today, and
+  [`PRIVACY.md`](PRIVACY.md) records the narrowed promise in its change
+  history.
 - App-switcher snapshots are suppressed by an opaque Flutter cover whenever
   the app is not resumed, plus FLAG_SECURE on Android (a tiny platform
   channel in `MainActivity.kt`); iOS has no Flutter-level FLAG_SECURE
