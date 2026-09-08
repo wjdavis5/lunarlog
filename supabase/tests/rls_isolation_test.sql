@@ -1,7 +1,7 @@
 -- RLS isolation, privilege, and constraint proof for the three sync tables
 -- (plan U2: AE1, AE2, AE12, column-list grants, CHECKs, server_version, anon).
 begin;
-select plan(51);
+select plan(52);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: users A and B each own one profile, one day entry, one setting.
@@ -213,6 +213,38 @@ select is((select count(*) from pg_policies
            where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings')
              and roles <> '{authenticated}'),
   0::bigint, 'every policy is scoped to authenticated');
+
+-- ---------------------------------------------------------------------------
+-- Issue #158: catalog-wide guard against a future migration forgetting a
+-- `revoke execute ... from public, anon` on a SECURITY DEFINER (or any)
+-- function. `has_function_privilege` (unlike aclexplode over pg_proc.proacl)
+-- correctly folds in Postgres' default EXECUTE-to-PUBLIC grant on functions
+-- that carry no ACL row at all, so this catches both an explicit grant to
+-- anon/public and a plain missing revoke - which is exactly how this test
+-- was proven against a real gap while being written: `is_allowed_device_info`
+-- has a `grant execute ... to authenticated` (20260906130000_feedback_tickets.sql)
+-- but, like `is_valid_tags_array`/`merge_tag_arrays`, no matching revoke, so
+-- it still carried the default PUBLIC/anon grant. The allow-list holds only
+-- these three - all `security invoker` (or plain SQL) pure predicates with no
+-- table access and no SECURITY DEFINER, documented at their own definitions
+-- (20260906130000_feedback_tickets.sql, 20260907010000_tags_element_length_check.sql,
+-- 20260906200000_same_date_tag_merge.sql) as needing no privilege restriction
+-- beyond that default.
+-- ---------------------------------------------------------------------------
+select is(
+  (select count(*)
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and has_function_privilege('anon', p.oid, 'EXECUTE')
+      -- regprocedure renders "name(type,type)" (no parameter names, no
+      -- spaces) - unlike pg_get_function_identity_arguments, which includes
+      -- each parameter's name and would never match a plain type-list literal.
+      and p.oid::regprocedure::text
+            not in ('is_valid_tags_array(jsonb)', 'merge_tag_arrays(jsonb,jsonb)',
+                    'is_allowed_device_info(jsonb)')),
+  0::bigint,
+  'anon holds no EXECUTE on any public function outside the documented pure-helper allow-list');
 
 select * from finish();
 rollback;
