@@ -24,6 +24,8 @@ import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -172,6 +174,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
   late final DayEntriesRepository _dayEntries;
   late final SettingsStore _settings;
   late final CyclePredictionService _prediction;
+  late final CycleHistoryService _cycleHistory;
+  late final CycleExclusionList _cycleExclusions;
   late final NotificationPermissionState _permissionState;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   // U2 Approach 1b: allocated once, not per build. `build` re-runs on every
@@ -213,7 +217,12 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _profiles = DriftProfilesRepository(storage);
     _dayEntries = DriftDayEntriesRepository(storage);
     _settings = DriftSettingsStore(storage);
-    _prediction = CyclePredictionService(_dayEntries);
+    // Issue #132: the device-local omission list joins both streams, so
+    // estimates and history re-derive (and reminders replan) whenever the
+    // operator omits, restores, or skips a cycle.
+    _prediction = CyclePredictionService(_dayEntries, settings: _settings);
+    _cycleHistory = CycleHistoryService(_dayEntries, settings: _settings);
+    _cycleExclusions = CycleExclusionList(_settings);
     _permissionState = NotificationPermissionState(
       NotificationAvailability.available,
     );
@@ -499,6 +508,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<SettingsStore>.value(value: _settings),
         Provider<CyclePredictionService>.value(value: _prediction),
+        Provider<CycleHistoryService>.value(value: _cycleHistory),
+        Provider<CycleExclusionList>.value(value: _cycleExclusions),
         // U6 seam: the overview hint reads this; the coordinator updates it
         // from the real permission query (U8).
         ChangeNotifierProvider.value(
