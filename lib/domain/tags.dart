@@ -1,8 +1,10 @@
 /// Symptom tag taxonomy (KTD6, settled): 17 codes in 4 categories.
 ///
 /// Codes are stable identifiers (stored on day entries); [TagCode.display]
-/// is the default UI string. No fertility-related vocabulary exists in this
-/// taxonomy (R13).
+/// is the default UI string. The taxonomy is cycle/flow-only today — the
+/// fertility-signal tags (BBT, cervical mucus, ovulation tests) arrive with
+/// #144, which also retires the vocabulary guard in
+/// test/domain/tags_test.dart.
 library;
 
 enum TagCategory { pain, body, mood, other }

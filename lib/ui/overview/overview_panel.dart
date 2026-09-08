@@ -2,9 +2,9 @@
 /// profile, rendered from the U3 [CyclePredictionService] stream so it
 /// refreshes as entries are logged (F4 in-app half).
 ///
-/// Wording is date-based only — no fertility vocabulary in any state (R13)
-/// — and every estimate sits next to the fixed non-medical disclaimer
-/// (R17). No drift types cross into this file.
+/// Wording is date-based only today — no fertility vocabulary in any state
+/// until #143 lands — and every estimate sits next to the fixed
+/// non-medical disclaimer (R17). No drift types cross into this file.
 library;
 
 import 'package:flutter/material.dart';

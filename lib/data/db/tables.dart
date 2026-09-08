@@ -14,7 +14,8 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
-/// Menstrual flow levels (no fertility features — v1 scope).
+/// Menstrual flow levels (cycle/flow-only logging; fertility-signal
+/// logging fields arrive with #144).
 enum FlowLevel { none, spotting, light, medium, heavy }
 
 class FlowLevelConverter extends TypeConverter<FlowLevel, String> {

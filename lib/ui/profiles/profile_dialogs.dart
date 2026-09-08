@@ -1,8 +1,9 @@
 /// Shared dialogs and validators for profile create/edit/archive (R2).
 ///
-/// Copy is privacy-sensitive by house rule: no fertility vocabulary, and the
-/// archive confirmation states explicitly that data is retained (archive
-/// must not read as data loss while export is deferred).
+/// Copy is privacy-sensitive: fertility vocabulary is absent today (it
+/// arrives with #143/#144), and the archive confirmation states explicitly
+/// that data is retained (archive must not read as data loss while export
+/// is deferred).
 library;
 
 import 'package:flutter/material.dart';
