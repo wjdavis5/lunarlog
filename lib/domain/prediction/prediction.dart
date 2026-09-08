@@ -5,8 +5,9 @@
 ///
 /// All date math is on civil dates ([LocalDate]); the caller supplies
 /// `today` in the profile's local zone. Output vocabulary is date-based
-/// only (period / cycle day / days until next period) — no
-/// fertility-phase wording anywhere (R13).
+/// only today (period / cycle day / days until next period); fertile-window
+/// and ovulation estimation is planned for this module (#143) and does not
+/// exist yet.
 ///
 /// Issue #132 adds the omission seam: a device-local set of cycle *start*
 /// dates the operator has excluded from the averages ("omit from average"

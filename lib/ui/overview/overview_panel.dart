@@ -5,10 +5,10 @@
 /// Issue #132 adds the two surfaces below the estimate card: the
 /// three-option late resolver (R6) replacing the old single-line banner,
 /// and the cycle-history section (R4/R5) with omit-from-average,
-/// statistics, and confidence framing. Wording is date-based only — no
-/// fertility vocabulary in any state (R13) — and every estimate sits next
-/// to the fixed non-medical disclaimer (R17). No drift types cross into
-/// this file.
+/// statistics, and confidence framing. Wording is date-based only today —
+/// no fertility vocabulary in any state until #143 lands — and every
+/// estimate sits next to the fixed non-medical disclaimer (R17). No drift
+/// types cross into this file.
 library;
 
 import 'dart:async';
