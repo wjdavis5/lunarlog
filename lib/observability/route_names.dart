@@ -55,6 +55,11 @@ const String kRouteProfileEditDialog = 'ProfileEditDialog';
 /// `lib/ui/profiles/profile_dialogs.dart` (archive a profile).
 const String kRouteProfileArchiveDialog = 'ProfileArchiveDialog';
 
+/// The read-only future-day explainer (`lib/ui/logging/month_calendar.dart`
+/// pushes it for a tapped future cell, issue #133 KTD8) — a genuine
+/// destination explaining the predicted state, never the log sheet.
+const String kRouteFutureDayExplainerScreen = 'FutureDayExplainerScreen';
+
 /// `lib/ui/feedback/attachment_field.dart` — explains what a screenshot may
 /// contain before the picker opens; worth distinguishing from a plain
 /// confirm (U2 Approach 2b).
@@ -79,6 +84,7 @@ const Set<String> kSentryRouteNames = {
   kRouteDeleteAccountDialog,
   kRouteProfileEditDialog,
   kRouteProfileArchiveDialog,
+  kRouteFutureDayExplainerScreen,
   kRouteAttachmentConsentDialog,
   kRouteAccountMismatchDialog,
 };

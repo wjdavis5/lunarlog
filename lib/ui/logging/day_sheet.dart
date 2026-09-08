@@ -90,12 +90,32 @@ class _DaySheetState extends State<DaySheet> {
   /// The mode's headings and surfacing order (Issue #131).
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
+  /// Stored codes absent from [kTagTaxonomy] at load time (#237): the chip
+  /// grid below only ever renders [kTagTaxonomy] members, so a code the
+  /// running build does not recognise would otherwise be adopted into
+  /// [_tags] invisibly and undeselectably. Rendered separately as inert
+  /// chips (`_unrecognisedTagsSection`) and never touched by the taxonomy
+  /// chip grid's `onSelected`, so they round-trip through Save unchanged.
+  late final List<String> _unrecognisedTags;
+
+  /// Codes the user actively picked from the visible taxonomy chip grid
+  /// this editing session (#237) — as opposed to [_tags], which also holds
+  /// whatever the entry already carried (including [_unrecognisedTags]).
+  /// [validateTagCodes] is invoked against only this set before Save, never
+  /// against the full adopted [_tags]: a pre-existing unknown code must
+  /// never be re-validated (and rejected) just because Save was pressed.
+  final Set<String> _sessionSelectedTags = {};
+
   @override
   void initState() {
     super.initState();
     final existing = widget.existing;
     _flow = existing?.flow ?? FlowLevel.none;
     _tags = {...?existing?.tags};
+    _unrecognisedTags = [
+      for (final code in existing?.tags ?? const <String>[])
+        if (!isValidTagCode(code)) code,
+    ];
     _noteController = TextEditingController(text: existing?.note ?? '');
   }
 
@@ -113,6 +133,12 @@ class _DaySheetState extends State<DaySheet> {
     final note = _noteController.text.trim();
     final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
     try {
+      // Only the codes freshly picked this session from the visible
+      // taxonomy chip grid are validated (#237) — never the full adopted
+      // `_tags`, which may still hold a pre-existing code the running build
+      // does not recognise (`_unrecognisedTags`). That code is preserved,
+      // not silently re-validated and rejected, on every Save.
+      validateTagCodes(_sessionSelectedTags);
       await widget.repository.save(DayEntry(
         id: widget.existing?.id ?? '',
         profileId: widget.profileId,
@@ -271,8 +297,10 @@ class _DaySheetState extends State<DaySheet> {
                               setState(() {
                                 if (selected) {
                                   _tags.add(tag.code);
+                                  _sessionSelectedTags.add(tag.code);
                                 } else {
                                   _tags.remove(tag.code);
+                                  _sessionSelectedTags.remove(tag.code);
                                 }
                               });
                             },
@@ -280,6 +308,7 @@ class _DaySheetState extends State<DaySheet> {
               ],
             ),
           ],
+          if (_unrecognisedTags.isNotEmpty) ..._unrecognisedTagsSection(theme),
           Padding(
             padding: const EdgeInsets.only(top: 12),
             child: TextFormField(
@@ -345,6 +374,29 @@ class _DaySheetState extends State<DaySheet> {
       ),
     );
   }
+
+  /// Inert, visible chips for [_unrecognisedTags] (#237): unlike the
+  /// taxonomy [FilterChip] grid above, these carry no `onSelected` — they
+  /// cannot be toggled, only shown — so they round-trip through `_tags`
+  /// (and therefore through Save) unchanged rather than being silently
+  /// dropped or invisibly resubmitted as if user-validated.
+  List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 4),
+          child: Text('Unrecognised', style: theme.textTheme.labelMedium),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final code in _unrecognisedTags)
+              Chip(
+                key: ValueKey('unrecognised-tag-$code'),
+                label: Text(code),
+              ),
+          ],
+        ),
+      ];
 
   /// R13 copy: when the caller's own accepted role is the reason this sheet
   /// is read-only (not an archived profile - the two reasons are additive,
