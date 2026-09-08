@@ -586,6 +586,52 @@ void main() {
       await disposeLogging(tester, h);
     });
 
+    testWidgets(
+        'an entry seeded with a tag code outside kTagTaxonomy renders as an '
+        'inert "Unrecognised" chip and survives Save unchanged (#237)',
+        (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage).save(entryFor(
+            profileId,
+            kToday,
+            tags: const ['cramps', 'heavy_flow'],
+          ));
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DaySheet), findsOneWidget);
+
+      // Visible, but not part of the selectable taxonomy chip grid.
+      expect(find.text('Unrecognised'), findsOneWidget);
+      expect(find.byKey(const ValueKey('unrecognised-tag-heavy_flow')),
+          findsOneWidget);
+      expect(find.text('heavy_flow'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilterChip>(find.widgetWithText(FilterChip, 'Cramps'))
+            .selected,
+        isTrue,
+      );
+
+      // Pressing Save must succeed — no ArgumentError, no generic failure
+      // toast — and the unrecognised code must round-trip unchanged.
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DaySheet), findsNothing,
+          reason: 'the sheet closes on a successful save, not a caught '
+              'ArgumentError');
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.tags, unorderedEquals(['cramps', 'heavy_flow']),
+          reason: 'the unrecognised code is preserved, not dropped or '
+              'rejected, by Save');
+      await disposeLogging(tester, h);
+    });
+
     testWidgets('symptom-only day (flow none + tags) renders the secondary '
         'marker, not the bleed marker', (tester) async {
       final h = await pumpLogging(
