@@ -83,9 +83,7 @@ Credentials and environment variables live in:
   - The eleven client-safe values (`SUPABASE_URL`, `SUPABASE_ANON_KEY` -> `SUPABASE_PUBLISHABLE_KEY`, `SENTRY_DSN`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, and the six `FCM_*` values) are passed as `--dart-define` flags to every `flutter build` in `ci.yml`, `ios-release.yml`, and `play-store-release.yml`; on forks they resolve to empty strings and the Google button/Notifications tile are absent.
   - **`production` GitHub environment** (required reviewer; used only by `supabase-migrate.yml`): `SUPABASE_ACCESS_TOKEN` (a Supabase personal access token for `supabase link`/`db push`; environment-scoped so no other workflow can read it), plus `SUPABASE_DB_PASSWORD` and `SUPABASE_PROJECT_REF` (environment-scoped copies, or the repository secrets of the same name — environment secrets override repository secrets when both exist). Rotating the access token means replacing it in the environment only. Also `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CLIENT_ID` (the bundle id `com.wjdavis5.lunarlog`), and `APPLE_PRIVATE_KEY` (the full `.p8` contents) — issue #17's `delete-account` Edge Function secrets, set on the project via `supabase secrets set` by the workflow itself (never `--dart-define`d, never read by the Flutter client) before each deploy. Issue #5's `push-dispatch` function secrets (also set via `supabase secrets set`, never `--dart-define`d): the Firebase service account's `FCM_PROJECT_ID` (note: distinct set from the client-side dart-define of the same name, though it holds the same value), `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY` (the service account's RSA key, used to mint FCM OAuth tokens), and `PUSH_DISPATCH_WEBHOOK_SECRET` (the shared secret the Database Webhook and the nightly cron's `trigger_push_dispatch()` both present).
   - iOS App Store & TestFlight:
-    - `ASC_KEY_ID`: App Store Connect API key ID.
-    - `ASC_ISSUER_ID`: App Store Connect API issuer ID.
-    - `ASC_PRIVATE_KEY`: Full contents of the AuthKey file (`AuthKey_<KEY_ID>.p8`).
+    - `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY`: App Store Connect API key — **account-wide, not app-specific** (Apple ties an API key to the whole Apple Developer team, not one app). As of 2026-09-08 this is Key ID `CCKC22S4FN`, generated once for reuse across every iOS project on this account rather than minting a new key per app; see root `CLAUDE.md`'s Credential locations table for where the `.p8` master copy lives (repo root, gitignored, plus a copy on Williams-Mini) and "Reusing the App Store Connect API key in a new iOS project" below for wiring it into another repo. Never re-generate this key unless it is revoked — Apple only allows the `.p8` download once per key.
     - `IOS_DIST_CERT_P12_BASE64`: Base64 of the Apple Distribution `.p12` certificate.
     - `IOS_DIST_CERT_PASSWORD`: Password protecting that `.p12`.
     - `IOS_PROVISION_PROFILE_BASE64`: Base64 of the App Store `.mobileprovision` profile.
@@ -129,3 +127,21 @@ Credentials and environment variables live in:
   xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ios/ipa
   ```
   - **`aps-environment` per configuration (PR #109 review #11):** `ios/Runner/Runner.entitlements` (`aps-environment: production`) backs the **Release** configuration only — App Store/distribution signing requires it. Debug and Profile use `ios/Runner/DebugProfile.entitlements` (`aps-environment: development`) instead, wired via each config's own `CODE_SIGN_ENTITLEMENTS` in `ios/Runner.xcodeproj/project.pbxproj`: a development-signed on-device Debug build cannot be signed against a `production` `aps-environment` at all, which is exactly what blocked the U7 device checklist before this split existed.
+- **Reusing the App Store Connect API key in a new iOS project:** `fastlane/Fastfile`'s `submit` lane is the real, working pattern — copy its shape rather than inventing a new one:
+  ```ruby
+  api_key = app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_content: ENV.fetch("ASC_PRIVATE_KEY"),
+    in_house: false,
+  )
+  ```
+  This `api_key` object is what every ASC-authenticated fastlane action takes (`deliver`, `pilot`, `latest_testflight_build_number`, `match`, `produce`, ...) — nothing else in a Fastfile needs a separate credential.
+  - **Setting the three secrets on a new repo:** since `wjdavis5` is a personal GitHub account (not an Organization), there is no account-wide "org secret" — each repo needs its own copy of the same three values (2026-09-08 decision, tracked in this session). Read the key ID and issuer ID, and the `.p8` file itself, from the locations in root `CLAUDE.md`'s Credential locations table, then:
+    ```bash
+    gh secret set ASC_KEY_ID --repo <owner>/<new-repo> --body "CCKC22S4FN"
+    gh secret set ASC_ISSUER_ID --repo <owner>/<new-repo> --body "<issuer id from the same table>"
+    gh secret set ASC_PRIVATE_KEY --repo <owner>/<new-repo> < "C:\git\AuthKey_CCKC22S4FN.p8"
+    ```
+    Never echo the `.p8` contents or the issuer ID into chat, a commit, or any other file — read them directly from disk for the `gh secret set` call only.
+  - **What this key does *not* cover:** it authenticates API calls; it does not manage certificates or provisioning profiles. This repo signs manually in CI (`ios/ExportOptions-ci.plist`, plain `xcodebuild`/`altool` in `ios-release.yml`) rather than via `fastlane match` — a new project needs its own signing setup (either the same manual pattern, mirroring `ios-release.yml`, or adopting `match`, which this account has not set up yet) and, separately, its own `IOS_DIST_CERT_P12_BASE64`/`IOS_DIST_CERT_PASSWORD`/`IOS_PROVISION_PROFILE_BASE64` secrets — the distribution cert can potentially be reused account-wide the same way the API key is, but the provisioning profile is tied to that project's own bundle ID and can never be copied from another app.
