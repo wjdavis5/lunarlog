@@ -79,14 +79,22 @@ const List<String> sentryDenyListedKeys = [
   'user_metadata',
 ];
 
-/// Exception type-name fragments that mark an exception as coming from the
-/// data layer, whose messages embed SQL, rows, PostgREST details, or auth
-/// responses. Matched case-insensitively against [SentryException.type]. An
-/// exception is also treated as data-layer when any stack frame points into
-/// `lib/data` ([_dataLayerPathMarkers]), whatever its type name.
+/// Exception type-name fragments that mark an exception whose message
+/// embeds storage material — SQL, rows, PostgREST details, auth responses,
+/// or a filesystem path — as coming from the data layer. Matched
+/// case-insensitively against [SentryException.type]. An exception is also
+/// treated as data-layer when any stack frame points into `lib/data` or
+/// `lib/startup` ([_dataLayerPathMarkers]), whatever its type name.
 /// `googlesignin` (#2 U6; KTD7) reduces a `GoogleSignInException` that escapes
 /// the KTD8 mapping to its type: its message can carry the account or a token
 /// fragment.
+///
+/// The `filesystem`/`path*`/`platformdirectory` fragments (issue #97 U1)
+/// cover what the device-reset delete step can throw out of
+/// `lib/startup/startup_native.dart`: a `FileSystemException` (or one of
+/// `dart:io`'s path subclasses, or path_provider's
+/// `MissingPlatformDirectoryException`) interpolates the database file's
+/// absolute path into its message.
 const List<String> sentryDataLayerTypeMarkers = [
   'sqlite',
   'drift',
@@ -99,11 +107,23 @@ const List<String> sentryDataLayerTypeMarkers = [
   'database',
   'encryption',
   'googlesignin',
+  // Issue #97 U1: the reset path's filesystem failures (see above).
+  'filesystem',
+  'pathnotfound',
+  'pathaccess',
+  'pathexists',
+  'platformdirectory',
 ];
 
+/// Path fragments marking an exception as raised from storage code —
+/// `lib/data` (the repositories and the Drift store) and, since issue #97
+/// U1, `lib/startup` (the reset/startup primitives that touch the database
+/// file directly).
 const List<String> _dataLayerPathMarkers = [
   'lib/data/',
   'lunarlog/data/',
+  'lib/startup/',
+  'lunarlog/startup/',
 ];
 
 final Set<String> _normalizedDenyList =
