@@ -111,21 +111,20 @@ values
 select tests.authenticate_as('mom');
 select is(
   (select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e')
+    tests.invitation_id_by_hash('0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e')
   ) ->> 'outcome'),
   'revoked',
   'Primary guardian cancels a caregiver invitation -> outcome revoked'
 );
 select isnt(
   (select revoked_at from public.guardian_invitations
-    where token_hash = '0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e'),
+    where id = tests.invitation_id_by_hash('0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e')),
   null,
   'revoked_at is set on the cancelled caregiver invitation'
 );
 create temporary table tmp_te_revoked_at as
   select revoked_at from public.guardian_invitations
-   where token_hash = '0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e';
+   where id = tests.invitation_id_by_hash('0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e');
 
 -- ---------------------------------------------------------------------------
 -- 2. Primary guardian cancels a co_parent invitation created by a co-parent
@@ -133,8 +132,7 @@ create temporary table tmp_te_revoked_at as
 -- ---------------------------------------------------------------------------
 select is(
   (select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b')
+    tests.invitation_id_by_hash('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b')
   ) ->> 'outcome'),
   'revoked',
   'Primary guardian cancels a co_parent invitation created by a co-parent (R3)'
@@ -146,8 +144,7 @@ select is(
 select tests.authenticate_as('dad');
 select is(
   (select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d')
+    tests.invitation_id_by_hash('0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d0d1d')
   ) ->> 'outcome'),
   'revoked',
   'Co-parent cancels a viewer invitation created by the primary guardian (R3)'
@@ -159,15 +156,14 @@ select is(
 -- ---------------------------------------------------------------------------
 select throws_ok(
   $$select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
+    tests.invitation_id_by_hash('0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
   )$$,
   '42501', 'caller lacks permission to cancel this invitation',
   'Co-parent cannot cancel a co_parent invitation it did not create (R3)'
 );
 select is(
   (select revoked_at from public.guardian_invitations
-    where token_hash = '0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f'),
+    where id = tests.invitation_id_by_hash('0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')),
   null,
   'The co_parent invitation is unchanged after the rejected attempt'
 );
@@ -179,8 +175,7 @@ select is(
 select tests.authenticate_as('sitter');
 select throws_ok(
   $$select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
+    tests.invitation_id_by_hash('0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
   )$$,
   '42501', 'caller lacks permission to cancel this invitation',
   'Caregiver cannot cancel any invitation (R3)'
@@ -192,8 +187,7 @@ select throws_ok(
 select tests.authenticate_as('doctor');
 select throws_ok(
   $$select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
+    tests.invitation_id_by_hash('0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
   )$$,
   '42501', 'caller lacks permission to cancel this invitation',
   'Viewer cannot cancel any invitation (R3)'
@@ -207,8 +201,7 @@ select throws_ok(
 select tests.authenticate_as('pending_guardian');
 select throws_ok(
   $$select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a')
+    tests.invitation_id_by_hash('3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a')
   )$$,
   '42501', 'caller lacks permission to cancel this invitation',
   'Pending-status guardian cannot cancel an invitation (status = accepted guard)'
@@ -222,8 +215,7 @@ select throws_ok(
 select tests.authenticate_as('revoked_guardian');
 select throws_ok(
   $$select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a')
+    tests.invitation_id_by_hash('3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a')
   )$$,
   '42501', 'caller lacks permission to cancel this invitation',
   'Revoked-status guardian cannot cancel an invitation (status = accepted guard)'
@@ -236,8 +228,7 @@ select throws_ok(
 select tests.authenticate_as('stranger');
 select throws_ok(
   $$select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
+    tests.invitation_id_by_hash('0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')
   )$$,
   '42501', 'caller lacks permission to cancel this invitation',
   'A guardian of an unrelated profile gets the same message as not-found (no existence oracle)'
@@ -260,15 +251,14 @@ select throws_ok(
 select tests.authenticate_as('mom');
 select is(
   (select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e')
+    tests.invitation_id_by_hash('0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e')
   ) ->> 'outcome'),
   'already_revoked',
   'Cancelling an already-revoked invitation reports already_revoked (R5)'
 );
 select is(
   (select revoked_at from public.guardian_invitations
-    where token_hash = '0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e'),
+    where id = tests.invitation_id_by_hash('0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e')),
   (select revoked_at from tmp_te_revoked_at),
   'revoked_at is unchanged by the second cancellation (R5, idempotent)'
 );
@@ -279,8 +269,7 @@ select is(
 -- ---------------------------------------------------------------------------
 select is(
   (select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a')
+    tests.invitation_id_by_hash('0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a')
   ) ->> 'outcome'),
   'already_accepted',
   'Cancelling an already-accepted invitation reports already_accepted (R5)'
@@ -298,15 +287,14 @@ select is(
 -- ---------------------------------------------------------------------------
 select is(
   (select public.revoke_guardian_invitation(
-    (select id from public.guardian_invitations where token_hash =
-      '1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a')
+    tests.invitation_id_by_hash('1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a')
   ) ->> 'outcome'),
   'expired',
   'Cancelling an already-expired invitation reports expired'
 );
 select isnt(
   (select revoked_at from public.guardian_invitations
-    where token_hash = '1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a'),
+    where id = tests.invitation_id_by_hash('1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a')),
   null,
   'An expired invitation is stamped revoked_at for an unambiguous terminal state (Q1)'
 );
@@ -362,7 +350,7 @@ select is(
 select tests.authenticate_as('mom');
 select throws_ok(
   $$update public.guardian_invitations set revoked_at = now()
-     where token_hash = '0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f'$$,
+     where id = tests.invitation_id_by_hash('0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f')$$,
   '42501', null,
   'A direct update by the invitation''s own creator is rejected (withdrawn grant)'
 );
@@ -379,7 +367,7 @@ select public.create_guardian_invitation(
 select public.revoke_guardian(tests.ulid(801), tests.get_supabase_uid('sitter'));
 select isnt(
   (select revoked_at from public.guardian_invitations
-    where token_hash = '2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b'),
+    where id = tests.invitation_id_by_hash('2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b')),
   null,
   'revoke_guardian still cancels the profile''s outstanding invitations (unregressed)'
 );
