@@ -42,17 +42,30 @@ name: Supabase migrate
 # section.
 #
 # The "Check for schema drift" step (issue #163 / D-19, D-21) runs
-# `supabase db diff --linked --schema public` right after `db push` and
-# fails the job on any non-empty output -- this is what would have caught
-# an out-of-band Studio change (or a migration applied outside this
-# workflow) before it went unnoticed. The "Database advisor gate" step
-# (also issue #163) runs `supabase db advisors --linked --type security
-# --fail-on warn`, a CI-enforced replacement for the old manual "check the
-# Supabase MCP get_advisors output before approving" step -- the CLI has
-# had a `db advisors` subcommand since at least 2.116.0 (confirmed via
-# `supabase db --help`/`supabase db advisors --help` against the pinned
-# version below), so the MCP-only caveat that used to live in this comment
-# no longer applies.
+# `supabase db diff --linked --schema public` and fails the job on any
+# non-empty output -- this is what would have caught an out-of-band Studio
+# change (or a migration applied outside this workflow) before it went
+# unnoticed. The "Database advisor gate" step (also issue #163) runs
+# `supabase db advisors --linked --type security --fail-on error`, a
+# CI-enforced replacement for the old manual "check the Supabase MCP
+# get_advisors output before approving" step -- the CLI has had a `db
+# advisors` subcommand since at least 2.116.0 (confirmed via `supabase db
+# --help`/`supabase db advisors --help` against the pinned version below),
+# so the MCP-only caveat that used to live in this comment no longer
+# applies. Both gates run LAST, after every other step in this job
+# (db push, the Realtime reconcile, both Edge Function deploys, and the
+# push-dispatch / Apple secret checks) -- issue #163 review: they can only
+# report on what's already live, they can never prevent it, so placing them
+# before the function deploys would let a false-positive drift or advisor
+# finding block an unrelated function deploy instead of just flagging it
+# after the fact. The advisor gate is pinned to --fail-on error rather than
+# warn because production currently carries tracked warn-level findings --
+# anon-executable SECURITY DEFINER functions (issue #158, in flight),
+# search_path and extension-in-public lints (issue #194), and the
+# dashboard-only leaked-password-protection setting -- and --fail-on warn
+# would fail every run until all three land. TODO(#163 follow-up): tighten
+# to --fail-on warn once #158, #194, and leaked-password protection are
+# done.
 
 on:
   push:
@@ -119,21 +132,6 @@ jobs:
       - name: Push migrations
         run: supabase db push
 
-      - name: Check for schema drift
-        # Issue #163 / D-19: catches a schema change made out-of-band (a
-        # Studio edit, a manual `psql`, or a migration applied outside this
-        # workflow) that supabase/migrations does not account for. `db diff`
-        # itself does not set a non-zero exit code on a non-empty diff, so
-        # this step captures the output and fails explicitly.
-        run: |
-          diff_output="$(supabase db diff --linked --schema public)"
-          if [ -n "$diff_output" ]; then
-            echo "::error::supabase db diff --linked --schema public found a non-empty diff between supabase/migrations and the linked project's public schema. This means something changed the live schema outside of a tracked migration file (a Studio edit, a manual psql session, or an out-of-band db push). Add a migration under supabase/migrations that captures the drift, or if the drift itself is a mistake, revert it on the project directly, then re-run this workflow."
-            echo "$diff_output"
-            exit 1
-          fi
-          echo "No schema drift detected between supabase/migrations and the linked project's public schema."
-
       - name: Reconcile Realtime publication
         # Explicitly re-runs the drift guard after every push (see the
         # header comment above and AGENTS.md's Migration Flow) -- `db push`
@@ -145,15 +143,6 @@ jobs:
         run: |
           supabase db query --linked \
             "select public.reconcile_realtime_publication();"
-
-      - name: Database advisor gate
-        # Issue #163 / D-19: a CI-enforced replacement for the old "check
-        # the Supabase MCP get_advisors output before approving" manual
-        # step. Fails the job on any security-severity finding at warn or
-        # error level (info-level lints are advisory noise, not a gate);
-        # narrowed to --type security because performance lints (e.g.
-        # unindexed foreign keys) are not a deploy blocker here.
-        run: supabase db advisors --linked --type security --fail-on warn --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 
       - name: Deploy Edge Functions
         # supabase/** already covers supabase/functions/, so no trigger-path
@@ -206,3 +195,44 @@ jobs:
 
       - name: Deploy delete-account function
         run: supabase functions deploy delete-account --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Check for schema drift
+        # Issue #163 / D-19: catches a schema change made out-of-band (a
+        # Studio edit, a manual `psql`, or a migration applied outside this
+        # workflow) that supabase/migrations does not account for. `db diff`
+        # itself does not set a non-zero exit code on a non-empty diff, so
+        # this step captures the output and fails explicitly. Runs last,
+        # after every deploy step above (issue #163 review): a false
+        # positive here can only report on an already-completed deploy, it
+        # can never block one -- putting it earlier would risk failing an
+        # unrelated function deploy over a drift finding that has nothing
+        # to do with it.
+        run: |
+          diff_output="$(supabase db diff --linked --schema public)"
+          if [ -n "$diff_output" ]; then
+            echo "::error::supabase db diff --linked --schema public found a non-empty diff between supabase/migrations and the linked project's public schema. This means something changed the live schema outside of a tracked migration file (a Studio edit, a manual psql session, or an out-of-band db push). Add a migration under supabase/migrations that captures the drift, or if the drift itself is a mistake, revert it on the project directly, then re-run this workflow."
+            echo "$diff_output"
+            exit 1
+          fi
+          echo "No schema drift detected between supabase/migrations and the linked project's public schema."
+
+      - name: Database advisor gate
+        # Issue #163 / D-19: a CI-enforced replacement for the old "check
+        # the Supabase MCP get_advisors output before approving" manual
+        # step. Fails the job on any security-severity finding at error
+        # level (info-level lints are advisory noise, not a gate); narrowed
+        # to --type security because performance lints (e.g. an unindexed
+        # foreign key) are not a deploy blocker here. Pinned to --fail-on
+        # error rather than warn: production currently carries tracked
+        # warn-level findings -- anon-executable SECURITY DEFINER functions
+        # (issue #158, in flight), search_path and extension-in-public
+        # lints (issue #194), and the dashboard-only
+        # leaked-password-protection setting -- so --fail-on warn would fail
+        # every run until all three land. Runs last, after every deploy
+        # step above, for the same reason as the schema-drift check right
+        # before it: both gates can only report on what's already live,
+        # never prevent it, so placing them before the function deploys
+        # would turn a false positive into a blocked function deploy.
+        # TODO(#163 follow-up): tighten to --fail-on warn once #158, #194,
+        # and leaked-password protection are done.
+        run: supabase db advisors --linked --type security --fail-on error --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
