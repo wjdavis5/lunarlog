@@ -227,14 +227,31 @@ void main() {
       }
     });
 
-    test('unknown tag codes are rejected at the repository boundary',
-        () async {
+    test(
+        'unknown tag codes are preserved, not rejected, at the repository '
+        'boundary (#237)', () async {
+      // A code outside kTagTaxonomy must not make the entry permanently
+      // unsavable (a peer device's newer taxonomy, an import, or — as here —
+      // a code this build simply predates). validateTagCodes stays available
+      // for a caller that wants strict validation of newly-chosen codes
+      // (DaySheet), but the repository write path itself must not gate on
+      // taxonomy membership.
       final profile = await profiles.create(displayName: 'P', isMinor: false);
-      await expectLater(
-        dayEntries.save(entryFor(profile.id, LocalDate(2026, 5, 10),
-            tags: const ['cramps', 'not-a-tag'])),
-        throwsArgumentError,
-      );
+      final saved = await dayEntries.save(entryFor(
+          profile.id, LocalDate(2026, 5, 10),
+          tags: const ['cramps', 'not-a-tag']));
+      expect(saved.tags, unorderedEquals(['cramps', 'not-a-tag']));
+
+      final found = await dayEntries.find(profile.id, LocalDate(2026, 5, 10));
+      expect(found!.tags, unorderedEquals(['cramps', 'not-a-tag']),
+          reason: 'the unknown code survives the save round-trip unchanged');
+
+      // Saving again (the DaySheet Save-retry scenario #237 reports) must
+      // keep succeeding — the entry is never permanently unsavable.
+      final resaved = await dayEntries.save(entryFor(
+          profile.id, LocalDate(2026, 5, 10),
+          tags: const ['cramps', 'not-a-tag'], note: 'still saves'));
+      expect(resaved.note, 'still saves');
     });
 
     test('delete tombstones the date and it disappears from reads and streams',
