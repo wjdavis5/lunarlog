@@ -11,6 +11,8 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/tags.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 /// The exact schema-v1 DDL as drift generated it for the committed v1
@@ -513,6 +515,99 @@ void main() {
           flow: FlowLevel.light,
           note: 'n' * 2000);
       expect(entry.note!.length, 2000);
+    });
+
+    test('payload limits: a tag element over kMaxTagLength characters or a '
+        'tags list over kMaxTagCount elements is rejected before anything is '
+        'written', () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'P', isMinor: false);
+
+      await expectLater(
+        storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-05-04',
+            tz: 'UTC',
+            flow: FlowLevel.light,
+            tags: ['x' * (kMaxTagLength + 1)]),
+        throwsArgumentError,
+      );
+      expect(await storage.getDayEntries(profileId: profile.id), isEmpty,
+          reason: 'nothing was written');
+
+      final bounded = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-05-04',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          tags: ['x' * kMaxTagLength]);
+      expect(bounded.tags, ['x' * kMaxTagLength],
+          reason: 'the boundary value is inclusive and round-trips');
+
+      await expectLater(
+        storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-05-05',
+            tz: 'UTC',
+            flow: FlowLevel.light,
+            tags: List.generate(kMaxTagCount + 1, (i) => 't$i')),
+        throwsArgumentError,
+      );
+      expect((await storage.getDayEntries(profileId: profile.id)).length, 1,
+          reason: 'the over-count write persisted nothing');
+      final thirtyTwo = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-05-05',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          tags: List.generate(kMaxTagCount, (i) => 't$i'));
+      expect(thirtyTwo.tags.length, kMaxTagCount,
+          reason: 'the count boundary value is inclusive');
+
+      // Updating an existing live entry with an over-length tag must leave
+      // the stored row completely untouched.
+      final before = await storage.getDayEntry(
+          profileId: profile.id, localDate: '2026-05-04');
+      await expectLater(
+        storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-05-04',
+            tz: 'UTC',
+            flow: FlowLevel.heavy,
+            tags: ['x' * (kMaxTagLength + 1)],
+            note: 'should never land'),
+        throwsArgumentError,
+      );
+      final after = await storage.getDayEntry(
+          profileId: profile.id, localDate: '2026-05-04');
+      expect(after!.id, before!.id);
+      expect(after.tags, before.tags);
+      expect(after.note, before.note);
+      expect(after.updatedAt, before.updatedAt);
+      expect(after.localRev, before.localRev,
+          reason: 'local_rev is not bumped by a rejected write');
+
+      // Empty and defaulted tags are not accidentally rejected.
+      await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-05-06',
+          tz: 'UTC',
+          flow: FlowLevel.none,
+          tags: const []);
+      await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-05-07',
+          tz: 'UTC',
+          flow: FlowLevel.none);
+
+      // The whole curated taxonomy passes (17 codes, longest 17 characters).
+      final taxonomyEntry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-05-08',
+          tz: 'UTC',
+          flow: FlowLevel.spotting,
+          tags: kTagTaxonomy.map((t) => t.code).toList());
+      expect(taxonomyEntry.tags, kTagTaxonomy.map((t) => t.code).toList());
     });
 
     test('soft delete then re-create for the same profile+date: new ULID row '

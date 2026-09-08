@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(105);
+select plan(114);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -436,6 +436,48 @@ select throws_ok(
   '23514',
   null,
   'table check constraint day_entries_tags_check rejects non-string tags'
+);
+
+-- Issue #94: per-element length bound (char_length <= 64).
+select is(public.is_valid_tags_array(jsonb_build_array(repeat('x', 65))), false,
+  'tags validator rejects a 65-character element without raising');
+select is(public.is_valid_tags_array(jsonb_build_array(repeat('x', 64))), true,
+  'tags validator accepts a 64-character element (boundary is inclusive)');
+select is(public.is_valid_tags_array(
+  (select jsonb_agg(repeat('x', 64)) from generate_series(1, 32))), true,
+  'tags validator accepts 32 elements of 64 characters (worst legal case)');
+select is(public.is_valid_tags_array('[1, 2]'::jsonb), false,
+  'tags validator still rejects a non-string element');
+select is(public.is_valid_tags_array(
+  (select jsonb_agg(g::text) from generate_series(1, 33) g)), false,
+  'tags validator still rejects a 33-element array');
+select is(public.is_valid_tags_array(
+  '["cramps", "headache", "back_pain", "breast_tenderness", "bloating", '
+  '"acne", "nausea", "fatigue", "dizziness", "irritable", "sad", "anxious", '
+  '"calm", "energetic", "sensitive", "sleep_trouble", "cravings"]'::jsonb), true,
+  'tags validator accepts the full curated taxonomy');
+
+insert into r select 'long_tags', public.sync_push(
+  '[]'::jsonb,
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(130), 'profile_id', tests.ulid(1), 'local_date', '2026-09-26',
+      'tz', 'UTC', 'flow', 'none', 'tags', jsonb_build_array(repeat('x', 65)), 'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(131), 'profile_id', tests.ulid(1), 'local_date', '2026-09-27',
+      'tz', 'UTC', 'flow', 'none', 'tags', jsonb_build_array('ok', repeat('x', 65)), 'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(132), 'profile_id', tests.ulid(1), 'local_date', '2026-09-28',
+      'tz', 'UTC', 'flow', 'none', 'tags', '["valid", "tags"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))
+  ));
+select is(jsonb_array_length(pg_temp.resp('long_tags') -> 'rejected'), 2,
+  'over-length tag elements (65 chars) are rejected by sync_push');
+select is((select count(*) from public.day_entries where id = tests.ulid(132)), 1::bigint,
+  'valid tags in the same batch still lands');
+
+select throws_ok(
+  $$ insert into public.day_entries (id, user_id, profile_id, local_date, tz, flow, tags, updated_at)
+     values (tests.ulid(133), tests.get_supabase_uid('user_a'), tests.ulid(1), '2026-09-29', 'UTC', 'none', jsonb_build_array(repeat('x', 65)), now()) $$,
+  '23514',
+  null,
+  'table check constraint day_entries_tags_check rejects an over-length tag element'
 );
 
 -- ---------------------------------------------------------------------------
