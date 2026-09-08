@@ -3,6 +3,17 @@
 begin;
 select plan(30);
 
+-- Issue #125 added a coalescing window to the immediate alert path: one
+-- push per (recipient, profile, kind) per alert_coalesce_window() (30
+-- minutes by default). This file's fixtures create several same-kind
+-- events inside one transaction -- i.e. inside that window -- on purpose,
+-- because its subject is per-event eligibility, not volume control.
+-- Disable the window for this transaction so those assertions keep
+-- meaning exactly what they meant; the window itself (and the digest
+-- cadence and daily ceiling riding the same trigger) is covered by
+-- supabase/tests/alert_digest_test.sql.
+select set_config('app.settings.alert_coalesce_window', '0', true);
+
 -- Helper: inspect the outbox as service_role (bypasses RLS -- no
 -- authenticated policy exists on this table at all, by design).
 create function pg_temp.outbox_count(p_profile text, p_recipient uuid) returns bigint

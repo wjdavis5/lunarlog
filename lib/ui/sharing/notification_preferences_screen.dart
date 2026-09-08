@@ -18,6 +18,10 @@ import '../../domain/util/timezone.dart';
 const int _kDefaultQuietStartMinutes = 22 * 60; // 22:00
 const int _kDefaultQuietEndMinutes = 7 * 60; // 07:00
 
+/// Mirrors the server-side digest fallback (08:00 local) shown in the UI
+/// before the guardian picks an explicit time (Issue #125).
+const int _kDefaultDigestMinutes = 8 * 60; // 08:00
+
 class NotificationPreferencesScreen extends StatefulWidget {
   const NotificationPreferencesScreen({
     super.key,
@@ -83,7 +87,38 @@ class _NotificationPreferencesScreenState
         // stale narrowing the guardian never re-confirmed.
         alertOnCycleStartOnly: value ? p.alertOnCycleStartOnly : false,
         alertOnHighSeverity: value ? p.alertOnHighSeverity : false,
+        // Same clean-slate rule for the per-kind cadences (Issue #125):
+        // re-enabling starts immediate, the pre-#125 behaviour.
+        logCadence: value ? p.logCadence : AlertCadence.immediate,
+        cycleStartCadence: value ? p.cycleStartCadence : AlertCadence.immediate,
+        highSeverityCadence:
+            value ? p.highSeverityCadence : AlertCadence.immediate,
       ));
+
+  /// Applies [update] only when a cadence was actually chosen (the
+  /// dropdown also emits null while rebuilding; a null selection is a
+  /// no-op, not a save).
+  void _setCadence(
+    AlertCadence? value,
+    CaregiverAlertPreferences Function(CaregiverAlertPreferences) update,
+  ) {
+    if (value == null) return;
+    _apply(update);
+  }
+
+  Future<void> _pickDigestTime() async {
+    final initialMinutes = _prefs.digestTimeMinutes ?? _kDefaultDigestMinutes;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: initialMinutes ~/ 60,
+        minute: initialMinutes % 60,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await _apply((p) =>
+        p.copyWith(digestTimeMinutes: picked.hour * 60 + picked.minute));
+  }
 
   Future<void> _pickTime({required bool isStart}) async {
     final current = _prefs.quietHours ??
@@ -117,6 +152,83 @@ class _NotificationPreferencesScreenState
     final period = time.period == DayPeriod.am ? 'AM' : 'PM';
     return '$hour:$minute $period';
   }
+
+  /// One per-kind cadence selector (Issue #125). [onSelect] is dropped to
+  /// null (the dropdown renders disabled) unless [enabled] -- the parent
+  /// alert toggle, plus the matching narrowing for the cycle-start and
+  /// high-severity kinds, gates each one exactly like the switches above.
+  Widget _cadenceTile({
+    required String tileKey,
+    required String dropdownKey,
+    required String title,
+    String? subtitle,
+    required AlertCadence value,
+    required bool enabled,
+    ValueChanged<AlertCadence?>? onSelect,
+  }) =>
+      ListTile(
+        key: ValueKey(tileKey),
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle),
+        trailing: DropdownButton<AlertCadence>(
+          key: ValueKey(dropdownKey),
+          value: value,
+          onChanged: enabled ? onSelect : null,
+          items: AlertCadence.values
+              .map((c) => DropdownMenuItem(
+                    value: c,
+                    child: Text(c.label),
+                  ))
+              .toList(),
+        ),
+      );
+
+  String _digestTimeLabel(CaregiverAlertPreferences prefs) =>
+      _formatMinutes(prefs.digestTimeMinutes ?? _kDefaultDigestMinutes);
+
+  /// The Issue #125 delivery section: one cadence selector per alert kind,
+  /// plus the digest time. Spread into the settings list below.
+  List<Widget> _deliverySection(CaregiverAlertPreferences prefs) => [
+        const Divider(),
+        _cadenceTile(
+          tileKey: 'log-cadence-tile',
+          dropdownKey: 'log-cadence-dropdown',
+          title: 'Log alert delivery',
+          subtitle: 'Immediate, once a day, or off - extra alerts never '
+              'exceed a daily limit and roll into the digest',
+          value: prefs.logCadence,
+          enabled: prefs.alertOnLog,
+          onSelect: (value) =>
+              _setCadence(value, (p) => p.copyWith(logCadence: value)),
+        ),
+        _cadenceTile(
+          tileKey: 'cycle-start-cadence-tile',
+          dropdownKey: 'cycle-start-cadence-dropdown',
+          title: 'Cycle-start alert delivery',
+          value: prefs.cycleStartCadence,
+          enabled: prefs.alertOnLog && prefs.alertOnCycleStartOnly,
+          onSelect: (value) =>
+              _setCadence(value, (p) => p.copyWith(cycleStartCadence: value)),
+        ),
+        _cadenceTile(
+          tileKey: 'high-severity-cadence-tile',
+          dropdownKey: 'high-severity-cadence-dropdown',
+          title: 'High-severity alert delivery',
+          value: prefs.highSeverityCadence,
+          enabled: prefs.alertOnLog && prefs.alertOnHighSeverity,
+          onSelect: (value) =>
+              _setCadence(value, (p) => p.copyWith(highSeverityCadence: value)),
+        ),
+        ListTile(
+          key: const ValueKey('digest-time-tile'),
+          title: const Text('Digest time'),
+          subtitle:
+              const Text('When daily digests are delivered in your time zone'),
+          trailing: Text(_digestTimeLabel(prefs)),
+          onTap: _pickDigestTime,
+        ),
+        const Divider(),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +274,7 @@ class _NotificationPreferencesScreenState
                           _apply((p) => p.copyWith(alertOnHighSeverity: value))
                       : null,
                 ),
-                const Divider(),
+                ..._deliverySection(prefs),
                 ListTile(
                   key: const ValueKey('missed-entry-threshold-tile'),
                   title: const Text('Missed-entry reminder'),
