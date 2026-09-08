@@ -4,7 +4,7 @@
 -- handover transaction, sovereignty after transfer, the attribution-guard
 -- bypass, and the cascade proofs that motivated R15.
 begin;
-select plan(74);
+select plan(90);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -203,11 +203,16 @@ select is(
 
 -- KTD6: create_ownership_transfer auto-cancels the caller's own
 -- outstanding-but-expired row for this profile - this also produces the
--- transfer used for the happy path below.
+-- transfer used for the happy path below. The lookup runs authenticated as
+-- mom, so it cannot be a direct `where token_hash = ...` sub-select any
+-- more: referencing token_hash at all is denied to `authenticated` by the
+-- #242 column-scoped SELECT grant (asserted in section 14 below), hence
+-- the owner-context id helper.
 select tests.authenticate_as('mom');
 insert into r select 'arm3', public.create_ownership_transfer(tests.ulid(401), 'co_parent', pg_temp.token(15), 'Kid', 72);
 select isnt(
-  (select cancelled_at from public.ownership_transfers where token_hash = pg_temp.token(14)),
+  (select cancelled_at from public.ownership_transfers
+    where id = tests.transfer_id_by_hash(pg_temp.token(14))),
   null,
   'KTD6: creating a new transfer auto-cancels the caller''s own expired-but-uncancelled row'
 );
@@ -585,8 +590,12 @@ insert into r select 'arm_bypass', public.create_ownership_transfer(tests.ulid(4
 -- throwing) if this fix regressed and revoke_guardian went back to leaving
 -- ownership_transfers untouched.
 select public.revoke_guardian(tests.ulid(405), tests.get_supabase_uid('uncle'));
+-- Still authenticated as gigi, so this cannot filter on token_hash directly
+-- (#242 column-scoped grant) - resolve the id through the owner-context
+-- helper instead.
 select isnt(
-  (select cancelled_at from public.ownership_transfers where token_hash = pg_temp.token(20)),
+  (select cancelled_at from public.ownership_transfers
+    where id = tests.transfer_id_by_hash(pg_temp.token(20))),
   null,
   'Review item #1: revoke_guardian cancels a still-live ownership transfer for the profile'
 );
@@ -680,6 +689,170 @@ select throws_ok(
   format($$select public.accept_guardian_invitation(%L)$$, pg_temp.token(21)),
   '55000', null,
   'Review item #1 (round 2): the token stays refused after the blocked un-revoke attempt'
+);
+
+-- ---------------------------------------------------------------------------
+-- 14. token_hash is unreadable to authenticated clients (Issue #242).
+-- ---------------------------------------------------------------------------
+-- The stored hash alone redeems a transfer (accept_ownership_transfer
+-- compares it directly) and acceptance moves ownership of the profile, and
+-- the ownership_transfers_select policy admits the initiator plus any
+-- accepted primary_guardian of the profile - evaluated at read time, not
+-- frozen at arm time - so a table-wide SELECT grant let anyone in that set
+-- read a live transfer's hash and redeem it without ever holding the raw
+-- token the arming parent delivered out-of-band. The grant is now
+-- column-scoped: every column except token_hash (mirrors #114's
+-- guardian_invitations fix, 20260908000000). tess arms a transfer for cal;
+-- cal is then made the profile's accepted primary_guardian by direct
+-- superuser write (the R20 stale-owner precedent from section 6) so the
+-- denial assertions run as a non-initiator the policy still admits -
+-- proving RLS passes and the column grant is what fails.
+select tests.create_supabase_user('tess');
+select tests.create_supabase_user('cal');
+select tests.authenticate_as('tess');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(407), 'Ash', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select is(
+  (public.create_ownership_transfer(tests.ulid(407), 'co_parent', pg_temp.token(23), 'Cal', 72)
+     ->> 'parent_post_transfer_role'),
+  'co_parent',
+  'create_ownership_transfer still arms a transfer under the column-scoped grant (#242)'
+);
+
+-- Catalog: no whole-table SELECT, none on token_hash, all others kept.
+-- (pg_attribute, not information_schema.columns: the latter hides columns
+-- the querying role has no privilege on, so as `authenticated` it no longer
+-- lists token_hash at all - itself a consequence of the #242 grant.)
+select ok(
+  not has_table_privilege('authenticated', 'public.ownership_transfers', 'SELECT'),
+  'authenticated has no table-wide SELECT on ownership_transfers (#242)'
+);
+select ok(
+  not has_column_privilege('authenticated', 'public.ownership_transfers', 'token_hash', 'SELECT'),
+  'authenticated cannot SELECT token_hash (#242)'
+);
+select is(
+  (select count(*) from pg_catalog.pg_attribute a
+     join pg_catalog.pg_class pc on pc.oid = a.attrelid
+     join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+    where pn.nspname = 'public'
+      and pc.relname = 'ownership_transfers'
+      and a.attnum > 0
+      and not a.attisdropped
+      and has_column_privilege('authenticated', 'public.ownership_transfers', a.attname, 'SELECT')),
+  (select count(*) - 1 from pg_catalog.pg_attribute a
+     join pg_catalog.pg_class pc on pc.oid = a.attrelid
+     join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+    where pn.nspname = 'public'
+      and pc.relname = 'ownership_transfers'
+      and a.attnum > 0
+      and not a.attisdropped),
+  'Every ownership_transfers column except token_hash stays SELECT-granted (#242)'
+);
+
+-- The arming parent's legitimate read - exactly the app's only table read
+-- (SupabaseOwnershipTransferService.getActiveTransfer: explicit granted
+-- projection, filters on accepted_at / cancelled_at / expires_at) - keeps
+-- working, and the initiator arm of the policy hits the same column wall.
+select is(
+  (select parent_post_transfer_role from public.ownership_transfers
+    where profile_id = tests.ulid(407)
+      and accepted_at is null
+      and cancelled_at is null
+      and expires_at > now()),
+  'co_parent',
+  'The arming parent can still read the live transfer through the app''s getActiveTransfer shape (#242)'
+);
+select throws_ok(
+  $$select token_hash from public.ownership_transfers
+     where profile_id = tests.ulid(407)$$,
+  '42501', null,
+  'The arming parent (initiator) cannot SELECT token_hash either (#242)'
+);
+
+-- Reading, filtering on, or star-expanding token_hash as a non-initiator
+-- the policy admits all fail closed. Referencing a column anywhere in a
+-- query requires SELECT privilege on it, so the WHERE-clause case matters
+-- on its own - otherwise the hash could still be abused as a
+-- guess-and-check comparison oracle.
+select tests.clear_authentication();
+update public.profile_guardians set role = 'viewer'
+ where profile_id = tests.ulid(407) and user_id = tests.get_supabase_uid('tess');
+insert into public.profile_guardians (profile_id, user_id, role, status)
+values (tests.ulid(407), tests.get_supabase_uid('cal'), 'primary_guardian', 'accepted');
+
+select tests.authenticate_as('cal');
+select throws_ok(
+  $$select token_hash from public.ownership_transfers
+     where profile_id = tests.ulid(407)$$,
+  '42501', null,
+  'A non-initiator accepted primary_guardian cannot SELECT token_hash (#242)'
+);
+select throws_ok(
+  $$select id from public.ownership_transfers
+     where token_hash = pg_temp.token(23)$$,
+  '42501', null,
+  'A non-initiator accepted primary_guardian cannot even filter on token_hash (#242)'
+);
+select throws_ok(
+  $$select * from public.ownership_transfers
+     where profile_id = tests.ulid(407)$$,
+  '42501', null,
+  'A non-initiator accepted primary_guardian cannot expand a full row (select * includes token_hash) (#242)'
+);
+select is(
+  (select parent_post_transfer_role from public.ownership_transfers
+    where profile_id = tests.ulid(407)),
+  'co_parent',
+  'A non-initiator accepted primary_guardian can still read the same row''s granted columns (#242)'
+);
+
+-- ---------------------------------------------------------------------------
+-- 15. The full create -> cancel / create -> accept RPC lifecycle is
+-- unaffected: every transfer mutation RPC runs SECURITY DEFINER as the
+-- table owner, which column grants never apply to. Fresh family
+-- (ross -> kim) so the handover cannot perturb any fixture above.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('ross');
+select tests.create_supabase_user('kim');
+select tests.authenticate_as('ross');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(408), 'Mel', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+insert into r select 'arm_hash24', public.create_ownership_transfer(tests.ulid(408), 'viewer', pg_temp.token(24), 'Kim', 72);
+select is(
+  pg_temp.resp('arm_hash24') ->> 'parent_post_transfer_role',
+  'viewer',
+  'create_ownership_transfer still works on a second family under the column-scoped grant (#242)'
+);
+select is(
+  public.cancel_ownership_transfer((pg_temp.resp('arm_hash24') ->> 'id')::uuid),
+  true,
+  'cancel_ownership_transfer still works under the column-scoped grant (#242)'
+);
+select tests.authenticate_as('kim');
+select throws_ok(
+  format($$select public.accept_ownership_transfer(%L)$$, pg_temp.token(24)),
+  '55000', null,
+  'The cancelled transfer is no longer redeemable (#242)'
+);
+select tests.authenticate_as('ross');
+select is(
+  (public.create_ownership_transfer(tests.ulid(408), 'viewer', pg_temp.token(25), 'Kim', 72)
+     ->> 'parent_post_transfer_role'),
+  'viewer',
+  'A fresh transfer can still be created after the cancel (#242)'
+);
+select tests.authenticate_as('kim');
+select is(
+  (public.accept_ownership_transfer(pg_temp.token(25), 'Kim', 'Ross') ->> 'profile_id'),
+  tests.ulid(408),
+  'accept_ownership_transfer still redeems the transfer under the column-scoped grant (#242)'
+);
+select tests.clear_authentication();
+select is(
+  (select user_id from public.profiles where id = tests.ulid(408)),
+  tests.get_supabase_uid('kim'),
+  'The handover actually happened - lifecycle end to end (#242)'
 );
 
 select * from finish();

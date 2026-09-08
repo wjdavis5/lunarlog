@@ -200,6 +200,22 @@ as $$
   select id from public.guardian_invitations where token_hash = p_token_hash;
 $$;
 
+-- Same fixture plumbing for Issue #242 on ownership_transfers (mirrors
+-- invitation_id_by_hash above): `authenticated` can no longer reference
+-- ownership_transfers.token_hash anywhere, so tests that identify a fixture
+-- transfer by its hash resolve the row's id through this SECURITY DEFINER
+-- owner-context helper instead of a direct `where token_hash = ...`
+-- sub-select. Exists only in the local test database (never in a migration)
+-- and only ever returns an opaque uuid - never the hash itself.
+create or replace function tests.transfer_id_by_hash(p_token_hash text)
+returns uuid
+language sql
+security definer
+set search_path = ''
+as $$
+  select id from public.ownership_transfers where token_hash = p_token_hash;
+$$;
+
 -- The helpers are called while the transaction is running as `authenticated`
 -- or `anon`, so those roles need EXECUTE.
 grant execute on all functions in schema tests to anon, authenticated, service_role;
