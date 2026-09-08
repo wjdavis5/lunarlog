@@ -40,6 +40,11 @@ const String kRouteProfileDetailScreen = 'ProfileDetailScreen';
 /// `lib/ui/profiles/profile_picker_screen.dart`.
 const String kRouteManageGuardiansScreen = 'ManageGuardiansScreen';
 
+/// `lib/ui/sharing/activity_feed_screen.dart` (issue #124) — a real
+/// destination with its own content, pushed from the profile screen and
+/// from Manage Guardians.
+const String kRouteActivityFeedScreen = 'ActivityFeedScreen';
+
 /// The day-entry bottom sheet (`lib/ui/logging/month_calendar.dart` pushes
 /// `DaySheet`) — a genuine destination with its own content, not a trivial
 /// confirm dialog (U2 Approach 2b).
@@ -75,6 +80,7 @@ const Set<String> kSentryRouteNames = {
   kRouteUploadConsentScreen,
   kRouteProfileDetailScreen,
   kRouteManageGuardiansScreen,
+  kRouteActivityFeedScreen,
   kRouteDaySheetScreen,
   kRouteDeleteAccountDialog,
   kRouteProfileEditDialog,

@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
@@ -149,6 +150,7 @@ class ProfilePickerScreen extends StatelessWidget {
               notificationPreferencesService:
                   Provider.of<NotificationPreferencesService?>(
                       context, listen: false),
+              activityRepository: ActivityFeedRepository(storage),
             ),
           ),
         );

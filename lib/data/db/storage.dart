@@ -29,6 +29,7 @@
 library;
 
 import 'package:drift/drift.dart';
+import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
 
@@ -798,6 +799,8 @@ class LunarLogStorage {
     // Referential integrity is checked up front so the failure is a typed,
     // retryable one rather than a raw constraint exception from sqlite.
     await _ensureDayEntryProfileExists(remote);
+    await _recordResolvedOverwriteIfAny(remote,
+        local: local, onlyExisting: onlyExisting);
 
     var updatedAt = remote.updatedAt.toUtc();
     var deletedAt = remote.deletedAt?.toUtc();
@@ -842,6 +845,37 @@ class LunarLogStorage {
       lastModifiedByUserId: Value(remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
     ));
     return true;
+  }
+
+  /// Issue #124 (AC4): a push resolution (`applyResolved`) overwriting a
+  /// held live local copy with a differing note/flow discarded this
+  /// device's values in favour of the server's kept copy — record it.
+  /// Only the `onlyExisting` path: an ordinary pull overwrite is the
+  /// normal change feed (the row itself carries the attribution), not a
+  /// resolution. Tombstone resolutions record nothing — the resulting
+  /// "removed" feed row covers them.
+  Future<void> _recordResolvedOverwriteIfAny(
+    RemoteDayEntryRow remote, {
+    required DayEntry? local,
+    required bool onlyExisting,
+  }) async {
+    if (onlyExisting &&
+        local != null &&
+        local.deletedAt == null &&
+        !remote.isTombstone) {
+      await _recordMergeDiscardIfAny(
+        profileId: remote.profileId,
+        localDateIso: remote.localDate,
+        resolutionStamp: remote.updatedAt,
+        winnerActorId: remote.lastModifiedByUserId ?? remote.loggedByUserId,
+        loserActorId: local.lastModifiedByUserId ?? local.loggedByUserId,
+        loserNote: local.note,
+        winnerNote: remote.note,
+        loserFlow: local.flow,
+        winnerFlow: remote.flow,
+        loserEntryId: remote.id,
+      );
+    }
   }
 
   /// Whether [_applyDayEntry] should no-op without writing anything:
@@ -896,6 +930,13 @@ class LunarLogStorage {
   /// (matching how the sibling branch marks its local survivor dirty). The
   /// `tags` value is meaningless when `deleted_at` is non-null, since
   /// tombstones are always written payload-free (R12) regardless.
+  ///
+  /// Issue #124 (AC4): a branch that actually discards a `note`/`flow`
+  /// value — the loser's copy differed from the winner's — also records a
+  /// device-local [MergeEvent] in this same transaction, so the discard
+  /// stays visible on the activity feed. Tags never record an event (they
+  /// are unioned, not discarded) and identical payloads never do (nothing
+  /// was lost).
   Future<(DateTime, DateTime?, List<String>, bool)> _resolveSameDateConflicts(
       RemoteDayEntryRow remote, DateTime updatedAt) async {
     DateTime? deletedAt;
@@ -912,6 +953,18 @@ class LunarLogStorage {
         // Local loser: tombstone with the winner's timestamp, dirty so the
         // resolution is pushed. R7: union its tags onto the incoming
         // (surviving) row instead of discarding them.
+        await _recordMergeDiscardIfAny(
+          profileId: remote.profileId,
+          localDateIso: remote.localDate,
+          resolutionStamp: updatedAt,
+          winnerActorId: remote.lastModifiedByUserId ?? remote.loggedByUserId,
+          loserActorId: other.lastModifiedByUserId ?? other.loggedByUserId,
+          loserNote: other.note,
+          winnerNote: remote.note,
+          loserFlow: other.flow,
+          winnerFlow: remote.flow,
+          loserEntryId: other.id,
+        );
         tags = mergeTags(tags, other.tags);
         await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
             .write(DayEntriesCompanion(
@@ -930,6 +983,18 @@ class LunarLogStorage {
         // marked dirty with a bumped localRev so the merge is pushed -
         // matching how the local-loser branch above already marks its
         // tombstone dirty.
+        await _recordMergeDiscardIfAny(
+          profileId: remote.profileId,
+          localDateIso: remote.localDate,
+          resolutionStamp: other.updatedAt,
+          winnerActorId: other.lastModifiedByUserId ?? other.loggedByUserId,
+          loserActorId: remote.lastModifiedByUserId ?? remote.loggedByUserId,
+          loserNote: remote.note,
+          winnerNote: other.note,
+          loserFlow: remote.flow,
+          winnerFlow: other.flow,
+          loserEntryId: remote.id,
+        );
         await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
             .write(DayEntriesCompanion(
           tags: Value(mergeTags(other.tags, tags)),
@@ -942,6 +1007,45 @@ class LunarLogStorage {
     }
     final hasNewTags = !_tagsEqual(tags, remote.tags);
     return (updatedAt, deletedAt, tags, hasNewTags && deletedAt == null);
+  }
+
+  /// Records one device-local merge outcome (issue #124, AC4) when — and
+  /// only when — the loser's `note` or `flow` actually differs from the
+  /// winner's, i.e. the resolution really discarded a value. Called inside
+  /// the caller's apply transaction, so the discard and its record commit
+  /// or roll back together. Idempotent by `(loser entry id, resolution
+  /// stamp)` via [appendMergeEvent], so a re-delivered row that re-applies
+  /// (the per-id rule lets a tied remote copy re-apply) never duplicates an
+  /// event. Stores actor ids and booleans only — never note text or tags.
+  Future<void> _recordMergeDiscardIfAny({
+    required String profileId,
+    required String localDateIso,
+    required DateTime resolutionStamp,
+    required String? winnerActorId,
+    required String? loserActorId,
+    required String? loserNote,
+    required String? winnerNote,
+    required FlowLevel loserFlow,
+    required FlowLevel winnerFlow,
+    required String loserEntryId,
+  }) async {
+    final discardedNote = loserNote != winnerNote;
+    final discardedFlow = loserFlow != winnerFlow;
+    if (!discardedNote && !discardedFlow) return;
+    final stamp = resolutionStamp.toUtc();
+    final key = activityMergeEventsKey(profileId);
+    final stored = await getSetting(key);
+    final events = appendMergeEvent(decodeMergeEvents(stored), MergeEvent(
+      id: '$loserEntryId@${stamp.toIso8601String()}',
+      profileId: profileId,
+      localDateIso: localDateIso,
+      occurredAt: stamp,
+      winnerActorId: winnerActorId,
+      loserActorId: loserActorId,
+      discardedNote: discardedNote,
+      discardedFlow: discardedFlow,
+    ));
+    await setSetting(key: key, value: encodeMergeEvents(events), updatedAt: stamp);
   }
 
   /// The `tags` to write for a day entry row: cleared for a tombstone.

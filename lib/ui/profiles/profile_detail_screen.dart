@@ -9,12 +9,14 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
+import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
 import 'package:provider/provider.dart';
 
 enum _DetailTab { overview, calendar }
@@ -85,6 +87,17 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         title: Text(
             '${widget.profile.displayName}${widget.readOnly ? ' (archived)' : ''}'),
         actions: [
+          // Issue #124: the per-profile Activity feed, reachable from the
+          // profile itself. Hidden when no storage is wired (local-only
+          // test trees), exactly like the guardians repository above.
+          if (storage != null)
+            ActivityFeedButton(
+              profile: widget.profile,
+              repository: ActivityFeedRepository(storage),
+              readOnly: widget.readOnly,
+              todayProvider: widget.todayProvider,
+              timezoneProvider: widget.timezoneProvider,
+            ),
           if (widget.readOnly)
             TextButton(
               onPressed: _unarchive,
