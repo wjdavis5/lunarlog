@@ -135,13 +135,13 @@ void configureSentryOptions(
     // sees it; the only guard the message gets is `scrubBreadcrumb`'s
     // `mentionsDenyListedKey` word scan, which catches a literal key name
     // like `note` appearing as a token but not an arbitrary sensitive
-    // *value* a caller happened to print -- e.g. `app_lifecycle.dart`'s
-    // reset-failure handler does `debugPrint('lunarlog reset failed:
-    // $error\n$stackTrace')`, and neither `error`'s message nor the stack
-    // trace is guaranteed to avoid health-adjacent content. Same posture
-    // as `enableTombstone` above: pin off until a real payload has been
-    // inspected (issue #19), rather than ship a value-based scrubber this
-    // file has never had reason to build.
+    // *value* a caller happened to print. Lunarlog's own call sites are
+    // uniformly type-only now (issue #97), so this pin guards foreign
+    // output: third-party packages and Flutter itself print values this
+    // codebase does not control. Same posture as `enableTombstone` above:
+    // pin off until a real payload has been inspected (issue #19), rather
+    // than ship a value-based scrubber this file has never had reason to
+    // build.
     ..enablePrintBreadcrumbs = false;
   // Allowlist scrubbing (R18). scrubTransaction (U4) is inert while
   // tracesSampleRate is null -- no transaction is ever produced for it to

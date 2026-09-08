@@ -34,12 +34,13 @@ void main() {
         'is not recorded (not just an exact-key match)', () {
       final log = BreadcrumbLog();
       // Shaped like the console breadcrumb sentry_flutter's
-      // DebugPrintIntegration builds from
-      // `debugPrint('lunarlog reset failed: $error\n$stackTrace')` in
-      // release builds: a SQL statement with a bound argument that names a
-      // health-log column, nowhere near being itself exactly `note`.
+      // DebugPrintIntegration builds from any uncontrolled `debugPrint` in
+      // release builds (a plugin's, Flutter's — lunarlog's own call sites
+      // are type-only now, issue #97): a SQL statement with a bound
+      // argument that names a health-log column, nowhere near being itself
+      // exactly `note`.
       log.record('console',
-          'lunarlog reset failed: SqliteException: near "note": syntax '
+          'some plugin: db error: SqliteException: near "note": syntax '
           'error, bound arguments: [note=feeling off today]');
       expect(log.snapshot(), isEmpty);
     });
