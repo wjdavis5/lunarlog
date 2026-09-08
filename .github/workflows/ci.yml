@@ -10,6 +10,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   FLUTTER_CHANNEL: stable
 
@@ -280,3 +283,54 @@ jobs:
             --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
             --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
             --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+
+  ios-simulator:
+    # Runs on Williams-Mini (the lab's Mac mini, see AGENTS.md "iOS Local
+    # Device Builds"), a self-hosted runner -- the only machine in the lab
+    # with Xcode/a real iOS Simulator. This is a physical, non-ephemeral
+    # machine (not a fresh VM per job): each step must clean up after
+    # itself (shutting the simulator down in an `if: always()` step) rather
+    # than relying on the runner being thrown away afterward. Only one job
+    # runs on it at a time (a single self-hosted runner instance processes
+    # jobs serially), so simulator state cannot race between concurrent CI
+    # runs.
+    #
+    # Security note: this repo is public. A workflow step here executes
+    # directly on lab hardware, so this job (and this runner) must only
+    # ever run trusted code -- see the repo's Settings -> Actions ->
+    # General -> "Fork pull request workflows from outside collaborators"
+    # (set to require approval for outside collaborators) before trusting
+    # this job's `pull_request` trigger.
+    name: iOS Simulator tests
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Boot simulator
+        run: |
+          xcrun simctl boot "iPhone 17" || true
+          xcrun simctl bootstatus "iPhone 17" -b
+
+      - name: Run integration tests on the simulator
+        # Scoped to the tests confirmed safe against a real device (issue
+        # #121): any test that manually drives the binding to
+        # AppLifecycleState.paused/hidden (transitionTo in this file)
+        # triggers genuine OS-level app suspension here, unlike host-mode
+        # where it is a pure Dart-level notification -- once suspended for
+        # real, the VM service connection this job's `flutter test`
+        # depends on hangs forever. The excluded tests ("backgrounding
+        # re-locks...", "inactivity timeout re-locks...") are still
+        # covered by test/ui/gate_test.dart's host-mode GateController
+        # tests, which exercise the same scenarios without a full
+        # on-device widget tree.
+        run: |
+          flutter test integration_test/gate_test.dart -d "iPhone 17" \
+            --name "cold start requires the gate|retry loop: repeated declines stay locked|issue #65: the credential prompt|simulated launch payload routes through the gate"
+
+      - name: Shut down simulator
+        if: always()
+        run: xcrun simctl shutdown "iPhone 17" || true
