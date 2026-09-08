@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(105);
+select plan(128);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -437,6 +437,145 @@ select throws_ok(
   null,
   'table check constraint day_entries_tags_check rejects non-string tags'
 );
+
+-- ---------------------------------------------------------------------------
+-- Issue #96: sync_push must enforce tags validation itself, independently of
+-- the day_entries_tags_check backstop. Two reasons: (a) the table CHECK could
+-- be dropped or weakened without the RPC noticing, and (b) since
+-- 20260906200000, merge_tag_arrays coerces non-string scalars to their JSON
+-- text form and caps unions at 32, so an invalid tags value colliding with a
+-- live same-date entry is silently laundered into a valid one. The fix runs
+-- is_valid_tags_array before the same-date resolver.
+-- ---------------------------------------------------------------------------
+
+-- (1) Backstop-independent proof: with day_entries_tags_check dropped, the
+-- RPC itself must still reject non-string tags. These assertions fail against
+-- the pre-fix body, where the rejection came only from the table CHECK.
+select tests.clear_authentication();
+alter table public.day_entries drop constraint day_entries_tags_check;
+select tests.authenticate_as('user_a');
+
+insert into r select 'tags_no_backstop', public.sync_push(
+  '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(130), 'profile_id', tests.ulid(1), 'local_date', '2026-09-20',
+    'tz', 'UTC', 'flow', 'none', 'tags', '[1, 2]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('tags_no_backstop') -> 'rejected',
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(130), 'rejected', true)),
+  'issue #96: non-string tags are rejected by the RPC with the table CHECK dropped');
+select is((select count(*) from public.day_entries where id = tests.ulid(130)), 0::bigint,
+  'issue #96: the row rejected without the backstop does not land');
+
+-- Restore the constraint so the rest of the file runs against the normal
+-- schema. The exception guard keeps the transaction alive when the pre-fix
+-- function body landed the laundered row above (the re-add then fails
+-- validation on that row, which is itself the regression being proven).
+select tests.clear_authentication();
+do $$
+begin
+  alter table public.day_entries
+    add constraint day_entries_tags_check check (public.is_valid_tags_array(tags));
+exception
+  when others then
+    null;
+end $$;
+select tests.authenticate_as('user_a');
+select ok(exists(
+  select 1 from pg_constraint
+   where conrelid = 'public.day_entries'::regclass
+     and conname = 'day_entries_tags_check'),
+  'issue #96: day_entries_tags_check is restored for later assertions');
+
+-- (2) Collision-path laundering regressions: an invalid tags value on a write
+-- colliding with a live same-date entry used to be coerced by
+-- merge_tag_arrays (jsonb_array_elements_text stringifies non-string
+-- scalars) and stored. Each case seeds a live entry, then pushes a different
+-- ULID for the same (profile_id, local_date) at a newer timestamp.
+
+-- non-string elements on a colliding write
+insert into r select 'launder_num_seed', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(131), 'profile_id', tests.ulid(1), 'local_date', '2026-09-21',
+    'tz', 'UTC', 'flow', 'none', 'tags', '["a"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('launder_num_seed') -> 'rejected', '[]'::jsonb,
+  'issue #96: seeding the live entry (numeric-tags collision case) is not rejected');
+insert into r select 'launder_num', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(132), 'profile_id', tests.ulid(1), 'local_date', '2026-09-21',
+    'tz', 'UTC', 'flow', 'none', 'tags', '[1, 2]'::jsonb, 'updated_at', pg_temp.ts_txt('t2'))));
+select is(pg_temp.resp('launder_num') -> 'rejected',
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(132), 'rejected', true)),
+  'issue #96: non-string tags on a colliding write are rejected, not laundered');
+select is((select deleted_at from public.day_entries where id = tests.ulid(131)), null,
+  'issue #96: colliding [1, 2] write leaves the existing entry live');
+select is((select tags from public.day_entries where id = tests.ulid(131)), '["a"]'::jsonb,
+  'issue #96: colliding [1, 2] write leaves the existing entry''s tags untouched');
+select is((select updated_at from public.day_entries where id = tests.ulid(131)), pg_temp.ts_at('t1'),
+  'issue #96: colliding [1, 2] write leaves the existing entry''s updated_at untouched');
+select is((select count(*) from public.day_entries where id = tests.ulid(132)), 0::bigint,
+  'issue #96: the rejected colliding [1, 2] row is not stored');
+
+-- nested object element on a colliding write (would be coerced to its JSON text)
+insert into r select 'launder_obj_seed', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(133), 'profile_id', tests.ulid(1), 'local_date', '2026-09-22',
+    'tz', 'UTC', 'flow', 'none', 'tags', '["b"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('launder_obj_seed') -> 'rejected', '[]'::jsonb,
+  'issue #96: seeding the live entry (nested-tags collision case) is not rejected');
+insert into r select 'launder_obj', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(134), 'profile_id', tests.ulid(1), 'local_date', '2026-09-22',
+    'tz', 'UTC', 'flow', 'none', 'tags', '[{"a": 1}]'::jsonb, 'updated_at', pg_temp.ts_txt('t2'))));
+select is(pg_temp.resp('launder_obj') -> 'rejected',
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(134), 'rejected', true)),
+  'issue #96: nested-object tags on a colliding write are rejected, not laundered');
+select is((select tags from public.day_entries where id = tests.ulid(133)), '["b"]'::jsonb,
+  'issue #96: colliding nested-tags write leaves the existing entry''s tags untouched');
+select is((select deleted_at from public.day_entries where id = tests.ulid(133)), null,
+  'issue #96: colliding nested-tags write leaves the existing entry live');
+select is((select count(*) from public.day_entries where id = tests.ulid(134)), 0::bigint,
+  'issue #96: the rejected colliding nested-tags row is not stored');
+
+-- (3) over-cap array on a colliding write: merge_tag_arrays caps the union
+-- at 32, which used to let the row land with 32 coerced tags
+insert into r select 'launder_cap_seed', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(135), 'profile_id', tests.ulid(1), 'local_date', '2026-09-23',
+    'tz', 'UTC', 'flow', 'none', 'tags', '["c"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('launder_cap_seed') -> 'rejected', '[]'::jsonb,
+  'issue #96: seeding the live entry (over-cap collision case) is not rejected');
+insert into r select 'launder_cap', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(136), 'profile_id', tests.ulid(1), 'local_date', '2026-09-23',
+    'tz', 'UTC', 'flow', 'none',
+    'tags', (select jsonb_agg('tag-' || g::text) from generate_series(1, 33) g),
+    'updated_at', pg_temp.ts_txt('t2'))));
+select is(pg_temp.resp('launder_cap') -> 'rejected',
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(136), 'rejected', true)),
+  'issue #96: an over-cap tags array on a colliding write is rejected, not capped into validity');
+select is((select tags from public.day_entries where id = tests.ulid(135)), '["c"]'::jsonb,
+  'issue #96: colliding over-cap write leaves the existing entry''s tags untouched');
+select is((select deleted_at from public.day_entries where id = tests.ulid(135)), null,
+  'issue #96: colliding over-cap write leaves the existing entry live');
+select is((select count(*) from public.day_entries where id = tests.ulid(136)), 0::bigint,
+  'issue #96: the rejected colliding over-cap row is not stored');
+
+-- over-cap array with no live entry on the date: still rejected (now via the
+-- RPC, previously via the table CHECK) - guards against the fix loosening
+-- the non-collision path
+insert into r select 'over_cap', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(137), 'profile_id', tests.ulid(1), 'local_date', '2026-09-24',
+    'tz', 'UTC', 'flow', 'none',
+    'tags', (select jsonb_agg('tag-' || g::text) from generate_series(1, 33) g),
+    'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('over_cap') -> 'rejected',
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(137), 'rejected', true)),
+  'issue #96: an over-cap tags array with no collision is still rejected');
+select is((select count(*) from public.day_entries where id = tests.ulid(137)), 0::bigint,
+  'issue #96: the rejected over-cap row is not stored');
+
+-- tombstones are unaffected: a deleted_at row never reads the incoming tags
+insert into r select 'tomb_bogus_tags', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(138), 'profile_id', tests.ulid(1), 'local_date', '2026-09-25',
+    'tz', 'UTC', 'flow', 'none', 'tags', '[1, 2]'::jsonb,
+    'updated_at', pg_temp.ts_txt('t1'), 'deleted_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('tomb_bogus_tags') -> 'rejected', '[]'::jsonb,
+  'issue #96: a tombstone carrying a bogus tags value is still accepted');
+select is((select tags from public.day_entries where id = tests.ulid(138)), '[]'::jsonb,
+  'issue #96: the accepted tombstone stores tags = [] regardless of the pushed value');
 
 -- ---------------------------------------------------------------------------
 -- U1: profile subject metadata (birth_year, relationship, transferred_at)
