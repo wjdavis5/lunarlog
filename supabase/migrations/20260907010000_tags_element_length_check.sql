@@ -48,20 +48,6 @@ comment on function public.is_valid_tags_array(jsonb) is
 -- Preserve every element that satisfies the tightened rule before replacing
 -- the constraint so an upgrade cannot fail or discard the usable portion of
 -- an existing row.
---
--- PR #145 review (P1): this UPDATE changes `tags`, which satisfies
--- day_entries_after_update_enqueue_alerts' WHEN clause, so left unbracketed
--- an upgrade against a database with historical offending rows would fan
--- real caregiver alerts out of notification_outbox for entries nobody just
--- logged - against that trigger's own documented intent (20260906220000, #7
--- review). Disable that one trigger for exactly this statement; migration
--- files run in a single transaction, so the trigger state and any partial
--- effect of the UPDATE roll back together on failure, and the re-enable
--- below restores the original state on success. The INSERT trigger needs no
--- bracket: this statement is UPDATE-only.
-alter table public.day_entries
-  disable trigger day_entries_after_update_enqueue_alerts;
-
 update public.day_entries d
    set tags = (
      select coalesce(jsonb_agg(e.value order by e.ordinality), '[]'::jsonb)
@@ -70,9 +56,6 @@ update public.day_entries d
         and char_length(e.value #>> '{}') <= 64
    )
  where not public.is_valid_tags_array(d.tags);
-
-alter table public.day_entries
-  enable trigger day_entries_after_update_enqueue_alerts;
 
 alter table public.day_entries
   drop constraint if exists day_entries_tags_check,
