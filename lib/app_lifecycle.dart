@@ -431,7 +431,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
         // Honouring the answer now would re-open the session behind it.
         return;
       }
-      if (!(granted)) {
+      if (granted) {
         _denied = false;
         _locked = false;
         _armInactivity();
