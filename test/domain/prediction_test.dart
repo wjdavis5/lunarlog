@@ -364,4 +364,172 @@ void main() {
       expect(p.cycleDay, 10);
     });
   });
+
+  group('omit-from-average (issue #132, R4)', () {
+    test('omitting a completed cycle start drops its length from the average '
+        'and moves the estimate', () {
+      // Lengths 28, 28, 48, 28. Without omission the average of the most
+      // recent three (28, 48, 28) is 34.67 -> 35: May 13 + 35 = Jun 17.
+      // Omitting the 48-day cycle (start Feb 26) leaves 28, 28, 28 -> 28:
+      // May 13 + 28 = Jun 10.
+      final starts = [
+        d(2026, 1, 1),
+        d(2026, 1, 29), // 28
+        d(2026, 2, 26), // 28
+        d(2026, 4, 15), // 48
+        d(2026, 5, 13), // 28
+      ];
+      final before = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 5, 20),
+      ) as ActivePrediction;
+      expect(before.averagedCycleLengths, [28, 48, 28]);
+
+      final after = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 5, 20),
+        omittedCycleStarts: {d(2026, 2, 26)},
+      ) as ActivePrediction;
+      expect(after.averagedCycleLengths, [28, 28, 28],
+          reason: 'the omitted length drops out and an older one slides in');
+      expect(after.meanCycleLengthDays, 28.0);
+      expect(after.estimatedNextStart, before.estimatedNextStart.addDays(-7));
+    });
+
+    test('omitting below three usable cycles degrades to NotEnoughHistory, '
+        'never partial numbers', () {
+      // Lengths 28, 30, 32; omitting any one leaves two usable.
+      final result = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 4, 1)]),
+        today: d(2026, 4, 10),
+        omittedCycleStarts: {d(2026, 1, 1)},
+      );
+      expect(result, isA<NotEnoughHistory>());
+      final nth = result as NotEnoughHistory;
+      expect(nth.episodeCount, 4);
+      expect(nth.completedCycleCount, 3);
+      expect(nth.validCycleCount, 3,
+          reason: 'the window-valid count ignores omissions');
+    });
+
+    test('omitting a length already outside the window changes nothing', () {
+      // Lengths 28, 90, 30, 32: the 90-day cycle is already invalid.
+      final starts = [
+        d(2026, 1, 1),
+        d(2026, 1, 29),
+        d(2026, 4, 29), // 90 days: outside the window
+        d(2026, 5, 29),
+        d(2026, 6, 30),
+      ];
+      final plain = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 7, 5),
+      );
+      final omitted = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 7, 5),
+        omittedCycleStarts: {d(2026, 1, 29)},
+      );
+      expect(omitted.toString(), plain.toString());
+    });
+
+    test('a length is attributed to the cycle that starts it, not ends it',
+        () {
+      // Lengths 32, 28, 48, 28. Omitting the *second* start drops its 28;
+      // the older 32 slides in and the 48 stays.
+      final result = computePrediction(
+        episodes: episodesFromStarts([
+          d(2025, 11, 30),
+          d(2026, 1, 1),
+          d(2026, 1, 29),
+          d(2026, 3, 18),
+          d(2026, 4, 15),
+        ]),
+        today: d(2026, 4, 20),
+        omittedCycleStarts: {d(2026, 1, 1)},
+      ) as ActivePrediction;
+      expect(result.averagedCycleLengths, [32, 48, 28]);
+    });
+
+    test('computePredictionFromEntries forwards the omission set', () {
+      final result = computePredictionFromEntries(
+        entries: entriesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 26), d(2026, 3, 28)],
+            FlowLevel.medium),
+        today: d(2026, 4, 1),
+        omittedCycleStarts: {d(2026, 1, 29)},
+      );
+      expect(result, isA<NotEnoughHistory>(),
+          reason: 'lengths 28, 28, 30 minus one omitted leaves two usable');
+    });
+  });
+
+  group('skip this cycle (issue #132, R6)', () {
+    // 30-day cycles; today is day 45 of the open cycle: estimate was
+    // Apr 27 + 30 = May 27, more than the 2-day grace past -> late.
+    final starts = [
+      d(2026, 1, 27),
+      d(2026, 2, 26),
+      d(2026, 3, 28),
+      d(2026, 4, 27),
+    ];
+    final today = d(2026, 6, 11);
+
+    test('skipping the open cycle advances the estimate one averaged cycle '
+        'and clears the late flag', () {
+      final late = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: today,
+      ) as ActivePrediction;
+      expect(late.isLate, isTrue);
+
+      final skipped = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: today,
+        omittedCycleStarts: {starts.last},
+      ) as ActivePrediction;
+      expect(
+        skipped.estimatedNextStart,
+        late.estimatedNextStart.addDays(30),
+        reason: '30-day mean x kSkipAdvanceCycles(1) beyond the base estimate',
+      );
+      expect(skipped.isLate, isFalse,
+          reason: 'the skip replans the late window (R6)');
+      expect(skipped.meanCycleLengthDays, late.meanCycleLengthDays,
+          reason: 'the skip does not change the average itself');
+    });
+
+    test('when the next period is finally logged, the skipped cycle length '
+        'stays out of the average', () {
+      // The next period arrives 2026-05-31: the skipped cycle ran 34 days
+      // (in-window, so only the omission keeps it out), and the new open
+      // cycle is normal.
+      final withNext = [...starts, d(2026, 5, 31)];
+      final result = computePrediction(
+        episodes: episodesFromStarts(withNext),
+        today: d(2026, 6, 5),
+        omittedCycleStarts: {starts.last},
+      ) as ActivePrediction;
+      expect(result.averagedCycleLengths, [30, 30, 30],
+          reason: 'the 34-day skipped cycle never poisons the mean');
+      expect(result.estimatedNextStart, d(2026, 6, 30));
+    });
+
+    test('a skip does not lift the sixty-day pause', () {
+      // Open cycle at day 70: paused regardless of the skip — the way
+      // through remains "log it" (issue #132 AC).
+      final result = computePrediction(
+        episodes: episodesFromStarts([
+          d(2025, 12, 2),
+          d(2026, 1, 1),
+          d(2026, 1, 31),
+          d(2026, 3, 2),
+        ]),
+        today: d(2026, 5, 11),
+        omittedCycleStarts: {d(2026, 3, 2)},
+      );
+      expect(result, isA<PausedAwaitingNextPeriod>());
+    });
+  });
 }

@@ -1,4 +1,4 @@
--- Migration: 20260908000000_alert_digest_cadence.sql
+-- Migration: 20260908110000_alert_digest_cadence.sql
 -- Issue #125: digest cadence and rate limiting for co-guardian alerts.
 --
 -- Four delivery behaviors, all riding the existing content-free outbox and

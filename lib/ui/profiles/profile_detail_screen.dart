@@ -1,9 +1,10 @@
 /// Profile detail (U5 + U6): the active profile's two surfaces — the
-/// overview of predictions (U6) and the month calendar of logged days
-/// (U5) — behind a simple in-place toggle. Both are scoped to exactly one
-/// profile (R3). Archived profiles open in read-only mode (view-only day
-/// sheets, no logging affordances) with an unarchive action; the overview
-/// itself has no write affordances and stays viewable.
+/// overview of predictions (U6, plus issue #132's history section and
+/// late resolver) and the month calendar of logged days (U5) — behind a
+/// simple in-place toggle. Both are scoped to exactly one profile (R3).
+/// Archived profiles open in read-only mode (view-only day sheets, no
+/// logging affordances, and the overview's resolver and history omit
+/// actions hidden) with an unarchive action.
 library;
 
 import 'package:flutter/material.dart';
@@ -123,6 +124,9 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 ? OverviewPanel(
                     profileId: widget.profile.id,
                     todayProvider: widget.todayProvider,
+                    readOnly: widget.readOnly,
+                    timezoneProvider: widget.timezoneProvider,
+                    guardiansRepository: guardiansRepository,
                   )
                 : MonthCalendar(
                     profileId: widget.profile.id,

@@ -17,6 +17,8 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -106,7 +108,13 @@ class Harness {
         Provider<DayEntriesRepository>.value(value: entries),
         Provider<SettingsStore>.value(value: _settings),
         Provider<CyclePredictionService>.value(
-          value: CyclePredictionService(entries),
+          value: CyclePredictionService(entries, settings: _settings),
+        ),
+        Provider<CycleHistoryService>.value(
+          value: CycleHistoryService(entries, settings: _settings),
+        ),
+        Provider<CycleExclusionList>.value(
+          value: CycleExclusionList(_settings),
         ),
         ChangeNotifierProvider<NotificationPermissionState>.value(
           value: NotificationPermissionState(availability),
@@ -219,7 +227,7 @@ void main() {
       expect(find.text('Next period estimate: September 4, 2026'),
           findsOneWidget);
       expect(find.text('≈5 days until next period'), findsOneWidget);
-      expect(find.byKey(const ValueKey('overview-late')), findsNothing,
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
           reason: 'not late: estimate is 5 days ahead');
       expectNoFertilityVocabulary(tester, 'active mid-cycle');
       await disposeOverview(tester, h);
@@ -233,13 +241,15 @@ void main() {
             seedEpisodes(entries, profileId, kActiveStarts),
       );
 
-      expect(find.text(kDisclaimer), findsOneWidget,
-          reason: 'disclaimer sits next to the estimate (R17)');
+      expect(find.text(kDisclaimer), findsWidgets,
+          reason: 'the estimate card and the history stats each carry it '
+              '(R17; issue #132 AC8)');
       await disposeOverview(tester, h);
     });
 
     testWidgets('below-threshold profile shows the not-enough state with no '
-        'partial numbers (no digits or dates leak)', (tester) async {
+        'partial numbers (no digits or dates leak from the estimate card)',
+        (tester) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
@@ -249,13 +259,20 @@ void main() {
       expect(find.text('Not enough history yet'), findsOneWidget);
       expect(find.textContaining('days until next period'), findsNothing);
       expect(find.textContaining('Next period estimate'), findsNothing);
-      expect(find.byKey(const ValueKey('overview-late')), findsNothing);
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
 
-      final texts = tester
-          .widgetList<Text>(find.byType(Text))
-          .map((text) => text.data ?? '')
-          .where((text) => text.isNotEmpty)
-          .toList();
+      // Issue #132: the cycle-history card now renders below the estimate
+      // card for every profile with episodes, and it legitimately shows
+      // recorded dates and lengths (real history, not a partial estimate).
+      // The no-partial-numbers rule (R11) governs the estimate surface, so
+      // the sweep is scoped to the not-enough card itself.
+      final texts = tester.widgetList<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('overview-not-enough')),
+          matching: find.byType(Text),
+        ),
+      ).map((text) => text.data ?? '').where((text) => text.isNotEmpty);
+      expect(texts, isNotEmpty);
       for (final text in texts) {
         expect(RegExp(r'\d').hasMatch(text), isFalse,
             reason: 'partial number leaked in not-enough state: "$text"');
@@ -277,26 +294,36 @@ void main() {
           'logged.'), findsOneWidget);
       expect(find.textContaining('days until next period'), findsNothing);
       expect(find.textContaining('Next period estimate'), findsNothing);
-      expect(find.byKey(const ValueKey('overview-late')), findsNothing);
+      // Issue #132 (AC7): the paused state still resolves through the
+      // resolver — "log it" is right there.
+      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+      expect(find.text('Log it'), findsOneWidget);
+      expect(find.text(kDisclaimer), findsWidgets,
+          reason: 'the awaiting card, resolver, and history stats each '
+              'carry it');
       expectNoFertilityVocabulary(tester, 'paused awaiting next period');
       await disposeOverview(tester, h);
     });
 
     testWidgets('late state (estimate + 2 days passed, nothing logged) shows '
-        'the late indicator instead of the days-until line', (tester) async {
+        'the three-option resolver instead of the days-until line',
+        (tester) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kLateStarts),
       );
 
-      expect(find.byKey(const ValueKey('overview-late')), findsOneWidget);
-      expect(find.text('Period is late — log it when it starts'),
-          findsOneWidget);
+      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+      expect(find.text('Period is late'), findsOneWidget);
+      expect(find.text('Log it'), findsOneWidget);
+      expect(find.text('Skip this cycle'), findsOneWidget);
+      expect(find.text('Remind me in 3 days'), findsOneWidget);
       expect(find.textContaining('days until next period'), findsNothing);
       expect(find.text('Next period estimate: August 2, 2026'), findsOneWidget,
           reason: 'the estimate itself stays visible with its disclaimer');
-      expect(find.text(kDisclaimer), findsOneWidget);
+      expect(find.text(kDisclaimer), findsWidgets,
+          reason: 'the estimate card and the resolver each carry it');
       expectNoFertilityVocabulary(tester, 'late');
       await disposeOverview(tester, h);
     });
@@ -398,7 +425,7 @@ void main() {
             seedEpisodes(entries, profileId, kLateStarts),
       );
 
-      expect(find.byKey(const ValueKey('overview-late')), findsOneWidget);
+      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
 
       await h.entries.save(DayEntry(
         id: '',
@@ -413,7 +440,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('overview-late')), findsNothing,
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
           reason: 'the new episode resets the open cycle');
       expect(find.text('Period'), findsOneWidget,
           reason: 'today is now day 1 of the new episode');

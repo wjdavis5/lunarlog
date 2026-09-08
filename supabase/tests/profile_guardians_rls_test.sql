@@ -1,6 +1,6 @@
 -- RLS and permission tests for multi-guardian access (Issue #8, Unit U1).
 begin;
-select plan(35);
+select plan(49);
 
 -- ---------------------------------------------------------------------------
 -- Setup users: Mom (creator), Dad (co_parent), Sitter (caregiver), Doctor (viewer), Stranger
@@ -304,16 +304,21 @@ select public.create_guardian_invitation(
   48
 );
 
--- Scoped to this invitation specifically (by its unique token_hash and
+-- Scoped to this invitation specifically (by its id, resolved from the
+-- fixture token hash through the owner-context helper, plus profile_id and
 -- invited_by), not a bare table-wide count: by this point in setup, Mom's
 -- earlier invitations to Dad/Sitter/Doctor (all via the same RPC handshake)
 -- are still present rows too, so a global count would be perturbed by
 -- unrelated, legitimate setup activity rather than proving anything about
--- this call.
+-- this call. The lookup cannot be a direct `where token_hash = ...`
+-- sub-select any more: referencing token_hash at all - even in a WHERE
+-- clause - is denied to `authenticated` by the #114 column-scoped SELECT
+-- grant (asserted in section 10 below).
 select is(
   (select count(*) from public.guardian_invitations
-    where profile_id = tests.ulid(101)
-      and token_hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    where id = tests.invitation_id_by_hash(
+      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+      and profile_id = tests.ulid(101)
       and invited_by = tests.get_supabase_uid('dad')),
   1::bigint,
   'Dad can create guardian invitation'
@@ -329,7 +334,8 @@ select is(
 select tests.authenticate_as('mom');
 select throws_ok(
   $$update public.guardian_invitations set revoked_at = now()
-     where token_hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'$$,
+     where id = tests.invitation_id_by_hash(
+       'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')$$,
   '42501', null, 'Non-creator cannot modify another guardian''s invitation (no UPDATE grant at all)'
 );
 
@@ -350,6 +356,140 @@ select throws_ok(
   $$insert into public.guardian_invitations (profile_id, invited_by, token_hash, role, expires_at)
     values (tests.ulid(101), tests.get_supabase_uid('stranger'), 'f3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', 'caregiver', now() + interval '48 hours')$$,
   '42501', null, 'Stranger cannot insert invitation for Maya profile'
+);
+
+-- ---------------------------------------------------------------------------
+-- 10. token_hash is unreadable to authenticated clients (Issue #114)
+-- ---------------------------------------------------------------------------
+-- The stored hash alone redeems an invitation (accept_guardian_invitation
+-- compares it directly), and the guardian_invitations_select policy admits
+-- every accepted primary/co-parent guardian of the profile, so a table-wide
+-- SELECT grant let one guardian read and redeem a pending invitation meant
+-- for someone else. The grant is now column-scoped: every column except
+-- token_hash. Dad (accepted co-parent of profile 101) is the attacker-role
+-- fixture throughout.
+select tests.authenticate_as('dad');
+
+-- Catalog: no whole-table SELECT, none on token_hash, all others kept.
+-- (pg_attribute, not information_schema.columns: the latter hides columns
+-- the querying role has no privilege on, so as `authenticated` it no longer
+-- lists token_hash at all - itself a consequence of the #114 grant.)
+select ok(
+  not has_table_privilege('authenticated', 'public.guardian_invitations', 'SELECT'),
+  'authenticated has no table-wide SELECT on guardian_invitations (#114)'
+);
+select ok(
+  not has_column_privilege('authenticated', 'public.guardian_invitations', 'token_hash', 'SELECT'),
+  'authenticated cannot SELECT token_hash (#114)'
+);
+select is(
+  (select count(*) from pg_catalog.pg_attribute a
+     join pg_catalog.pg_class pc on pc.oid = a.attrelid
+     join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+    where pn.nspname = 'public'
+      and pc.relname = 'guardian_invitations'
+      and a.attnum > 0
+      and not a.attisdropped
+      and has_column_privilege('authenticated', 'public.guardian_invitations', a.attname, 'SELECT')),
+  (select count(*) - 1 from pg_catalog.pg_attribute a
+     join pg_catalog.pg_class pc on pc.oid = a.attrelid
+     join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+    where pn.nspname = 'public'
+      and pc.relname = 'guardian_invitations'
+      and a.attnum > 0
+      and not a.attisdropped),
+  'Every guardian_invitations column except token_hash stays SELECT-granted (#114)'
+);
+
+-- Behavior: reading, filtering on, or star-expanding token_hash all fail
+-- closed. Referencing a column anywhere in a query requires SELECT privilege
+-- on it, so the WHERE-clause case matters on its own - otherwise the hash
+-- could still be abused as a guess-and-check comparison oracle.
+select throws_ok(
+  $$select token_hash from public.guardian_invitations
+     where profile_id = tests.ulid(101)$$,
+  '42501', null,
+  'A guardian of the profile cannot SELECT token_hash (#114)'
+);
+select throws_ok(
+  $$select id from public.guardian_invitations
+     where token_hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'$$,
+  '42501', null,
+  'A guardian cannot even filter on token_hash (#114)'
+);
+select throws_ok(
+  $$select * from public.guardian_invitations
+     where profile_id = tests.ulid(101)$$,
+  '42501', null,
+  'A guardian cannot expand a full row (select * includes token_hash) (#114)'
+);
+
+-- The exact shape of the app's only table read
+-- (SupabaseSharingService.listPendingInvites: explicit granted projection,
+-- filters on accepted_at / revoked_at / expires_at) keeps working, and the
+-- same row stays readable through its granted columns.
+select is(
+  (select count(*) from public.guardian_invitations
+    where profile_id = tests.ulid(101)
+      and accepted_at is null
+      and revoked_at is null
+      and expires_at > now()),
+  1::bigint,
+  'A guardian can still list pending invitations through granted columns (#114)'
+);
+select is(
+  (select role from public.guardian_invitations
+    where id = tests.invitation_id_by_hash(
+      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')),
+  'caregiver',
+  'A guardian can still read the same row''s other columns (#114)'
+);
+
+-- The full RPC lifecycle is unaffected: create / accept / cancel all run
+-- SECURITY DEFINER as the table owner, which column grants never apply to.
+select tests.create_supabase_user('grandma');
+select tests.authenticate_as('mom');
+select is(
+  (public.create_guardian_invitation(
+     tests.ulid(101), 'viewer', 'Post-grant Grandma',
+     '5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f', 1) ->> 'role'),
+  'viewer',
+  'create_guardian_invitation still works under the column-scoped grant (#114)'
+);
+select tests.authenticate_as('grandma');
+select is(
+  (public.accept_guardian_invitation(
+     '5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f', 'Grandma') ->> 'role'),
+  'viewer',
+  'accept_guardian_invitation still redeems the invitation (#114)'
+);
+select is(
+  (select count(*) from public.profile_guardians
+    where profile_id = tests.ulid(101)
+      and user_id = tests.get_supabase_uid('grandma')),
+  1::bigint,
+  'The redemption created Grandma''s membership row (#114)'
+);
+select tests.authenticate_as('mom');
+select is(
+  (public.create_guardian_invitation(
+     tests.ulid(101), 'caregiver', 'Post-grant cancel',
+     '9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d', 1) ->> 'role'),
+  'caregiver',
+  'A second invitation can still be created for the cancel half of the lifecycle (#114)'
+);
+select is(
+  (public.revoke_guardian_invitation(tests.invitation_id_by_hash(
+     '9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d')) ->> 'outcome'),
+  'revoked',
+  'revoke_guardian_invitation still cancels it (#114)'
+);
+select tests.authenticate_as('grandma');
+select throws_ok(
+  $$select public.accept_guardian_invitation(
+     '9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d')$$,
+  '55000', null,
+  'The cancelled invitation is no longer redeemable - lifecycle end to end (#114)'
 );
 
 rollback;

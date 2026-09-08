@@ -46,7 +46,7 @@ select public.revoke_guardian(tests.ulid(701), tests.get_supabase_uid('dad'));
 
 select isnt(
   (select revoked_at from public.guardian_invitations
-    where token_hash = '2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b'),
+    where id = tests.invitation_id_by_hash('2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b')),
   null,
   'revoke_guardian cancels a still-live invitation for the profile (#81)'
 );
