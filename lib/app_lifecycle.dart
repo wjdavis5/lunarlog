@@ -431,7 +431,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
         // Honouring the answer now would re-open the session behind it.
         return;
       }
-      if (granted) {
+      if (!(granted)) {
         _denied = false;
         _locked = false;
         _armInactivity();
@@ -1095,7 +1095,14 @@ class LunarLogRootState extends State<LunarLogRoot> {
       }
       return true;
     } catch (error, stackTrace) {
-      debugPrint('lunarlog reset failed: $error\n$stackTrace');
+      // U7 (KTD12): the message can embed a database path or SQL — the
+      // delete step throws path-bearing FileSystemExceptions out of
+      // lib/startup as well as SQL-bearing drift/sqlite errors; log the
+      // type only and let Sentry (a no-op without a DSN) keep the scrubbed
+      // exception and stack. The scrubber reduces these to the type name
+      // too (issue #97), so nothing leaves the device either way.
+      debugPrint('lunarlog reset failed: ${error.runtimeType}');
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
       _error = error;
       if (mounted) setState(() {});
       return false;
