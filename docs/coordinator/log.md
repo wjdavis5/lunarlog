@@ -3,3 +3,4 @@
 2026-09-08T22:17:07Z merged PR #146 (squash) — tag element length bound + trigger bracket now on main; CI green on corrected head
 2026-09-08T22:28:28Z merged PR #149 (issue 142 closed); filed discovery #150 (web/privacy.html SQLCipher staleness); dispatched #125 (feat/125-alert-digest); 3 slots full: #114 #132 #125
 2026-09-08T22:41:13Z merged PR #219 (issue 114 closed); discovery #242 filed (ownership_transfers.token_hash, P1)
+2026-09-08T22:41:44Z dispatched #242 (fix/242-ownership-token-hash-unreadable); slots full: #132 #125 #242
