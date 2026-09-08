@@ -183,6 +183,23 @@ as $$
     || substr('0123456789ABCDEFGHJKMNPQRSTVWXYZ', (n % 32) + 1, 1);
 $$;
 
+-- Fixture plumbing for Issue #114: `authenticated` can no longer reference
+-- guardian_invitations.token_hash at all (reading it, filtering on it, or
+-- expanding it via `*` is denied by the column-scoped SELECT grant), so tests
+-- that identify a fixture invitation by its hash resolve the row's id through
+-- this SECURITY DEFINER owner-context helper instead of a direct
+-- `where token_hash = ...` sub-select. Like every helper here it exists only
+-- in the local test database (never in a migration) and only ever returns an
+-- opaque uuid - never the hash itself.
+create or replace function tests.invitation_id_by_hash(p_token_hash text)
+returns uuid
+language sql
+security definer
+set search_path = ''
+as $$
+  select id from public.guardian_invitations where token_hash = p_token_hash;
+$$;
+
 -- The helpers are called while the transaction is running as `authenticated`
 -- or `anon`, so those roles need EXECUTE.
 grant execute on all functions in schema tests to anon, authenticated, service_role;
