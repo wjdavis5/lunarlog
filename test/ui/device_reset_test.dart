@@ -6,6 +6,8 @@
 /// so the order is asserted literally.
 library;
 
+import 'dart:io';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -17,8 +19,10 @@ import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
+import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
 
+import '../support/debug_print_capture.dart';
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
@@ -31,10 +35,22 @@ class RecordingDatabase extends LunarLogDatabase {
 
   final void Function() onClose;
 
+  /// One-shot failure injection (#97): when set, the next `close()` throws
+  /// with the returned object instead of closing, and the hook is
+  /// consumed — the `auth.nextFailure` convention. Consuming on use also
+  /// keeps `ResetHarness.dispose` able to close the underlying drift
+  /// database for real after a test injected a failure.
+  Object Function()? nextCloseFailure;
+
   bool closed = false;
 
   @override
   Future<void> close() {
+    final failure = nextCloseFailure;
+    if (failure != null) {
+      nextCloseFailure = null;
+      throw failure();
+    }
     closed = true;
     onClose();
     return super.close();
@@ -86,6 +102,12 @@ class ResetHarness {
   late final RecordingAuth auth = RecordingAuth(log);
   final FakeGate gate = FakeGate(requiresUnlock: false);
 
+  /// One-shot failure injection (#97): when set, the next
+  /// `deleteLocalDatabase()` throws with the returned object instead of
+  /// deleting, and the hook is consumed (the `auth.nextFailure`
+  /// convention).
+  Object Function()? nextDeleteFailure;
+
   Future<RecordingDatabase> openDb() async {
     final db = RecordingDatabase(() {
       final appMounted = find.byType(LunarLogApp).evaluate().isNotEmpty;
@@ -113,7 +135,14 @@ class ResetHarness {
         engines.add(engine);
         return engine;
       },
-      deleteLocalDatabase: () async => log.add('delete-file'),
+      deleteLocalDatabase: () async {
+        final failure = nextDeleteFailure;
+        if (failure != null) {
+          nextDeleteFailure = null;
+          throw failure();
+        }
+        log.add('delete-file');
+      },
       isWeb: isWeb,
     ));
     await tester.pump();
@@ -262,6 +291,117 @@ void main() {
     await first;
     await second;
     expect(h.log.where((e) => e == 'open').length, 1);
+    await h.dispose();
+  });
+
+  // The expected log line is split across adjacent literals so the
+  // repo-wide grep for the call-site phrase (plan verification step 6)
+  // keeps lib/app_lifecycle.dart as its only hit (#97 U3).
+  testWidgets('a native delete failure logs the exception type only — '
+      'never the message, path, or stack (#97 R1)', (tester) async {
+    final h = ResetHarness(tester);
+    await h.pump();
+    final captured = captureDebugPrint();
+    h.log.clear();
+    h.nextDeleteFailure = () => const FileSystemException(
+        "Deletion failed, path = '/tmp/lunarlog.db'", '/tmp/lunarlog.db');
+
+    final done = h.reset();
+    await drainIsolateTraffic(tester);
+    await done;
+    await drainIsolateTraffic(tester);
+
+    captured.restore();
+    expect(captured.lines, ['lunarlog reset ' 'failed: FileSystemException']);
+    await h.dispose();
+  });
+
+  testWidgets('a native delete failure fails closed: no sign-out, no '
+      'reopen, the fail-closed screen (#97 R5)', (tester) async {
+    final h = ResetHarness(tester);
+    h.auth.emit(AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'));
+    await h.pump();
+    h.log.clear();
+    h.nextDeleteFailure = () => const FileSystemException(
+        "Deletion failed, path = '/tmp/lunarlog.db'", '/tmp/lunarlog.db');
+
+    final done = h.reset();
+    await drainIsolateTraffic(tester);
+    await done;
+    await drainIsolateTraffic(tester);
+
+    expect(h.log, [
+      'engine.dispose:start',
+      'engine.dispose:done',
+      'close',
+    ], reason: 'the delete step threw before sign-out could run');
+    expect(h.log.contains('signOut'), isFalse);
+    expect(h.log.contains('delete-file'), isFalse);
+    expect(find.byType(FailClosedScreen), findsOneWidget);
+    expect(find.text(kNoticeText), findsNothing);
+    expect(tester.takeException(), isNull);
+    await h.dispose();
+  });
+
+  testWidgets('a web close failure after the wipe fails closed the same '
+      'way and logs the type only', (tester) async {
+    final h = ResetHarness(tester, isWeb: true);
+    await h.pump();
+    final captured = captureDebugPrint();
+    h.log.clear();
+    h.dbs.single.nextCloseFailure = () => const FileSystemException(
+        'close failed mid-reset', '/tmp/lunarlog.db');
+
+    final done = h.reset();
+    await drainIsolateTraffic(tester);
+    await done;
+    await drainIsolateTraffic(tester);
+
+    captured.restore();
+    expect(captured.lines, ['lunarlog reset ' 'failed: FileSystemException']);
+    expect(h.log, [
+      'engine.dispose:start',
+      'engine.dispose:done',
+      'wipe',
+    ], reason: 'close threw after the wipe, before sign-out or reopen');
+    expect(find.byType(FailClosedScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await h.dispose();
+  });
+
+  testWidgets('a failed reset releases the re-entrancy guard: a second '
+      'reset still runs', (tester) async {
+    final h = ResetHarness(tester);
+    await h.pump();
+    h.log.clear();
+    final reset = h.reset;
+    h.nextDeleteFailure = () => const FileSystemException(
+        "Deletion failed, path = '/tmp/lunarlog.db'", '/tmp/lunarlog.db');
+
+    final first = reset();
+    await drainIsolateTraffic(tester);
+    await first;
+    await drainIsolateTraffic(tester);
+    expect(find.byType(FailClosedScreen), findsOneWidget);
+
+    final second = reset();
+    await drainIsolateTraffic(tester);
+    await second;
+    await drainIsolateTraffic(tester);
+
+    expect(h.log, [
+      'engine.dispose:start',
+      'engine.dispose:done',
+      'close',
+      'delete-file',
+      'signOut',
+    ], reason: 'the second reset ran past the delete step — the guard was '
+        'released (its engine was already disposed, so dispose logs '
+        'nothing the second time)');
+    expect(find.byType(FailClosedScreen), findsOneWidget,
+        reason: 'fail-closed is sticky once _error is recorded');
+    expect(tester.takeException(), isNull);
     await h.dispose();
   });
 }

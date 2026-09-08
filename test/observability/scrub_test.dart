@@ -267,6 +267,96 @@ void main() {
       expect(_json(out), isNot(contains(_email)));
     });
 
+    test('#97/U1: a path-bearing FileSystemException from the reset delete '
+        'step reduces to its type name', () {
+      const path =
+          '/var/mobile/Containers/Data/Application/ABC/Documents/lunarlog.db';
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'FileSystemException',
+          value:
+              "Deletion failed, path = '$path' (OS Error: Permission denied, "
+              'errno = 13)',
+          stackTrace: SentryStackTrace(frames: [
+            SentryStackFrame(
+              absPath: 'package:lunarlog/startup/startup_native.dart',
+              function: 'deleteDatabaseFiles',
+            ),
+          ]),
+        ),
+      ]))!;
+      final ex = out.exceptions!.single;
+      expect(ex.type, 'FileSystemException');
+      expect(ex.value, 'FileSystemException');
+      final json = _json(out);
+      expect(json, isNot(contains('lunarlog.db')));
+      expect(json, isNot(contains('/var/mobile')));
+    });
+
+    test('#97/U1: dart:io path subclasses and '
+        'MissingPlatformDirectoryException reduce to their type names', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'PathNotFoundException',
+          value: 'Cannot open file, path = /var/mobile/lunarlog.db',
+        ),
+        SentryException(
+          type: 'PathAccessException',
+          value: 'Deletion failed, path = /var/mobile/lunarlog.db (errno = 13)',
+        ),
+        SentryException(
+          type: 'MissingPlatformDirectoryException',
+          value: 'Unable to get application documents directory',
+        ),
+      ]))!;
+      expect(
+        out.exceptions!.map((e) => e.value).toList(),
+        [
+          'PathNotFoundException',
+          'PathAccessException',
+          'MissingPlatformDirectoryException',
+        ],
+      );
+      final json = _json(out);
+      expect(json, isNot(contains('/var/mobile')));
+    });
+
+    test('#97/U1: the lib/startup path marker reduces a neutral type name '
+        'independently of the type list', () {
+      const path =
+          '/var/mobile/Containers/Data/Application/ABC/Documents/lunarlog.db';
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'StateError',
+          value: 'Bad state: $path',
+          stackTrace: SentryStackTrace(frames: [
+            SentryStackFrame(
+              absPath: 'package:lunarlog/startup/startup_native.dart',
+              function: 'deleteLocalDatabase',
+            ),
+          ]),
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'StateError');
+      expect(_json(out), isNot(contains('/var/mobile')));
+    });
+
+    test('#97/U1/R4: an unrelated exception from lib/domain keeps its value '
+        '(the new markers do not over-reduce)', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'FormatException',
+          value: 'Unexpected character at offset 3',
+          stackTrace: SentryStackTrace(frames: [
+            SentryStackFrame(
+              absPath: 'package:lunarlog/domain/episodes/episodes.dart',
+            ),
+          ]),
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'Unexpected character at offset 3');
+    });
+
     test('event tags lose deny-listed keys but keep the rest', () {
       final out = scrubEvent(_fullEvent())!;
       expect(out.tags, {'environment': 'development'});
