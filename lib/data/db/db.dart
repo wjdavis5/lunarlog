@@ -60,8 +60,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `day_entries.dirty`, `day_entries.local_rev`, `sync_state`,
   /// `day_entries.logged_by_user_id`, `day_entries.last_modified_by_user_id`,
   /// `profile_guardians`, `profiles.birth_year`, `profiles.relationship`,
-  /// `profiles.transferred_at`, `profiles.mode`). A hook
-  /// that throws proves the transaction wrapper rolls the whole upgrade
+  /// `profiles.transferred_at`, `profiles.mode`, `day_entries.live_index`). A
+  /// hook that throws proves the transaction wrapper rolls the whole upgrade
   /// back. Must be set before the first query. Null in production.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
@@ -122,6 +122,17 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profiles.mode');
       });
     }
+    // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
+    // the only place this partial index was ever created, so a device whose
+    // schema was reconstructed from something other than a real `onCreate`
+    // run (the drift schema-verification harness's `schemaAt(1)` fixture in
+    // `test/data/db/schema_migration_test.dart` is exactly that case) would
+    // reach v4 without it, silently losing the one-live-entry-per-day
+    // constraint. `CREATE UNIQUE INDEX IF NOT EXISTS` is a no-op for the
+    // real upgrade path (every shipped device's `onCreate` already made it),
+    // so this only ever does work in the previously-uncovered case.
+    await customStatement(kLiveDayEntryIndexSql);
+    await migrationStepHook?.call('day_entries.live_index');
   }
 
   /// Hard-deletes every row in every table, the `sync_state` row included —

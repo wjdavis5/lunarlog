@@ -127,6 +127,22 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Codegen freshness (build_runner + drift schema dump)
+        # Issue #200: lib/data/db/db.g.dart and drift_schemas/*.json are
+        # committed but nothing previously proved either stayed in sync with
+        # lib/data/db/tables.dart / db.dart. Re-running both generators and
+        # failing on a dirty tree catches a table or schemaVersion change
+        # whose codegen (or schema dump, which the schema-verification
+        # harness in test/data/db/schema_migration_test.dart reads) was
+        # never regenerated. When bumping schemaVersion, update the file
+        # name in the second command below to
+        # drift_schema_v<new version>.json (see AGENTS.md's Codegen bullet
+        # for the full "bump -> dump -> generate -> test" procedure).
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          dart run drift_dev schema dump lib/data/db/db.dart drift_schemas/drift_schema_v4.json
+          git diff --exit-code
+
       - name: Analyze
         run: flutter analyze
 

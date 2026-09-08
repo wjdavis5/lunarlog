@@ -87,10 +87,23 @@ final List<CoverageExclusion> excludedLibFilePaths = [
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');
 
+/// `dart run drift_dev schema generate` output (issue #200): every file
+/// under `test/data/db/generated_migrations/` is machine-generated from the
+/// `drift_schemas/*.json` dumps and rewritten wholesale by that command, same
+/// treatment as `**/*.g.dart` above — a directory-prefix glob rather than a
+/// literal path in [excludedLibFilePaths] because (a) it lives under `test/`,
+/// not `lib/`, so it is out of scope for [nonExcludedLibDartFiles] and
+/// `mutation_gate.dart` regardless, and (b) the file names themselves change
+/// as more schema versions are dumped (`schema_v1.dart`, `schema_v2.dart`,
+/// ...).
+final RegExp _driftSchemaMigrationHelperPattern =
+    RegExp(r'test/data/db/generated_migrations/.*\.dart$');
+
 /// [excludedLibFilePaths] compiled to anchored, escaped `RegExp`s, plus the
-/// generated-code glob — the matcher [isExcluded] actually uses.
+/// generated-code globs — the matcher [isExcluded] actually uses.
 final List<RegExp> coveragePatterns = [
   _generatedCodePattern,
+  _driftSchemaMigrationHelperPattern,
   for (final e in excludedLibFilePaths) RegExp('${RegExp.escape(e.path)}\$'),
 ];
 
