@@ -19,6 +19,20 @@ Profile _profile() => Profile(
       updatedAt: DateTime.utc(2026),
     );
 
+/// Scrolls the screen's ListView until [finder] is built and visible. The
+/// Issue #125 delivery section (cadence dropdowns + digest time) pushed the
+/// missed-entry and quiet-hours controls below the fold of the default test
+/// viewport, and a ListView only builds children near the viewport. A
+/// negative [delta] scrolls back up toward earlier children.
+Future<void> _scrollTo(WidgetTester tester, Finder finder, {double delta = 200}) async {
+  await tester.scrollUntilVisible(
+    finder,
+    delta,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
 class _FailingOnceService implements NotificationPreferencesService {
   _FailingOnceService(this._delegate);
   final FakeNotificationPreferencesService _delegate;
@@ -83,6 +97,7 @@ void main() {
       final tile = tester.widget<SwitchListTile>(find.byKey(ValueKey(key)));
       expect(tile.value, isFalse, reason: '$key should be off by default');
     }
+    await _scrollTo(tester, find.byKey(const ValueKey('missed-entry-threshold-dropdown')));
     expect(find.text('Off'), findsWidgets);
   });
 
@@ -137,6 +152,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
+    await _scrollTo(tester, find.byKey(const ValueKey('missed-entry-threshold-dropdown')));
     await tester.tap(find.byKey(const ValueKey('missed-entry-threshold-dropdown')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('2 days').last);
@@ -147,6 +163,82 @@ void main() {
       find.byKey(const ValueKey('missed-entry-threshold-dropdown')),
     );
     expect(dropdown.value, MissedEntryThreshold.twoDays);
+  });
+
+  testWidgets(
+      'the cadence dropdowns default to immediate, persist a change to daily digest, '
+      'and reset to immediate when the parent toggle is turned off (Issue #125)', (tester) async {
+    final service = FakeNotificationPreferencesService();
+
+    await tester.pumpWidget(MaterialApp(
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    DropdownButton<AlertCadence> cadenceOf(String key) =>
+        tester.widget<DropdownButton<AlertCadence>>(
+          find.byKey(ValueKey(key)),
+        );
+
+    // Disabled until the parent alert toggle is on; values are immediate.
+    expect(cadenceOf('log-cadence-dropdown').onChanged, isNull);
+    expect(cadenceOf('log-cadence-dropdown').value, AlertCadence.immediate);
+
+    await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+    await tester.pumpAndSettle();
+    expect(cadenceOf('log-cadence-dropdown').onChanged, isNotNull);
+
+    await tester.tap(find.byKey(const ValueKey('log-cadence-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Daily digest').last);
+    await tester.pumpAndSettle();
+
+    expect(cadenceOf('log-cadence-dropdown').value, AlertCadence.dailyDigest);
+    expect(service.saveCalls, greaterThanOrEqualTo(1));
+
+    // The cycle-start/high-severity cadences stay independently selectable
+    // only once their narrowing toggles are on.
+    expect(cadenceOf('cycle-start-cadence-dropdown').onChanged, isNull);
+    await tester.tap(find.byKey(const ValueKey('alert-cycle-start-only-toggle')));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.byKey(const ValueKey('cycle-start-cadence-dropdown')));
+    expect(cadenceOf('cycle-start-cadence-dropdown').onChanged, isNotNull);
+
+    // Turning the parent off disables and resets every cadence, matching
+    // the clean-slate rule the narrowings already follow. Scroll back up
+    // first -- the toggle sits above the delivery section.
+    await _scrollTo(tester, find.byKey(const ValueKey('alert-on-log-toggle')), delta: -200);
+    await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+    await tester.pumpAndSettle();
+    expect(cadenceOf('log-cadence-dropdown').onChanged, isNull);
+    expect(cadenceOf('log-cadence-dropdown').value, AlertCadence.immediate);
+  });
+
+  testWidgets('the digest time tile shows the 8:00 AM default and persists a picked time', (tester) async {
+    final service = FakeNotificationPreferencesService();
+
+    await tester.pumpWidget(MaterialApp(
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const ValueKey('digest-time-tile')));
+    expect(find.text('8:00 AM'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('digest-time-tile')));
+    await tester.pumpAndSettle();
+    // The picker opens at the default (8:00); confirm it explicitly.
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(service.saveCalls, greaterThanOrEqualTo(1));
+    expect(service.stored['profile-1']?.digestTimeMinutes, 8 * 60);
   });
 
   testWidgets('setting a quiet-hours range persists both times; clearing persists nulls', (tester) async {
@@ -161,6 +253,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Confirm the default start time (22:00) via the time picker's OK button.
+    await _scrollTo(tester, find.byKey(const ValueKey('quiet-hours-start-tile')));
     await tester.tap(find.byKey(const ValueKey('quiet-hours-start-tile')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
@@ -172,6 +265,7 @@ void main() {
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
 
+    await _scrollTo(tester, find.byKey(const ValueKey('clear-quiet-hours-tile')));
     expect(find.byKey(const ValueKey('clear-quiet-hours-tile')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('clear-quiet-hours-tile')));

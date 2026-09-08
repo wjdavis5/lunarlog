@@ -2,6 +2,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 
 void main() {
+  group('AlertCadence', () {
+    test('maps each value to and from the database representation', () {
+      expect(AlertCadence.immediate.toDb(), 'immediate');
+      expect(AlertCadence.dailyDigest.toDb(), 'daily_digest');
+      expect(AlertCadence.off.toDb(), 'off');
+
+      expect(AlertCadence.fromDb('immediate'), AlertCadence.immediate);
+      expect(AlertCadence.fromDb('daily_digest'), AlertCadence.dailyDigest);
+      expect(AlertCadence.fromDb('off'), AlertCadence.off);
+    });
+
+    test('a null stored value (pre-#125 row) maps to immediate', () {
+      expect(AlertCadence.fromDb(null), AlertCadence.immediate);
+    });
+
+    test('rejects an unknown value', () {
+      expect(() => AlertCadence.fromDb('hourly'), throwsArgumentError);
+      expect(() => AlertCadence.fromDb(''), throwsArgumentError);
+    });
+  });
+
   group('MissedEntryThreshold', () {
     test('maps 1/2/3/off to and from the database representation', () {
       expect(MissedEntryThreshold.off.toDb(), null);
@@ -63,6 +84,10 @@ void main() {
       alertOnLog: true,
       alertOnCycleStartOnly: true,
       alertOnHighSeverity: true,
+      logCadence: AlertCadence.dailyDigest,
+      cycleStartCadence: AlertCadence.immediate,
+      highSeverityCadence: AlertCadence.off,
+      digestTimeMinutes: 9 * 60,
       missedEntryThreshold: MissedEntryThreshold.twoDays,
       quietHours: QuietHours(startMinutes: 1320, endMinutes: 420),
       timeZone: 'America/New_York',
@@ -75,6 +100,15 @@ void main() {
           isFalse);
       expect(base.copyWith(alertOnHighSeverity: false).alertOnHighSeverity,
           isFalse);
+      expect(base.copyWith(logCadence: AlertCadence.off).logCadence,
+          AlertCadence.off);
+      expect(base.copyWith(cycleStartCadence: AlertCadence.dailyDigest).cycleStartCadence,
+          AlertCadence.dailyDigest);
+      expect(base.copyWith(highSeverityCadence: AlertCadence.immediate).highSeverityCadence,
+          AlertCadence.immediate);
+      expect(base.copyWith(digestTimeMinutes: 0).digestTimeMinutes, 0,
+          reason: 'midnight (0) is a valid digest time, distinct from unset');
+      expect(base.copyWith(clearDigestTime: true).digestTimeMinutes, isNull);
       expect(
         base
             .copyWith(missedEntryThreshold: MissedEntryThreshold.off)
@@ -98,6 +132,12 @@ void main() {
       expect(base, isNot(base.copyWith(alertOnLog: false)));
       expect(base, isNot(base.copyWith(alertOnCycleStartOnly: false)));
       expect(base, isNot(base.copyWith(alertOnHighSeverity: false)));
+      expect(base, isNot(base.copyWith(logCadence: AlertCadence.immediate)));
+      expect(base, isNot(base.copyWith(cycleStartCadence: AlertCadence.off)));
+      expect(
+          base, isNot(base.copyWith(highSeverityCadence: AlertCadence.immediate)));
+      expect(base, isNot(base.copyWith(digestTimeMinutes: 10 * 60)));
+      expect(base, isNot(base.copyWith(clearDigestTime: true)));
       expect(
         base,
         isNot(base.copyWith(missedEntryThreshold: MissedEntryThreshold.off)),
@@ -113,6 +153,15 @@ void main() {
       expect(CaregiverAlertPreferences.off.missedEntryThreshold,
           MissedEntryThreshold.off);
       expect(CaregiverAlertPreferences.off.quietHours, isNull);
+    });
+
+    test('the all-off default keeps every cadence immediate and no digest time (Issue #125)', () {
+      expect(CaregiverAlertPreferences.off.logCadence, AlertCadence.immediate);
+      expect(CaregiverAlertPreferences.off.cycleStartCadence,
+          AlertCadence.immediate);
+      expect(CaregiverAlertPreferences.off.highSeverityCadence,
+          AlertCadence.immediate);
+      expect(CaregiverAlertPreferences.off.digestTimeMinutes, isNull);
     });
   });
 }

@@ -18,6 +18,10 @@ class FakeNotificationPreferencesService
   int saveCalls = 0;
   Object? nextSaveError;
 
+  /// The last value saved (or seeded) per profile, for assertions.
+  Map<String, CaregiverAlertPreferences> get stored =>
+      Map.unmodifiable(_stored);
+
   StreamController<CaregiverAlertPreferences> _controllerFor(
           String profileId) =>
       _controllers.putIfAbsent(

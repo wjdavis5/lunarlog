@@ -63,6 +63,10 @@ void main() {
             'alert_on_log': true,
             'alert_on_cycle_start_only': false,
             'alert_on_high_severity': false,
+            'log_cadence': 'daily_digest',
+            'cycle_start_cadence': 'immediate',
+            'high_severity_cadence': 'off',
+            'digest_local_time': '09:30:00',
             'missed_entry_days': 2,
             'quiet_hours_start': '22:00:00',
             'quiet_hours_end': '07:00:00',
@@ -77,10 +81,42 @@ void main() {
       final prefs = await service.watchFor(_profileId).first;
 
       expect(prefs.alertOnLog, isTrue);
+      expect(prefs.logCadence, AlertCadence.dailyDigest);
+      expect(prefs.cycleStartCadence, AlertCadence.immediate);
+      expect(prefs.highSeverityCadence, AlertCadence.off);
+      expect(prefs.digestTimeMinutes, 9 * 60 + 30);
       expect(prefs.missedEntryThreshold, MissedEntryThreshold.twoDays);
       expect(prefs.quietHours,
           const QuietHours(startMinutes: 22 * 60, endMinutes: 7 * 60));
       expect(prefs.timeZone, 'America/New_York');
+    });
+
+    test('a pre-#125 row with no cadence columns maps to immediate and no digest time', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'user_id': _uid,
+            'profile_id': _profileId,
+            'alert_on_log': true,
+            'alert_on_cycle_start_only': false,
+            'alert_on_high_severity': false,
+            'missed_entry_days': null,
+            'quiet_hours_start': null,
+            'quiet_hours_end': null,
+            'time_zone': null,
+          }),
+          200,
+        );
+      });
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      final prefs = await service.watchFor(_profileId).first;
+
+      expect(prefs.logCadence, AlertCadence.immediate);
+      expect(prefs.cycleStartCadence, AlertCadence.immediate);
+      expect(prefs.highSeverityCadence, AlertCadence.immediate);
+      expect(prefs.digestTimeMinutes, isNull);
     });
 
     test('emits the all-off default when no row exists (R4)', () async {
@@ -123,6 +159,30 @@ void main() {
 
       expect(emissions.last, saved);
       await sub.cancel();
+    });
+
+    test('persists the cadence columns and the digest time (Issue #125)', () async {
+      final client = makeClient((req) async {
+        expect(req.method, 'POST');
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(body['log_cadence'], 'daily_digest');
+        expect(body['cycle_start_cadence'], 'immediate');
+        expect(body['high_severity_cadence'], 'off');
+        expect(body['digest_local_time'], '00:00:00');
+        return http.Response('', 201);
+      });
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      await service.save(
+        _profileId,
+        const CaregiverAlertPreferences(
+          alertOnLog: true,
+          logCadence: AlertCadence.dailyDigest,
+          digestTimeMinutes: 0,
+          highSeverityCadence: AlertCadence.off,
+        ),
+      );
     });
 
     test('a PostgREST permission error maps to the unauthorized failure with a non-raw message', () async {

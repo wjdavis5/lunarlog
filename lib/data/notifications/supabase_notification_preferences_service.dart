@@ -101,6 +101,13 @@ class SupabaseNotificationPreferencesService
         alertOnCycleStartOnly:
             row['alert_on_cycle_start_only'] as bool? ?? false,
         alertOnHighSeverity: row['alert_on_high_severity'] as bool? ?? false,
+        logCadence: AlertCadence.fromDb(row['log_cadence'] as String?),
+        cycleStartCadence:
+            AlertCadence.fromDb(row['cycle_start_cadence'] as String?),
+        highSeverityCadence:
+            AlertCadence.fromDb(row['high_severity_cadence'] as String?),
+        digestTimeMinutes:
+            _timeStringToMinutes(row['digest_local_time'] as String?),
         missedEntryThreshold:
             MissedEntryThreshold.fromDb(row['missed_entry_days'] as int?),
         quietHours: _quietHoursFromRow(
@@ -114,6 +121,10 @@ class SupabaseNotificationPreferencesService
         'alert_on_log': prefs.alertOnLog,
         'alert_on_cycle_start_only': prefs.alertOnCycleStartOnly,
         'alert_on_high_severity': prefs.alertOnHighSeverity,
+        'log_cadence': prefs.logCadence.toDb(),
+        'cycle_start_cadence': prefs.cycleStartCadence.toDb(),
+        'high_severity_cadence': prefs.highSeverityCadence.toDb(),
+        'digest_local_time': _minutesToTimeString(prefs.digestTimeMinutes),
         'missed_entry_days': prefs.missedEntryThreshold.toDb(),
         'quiet_hours_start': _minutesToTimeString(prefs.quietHours?.startMinutes),
         'quiet_hours_end': _minutesToTimeString(prefs.quietHours?.endMinutes),
