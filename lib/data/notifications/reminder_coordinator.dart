@@ -3,6 +3,11 @@
 /// write) and on app resume ("at every app open"); archived profiles drop
 /// out because only active profiles are planned. Permission denial skips
 /// scheduling and surfaces the U6 overview hint.
+///
+/// Issue #131 (KTD10): each active profile's care mode contributes a
+/// [ReminderPreset] to every replan, so switching a profile's mode takes
+/// effect at the next coordinator pass — never retroactively rewriting
+/// saved entries or already-delivered reminders.
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -16,7 +21,9 @@ import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
@@ -62,6 +69,12 @@ class ReminderCoordinator with WidgetsBindingObserver {
   StreamSubscription<List<Profile>>? _profilesSub;
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
   final Map<String, ActivePrediction> _latest = {};
+
+  /// Each active profile's care mode (Issue #131), carried from the active-
+  /// profiles stream into every replan as a [ReminderPreset]. Refreshed by
+  /// the same `_onProfilesChanged` emission that schedules the replan, so a
+  /// mode switch is applied at the next coordinator pass.
+  final Map<String, ProfileMode> _modes = {};
   Timer? _replanTimer;
   int _permissionProbeGeneration = 0;
   bool _started = false;
@@ -95,8 +108,16 @@ class ReminderCoordinator with WidgetsBindingObserver {
           if (activeIds.contains(id)) return false;
           unawaited(sub.cancel());
           _latest.remove(id);
+          _modes.remove(id);
           return true;
         });
+    for (final profile in profiles) {
+      // Mode is carried on the same stream the replan rides: a mode switch
+      // (any profile write) lands here and the scheduled replan below
+      // re-filters every reminder through the new preset (Issue #131).
+      _modes[profile.id] = profile.mode;
+    }
+    _modes.removeWhere((id, _) => !activeIds.contains(id));
     for (final id in activeIds) {
       _predictionSubs.putIfAbsent(
         id,
@@ -136,7 +157,14 @@ class ReminderCoordinator with WidgetsBindingObserver {
       return;
     }
     await _scheduler.rescheduleAll(
-      planReminders(today: today(), predictions: Map.of(_latest)),
+      planReminders(
+        today: today(),
+        predictions: Map.of(_latest),
+        presets: {
+          for (final entry in _modes.entries)
+            entry.key: reminderPresetFor(entry.value),
+        },
+      ),
     );
   }
 

@@ -6,12 +6,14 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 
 Profile _profile({
   String id = 'p1',
   String displayName = 'Alex',
   bool isMinor = false,
+  ProfileMode mode = ProfileMode.standard,
   int sortOrder = 0,
   DateTime? archivedAt,
   DateTime? createdAt,
@@ -25,6 +27,7 @@ Profile _profile({
       id: id,
       displayName: displayName,
       isMinor: isMinor,
+      mode: mode,
       sortOrder: sortOrder,
       archivedAt: archivedAt,
       createdAt: createdAt ?? DateTime.utc(2026, 1, 1),
@@ -84,6 +87,33 @@ void main() {
           profile.copyWith(transferredAt: DateTime.utc(2026, 4, 1));
       expect(transferred.transferredAt, DateTime.utc(2026, 4, 1));
     });
+
+    test('mode defaults to standard and copyWith switches it (Issue #131)',
+        () {
+      expect(_profile().mode, ProfileMode.standard);
+      final teen = _profile().copyWith(mode: ProfileMode.teen);
+      expect(teen.mode, ProfileMode.teen);
+      expect(teen.copyWith().mode, ProfileMode.teen,
+          reason: 'copyWith with no arguments preserves the mode');
+    });
+  });
+
+  group('ProfileMode (Issue #131)', () {
+    test('toDb/fromDb round-trip every value, and unknown degrades to '
+        'standard rather than throwing', () {
+      for (final mode in ProfileMode.values) {
+        expect(ProfileMode.fromDb(mode.toDb()), mode);
+      }
+      expect(ProfileMode.fromDb('future_mode'), ProfileMode.standard);
+      expect(ProfileMode.fromDb(null), ProfileMode.standard);
+    });
+
+    test('every mode carries non-empty label and hint (copy review)', () {
+      for (final mode in ProfileMode.values) {
+        expect(mode.label, isNotEmpty);
+        expect(mode.hint, isNotEmpty);
+      }
+    });
   });
 
   group('Profile equality and hashCode', () {
@@ -121,6 +151,13 @@ void main() {
       final a = _profile(transferredAt: DateTime.utc(2026, 4, 1));
       final b = _profile(transferredAt: DateTime.utc(2026, 4, 2));
       expect(a, isNot(b));
+    });
+
+    test('two Profiles differing only in mode are unequal (Issue #131)', () {
+      final a = _profile(mode: ProfileMode.standard);
+      final b = _profile(mode: ProfileMode.teen);
+      expect(a, isNot(b));
+      expect(a.hashCode, isNot(b.hashCode));
     });
   });
 

@@ -145,6 +145,16 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _modeMeta = const VerificationMeta('mode');
+  @override
+  late final GeneratedColumn<String> mode = GeneratedColumn<String>(
+    'mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('standard'),
+  );
   static const VerificationMeta _transferredAtMeta = const VerificationMeta(
     'transferredAt',
   );
@@ -171,6 +181,7 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     localRev,
     birthYear,
     relationship,
+    mode,
     transferredAt,
   ];
   @override
@@ -270,6 +281,12 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         ),
       );
     }
+    if (data.containsKey('mode')) {
+      context.handle(
+        _modeMeta,
+        mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+      );
+    }
     if (data.containsKey('transferred_at')) {
       context.handle(
         _transferredAtMeta,
@@ -336,6 +353,10 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.string,
         data['${effectivePrefix}relationship'],
       ),
+      mode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode'],
+      )!,
       transferredAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}transferred_at'],
@@ -380,6 +401,13 @@ class Profile extends DataClass implements Insertable<Profile> {
   /// throwing (see `row_codec.dart`).
   final String? relationship;
 
+  /// Care mode (Issue #131, R12), mirrored by [domain.ProfileMode] and the
+  /// server's `profiles_mode_check` CHECK (`standard|teen|caregiver|
+  /// irregular`). Non-null, defaulting to `standard`; an unrecognised value
+  /// decodes to `standard` rather than throwing (see `row_codec.dart`).
+  /// Presentation only — never consulted by any authorization path.
+  final String mode;
+
   /// Instant this profile's ownership last moved via
   /// `accept_ownership_transfer`, or null if it never has (R5). Never
   /// client-writable — server-owned, pulled but never pushed (see
@@ -398,6 +426,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     required this.localRev,
     this.birthYear,
     this.relationship,
+    required this.mode,
     this.transferredAt,
   });
   @override
@@ -423,6 +452,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     if (!nullToAbsent || relationship != null) {
       map['relationship'] = Variable<String>(relationship);
     }
+    map['mode'] = Variable<String>(mode);
     if (!nullToAbsent || transferredAt != null) {
       map['transferred_at'] = Variable<DateTime>(transferredAt);
     }
@@ -451,6 +481,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       relationship: relationship == null && nullToAbsent
           ? const Value.absent()
           : Value(relationship),
+      mode: Value(mode),
       transferredAt: transferredAt == null && nullToAbsent
           ? const Value.absent()
           : Value(transferredAt),
@@ -475,6 +506,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       localRev: serializer.fromJson<int>(json['localRev']),
       birthYear: serializer.fromJson<int?>(json['birthYear']),
       relationship: serializer.fromJson<String?>(json['relationship']),
+      mode: serializer.fromJson<String>(json['mode']),
       transferredAt: serializer.fromJson<DateTime?>(json['transferredAt']),
     );
   }
@@ -494,6 +526,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       'localRev': serializer.toJson<int>(localRev),
       'birthYear': serializer.toJson<int?>(birthYear),
       'relationship': serializer.toJson<String?>(relationship),
+      'mode': serializer.toJson<String>(mode),
       'transferredAt': serializer.toJson<DateTime?>(transferredAt),
     };
   }
@@ -511,6 +544,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     int? localRev,
     Value<int?> birthYear = const Value.absent(),
     Value<String?> relationship = const Value.absent(),
+    String? mode,
     Value<DateTime?> transferredAt = const Value.absent(),
   }) => Profile(
     id: id ?? this.id,
@@ -525,6 +559,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     localRev: localRev ?? this.localRev,
     birthYear: birthYear.present ? birthYear.value : this.birthYear,
     relationship: relationship.present ? relationship.value : this.relationship,
+    mode: mode ?? this.mode,
     transferredAt: transferredAt.present
         ? transferredAt.value
         : this.transferredAt,
@@ -549,6 +584,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       relationship: data.relationship.present
           ? data.relationship.value
           : this.relationship,
+      mode: data.mode.present ? data.mode.value : this.mode,
       transferredAt: data.transferredAt.present
           ? data.transferredAt.value
           : this.transferredAt,
@@ -570,6 +606,7 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('localRev: $localRev, ')
           ..write('birthYear: $birthYear, ')
           ..write('relationship: $relationship, ')
+          ..write('mode: $mode, ')
           ..write('transferredAt: $transferredAt')
           ..write(')'))
         .toString();
@@ -589,6 +626,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     localRev,
     birthYear,
     relationship,
+    mode,
     transferredAt,
   );
   @override
@@ -607,6 +645,7 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.localRev == this.localRev &&
           other.birthYear == this.birthYear &&
           other.relationship == this.relationship &&
+          other.mode == this.mode &&
           other.transferredAt == this.transferredAt);
 }
 
@@ -623,6 +662,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<int> localRev;
   final Value<int?> birthYear;
   final Value<String?> relationship;
+  final Value<String> mode;
   final Value<DateTime?> transferredAt;
   final Value<int> rowid;
   const ProfilesCompanion({
@@ -638,6 +678,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.localRev = const Value.absent(),
     this.birthYear = const Value.absent(),
     this.relationship = const Value.absent(),
+    this.mode = const Value.absent(),
     this.transferredAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -654,6 +695,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.localRev = const Value.absent(),
     this.birthYear = const Value.absent(),
     this.relationship = const Value.absent(),
+    this.mode = const Value.absent(),
     this.transferredAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -674,6 +716,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<int>? localRev,
     Expression<int>? birthYear,
     Expression<String>? relationship,
+    Expression<String>? mode,
     Expression<DateTime>? transferredAt,
     Expression<int>? rowid,
   }) {
@@ -690,6 +733,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       if (localRev != null) 'local_rev': localRev,
       if (birthYear != null) 'birth_year': birthYear,
       if (relationship != null) 'relationship': relationship,
+      if (mode != null) 'mode': mode,
       if (transferredAt != null) 'transferred_at': transferredAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -708,6 +752,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<int>? localRev,
     Value<int?>? birthYear,
     Value<String?>? relationship,
+    Value<String>? mode,
     Value<DateTime?>? transferredAt,
     Value<int>? rowid,
   }) {
@@ -724,6 +769,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       localRev: localRev ?? this.localRev,
       birthYear: birthYear ?? this.birthYear,
       relationship: relationship ?? this.relationship,
+      mode: mode ?? this.mode,
       transferredAt: transferredAt ?? this.transferredAt,
       rowid: rowid ?? this.rowid,
     );
@@ -768,6 +814,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     if (relationship.present) {
       map['relationship'] = Variable<String>(relationship.value);
     }
+    if (mode.present) {
+      map['mode'] = Variable<String>(mode.value);
+    }
     if (transferredAt.present) {
       map['transferred_at'] = Variable<DateTime>(transferredAt.value);
     }
@@ -792,6 +841,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('localRev: $localRev, ')
           ..write('birthYear: $birthYear, ')
           ..write('relationship: $relationship, ')
+          ..write('mode: $mode, ')
           ..write('transferredAt: $transferredAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -3047,6 +3097,7 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<int> localRev,
   Value<int?> birthYear,
   Value<String?> relationship,
+  Value<String> mode,
   Value<DateTime?> transferredAt,
   Value<int> rowid,
 });
@@ -3063,6 +3114,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<int> localRev,
   Value<int?> birthYear,
   Value<String?> relationship,
+  Value<String> mode,
   Value<DateTime?> transferredAt,
   Value<int> rowid,
 });
@@ -3177,6 +3229,11 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<String> get relationship => $composableBuilder(
     column: $table.relationship,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mode => $composableBuilder(
+    column: $table.mode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3305,6 +3362,11 @@ class $$ProfilesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get transferredAt => $composableBuilder(
     column: $table.transferredAt,
     builder: (column) => ColumnOrderings(column),
@@ -3361,6 +3423,9 @@ class $$ProfilesTableAnnotationComposer
     column: $table.relationship,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get mode =>
+      $composableBuilder(column: $table.mode, builder: (column) => column);
 
   GeneratedColumn<DateTime> get transferredAt => $composableBuilder(
     column: $table.transferredAt,
@@ -3461,6 +3526,7 @@ class $$ProfilesTableTableManager
                 Value<int> localRev = const Value.absent(),
                 Value<int?> birthYear = const Value.absent(),
                 Value<String?> relationship = const Value.absent(),
+                Value<String> mode = const Value.absent(),
                 Value<DateTime?> transferredAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion(
@@ -3476,6 +3542,7 @@ class $$ProfilesTableTableManager
                 localRev: localRev,
                 birthYear: birthYear,
                 relationship: relationship,
+                mode: mode,
                 transferredAt: transferredAt,
                 rowid: rowid,
               ),
@@ -3493,6 +3560,7 @@ class $$ProfilesTableTableManager
                 Value<int> localRev = const Value.absent(),
                 Value<int?> birthYear = const Value.absent(),
                 Value<String?> relationship = const Value.absent(),
+                Value<String> mode = const Value.absent(),
                 Value<DateTime?> transferredAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion.insert(
@@ -3508,6 +3576,7 @@ class $$ProfilesTableTableManager
                 localRev: localRev,
                 birthYear: birthYear,
                 relationship: relationship,
+                mode: mode,
                 transferredAt: transferredAt,
                 rowid: rowid,
               ),

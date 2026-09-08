@@ -4,17 +4,21 @@
 library;
 
 import '../models/profile.dart';
+import '../models/profile_mode.dart';
 import '../models/profile_relationship.dart';
 
 abstract interface class ProfilesRepository {
   /// Creates a new profile (id assigned by storage). [birthYear] and
   /// [relationship] are optional, display/context-only subject metadata
   /// (Issue #4 R1, R2, R3); neither is validated beyond the closed set
-  /// [ProfileRelationship] already enforces.
+  /// [ProfileRelationship] already enforces. [mode] (Issue #131) is the
+  /// profile's care mode — presentation only, defaulting to
+  /// [ProfileMode.standard].
   Future<Profile> create({
     required String displayName,
     required bool isMinor,
     int sortOrder,
+    ProfileMode mode,
     int? birthYear,
     ProfileRelationship? relationship,
   });

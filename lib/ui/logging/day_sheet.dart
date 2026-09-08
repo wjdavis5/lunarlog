@@ -6,6 +6,12 @@
 /// save/delete affordances, and a repository save/delete failure keeps the
 /// sheet open with all entered values intact plus an inline retry error.
 ///
+/// Issue #131: the profile's care mode selects the category headings and
+/// the order they are surfaced in (`careModeCopyFor`) — a prospective
+/// logging-default only. Every category remains available in every mode
+/// (teen reorders, it never removes: "not a euphemism for a reduced app"),
+/// and saved entries always render verbatim regardless of mode.
+///
 /// Route naming (U2 Approach 2b): the sheet itself is named
 /// `DaySheetScreen` at its push site (`month_calendar.dart`). Its internal
 /// "Delete this entry?" `showDialog` is deliberately left unnamed — a
@@ -14,10 +20,12 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
@@ -30,13 +38,6 @@ String flowLabel(FlowLevel flow) {
   return name[0].toUpperCase() + name.substring(1);
 }
 
-String _categoryLabel(TagCategory category) => switch (category) {
-      TagCategory.pain => 'Pain',
-      TagCategory.body => 'Body',
-      TagCategory.mood => 'Mood',
-      TagCategory.other => 'Other',
-    };
-
 class DaySheet extends StatefulWidget {
   const DaySheet({
     super.key,
@@ -45,6 +46,7 @@ class DaySheet extends StatefulWidget {
     required this.date,
     required this.today,
     this.existing,
+    this.mode = ProfileMode.standard,
     this.readOnly = false,
     this.timezoneProvider,
     this.currentUserId,
@@ -60,6 +62,10 @@ class DaySheet extends StatefulWidget {
 
   /// The current live entry for (profileId, date), or null for a new log.
   final DayEntry? existing;
+
+  /// The profile's care mode (Issue #131): category headings and surfacing
+  /// order. Presentation only — never a permission.
+  final ProfileMode mode;
   final bool readOnly;
 
   /// Provider for the resolved IANA time zone identifier (paired with #38).
@@ -80,6 +86,9 @@ class _DaySheetState extends State<DaySheet> {
   bool _busy = false;
   bool _saveFailed = false;
   bool _deleteFailed = false;
+
+  /// The mode's headings and surfacing order (Issue #131).
+  CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
   @override
   void initState() {
@@ -239,11 +248,11 @@ class _DaySheetState extends State<DaySheet> {
                 ),
             ],
           ),
-          for (final category in TagCategory.values) ...[
+          for (final category in _copy.categoriesInOrder) ...[
             Padding(
               padding: const EdgeInsets.only(top: 12, bottom: 4),
               child: Text(
-                _categoryLabel(category),
+                _copy.categoryLabel(category),
                 style: theme.textTheme.labelMedium,
               ),
             ),

@@ -138,6 +138,33 @@ void seedV3(sqlite3.Database raw) {
   raw.execute('PRAGMA user_version = 3');
 }
 
+/// The v4 schema as drift generated it: [kV3Ddl] with the v4-only
+/// `profiles` columns (`birth_year`, `relationship`, `transferred_at`)
+/// present. Seeds one profile (birth year and relationship set, no mode —
+/// the column does not exist in v4) and stamps `user_version = 4`, so the
+/// v4→v5 migration (profiles.mode, Issue #131) is exercised against a real
+/// v4 file.
+void seedV4(sqlite3.Database raw) {
+  final v4Ddl = [
+    // kV3Ddl's profiles CREATE TABLE with the three v4 columns added in
+    // drift's declaration order (after local_rev, before the PK).
+    kV3Ddl.first.replaceFirst(
+        '"local_rev" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id")',
+        '"local_rev" INTEGER NOT NULL DEFAULT 0, "birth_year" INTEGER NULL, '
+        '"relationship" TEXT NULL, "transferred_at" TEXT NULL, '
+        'PRIMARY KEY ("id")'),
+    ...kV3Ddl.skip(1),
+  ];
+  for (final ddl in v4Ddl) {
+    raw.execute(ddl);
+  }
+  raw.execute(
+      "INSERT INTO profiles (id, display_name, is_minor, sort_order, archived_at, "
+      "created_at, updated_at, deleted_at, dirty, local_rev, birth_year, relationship) VALUES "
+      "('$kV3ProfileId', 'V4 Profile', 0, 0, NULL, '$kV3Stamp', '$kV3Stamp', NULL, 0, 0, 2013, 'daughter')");
+  raw.execute('PRAGMA user_version = 4');
+}
+
 /// Column names of [table] via `PRAGMA table_info`.
 Future<Set<String>> columnsOf(LunarLogDatabase db, String table) async {
   final rows = await db.customSelect('PRAGMA table_info($table)').get();
@@ -150,12 +177,12 @@ Future<int> userVersion(LunarLogDatabase db) async =>
         .read<int>('user_version');
 
 /// Asserts everything the v1 fixture held survived the upgrade with the
-/// new sync columns, profile_guardians table, and v4 profile subject
-/// metadata columns at their defaults.
+/// new sync columns, profile_guardians table, v4 profile subject
+/// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 4);
+  expect(await userVersion(db), 5);
   expect(await columnsOf(db, 'profiles'),
-      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at']));
+      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
   expect(await columnsOf(db, 'day_entries'),
       containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
 
@@ -172,6 +199,8 @@ Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
   expect(profile.birthYear, isNull);
   expect(profile.relationship, isNull);
   expect(profile.transferredAt, isNull);
+  expect(profile.mode, 'standard',
+      reason: 'the v5 column defaults to standard for pre-existing rows');
 
   final entries = await db.storage
       .getDayEntries(profileId: kV1ProfileId, includeTombstones: true);
@@ -239,10 +268,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 4 and database opens with the expected tables',
+    test('schema version is 5 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 4);
-      expect(await userVersion(db), 4);
+      expect(db.schemaVersion, 5);
+      expect(await userVersion(db), 5);
 
       final tables = (await db
               .customSelect(
@@ -254,7 +283,7 @@ void main() {
       expect(tables,
           containsAll(['profiles', 'day_entries', 'profile_guardians', 'app_settings', 'sync_state']));
       expect(await columnsOf(db, 'profiles'),
-          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at']));
+          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
       expect(
           await columnsOf(db, 'day_entries'), containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
       expect(
@@ -1204,7 +1233,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 4);
+      expect(await userVersion(second), 5);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1217,9 +1246,9 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 4);
+      expect(await userVersion(db), 5);
       expect(await columnsOf(db, 'profiles'),
-          containsAll(['birth_year', 'relationship', 'transferred_at']));
+          containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
       final profile =
           (await db.storage.getProfiles(includeTombstones: true)).single;
@@ -1228,6 +1257,8 @@ void main() {
       expect(profile.birthYear, isNull);
       expect(profile.relationship, isNull);
       expect(profile.transferredAt, isNull);
+      expect(profile.mode, 'standard',
+          reason: 'the v5 care-mode column defaults to standard');
 
       final entries = await db.storage
           .getDayEntries(profileId: kV3ProfileId, includeTombstones: true);
@@ -1244,10 +1275,45 @@ void main() {
           id: kV3ProfileId,
           displayName: 'V3 Profile',
           isMinor: false,
+          mode: 'teen',
           birthYear: 2015,
           relationship: 'daughter');
       expect(edited.birthYear, 2015);
       expect(edited.relationship, 'daughter');
+      expect(edited.mode, 'teen');
+    });
+
+    test('a v4 fixture upgrades to v5 by adding profiles.mode, preserving '
+        'every v4 column and defaulting mode to standard (Issue #131)',
+        () async {
+      final raw = sqlite3.sqlite3.openInMemory();
+      seedV4(raw);
+      final db = LunarLogDatabase(NativeDatabase.opened(raw));
+      addTearDown(() => db.close());
+
+      expect(await userVersion(db), 5);
+      expect(await columnsOf(db, 'profiles'),
+          containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
+
+      final profile =
+          (await db.storage.getProfiles(includeTombstones: true)).single;
+      expect(profile.id, kV3ProfileId);
+      expect(profile.displayName, 'V4 Profile');
+      expect(profile.birthYear, 2013);
+      expect(profile.relationship, 'daughter');
+      expect(profile.transferredAt, isNull);
+      expect(profile.mode, 'standard',
+          reason: 'a pre-#131 row carries no mode; the default applies');
+
+      // The upgraded database accepts mode writes and they persist.
+      final edited = await db.storage.upsertProfile(
+          id: kV3ProfileId,
+          displayName: 'V4 Profile',
+          isMinor: false,
+          mode: 'irregular',
+          birthYear: 2013,
+          relationship: 'daughter');
+      expect(edited.mode, 'irregular');
     });
 
     test('an upgrade step failing on profiles.relationship leaves the '
@@ -1301,7 +1367,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 4);
+      expect(await userVersion(db), 5);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =
@@ -1310,6 +1376,8 @@ void main() {
       expect(profile.birthYear, isNull);
       expect(profile.relationship, isNull);
       expect(profile.transferredAt, isNull);
+      expect(profile.mode, 'standard',
+          reason: 'the retried upgrade lands the v5 column at its default');
     });
   });
 

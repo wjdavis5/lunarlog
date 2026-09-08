@@ -22,6 +22,7 @@ void main() {
   Profile makeProfile({
     DateTime? deletedAt,
     DateTime? archivedAt,
+    String mode = 'standard',
     int? birthYear,
     String? relationship,
     DateTime? transferredAt,
@@ -30,6 +31,7 @@ void main() {
         id: profileId,
         displayName: deletedAt == null ? 'Kid' : '',
         isMinor: true,
+        mode: mode,
         sortOrder: 3,
         archivedAt: archivedAt,
         createdAt: micro,
@@ -116,6 +118,7 @@ void main() {
         'created_at': '2026-09-01T10:00:00.123456Z',
         'updated_at': '2026-09-02T08:30:15.999999Z',
         'deleted_at': null,
+        'mode': 'standard',
         'birth_year': null,
         'relationship': null,
       });
@@ -172,6 +175,32 @@ void main() {
         'relationship': 'cousin',
       });
       expect(decoded.relationship, isNull);
+    });
+
+    test('every care mode round-trips through the codec (Issue #131)', () {
+      for (final mode in ['teen', 'caregiver', 'irregular', 'standard']) {
+        final decoded = decodeProfile(encodeProfile(makeProfile(mode: mode)));
+        expect(decoded.mode, mode, reason: 'mode $mode must round-trip');
+      }
+    });
+
+    test('decode of an unknown or absent mode yields standard rather than '
+        'throwing (Issue #131: presentation-only, never a security field)',
+        () {
+      final unknown = decodeProfile({
+        ...encodeProfile(makeProfile(mode: 'teen')),
+        'mode': 'future_mode',
+      });
+      expect(unknown.mode, 'standard');
+      final absent = decodeProfile({
+        ...encodeProfile(makeProfile(mode: 'teen')),
+      }..remove('mode'));
+      expect(absent.mode, 'standard');
+      final nullMode = decodeProfile({
+        ...encodeProfile(makeProfile(mode: 'teen')),
+        'mode': null,
+      });
+      expect(nullMode.mode, 'standard');
     });
 
     test('decode of an absent birth_year/relationship/transferred_at yields '
@@ -231,6 +260,7 @@ void main() {
         id: 'not-a-ulid',
         displayName: 'x',
         isMinor: false,
+        mode: 'standard',
         sortOrder: 0,
         createdAt: micro,
         updatedAt: micro,

@@ -22,6 +22,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -159,6 +160,7 @@ List<SingleChildWidget> loggingProviders({
 Future<Harness> pumpLogging(
   WidgetTester tester, {
   bool readOnly = false,
+  ProfileMode mode = ProfileMode.standard,
   DayEntriesRepository? entryRepositoryOverride,
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
   String Function()? timezoneProvider,
@@ -175,7 +177,8 @@ Future<Harness> pumpLogging(
   final db = LunarLogDatabase(NativeDatabase.memory());
   final profiles = DriftProfilesRepository(db.storage);
   final settings = DriftSettingsStore(db.storage);
-  final profile = await profiles.create(displayName: 'Alice', isMinor: false);
+  final profile = await profiles.create(
+      displayName: 'Alice', isMinor: false, mode: mode);
   if (seed != null) {
     await seed(db, profile.id);
   }
@@ -1334,6 +1337,115 @@ void main() {
           in GuardianRole.values.where((r) => r != GuardianRole.viewer)) {
         expect(role.readOnlyReason, isNull,
             reason: '$role can log, so it has no read-only reason to show');
+      }
+    });
+  });
+
+  group('care-mode day sheet vocabulary (Issue #131, R12)', () {
+    testWidgets('teen mode re-heads and reorders the categories but every '
+        'tag chip is still there (teen is not a reduced app)', (tester) async {
+      final h = await pumpLogging(tester, mode: ProfileMode.teen);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // All 17 curated chips render — nothing is removed by the mode.
+      expect(find.byType(FilterChip), findsNWidgets(17));
+      for (final tag in kTagTaxonomy) {
+        expect(find.text(tag.display), findsOneWidget,
+            reason: 'teen mode must not hide ${tag.display}');
+      }
+      // Teen vocabulary: the body category is re-headed...
+      expect(find.text('How your body feels'), findsOneWidget);
+      expect(find.text('Body'), findsNothing);
+      // ...and surfaced first (the first heading in the sheet's column).
+      final headings = ['How your body feels', 'Mood', 'Pain', 'Other'];
+      final offsets = headings
+          .map((h) => tester.getTopLeft(find.text(h)).dy)
+          .toList();
+      for (var i = 1; i < offsets.length; i++) {
+        expect(offsets[i], greaterThan(offsets[i - 1]),
+            reason: '${headings[i]} must render below ${headings[i - 1]}');
+      }
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a saved entry reads verbatim after switching the profile '
+        'to teen mode — switching touches no entry (prospective only)',
+        (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage).save(entryFor(
+            profileId,
+            LocalDate(2026, 8, 12),
+            flow: FlowLevel.heavy,
+            tags: const ['cramps', 'anxious'],
+            note: 'verbatim note',
+          ));
+        },
+      );
+
+      final before = await h.entries.listForProfile(h.profile.id);
+      // Switch the profile's mode through the same path the edit dialog
+      // uses (rename with a new mode).
+      await DriftProfilesRepository(h.db.storage)
+          .update(h.profile.copyWith(mode: ProfileMode.teen));
+      await tester.pumpAndSettle();
+
+      final after = await h.entries.listForProfile(h.profile.id);
+      expect(after, before,
+          reason: 'history stays verbatim regardless of mode (U6)');
+      final entry = after.single;
+      expect(entry.flow, FlowLevel.heavy);
+      expect(entry.tags, ['cramps', 'anxious']);
+      expect(entry.note, 'verbatim note');
+
+      // Opening the saved day in teen mode still shows every value.
+      await showMonth(tester, 2026, 8);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-12')));
+      await tester.pumpAndSettle();
+      expect(find.text('Heavy'), findsOneWidget);
+      expect(find.text('Cramps'), findsOneWidget);
+      expect(find.text('Anxious'), findsOneWidget);
+      expect(find.text('verbatim note'), findsOneWidget);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('mode changes nothing about what a guardian role can write: '
+        'a viewer is read-only and the operator is editable in every mode '
+        '(Issue #131: mode is not permission)', (tester) async {
+      for (final mode in ProfileMode.values) {
+        // Viewer role: read-only regardless of mode.
+        final auth = FakeAuthService()
+          ..emit(AuthSessionState.signedIn,
+              user: const AuthUser(id: 'user-viewer'));
+        final h = await pumpLogging(
+          tester,
+          mode: mode,
+          authService: auth,
+          withStorage: true,
+          seed: (db, profileId) async {
+            await db.storage.applyRemoteRows([
+              guardianRow(profileId, 'g-viewer', 'user-viewer', 'viewer'),
+            ]);
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('save-button')), findsNothing,
+            reason: 'viewer stays read-only in ${mode.name} mode');
+        await disposeLogging(tester, h);
+
+        // Local operator (no guardian row matching the caller): editable
+        // regardless of mode — fails open exactly as before #131.
+        final editable = await pumpLogging(tester, mode: mode);
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('save-button')), findsOneWidget,
+            reason: 'operator stays editable in ${mode.name} mode');
+        await disposeLogging(tester, editable);
       }
     });
   });

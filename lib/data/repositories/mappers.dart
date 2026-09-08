@@ -10,12 +10,14 @@ import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
+import 'package:lunarlog/domain/models/profile_mode.dart' as domain;
 import 'package:lunarlog/domain/models/profile_relationship.dart' as domain;
 
 domain.Profile profileToDomain(db.Profile row) => domain.Profile(
       id: row.id,
       displayName: row.displayName,
       isMinor: row.isMinor,
+      mode: domain.ProfileMode.fromDb(row.mode),
       sortOrder: row.sortOrder,
       archivedAt: row.archivedAt,
       createdAt: row.createdAt,

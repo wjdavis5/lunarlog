@@ -38,8 +38,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   `profile_guardians` table (Issue #8).
   /// * 4 — `birth_year` + `relationship` + `transferred_at` on profiles
   ///   (Issue #4, parent-first custodianship and ownership transfer).
+  /// * 5 — `mode` on profiles (Issue #131, care modes).
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -59,7 +60,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `day_entries.dirty`, `day_entries.local_rev`, `sync_state`,
   /// `day_entries.logged_by_user_id`, `day_entries.last_modified_by_user_id`,
   /// `profile_guardians`, `profiles.birth_year`, `profiles.relationship`,
-  /// `profiles.transferred_at`). A hook
+  /// `profiles.transferred_at`, `profiles.mode`). A hook
   /// that throws proves the transaction wrapper rolls the whole upgrade
   /// back. Must be set before the first query. Null in production.
   @visibleForTesting
@@ -113,6 +114,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profiles.relationship');
         await m.addColumn(profiles, profiles.transferredAt);
         await migrationStepHook?.call('profiles.transferred_at');
+      });
+    }
+    if (from < 5) {
+      await transaction(() async {
+        await m.addColumn(profiles, profiles.mode);
+        await migrationStepHook?.call('profiles.mode');
       });
     }
   }

@@ -5,6 +5,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 ActivePrediction _prediction({
@@ -123,5 +124,74 @@ void main() {
     final dates = plan.map((r) => r.fireOn).toList();
     final sorted = [...dates]..sort();
     expect(dates, sorted);
+  });
+
+  group('care-mode presets (Issue #131, R12)', () {
+    // A profile whose estimate is 10 days out (upcoming) for one profile
+    // and 6 days past (late) is covered by separate cases below.
+    test('a profile with no preset entry plans exactly as before '
+        '(ReminderPreset.all fallback)', () {
+      final estimate = today.addDays(10);
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: estimate),
+        },
+        presets: {},
+      );
+      expect(plan, hasLength(1));
+      expect(plan.single.kind, ReminderKind.upcoming);
+    });
+
+    test('irregular/teen presets drop the late window but keep upcoming', () {
+      final upcoming = _prediction(today: today, estimatedNextStart: today.addDays(10));
+      final late = _prediction(today: today, estimatedNextStart: today.addDays(-6));
+      for (final preset in [
+        const ReminderPreset(upcoming: true, late: false),
+      ]) {
+        final plan = planReminders(
+          today: today,
+          predictions: {
+            'up': upcoming,
+            'late': late,
+          },
+          presets: {'up': preset, 'late': preset},
+        );
+        expect(plan, hasLength(1), reason: 'only the upcoming reminder');
+        expect(plan.single.kind, ReminderKind.upcoming);
+      }
+    });
+
+    test('caregiver preset plans nothing (a guardian is not nagged)', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: today.addDays(10)),
+          'p2': _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        presets: {
+          'p1': ReminderPreset.none,
+          'p2': ReminderPreset.none,
+        },
+      );
+      expect(plan, isEmpty);
+    });
+
+    test('presets are per profile: standard keeps everything beside a '
+        'silenced caregiver profile', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'std': _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+          'cg': _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        presets: {
+          'std': ReminderPreset.all,
+          'cg': ReminderPreset.none,
+        },
+      );
+      expect(plan, hasLength(kLatePreArmDays));
+      expect(plan.every((r) => r.profileId == 'std'), isTrue);
+    });
   });
 }
