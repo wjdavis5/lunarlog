@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
+import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 
@@ -151,5 +153,81 @@ void main() {
     final p = await service.current(profile.id, today: () => today);
     expect(p, isA<ActivePrediction>());
     expect((p as ActivePrediction).estimatedNextStart, LocalDate(2026, 6, 2));
+  });
+
+  group('omission-aware watch (issue #132)', () {
+    late DriftSettingsStore settings;
+    late CyclePredictionService omissionAware;
+
+    setUp(() {
+      settings = DriftSettingsStore(db.storage);
+      omissionAware = CyclePredictionService(dayEntries, settings: settings);
+    });
+
+    test('omitting a cycle through the store re-derives the estimate',
+        () async {
+      final profile = await profiles.create(displayName: 'A', isMinor: false);
+      // Lengths 28, 28, 48, 28 (the 48-day cycle starts 2026-02-26).
+      await recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+      await recordBleed(profile.id, LocalDate(2026, 1, 29), 4);
+      await recordBleed(profile.id, LocalDate(2026, 2, 26), 4);
+      await recordBleed(profile.id, LocalDate(2026, 4, 15), 4);
+      await recordBleed(profile.id, LocalDate(2026, 5, 13), 4);
+
+      final seen = <CyclePrediction>[];
+      final sub =
+          omissionAware.watch(profile.id, today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      expect(seen.last, isA<ActivePrediction>());
+      expect((seen.last as ActivePrediction).averagedCycleLengths, [28, 48, 28]);
+
+      await CycleExclusionList(settings)
+          .omit(profile.id, LocalDate(2026, 2, 26));
+      await pumpEventQueue();
+
+      final after = seen.last as ActivePrediction;
+      expect(after.averagedCycleLengths, [28, 28, 28]);
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 10));
+    });
+
+    test('restoring the cycle moves the estimate back', () async {
+      final profile = await profiles.create(displayName: 'A', isMinor: false);
+      await recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+      await recordBleed(profile.id, LocalDate(2026, 1, 29), 4);
+      await recordBleed(profile.id, LocalDate(2026, 2, 26), 4);
+      await recordBleed(profile.id, LocalDate(2026, 4, 15), 4);
+      await recordBleed(profile.id, LocalDate(2026, 5, 13), 4);
+      final exclusions = CycleExclusionList(settings);
+      await exclusions.omit(profile.id, LocalDate(2026, 2, 26));
+
+      final seen = <CyclePrediction>[];
+      final sub =
+          omissionAware.watch(profile.id, today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      expect((seen.last as ActivePrediction).estimatedNextStart,
+          LocalDate(2026, 6, 10));
+
+      await exclusions.include(profile.id, LocalDate(2026, 2, 26));
+      await pumpEventQueue();
+      expect((seen.last as ActivePrediction).estimatedNextStart,
+          LocalDate(2026, 6, 17));
+    });
+
+    test('current() reads the omission list too', () async {
+      final profile = await profiles.create(displayName: 'A', isMinor: false);
+      await recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+      await recordBleed(profile.id, LocalDate(2026, 1, 29), 4);
+      await recordBleed(profile.id, LocalDate(2026, 2, 26), 4);
+      await recordBleed(profile.id, LocalDate(2026, 4, 15), 4);
+      await recordBleed(profile.id, LocalDate(2026, 5, 13), 4);
+      await CycleExclusionList(settings)
+          .omit(profile.id, LocalDate(2026, 2, 26));
+
+      final p = await omissionAware.current(profile.id, today: () => today);
+      expect((p as ActivePrediction).estimatedNextStart,
+          LocalDate(2026, 6, 10));
+    });
   });
 }
