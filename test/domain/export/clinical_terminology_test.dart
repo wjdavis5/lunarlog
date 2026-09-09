@@ -146,16 +146,16 @@ void main() {
       }
     });
 
-    test('row count matches taxonomy size exactly (17)', () {
-      expect(kTagClinicalCodes, hasLength(17));
-      expect(kTagTaxonomy, hasLength(17));
+    test('row count matches taxonomy size exactly (45, issue #249)', () {
+      expect(kTagClinicalCodes, hasLength(45));
+      expect(kTagTaxonomy, hasLength(45));
     });
   });
 
   group('kTagClinicalCodes — golden table (BLOCKING: fails loudly on any '
       'edit to a verified tag mapping)', () {
     test('matches the full expected (system, code, display) triple for all '
-        '17 tags', () {
+        '45 tags', () {
       const snomed = 'http://snomed.info/sct';
       const local = 'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
           'tag';
@@ -184,6 +184,38 @@ void main() {
         // other
         'sleep_trouble': (snomed, '301345002', 'Difficulty sleeping'),
         'cravings': (snomed, '248132003', 'Craving for food or drink'),
+        // issue #249's 28 new codes - every one an explicit local decision
+        // (no SNOMED concept fetch-verified yet; see
+        // docs/clinical/terminology.md's #249 section).
+        'ovulation': (local, 'ovulation', 'Ovulation pain'),
+        'migraine': (local, 'migraine', 'Migraine'),
+        'migraine_with_aura': (local, 'migraine_with_aura',
+            'Migraine with aura'),
+        'pain_free': (local, 'pain_free', 'Pain free'),
+        'fully_energized': (local, 'fully_energized', 'Fully energized'),
+        'tired': (local, 'tired', 'Tired'),
+        'exhausted': (local, 'exhausted', 'Exhausted'),
+        '0_to_3_hours': (local, '0_to_3_hours', '0-3 hours'),
+        '3_to_6_hours': (local, '3_to_6_hours', '3-6 hours'),
+        '6_to_9_hours': (local, '6_to_9_hours', '6-9 hours'),
+        '9_or_more_hours': (local, '9_or_more_hours', '9+ hours'),
+        'good_skin': (local, 'good_skin', 'Good skin'),
+        'oily_skin': (local, 'oily_skin', 'Oily skin'),
+        'dry_skin': (local, 'dry_skin', 'Dry skin'),
+        'good_hair': (local, 'good_hair', 'Good hair'),
+        'bad_hair': (local, 'bad_hair', 'Bad hair'),
+        'oily_hair': (local, 'oily_hair', 'Oily hair'),
+        'dry_hair': (local, 'dry_hair', 'Dry hair'),
+        'gassy': (local, 'gassy', 'Gassy'),
+        'great_digestion': (local, 'great_digestion', 'Great digestion'),
+        'normal': (local, 'normal', 'Normal'),
+        'constipated': (local, 'constipated', 'Constipated'),
+        'great_stool': (local, 'great_stool', 'Great stool'),
+        'diarrhea': (local, 'diarrhea', 'Diarrhea'),
+        'sweet': (local, 'sweet', 'Sweet'),
+        'salty': (local, 'salty', 'Salty'),
+        'carbs': (local, 'carbs', 'Carbs'),
+        'chocolate': (local, 'chocolate', 'Chocolate'),
       };
       expect(kTagClinicalCodes, hasLength(expected.length));
       expect(kTagClinicalCodes.keys.toSet(), expected.keys.toSet());

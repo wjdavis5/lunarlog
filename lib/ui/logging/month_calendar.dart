@@ -391,7 +391,9 @@ String dayCellSemanticLabel({
 /// cell, not only the ones with tags.
 List<String> _loggedDayParts(DayEntry? entry, AppLocalizations l10n) {
   if (entry == null) return [l10n.calendarCellNotLogged];
-  final hasSymptoms = entry.tags.isNotEmpty || entry.note != null;
+  // Issue #249: pain_free is a positive "none today" assertion, never a
+  // symptom — a day carrying only it is announced as symptom-free.
+  final hasSymptoms = hasSymptomTags(entry.tags) || entry.note != null;
   if (isBleed(entry.flow)) {
     return [
       l10n.calendarCellFlowState(localizedFlowLabel(entry.flow, l10n)),
@@ -1954,8 +1956,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
         ],
       );
     }
+    // Issue #249: pain_free is a positive "none today" assertion, never a
+    // symptom — it cannot earn the symptom-only dot by itself.
     final symptomOnly =
-        !isBleed(entry.flow) && (entry.tags.isNotEmpty || entry.note != null);
+        !isBleed(entry.flow) &&
+        (hasSymptomTags(entry.tags) || entry.note != null);
     if (!symptomOnly) return null;
     return Container(
       key: ValueKey('symptom-dot-$iso'),

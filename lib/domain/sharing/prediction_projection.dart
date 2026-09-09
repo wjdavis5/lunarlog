@@ -30,8 +30,17 @@ library;
 
 import '../models/local_date.dart';
 import '../prediction/fertile_window.dart';
-import '../prediction/forecast.dart' show kPmsLeadDays;
 import '../prediction/prediction.dart';
+
+/// The fixed PMS lead window (days before the estimated next start) this
+/// projection shares. Restored locally after PR #369 deleted forecast.dart's
+/// `kPmsLeadDays` while this file still imported it, leaving `main`'s
+/// analyzer red — the exact breakage this file's doc comment anticipated.
+/// Issue #220 made the *calendar's* PMS badge data-driven; replacing this
+/// fixed window with the first-class engine phase is that same follow-up.
+/// Until it lands, the projection keeps the exact -7..-1 span its own test
+/// pins, and the shared shape never changes.
+const int _kPmsLeadDays = 7;
 
 /// Server-side bound, mirrored in the migration's payload trigger: each
 /// date array holds at most 100 entries (a 12-cycle forecast of the
@@ -213,7 +222,7 @@ PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
   // span forecast.dart's live-estimate PMS badge covers (issue #220 may
   // replace this with a first-class phase; see the library doc).
   final pmsDays = <LocalDate>{
-    for (var i = kPmsLeadDays; i >= 1; i--) prediction.estimatedNextStart.addDays(-i),
+    for (var i = _kPmsLeadDays; i >= 1; i--) prediction.estimatedNextStart.addDays(-i),
   };
 
   return PredictionProjection(

@@ -34,12 +34,16 @@ class TagUsage {
 /// Ranks tag usage across [entries], most-used first; ties break in
 /// taxonomy order so the ranking is deterministic. Tombstoned entries are
 /// skipped (repository reads are already live-only; the check is
-/// defensive for full-fidelity inputs).
+/// defensive for full-fidelity inputs). Positive "none today" assertions
+/// (Issue #249's `pain_free`) are skipped too — these are *symptom*
+/// layers, and a positive absence-of-symptom assertion must never rank,
+/// render, or count as one.
 List<TagUsage> rankTagUsage(Iterable<DayEntry> entries) {
   final counts = <String, int>{};
   for (final entry in entries) {
     if (entry.deletedAt != null) continue;
     for (final tag in entry.tags) {
+      if (kPositiveAssertionCodes.contains(tag)) continue;
       counts[tag] = (counts[tag] ?? 0) + 1;
     }
   }

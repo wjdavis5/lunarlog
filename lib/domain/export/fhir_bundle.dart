@@ -129,7 +129,7 @@ const String kFhirExportVersionSystem =
 /// section) — a distinct URI from [kSystemLunarlogLocal], which
 /// `clinical_terminology.dart` documents as *the tag system*
 /// (`.../CodeSystem/tag`). A flow level is not a tag: giving it its own
-/// system keeps `kSystemLunarlogLocal`'s own meaning ("one of the 17
+/// system keeps `kSystemLunarlogLocal`'s own meaning ("one of the 45
 /// `lib/domain/tags.dart` codes") exact, rather than overloading it with
 /// an unrelated five-value scale. **Permanent once emitted**, the same as
 /// [kSystemLunarlogLocal] itself — do not change this value casually.
@@ -461,7 +461,7 @@ String _dateCodeKey(String isoDate, String code) => '$isoDate|$code';
 /// is a known tag code from `lib/domain/tags.dart`; otherwise falls back to
 /// a [kSystemLunarlogLocal] coding built from `category`/`code` — the
 /// ~200-option Clue-model observation vocabulary (Issue #240) is not the
-/// same closed set as the 17-tag taxonomy `dualCodingFor` covers, and a
+/// same closed set as the 45-tag taxonomy `dualCodingFor` covers, and a
 /// gap there must degrade to a local coding rather than guess a clinical
 /// code (mirrors `dualCodingFor`'s own "no guessed codes" degrade).
 List<_ResourceEntry> _rowSymptomEntries(

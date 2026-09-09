@@ -98,7 +98,15 @@ final Map<String, ClueTypeSpec> kClueTypeMap = {
     },
   ),
 
-  'energy': const ClueTypeSpec('energy'),
+  // Issue #249: Clue's legacy `fatigue` energy option maps onto the
+  // graduated taxonomy's `tired`; everything else in the type passes
+  // through (energetic/fully_energized/tired/exhausted already match).
+  'energy': const ClueTypeSpec(
+    'energy',
+    options: {
+      'fatigue': ClueOptionSpec(code: 'tired'),
+    },
+  ),
   'pms': const ClueTypeSpec('pms'),
 
   'digestion': const ClueTypeSpec(

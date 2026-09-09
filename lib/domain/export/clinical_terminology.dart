@@ -175,8 +175,9 @@ const List<String> kUnverifiedLoincCodes = [
   '3151-8',
 ];
 
-/// The clinical coding for every code in [tags.kTagTaxonomy] (all 17,
-/// #152's A3-45 pass over `lib/domain/tags.dart`).
+/// The clinical coding for every code in [tags.kTagTaxonomy] (all 45 —
+/// #152's A3-45 pass over the original 17, plus issue #249's 28 new codes
+/// as explicit local decisions; see docs/clinical/terminology.md).
 ///
 /// Rows are one of two kinds:
 /// - A verified SNOMED CT finding ([kSystemSnomed]): the concept id and
@@ -318,6 +319,183 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
     display: 'Craving for food or drink',
     provenanceUrl:
         'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=248132003',
+  ),
+
+  // Issue #249's expanded physical categories. Every new code is an
+  // explicit local decision, per the no-guessed-codes rule: no SNOMED CT
+  // concept has been fetch-verified for any of them in this pass, so each
+  // carries the lunarlog local coding only (never a plausible-but-unchecked
+  // external code). External verification for the ones with real clinical
+  // concepts (e.g. migraine) is deferred follow-up work, tracked on
+  // docs/clinical/terminology.md; until then `dualCodingFor` degrades each
+  // to its single local coding exactly as designed.
+  'ovulation':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'ovulation',
+    display: 'Ovulation pain',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'migraine':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'migraine',
+    display: 'Migraine',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'migraine_with_aura':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'migraine_with_aura',
+    display: 'Migraine with aura',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'pain_free':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pain_free',
+    display: 'Pain free',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'fully_energized':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'fully_energized',
+    display: 'Fully energized',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'tired':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'tired',
+    display: 'Tired',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'exhausted':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'exhausted',
+    display: 'Exhausted',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  '0_to_3_hours':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: '0_to_3_hours',
+    display: '0-3 hours',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  '3_to_6_hours':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: '3_to_6_hours',
+    display: '3-6 hours',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  '6_to_9_hours':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: '6_to_9_hours',
+    display: '6-9 hours',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  '9_or_more_hours':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: '9_or_more_hours',
+    display: '9+ hours',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'good_skin':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'good_skin',
+    display: 'Good skin',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'oily_skin':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'oily_skin',
+    display: 'Oily skin',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'dry_skin':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'dry_skin',
+    display: 'Dry skin',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'good_hair':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'good_hair',
+    display: 'Good hair',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'bad_hair':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'bad_hair',
+    display: 'Bad hair',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'oily_hair':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'oily_hair',
+    display: 'Oily hair',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'dry_hair':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'dry_hair',
+    display: 'Dry hair',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'gassy':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'gassy',
+    display: 'Gassy',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'great_digestion':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'great_digestion',
+    display: 'Great digestion',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'normal':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'normal',
+    display: 'Normal',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'constipated':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'constipated',
+    display: 'Constipated',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'great_stool':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'great_stool',
+    display: 'Great stool',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'diarrhea':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'diarrhea',
+    display: 'Diarrhea',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'sweet':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'sweet',
+    display: 'Sweet',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'salty':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'salty',
+    display: 'Salty',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'carbs':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'carbs',
+    display: 'Carbs',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'chocolate':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'chocolate',
+    display: 'Chocolate',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
 };
 
