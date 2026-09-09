@@ -25,6 +25,14 @@
   Paths are relative to the "file" domain (Context.getFilesDir(), which is
   what path_provider's getApplicationSupportDirectory() resolves to on
   Android — see lib/startup/startup_native.dart's localDatabaseFile()).
+
+  Round 3: also exclude the staging artifacts `lib/startup/database_relocation.dart`'s
+  relocateLegacyDatabase can leave next to lunarlog.db while a relocation is
+  in flight (`.migrating`-marked names, staged before promotion) and its
+  `.relocation-complete` sentinel — none of these are the live database,
+  but all of them can briefly contain a copy of its bytes (the staging
+  files) or reveal migration state (the sentinel), so they get the same
+  treatment as the database itself.
 -->
 <data-extraction-rules>
     <cloud-backup>
@@ -32,11 +40,21 @@
         <exclude domain="file" path="lunarlog.db-wal"/>
         <exclude domain="file" path="lunarlog.db-shm"/>
         <exclude domain="file" path="lunarlog.db-journal"/>
+        <exclude domain="file" path="lunarlog.db.migrating"/>
+        <exclude domain="file" path="lunarlog.db.migrating-wal"/>
+        <exclude domain="file" path="lunarlog.db.migrating-shm"/>
+        <exclude domain="file" path="lunarlog.db.migrating-journal"/>
+        <exclude domain="file" path=".relocation-complete"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="lunarlog.db"/>
         <exclude domain="file" path="lunarlog.db-wal"/>
         <exclude domain="file" path="lunarlog.db-shm"/>
         <exclude domain="file" path="lunarlog.db-journal"/>
+        <exclude domain="file" path="lunarlog.db.migrating"/>
+        <exclude domain="file" path="lunarlog.db.migrating-wal"/>
+        <exclude domain="file" path="lunarlog.db.migrating-shm"/>
+        <exclude domain="file" path="lunarlog.db.migrating-journal"/>
+        <exclude domain="file" path=".relocation-complete"/>
     </device-transfer>
 </data-extraction-rules>

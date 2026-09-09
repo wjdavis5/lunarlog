@@ -4,14 +4,26 @@
   `android:allowBackup="false"` (AndroidManifest.xml) already disables the
   Auto Backup service entirely on every API level, so this file has no
   effect while that stays false — but declared for the same
-  belt-and-suspenders reason as data_extraction_rules.xml's
-  <cloud-backup-content>: if allowBackup is ever flipped to true (e.g. for
-  non-health app data), the database exclusion is already here rather than
-  needing to be added in the same change.
+  belt-and-suspenders reason as data_extraction_rules.xml's <cloud-backup>
+  (the API 31+ tag this pre-31 file's own <full-backup-content> root
+  corresponds to — see that file's own "round 2 correction" comment for
+  why the two schemas' names differ): if allowBackup is ever flipped to
+  true (e.g. for non-health app data), the database exclusion is already
+  here rather than needing to be added in the same change.
+
+  Round 3: also exclude the staging artifacts relocateLegacyDatabase (in
+  lib/startup/database_relocation.dart) can leave next to lunarlog.db
+  during a relocation, and its .relocation-complete sentinel — same
+  reasoning as data_extraction_rules.xml.
 -->
 <full-backup-content>
     <exclude domain="file" path="lunarlog.db"/>
     <exclude domain="file" path="lunarlog.db-wal"/>
     <exclude domain="file" path="lunarlog.db-shm"/>
     <exclude domain="file" path="lunarlog.db-journal"/>
+    <exclude domain="file" path="lunarlog.db.migrating"/>
+    <exclude domain="file" path="lunarlog.db.migrating-wal"/>
+    <exclude domain="file" path="lunarlog.db.migrating-shm"/>
+    <exclude domain="file" path="lunarlog.db.migrating-journal"/>
+    <exclude domain="file" path=".relocation-complete"/>
 </full-backup-content>

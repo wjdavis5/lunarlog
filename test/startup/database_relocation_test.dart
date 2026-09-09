@@ -66,8 +66,10 @@ void main() {
           reason: 'this function never itself creates the target file');
     });
 
-    test('no-op when the target already carries the completion sentinel '
-        '(never overwrites, never touches the legacy file)', () async {
+    test('short-circuits when the target already carries the completion '
+        'sentinel (never overwrites the target) and best-effort deletes a '
+        'legacy copy left behind by a process killed between the sentinel '
+        'write and the legacy delete (round 3, finding #2)', () async {
       final dir = await _freshTempDir('already_done');
       final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
       final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
@@ -85,9 +87,10 @@ void main() {
       expect(result.path, target.path);
       expect(target.readAsStringSync(), 'already-migrated content',
           reason: 'must never overwrite a target a prior run already wrote');
-      expect(legacy.existsSync(), isTrue,
-          reason: 'a short-circuited run must not delete the legacy file');
-      expect(legacy.readAsStringSync(), 'legacy content');
+      expect(legacy.existsSync(), isFalse,
+          reason: 'a short-circuited run must best-effort delete a '
+              'leftover legacy copy so plaintext health data does not '
+              'linger forever in the iCloud-backed Documents/ directory');
     });
 
     test('a target that exists WITHOUT the sentinel is treated as an '
@@ -123,9 +126,47 @@ void main() {
       expect(rows.map((r) => r['id']), contains('p-retry'));
     });
 
-    test('a target that exists WITHOUT the sentinel and no legacy file left '
-        'is simply cleaned up (nothing to retry from)', () async {
+    test('a target that exists WITHOUT the sentinel and no legacy file is '
+        'NEVER wiped when it is itself an openable database — round 3, '
+        'finding #1: a target-first guard used to delete this '
+        'unconditionally, silently wiping every fresh install\'s database '
+        'on its second launch (a fresh install always looks exactly like '
+        'this: a target with no sentinel and no legacy file)', () async {
       final dir = await _freshTempDir('interrupted_no_legacy');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      _seedRealDatabase(target, profileId: 'p-fresh-install');
+      // No legacy file at all — this is exactly the state of every fresh
+      // install on its second launch.
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue,
+          reason: 'a live, openable database at the target must never be '
+              'wiped just because it lacks the sentinel and there is no '
+              'legacy file to have migrated it from');
+      final reopened = sqlite3.sqlite3.open(target.path);
+      final rows = reopened.select('SELECT id FROM profiles');
+      reopened.close();
+      expect(rows.map((r) => r['id']), contains('p-fresh-install'));
+      expect(
+        File('${targetDir.path}${Platform.pathSeparator}$kRelocationSentinelName')
+            .existsSync(),
+        isTrue,
+        reason: 'the target is retroactively marked done so the next '
+            'launch short-circuits immediately instead of re-checking it',
+      );
+    });
+
+    test('a target that exists WITHOUT the sentinel, isn\'t even an '
+        'openable database, and has no legacy file left is cleaned up '
+        '(genuine residue from a broken previous attempt, nothing to '
+        'protect and nothing to retry from)', () async {
+      final dir = await _freshTempDir('interrupted_no_legacy_garbage');
       final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
       final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
         ..createSync();
@@ -140,6 +181,32 @@ void main() {
       expect(target.existsSync(), isFalse,
           reason: 'the stale partial target was removed and nothing '
               'replaced it — the caller creates a fresh database there');
+    });
+
+    test('a REAL sqlite database at the target with no sentinel and no '
+        'legacy file survives two consecutive relocateLegacyDatabase '
+        'calls byte-for-byte (round 3, finding #1)', () async {
+      final dir = await _freshTempDir('survives_two_calls');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      _seedRealDatabase(target, profileId: 'p-byte-for-byte');
+      final originalBytes = target.readAsBytesSync();
+
+      final first =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+      expect(first.path, target.path);
+      expect(target.readAsBytesSync(), originalBytes,
+          reason: 'the first call must not mutate the target at all');
+
+      final second =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+      expect(second.path, target.path);
+      expect(target.readAsBytesSync(), originalBytes,
+          reason: 'the second call — now short-circuited by the sentinel '
+              'the first call wrote — must also leave the target '
+              'byte-for-byte untouched');
     });
 
     test('moves the main file, handles every existing WAL/SHM sibling, '
@@ -379,6 +446,55 @@ void main() {
       reopened.close();
       expect(rows.map((r) => r['id']), contains('p-wal-only'));
     });
+
+    test('a staged copy whose profiles/day_entries counts match but whose '
+        'row count differs in some other legacy table is still rejected — '
+        'round 3 broadens the row-count check to every table in the '
+        'legacy sqlite_master, not just profiles/day_entries (finding '
+        '#4)', () async {
+      final dir = await _freshTempDir('verify_fail_other_table');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final target = File(
+          '${dir.path}${Platform.pathSeparator}support${Platform.pathSeparator}new.db');
+
+      final raw = sqlite3.sqlite3.open(legacy.path);
+      raw.execute('CREATE TABLE "profiles" ("id" TEXT NOT NULL, '
+          '"display_name" TEXT NOT NULL, PRIMARY KEY ("id"))');
+      raw.execute("INSERT INTO profiles (id, display_name) VALUES ('p1', 'A')");
+      raw.execute(
+          'CREATE TABLE "cycle_notes" ("id" TEXT NOT NULL, PRIMARY KEY ("id"))');
+      raw.execute("INSERT INTO cycle_notes (id) VALUES ('n1')");
+      raw.execute("INSERT INTO cycle_notes (id) VALUES ('n2')");
+      raw.close();
+
+      Future<void> droppingCopier(File from, File to) async {
+        // Copies profiles (matching row count) but silently drops a row
+        // from cycle_notes — a table the original profiles/day_entries-only
+        // check never looked at.
+        final stagedDb = sqlite3.sqlite3.open(to.path);
+        stagedDb.execute('CREATE TABLE "profiles" ("id" TEXT NOT NULL, '
+            '"display_name" TEXT NOT NULL, PRIMARY KEY ("id"))');
+        stagedDb
+            .execute("INSERT INTO profiles (id, display_name) VALUES ('p1', 'A')");
+        stagedDb.execute(
+            'CREATE TABLE "cycle_notes" ("id" TEXT NOT NULL, PRIMARY KEY ("id"))');
+        stagedDb.execute("INSERT INTO cycle_notes (id) VALUES ('n1')");
+        // 'n2' silently dropped.
+        stagedDb.close();
+      }
+
+      final result = await relocateLegacyDatabase(
+        legacyFile: legacy,
+        targetFile: target,
+        copier: droppingCopier,
+      );
+
+      expect(result.path, legacy.path,
+          reason: 'the broadened row-count check must catch a dropped row '
+              'in a table the original check never looked at');
+      expect(target.existsSync(), isFalse);
+      expect(legacy.existsSync(), isTrue);
+    });
   });
 
   group('deleteRelocationArtifacts (issue #244 round 2, KTD16)', () {
@@ -430,6 +546,44 @@ void main() {
         deleteRelocationArtifacts(legacyFile: legacy, targetFile: target),
         completes,
       );
+    });
+
+    test('a new database created at the target after '
+        'deleteRelocationArtifacts survives a further '
+        'relocateLegacyDatabase call (round 3, finding #1 — resetDevice '
+        'deletes the sentinel too, which used to re-arm the wipe)',
+        () async {
+      final dir = await _freshTempDir('reset_then_new_db');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir =
+          Directory('${dir.path}${Platform.pathSeparator}support')
+            ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+
+      _seedRealDatabase(target, profileId: 'p-before-reset');
+      File('${targetDir.path}${Platform.pathSeparator}$kRelocationSentinelName')
+          .writeAsStringSync('done');
+
+      await deleteRelocationArtifacts(legacyFile: legacy, targetFile: target);
+      expect(target.existsSync(), isFalse);
+
+      // Simulate the app creating a brand-new database at the target
+      // right after the reset — exactly what resetDevice's own reopen
+      // does, and exactly the state that used to be wiped again.
+      _seedRealDatabase(target, profileId: 'p-after-reset');
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue,
+          reason: 'the fresh post-reset database must not be deleted just '
+              'because deleteRelocationArtifacts also removed the '
+              'sentinel');
+      final reopened = sqlite3.sqlite3.open(target.path);
+      final rows = reopened.select('SELECT id FROM profiles');
+      reopened.close();
+      expect(rows.map((r) => r['id']), contains('p-after-reset'));
     });
   });
 

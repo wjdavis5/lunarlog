@@ -28,7 +28,7 @@ When you log entries in LunarLog, you may record:
 - Personal tags and custom notes.
 - Profile information (display name, sort order, archive status, minor status flag).
 
-**Storage:** This information is stored directly on your device in an encrypted SQLite database. It is never uploaded to any remote server unless you explicitly create an optional account and choose to enable cloud sync.
+**Storage:** This information is stored directly on your device in a SQLite database protected by your operating system's at-rest protection (see Section 1). It is never uploaded to any remote server unless you explicitly create an optional account and choose to enable cloud sync.
 
 ### B. Account & Authentication Information (Optional)
 Creating an account is entirely optional. If you choose to enable cross-device sync, we process:
