@@ -106,6 +106,9 @@ final class RemoteDayEntryRow extends RemoteRow {
     this.serverVersion = 0,
     this.loggedByUserId,
     this.lastModifiedByUserId,
+    this.source = 'manual',
+    this.sourceId,
+    this.importId,
   });
 
   @override
@@ -127,6 +130,21 @@ final class RemoteDayEntryRow extends RemoteRow {
 
   final String? loggedByUserId;
   final String? lastModifiedByUserId;
+
+  /// Raw `source` string (Issue #159). Presentation/provenance only, never
+  /// a security field — `mappers.dart`'s equivalent normalisation degrades
+  /// an unrecognised value to `manual` on the way to any domain type.
+  /// Never cleared on the server on a tombstone (see `sync_push`'s doc
+  /// comment in `supabase/migrations/20260908170000_import_provenance.sql`).
+  final String source;
+
+  /// Import/device provenance key, for idempotent re-import. Never
+  /// cleared on a tombstone.
+  final String? sourceId;
+
+  /// Placeholder FK to a future `import_jobs(id)` row. Never cleared on a
+  /// tombstone.
+  final String? importId;
 
   @override
   SyncTable get table => SyncTable.dayEntries;
@@ -183,6 +201,7 @@ final class RemoteObservationRow extends RemoteRow {
     this.excluded = false,
     this.source = 'manual',
     this.sourceId,
+    this.importId,
     this.raw,
     required this.updatedAt,
     required this.deletedAt,
@@ -218,6 +237,13 @@ final class RemoteObservationRow extends RemoteRow {
   /// `mode`'s precedent.
   final String source;
   final String? sourceId;
+
+  /// Placeholder FK to a future `import_jobs(id)` row (Issue #159,
+  /// unconstrained server-side until #167 adds that table). Never cleared
+  /// on a tombstone (reverses #240's original source_id-clearing —see
+  /// `sync_push`'s doc comment in
+  /// `supabase/migrations/20260908170000_import_provenance.sql`).
+  final String? importId;
 
   /// The original datapoint's JSON, undecoded (escape hatch, A1-45).
   final String? raw;

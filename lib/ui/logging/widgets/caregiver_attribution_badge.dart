@@ -12,12 +12,20 @@ class CaregiverAttributionBadge extends StatelessWidget {
     this.lastModifiedByUserId,
     this.currentUserId,
     this.guardians = const [],
+    this.source = 'manual',
   });
 
   final String? loggedByUserId;
   final String? lastModifiedByUserId;
   final String? currentUserId;
   final List<ProfileGuardian> guardians;
+
+  /// Raw `day_entries.source`/`observations.source` string (Issue #159).
+  /// Any non-`manual` value renders as an import badge instead of guardian
+  /// attribution — see [_sourceLabel] and the acceptance criteria: never
+  /// fall back to "logged by \<guardian\>" for a row whose source isn't
+  /// manual.
+  final String source;
 
   String _formatUser(String userId) {
     if (currentUserId != null && userId == currentUserId) {
@@ -36,17 +44,23 @@ class CaregiverAttributionBadge extends StatelessWidget {
     return 'Caregiver';
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (loggedByUserId == null && lastModifiedByUserId == null) {
-      return const SizedBox.shrink();
-    }
+  /// Issue #159: one label per non-`manual` source, "Imported" as the
+  /// generic fallback for a value this build doesn't recognise (a future
+  /// addition, a row from a newer client) — mirrors `ObservationSource`'s
+  /// degrade-rather-than-throw precedent.
+  String _sourceLabel(String source) => switch (source) {
+        'clue_import' => 'Imported from Clue',
+        'healthkit' || 'apple_health' => 'Imported from Health',
+        'health_connect' => 'Imported from Health Connect',
+        'file_import' => 'Imported from file',
+        'wearable' => 'Imported from wearable',
+        _ => 'Imported',
+      };
 
-    final theme = Theme.of(context);
+  String _attributionText() {
     final isModified = lastModifiedByUserId != null &&
         loggedByUserId != null &&
         lastModifiedByUserId != loggedByUserId;
-
     final loggedByName = loggedByUserId != null ? _formatUser(loggedByUserId!) : null;
     final modifiedByName = isModified ? _formatUser(lastModifiedByUserId!) : null;
 
@@ -58,6 +72,20 @@ class CaregiverAttributionBadge extends StatelessWidget {
       if (text.isNotEmpty) text.write(' • ');
       text.write('Modified by $modifiedByName');
     }
+    return text.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isImported = source != 'manual';
+    if (!isImported && loggedByUserId == null && lastModifiedByUserId == null) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    // Issue #159 (acceptance criteria): a non-manual row never falls back
+    // to "logged by <guardian>" — the import source is the whole story.
+    final text = isImported ? _sourceLabel(source) : _attributionText();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -76,7 +104,7 @@ class CaregiverAttributionBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Flexible(
             child: Text(
-              text.toString(),
+              text,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

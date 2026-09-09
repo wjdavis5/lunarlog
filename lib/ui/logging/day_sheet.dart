@@ -154,6 +154,13 @@ class _DaySheetState extends State<DaySheet> {
         tags: _tags.toList(),
         note: note.isEmpty ? null : note,
         updatedAt: DateTime.now().toUtc(),
+        // Issue #159 review finding: a bare `DayEntry(...)` defaults to
+        // manual/null/null, which would silently reset an imported entry's
+        // provenance on every Save (even a no-op one) — carry forward
+        // whatever the loaded entry already had instead.
+        source: widget.existing?.source ?? DayEntrySource.manual,
+        sourceId: widget.existing?.sourceId,
+        importId: widget.existing?.importId,
       ));
     } catch (_) {
       if (mounted) {
@@ -277,6 +284,7 @@ class _DaySheetState extends State<DaySheet> {
                     lastModifiedByUserId: widget.existing!.lastModifiedByUserId,
                     currentUserId: widget.currentUserId,
                     guardians: widget.guardians,
+                    source: widget.existing!.source.toDb(),
                   ),
               ],
             ),
@@ -471,6 +479,7 @@ class _DaySheetState extends State<DaySheet> {
               lastModifiedByUserId: existing.lastModifiedByUserId,
               currentUserId: widget.currentUserId,
               guardians: widget.guardians,
+              source: existing.source.toDb(),
             ),
           ],
         ),

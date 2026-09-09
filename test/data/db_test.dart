@@ -180,11 +180,14 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 6);
+  expect(await userVersion(db), 7);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
-  expect(await columnsOf(db, 'day_entries'),
-      containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
+  expect(
+      await columnsOf(db, 'day_entries'),
+      containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
+          'source', 'source_id', 'import_id']));
+  expect(await columnsOf(db, 'observations'), contains('import_id'));
 
   final stamp = DateTime.parse(kV1Stamp);
   final profile =
@@ -268,10 +271,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 6 and database opens with the expected tables',
+    test('schema version is 7 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 6);
-      expect(await userVersion(db), 6);
+      expect(db.schemaVersion, 7);
+      expect(await userVersion(db), 7);
 
       final tables = (await db
               .customSelect(
@@ -285,9 +288,12 @@ void main() {
       expect(await columnsOf(db, 'profiles'),
           containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
       expect(
-          await columnsOf(db, 'day_entries'), containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
+          await columnsOf(db, 'day_entries'),
+          containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
+              'source', 'source_id', 'import_id']));
       expect(
           await columnsOf(db, 'profile_guardians'), containsAll(['id', 'profile_id', 'user_id', 'role', 'status', 'display_name']));
+      expect(await columnsOf(db, 'observations'), contains('import_id'));
     });
 
     test('partial unique index enforces one live entry per profile+date, '
@@ -1155,6 +1161,131 @@ void main() {
       expect(await storage.getProfiles(includeTombstones: true), isEmpty);
       expect(await storage.getGuardiansForProfile(profile.id), isEmpty);
     });
+
+    group('Issue #159 review finding: upsertDayEntry update-branch '
+        'provenance containment', () {
+      test('an update that omits provenance (the manual/null/null default) '
+          'leaves an existing non-manual row\'s source/sourceId/importId '
+          'untouched', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final imported = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-01',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          source: 'clue_import',
+          sourceId: 'clue-1',
+          importId: 'import-1',
+        );
+        expect(imported.source, 'clue_import');
+
+        // Mirrors day_sheet.dart's pre-fix `_save()`: an update call that
+        // supplies no provenance at all (the storage API's own defaults).
+        final resaved = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-01',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+        );
+
+        expect(resaved.id, imported.id, reason: 'same live row, in place');
+        expect(resaved.flow, FlowLevel.heavy,
+            reason: 'the actual edit still applies');
+        expect(resaved.source, 'clue_import',
+            reason: 'an unspecified provenance update must not reset an '
+                'already-imported row to manual');
+        expect(resaved.sourceId, 'clue-1');
+        expect(resaved.importId, 'import-1');
+      });
+
+      test('an update that omits provenance on an already-manual row simply '
+          'stays manual (nothing to contain)', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final entry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-02',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+        );
+        expect(entry.source, 'manual');
+
+        final resaved = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-02',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+        );
+        expect(resaved.source, 'manual');
+        expect(resaved.sourceId, null);
+        expect(resaved.importId, null);
+      });
+
+      test('an update that supplies a genuinely different, non-default '
+          'provenance triple is applied verbatim (containment only ever '
+          'fires for the exact manual/null/null default triple)', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-03',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          source: 'clue_import',
+          sourceId: 'clue-3',
+          importId: 'import-3',
+        );
+
+        final reimported = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-03',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          source: 'healthkit',
+          sourceId: 'hk-1',
+          importId: 'import-4',
+        );
+        expect(reimported.source, 'healthkit',
+            reason: 'a genuine re-import still overwrites, since it is not '
+                'the manual/null/null default triple');
+        expect(reimported.sourceId, 'hk-1');
+        expect(reimported.importId, 'import-4');
+      });
+
+      test('known limitation: an explicit source: \'manual\' call with no '
+          'sourceId/importId is indistinguishable from the storage API\'s '
+          'own default and is therefore ALSO treated as unspecified against '
+          'a non-manual row -- the documented rule this containment picks '
+          'trades away a true explicit-reset-to-manual signal (there is no '
+          'sentinel to carry "I really mean manual" separately from "I '
+          'said nothing"); day_sheet.dart never needs this because it '
+          'always forwards the loaded entry\'s own provenance (item 1a)',
+          () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-04',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          source: 'clue_import',
+          sourceId: 'clue-4',
+          importId: 'import-4',
+        );
+
+        final stillImported = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-06-04',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+          source: 'manual',
+        );
+        expect(stillImported.source, 'clue_import');
+        expect(stillImported.sourceId, 'clue-4');
+        expect(stillImported.importId, 'import-4');
+      });
+    });
   });
 
   group('migrations', () {
@@ -1265,7 +1396,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 6);
+      expect(await userVersion(second), 7);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1278,7 +1409,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 6);
+      expect(await userVersion(db), 7);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1323,7 +1454,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 6);
+      expect(await userVersion(db), 7);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1399,7 +1530,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 6);
+      expect(await userVersion(db), 7);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

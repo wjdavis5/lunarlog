@@ -46,8 +46,13 @@ import 'account_export_remote_source.dart';
 /// (`lib/ui/account/export_account_collaborator.dart`,
 /// `lib/ui/settings/your_data_section.dart`) — a reader of an old (v2)
 /// export still knows the absence of the key means "not yet collected,"
-/// not "this profile has none."
-const int kAccountExportSchemaVersion = 3;
+/// not "this profile has none." v4 adds `dayEntries[].source`/`sourceId`/
+/// `importId` and `observations[].importId` (Issue #159): provenance is not
+/// sync bookkeeping or guardian attribution (the R9 exclusions this file's
+/// doc comment names above) — it is user-relevant data about where an
+/// entry came from ("Imported from Clue"), so unlike those it belongs in
+/// the export.
+const int kAccountExportSchemaVersion = 4;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -121,6 +126,10 @@ Map<String, Object?> _exportDayEntry(DayEntry entry) => {
       'flow': entry.flow.name,
       'tags': entry.tags,
       'note': entry.note,
+      // Issue #159 (kAccountExportSchemaVersion v4).
+      'source': entry.source.toDb(),
+      'sourceId': entry.sourceId,
+      'importId': entry.importId,
       'updatedAt': entry.updatedAt.toUtc().toIso8601String(),
     };
 
@@ -202,6 +211,8 @@ Map<String, Object?> _exportObservation(Observation o) => {
       'excluded': o.excluded,
       'source': o.source.toDb(),
       'sourceId': o.sourceId,
+      // Issue #159 (kAccountExportSchemaVersion v4).
+      'importId': o.importId,
       'raw': o.raw == null ? null : jsonDecode(o.raw!),
       'updatedAt': o.updatedAt.toUtc().toIso8601String(),
     };

@@ -49,8 +49,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 6 — `observations` table (Issue #240, the Clue tracking model's
   ///   child-table observation shape) and `cursor_observations` on
   ///   `sync_state`.
+  /// * 7 — `source` + `source_id` + `import_id` on `day_entries`, and
+  ///   `import_id` on `observations` (Issue #159, import-dedup provenance).
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -73,7 +75,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `profiles.transferred_at`, `profiles.mode`, `day_entries.live_index`,
   /// `observations`, `sync_state.cursor_observations`). A hook that throws
   /// proves the transaction wrapper rolls the whole upgrade back. Must be
-  /// set before the first query. Null in production.
+  /// set before the first query. Null in production. Issue #159 adds
+  /// `day_entries.source`, `day_entries.source_id`, `day_entries.import_id`,
+  /// `observations.import_id`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -150,6 +154,31 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         if (from >= 2) {
           await m.addColumn(syncState, syncState.cursorObservations);
           await migrationStepHook?.call('sync_state.cursor_observations');
+        }
+      });
+    }
+    if (from < 7) {
+      await transaction(() async {
+        // day_entries has existed since v1 on every real device, so this
+        // addColumn is always safe regardless of `from`.
+        await m.addColumn(dayEntries, dayEntries.source);
+        await migrationStepHook?.call('day_entries.source');
+        await m.addColumn(dayEntries, dayEntries.sourceId);
+        await migrationStepHook?.call('day_entries.source_id');
+        await m.addColumn(dayEntries, dayEntries.importId);
+        await migrationStepHook?.call('day_entries.import_id');
+        // Mirrors the `sync_state.cursor_observations` gotcha right above:
+        // `m.createTable(observations)` in the `from < 6` block builds the
+        // table from the *current* `Observations` class, which already
+        // declares `importId` — so a device upgrading straight from before
+        // v6 gets the column for free as part of that createTable, and
+        // adding it again here would be a duplicate-column error. Only a
+        // device that already had `observations` *before* this version
+        // (from >= 6) is missing the column and needs the explicit
+        // `addColumn` below.
+        if (from >= 6) {
+          await m.addColumn(observations, observations.importId);
+          await migrationStepHook?.call('observations.import_id');
         }
       });
     }

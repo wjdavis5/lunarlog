@@ -137,6 +137,23 @@ class DayEntries extends Table {
   TextColumn get lastModifiedByUserId =>
       text().named('last_modified_by_user_id').nullable()();
 
+  /// Import/device provenance (Issue #159), mirroring `public.day_entries`'
+  /// `day_entries_source_check` (`manual`/`clue_import`/`healthkit`/
+  /// `health_connect`/`file_import` — a different closed set from
+  /// [Observations.source]'s, see `domain.DayEntrySource`'s doc comment).
+  /// Never cleared on a tombstone (see `sync_push`'s doc comment in
+  /// `supabase/migrations/20260908170000_import_provenance.sql`).
+  TextColumn get source =>
+      text().withDefault(const Constant('manual'))();
+
+  /// Import/device provenance key, for idempotent re-import; paired with
+  /// [source] in the server's partial unique index.
+  TextColumn get sourceId => text().named('source_id').nullable()();
+
+  /// Placeholder FK to a future `import_jobs(id)` row (Issue #159,
+  /// unconstrained server-side until #167 adds that table).
+  TextColumn get importId => text().named('import_id').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 
@@ -240,6 +257,10 @@ class Observations extends Table {
 
   /// Import/device provenance key, for idempotent re-import.
   TextColumn get sourceId => text().named('source_id').nullable()();
+
+  /// Placeholder FK to a future `import_jobs(id)` row (Issue #159,
+  /// unconstrained server-side until #167 adds that table).
+  TextColumn get importId => text().named('import_id').nullable()();
 
   /// Escape hatch for an unrecognised type/value shape (A1-45); the entire
   /// original datapoint as JSON text.

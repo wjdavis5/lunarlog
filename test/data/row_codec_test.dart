@@ -49,6 +49,9 @@ void main() {
     String? note = 'a note',
     DateTime? deletedAt,
     FlowLevel flow = FlowLevel.medium,
+    String source = 'manual',
+    String? sourceId,
+    String? importId,
   }) =>
       DayEntry(
         id: entryId,
@@ -62,6 +65,9 @@ void main() {
         deletedAt: deletedAt,
         dirty: true,
         localRev: 2,
+        source: source,
+        sourceId: sourceId,
+        importId: importId,
       );
 
   group('timestamps', () {
@@ -317,6 +323,10 @@ void main() {
         'flow': 'medium',
         'tags': ['cramps', 'headache'],
         'note': 'a note',
+        // Issue #159.
+        'source': 'manual',
+        'source_id': null,
+        'import_id': null,
         'updated_at': '2026-09-01T10:00:00.123456Z',
         'deleted_at': null,
       });
@@ -465,6 +475,7 @@ void main() {
         updatedAt: micro,
         dirty: true,
         localRev: 1,
+        source: 'manual',
       );
       expect(
         () => encodeDayEntry(bad),
@@ -481,6 +492,34 @@ void main() {
       });
       expect(decoded.loggedByUserId, 'user-123');
       expect(decoded.lastModifiedByUserId, 'user-456');
+    });
+
+    test('Issue #159: round-trips source/source_id/import_id', () {
+      final row = makeEntry(
+        source: 'clue_import',
+        sourceId: 'clue-42',
+        importId: 'job-1',
+      );
+      final json = encodeDayEntry(row);
+      expect(json['source'], 'clue_import');
+      expect(json['source_id'], 'clue-42');
+      expect(json['import_id'], 'job-1');
+      final decoded = decodeDayEntry(json);
+      expect(decoded.source, 'clue_import');
+      expect(decoded.sourceId, 'clue-42');
+      expect(decoded.importId, 'job-1');
+    });
+
+    test('Issue #159: an absent source key decodes to manual, sourceId/'
+        'importId decode to null', () {
+      final json = {...encodeDayEntry(makeEntry())}
+        ..remove('source')
+        ..remove('source_id')
+        ..remove('import_id');
+      final decoded = decodeDayEntry(json);
+      expect(decoded.source, 'manual');
+      expect(decoded.sourceId, isNull);
+      expect(decoded.importId, isNull);
     });
   });
 

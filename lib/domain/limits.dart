@@ -62,3 +62,10 @@ const int kMaxObservationIntensity = 5;
 /// as a documented constant a future write path can reference, not enforced
 /// client-side in this foundation PR.
 const int kMaxObservationsPerDay = 200;
+
+/// Maximum `day_entries.source_id` length (Issue #159,
+/// `day_entries_source_id_length_check` in
+/// `supabase/migrations/20260908170000_import_provenance.sql`). Same bound
+/// as `kMaxObservationSourceIdLength`, kept as its own named constant since
+/// the two tables' provenance columns are validated independently.
+const int kMaxDayEntrySourceIdLength = 128;
