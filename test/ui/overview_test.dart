@@ -4,10 +4,14 @@
 /// reminder-hint seam, and stream-driven refresh (F4 in-app).
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/app_lifecycle.dart'
+    show RequestNotificationPermissionCallback;
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -102,6 +106,7 @@ class Harness {
   Widget appFor(
     Profile profile, {
     NotificationAvailability availability = NotificationAvailability.available,
+    RequestNotificationPermissionCallback? requestPermission,
   }) {
     return MultiProvider(
       providers: [
@@ -120,6 +125,10 @@ class Harness {
         ChangeNotifierProvider<NotificationPermissionState>.value(
           value: NotificationPermissionState(availability),
         ),
+        if (requestPermission != null)
+          Provider<RequestNotificationPermissionCallback>.value(
+            value: requestPermission,
+          ),
         ChangeNotifierProvider(
           create: (_) => ProfileController(
             profilesRepository: profiles,
@@ -141,6 +150,7 @@ Future<Harness> pumpOverview(
   WidgetTester tester, {
   NotificationAvailability availability = NotificationAvailability.available,
   ProfileMode mode = ProfileMode.standard,
+  RequestNotificationPermissionCallback? requestPermission,
   Future<void> Function(DriftDayEntriesRepository entries, String profileId)?
       seed,
 }) async {
@@ -160,7 +170,11 @@ Future<Harness> pumpOverview(
   }
   final harness =
       Harness(db, profile, profiles, entries, settings);
-  await tester.pumpWidget(harness.appFor(profile, availability: availability));
+  await tester.pumpWidget(harness.appFor(
+    profile,
+    availability: availability,
+    requestPermission: requestPermission,
+  ));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Overview'));
   await tester.pumpAndSettle();
@@ -417,6 +431,79 @@ void main() {
       expect(find.text(kReminderHint), findsNothing);
       expect(find.text('Cycle day 26'), findsOneWidget,
           reason: 'overview content survives the availability re-pump');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets(
+        'the reminder hint has no "Turn on reminders" action when no '
+        'permission-request seam is provided (issue #168 fallback)',
+        (tester) async {
+      final h = await pumpOverview(
+        tester,
+        availability: NotificationAvailability.denied,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      expect(find.text(kReminderHint), findsOneWidget);
+      expect(find.text('Turn on reminders'), findsNothing);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets(
+        'tapping "Turn on reminders" (issue #168) calls the injected '
+        'request seam', (tester) async {
+      var calls = 0;
+      final h = await pumpOverview(
+        tester,
+        availability: NotificationAvailability.denied,
+        requestPermission:
+            RequestNotificationPermissionCallback(() async {
+          calls++;
+        }),
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      final button = find.byKey(const ValueKey('reminder-hint-action'));
+      expect(button, findsOneWidget);
+      expect(find.text('Turn on reminders'), findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(calls, 1);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets(
+        'the "Turn on reminders" button disables itself while the request '
+        'is in flight and re-enables once it resolves', (tester) async {
+      final gate = Completer<void>();
+      final h = await pumpOverview(
+        tester,
+        availability: NotificationAvailability.denied,
+        requestPermission:
+            RequestNotificationPermissionCallback(() => gate.future),
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      final button = find.byKey(const ValueKey('reminder-hint-action'));
+      await tester.tap(button);
+      await tester.pump();
+
+      expect(
+        tester.widget<TextButton>(button).onPressed,
+        isNull,
+        reason: 'a second tap while the first request is in flight must '
+            'not fire another one',
+      );
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextButton>(button).onPressed, isNotNull);
       await disposeOverview(tester, h);
     });
 

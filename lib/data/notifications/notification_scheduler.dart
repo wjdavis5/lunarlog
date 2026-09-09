@@ -10,6 +10,8 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/notification_permission_action.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -53,6 +55,17 @@ abstract interface class ReminderScheduler {
   /// Reads the current OS permission without reinitializing the plugin.
   Future<NotificationAvailability> checkAvailability();
 
+  /// Issue #168: re-requests the OS permission from an explicit user
+  /// action (the overview hint's "Turn on reminders" tap) — independent of
+  /// [initialize], and not gated on push/FCM being configured. Once the OS
+  /// has stopped showing the request dialog at all — Android: two
+  /// refusals (see [nextNotificationPermissionAction]); Darwin: one, since
+  /// its own dialog is one-shot-per-install — this opens the platform's
+  /// notification-settings screen instead of re-prompting silently. Always
+  /// ends by reporting the resulting availability, the same as
+  /// [initialize] and [checkAvailability].
+  Future<NotificationAvailability> requestPermission();
+
   Future<void> rescheduleAll(List<PlannedReminder> reminders);
 
   Future<void> cancelAll();
@@ -63,6 +76,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     FlutterLocalNotificationsPlugin? plugin,
     LocalTimeZoneProvider? localTimeZoneProvider,
     this.locationProvider,
+    this.settingsStore,
   })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
         _localTimeZoneProvider =
             localTimeZoneProvider ?? defaultLocalTimeZoneProvider;
@@ -72,7 +86,47 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   final tz.Location Function()? locationProvider;
   bool _initialized = false;
 
+  /// Issue #168: the device-local store the Android denial count is
+  /// persisted in. Not available at construction time in production —
+  /// `main.dart` builds this scheduler before the database (and so the
+  /// settings store) exists — so it is mutable rather than `final`;
+  /// `_LunarLogAppState.initState` attaches it as soon as the store is
+  /// built. `null` (a widget test with no scheduler wiring, or before that
+  /// attachment happens) falls back to the in-memory-only behavior this
+  /// counter used to always have.
+  SettingsStore? settingsStore;
+
+  // Issue #168: how many OS asks (the automatic one in [initialize], plus
+  // every [requestPermission] tap) have come back refused on Android.
+  // Mirrors (and is kept in sync with) the persisted copy in
+  // [settingsStore] under [SettingsKeys.androidNotificationDeniedAttempts]
+  // — reading here avoids an `await` on every [nextNotificationPermissionAction]
+  // decision. Feeds that function so a permanently-denied permission opens
+  // settings instead of re-prompting into silence.
+  int _androidDeniedAttempts = 0;
+
   static const String _channelId = 'lunarlog_reminders';
+
+  /// Loads the persisted count ([SettingsKeys.androidNotificationDeniedAttempts])
+  /// so a fresh process (after a restart) picks up where the last one left
+  /// off instead of re-starting at zero. Falls back to the in-memory value
+  /// when no store is attached (e.g. a test that constructs this scheduler
+  /// directly) or the stored value is missing/unparsable.
+  Future<int> _loadAndroidDeniedAttempts() async {
+    final store = settingsStore;
+    if (store == null) return _androidDeniedAttempts;
+    final raw = await store.get(SettingsKeys.androidNotificationDeniedAttempts);
+    return int.tryParse(raw ?? '') ?? 0;
+  }
+
+  Future<void> _persistAndroidDeniedAttempts(int value) async {
+    final store = settingsStore;
+    if (store == null) return;
+    await store.set(
+      SettingsKeys.androidNotificationDeniedAttempts,
+      '$value',
+    );
+  }
 
   @override
   Future<NotificationAvailability> initialize({
@@ -109,16 +163,48 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
         }
       },
     );
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(
-          const AndroidNotificationChannel(
-            _channelId,
-            'Reminders',
-            description: 'Period reminders from Lunarlog',
-          ),
-        );
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _channelId,
+        'Reminders',
+        description: 'Period reminders from Lunarlog',
+      ),
+    );
+    // Issue #168: API 33+ (Android 13) treats POST_NOTIFICATIONS as a
+    // runtime permission that stays denied until requested, no matter what
+    // the manifest declares -- mirrors the Darwin `requestAlertPermission`
+    // request above, and runs unconditionally (not gated on push/FCM being
+    // configured, unlike the request in firebase_push_token_source.dart:105
+    // -- see [requestPermission]'s Darwin branch note on why that matters).
+    if (androidPlugin != null) {
+      try {
+        final previous = await _loadAndroidDeniedAttempts();
+        final granted = await androidPlugin.requestNotificationsPermission();
+        // #5: a `null` result means the OS never actually resolved this
+        // request -- most likely `FirebaseMessaging.requestPermission()`
+        // (firebase_push_token_source.dart:105, on `hasPush` builds) raced
+        // this call and the platform reported
+        // `PERMISSION_REQUEST_IN_PROGRESS` for one of them. That is
+        // "unknown", not a refusal: don't ratchet the count toward
+        // `openSettings` on an answer the OS never actually gave.
+        _androidDeniedAttempts = switch (granted) {
+          true => 0,
+          false => previous + 1,
+          null => previous,
+        };
+        await _persistAndroidDeniedAttempts(_androidDeniedAttempts);
+      } catch (error) {
+        // #3: never let a platform-call failure escape `initialize()` --
+        // it is `unawaited` from `_startReminders`, so a throw here would
+        // leave `_started` false and the "Turn on reminders" hint's
+        // callback permanently unusable. `checkAvailability()` below is
+        // still the source of truth for what gets reported.
+        debugPrint('lunarlog notifications: requestNotificationsPermission '
+            'failed (${error.runtimeType})');
+      }
+    }
     _initialized = true;
 
     // Cold start from a notification tap carries its payload here.
@@ -161,6 +247,80 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
           'lunarlog notifications: permission probe failed (${error.runtimeType})');
       return NotificationAvailability.available;
     }
+  }
+
+  @override
+  Future<NotificationAvailability> requestPermission() async {
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      // #1: read the persisted count fresh rather than trusting whatever
+      // is already in memory — covers a caller that reaches this before
+      // (or without ever calling) [initialize] on this instance, not just
+      // the ordinary startup-then-tap sequence.
+      _androidDeniedAttempts = await _loadAndroidDeniedAttempts();
+      final action =
+          nextNotificationPermissionAction(_androidDeniedAttempts);
+      try {
+        if (action == NotificationPermissionAction.openSettings) {
+          await androidPlugin.openAppNotificationSettings();
+        } else {
+          final previous = _androidDeniedAttempts;
+          final granted =
+              await androidPlugin.requestNotificationsPermission();
+          // #5: `null` is "unknown", not a refusal -- see the matching
+          // note in [initialize].
+          _androidDeniedAttempts = switch (granted) {
+            true => 0,
+            false => previous + 1,
+            null => previous,
+          };
+          await _persistAndroidDeniedAttempts(_androidDeniedAttempts);
+        }
+      } catch (error) {
+        // #3: tolerate a platform-call failure the same way [initialize]
+        // does -- report through [checkAvailability] below rather than
+        // throwing back into the (also unawaited-in-practice) caller.
+        debugPrint('lunarlog notifications: Android permission re-request '
+            'failed (${error.runtimeType})');
+      }
+      return checkAvailability();
+    }
+    final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    final macosPlugin = _plugin.resolvePlatformSpecificImplementation<
+        MacOSFlutterLocalNotificationsPlugin>();
+    try {
+      // #4: both `IOSFlutterLocalNotificationsPlugin` and
+      // `MacOSFlutterLocalNotificationsPlugin` DO carry their own
+      // `openAppNotificationSettings()` (pinned 22.3.0's
+      // platform_flutter_local_notifications.dart:812 / :1020) -- an
+      // earlier version of this comment claimed otherwise. Darwin's own
+      // permission dialog is one-shot-per-install: [initialize]'s
+      // `DarwinInitializationSettings(requestAlertPermission: true, ...)`
+      // already spends it, so a `requestPermissions()` re-request here
+      // would silently no-op forever once the OS has already recorded a
+      // decision, leaving the "Turn on reminders" tap dead exactly like
+      // the pre-fix Android button. Checking the *current* availability
+      // first and routing a denied result to settings avoids that without
+      // inventing a parallel denial counter: the overview hint that drives
+      // this call is itself gated on "not available" already.
+      final current = await checkAvailability();
+      if (current == NotificationAvailability.denied) {
+        await iosPlugin?.openAppNotificationSettings();
+        await macosPlugin?.openAppNotificationSettings();
+      } else {
+        await iosPlugin?.requestPermissions(
+            alert: true, badge: false, sound: false);
+        await macosPlugin?.requestPermissions(
+            alert: true, badge: false, sound: false);
+      }
+    } catch (error) {
+      // #3: same tolerance as the Android branch above.
+      debugPrint('lunarlog notifications: Darwin permission re-request '
+          'failed (${error.runtimeType})');
+    }
+    return checkAvailability();
   }
 
   @override
@@ -215,6 +375,10 @@ class NoopReminderScheduler implements ReminderScheduler {
 
   @override
   Future<NotificationAvailability> checkAvailability() async =>
+      NotificationAvailability.available;
+
+  @override
+  Future<NotificationAvailability> requestPermission() async =>
       NotificationAvailability.available;
 
   @override

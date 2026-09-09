@@ -8,6 +8,8 @@
 /// those same instances (KTD3, R5).
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +25,7 @@ import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -36,7 +39,7 @@ import '../support/fake_reminder_scheduler.dart';
 import '../support/fake_supabase_client.dart';
 import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
-import 'gate_test.dart' show FakeGate;
+import 'gate_test.dart' show FakeGate, FakeInactivityTimers;
 import 'overview_test.dart' show seedEpisodes;
 
 Future<void> disposeApp(WidgetTester tester, LunarLogDatabase db) async {
@@ -321,5 +324,105 @@ void main() {
     expect(scheduler.cancelCalls, 0);
 
     await disposeApp(tester, db);
+  });
+
+  group('reminder permission requests run inside the system-UI window '
+      '(issue #168)', () {
+    // The automatic startup request (initState -> post-frame callback ->
+    // _startReminders -> coordinator.start()) now runs inside the same
+    // `duringSystemUi` window as the explicit re-request below. It cannot
+    // be wrapped directly from `initState` -- opening the window's
+    // synchronous `notifyListeners()` would hit `LunarLogRootState` calling
+    // `setState()` mid-build -- so `_LunarLogAppState` constructs the
+    // coordinator synchronously in `initState` but defers only the
+    // `start()` call to a post-frame callback, which runs safely after the
+    // ancestor's build phase has finished.
+    testWidgets(
+        'the automatic startup request also runs inside the system-UI '
+        'window', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final initializeGate = Completer<void>();
+      final scheduler = FakeReminderScheduler(initializeGate: initializeGate);
+
+      await tester.pumpWidget(LunarLogRoot(
+        gate: FakeGate(requiresUnlock: false),
+        dbOpener: () async => db,
+        scheduler: scheduler,
+        inactivityTimerFactory: FakeInactivityTimers().factory,
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Not `homeContext` (`find.byType(ProfileHomeGate)`): the automatic
+      // startup request's system-UI window is already open by this point
+      // (it opens as part of the very first settle, unlike the manual tap
+      // below, which only opens one after the harness has already
+      // captured its context) and `GateController.obscured` — content
+      // must stay covered while the app's own system UI is up — makes
+      // `GateShell` mark `ProfileHomeGate` offstage for the duration,
+      // which the default `skipOffstage: true` finder would miss.
+      // `GateShell` itself sits above that offstage wrapper and is never
+      // hidden, so it is a safe, always-present anchor for the context.
+      final gateController =
+          tester.element(find.byType(GateShell)).read<GateController>();
+
+      expect(gateController.systemUiActive, isTrue,
+          reason: 'the automatic startup permission request is system UI '
+              'too');
+      gateController.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(gateController.locked, isFalse,
+          reason: 'this is the app\'s own startup request, not a real '
+              'departure');
+
+      initializeGate.complete();
+      await tester.pumpAndSettle();
+
+      // Not `systemUiActive` here: closing a window starts a settling
+      // tail (bounded by `settleTimeout`) during which it deliberately
+      // stays reported as active — see `GateController._closeSystemUiWindow`.
+      expect(scheduler.initializeCalls, 1);
+
+      await disposeApp(tester, db);
+    });
+
+    testWidgets(
+        'the "Turn on reminders" re-request is wrapped the same way',
+        (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final requestGate = Completer<void>();
+      final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied,
+        requestPermissionGate: requestGate,
+      )..requestPermissionResult = NotificationAvailability.available;
+
+      await tester.pumpWidget(LunarLogRoot(
+        gate: FakeGate(requiresUnlock: false),
+        dbOpener: () async => db,
+        scheduler: scheduler,
+        inactivityTimerFactory: FakeInactivityTimers().factory,
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final gateController = homeContext(tester).read<GateController>();
+      final requestPermission =
+          homeContext(tester).read<RequestNotificationPermissionCallback>();
+
+      final pending = requestPermission();
+      await tester.pump();
+
+      expect(gateController.systemUiActive, isTrue,
+          reason: 'the re-request dialog is system UI too');
+      gateController.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(gateController.locked, isFalse,
+          reason: 'this is the app\'s own request dialog, not a real '
+              'departure');
+
+      requestGate.complete();
+      await pending;
+      await tester.pumpAndSettle();
+
+      await disposeApp(tester, db);
+    });
   });
 }

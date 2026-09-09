@@ -20,6 +20,8 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/app_lifecycle.dart'
+    show RequestNotificationPermissionCallback;
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -365,12 +367,38 @@ class _OverviewPanelState extends State<OverviewPanel> {
   }
 }
 
-class _ReminderHint extends StatelessWidget {
+/// Issue #168: was a passive line ("Reminders unavailable — notifications
+/// are off"); now an actionable "Turn on reminders" affordance. Tapping it
+/// always runs the same [RequestNotificationPermissionCallback] — whether
+/// that re-requests the OS permission or opens the platform's
+/// notification-settings screen instead (once Android has permanently
+/// denied it) is a decision the scheduler makes, not this widget (see
+/// `nextNotificationPermissionAction`). Absent that seam (no reminder
+/// coordinator ever started), the hint falls back to the old passive line.
+class _ReminderHint extends StatefulWidget {
   const _ReminderHint();
+
+  @override
+  State<_ReminderHint> createState() => _ReminderHintState();
+}
+
+class _ReminderHintState extends State<_ReminderHint> {
+  bool _requesting = false;
+
+  Future<void> _onTap(RequestNotificationPermissionCallback request) async {
+    if (_requesting) return;
+    setState(() => _requesting = true);
+    try {
+      await request();
+    } finally {
+      if (mounted) setState(() => _requesting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final request = context.read<RequestNotificationPermissionCallback?>();
     return Padding(
       key: const ValueKey('reminder-hint'),
       padding: const EdgeInsets.only(top: 8),
@@ -390,6 +418,12 @@ class _ReminderHint extends StatelessWidget {
               ),
             ),
           ),
+          if (request != null)
+            TextButton(
+              key: const ValueKey('reminder-hint-action'),
+              onPressed: _requesting ? null : () => _onTap(request),
+              child: const Text('Turn on reminders'),
+            ),
         ],
       ),
     );

@@ -15,6 +15,17 @@ abstract interface class SettingsStore {
 abstract final class SettingsKeys {
   static const String lastActiveProfile = 'last_active_profile';
   static const String relockEnabled = 'relock_enabled';
+
+  /// How many consecutive times the Android OS has refused
+  /// `POST_NOTIFICATIONS` — the automatic ask in `initialize()` plus every
+  /// "Turn on reminders" tap (Issue #168). Persisted so a permanently-
+  /// denied user's next launch remembers the count instead of restarting
+  /// it at zero, which used to make the very first post-restart tap a
+  /// silent re-ask (the OS no longer shows a dialog past two refusals, so
+  /// that tap did nothing) instead of opening notification settings. A
+  /// stringified non-negative int; absent (or unparsable) reads as `0`.
+  static const String androidNotificationDeniedAttempts =
+      'android_notification_denied_attempts';
   static const String webModalAcknowledged = 'web_modal_acknowledged';
   static const String firstRunNoticeShown = 'first_run_notice_shown';
 

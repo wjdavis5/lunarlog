@@ -355,6 +355,80 @@ void main() {
     expect(scheduler.cancelCalls, 1);
   });
 
+  test('requestPermission (issue #168, "Turn on reminders") re-requests '
+      'and republishes the result without waiting for a resume', () async {
+    final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied)
+      ..requestPermissionResult = NotificationAvailability.available;
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    expect(permissionState.value, NotificationAvailability.denied);
+    await coordinator.requestPermission();
+
+    expect(scheduler.requestPermissionCalls, 1);
+    expect(permissionState.value, NotificationAvailability.available);
+  });
+
+  test('requestPermission cancels reminders when the re-request is still '
+      'denied', () async {
+    final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied)
+      ..requestPermissionResult = NotificationAvailability.denied;
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    final cancelsBefore = scheduler.cancelCalls;
+    await coordinator.requestPermission();
+    await pumpEventQueue();
+
+    expect(permissionState.value, NotificationAvailability.denied);
+    expect(scheduler.cancelCalls, greaterThan(cancelsBefore));
+  });
+
+  test('requestPermission before start() completes is a no-op (mirrors the '
+      '_started guard on a resume)', () async {
+    final gate = Completer<void>();
+    final scheduler = FakeReminderScheduler(initializeGate: gate)
+      ..requestPermissionResult = NotificationAvailability.available;
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    final started = coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    await coordinator.requestPermission();
+    expect(scheduler.requestPermissionCalls, 0,
+        reason: 'start() has not finished initializing yet');
+
+    gate.complete();
+    await started;
+  });
+
   test('a stale permission probe cannot overwrite a newer resume', () async {
     final first = Completer<NotificationAvailability>();
     final second = Completer<NotificationAvailability>();

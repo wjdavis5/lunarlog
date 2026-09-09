@@ -664,6 +664,25 @@ class RemoveAllPushRegistrationsCallback {
   Future<void> call() => _call();
 }
 
+/// Overview hint seam (issue #168): the "Turn on reminders" tap runs
+/// through this so `lib/ui` never touches `ReminderCoordinator` directly —
+/// same wrapper-class rationale as [RemovePushRegistrationCallback] (a bare
+/// same-shaped typedef could collide with it in the provider tree).
+/// `LunarLogApp`'s implementation wraps the call in
+/// [GateController.duringSystemUi], since the OS permission dialog is
+/// system UI exactly like the biometric prompt: without that, a lifecycle
+/// report the dialog produces while it's up could be read as a real
+/// departure and re-lock the app right after the tap that was meant to
+/// turn reminders on. Null when no reminder coordinator was ever started
+/// (no scheduler, or a harness that mounts `LunarLogApp` directly).
+class RequestNotificationPermissionCallback {
+  const RequestNotificationPermissionCallback(this._call);
+
+  final Future<void> Function() _call;
+
+  Future<void> call() => _call();
+}
+
 /// This install's stable push-registration device id (Issue #5, U7; R19):
 /// read from [settings] if already generated, otherwise minted once and
 /// persisted. Split out of [LunarLogRootState._startPushRegistration] so the

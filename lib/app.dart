@@ -226,51 +226,111 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _permissionState = NotificationPermissionState(
       NotificationAvailability.available,
     );
-    final authService = widget.authService;
-    if (authService != null) {
-      final controller = AuthController(authService: authService)
-        ..addListener(_onAuthChanged);
-      _authController = controller;
-      if (controller.signedIn) _clearAwaitingConfirmation();
-    }
-    // Reminders start only when the shell passes a scheduler (main.dart
-    // does on production platforms). Without one — e.g. in widget tests —
-    // no notification machinery is touched at all.
-    if (widget.scheduler != null) {
-      unawaited(_startReminders());
-    }
-    // Issue #5, U6/U8: keep the server's reminder-window snapshot in step
-    // with the local prediction. Both collaborators come from the same
-    // AppConfig.hasPush gate (app_lifecycle.dart), so this either starts
-    // with both present or not at all - R17 holds with zero conditionals
-    // beyond this null check.
-    final reminderWindowUpsert = widget.reminderWindowUpsert;
-    if (widget.notificationPreferencesService != null &&
-        reminderWindowUpsert != null) {
-      final publisher = ReminderWindowPublisher(
-        activeProfiles: _profiles.watch(),
-        predictionFor: _prediction.watch,
-        upsert: reminderWindowUpsert,
-        isSignedIn: () => _authController?.signedIn ?? false,
-      );
-      _reminderWindowPublisher = publisher;
-      publisher.start();
-    }
+    _initAuthController();
+    _buildReminderCoordinator();
+    _initReminderWindowPublisher();
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
     // session when needed.
     _inviteSub = widget.inviteLinks?.listen(_handleInviteLink);
-    final initialInviteCode = widget.initialInviteCode;
-    if (initialInviteCode != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _maybePresentInvite(
-          initialInviteCode,
-          widget.initialInviteProfileId,
-          widget.initialInviteKind,
-        );
-      });
+    _scheduleInitialInvitePresentation();
+  }
+
+  /// Wires [_authController] from [LunarLogApp.authService], if the shell
+  /// provided one. Extracted out of [initState] (issue #168 CRAP gate) so
+  /// this branching doesn't count against that method's complexity.
+  void _initAuthController() {
+    final authService = widget.authService;
+    if (authService == null) return;
+    final controller = AuthController(authService: authService)
+      ..addListener(_onAuthChanged);
+    _authController = controller;
+    if (controller.signedIn) _clearAwaitingConfirmation();
+  }
+
+  /// Reminders start only when the shell passes a scheduler (main.dart
+  /// does on production platforms). Without one — e.g. in widget tests —
+  /// no notification machinery is touched at all. Extracted out of
+  /// [initState] (issue #168 CRAP gate) so this branching doesn't count
+  /// against that method's complexity.
+  void _buildReminderCoordinator() {
+    final scheduler = widget.scheduler;
+    if (scheduler == null) return;
+    // Issue #168: `main.dart` constructs the scheduler before the
+    // database (and so this settings store) exists, so
+    // `FlutterLocalNotificationsScheduler.settingsStore` is attached
+    // here, as soon as it does, rather than at that scheduler's own
+    // construction. The web `NoopReminderScheduler` has no such field.
+    if (scheduler is FlutterLocalNotificationsScheduler) {
+      scheduler.settingsStore = _settings;
     }
+    // The coordinator is constructed synchronously, right here, so the
+    // provider tree below (`build`'s `_coordinator != null` check) sees a
+    // non-null instance on this very first build. Only the actual
+    // `start()` call is deferred to a post-frame callback (see
+    // [_scheduleReminderStart]).
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: _permissionState,
+      activeProfiles: _profiles.watch(),
+      predictionFor: _prediction.watch,
+    );
+    _coordinator = coordinator;
+    _scheduleReminderStart(coordinator);
+  }
+
+  /// Defers `coordinator.start()` (via [_startReminders]) to a post-frame
+  /// callback. Extracted out of [_buildReminderCoordinator] (issue #168
+  /// CRAP gate) so this branching doesn't count against that method's
+  /// complexity.
+  void _scheduleReminderStart(ReminderCoordinator coordinator) {
+    final gate = context.read<GateController?>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_startReminders(coordinator, gate));
+    });
+  }
+
+  /// Issue #5, U6/U8: keep the server's reminder-window snapshot in step
+  /// with the local prediction. Both collaborators come from the same
+  /// AppConfig.hasPush gate (app_lifecycle.dart), so this either starts
+  /// with both present or not at all - R17 holds with zero conditionals
+  /// beyond this null check. Extracted out of [initState] (issue #168
+  /// CRAP gate) so this branching doesn't count against that method's
+  /// complexity.
+  void _initReminderWindowPublisher() {
+    final reminderWindowUpsert = widget.reminderWindowUpsert;
+    if (widget.notificationPreferencesService == null ||
+        reminderWindowUpsert == null) {
+      return;
+    }
+    final publisher = ReminderWindowPublisher(
+      activeProfiles: _profiles.watch(),
+      predictionFor: _prediction.watch,
+      upsert: reminderWindowUpsert,
+      isSignedIn: _isSignedIn,
+    );
+    _reminderWindowPublisher = publisher;
+    publisher.start();
+  }
+
+  bool _isSignedIn() => _authController?.signedIn ?? false;
+
+  /// Schedules the cold-start invite presentation, if `main.dart` (or a
+  /// test) passed an initial invite code. Extracted out of [initState]
+  /// (issue #168 CRAP gate) so this branching doesn't count against that
+  /// method's complexity.
+  void _scheduleInitialInvitePresentation() {
+    final initialInviteCode = widget.initialInviteCode;
+    if (initialInviteCode == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _maybePresentInvite(
+        initialInviteCode,
+        widget.initialInviteProfileId,
+        widget.initialInviteKind,
+      );
+    });
   }
 
   void _handleInviteLink(Uri uri) {
@@ -391,21 +451,45 @@ class _LunarLogAppState extends State<LunarLogApp> {
     );
   }
 
-  Future<void> _startReminders() async {
-    // This state owns the repositories (KTD3) and provides those same
-    // instances to the subtree below, so the coordinator reads its streams
-    // straight off the fields rather than allocating a parallel set.
+  /// Issue #168: runs the coordinator's automatic startup permission
+  /// request (`coordinator.start()`, which now requests the Android
+  /// permission unconditionally, same as Darwin already did) inside the
+  /// same system-UI window as the explicit, user-triggered re-request in
+  /// [_requestNotificationPermission]. Called from a post-frame callback
+  /// scheduled in `initState` — never directly from `initState` itself,
+  /// because opening a `duringSystemUi` window notifies listeners
+  /// synchronously, and `LunarLogRootState` (still mid-build at that point,
+  /// since this widget builds inside it) reacts to gate changes with a
+  /// bare `setState(() {})`, which throws ("setState() or
+  /// markNeedsBuild() called during build"). Deferring past the frame's
+  /// build phase avoids that crash while still covering the automatic
+  /// prompt the same way as the manual one.
+  Future<void> _startReminders(
+    ReminderCoordinator coordinator,
+    GateController? gate,
+  ) {
+    Future<void> run() => coordinator.start(
+          onLaunchFromNotification: gate?.setPendingLaunchProfileId,
+        );
+    return gate != null ? gate.duringSystemUi(run) : run();
+  }
+
+  /// Issue #168: backs [RequestNotificationPermissionCallback] for the
+  /// overview hint's "Turn on reminders" tap. Wrapped in the gate's
+  /// system-UI window (like [unlock]/[reauthenticate]) because the OS
+  /// permission dialog reports the same backgrounding lifecycle event a
+  /// real departure does — without this a denial (or even a grant) could
+  /// be read as the operator having left and re-lock the app right after
+  /// they tapped the hint.
+  Future<void> _requestNotificationPermission() async {
+    final coordinator = _coordinator;
+    if (coordinator == null) return;
     final gate = context.read<GateController?>();
-    final coordinator = ReminderCoordinator(
-      scheduler: widget.scheduler!,
-      permissionState: _permissionState,
-      activeProfiles: _profiles.watch(),
-      predictionFor: _prediction.watch,
-    );
-    _coordinator = coordinator;
-    await coordinator.start(
-      onLaunchFromNotification: gate?.setPendingLaunchProfileId,
-    );
+    if (gate != null) {
+      await gate.duringSystemUi(coordinator.requestPermission);
+    } else {
+      await coordinator.requestPermission();
+    }
   }
 
   /// AS10: a signed-in session (the confirmation link opened on this
@@ -515,6 +599,20 @@ class _LunarLogAppState extends State<LunarLogApp> {
         ChangeNotifierProvider.value(
           value: _permissionState,
         ),
+        // Issue #168: the overview hint's "Turn on reminders" action.
+        // `_coordinator` is constructed synchronously in `initState`
+        // (before the post-frame callback that calls `_startReminders`
+        // even gets scheduled), so it is already non-null by this first
+        // build whenever a scheduler was provided; null here (no
+        // scheduler) means availability never leaves `available` and the
+        // hint the button lives in never renders.
+        if (_coordinator != null)
+          Provider<RequestNotificationPermissionCallback>.value(
+            value: RequestNotificationPermissionCallback(
+              _requestNotificationPermission,
+            ),
+            updateShouldNotify: (_, _) => false,
+          ),
         ChangeNotifierProvider(
           create: (context) => ProfileController(
             profilesRepository: context.read<ProfilesRepository>(),
