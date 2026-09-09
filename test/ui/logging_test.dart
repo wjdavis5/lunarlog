@@ -26,10 +26,14 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/account/sync_status_controller.dart';
+import 'package:lunarlog/ui/account/sync_status_tile.dart'
+    show kOfflineSaveConfirmationCopy;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -38,6 +42,7 @@ import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
 import '../support/fake_auth_service.dart';
+import '../support/fake_sync_engine.dart';
 
 /// Fixed "today" so month defaults and future locks are deterministic.
 final LocalDate kToday = LocalDate(2026, 8, 30);
@@ -1850,6 +1855,204 @@ void main() {
             reason: 'operator stays editable in ${mode.name} mode');
         await disposeLogging(tester, editable);
       }
+    });
+  });
+
+  group('offline-save confirmation (issue #182 AC8)', () {
+    /// Pumps [DaySheet] as an actual `showModalBottomSheet` on top of a host
+    /// page's own `Scaffold` -- the real shape every push site in the app
+    /// uses (`month_calendar.dart`/`overview_panel.dart`). Popping the sheet
+    /// (Save's own `Navigator.pop`) then reveals that host page underneath,
+    /// exactly like production, rather than popping the app's only route.
+    Future<(LunarLogDatabase, DriftDayEntriesRepository, String)>
+        pumpDaySheet(
+      WidgetTester tester, {
+      SyncStatusController? sync,
+      AuthController? auth,
+    }) async {
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profile = await DriftProfilesRepository(db.storage)
+          .create(displayName: 'Alice', isMinor: false);
+      final entries = DriftDayEntriesRepository(db.storage);
+      final app = MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                key: const ValueKey('open-day-sheet'),
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => DaySheet(
+                    repository: entries,
+                    profileId: profile.id,
+                    date: kToday,
+                    today: kToday,
+                  ),
+                ),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      final providers = <SingleChildWidget>[
+        if (sync != null)
+          ChangeNotifierProvider<SyncStatusController>.value(value: sync),
+        if (auth != null) ChangeNotifierProvider<AuthController>.value(value: auth),
+      ];
+      await tester.pumpWidget(
+        providers.isEmpty
+            ? app
+            : MultiProvider(providers: providers, child: app),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('open-day-sheet')));
+      await tester.pumpAndSettle();
+      return (db, entries, profile.id);
+    }
+
+    testWidgets(
+        'a network-error sync phase while signed in shows "Saved on this '
+        'device · will sync" after Save', (tester) async {
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1'),
+      );
+      final authController = AuthController(authService: auth);
+      final engine = FakeSyncEngine(
+        initial: const SyncSnapshot(
+          phase: SyncPhase.error,
+          lastError: SyncErrorKind.network,
+        ),
+      );
+      final sync = SyncStatusController(engine: engine);
+
+      final (db, _, _) =
+          await pumpDaySheet(tester, sync: sync, auth: authController);
+
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('offline-save-confirmation')),
+          findsOneWidget);
+      expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+      authController.dispose();
+      sync.dispose();
+      await auth.dispose();
+    });
+
+    testWidgets(
+        'sync paused (device gate locked / db closed) while signed in shows '
+        'the same confirmation', (tester) async {
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1'),
+      );
+      final authController = AuthController(authService: auth);
+      final engine =
+          FakeSyncEngine(initial: const SyncSnapshot(phase: SyncPhase.paused));
+      final sync = SyncStatusController(engine: engine);
+
+      final (db, _, _) =
+          await pumpDaySheet(tester, sync: sync, auth: authController);
+
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+      authController.dispose();
+      sync.dispose();
+      await auth.dispose();
+    });
+
+    testWidgets(
+        'an ordinary idle/up-to-date sync shows no confirmation -- only a '
+        'genuinely offline-looking state does', (tester) async {
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1'),
+      );
+      final authController = AuthController(authService: auth);
+      final engine = FakeSyncEngine();
+      final sync = SyncStatusController(engine: engine);
+
+      final (db, _, _) =
+          await pumpDaySheet(tester, sync: sync, auth: authController);
+
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+      authController.dispose();
+      sync.dispose();
+      await auth.dispose();
+    });
+
+    testWidgets(
+        'no sync engine at all (local-only build): no confirmation, save '
+        'still succeeds', (tester) async {
+      final (db, entries, profileId) = await pumpDaySheet(tester);
+
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing);
+      final saved = await entries.find(profileId, kToday);
+      expect(saved, isNotNull, reason: 'the local save itself still happens');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets(
+        'a network-error sync phase while signed OUT shows no confirmation '
+        '(nothing configured to sync to)', (tester) async {
+      final auth = FakeAuthService();
+      final authController = AuthController(authService: auth);
+      final engine = FakeSyncEngine(
+        initial: const SyncSnapshot(
+          phase: SyncPhase.error,
+          lastError: SyncErrorKind.network,
+        ),
+      );
+      final sync = SyncStatusController(engine: engine);
+
+      final (db, _, _) =
+          await pumpDaySheet(tester, sync: sync, auth: authController);
+
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+      authController.dispose();
+      sync.dispose();
+      await auth.dispose();
     });
   });
 }

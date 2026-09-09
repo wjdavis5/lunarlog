@@ -1,7 +1,7 @@
 /// The app's single home decision: loading → first-run flow (zero profiles)
-/// → the active profile, or the picker when the pointer is missing, archived
-/// or invalid. A richer navigation model is an open design decision; this is
-/// deliberately the minimum.
+/// → the active profile (issue #182: rendered inside [AppShell], the app's
+/// bottom-nav shell), or the picker when the pointer is missing, archived or
+/// invalid.
 ///
 /// U7 addition: consumes the launch payload seam
 /// ([GateController.pendingLaunchProfileId]) — set by the shell before
@@ -39,8 +39,8 @@ import 'package:lunarlog/ui/account/sign_in_screen.dart'
     show authFailureCopy;
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
+import 'package:lunarlog/ui/components/app_shell.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
-import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/first_run_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_picker_screen.dart';
 import 'package:provider/provider.dart';
@@ -182,7 +182,11 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     if (controller.pickerVisible || active == null) {
       return const ProfilePickerScreen();
     }
-    return ProfileDetailScreen(
+    // Issue #182: AppShell is the single entry point every active profile
+    // mounts inside now (a Today/Calendar/Insights/More bottom nav) --
+    // ProfileDetailScreen remains only for the archived-profile read-only
+    // view, still pushed explicitly from the picker.
+    return AppShell(
       profile: active,
       initiallyShowOverview: active.id == _overviewLaunchId,
     );

@@ -29,6 +29,11 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/sync_status_controller.dart';
+import 'package:lunarlog/ui/account/sync_status_tile.dart'
+    show kOfflineSaveConfirmationCopy, shouldConfirmOfflineSave;
+import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
@@ -159,9 +164,28 @@ class _DaySheetState extends State<DaySheet> {
       }
       return;
     }
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    if (!mounted) return;
+    final messenger = _offlineConfirmationMessenger(context);
+    Navigator.of(context).pop();
+    messenger?.showSnackBar(const SnackBar(
+      key: ValueKey('offline-save-confirmation'),
+      content: Text(kOfflineSaveConfirmationCopy),
+    ));
+  }
+
+  /// Issue #182 AC8: captured before [Navigator.pop] (the sheet's own
+  /// context is gone right after), so the confirmation still reaches the
+  /// screen underneath — `ScaffoldMessenger.of` resolves to the app's single
+  /// root messenger regardless, but capturing early avoids relying on that.
+  /// Null (no SnackBar at all) unless [shouldConfirmOfflineSave] says so.
+  ScaffoldMessengerState? _offlineConfirmationMessenger(BuildContext context) {
+    final shouldConfirm = shouldConfirmOfflineSave(
+      snapshot: Provider.of<SyncStatusController?>(context, listen: false)
+          ?.snapshot,
+      authState:
+          Provider.of<AuthController?>(context, listen: false)?.state,
+    );
+    return shouldConfirm ? ScaffoldMessenger.of(context) : null;
   }
 
   Future<void> _delete() async {

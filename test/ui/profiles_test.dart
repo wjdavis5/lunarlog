@@ -144,6 +144,10 @@ void main() {
 
       await tester.tap(find.text('Luna'));
       await tester.pumpAndSettle();
+      // Issue #182: AppShell opens on the Today tab; Calendar is one tap
+      // away via the bottom nav.
+      await tester.tap(find.byKey(const ValueKey('app-shell-tab-calendar')));
+      await tester.pumpAndSettle();
       expect(find.byType(MonthCalendar), findsOneWidget,
           reason: 'empty history shows the calendar with no markers');
       await disposeApp(tester, db);
@@ -167,6 +171,8 @@ void main() {
       expect(find.text('Profiles'), findsNothing,
           reason: 'valid stored last-active opens the profile (R4)');
       expect(find.text('Luna'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('app-shell-tab-calendar')));
+      await tester.pumpAndSettle();
       expect(find.byType(MonthCalendar), findsOneWidget);
       await disposeApp(tester, db);
     });
@@ -261,6 +267,9 @@ void main() {
 
       await tester.tap(find.text('Alice'));
       await tester.pumpAndSettle();
+      // Issue #182: AppShell opens on the Today tab, not Calendar.
+      await tester.tap(find.byKey(const ValueKey('app-shell-tab-calendar')));
+      await tester.pumpAndSettle();
       await showMonth(tester, 2026, 3);
       expect(find.byKey(const ValueKey('bleed-2026-03-01')), findsOneWidget);
       expect(find.byKey(const ValueKey('bleed-2026-03-02')), findsOneWidget);
@@ -270,6 +279,8 @@ void main() {
       await tester.tap(find.byTooltip('Switch profile'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Barb'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('app-shell-tab-calendar')));
       await tester.pumpAndSettle();
       await showMonth(tester, 2026, 4);
       expect(find.byKey(const ValueKey('bleed-2026-04-10')), findsOneWidget);

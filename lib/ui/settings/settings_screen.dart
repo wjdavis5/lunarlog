@@ -24,8 +24,11 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
-import 'package:lunarlog/ui/feedback/feedback_screen.dart';
-import 'package:lunarlog/ui/feedback/support_history_screen.dart';
+import 'package:lunarlog/ui/feedback/feedback_screen.dart'
+    show kSupportEmailAddress;
+import 'package:lunarlog/ui/feedback/support_history_screen.dart'
+    show newestReplyActivityAt;
+import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:provider/provider.dart';
@@ -93,12 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Send feedback'),
               subtitle: const Text('Report a bug, ask a question, or share an idea'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  settings: const RouteSettings(name: kRouteFeedbackScreen),
-                  builder: (_) => const FeedbackScreen(),
-                ),
-              ),
+              onTap: () => pushNamedScreen<void>(context, kRouteFeedbackScreen),
             )
           else
             ListTile(
@@ -175,8 +173,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Provider.of<AuthController?>(context, listen: false),
     );
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        settings: const RouteSettings(name: kRouteHealthSyncScreen),
+      buildNamedRoute<void>(
+        name: kRouteHealthSyncScreen,
         builder: (_) => HealthSyncScreen(
           profilesRepository: profilesRepository,
           guardiansForProfile: ProfileGuardiansRepository(storage).getForProfile,
@@ -302,12 +300,7 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
               color: Theme.of(context).colorScheme.error,
             )
           : const Icon(Icons.chevron_right),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          settings: const RouteSettings(name: kRouteSupportHistoryScreen),
-          builder: (_) => const SupportHistoryScreen(),
-        ),
-      ),
+      onTap: () => pushNamedScreen<void>(context, kRouteSupportHistoryScreen),
     );
   }
 }
