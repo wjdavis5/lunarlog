@@ -18,6 +18,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
@@ -32,6 +33,7 @@ import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
+import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
 import 'package:lunarlog/ui/sharing/sharing_overview_controller.dart';
 import 'package:provider/provider.dart';
@@ -97,6 +99,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         title: const Text('Profiles'),
         actions: [
           if (hasSync) SyncStatusGlyph(onPressed: openSettings),
+          const SharedWithMeAction(),
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings),
@@ -290,6 +293,36 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         lifecycleMode: result.lifecycleMode,
         birthControlMethod:
             birthControlStoredValue(result.birthControlChoice, l10n),
+      ),
+    );
+  }
+}
+
+/// Issue #151: the app-bar entry point for prediction-only connections
+/// shared WITH this account (distinct from #126's guardian-role "Shared
+/// with me" grouping above — a prediction-only connection is never a
+/// guardian membership). Present only when a [PredictionConnectionService]
+/// is configured - an unconfigured build keeps the app bar exactly as
+/// before (R26's null-gating discipline).
+class SharedWithMeAction extends StatelessWidget {
+  const SharedWithMeAction({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final service = Provider.of<PredictionConnectionService?>(
+        context, listen: false);
+    if (service == null) return const SizedBox.shrink();
+    return IconButton(
+      key: const ValueKey('shared-with-me'),
+      tooltip: 'Predictions shared with me',
+      icon: const Icon(Icons.calendar_month),
+      onPressed: () => Navigator.of(context).push(
+        buildNamedRoute<void>(
+          name: kRoutePredictionConnectionsScreen,
+          builder: (_) => PredictionConnectionsScreen(
+            service: service,
+          ),
+        ),
       ),
     );
   }

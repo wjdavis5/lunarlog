@@ -54,6 +54,8 @@ import 'package:lunarlog/data/notifications/supabase_notification_preferences_se
 import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
+import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
@@ -731,6 +733,7 @@ class LunarLogRoot extends StatefulWidget {
     this.feedbackService,
     this.accountDeletionService,
     this.ownershipTransferService,
+    this.predictionConnectionService,
     this.notificationPreferencesService,
     this.accountExportRemoteSource,
     this.supabaseClient,
@@ -787,6 +790,12 @@ class LunarLogRoot extends StatefulWidget {
   /// building both in the same place a `SupabaseClient` is in scope.
   final OwnershipTransferService? ownershipTransferService;
 
+  /// Prediction-only connection seam (Issue #151), injectable for tests.
+  /// When null (and [supabaseClient] is present) the root constructs the
+  /// production [SupabasePredictionConnectionService] alongside the other
+  /// Supabase services - same KTD8 precedent.
+  final PredictionConnectionService? predictionConnectionService;
+
   /// Caregiver alert preference service (Issue #5, U6/U8), injectable for
   /// tests. When null the root constructs the production
   /// [SupabaseNotificationPreferencesService] only when `AppConfig.hasPush`
@@ -802,12 +811,14 @@ class LunarLogRoot extends StatefulWidget {
 
   /// The Supabase client from the successful bootstrap. When present (and
   /// [sharingService]/[feedbackService]/[accountDeletionService]/
-  /// [ownershipTransferService]/[accountExportRemoteSource] were not
-  /// injected) the root constructs the production [SupabaseSharingService],
-  /// [SupabaseFeedbackService], [SupabaseAccountDeletionService],
-  /// [SupabaseOwnershipTransferService], [SupabaseAccountExportRemoteSource],
-  /// and [RealtimeSyncCoordinator] alongside the sync engine, so those
-  /// features are live in production builds.
+  /// [ownershipTransferService]/[predictionConnectionService]/
+  /// [accountExportRemoteSource] were not injected) the root constructs the
+  /// production [SupabaseSharingService], [SupabaseFeedbackService],
+  /// [SupabaseAccountDeletionService], [SupabaseOwnershipTransferService],
+  /// [SupabasePredictionConnectionService],
+  /// [SupabaseAccountExportRemoteSource], and [RealtimeSyncCoordinator]
+  /// alongside the sync engine, so those features are live in production
+  /// builds.
   final SupabaseClient? supabaseClient;
 
   /// `lunarlog://invite?code=...` links (U8; R9), filtered upstream by
@@ -854,6 +865,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   FeedbackService? _builtFeedbackService;
   AccountDeletionService? _builtAccountDeletionService;
   OwnershipTransferService? _builtOwnershipTransferService;
+  PredictionConnectionService? _builtPredictionConnectionService;
   NotificationPreferencesService? _builtNotificationPreferencesService;
   AccountExportRemoteSource? _builtAccountExportRemoteSource;
   ReminderWindowUpsert? _reminderWindowUpsert;
@@ -947,6 +959,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
           SupabaseAccountDeletionService(client: client);
       _builtOwnershipTransferService =
           SupabaseOwnershipTransferService(client: client, syncEngine: engine);
+      _builtPredictionConnectionService =
+          SupabasePredictionConnectionService(client: client);
       _builtAccountExportRemoteSource =
           SupabaseAccountExportRemoteSource(client: client);
       final coordinator = RealtimeSyncCoordinator(
@@ -1022,6 +1036,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     _builtFeedbackService = null;
     _builtAccountDeletionService = null;
     _builtOwnershipTransferService = null;
+    _builtPredictionConnectionService = null;
     _builtNotificationPreferencesService = null;
     _builtAccountExportRemoteSource = null;
     _reminderWindowUpsert = null;
@@ -1186,6 +1201,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
             widget.accountDeletionService ?? _builtAccountDeletionService,
         ownershipTransferService:
             widget.ownershipTransferService ?? _builtOwnershipTransferService,
+        predictionConnectionService: widget.predictionConnectionService ??
+            _builtPredictionConnectionService,
         notificationPreferencesService: widget.notificationPreferencesService ??
             _builtNotificationPreferencesService,
         accountExportRemoteSource: widget.accountExportRemoteSource ??
