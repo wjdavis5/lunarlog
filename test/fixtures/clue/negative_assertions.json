@@ -1,0 +1,6 @@
+[
+  {"date": "2026-03-01", "type": "period", "value": {"option": "none"}},
+  {"date": "2026-03-02", "type": "pain", "value": {"option": "pain_free"}},
+  {"date": "2026-03-03", "type": "sex_life", "value": {"option": "no_sex_today"}},
+  {"date": "2026-03-04", "type": "discharge", "value": {"option": "none"}}
+]

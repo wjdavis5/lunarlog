@@ -1,0 +1,7 @@
+[
+  "not-an-object",
+  {"date": "2026-05-01", "value": {"option": "light"}},
+  {"type": "pain", "value": {"option": "headache"}},
+  {"date": "not-a-date", "type": "pain", "value": {"option": "headache"}},
+  {"date": "2026-05-04", "type": "pain", "value": {"option": "headache"}}
+]
