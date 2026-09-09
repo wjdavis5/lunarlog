@@ -7,12 +7,10 @@
 -- the rejected alternatives; this migration implements exactly the
 -- decided shape.
 --
--- Timestamp note: `20260908150000_` belongs to the still-open, not-yet-
--- merged PR #291 (`export_account_data()`) -- this file sorts after it
--- (AGENTS.md's Migration Flow item 7: sort after whatever is already on
--- `main`, and #291 is not on `main` yet, so this timestamp only needs to
--- clear what IS on `main`, which it does; picking a value after 150000
--- avoids a same-day collision either way this and #291 land).
+-- Timestamp note: `20260908150000_` belongs to PR #291
+-- (`export_account_data()`, now merged on `main`) -- this file sorts after
+-- it (AGENTS.md's Migration Flow item 7: sort after whatever is already on
+-- `main`).
 --
 -- Scope for this migration (deliberately not the whole epic - see the
 -- issue's "Scope for THIS PR" note):
@@ -29,11 +27,16 @@
 --      migration/backfill plan step 4; retiring the mirror is a follow-up.
 --   3. `delete_account_data()` gains an explicit `observations` delete (see
 --      below for why it needs one at all despite the cascades already
---      covering it). `export_account_data()` does not exist on `main` yet
---      (PR #291, unmerged) -- there is nothing to `create or replace` here;
---      whichever of #240/#291 merges second must fold observations into
---      the export RPC. Flagged under this migration's own header and in
---      the PR's Follow-ups, not silently skipped.
+--      covering it). `export_account_data()` (PR #291, merged on `main`)
+--      is deliberately untouched here: it covers server-only tables
+--      (guardian memberships, invitations, notification preferences and
+--      the like) that the local Drift store never holds, while
+--      profiles/day_entries/observations are the local (client-side)
+--      export's responsibility (`lib/domain/export/account_export.dart`)
+--      -- there is nothing to fold into the RPC.
+--   4. `reconcile_realtime_publication()` (review finding) gains
+--      `observations` on its must-never-be-published list, alongside
+--      day_entries/profiles -- see this migration's own section on it.
 --
 -- Judgement calls (mirrored in the PR's Assumptions section):
 --   * Same-date collision "merge" (issue: "set-union on (category, code),
@@ -56,22 +59,32 @@
 --     logged one-at-a-time from a single device/session (those never
 --     collide on `id`, so the by-id upsert path leaves them alone) --
 --     collapsing is same-row-identity dedup on a race, not a taxonomy
---     rule. Scoped to a brand-new row only (not an edit of an
---     already-stored row) to keep this foundation-scope migration
---     tractable; a `category`/`code` edit on a pre-existing row colliding
---     with a sibling is not resolved by this migration and is left for a
---     follow-up if it proves to matter in practice.
+--     rule. Scoped to a brand-new row, a tombstone revive (`deleted_at:
+--     null` on an already-stored id), and a `local_date` move on an
+--     already-live row (review finding, item 4: both a revive and a date
+--     move are otherwise a way to land a colliding row, or a 201st
+--     observation on a day, without ever passing through the "brand new"
+--     path) -- NOT a plain `category`/`code` edit on a pre-existing row
+--     that keeps its own `local_date` and stays live, which still colliding
+--     with a sibling is left unresolved by this migration as a follow-up
+--     if it proves to matter in practice (it is a narrower gap than the
+--     original: an edit only skips dedup/cap when neither `local_date` nor
+--     live/tombstone status changes).
 --   * Tombstone payload clearing: every value column is cleared
---     (`code`, `value_num`, `value_text`, `unit`, `intensity`, `excluded`
---     reset to false, `source_id`, `raw`, `observed_at`) mirroring
---     `day_entries`' tombstone-carries-no-payload precedent (issue #224).
---     `category` is deliberately KEPT on a tombstone -- unlike `flow`/
---     `tags`/`note`, it is a closed-vocabulary taxonomy label (e.g.
---     `pain`), not free text or a symptom detail, and `category` is
---     `not null` with no natural sentinel value the way `flow` had `none`
---     available. `local_date`/`tz`/`day_entry_id`/`profile_id` are also
---     kept, matching `day_entries` keeping its own identity columns on a
---     tombstone.
+--     (`category`, `code`, `value_num`, `value_text`, `unit`, `intensity`,
+--     `excluded` reset to false, `source_id`, `raw`, `observed_at`)
+--     mirroring `day_entries`' tombstone-carries-no-payload precedent
+--     (issue #224). Revised (review finding): an earlier draft of this
+--     migration kept `category` on a tombstone as a closed-vocabulary
+--     taxonomy label with no natural sentinel the way `flow` had `none` --
+--     but a taxonomy label is still data about what was logged, and
+--     nothing about #224's precedent actually depends on a sentinel value
+--     existing (the column is simply nulled, same as `code`); `category`
+--     is now `nullable` at the table level, with
+--     `observations_category_required_unless_tombstoned_check` requiring
+--     one only on a live row. `local_date`/`tz`/`day_entry_id`/
+--     `profile_id` are still kept, matching `day_entries` keeping its own
+--     identity columns on a tombstone.
 --   * `day_entry_id` and `profile_id` are immutable once a row exists
 --     (mirrors `day_entries`' "an entry never legitimately changes
 --     profiles" guard) -- enforced in `sync_push`, not by a table
@@ -116,9 +129,12 @@ create table public.observations (
   tz text not null
     constraint observations_tz_length_check
     check (char_length(tz) <= 64),
-  category text not null
+  -- Nullable (issue #240 review finding): a tombstone carries no category
+  -- either -- see observations_tombstone_payload_check below, which is the
+  -- actual enforcement (deleted_at is not null or category is not null).
+  category text
     constraint observations_category_length_check
-    check (char_length(category) >= 1 and char_length(category) <= 64),
+    check (category is null or (char_length(category) >= 1 and char_length(category) <= 64)),
   -- Nullable only for a purely-numeric category (e.g. a bare BBT reading);
   -- free text, bounded, never validated against a closed set here (issue
   -- #240 D-10 companion note: the ~200 option codes are the opposite case
@@ -158,15 +174,27 @@ create table public.observations (
   deleted_at timestamptz,
   server_version bigint not null default 0,
   primary key (id),
+  -- Review finding on this migration: category is required on any *live*
+  -- row (there is no sentinel value the way `flow` has `none`) but must be
+  -- cleared, like every other payload column, on a tombstone -- so it can
+  -- no longer be a plain table-level `not null`. This CHECK is the
+  -- replacement: a live row still must carry a category.
+  constraint observations_category_required_unless_tombstoned_check
+    check (deleted_at is not null or category is not null),
   -- Structural backstop (issue #224 precedent: the table CHECK is the
   -- enforcement mechanism that survives a future sync_push re-emission
-  -- that forgets to clear a field in-RPC). category is deliberately
-  -- exempted -- see this migration's header "Judgement calls".
+  -- that forgets to clear a field in-RPC). category now included in the
+  -- cleared list (review finding: it is a closed-vocabulary label, not
+  -- meaningfully different from `code` for tombstone-clearing purposes,
+  -- and this migration's header "Judgement calls" section's original
+  -- rationale for exempting it -- no sentinel value -- only argued against
+  -- a NOT NULL default, not against clearing it on delete).
   constraint observations_tombstone_payload_check
     check (
       deleted_at is null
       or (
-        code is null
+        category is null
+        and code is null
         and value_num is null
         and value_text is null
         and unit is null
@@ -180,7 +208,7 @@ create table public.observations (
 );
 
 comment on table public.observations is
-  'Issue #240: one row per logged option (Clue tracking model). Child of day_entries via day_entry_id (cascades with the day''s tombstone); profile_id is denormalized for RLS predicates and query, matching day_entries. Tombstones (deleted_at not null) carry no payload except category/local_date/tz/day_entry_id/profile_id (see observations_tombstone_payload_check and this migration''s header). day_entries.tags/flow/note remain the source of truth for this release; a backfill below mirrors existing tags into observations rows.';
+  'Issue #240: one row per logged option (Clue tracking model). Child of day_entries via day_entry_id (cascades with the day''s tombstone); profile_id is denormalized for RLS predicates and query, matching day_entries. Tombstones (deleted_at not null) carry no payload except local_date/tz/day_entry_id/profile_id -- category is cleared too (review finding; see observations_tombstone_payload_check and observations_category_required_unless_tombstoned_check) and every live row must carry one. day_entries.tags/flow/note remain the source of truth for this release; a backfill below mirrors existing tags into observations rows.';
 
 create index observations_profile_id_local_date_idx
   on public.observations (profile_id, local_date);
@@ -423,6 +451,14 @@ declare
   v_other_obs public.observations%rowtype;
   v_obs_incoming_wins boolean;
   v_obs_count integer;
+  -- Review finding (item 4): true whenever this push will land the row
+  -- live under a (profile_id, local_date) that isn't already guaranteed
+  -- to have counted it -- a brand-new row, a tombstone being revived
+  -- (deleted_at: null on an already-tombstoned id), or a live row's
+  -- local_date moving to a different day. The per-day cap and the
+  -- same-date (category, code) dedup below both key off this, not just
+  -- "brand new", so a revive or a date-move cannot bypass either.
+  v_obs_check_collision boolean;
 begin
   if v_uid is null then
     raise exception 'sync_push requires an authenticated user'
@@ -482,8 +518,22 @@ begin
       v_archived_at := (v_row ->> 'archived_at')::timestamptz;
       v_is_minor := coalesce((v_row ->> 'is_minor')::boolean, false);
       v_sort_order := coalesce((v_row ->> 'sort_order')::integer, 0);
+      -- U1: birth_year/relationship are ordinary optional profile metadata,
+      -- validated by the table's own CHECK constraints (an invalid value
+      -- lands this row in `rejected` via the exception handler below, same
+      -- as an over-length display_name). These two parsed values feed the
+      -- INSERT path unconditionally (a brand-new row has nothing to
+      -- preserve) and the UPDATE path guarded by a jsonb `?` containment
+      -- check below (review item #3) so an old client that omits these keys
+      -- entirely does not silently null out an already-stored value.
       v_birth_year := (v_row ->> 'birth_year')::smallint;
       v_relationship := v_row ->> 'relationship';
+      -- #131: mode gets the same treatment except that the column is not
+      -- null with a default - an absent key parses to 'standard' (which the
+      -- INSERT path needs), and an out-of-set value is rejected by
+      -- profiles_mode_check into `rejected` like any other CHECK failure.
+      -- The UPDATE path applies the same `?` containment guard so a
+      -- pre-#131 client's push never touches a stored mode.
       v_mode := coalesce(v_row ->> 'mode', 'standard');
       if v_deleted_at is not null then
         -- tombstones carry no payload
@@ -519,11 +569,13 @@ begin
             using errcode = 'insufficient_privilege';
         end if;
 
+        -- Only primary_guardian or co_parent can edit profiles
         if v_caller_role not in ('primary_guardian', 'co_parent') then
           raise exception 'role % cannot edit profile metadata', v_caller_role
             using errcode = 'insufficient_privilege';
         end if;
 
+        -- Only primary_guardian can delete/archive profiles
         if (v_deleted_at is not null or v_archived_at is not null) and v_caller_role <> 'primary_guardian' then
           raise exception 'only primary_guardian can delete or archive profile'
             using errcode = 'insufficient_privilege';
@@ -542,6 +594,18 @@ begin
                  created_at = v_created_at,
                  updated_at = v_updated_at,
                  deleted_at = v_deleted_at,
+                 -- Review item #3 (P1): an old client that predates U1 omits
+                 -- birth_year/relationship from its payload entirely, rather
+                 -- than sending them as null - v_row ->> 'key' cannot tell
+                 -- "omitted" from "explicitly cleared" apart, and both parse
+                 -- to the same null in v_birth_year/v_relationship above. The
+                 -- jsonb `?` containment operator can tell them apart: only
+                 -- overwrite the stored value when the incoming row actually
+                 -- carries the key, so an old client's push preserves
+                 -- whatever birth_year/relationship the profile already has
+                 -- instead of silently nulling it on every metadata edit.
+                 -- #131: mode gets the identical guard, so a pre-#131
+                 -- client's push never clobbers a stored mode.
                  birth_year = case when v_row ? 'birth_year' then v_birth_year else v_stored_profile.birth_year end,
                  relationship = case when v_row ? 'relationship' then v_relationship else v_stored_profile.relationship end,
                  mode = case when v_row ? 'mode' then v_mode else v_stored_profile.mode end
@@ -605,7 +669,9 @@ begin
       end if;
       v_deleted_at := (v_row ->> 'deleted_at')::timestamptz;
       if v_deleted_at is not null then
-        -- tombstones carry no payload (issue #224)
+        -- tombstones carry no payload (issue #224: flow joins tags/note -
+        -- it was the one field this branch left the incoming value in,
+        -- the most sensitive single column on the row)
         v_tags := '[]'::jsonb;
         v_note := null;
         v_flow := 'none';
@@ -617,6 +683,7 @@ begin
         v_note := v_row ->> 'note';
       end if;
 
+      -- Verify caller has write permissions for profile (primary_guardian, co_parent, or caregiver)
       select role into v_caller_role
         from public.profile_guardians
        where profile_id = v_profile_id
@@ -634,6 +701,9 @@ begin
        for update;
 
       if found then
+        -- An entry never legitimately changes profiles: the role check
+        -- above ran against v_profile_id only, so a re-pointed row would
+        -- smuggle another profile's entry past that check.
         if v_stored.profile_id is distinct from v_profile_id then
           raise exception 'day entry cannot move between profiles'
             using errcode = 'insufficient_privilege';
@@ -647,6 +717,7 @@ begin
           if not (v_updated_at = v_stored.updated_at
                   and v_deleted_at is not null
                   and v_stored.deleted_at is not null) then
+            -- declined (older, or equal-and-live): hand back the server copy
             v_resolved := v_resolved
               || (to_jsonb(v_stored) || jsonb_build_object('table', 'day_entries'));
           end if;
@@ -654,6 +725,7 @@ begin
         end if;
       end if;
 
+      -- Same-date resolver: runs on every write that would leave a live row.
       if v_deleted_at is null then
         select * into v_other
           from public.day_entries
@@ -668,6 +740,13 @@ begin
             or (v_updated_at = v_other.updated_at
                 and (v_id collate "C") < (v_other.id collate "C"));
           if v_incoming_wins then
+            -- R7: union the loser's tags onto the incoming (surviving) row
+            -- before tombstoning it - the loser's tags would otherwise be
+            -- destroyed outright. flow/note stay last-writer-wins (KTD4)
+            -- for the surviving row; the *loser* being tombstoned here
+            -- clears its own flow to 'none' alongside note/tags (issue
+            -- #224 - this direct UPDATE previously left the loser's old
+            -- flow value in place forever).
             v_tags := public.merge_tag_arrays(v_tags, v_other.tags);
             update public.day_entries
                set deleted_at = v_updated_at,
@@ -681,6 +760,15 @@ begin
             v_resolved := v_resolved
               || (to_jsonb(v_other) || jsonb_build_object('table', 'day_entries'));
           else
+            -- The incoming row loses: it is stored as a tombstone at the
+            -- winner's time (unchanged). R7/R11: the union of both rows'
+            -- tags is written onto the surviving v_other row in the same
+            -- statement that already touches it, leaving v_other.updated_at
+            -- alone so the merge does not disturb the winner's timestamp.
+            -- last_modified_by_user_id must still be stamped to the caller
+            -- here (enforce_day_entry_attribution requires it on every
+            -- update while auth.uid() is set) even though this row's
+            -- content otherwise belongs to whoever logged it.
             update public.day_entries
                set tags = public.merge_tag_arrays(v_other.tags, v_tags),
                    last_modified_by_user_id = v_uid
@@ -690,6 +778,9 @@ begin
             v_updated_at := v_other.updated_at;
             v_tags := '[]'::jsonb;
             v_note := null;
+            -- issue #224: the incoming row is the one becoming a tombstone
+            -- here (stored via the insert/update below) - it must carry no
+            -- payload either, same as every other tombstone.
             v_flow := 'none';
           end if;
         end if;
@@ -717,6 +808,7 @@ begin
       end if;
 
       if v_incoming_wins is false then
+        -- the incoming row was tombstoned by resolution: return its server copy
         v_resolved := v_resolved
           || (to_jsonb(v_stored) || jsonb_build_object('table', 'day_entries'));
       end if;
@@ -735,6 +827,7 @@ begin
     v_stored_obs := null;
     v_other_obs := null;
     v_obs_incoming_wins := null;
+    v_obs_check_collision := false;
     begin
       if jsonb_typeof(v_row) <> 'object' then
         raise exception 'row is not an object';
@@ -761,10 +854,11 @@ begin
       end if;
       v_local_date := (v_row ->> 'local_date')::date;
       v_tz := coalesce(v_row ->> 'tz', 'UTC');
+      -- category's required-unless-tombstoned check moves below, once
+      -- v_deleted_at is known (review finding: a tombstone push must not
+      -- be forced to carry a category just to satisfy this validation --
+      -- see observations_category_required_unless_tombstoned_check).
       v_category := v_row ->> 'category';
-      if v_category is null or char_length(v_category) < 1 then
-        raise exception 'category is required';
-      end if;
       v_updated_at := (v_row ->> 'updated_at')::timestamptz;
       if v_updated_at is null then
         raise exception 'updated_at is required';
@@ -791,8 +885,10 @@ begin
 
       if v_deleted_at is not null then
         -- tombstones carry no payload (issue #224 precedent) except
-        -- category/local_date/tz/day_entry_id/profile_id -- see this
-        -- migration's header "Judgement calls".
+        -- local_date/tz/day_entry_id/profile_id -- category is cleared
+        -- too (review finding; see this migration's header "Judgement
+        -- calls" and observations_tombstone_payload_check).
+        v_category := null;
         v_code := null;
         v_value_num := null;
         v_value_text := null;
@@ -804,6 +900,9 @@ begin
         v_raw := null;
         v_observed_at := null;
       else
+        if v_category is null or char_length(v_category) < 1 then
+          raise exception 'category is required';
+        end if;
         v_code := v_row ->> 'code';
         v_value_num := (v_row ->> 'value_num')::numeric;
         v_value_text := v_row ->> 'value_text';
@@ -812,7 +911,16 @@ begin
         v_excluded := coalesce((v_row ->> 'excluded')::boolean, false);
         v_source := coalesce(v_row ->> 'source', 'manual');
         v_source_id := v_row ->> 'source_id';
-        v_raw := v_row -> 'raw';
+        -- Review finding: `->` on a `"raw": null` key yields the *jsonb*
+        -- literal `null` (`jsonb_typeof = 'null'`), not a SQL NULL -- left
+        -- as-is this would store a real (non-NULL) jsonb `null` value,
+        -- which is distinct from the column actually being NULL (and would
+        -- fail `observations_tombstone_payload_check`'s `raw is null` arm
+        -- on a tombstone push that explicitly sent `"raw": null`). `nullif`
+        -- collapses the jsonb `null` literal to a genuine SQL NULL; a
+        -- missing `raw` key already parses to SQL NULL via `->`'s own
+        -- semantics, so this is a no-op for that case.
+        v_raw := nullif(v_row -> 'raw', 'null'::jsonb);
         v_observed_at := (v_row ->> 'observed_at')::timestamptz;
       end if;
 
@@ -855,11 +963,26 @@ begin
           end if;
           continue;
         end if;
+
+        -- Review finding (item 4): a revive (tombstone -> live) or a
+        -- local_date move on an already-live row must run through the
+        -- same per-day cap / same-date dedup as a brand-new row -
+        -- otherwise either is a way to land a 201st observation on a day,
+        -- or a second live (category, code) sibling, without ever going
+        -- through the "brand new" branch below.
+        v_obs_check_collision := v_deleted_at is null
+          and (
+            v_stored_obs.deleted_at is not null
+            or v_stored_obs.local_date is distinct from v_local_date
+          );
       else
-        -- Brand-new row (never stored under this id before): the same-date
-        -- collision dedup below and the per-day cap below both apply only
-        -- to this branch (see this migration's header "Judgement calls").
-        if v_deleted_at is null and v_code is not null then
+        -- Brand-new row (never stored under this id before): always
+        -- subject to the same-date collision dedup / per-day cap below.
+        v_obs_check_collision := v_deleted_at is null;
+      end if;
+
+      if v_obs_check_collision then
+        if v_code is not null then
           select * into v_other_obs
             from public.observations
            where profile_id = v_profile_id
@@ -880,6 +1003,7 @@ begin
               update public.observations
                  set deleted_at = v_updated_at,
                      updated_at = v_updated_at,
+                     category = null,
                      code = null,
                      value_num = null,
                      value_text = null,
@@ -900,6 +1024,7 @@ begin
               -- exactly like day_entries' "incoming loses" branch.
               v_deleted_at := v_other_obs.updated_at;
               v_updated_at := v_other_obs.updated_at;
+              v_category := null;
               v_code := null;
               v_value_num := null;
               v_value_text := null;
@@ -918,10 +1043,16 @@ begin
         -- counted when this row will actually land as a new *live* row --
         -- a tombstone, or a row that just lost the collision dedup above
         -- and became a tombstone itself, adds nothing to the day's live
-        -- count. Counting inside the same transaction as every other row
-        -- already inserted earlier in this same loop iteration/batch (all
-        -- visible to this SELECT, since nothing has committed yet) bounds
-        -- a single oversized batch too, not just the already-stored total.
+        -- count. Runs for a brand-new row, a revive (v_obs_check_collision
+        -- above), and a local_date move (same) -- not just inserts --
+        -- since the stored copy is either not-yet-live (revive: still a
+        -- tombstone in the database) or live at a *different* local_date
+        -- (a move) at this point, so this SELECT never double-counts the
+        -- row against itself without needing an explicit `id <>` filter.
+        -- Counting inside the same transaction as every other row already
+        -- inserted earlier in this same loop iteration/batch (all visible
+        -- to this SELECT, since nothing has committed yet) bounds a single
+        -- oversized batch too, not just the already-stored total.
         if v_deleted_at is null and v_obs_incoming_wins is not false then
           select count(*) into v_obs_count
             from public.observations
@@ -1020,6 +1151,19 @@ grant execute on function public.sync_push(jsonb, jsonb, jsonb) to authenticated
 --    separate filter.
 -- ---------------------------------------------------------------------------
 
+-- Review finding (item 8): without this, every row this backfill inserts
+-- fires observations_after_change_signal once, each upserting the same
+-- profile's sync_signals row again -- on an installation with any
+-- meaningful number of tagged day_entries this is an N-row signal storm
+-- for a change nothing needs to react to synchronously (this is a one-off
+-- backfill of pre-existing data, not a live user action a client is
+-- waiting on). Disabling the trigger for the duration of this single
+-- INSERT and replacing it with one explicit upsert per *affected* profile
+-- afterwards (below) gets every guardian's client the same eventual
+-- "something changed, go re-pull" wake it would have gotten anyway, in a
+-- single write per profile instead of one per tag.
+alter table public.observations disable trigger observations_after_change_signal;
+
 insert into public.observations (
   id, day_entry_id, profile_id, local_date, tz, category, code, source,
   excluded, logged_by_user_id, last_modified_by_user_id, created_at, updated_at
@@ -1048,6 +1192,23 @@ left join (values
 ) as cat(code, category) on cat.code = tag.value
 where de.deleted_at is null
 on conflict (id) do nothing;
+
+alter table public.observations enable trigger observations_after_change_signal;
+
+-- One explicit sync_signals touch per profile actually touched by the
+-- backfill above (a live day_entries row with at least one tag) -- not
+-- every profile in the database, and not conditioned on whether this
+-- specific run actually inserted a new row (re-running this migration via
+-- a local `db reset` is idempotent by the `on conflict do nothing` above,
+-- but touching sync_signals again on a no-op re-run is harmless: it is a
+-- content-free wake signal, never a source of truth a client diffs
+-- against).
+insert into public.sync_signals (profile_id, updated_at)
+select distinct de.profile_id, now()
+  from public.day_entries de
+ where de.deleted_at is null
+   and jsonb_array_length(de.tags) > 0
+on conflict (profile_id) do update set updated_at = excluded.updated_at;
 
 -- ---------------------------------------------------------------------------
 -- 7. delete_account_data(): create-or-replaced from its latest body
@@ -1195,3 +1356,148 @@ comment on function public.delete_account_data() is
 
 revoke all on function public.delete_account_data() from public, anon;
 grant execute on function public.delete_account_data() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 8. reconcile_realtime_publication(): create-or-replaced from its latest
+--    body (20260905100000_realtime_publication.sql) plus an `observations`
+--    guard block (review finding on this migration -- observations was
+--    never added, but the function's must-never-be-published list should
+--    have named it explicitly from the start, the same way day_entries and
+--    profiles are each named rather than relied on to just never get
+--    added). Mirrors the day_entries/profiles blocks exactly: checks *and
+--    corrects* rather than only checking membership, so a whole-row
+--    publish left behind by Supabase Studio's "Enable Realtime" toggle (or
+--    a future migration that widens this one) is actively reverted instead
+--    of being treated as already-correct and skipped. Re-run at the end of
+--    this migration (mirroring how 20260905100000 re-runs itself), so a
+--    local `db reset` replaying every migration from scratch leaves the
+--    publication in its correct state regardless of what came before.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.reconcile_realtime_publication()
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_signals_col_list name[] := array['profile_id', 'updated_at']::name[];
+  v_current_cols name[];
+  v_all_tables boolean;
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_publication where pubname = 'supabase_realtime'
+  ) then
+    raise exception
+      'supabase_realtime publication does not exist -- expected to already '
+      'exist, created by the Supabase platform''s own base migrations';
+  end if;
+
+  -- Never let day_entries or profiles be published, in any form. Checks
+  -- *and corrects* rather than only checking membership, so a whole-row
+  -- publication left behind by Supabase Studio's "Enable Realtime" toggle
+  -- (or a future edit that widens this migration) is actively reverted
+  -- instead of being treated as already-correct and skipped.
+  if exists (
+    select 1
+      from pg_catalog.pg_publication_rel pr
+      join pg_catalog.pg_class pc on pc.oid = pr.prrelid
+      join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+      join pg_catalog.pg_publication pp on pp.oid = pr.prpubid
+     where pp.pubname = 'supabase_realtime'
+       and pn.nspname = 'public'
+       and pc.relname = 'day_entries'
+  ) then
+    alter publication supabase_realtime drop table public.day_entries;
+  end if;
+
+  if exists (
+    select 1
+      from pg_catalog.pg_publication_rel pr
+      join pg_catalog.pg_class pc on pc.oid = pr.prrelid
+      join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+      join pg_catalog.pg_publication pp on pp.oid = pr.prpubid
+     where pp.pubname = 'supabase_realtime'
+       and pn.nspname = 'public'
+       and pc.relname = 'profiles'
+  ) then
+    alter publication supabase_realtime drop table public.profiles;
+  end if;
+
+  -- Issue #240 review finding: observations joins day_entries/profiles on
+  -- this must-never-be-published list -- it carries the same category of
+  -- sensitive per-entry content (symptom/option detail) that day_entries
+  -- was excluded for, and nothing about this table was ever meant to reach
+  -- the client any way other than the existing sync_signals wake-signal +
+  -- an authenticated sync_push/read.
+  if exists (
+    select 1
+      from pg_catalog.pg_publication_rel pr
+      join pg_catalog.pg_class pc on pc.oid = pr.prrelid
+      join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+      join pg_catalog.pg_publication pp on pp.oid = pr.prpubid
+     where pp.pubname = 'supabase_realtime'
+       and pn.nspname = 'public'
+       and pc.relname = 'observations'
+  ) then
+    alter publication supabase_realtime drop table public.observations;
+  end if;
+
+  -- If `supabase_realtime` was ever switched to FOR ALL TABLES (which would
+  -- silently republish day_entries/profiles/observations whole-row
+  -- regardless of the per-table checks above), that is a platform-level
+  -- misconfiguration this function cannot safely undo (it would also drop
+  -- unrelated tables this repo does not own). Fail loudly instead of
+  -- pretending the guard above was sufficient.
+  select puballtables into v_all_tables
+    from pg_catalog.pg_publication
+   where pubname = 'supabase_realtime';
+
+  if v_all_tables then
+    raise exception
+      'supabase_realtime is FOR ALL TABLES -- this publishes public.profiles, '
+      'public.day_entries, and public.observations whole-row and must be '
+      'fixed manually before this migration can proceed (see the migration '
+      'header comment)';
+  end if;
+
+  -- public.sync_signals: the only table this app publishes to Realtime.
+  -- Correct both membership and the published column list -- not just
+  -- membership -- so a Studio toggle (which would publish every column) is
+  -- detected and repaired rather than skipped as "already there".
+  select attnames
+    into v_current_cols
+    from pg_catalog.pg_publication_tables
+   where pubname = 'supabase_realtime'
+     and schemaname = 'public'
+     and tablename = 'sync_signals';
+
+  if v_current_cols is null then
+    alter publication supabase_realtime
+      add table public.sync_signals (profile_id, updated_at);
+  elsif (select array_agg(c order by c) from unnest(v_current_cols) as c)
+        is distinct from (
+          select array_agg(c order by c) from unnest(v_signals_col_list) as c
+        ) then
+    -- Column set drifted from what this function intends (e.g. a Studio
+    -- toggle re-added the table whole-row) -- correct it rather than skip.
+    alter publication supabase_realtime drop table public.sync_signals;
+    alter publication supabase_realtime
+      add table public.sync_signals (profile_id, updated_at);
+  end if;
+end;
+$$;
+
+comment on function public.reconcile_realtime_publication() is
+  'Ensures supabase_realtime publishes only public.sync_signals (with '
+  'exactly profile_id, updated_at) and never public.profiles/day_entries/'
+  'observations (Issue #240 added observations to this list), correcting '
+  'drift (e.g. a Studio "Enable Realtime" toggle) rather than skipping an '
+  'already-published table (Issue #77 P1 fix). Not an API function -- runs '
+  'only from this migration and from pgTAP (as an unrestricted role); '
+  'execute is revoked from every app role below.';
+
+revoke execute on function public.reconcile_realtime_publication()
+  from public, anon, authenticated;
+
+select public.reconcile_realtime_publication();

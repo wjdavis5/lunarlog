@@ -8,6 +8,7 @@ import 'package:lunarlog/data/db/tables.dart' as db;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
+import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart' as domain;
@@ -44,6 +45,45 @@ domain.DayEntry dayEntryToDomain(db.DayEntry row) => domain.DayEntry(
       flow: flowToDomain(row.flow),
       tags: row.tags,
       note: row.note,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+      loggedByUserId: row.loggedByUserId,
+      lastModifiedByUserId: row.lastModifiedByUserId,
+    );
+
+/// Issue #240: drift-row -> domain [domain.Observation]. Mirrors
+/// [dayEntryToDomain]'s shape; used by [DriftObservationsRepository] so
+/// account export (`kAccountExportSchemaVersion` v3) reads a real,
+/// per-profile observations list instead of always exporting an empty one.
+///
+/// [row.category] is only nullable at the storage layer for a tombstoned
+/// row (review finding: category is cleared there like every other
+/// payload column); this function's only caller
+/// ([DriftObservationsRepository.listForProfile]) filters tombstones out
+/// by default, so a null here would mean a caller broke that contract —
+/// surfaced as a clear failure rather than silently exporting a mistaken
+/// empty category.
+domain.Observation observationToDomain(db.Observation row) =>
+    domain.Observation(
+      id: row.id,
+      dayEntryId: row.dayEntryId,
+      profileId: row.profileId,
+      localDate: domain.LocalDate.fromIso(row.localDate),
+      observedAt: row.observedAt,
+      tz: row.tz,
+      category: row.category ??
+          (throw StateError(
+              'observationToDomain: category is null for live observation ${row.id} '
+              '(only a tombstone should ever have a null category)')),
+      code: row.code,
+      valueNum: row.valueNum,
+      valueText: row.valueText,
+      unit: row.unit,
+      intensity: row.intensity,
+      excluded: row.excluded,
+      source: domain.ObservationSource.fromDb(row.source),
+      sourceId: row.sourceId,
+      raw: row.raw,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
       loggedByUserId: row.loggedByUserId,

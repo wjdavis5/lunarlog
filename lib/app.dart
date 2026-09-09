@@ -17,6 +17,7 @@ import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/db/storage.dart';
@@ -29,6 +30,7 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -182,6 +184,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
   // reminder coordinator and the provider tree below.
   late final ProfilesRepository _profiles;
   late final DayEntriesRepository _dayEntries;
+  late final ObservationsRepository _observations;
   late final SettingsStore _settings;
   late final CyclePredictionService _prediction;
   late final CycleHistoryService _cycleHistory;
@@ -226,6 +229,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
     final storage = widget.db.storage;
     _profiles = DriftProfilesRepository(storage);
     _dayEntries = DriftDayEntriesRepository(storage);
+    _observations = DriftObservationsRepository(storage);
     _settings = DriftSettingsStore(storage);
     // Issue #132: the device-local omission list joins both streams, so
     // estimates and history re-derive (and reminders replan) whenever the
@@ -604,6 +608,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
               value: widget.accountExportRemoteSource!),
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
+        Provider<ObservationsRepository>.value(value: _observations),
         Provider<SettingsStore>.value(value: _settings),
         Provider<CyclePredictionService>.value(value: _prediction),
         Provider<CycleHistoryService>.value(value: _cycleHistory),

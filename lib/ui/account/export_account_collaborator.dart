@@ -9,6 +9,7 @@ library;
 import '../../data/export/account_export_writer.dart';
 import '../../domain/export/account_export_remote_source.dart';
 import '../../domain/models/day_entry.dart';
+import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 
 /// The app's version string as carried into an export document (Issue #17
@@ -28,6 +29,7 @@ const String kAccountExportFailureCopy =
 typedef ExportAccountCollaborator = Future<void> Function({
   required List<Profile> profiles,
   required Map<String, List<DayEntry>> entriesByProfile,
+  Map<String, List<Observation>> observationsByProfile,
   required String appVersion,
 });
 
@@ -35,18 +37,21 @@ typedef ExportAccountCollaborator = Future<void> Function({
 /// is available (Issue #248; `null` for an unconfigured build - see
 /// `AccountExportWriter`'s own doc). A factory, not a bare top-level
 /// function, so a caller can read the remote source from `context` at call
-/// time without widening [ExportAccountCollaborator]'s own signature
-/// (existing test doubles for that typedef stay unchanged).
+/// time. Issue #240 widened [ExportAccountCollaborator] with an optional
+/// `observationsByProfile` parameter (default `const {}`), so existing test
+/// doubles only need that parameter declared, not necessarily used.
 ExportAccountCollaborator defaultExportAccountCollaborator(
   AccountExportRemoteSource? remoteSource,
 ) =>
     ({
       required List<Profile> profiles,
       required Map<String, List<DayEntry>> entriesByProfile,
+      Map<String, List<Observation>> observationsByProfile = const {},
       required String appVersion,
     }) =>
         AccountExportWriter(remoteSource: remoteSource).exportAndShare(
           profiles: profiles,
           entriesByProfile: entriesByProfile,
+          observationsByProfile: observationsByProfile,
           appVersion: appVersion,
         );

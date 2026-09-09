@@ -10,8 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
@@ -76,6 +78,14 @@ class FakeDayEntriesRepository implements DayEntriesRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class FakeObservationsRepository implements ObservationsRepository {
+  Map<String, List<Observation>> observationsByProfile = const {};
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async =>
+      observationsByProfile[profileId] ?? const [];
+}
+
 AuthController _signedIn() {
   final service = FakeAuthService()
     ..emit(AuthSessionState.signedIn,
@@ -119,6 +129,8 @@ Future<void> _pump(
           Provider<ProfilesRepository>.value(value: profiles),
           Provider<DayEntriesRepository>.value(
               value: dayEntries ?? FakeDayEntriesRepository()),
+          Provider<ObservationsRepository>.value(
+              value: FakeObservationsRepository()),
           if (auth != null)
             ChangeNotifierProvider<AuthController>.value(value: auth),
         ],
@@ -149,6 +161,7 @@ void main() {
         exportAccount: ({
           required profiles,
           required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -247,6 +260,7 @@ void main() {
         exportAccount: ({
           required profiles,
           required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');

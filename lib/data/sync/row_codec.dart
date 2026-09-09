@@ -340,8 +340,11 @@ RemoteProfileGuardianRow decodeProfileGuardian(JsonRow json) {
 /// Decodes an `observations` row (Issue #240). `category`/`code` are read
 /// as-is — never validated against a closed set (see this file's doc
 /// comment on `profiles.mode`/`relationship` for the contrasting cases that
-/// do have one). `raw` is re-encoded to JSON text for client-side storage
-/// (mirroring [Observations.raw]'s text-column shape).
+/// do have one). `category` is read nullable (review finding: the server
+/// clears it on a tombstone too, like every other payload column — see
+/// `RemoteObservationRow.category`'s own doc comment). `raw` is re-encoded
+/// to JSON text for client-side storage (mirroring [Observations.raw]'s
+/// text-column shape).
 RemoteObservationRow decodeObservation(JsonRow json) {
   const table = SyncTable.observations;
   final r = _Reader(json, table);
@@ -352,7 +355,7 @@ RemoteObservationRow decodeObservation(JsonRow json) {
     localDate: r.isoDate('local_date'),
     observedAt: r.timestampOrNull('observed_at'),
     tz: r.string('tz'),
-    category: r.string('category'),
+    category: r.stringOrNull('category'),
     code: r.stringOrNull('code'),
     valueNum: r.doubleOrNull('value_num'),
     valueText: r.stringOrNull('value_text'),

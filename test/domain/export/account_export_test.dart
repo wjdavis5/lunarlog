@@ -301,8 +301,9 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 2,
-          reason: 'adding profiles[].mode is a shape change');
+      expect(kAccountExportSchemaVersion, 3,
+          reason: 'profiles[].mode was v2''s shape change; the constant has '
+              'since moved to v3 for profiles[].observations (Issue #240)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
@@ -409,6 +410,31 @@ void main() {
       expect(doc['server'], remoteSource.result);
       expect((doc['profiles'] as List), hasLength(1));
       expect(() => jsonEncode(doc), returnsNormally);
+    });
+
+    test('threads observationsByProfile through to the local document '
+        '(Issue #240) — the same path AccountExportWriter.exportAndShare '
+        'and its UI callers use end to end, not just buildAccountExport '
+        'directly', () async {
+      final doc = await buildMergedAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-09-01')],
+        },
+        observationsByProfile: {
+          'p-1': [
+            _observation('o1', 'e1', 'p-1', '2026-09-01', intensity: 4),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final observations = profile['observations'] as List;
+      expect(observations, hasLength(1));
+      expect((observations.single as Map)['id'], 'o1');
+      expect((observations.single as Map)['intensity'], 4);
     });
   });
 

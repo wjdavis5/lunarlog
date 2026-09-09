@@ -34,6 +34,8 @@
 ///   exist for sync.
 library;
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/limits.dart';
@@ -151,9 +153,17 @@ void _validateObservation({
     throw ArgumentError.value(sourceId.length, 'sourceId',
         'must be at most $kMaxObservationSourceIdLength characters');
   }
-  if (raw != null && raw.length > kMaxObservationRawLength) {
-    throw ArgumentError.value(
-        raw.length, 'raw', 'must be at most $kMaxObservationRawLength characters');
+  if (raw != null) {
+    // Issue #240 review finding: bound UTF-8 *bytes*
+    // (`kMaxObservationRawLength`'s own doc comment), not `String.length`
+    // (UTF-16 code units) — a non-ASCII payload can encode to more UTF-8
+    // bytes than code units, which is the unit the server's
+    // `pg_column_size` check ultimately cares about.
+    final rawByteLength = utf8.encode(raw).length;
+    if (rawByteLength > kMaxObservationRawLength) {
+      throw ArgumentError.value(
+          rawByteLength, 'raw', 'must be at most $kMaxObservationRawLength UTF-8 bytes');
+    }
   }
   if (intensity != null &&
       (intensity < kMinObservationIntensity || intensity > kMaxObservationIntensity)) {
@@ -512,7 +522,7 @@ class LunarLogStorage {
               localDate: localDate,
               observedAt: Value(observedAt),
               tz: tz,
-              category: category,
+              category: Value(category),
               code: Value(code),
               valueNum: Value(valueNum),
               valueText: Value(valueText),
@@ -556,13 +566,13 @@ class LunarLogStorage {
   }
 
   /// Tombstones the observation [id]: sets `deleted_at` (and bumps
-  /// `updated_at`), clears every payload column (`code`, `value_num`,
-  /// `value_text`, `unit`, `intensity`, `excluded` reset to false,
-  /// `source_id`, `raw`, `observed_at`) — `category`/`local_date`/`tz` are
+  /// `updated_at`), clears every payload column (`category` included —
+  /// review finding: no longer the exception to this list — `code`,
+  /// `value_num`, `value_text`, `unit`, `intensity`, `excluded` reset to
+  /// false, `source_id`, `raw`, `observed_at`) — `local_date`/`tz` are
   /// kept, mirroring the server's `observations_tombstone_payload_check`
-  /// exactly (see that migration's header for why `category` is the one
-  /// exception). Marks the row dirty. Idempotent: re-deleting a tombstone
-  /// does nothing. No-op when [id] is not held locally.
+  /// exactly. Marks the row dirty. Idempotent: re-deleting a tombstone does
+  /// nothing. No-op when [id] is not held locally.
   Future<void> softDeleteObservation(String id) async {
     await db.transaction(() async {
       final existing = await _observationOrNull(id);
@@ -570,6 +580,7 @@ class LunarLogStorage {
       final at = _afterStored(_now(), existing.updatedAt);
       await (db.update(db.observations)..where((t) => t.id.equals(id))).write(
         ObservationsCompanion(
+          category: const Value(null),
           observedAt: const Value(null),
           code: const Value(null),
           valueNum: const Value(null),
@@ -617,6 +628,24 @@ class LunarLogStorage {
       })
       ..orderBy([(t) => OrderingTerm(expression: t.id)]);
     return query.watch();
+  }
+
+  /// Every observation attached to any of [profileId]'s day entries — Issue
+  /// #240, used by [DriftObservationsRepository.listForProfile] for account
+  /// export (`kAccountExportSchemaVersion` v3). UI reads (default) filter
+  /// tombstones, mirroring [getObservationsForDayEntry].
+  Future<List<Observation>> getObservationsForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    final query = db.select(db.observations)
+      ..where((t) {
+        var condition = t.profileId.equals(profileId);
+        if (!includeTombstones) condition = condition & t.deletedAt.isNull();
+        return condition;
+      })
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.get();
   }
 
   // ------------------------------------------------------------- app settings
@@ -1238,7 +1267,7 @@ class LunarLogStorage {
             localDate: remote.localDate,
             observedAt: Value(tombstone ? null : remote.observedAt?.toUtc()),
             tz: remote.tz,
-            category: remote.category,
+            category: Value(tombstone ? null : remote.category),
             code: Value(tombstone ? null : remote.code),
             valueNum: Value(tombstone ? null : remote.valueNum),
             valueText: Value(tombstone ? null : remote.valueText),
@@ -1264,7 +1293,7 @@ class LunarLogStorage {
       localDate: Value(remote.localDate),
       observedAt: Value(tombstone ? null : remote.observedAt?.toUtc()),
       tz: Value(remote.tz),
-      category: Value(remote.category),
+      category: Value(tombstone ? null : remote.category),
       code: Value(tombstone ? null : remote.code),
       valueNum: Value(tombstone ? null : remote.valueNum),
       valueText: Value(tombstone ? null : remote.valueText),

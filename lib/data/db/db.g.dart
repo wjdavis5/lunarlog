@@ -2279,9 +2279,9 @@ class $ObservationsTable extends Observations
   late final GeneratedColumn<String> category = GeneratedColumn<String>(
     'category',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _codeMeta = const VerificationMeta('code');
   @override
@@ -2533,8 +2533,6 @@ class $ObservationsTable extends Observations
         _categoryMeta,
         category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
       );
-    } else if (isInserting) {
-      context.missing(_categoryMeta);
     }
     if (data.containsKey('code')) {
       context.handle(
@@ -2670,7 +2668,7 @@ class $ObservationsTable extends Observations
       category: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}category'],
-      )!,
+      ),
       code: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}code'],
@@ -2761,8 +2759,15 @@ class Observation extends DataClass implements Insertable<Observation> {
   /// IANA time zone name the entry was logged in.
   final String tz;
 
-  /// e.g. `pain`, `energy`, `bbt`. Free text, never a closed set.
-  final String category;
+  /// e.g. `pain`, `energy`, `bbt`. Free text, never a closed set. Nullable
+  /// (review finding: no longer required on a tombstone -- see
+  /// `supabase/migrations/20260908160000_observations.sql`'s
+  /// `observations_category_required_unless_tombstoned_check`); still
+  /// required on every live row, enforced in the storage layer (see
+  /// `LunarLogStorage.upsertObservation`'s `_validateObservation` call and
+  /// `softDeleteObservation`, which clears it alongside every other
+  /// payload column).
+  final String? category;
 
   /// The selected option within [category] (e.g. `migraine`); nullable
   /// only for a purely-numeric category. Free text, never a closed set.
@@ -2809,7 +2814,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     required this.localDate,
     this.observedAt,
     required this.tz,
-    required this.category,
+    this.category,
     this.code,
     this.valueNum,
     this.valueText,
@@ -2837,7 +2842,9 @@ class Observation extends DataClass implements Insertable<Observation> {
       map['observed_at'] = Variable<DateTime>(observedAt);
     }
     map['tz'] = Variable<String>(tz);
-    map['category'] = Variable<String>(category);
+    if (!nullToAbsent || category != null) {
+      map['category'] = Variable<String>(category);
+    }
     if (!nullToAbsent || code != null) {
       map['code'] = Variable<String>(code);
     }
@@ -2886,7 +2893,9 @@ class Observation extends DataClass implements Insertable<Observation> {
           ? const Value.absent()
           : Value(observedAt),
       tz: Value(tz),
-      category: Value(category),
+      category: category == null && nullToAbsent
+          ? const Value.absent()
+          : Value(category),
       code: code == null && nullToAbsent ? const Value.absent() : Value(code),
       valueNum: valueNum == null && nullToAbsent
           ? const Value.absent()
@@ -2931,7 +2940,7 @@ class Observation extends DataClass implements Insertable<Observation> {
       localDate: serializer.fromJson<String>(json['localDate']),
       observedAt: serializer.fromJson<DateTime?>(json['observedAt']),
       tz: serializer.fromJson<String>(json['tz']),
-      category: serializer.fromJson<String>(json['category']),
+      category: serializer.fromJson<String?>(json['category']),
       code: serializer.fromJson<String?>(json['code']),
       valueNum: serializer.fromJson<double?>(json['valueNum']),
       valueText: serializer.fromJson<String?>(json['valueText']),
@@ -2961,7 +2970,7 @@ class Observation extends DataClass implements Insertable<Observation> {
       'localDate': serializer.toJson<String>(localDate),
       'observedAt': serializer.toJson<DateTime?>(observedAt),
       'tz': serializer.toJson<String>(tz),
-      'category': serializer.toJson<String>(category),
+      'category': serializer.toJson<String?>(category),
       'code': serializer.toJson<String?>(code),
       'valueNum': serializer.toJson<double?>(valueNum),
       'valueText': serializer.toJson<String?>(valueText),
@@ -2987,7 +2996,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     String? localDate,
     Value<DateTime?> observedAt = const Value.absent(),
     String? tz,
-    String? category,
+    Value<String?> category = const Value.absent(),
     Value<String?> code = const Value.absent(),
     Value<double?> valueNum = const Value.absent(),
     Value<String?> valueText = const Value.absent(),
@@ -3010,7 +3019,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     localDate: localDate ?? this.localDate,
     observedAt: observedAt.present ? observedAt.value : this.observedAt,
     tz: tz ?? this.tz,
-    category: category ?? this.category,
+    category: category.present ? category.value : this.category,
     code: code.present ? code.value : this.code,
     valueNum: valueNum.present ? valueNum.value : this.valueNum,
     valueText: valueText.present ? valueText.value : this.valueText,
@@ -3155,7 +3164,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
   final Value<String> localDate;
   final Value<DateTime?> observedAt;
   final Value<String> tz;
-  final Value<String> category;
+  final Value<String?> category;
   final Value<String?> code;
   final Value<double?> valueNum;
   final Value<String?> valueText;
@@ -3204,7 +3213,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     required String localDate,
     this.observedAt = const Value.absent(),
     required String tz,
-    required String category,
+    this.category = const Value.absent(),
     this.code = const Value.absent(),
     this.valueNum = const Value.absent(),
     this.valueText = const Value.absent(),
@@ -3226,7 +3235,6 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
        profileId = Value(profileId),
        localDate = Value(localDate),
        tz = Value(tz),
-       category = Value(category),
        updatedAt = Value(updatedAt);
   static Insertable<Observation> custom({
     Expression<String>? id,
@@ -3288,7 +3296,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     Value<String>? localDate,
     Value<DateTime?>? observedAt,
     Value<String>? tz,
-    Value<String>? category,
+    Value<String?>? category,
     Value<String?>? code,
     Value<double?>? valueNum,
     Value<String?>? valueText,
@@ -6040,7 +6048,7 @@ typedef $$ObservationsTableCreateCompanionBuilder =
       required String localDate,
       Value<DateTime?> observedAt,
       required String tz,
-      required String category,
+      Value<String?> category,
       Value<String?> code,
       Value<double?> valueNum,
       Value<String?> valueText,
@@ -6066,7 +6074,7 @@ typedef $$ObservationsTableUpdateCompanionBuilder =
       Value<String> localDate,
       Value<DateTime?> observedAt,
       Value<String> tz,
-      Value<String> category,
+      Value<String?> category,
       Value<String?> code,
       Value<double?> valueNum,
       Value<String?> valueText,
@@ -6595,7 +6603,7 @@ class $$ObservationsTableTableManager
                 Value<String> localDate = const Value.absent(),
                 Value<DateTime?> observedAt = const Value.absent(),
                 Value<String> tz = const Value.absent(),
-                Value<String> category = const Value.absent(),
+                Value<String?> category = const Value.absent(),
                 Value<String?> code = const Value.absent(),
                 Value<double?> valueNum = const Value.absent(),
                 Value<String?> valueText = const Value.absent(),
@@ -6645,7 +6653,7 @@ class $$ObservationsTableTableManager
                 required String localDate,
                 Value<DateTime?> observedAt = const Value.absent(),
                 required String tz,
-                required String category,
+                Value<String?> category = const Value.absent(),
                 Value<String?> code = const Value.absent(),
                 Value<double?> valueNum = const Value.absent(),
                 Value<String?> valueText = const Value.absent(),

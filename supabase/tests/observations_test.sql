@@ -4,7 +4,7 @@
 -- resolution, the per-day cap), the tags->observations backfill's
 -- idempotency, and delete_account_data()'s new observations count.
 begin;
-select plan(41);
+select plan(55);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -63,6 +63,27 @@ select is(
      join pg_class c on c.oid = t.tgrelid
     where c.relname = 'observations' and t.tgname = 'observations_after_change_signal'),
   1, 'observations fires touch_sync_signal() -- no new Realtime-published table needed');
+-- Review finding (item 8): the migration's tags -> observations backfill
+-- disables this trigger for the duration of its bulk INSERT (to avoid an
+-- N-row sync_signals storm) and re-enables it immediately after, replacing
+-- it with one explicit per-profile touch. The *count* of upserts the
+-- backfill's own disabled window avoided is not independently observable
+-- from pgTAP after the fact -- sync_signals holds only the latest
+-- `updated_at` per profile, not a write-count history, and by the time this
+-- test's own transaction starts, `db reset` has already run the migration
+-- against an empty (fixture-free) day_entries table, so there is nothing
+-- for that backfill to have touched here anyway. What *is* checked: the
+-- trigger comes out the other side of the migration still enabled (a
+-- forgotten `enable trigger` after the backfill would silently break every
+-- future Realtime wake for observations, and this is exactly the kind of
+-- regression a plain "does the trigger exist" check like the one above
+-- would not catch).
+select is(
+  (select t.tgenabled from pg_trigger t
+     join pg_class c on c.oid = t.tgrelid
+    where c.relname = 'observations' and t.tgname = 'observations_after_change_signal'),
+  'O'::"char",
+  'observations_after_change_signal is enabled (not left disabled by the backfill''s disable/enable pair)');
 select is(
   (select count(*)::integer from pg_publication_rel pr
      join pg_class c on c.oid = pr.prrelid
@@ -112,6 +133,19 @@ select is((select logged_by_user_id from public.observations where id = tests.ul
 select isnt((select server_version from public.observations where id = tests.ulid(810)), 0::bigint,
   'round trip: server_version stamped by the shared trigger');
 
+-- Review finding (item 7): a `"raw": null` JSON literal must coerce to a
+-- genuine SQL NULL, not be stored as the jsonb *value* `null` (`raw is
+-- null` must be true, not merely `jsonb_typeof(raw) = 'null'`) --
+-- jsonb_build_object turns a SQL NULL argument into exactly that JSON null
+-- literal, so this is the same shape a real client payload would send.
+insert into r select 'mom_obs_raw_null', public.sync_push('[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(812), 'day_entry_id', tests.ulid(802), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-05', 'tz', 'UTC', 'category', 'bbt', 'value_num', 36.5,
+    'raw', null, 'updated_at', '2026-09-05T10:30:00Z')));
+select is((select raw from public.observations where id = tests.ulid(812)), null,
+  'a JSON null literal for raw coerces to a genuine SQL NULL, not a stored jsonb ''null''');
+
 -- A 2-argument sync_push call (no p_observations at all) still works,
 -- exercising the default and proving the old overload was truly replaced,
 -- not merely shadowed.
@@ -120,9 +154,9 @@ select lives_ok(
   'a 2-argument sync_push call still works (p_observations defaults to an empty array)');
 
 -- ---------------------------------------------------------------------------
--- Tombstone: soft-deleting the row clears its payload but keeps category
--- (issue #240 migration header's documented exception) and every identity
--- column.
+-- Tombstone: soft-deleting the row clears its payload, category included
+-- (review finding on this migration: category is no longer kept on a
+-- tombstone) -- and keeps every identity column.
 -- ---------------------------------------------------------------------------
 insert into r select 'mom_obs_tombstone', public.sync_push('[]'::jsonb, '[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
@@ -134,8 +168,8 @@ select is((select code from public.observations where id = tests.ulid(810)), nul
   'tombstone clears code');
 select is((select intensity from public.observations where id = tests.ulid(810)), null,
   'tombstone clears intensity');
-select is((select category from public.observations where id = tests.ulid(810)), 'pain',
-  'tombstone keeps category (not free text, no natural sentinel unlike flow''s none)');
+select is((select category from public.observations where id = tests.ulid(810)), null,
+  'tombstone clears category too (review finding: no longer the tombstone-payload exception)');
 select is((select profile_id from public.observations where id = tests.ulid(810)), tests.ulid(801),
   'tombstone keeps profile_id');
 select isnt((select deleted_at from public.observations where id = tests.ulid(810)), null,
@@ -143,6 +177,22 @@ select isnt((select deleted_at from public.observations where id = tests.ulid(81
 select throws_ok(
   format('update public.observations set code = %L where id = %L', 'x', tests.ulid(810)),
   '23514', null, 'the tombstone-payload CHECK rejects a direct write that reintroduces payload on a tombstone');
+
+-- Structural guards (style: supabase/tests/notification_outbox_test.sql):
+-- a tombstoned observation carries no category/code/value at the table
+-- level, independent of sync_push -- direct writes are rejected too.
+select throws_ok(
+  format('update public.observations set category = %L where id = %L', 'pain', tests.ulid(810)),
+  '23514', null,
+  'a direct write cannot reintroduce category onto an already-tombstoned row');
+select throws_ok(
+  format(
+    $sql$insert into public.observations
+           (id, day_entry_id, profile_id, local_date, tz, category, updated_at)
+         values (%L, %L, %L, '2026-09-05', 'UTC', null, now())$sql$,
+    tests.ulid(811), tests.ulid(802), tests.ulid(801)),
+  '23514', null,
+  'a live (deleted_at is null) row cannot be inserted with a null category');
 
 -- ---------------------------------------------------------------------------
 -- Two-family isolation (RLS).
@@ -243,6 +293,119 @@ select is(
   200::bigint, 'exactly 200 live observations exist for the day once the cap is hit');
 select is(array_length(pg_temp.rejected_ids('cap_push'), 1), 1,
   'exactly one row (the 201st) is rejected once the per-day cap of 200 is reached');
+
+-- ---------------------------------------------------------------------------
+-- Revive bypass (review finding, item 4): reviving a tombstoned observation
+-- (deleted_at: null) onto an already-capped day must be rejected by the same
+-- per-day cap as a brand-new row -- the "found" branch used to skip the cap
+-- check entirely, so this used to silently succeed and push the day to 201.
+-- ---------------------------------------------------------------------------
+insert into r select 'revive_setup_tombstone', public.sync_push('[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(1050), 'day_entry_id', tests.ulid(803), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-07', 'tz', 'UTC', 'category', 'other',
+    'updated_at', '2026-09-07T11:00:00Z', 'deleted_at', '2026-09-07T11:00:00Z')));
+
+select is(
+  (select count(*) from public.observations
+    where profile_id = tests.ulid(801) and local_date = '2026-09-07' and deleted_at is null),
+  199::bigint, 'setup: tombstoning one capped row frees a slot (199 live remain)');
+
+insert into r select 'revive_setup_refill', public.sync_push('[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(900), 'day_entry_id', tests.ulid(803), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-07', 'tz', 'UTC', 'category', 'other', 'code', 'refill',
+    'updated_at', '2026-09-07T11:05:00Z')));
+
+select is(
+  (select count(*) from public.observations
+    where profile_id = tests.ulid(801) and local_date = '2026-09-07' and deleted_at is null),
+  200::bigint, 'setup: the day is back at the 200 cap');
+
+insert into r select 'revive_bypass', public.sync_push('[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(1050), 'day_entry_id', tests.ulid(803), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-07', 'tz', 'UTC', 'category', 'other', 'code', 'revived',
+    'updated_at', '2026-09-07T11:10:00Z')));
+
+select is(
+  pg_temp.resp('revive_bypass') -> 'rejected' -> 0,
+  jsonb_build_object('id', tests.ulid(1050), 'rejected', true),
+  'reviving a tombstone onto an already-capped day is rejected (revive bypass closed)');
+select is((select deleted_at from public.observations where id = tests.ulid(1050)) is not null, true,
+  'the row rejected by the revive-bypass check is still a tombstone (the revive never applied)');
+
+-- ---------------------------------------------------------------------------
+-- Date-move bypass (review finding, item 4): moving an already-live
+-- observation's local_date onto an already-capped day must be rejected by
+-- the same per-day cap -- the "found" branch used to skip the cap check
+-- for an ordinary update too, so this used to silently succeed.
+-- ---------------------------------------------------------------------------
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(805), tests.ulid(801), '2026-09-09', 'UTC', 'none', '2026-09-09T09:00:00Z');
+insert into r select 'datemove_setup', public.sync_push('[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(901), 'day_entry_id', tests.ulid(805), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-09', 'tz', 'UTC', 'category', 'other', 'code', 'datemove_source',
+    'updated_at', '2026-09-09T09:00:00Z')));
+
+select is((select deleted_at from public.observations where id = tests.ulid(901)), null,
+  'setup: the date-move source row is live on an uncapped day');
+
+insert into r select 'datemove_bypass', public.sync_push('[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(901), 'day_entry_id', tests.ulid(805), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-07', 'tz', 'UTC', 'category', 'other', 'code', 'datemove_source',
+    'updated_at', '2026-09-09T09:05:00Z')));
+
+select is(
+  pg_temp.resp('datemove_bypass') -> 'rejected' -> 0,
+  jsonb_build_object('id', tests.ulid(901), 'rejected', true),
+  'moving a live observation onto an already-capped day is rejected (date-move bypass closed)');
+select is((select local_date from public.observations where id = tests.ulid(901))::text, '2026-09-09',
+  'the row rejected by the date-move-bypass check stays on its original local_date');
+
+-- ---------------------------------------------------------------------------
+-- Toggle-revert (review finding, item 6): reconcile_realtime_publication()
+-- actively reverts a whole-row observations publish (e.g. a Supabase Studio
+-- "Enable Realtime" toggle), not just checks membership -- the same P1 fix
+-- day_entries/profiles already have (Issue #77), now extended to
+-- observations. `alter publication` requires the publication owner, not
+-- the `authenticated` role `tests.authenticate_as` leaves in effect --
+-- clear back to the test-runner role first, mirroring
+-- realtime_publication_test.sql's own toggle-revert setup.
+-- ---------------------------------------------------------------------------
+select tests.clear_authentication();
+alter publication supabase_realtime add table public.observations;
+select is(
+  exists(
+    select 1 from pg_publication_rel pr
+      join pg_class pc on pc.oid = pr.prrelid
+      join pg_namespace pn on pn.oid = pc.relnamespace
+      join pg_publication pp on pp.oid = pr.prpubid
+     where pp.pubname = 'supabase_realtime' and pn.nspname = 'public' and pc.relname = 'observations'
+  ),
+  true, 'setup: observations is published whole-row (simulated Studio toggle)');
+
+select lives_ok(
+  $$select public.reconcile_realtime_publication()$$,
+  'reconcile_realtime_publication() runs without error against drifted observations state');
+
+select is(
+  exists(
+    select 1 from pg_publication_rel pr
+      join pg_class pc on pc.oid = pr.prrelid
+      join pg_namespace pn on pn.oid = pc.relnamespace
+      join pg_publication pp on pp.oid = pr.prpubid
+     where pp.pubname = 'supabase_realtime' and pn.nspname = 'public' and pc.relname = 'observations'
+  ),
+  false,
+  'reconcile_realtime_publication() reverts a whole-row observations publish -- observations is never republished');
+
+-- Restore the authenticated-as-mom context the toggle-revert setup above
+-- cleared, so the fixtures below stamp day_entries.user_id the same way
+-- every earlier fixture in this file did.
+select tests.authenticate_as('mom');
 
 -- ---------------------------------------------------------------------------
 -- Backfill idempotency: day_entries.tags -> observations, re-run verbatim.

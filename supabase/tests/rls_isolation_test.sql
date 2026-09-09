@@ -1,7 +1,7 @@
 -- RLS isolation, privilege, and constraint proof for the three sync tables
 -- (plan U2: AE1, AE2, AE12, column-list grants, CHECKs, server_version, anon).
 begin;
-select plan(52);
+select plan(53);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: users A and B each own one profile, one day entry, one setting.
@@ -208,22 +208,29 @@ select tests.clear_authentication();
 select is((select count(*) from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) a
-           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings')
+           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations')
              and (a.grantee = 0 or a.grantee = 'anon'::regrole)),
-  0::bigint, 'PUBLIC and anon hold no privilege on any sync table');
+  0::bigint, 'PUBLIC and anon hold no privilege on any sync table (Issue #240: observations joins this catalog guard)');
 select is((select count(*) from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) a
-           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings')
+           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations')
              and a.grantee = 'authenticated'::regrole and a.privilege_type in ('DELETE', 'TRUNCATE')),
   0::bigint, 'authenticated holds no DELETE or TRUNCATE privilege on any sync table');
 select is((select count(*) from pg_policies
            where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings')),
-  12::bigint, 'four policies exist on each of the three tables');
+  12::bigint, 'four policies exist on each of the three original tables');
+-- Issue #240: observations carries three policies (select/insert/update),
+-- not four -- it has no client DELETE policy either, but unlike
+-- profiles/day_entries/settings it was never given one to begin with, so
+-- there's no fourth policy to expect here.
 select is((select count(*) from pg_policies
-           where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings')
+           where schemaname = 'public' and tablename = 'observations'),
+  3::bigint, 'observations carries exactly its three documented policies');
+select is((select count(*) from pg_policies
+           where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings', 'observations')
              and roles <> '{authenticated}'),
-  0::bigint, 'every policy is scoped to authenticated');
+  0::bigint, 'every policy on every sync table, observations included, is scoped to authenticated');
 
 -- ---------------------------------------------------------------------------
 -- Issue #158: catalog-wide guard against a future migration forgetting a

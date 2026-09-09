@@ -37,12 +37,21 @@ const int kMaxObservationUnitLength = 32;
 /// Maximum `observations.source_id` length (`observations_source_id_length_check`).
 const int kMaxObservationSourceIdLength = 128;
 
-/// Maximum serialized size of `observations.raw`, mirroring the server's
-/// `pg_column_size(raw) <= 8192` bound (`observations_raw_size_check`) —
-/// approximate on the client (character count, not the server's on-disk
-/// jsonb byte size), but conservative enough to fail fast before a push the
-/// server would reject forever.
-const int kMaxObservationRawLength = 8192;
+/// Maximum serialized size of `observations.raw`, bounding the client-side
+/// check by UTF-8 **bytes** (`utf8.encode(raw).length`, not
+/// `String.length`/UTF-16 code units — a non-ASCII `raw` payload can encode
+/// to more UTF-8 bytes than UTF-16 code units, so counting code units could
+/// pass a value the server's byte-based CHECK rejects), against a value
+/// deliberately below the server's `pg_column_size(raw) <= 8192` bound
+/// (`observations_raw_size_check`): `pg_column_size` measures the on-disk
+/// jsonb binary encoding, which carries some header/container overhead over
+/// the raw JSON text's own byte length, so a client-side check pinned to
+/// exactly 8192 UTF-8 bytes of *text* could still pass here and be rejected
+/// by the server. 7936 (8192 - 256) leaves a fixed margin for that overhead
+/// (jsonb's per-value/container header is a small, bounded number of
+/// bytes — 256 is generous, not a measured worst case) while still catching
+/// an oversized payload before a push the server would reject forever.
+const int kMaxObservationRawLength = 7936;
 
 /// Minimum/maximum `observations.intensity` (`observations_intensity_check`).
 const int kMinObservationIntensity = 1;

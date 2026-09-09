@@ -207,8 +207,15 @@ class Observations extends Table {
   /// IANA time zone name the entry was logged in.
   TextColumn get tz => text()();
 
-  /// e.g. `pain`, `energy`, `bbt`. Free text, never a closed set.
-  TextColumn get category => text()();
+  /// e.g. `pain`, `energy`, `bbt`. Free text, never a closed set. Nullable
+  /// (review finding: no longer required on a tombstone -- see
+  /// `supabase/migrations/20260908160000_observations.sql`'s
+  /// `observations_category_required_unless_tombstoned_check`); still
+  /// required on every live row, enforced in the storage layer (see
+  /// `LunarLogStorage.upsertObservation`'s `_validateObservation` call and
+  /// `softDeleteObservation`, which clears it alongside every other
+  /// payload column).
+  TextColumn get category => text().nullable()();
 
   /// The selected option within [category] (e.g. `migraine`); nullable
   /// only for a purely-numeric category. Free text, never a closed set.

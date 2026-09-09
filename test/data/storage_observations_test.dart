@@ -58,7 +58,7 @@ void main() {
     required String dayEntryId,
     String profileId = 'p1',
     String localDate = '2026-09-01',
-    String category = 'pain',
+    String? category = 'pain',
     String? code = 'migraine',
     int? intensity = 3,
     required DateTime updatedAt,
@@ -180,9 +180,47 @@ void main() {
     });
   });
 
+  group('getObservationsForProfile', () {
+    test('returns every observation across the profile\'s day entries, '
+        'filtering tombstones by default (Issue #240; account export '
+        '`kAccountExportSchemaVersion` v3 reads through this)', () async {
+      final dayEntryId = await entryId();
+      final live = await storage.upsertObservation(
+        dayEntryId: dayEntryId,
+        profileId: 'p1',
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        category: 'pain',
+        code: 'migraine',
+      );
+      final tombstoned = await storage.upsertObservation(
+        dayEntryId: dayEntryId,
+        profileId: 'p1',
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        category: 'mood',
+        code: 'anxious',
+      );
+      await storage.softDeleteObservation(tombstoned.id);
+
+      final rows = await storage.getObservationsForProfile('p1');
+      expect(rows.map((r) => r.id), [live.id]);
+
+      final withTombstones = await storage.getObservationsForProfile(
+        'p1',
+        includeTombstones: true,
+      );
+      expect(withTombstones, hasLength(2));
+    });
+
+    test('is empty for a profile with no observations', () async {
+      expect(await storage.getObservationsForProfile('p1'), isEmpty);
+    });
+  });
+
   group('softDeleteObservation', () {
-    test('clears the payload but keeps category/local_date/tz/day_entry_id',
-        () async {
+    test('clears the payload, category included, but keeps '
+        'local_date/tz/day_entry_id', () async {
       final dayEntryId = await entryId();
       final o = await storage.upsertObservation(
         dayEntryId: dayEntryId,
@@ -200,7 +238,9 @@ void main() {
       expect(row.code, isNull);
       expect(row.intensity, isNull);
       expect(row.valueText, isNull);
-      expect(row.category, 'pain');
+      expect(row.category, isNull,
+          reason: 'review finding: category is cleared on tombstone too, '
+              'no longer the exception to the tombstone-payload rule');
       expect(row.localDate, '2026-09-01');
       expect(row.dayEntryId, dayEntryId);
       expect(row.dirty, isTrue);
@@ -399,13 +439,14 @@ void main() {
       expect((await observationById('r1'))!.code, 'second');
     });
 
-    test('a tombstoned remote row clears the payload but keeps category',
+    test('a tombstoned remote row clears the payload, category included',
         () async {
       final dayEntryId = await entryId();
       await storage.applyRemoteObservation(remoteObservation('r1',
           dayEntryId: dayEntryId, code: 'migraine', updatedAt: t0));
       await storage.applyRemoteObservation(remoteObservation('r1',
           dayEntryId: dayEntryId,
+          category: null,
           code: null,
           intensity: null,
           updatedAt: t0.add(const Duration(hours: 1)),
@@ -413,7 +454,9 @@ void main() {
       final row = await observationById('r1');
       expect(row!.deletedAt, isNotNull);
       expect(row.code, isNull);
-      expect(row.category, 'pain');
+      expect(row.category, isNull,
+          reason: 'review finding: category is cleared on tombstone too, '
+              'no longer the exception to the tombstone-payload rule');
     });
 
     test('throws RetryableSyncApplyError when the day entry is not held '

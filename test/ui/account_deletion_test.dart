@@ -13,8 +13,10 @@ import 'package:lunarlog/app_lifecycle.dart' show DeviceResetCallback, GateContr
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
@@ -56,6 +58,14 @@ class FakeDayEntriesRepository implements DayEntriesRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class FakeObservationsRepository implements ObservationsRepository {
+  Map<String, List<Observation>> observationsByProfile = const {};
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async =>
+      observationsByProfile[profileId] ?? const [];
 }
 
 class FakeAccountDeletionService implements AccountDeletionService {
@@ -148,6 +158,7 @@ class DeletionHarness {
             Provider<SettingsStore>.value(value: _NoopSettings()),
             Provider<ProfilesRepository>.value(value: FakeProfilesRepository()),
             Provider<DayEntriesRepository>.value(value: FakeDayEntriesRepository()),
+            Provider<ObservationsRepository>.value(value: FakeObservationsRepository()),
             if (deletion != null)
               Provider<AccountDeletionService>.value(value: deletion!),
             Provider<DeviceResetCallback>.value(
@@ -254,6 +265,7 @@ void main() {
         exportAccount: ({
           required profiles,
           required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -285,6 +297,7 @@ void main() {
         exportAccount: ({
           required profiles,
           required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -314,6 +327,7 @@ void main() {
         exportAccount: ({
           required profiles,
           required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
           required appVersion,
         }) async {
           await exportHold.future;

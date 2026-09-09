@@ -174,7 +174,7 @@ final class RemoteObservationRow extends RemoteRow {
     required this.localDate,
     this.observedAt,
     required this.tz,
-    required this.category,
+    this.category,
     this.code,
     this.valueNum,
     this.valueText,
@@ -202,8 +202,9 @@ final class RemoteObservationRow extends RemoteRow {
   final String tz;
 
   /// Free text — never validated against a closed set (Issue #240 D-10
-  /// companion note).
-  final String category;
+  /// companion note). Null on a tombstone (review finding: the server
+  /// clears it there too, like every other payload column).
+  final String? category;
   final String? code;
   final double? valueNum;
   final String? valueText;

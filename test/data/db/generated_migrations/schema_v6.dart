@@ -486,10 +486,10 @@ class Observations extends Table with TableInfo {
   late final GeneratedColumn<String> category = GeneratedColumn<String>(
     'category',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
   );
   late final GeneratedColumn<String> code = GeneratedColumn<String>(
     'code',

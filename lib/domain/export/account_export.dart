@@ -40,12 +40,13 @@ import 'account_export_remote_source.dart';
 /// Bumped whenever the exported document's shape changes in a way a reader
 /// (a future importer, or a person opening the file) must know about.
 /// v2 adds `profiles[].mode` (Issue #131). v3 adds
-/// `profiles[].observations` (Issue #240) — empty until a future issue
-/// wires a real observations read path through
-/// `lib/data/export/account_export_writer.dart` and its UI caller; this
-/// version bump documents the shape now so a reader of an old (v2) export
-/// knows the absence of the key means "not yet collected," not "this
-/// profile has none."
+/// `profiles[].observations` (Issue #240): a real per-profile read wired
+/// through `ObservationsRepository`/`DriftObservationsRepository`,
+/// `lib/data/export/account_export_writer.dart`, and its UI callers
+/// (`lib/ui/account/export_account_collaborator.dart`,
+/// `lib/ui/settings/your_data_section.dart`) — a reader of an old (v2)
+/// export still knows the absence of the key means "not yet collected,"
+/// not "this profile has none."
 const int kAccountExportSchemaVersion = 3;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
@@ -105,10 +106,8 @@ Map<String, Object?> _exportProfile(
     'createdAt': profile.createdAt.toUtc().toIso8601String(),
     'updatedAt': profile.updatedAt.toUtc().toIso8601String(),
     'dayEntries': [for (final entry in sortedEntries) _exportDayEntry(entry)],
-    // Issue #240. Empty (rather than the key being absent) until a future
-    // issue wires a real observations read into
-    // `lib/data/export/account_export_writer.dart` and its UI caller — see
-    // this file's `kAccountExportSchemaVersion` v3 doc comment.
+    // Issue #240; see this file's `kAccountExportSchemaVersion` v3 doc
+    // comment — this is a real per-profile read, not a placeholder.
     'observations': [
       for (final observation in sortedObservations) _exportObservation(observation),
     ],
@@ -168,6 +167,7 @@ Map<String, Object?> mergeAccountExport({
 Future<Map<String, Object?>> buildMergedAccountExport({
   required List<Profile> profiles,
   required Map<String, List<DayEntry>> entriesByProfile,
+  Map<String, List<Observation>> observationsByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -176,6 +176,7 @@ Future<Map<String, Object?>> buildMergedAccountExport({
   final localDocument = buildAccountExport(
     profiles: profiles,
     entriesByProfile: entriesByProfile,
+    observationsByProfile: observationsByProfile,
     exportedAt: exportedAt,
     appName: appName,
     appVersion: appVersion,

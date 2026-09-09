@@ -581,7 +581,7 @@
             "name": "category",
             "getter_name": "category",
             "moor_type": "string",
-            "nullable": false,
+            "nullable": true,
             "customConstraints": null,
             "default_dart": null,
             "default_client_dart": null,
@@ -966,7 +966,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"observations\" (\"id\" TEXT NOT NULL, \"day_entry_id\" TEXT NOT NULL REFERENCES day_entries (id), \"profile_id\" TEXT NOT NULL REFERENCES profiles (id), \"local_date\" TEXT NOT NULL, \"observed_at\" TEXT NULL, \"tz\" TEXT NOT NULL, \"category\" TEXT NOT NULL, \"code\" TEXT NULL, \"value_num\" REAL NULL, \"value_text\" TEXT NULL, \"unit\" TEXT NULL, \"intensity\" INTEGER NULL, \"excluded\" INTEGER NOT NULL DEFAULT 0 CHECK (\"excluded\" IN (0, 1)), \"source\" TEXT NOT NULL DEFAULT 'manual', \"source_id\" TEXT NULL, \"raw\" TEXT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"logged_by_user_id\" TEXT NULL, \"last_modified_by_user_id\" TEXT NULL, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"observations\" (\"id\" TEXT NOT NULL, \"day_entry_id\" TEXT NOT NULL REFERENCES day_entries (id), \"profile_id\" TEXT NOT NULL REFERENCES profiles (id), \"local_date\" TEXT NOT NULL, \"observed_at\" TEXT NULL, \"tz\" TEXT NOT NULL, \"category\" TEXT NULL, \"code\" TEXT NULL, \"value_num\" REAL NULL, \"value_text\" TEXT NULL, \"unit\" TEXT NULL, \"intensity\" INTEGER NULL, \"excluded\" INTEGER NOT NULL DEFAULT 0 CHECK (\"excluded\" IN (0, 1)), \"source\" TEXT NOT NULL DEFAULT 'manual', \"source_id\" TEXT NULL, \"raw\" TEXT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"logged_by_user_id\" TEXT NULL, \"last_modified_by_user_id\" TEXT NULL, PRIMARY KEY (\"id\"));"
         }
       ]
     },
