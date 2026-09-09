@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
+import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
 class ActivityFeedScreen extends StatefulWidget {
@@ -407,7 +408,7 @@ class ActivityFeedButton extends StatefulWidget {
 }
 
 class _ActivityFeedButtonState extends State<ActivityFeedButton> {
-  late final Stream<ActivityFeedSnapshot> _feedStream;
+  late Stream<ActivityFeedSnapshot> _feedStream;
 
   @override
   void initState() {
@@ -415,6 +416,17 @@ class _ActivityFeedButtonState extends State<ActivityFeedButton> {
     // Allocated once: a fresh stream per build would re-subscribe four
     // Drift watches on every frame (see StreamBuilder.didUpdateWidget).
     _feedStream = widget.repository.watch(widget.profile.id);
+  }
+
+  // The shell (#313) keeps this button mounted across an in-place profile
+  // switch, so re-watch when the profile changes -- the same pattern
+  // OverviewPanel/MonthCalendar/AnalysisTab use (review finding on #330).
+  @override
+  void didUpdateWidget(covariant ActivityFeedButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.id != widget.profile.id) {
+      _feedStream = widget.repository.watch(widget.profile.id);
+    }
   }
 
   @override
@@ -434,8 +446,8 @@ class _ActivityFeedButtonState extends State<ActivityFeedButton> {
                 )
               : const Icon(Icons.history),
           onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              settings: const RouteSettings(name: kRouteActivityFeedScreen),
+            buildNamedRoute<void>(
+              name: kRouteActivityFeedScreen,
               builder: (_) => ActivityFeedScreen(
                 profile: widget.profile,
                 repository: widget.repository,

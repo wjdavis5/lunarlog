@@ -33,7 +33,10 @@ More (`settings/settings_screen.dart`, unmodified, including its own app bar).
 Today is the default/first tab. Each tab is built lazily the first time it's
 selected and then kept alive under an `IndexedStack`, so switching tabs
 preserves that tab's own state without starting every tab's live streams and
-animations up front.
+animations up front. Issue #313: the whole shell is wrapped in a `PopScope`
+so Android/system back never exits the app from a non-Today tab — the first
+back press returns to Today, and only a second one, already on Today, is
+let through to exit.
 
 Issue #313's tab-switch seam, `components/app_shell_scope.dart`'s
 `AppShellScope` (an `InheritedWidget` wrapping the shell's whole `Scaffold`),
@@ -68,7 +71,10 @@ once it lands, rather than reshaping the widget.
 
 The app bar shared by Today/Calendar/Insights (not shown on More, which is
 Settings' own screen) carries the active profile name as a tappable switcher
-opening the existing profile picker, the `SyncStatusGlyph`
+opening the existing profile picker, the Activity Feed action
+(`ActivityFeedButton`, `sharing/activity_feed_screen.dart` — issue #313, #124's
+entry point reachable again now that the shell replaced `ProfileDetailScreen`
+as where the active profile lives), the `SyncStatusGlyph`
 (`account/sync_status_tile.dart`), and a Settings action that just switches to
 the More tab. `ProfileDetailScreen` (`profiles/profile_detail_screen.dart`)
 remains only for the archived-profile read-only view, still pushed explicitly
@@ -132,7 +138,8 @@ already opens), and hides itself for a `viewer`-role guardian.
 `MaterialPageRoute`, and `kAppRoutes`/`pushNamedScreen` cover the handful of
 parameterless destinations reused across more than one push site. This app
 never calls `Navigator.pushNamed` (see `app.dart`'s `onGenerateRoute` note) —
-every push is a direct `Navigator.of(context).push(...)`; the sites the #182
-pass migrated build their route through one of these two so a route name
-lives in exactly one place (a few older pushes in `lib/ui/sharing/` still
-hand-roll theirs — tracked as a follow-up).
+every push is a direct `Navigator.of(context).push(...)`; every push builds
+its route through one of these two so a route name lives in exactly one
+place (issue #313 closed out the last three hand-rolled `lib/ui/sharing/`
+pushes — the Activity Feed action and Manage Guardians' Transfer Ownership
+and Notifications actions).

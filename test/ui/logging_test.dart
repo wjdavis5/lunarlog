@@ -33,7 +33,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
-    show kOfflineSaveConfirmationCopy;
+    show kOfflineSaveConfirmationCopy, shouldConfirmOfflineSave;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -2196,6 +2196,62 @@ void main() {
 
       expect(find.byKey(const ValueKey('offline-save-confirmation')),
           findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+      authController.dispose();
+      sync.dispose();
+      await auth.dispose();
+    });
+
+    testWidgets(
+        'a sync-error phase while signed in shows no confirmation when the '
+        'error is not a network failure (issue #313: an auth error looks '
+        'nothing like "saved, will sync when reachable")', (tester) async {
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1'),
+      );
+      final authController = AuthController(authService: auth);
+      final engine = FakeSyncEngine(
+        initial: const SyncSnapshot(
+          phase: SyncPhase.error,
+          lastError: SyncErrorKind.auth,
+        ),
+      );
+      final sync = SyncStatusController(engine: engine);
+
+      final (db, _, _) =
+          await pumpDaySheet(tester, sync: sync, auth: authController);
+
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing);
+      expect(
+        shouldConfirmOfflineSave(
+          snapshot: const SyncSnapshot(
+            phase: SyncPhase.error,
+            lastError: SyncErrorKind.auth,
+          ),
+          authState: AuthSessionState.signedIn,
+        ),
+        isFalse,
+        reason: 'an auth error is not "the device is offline"',
+      );
+      expect(
+        shouldConfirmOfflineSave(
+          snapshot: const SyncSnapshot(
+            phase: SyncPhase.error,
+            lastError: SyncErrorKind.other,
+          ),
+          authState: AuthSessionState.signedIn,
+        ),
+        isFalse,
+        reason: 'neither is a malformed-payload/apply failure',
+      );
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
