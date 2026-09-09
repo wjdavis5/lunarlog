@@ -101,6 +101,39 @@ List<String> weekdayHeaderLabels({
 /// one (R1); [kForecastHorizonMonths] in the forecast module covers it.
 const int kForwardMonthLimit = kForecastHorizonMonths;
 
+/// The entries stream's subscription window (issue #197, performance): the
+/// displayed month plus this many days behind and ahead, instead of the
+/// profile's full history. 45 days each way was chosen over a plain
+/// calendar-month margin because it comfortably covers episode-continuity
+/// rendering across a month boundary (the longest realistic cycle length
+/// plus a multi-day bleed can straddle two months) and the forecast bands'
+/// fixed PMS/cramps badge offsets near the edges of the displayed month —
+/// see [_MonthCalendarState._maybeRewatchEntriesFor] for when the
+/// subscription actually moves. Public so a widget test can assert against
+/// the exact bound this file computes ([calendarEntriesWindowFor]).
+const int kCalendarWindowLookbehindDays = 45;
+const int kCalendarWindowLookaheadDays = 45;
+
+/// The first civil date of [year]/[month].
+LocalDate _firstOfMonth(int year, int month) => LocalDate(year, month, 1);
+
+/// The last civil date of [year]/[month].
+LocalDate _lastOfMonth(int year, int month) {
+  final firstOfNext =
+      month == 12 ? LocalDate(year + 1, 1, 1) : LocalDate(year, month + 1, 1);
+  return firstOfNext.addDays(-1);
+}
+
+/// The entries-subscription window for the displayed month [year]/[month]
+/// (issue #197): [kCalendarWindowLookbehindDays] before its first day
+/// through [kCalendarWindowLookaheadDays] after its last, inclusive. Public
+/// and pure for direct testing, mirroring [dayCellSemanticLabel] and
+/// [canDrivePageController] elsewhere in this file.
+(LocalDate, LocalDate) calendarEntriesWindowFor(int year, int month) => (
+      _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
+      _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
+    );
+
 /// The [MediaQuery.textScalerOf] scale at and above which the legend strip
 /// starts collapsed by default (issue #312, large-text-budget item): past
 /// this scale the header/legend/layers stack above the single `Expanded`
@@ -367,9 +400,30 @@ class MonthCalendar extends StatefulWidget {
 
 class _MonthCalendarState extends State<MonthCalendar> {
   late DayEntriesRepository _repository;
-  late Stream<List<DayEntry>> _entriesStream;
   int _displayedYear = 1970;
   int _displayedMonth = 1;
+
+  /// The currently-subscribed window's day entries (review follow-up on
+  /// issue #197): kept in state via an explicit subscription rather than
+  /// read off a `StreamBuilder` snapshot, so a window crossing
+  /// (`_maybeRewatchEntriesFor` swapping in a new stream that has not
+  /// emitted yet) keeps rendering the *previous* window's entries — and so
+  /// the grid/`PageView` beneath them — instead of falling back to a
+  /// full-bleed spinner that would otherwise unmount the `PageView`
+  /// mid-swipe-animation. Null only before the very first emission ever,
+  /// and right after a profile switch (a genuinely different data set,
+  /// reset immediately like [_guardians] below rather than left showing
+  /// the old profile's days).
+  List<DayEntry>? _entries;
+  StreamSubscription<List<DayEntry>>? _entriesSub;
+
+  /// The inclusive range [_entries] is currently subscribed to (issue
+  /// #197) — null until the first [_maybeRewatchEntriesFor] call. Tracked
+  /// separately from `_displayed*` because the window only moves when the
+  /// displayed month falls outside it, not on every page change; see
+  /// [_maybeRewatchEntriesFor].
+  LocalDate? _entriesWindowFrom;
+  LocalDate? _entriesWindowTo;
 
   /// Attribution context (R12): the signed-in user and this profile's
   /// guardians, so the day sheet's badge can render "Logged by Dad" and
@@ -383,6 +437,18 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// ambient provider tree has them (omission-aware, matching the
   /// overview's numbers); null in local-only use, where the calendar
   /// derives from its own entry stream instead.
+  ///
+  /// Review follow-up on issue #197: that local derivation
+  /// (`build()`'s `_predictionStream == null` / `_historyStream == null`
+  /// branches, and `defaultLayerTags(entries)` below for the symptom-layer
+  /// default) now runs over [_entries] — the calendar's *windowed* list,
+  /// not full history — where it used to see the whole profile. In
+  /// production both services are always provided (`lib/app.dart` wires
+  /// both unconditionally), so this fallback is reachable only from a test
+  /// that mounts [MonthCalendar] without them (e.g.
+  /// `test/ui/calendar_navigation_test.dart`'s harness); see
+  /// `lib/ui/README.md`'s "Calendar windowed entries subscription" section
+  /// for the full note, including the `defaultLayerTags` behaviour change.
   CyclePredictionService? _predictionService;
   CycleHistoryService? _historyService;
   Stream<CyclePrediction>? _predictionStream;
@@ -469,7 +535,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
   void initState() {
     super.initState();
     _repository = context.read<DayEntriesRepository>();
-    _entriesStream = _repository.watchForProfile(widget.profileId);
     _predictionService = context.read<CyclePredictionService?>();
     _historyService = context.read<CycleHistoryService?>();
     _rewatchPrediction();
@@ -481,6 +546,9 @@ class _MonthCalendarState extends State<MonthCalendar> {
     }
     _watchGuardians();
     _resetToTodaysMonth();
+    // Issue #197: the first window is always a fresh subscription (no prior
+    // `_entriesWindowFrom`/`_entriesWindowTo` to already cover it).
+    _maybeRewatchEntriesFor(_displayedYear, _displayedMonth);
     _pageController = PageController(
       initialPage: _pageIndexFor(_displayedYear, _displayedMonth),
     );
@@ -523,10 +591,21 @@ class _MonthCalendarState extends State<MonthCalendar> {
   void didUpdateWidget(MonthCalendar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profileId != widget.profileId) {
-      _entriesStream = _repository.watchForProfile(widget.profileId);
       _rewatchPrediction();
       _watchGuardians();
       _resetToTodaysMonth();
+      // A different profile invalidates whatever window the old one's
+      // subscription covered — force a fresh subscription below rather
+      // than trusting the previous profile's now-irrelevant bounds. Reset
+      // immediately (not just on the new subscription's first tick), the
+      // same discipline [_watchGuardians] already applies, so a profile
+      // switch never keeps rendering the previous profile's days in the
+      // meantime — unlike a same-profile window crossing, this is a
+      // genuinely different data set, not a case [_entries] should bridge.
+      _entries = null;
+      _entriesWindowFrom = null;
+      _entriesWindowTo = null;
+      _maybeRewatchEntriesFor(_displayedYear, _displayedMonth);
       if (_pageController.hasClients) {
         _pageController.jumpToPage(
           _pageIndexFor(_displayedYear, _displayedMonth),
@@ -535,8 +614,47 @@ class _MonthCalendarState extends State<MonthCalendar> {
     }
   }
 
+  /// (Re)subscribes [_entries] to a window covering the displayed month
+  /// [year]/[month] only when the current subscription (if any) doesn't
+  /// already fully cover it (issue #197) — paging within an already-fetched
+  /// window must not force a new stream/query on every swipe, only a
+  /// genuine move past its edge should. On a rewatch the new window is
+  /// [calendarEntriesWindowFor] centered on [year]/[month], not a minimal
+  /// extension of the old one, so repeated one-month-at-a-time navigation
+  /// past the edge still only resubscribes occasionally rather than on
+  /// every step.
+  ///
+  /// Review follow-up: the old subscription is only cancelled here, not
+  /// unsubscribed-and-forgotten via a fresh `StreamBuilder(stream: ...)` —
+  /// [_entries] itself is left untouched until the new subscription's
+  /// first emission lands, so a window crossing keeps rendering the
+  /// previous window's entries in the meantime (see [_entries]'s own doc).
+  void _maybeRewatchEntriesFor(int year, int month) {
+    final firstOfMonth = _firstOfMonth(year, month);
+    final lastOfMonth = _lastOfMonth(year, month);
+    final from = _entriesWindowFrom;
+    final to = _entriesWindowTo;
+    final covered = from != null &&
+        to != null &&
+        !firstOfMonth.isBefore(from) &&
+        !lastOfMonth.isAfter(to);
+    if (covered) return;
+    final (newFrom, newTo) = calendarEntriesWindowFor(year, month);
+    _entriesWindowFrom = newFrom;
+    _entriesWindowTo = newTo;
+    _entriesSub?.cancel();
+    _entriesSub = _repository
+        .watchForProfile(widget.profileId, from: newFrom, to: newTo)
+        .listen((entries) {
+      if (!mounted) return;
+      setState(() => _entries = entries);
+    });
+  }
+
   @override
   void dispose() {
+    _entriesSub?.cancel();
+    _entriesSub = null;
     _guardiansSub?.cancel();
     _guardiansSub = null;
     _auth?.removeListener(_onAuthChanged);
@@ -587,6 +705,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     if (_isAnimatingToMonth) return;
     final (year, month) = _monthForPageIndex(pageIndex);
     if (year == _displayedYear && month == _displayedMonth) return;
+    _maybeRewatchEntriesFor(year, month);
     setState(() {
       _displayedYear = year;
       _displayedMonth = month;
@@ -623,6 +742,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         _pageController.jumpToPage(page);
       }
     }
+    _maybeRewatchEntriesFor(year, month);
     setState(() {
       _displayedYear = year;
       _displayedMonth = month;
@@ -729,45 +849,46 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final nextDisabled =
         _monthIndex(_displayedYear, _displayedMonth) >=
         _monthIndex(today.year, today.month) + kForwardMonthLimit;
-    return StreamBuilder<List<DayEntry>>(
-      stream: _entriesStream,
-      builder: (context, snapshot) {
-        final entries = snapshot.data;
-        if (entries == null) {
+    // Review follow-up on issue #197: reads [_entries] directly (kept
+    // across a window-crossing resubscribe by [_maybeRewatchEntriesFor])
+    // rather than a `StreamBuilder<List<DayEntry>>` snapshot — see
+    // [_entries]'s own doc for why a plain `StreamBuilder` here would risk
+    // a full-bleed spinner (and the `PageView` beneath it unmounting
+    // mid-swipe) every time the window moves.
+    final entries = _entries;
+    if (entries == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final byIso = {for (final entry in entries) entry.localDate.iso: entry};
+    return StreamBuilder<CyclePrediction?>(
+      stream: _predictionStream,
+      builder: (context, predictionSnapshot) {
+        final prediction = _predictionStream == null
+            ? computePredictionFromEntries(entries: entries, today: today)
+            : predictionSnapshot.data;
+        if (prediction == null) {
           return const Center(child: CircularProgressIndicator());
         }
-        final byIso = {for (final entry in entries) entry.localDate.iso: entry};
-        return StreamBuilder<CyclePrediction?>(
-          stream: _predictionStream,
-          builder: (context, predictionSnapshot) {
-            final prediction = _predictionStream == null
-                ? computePredictionFromEntries(entries: entries, today: today)
-                : predictionSnapshot.data;
-            if (prediction == null) {
+        return StreamBuilder<CycleHistoryView?>(
+          stream: _historyStream,
+          builder: (context, historySnapshot) {
+            final history = _historyStream == null
+                ? deriveCycleHistoryFromEntries(
+                    entries: entries,
+                    today: today,
+                  )
+                : historySnapshot.data;
+            if (history == null) {
               return const Center(child: CircularProgressIndicator());
             }
-            return StreamBuilder<CycleHistoryView?>(
-              stream: _historyStream,
-              builder: (context, historySnapshot) {
-                final history = _historyStream == null
-                    ? deriveCycleHistoryFromEntries(
-                        entries: entries,
-                        today: today,
-                      )
-                    : historySnapshot.data;
-                if (history == null) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                return _calendar(
-                  context,
-                  byIso: byIso,
-                  entries: entries,
-                  prediction: prediction,
-                  history: history,
-                  today: today,
-                  nextDisabled: nextDisabled,
-                );
-              },
+            return _calendar(
+              context,
+              byIso: byIso,
+              entries: entries,
+              prediction: prediction,
+              history: history,
+              today: today,
+              nextDisabled: nextDisabled,
             );
           },
         );
@@ -793,6 +914,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
         ? deriveForecast(prediction: prediction, history: history, today: today)
         : const <ForecastCycle>[];
     final forecastByIso = forecastDayCells(cycles: cycles, today: today);
+    // Review follow-up on issue #197: `entries` here is [_entries]'s
+    // windowed list (±45 days around the displayed month), not the
+    // profile's full history — the default layer selection now only
+    // ranks tags from within that window. Documented, not treated as a
+    // bug: `lib/ui/README.md`'s "Calendar windowed entries subscription"
+    // section covers why this is an accepted behaviour change rather than
+    // a full-history stream kept just for this.
     final activeLayers = _layersUserSet
         ? _activeLayers
         : {for (final tag in defaultLayerTags(entries)) tag};
