@@ -1149,7 +1149,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
       height: 6,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Theme.of(context).colorScheme.tertiary,
+        // The same token the legend's 'Symptom day' swatch draws (#176's
+        // symptomDot, solved for >= 3:1 against surface) so the legend keys
+        // the mark it actually explains (review finding on #191).
+        color: Theme.of(context).extension<LunarLogColors>()?.symptomDot ??
+            LunarLogColors.forColorScheme(Theme.of(context).colorScheme)
+                .symptomDot,
       ),
     );
   }
