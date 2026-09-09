@@ -201,8 +201,9 @@ void main() {
       expect(tomb.deletedAt, isNotNull);
       expect(tomb.note, isNull);
       expect(tomb.tags, isEmpty);
-      expect(tomb.flow, FlowLevel.heavy,
-          reason: 'flow is an enum, not content; only note/tags are cleared');
+      expect(tomb.flow, FlowLevel.none,
+          reason: 'issue #224: flow joins note/tags as cleared payload - a '
+              'tombstone must not keep the pre-deletion flow value');
 
       await storage.softDeleteProfile(p.id);
       final pt = await profileById(p.id);
@@ -429,6 +430,9 @@ void main() {
       expect(loser.deletedAt, newer);
       expect(loser.updatedAt, newer);
       expect(loser.note, isNull);
+      expect(loser.flow, FlowLevel.none,
+          reason: 'issue #224: the same-date resolver clears flow on the '
+              'local-loser branch too, not only note/tags');
       expect(loser.dirty, isTrue, reason: 'a local loser must be pushed');
       expect(loser.localRev, local.localRev + 1);
 
@@ -455,6 +459,10 @@ void main() {
       expect(remoteLoser.deletedAt, revived.updatedAt);
       expect(remoteLoser.updatedAt, revived.updatedAt);
       expect(remoteLoser.dirty, isFalse);
+      expect(remoteLoser.flow, FlowLevel.none,
+          reason: 'issue #224: the same-date resolver clears flow on the '
+              'remote-loser branch too — remoteEntry() defaulted this row '
+              'to FlowLevel.medium, which must not survive as a tombstone');
 
       // Equal timestamps: smaller ULID wins.
       const smallest = '01J00000000000000000000000';
@@ -513,6 +521,9 @@ void main() {
       expect(loser.deletedAt, isNotNull, reason: 'the remote loser is a tombstone');
       expect(loser.tags, isEmpty, reason: 'R12: tombstones are payload-free');
       expect(loser.note, isNull);
+      expect(loser.flow, FlowLevel.none,
+          reason: 'issue #224: flow is part of the R12 payload-free '
+              'guarantee too');
     });
 
     test('a remote row that wins the same-date rule writes the union onto '
@@ -552,6 +563,9 @@ void main() {
       expect(loser.deletedAt, newer);
       expect(loser.tags, isEmpty);
       expect(loser.note, isNull);
+      expect(loser.flow, FlowLevel.none,
+          reason: 'issue #224: flow is part of the R12 payload-free '
+              'guarantee too');
       expect(loser.dirty, isTrue, reason: 'a local loser must be pushed');
     });
 
@@ -580,6 +594,12 @@ void main() {
       final tomb = await entryById(p.id, remoteId);
       expect(tomb.deletedAt, t);
       expect(tomb.tags, isEmpty);
+      expect(tomb.flow, FlowLevel.none,
+          reason: 'issue #224: a row that arrives already tombstoned is '
+              'defensively cleared to FlowLevel.none too, even though this '
+              'fixture still sends the remoteEntry() default '
+              'FlowLevel.medium - the client does not merely trust the '
+              'server to have cleared it');
     });
 
     test('a same-id remote row that drops a tag still drops it locally - no '

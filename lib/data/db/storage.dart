@@ -19,8 +19,8 @@
 /// * Every local write sets `dirty = true` and bumps `local_rev`; remote
 ///   applies write `dirty = false` and leave `local_rev` alone.
 /// * Deletes are tombstones: `deleted_at` is set, `updated_at` bumped, the
-///   payload cleared (`note = null`, `tags = []`, `display_name = ''`); rows
-///   are never removed.
+///   payload cleared (`flow = none`, `note = null`, `tags = []`,
+///   `display_name = ''`); rows are never removed.
 /// * At most one *live* day entry per (profile, date): local writes update
 ///   the live row in place, remote applies run the same-date rule and
 ///   tombstone the loser with the winner's timestamp.
@@ -322,9 +322,9 @@ class LunarLogStorage {
   }
 
   /// Tombstones the live entry for (profileId, localDate), if any, clearing
-  /// its payload (`note = null`, `tags = []`) and marking it dirty. Does
-  /// nothing when there is no live entry (idempotent; never bumps
-  /// `updated_at` without a change).
+  /// its payload (`flow = none`, `note = null`, `tags = []`) and marking it
+  /// dirty. Does nothing when there is no live entry (idempotent; never
+  /// bumps `updated_at` without a change).
   Future<void> softDeleteDayEntry({
     required String profileId,
     required String localDate,
@@ -336,6 +336,7 @@ class LunarLogStorage {
       final rowId = live.id;
       await (db.update(db.dayEntries)..where((t) => t.id.equals(rowId))).write(
         DayEntriesCompanion(
+          flow: const Value(FlowLevel.none),
           note: const Value(null),
           tags: const Value(<String>[]),
           updatedAt: Value(at),
@@ -774,9 +775,11 @@ class LunarLogStorage {
 
   /// Revocation wipe (R5): tombstones the shared profile and every live day
   /// entry of it at the server's revocation timestamp. Tombstones carry no
-  /// payload and are marked not dirty - the server already knows, so the
-  /// wipe must never be pushed back. Rows with unpushed local edits are
-  /// wiped too: once revoked, the server rejects those pushes regardless.
+  /// payload (issue #224: `flow` is cleared alongside `note`/`tags`, same as
+  /// every other tombstone-producing path) and are marked not dirty - the
+  /// server already knows, so the wipe must never be pushed back. Rows with
+  /// unpushed local edits are wiped too: once revoked, the server rejects
+  /// those pushes regardless.
   ///
   /// `updated_at` is deliberately left untouched (finding #9): neither
   /// `revoke_guardian` nor `accept_guardian_invitation` bumps the server's
@@ -793,6 +796,7 @@ class LunarLogStorage {
           ..where((t) =>
               t.profileId.equals(profileId) & t.deletedAt.isNull()))
         .write(DayEntriesCompanion(
+          flow: const Value(FlowLevel.none),
           note: const Value(null),
           tags: const Value(<String>[]),
           deletedAt: Value(stamp),
@@ -843,7 +847,7 @@ class LunarLogStorage {
             profileId: remote.profileId,
             localDate: remote.localDate,
             tz: remote.tz,
-            flow: remote.flow,
+            flow: _dayEntryFlow(tombstone, remote),
             tags: Value(_dayEntryTags(tombstone, tags)),
             note: Value(_dayEntryNote(tombstone, remote)),
             updatedAt: updatedAt,
@@ -860,7 +864,7 @@ class LunarLogStorage {
       profileId: Value(remote.profileId),
       localDate: Value(remote.localDate),
       tz: Value(remote.tz),
-      flow: Value(remote.flow),
+      flow: Value(_dayEntryFlow(tombstone, remote)),
       tags: Value(_dayEntryTags(tombstone, tags)),
       note: Value(_dayEntryNote(tombstone, remote)),
       updatedAt: Value(updatedAt),
@@ -955,7 +959,11 @@ class LunarLogStorage {
   /// [dirty] is true so the client-computed merge is pushed to the server
   /// (matching how the sibling branch marks its local survivor dirty). The
   /// `tags` value is meaningless when `deleted_at` is non-null, since
-  /// tombstones are always written payload-free (R12) regardless.
+  /// tombstones are always written payload-free (R12) regardless — issue
+  /// #224: `flow` is included in that payload-free guarantee too, cleared
+  /// by the local-loser branch's own UPDATE below and by [_applyDayEntry]'s
+  /// final write for a remote loser (both keyed off `tombstone`, not off
+  /// this method's `tags` return value).
   ///
   /// Issue #124 (AC4): a branch that actually discards a `note`/`flow`
   /// value — the loser's copy differed from the winner's — also records a
@@ -994,6 +1002,7 @@ class LunarLogStorage {
         tags = mergeTags(tags, other.tags);
         await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
             .write(DayEntriesCompanion(
+          flow: const Value(FlowLevel.none),
           note: const Value(null),
           tags: const Value(<String>[]),
           updatedAt: Value(updatedAt),
@@ -1073,6 +1082,12 @@ class LunarLogStorage {
     ));
     await setSetting(key: key, value: encodeMergeEvents(events), updatedAt: stamp);
   }
+
+  /// The `flow` to write for a day entry row: cleared to [FlowLevel.none]
+  /// for a tombstone (issue #224), whether [remote] already arrived
+  /// tombstoned or [_resolveSameDateConflicts] made it one locally.
+  FlowLevel _dayEntryFlow(bool tombstone, RemoteDayEntryRow remote) =>
+      tombstone ? FlowLevel.none : remote.flow;
 
   /// The `tags` to write for a day entry row: cleared for a tombstone.
   List<String> _dayEntryTags(bool tombstone, List<String> tags) =>

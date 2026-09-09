@@ -408,6 +408,32 @@ void main() {
       expect(tombstone.updatedAt.isAfter(updatedAtBefore), isTrue);
     });
 
+    test(
+        'issue #224: soft delete clears flow to none alongside note and '
+        'tags — a tombstone carries no payload, the most sensitive field '
+        'included', () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-03-04',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+          tags: const ['cramps'],
+          note: 'a heavy day');
+
+      await storage.softDeleteDayEntry(
+          profileId: profile.id, localDate: '2026-03-04');
+
+      final tombstone = (await storage.getDayEntries(
+              profileId: profile.id, includeTombstones: true))
+          .single;
+      expect(tombstone.deletedAt, isNotNull);
+      expect(tombstone.flow, FlowLevel.none);
+      expect(tombstone.note, isNull);
+      expect(tombstone.tags, isEmpty);
+    });
+
     test('R3: per-profile queries never co-mingle entries', () async {
       final a = await storage.upsertProfile(displayName: 'A', isMinor: true);
       final b = await storage.upsertProfile(displayName: 'B', isMinor: false);
@@ -993,6 +1019,12 @@ void main() {
           profileId: profile.id, includeTombstones: true);
       expect(entryTombstones, isNotEmpty);
       expect(entryTombstones.every((e) => e.deletedAt != null), isTrue);
+      // issue #224: the revocation wipe is a tombstone like any other - it
+      // must carry no payload, flow included, not just note/tags.
+      expect(
+        entryTombstones.every((e) => e.flow == FlowLevel.none),
+        isTrue,
+      );
       // The membership row itself is stored (status revoked).
       expect(
         (await storage.getGuardiansForProfile(profile.id))
