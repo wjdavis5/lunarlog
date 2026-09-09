@@ -1,4 +1,4 @@
--- Migration: 20260909210000_profile_tracking_preferences.sql
+-- Migration: 20260909220000_profile_tracking_preferences.sql
 -- Issue #259 (P1, epic:tracking-model): per-profile tracking preferences
 -- -- an enabled-category set plus a sort order, stored alongside the
 -- profile and synced, so co-guardians always see the same curated day
@@ -53,17 +53,26 @@
 --      grant (KTD15); the table-level select grant already covers
 --      reading it.
 --   3. `sync_push`: create-or-replaced from its latest body
---      (20260909160000_pms_day_marker.sql, the current tip -- this file
---      sorts after it per Migration Flow item 7), copied verbatim with
---      only the profiles section touched: the key joins the allowlist,
---      is parsed with the `nullif(..., 'null'::jsonb)` collapse
---      (observations.raw's lesson), round-tripped on the INSERT path,
---      and written on the UPDATE path behind the usual `v_row ? 'key'`
---      containment guard. Same 7-argument signature, so CREATE OR
---      REPLACE works in place -- exactly one sync_push afterwards.
+--      (20260909210000_profile_transferred_to_user_id.sql, the current
+--      tip -- this file sorts after it per Migration Flow item 7),
+--      copied verbatim with only the profiles section touched: the key
+--      joins the allowlist, is parsed with the `nullif(...,
+--      'null'::jsonb)` collapse (observations.raw's lesson),
+--      round-tripped on the INSERT path, and written on the UPDATE path
+--      behind the usual `v_row ? 'key'` containment guard. #296's
+--      transferred_to_user_id tolerated-but-never-read handling is kept
+--      exactly as that migration shipped it. Same 7-argument signature,
+--      so CREATE OR REPLACE works in place -- exactly one sync_push
+--      afterwards.
 --
--- Filename ordering (AGENTS.md Migration Flow step 7): 20260909210000
--- sorts after main's tip, 20260909200000_prediction_connections.sql.
+-- Filename ordering (AGENTS.md Migration Flow step 7): originally
+-- authored as 20260909210000_profile_tracking_preferences.sql in
+-- parallel with #376's migration of the same timestamp; renamed to
+-- 20260909220000 during the #378 merge integration so it sorts after
+-- main's tip, 20260909210000_profile_transferred_to_user_id.sql (both
+-- files re-emit sync_push from different bases, so this file's body is
+-- carried forward from #376's, not from 20260909160000). The two touch
+-- disjoint columns and have no interaction.
 
 -- ---------------------------------------------------------------------------
 -- 1. New column + shape CHECK
@@ -112,9 +121,11 @@ grant update (tracking_preferences) on table public.profiles to authenticated;
 -- ---------------------------------------------------------------------------
 -- 3. sync_push: extend the profile key allowlist and the insert/update
 -- paths. Full function body carried forward verbatim from
--- 20260909160000_pms_day_marker.sql (the current tip) other than the
--- additions called out inline below; same 7-argument signature, so a
--- plain create-or-replace applies (no overload fork).
+-- 20260909210000_profile_transferred_to_user_id.sql (the current tip,
+-- whose own carried sections - #296's transferred_to_user_id
+-- tolerated-but-never-read key included - are kept exactly as shipped)
+-- other than the additions called out inline below; same 7-argument
+-- signature, so a plain create-or-replace applies (no overload fork).
 -- ---------------------------------------------------------------------------
 
 create or replace function public.sync_push(
@@ -149,7 +160,12 @@ declare
     -- text -- the taxonomy is client-owned and grows)
     'tracking_preferences',
     -- tolerated but never read
-    'user_id', 'server_version', 'transferred_at'];
+    'user_id', 'server_version', 'transferred_at',
+    -- #296: same treatment as transferred_at - ownership state written
+    -- only by accept_ownership_transfer, admitted only so a client that
+    -- pulls the column back down and echoes it is not rejected for
+    -- carrying an "unknown key".
+    'transferred_to_user_id'];
   c_day_entry_keys constant text[] := array[
     'id', 'profile_id', 'local_date', 'tz', 'flow', 'tags', 'note',
     -- Issue #220: the first-class PMS marker.
@@ -1653,8 +1669,7 @@ end;
 $$;
 
 comment on function public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb) is
-  'Batch upsert of profiles, day entries, then observations under guardian role permissions with authoritative attribution stamping. U1: profiles carries birth_year/relationship through this path; transferred_at is tolerated-but-never-read. #131: profiles carries mode through this path. Same-date day_entries collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins - except that a tombstoned row always has flow forced to none, same as note/tags (issue #224). Issue #220: day_entries also carries the first-class pms marker through this path - last-writer-wins like flow/note (a single boolean, nothing to union), written on update only when the payload carries the pms key (the v_row ? ''key'' containment guard, so a pre-#220 client never clears a stored marker), and forced to false on every tombstone (day_entries_tombstone_pms_check is the structural backstop). Observations: a brand-new row colliding with an already-live sibling on (profile_id, local_date, category, code) resolves head-to-head (newer updated_at wins, ulid tiebreak) with the loser becoming a payload-free tombstone - the child-table analogue of the day_entries tag union, since there is no array to union here (see 20260908160000_observations.sql''s header). A per-day (profile_id, local_date) cap of 200 live observations is enforced in this RPC, not a CHECK. p_observations defaults to an empty array so a pre-#240 2-argument call keeps working unchanged. Issue #159: day_entries now carries source/source_id/import_id (client-authored provenance, closed-set source check, partial-unique (profile_id, source, source_id) index for import dedup) through this path exactly like every other day_entries column, with a v_row ? ''key'' containment guard on all three so an old client omitting them never nulls an already-stored value (the U1/#131 pattern); observations gains import_id with the same containment guard, and source_id now gets it too (closing a pre-existing #240 gap); source itself now gets the same guard as day_entries.source (review finding: an omitted key coalescing to ''manual'' is not distinguishable from an explicit ''manual'' without one). Provenance is never cleared on a tombstone on either table (source_id/import_id survive a day_entries or observations delete, reversing #240''s original source_id-clearing on an observations tombstone) so a deleted row stays recognisable to a future re-import. Issue #180 review fix: v_local_date is now derived from observed_at/tz (when observed_at is present) immediately after v_tz is resolved, ahead of the stored-row lookup, the same-date (category, code) collision dedup, and the per-day cap, so those checks -- and v_obs_check_collision''s own date-move detection -- always run against the same local_date the observations_derive_local_date trigger will independently recompute; previously they ran against the stale client-supplied local_date key, letting a push (or an observed_at-only update) land on a different day than what was checked. Issue #188: p_profile_modes and p_cycle_overrides (both defaulting to empty arrays so every older-arity call keeps working) carry the life-stage mode row (one per profile, no tombstone, strict LWW with every optional column guarded by the same v_row ? ''key'' containment check so an older client never clobbers birth-control state or health_sync_consent) and manual cycle corrections (per-id LWW with #224-style payload-free tombstones; cycle_overrides_tombstone_payload_check is the structural backstop). Both new sections enforce the issue''s write ladder: any accepted guardian reads, only primary_guardian/co_parent writes. A mode switch never touches day_entries/observations. Issue #128: p_care_notes/p_visit_prep_items carry the per-profile care notes and visit-prep checklist (per-id LWW with #224-style payload-free tombstones; care_notes_tombstone_payload_check/visit_prep_items_tombstone_payload_check are the structural backstops), both under the day_entries write ladder (any accepted guardian reads; primary_guardian/co_parent/caregiver writes; viewer rejected). Issue #259: profiles also carries the tracking_preferences document (shape-checked by profiles_tracking_preferences_check, category keys inside it free text - the taxonomy is client-owned) through the profile path with the usual v_row ? ''key'' containment guard, so a pre-#259 client never clobbers a stored document; the client emits the key only when it holds one, so a device that has not pulled yet cannot wipe a co-guardian''s curation either. Curation is presentation only: it changes no role gate here and deletes no logged data.';
+  'Batch upsert of profiles, day entries, then observations under guardian role permissions with authoritative attribution stamping. U1: profiles carries birth_year/relationship through this path; transferred_at is tolerated-but-never-read. #296: transferred_to_user_id joins it as tolerated-but-never-read (ownership state, written only by accept_ownership_transfer). #131: profiles carries mode through this path. Same-date day_entries collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins - except that a tombstoned row always has flow forced to none, same as note/tags (issue #224). Issue #220: day_entries also carries the first-class pms marker through this path - last-writer-wins like flow/note (a single boolean, nothing to union), written on update only when the payload carries the pms key (the v_row ? ''key'' containment guard, so a pre-#220 client never clears a stored marker), and forced to false on every tombstone (day_entries_tombstone_pms_check is the structural backstop). Observations: a brand-new row colliding with an already-live sibling on (profile_id, local_date, category, code) resolves head-to-head (newer updated_at wins, ulid tiebreak) with the loser becoming a payload-free tombstone - the child-table analogue of the day_entries tag union, since there is no array to union here (see 20260908160000_observations.sql''s header). A per-day (profile_id, local_date) cap of 200 live observations is enforced in this RPC, not a CHECK. p_observations defaults to an empty array so a pre-#240 2-argument call keeps working unchanged. Issue #159: day_entries now carries source/source_id/import_id (client-authored provenance, closed-set source check, partial-unique (profile_id, source, source_id) index for import dedup) through this path exactly like every other day_entries column, with a v_row ? ''key'' containment guard on all three so an old client omitting them never nulls an already-stored value (the U1/#131 pattern); observations gains import_id with the same containment guard, and source_id now gets it too (closing a pre-existing #240 gap); source itself now gets the same guard as day_entries.source (review finding: an omitted key coalescing to ''manual'' is not distinguishable from an explicit ''manual'' without one). Provenance is never cleared on a tombstone on either table (source_id/import_id survive a day_entries or observations delete, reversing #240''s original source_id-clearing on an observations tombstone) so a deleted row stays recognisable to a future re-import. Issue #180 review fix: v_local_date is now derived from observed_at/tz (when observed_at is present) immediately after v_tz is resolved, ahead of the stored-row lookup, the same-date (category, code) collision dedup, and the per-day cap, so those checks -- and v_obs_check_collision''s own date-move detection -- always run against the same local_date the observations_derive_local_date trigger will independently recompute; previously they ran against the stale client-supplied local_date key, letting a push (or an observed_at-only update) land on a different day than what was checked. Issue #188: p_profile_modes and p_cycle_overrides (both defaulting to empty arrays so every older-arity call keeps working) carry the life-stage mode row (one per profile, no tombstone, strict LWW with every optional column guarded by the same v_row ? ''key'' containment check so an older client never clobbers birth-control state or health_sync_consent) and manual cycle corrections (per-id LWW with #224-style payload-free tombstones; cycle_overrides_tombstone_payload_check is the structural backstop). Both new sections enforce the issue''s write ladder: any accepted guardian reads, only primary_guardian/co_parent writes. A mode switch never touches day_entries/observations. Issue #128: p_care_notes/p_visit_prep_items carry the per-profile care notes and visit-prep checklist (per-id LWW with #224-style payload-free tombstones; care_notes_tombstone_payload_check/visit_prep_items_tombstone_payload_check are the structural backstops), both under the day_entries write ladder (any accepted guardian reads; primary_guardian/co_parent/caregiver writes; viewer rejected). Issue #259: profiles also carries the tracking_preferences document (shape-checked by profiles_tracking_preferences_check, category keys inside it free text - the taxonomy is client-owned) through the profile path with the usual v_row ? ''key'' containment guard, so a pre-#259 client never clobbers a stored document; the client emits the key only when it holds one, so a device that has not pulled yet cannot wipe a co-guardian''s curation either. Curation is presentation only: it changes no role gate here and deletes no logged data.';
 
 revoke execute on function public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb) from public, anon;
 grant execute on function public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb) to authenticated;
-
