@@ -398,6 +398,91 @@ CyclePrediction computePrediction({
   }
 
   final starts = [for (final episode in sorted) episode.start];
+  final windows = _recentValidCycles(starts, omittedCycleStarts);
+
+  if (windows.usableLengths.length < kMinCompletedValidCycles) {
+    return NotEnoughHistory(
+      episodeCount: sorted.length,
+      completedCycleCount: windows.lengths.length,
+      validCycleCount: windows.validLengths.length,
+    );
+  }
+
+  final lastStart = starts.last;
+  final openDays = today.difference(lastStart);
+  if (openDays > kMaxOpenCycleDays) {
+    return PausedAwaitingNextPeriod(today: today, lastEpisodeStart: lastStart);
+  }
+
+  final estimate = _estimateRange(
+    usableLengths: windows.usableLengths,
+    lastStart: lastStart,
+    omittedCycleStarts: omittedCycleStarts,
+  );
+  final spreadAndTier = _spreadAndTier(
+    usableLengths: windows.usableLengths,
+    recentLengths: windows.recentLengths,
+  );
+  final periodLength = _meanPeriodLength(
+    sorted: sorted,
+    omittedCycleStarts: omittedCycleStarts,
+    meanCycleDays: estimate.meanDays,
+  );
+  final forecast = _buildForecast(
+    firstStart: estimate.firstEstimateStart,
+    meanCycleDays: estimate.meanDays,
+    periodLengthDays: periodLength.periodLengthDays,
+    baseTier: spreadAndTier.tier,
+    baseSpreadDays: spreadAndTier.spreadDays,
+  );
+
+  return ActivePrediction(
+    today: today,
+    lastEpisodeStart: lastStart,
+    estimatedNextStart: forecast.first.start,
+    averagedCycleLengths: List.unmodifiable(windows.usableLengths),
+    meanCycleLengthDays: estimate.mean,
+    cycleDay: today.difference(lastStart) + 1,
+    duringEpisode: sorted.any((episode) => episode.contains(today)),
+    completedCycleCount: windows.lengths.length,
+    validCycleCount: windows.validLengths.length,
+    meanPeriodLengthDays: periodLength.meanPeriodLengthDays,
+    spreadDays: spreadAndTier.spreadDays,
+    tier: spreadAndTier.tier,
+    forecast: forecast,
+  );
+}
+
+/// Holds the three windows [computePrediction] derives from the raw
+/// chronological cycle-length list before it estimates anything (issue
+/// #213 split — CRAP gate): [lengths] is every completed cycle (valid or
+/// not, for the history-count stats), [validLengths] is [lengths] filtered
+/// to the 15–60 window (also stats-only), and [usableLengths] is the
+/// recency-bounded, validity-and-omission-filtered list the estimate
+/// itself is built from.
+class _CycleWindows {
+  const _CycleWindows({
+    required this.lengths,
+    required this.validLengths,
+    required this.recentLengths,
+    required this.usableLengths,
+  });
+
+  final List<int> lengths;
+  final List<int> validLengths;
+  final List<int> recentLengths;
+  final List<int> usableLengths;
+}
+
+/// Derives [_CycleWindows] from the chronological episode [starts] (A2-13):
+/// pairwise cycle lengths, then the recency bound applied *before* validity
+/// filtering, then validity-and-omission filtering within that recency
+/// window. See the module doc and [kRecencyWindowCycles] for why this
+/// ordering matters.
+_CycleWindows _recentValidCycles(
+  List<LocalDate> starts,
+  Set<LocalDate> omittedCycleStarts,
+) {
   final lengths = <int>[
     for (var i = 1; i < starts.length; i++)
       starts[i].difference(starts[i - 1]),
@@ -425,20 +510,34 @@ CyclePrediction computePrediction({
         recentLengths[i],
   ];
 
-  if (usableLengths.length < kMinCompletedValidCycles) {
-    return NotEnoughHistory(
-      episodeCount: sorted.length,
-      completedCycleCount: lengths.length,
-      validCycleCount: validLengths.length,
-    );
-  }
+  return _CycleWindows(
+    lengths: lengths,
+    validLengths: validLengths,
+    recentLengths: recentLengths,
+    usableLengths: usableLengths,
+  );
+}
 
-  final lastStart = starts.last;
-  final openDays = today.difference(lastStart);
-  if (openDays > kMaxOpenCycleDays) {
-    return PausedAwaitingNextPeriod(today: today, lastEpisodeStart: lastStart);
-  }
+/// The mean cycle length (over [_CycleWindows.usableLengths]) and the
+/// estimated start of the next cycle, including the "skip this cycle"
+/// advance (issue #213 split).
+class _CycleLengthEstimate {
+  const _CycleLengthEstimate({
+    required this.mean,
+    required this.meanDays,
+    required this.firstEstimateStart,
+  });
 
+  final double mean;
+  final int meanDays;
+  final LocalDate firstEstimateStart;
+}
+
+_CycleLengthEstimate _estimateRange({
+  required List<int> usableLengths,
+  required LocalDate lastStart,
+  required Set<LocalDate> omittedCycleStarts,
+}) {
   // Issue #213 cheap fix: this used to re-truncate to kPredictionWindowCycles
   // here, but that branch was dead — usableLengths is already bounded to at
   // most kRecencyWindowCycles entries by the recency window above, and
@@ -446,12 +545,11 @@ CyclePrediction computePrediction({
   // never be longer than kPredictionWindowCycles by the time it gets here.
   // kPredictionWindowCycles still names the forecast's own cycle count
   // (_buildForecast, below) — only the redundant second truncation is gone.
-  final averaged = usableLengths;
   var total = 0;
-  for (final length in averaged) {
+  for (final length in usableLengths) {
     total += length;
   }
-  final mean = total / averaged.length;
+  final mean = total / usableLengths.length;
   final meanDays = mean.round();
   // A skipped open cycle ("skip this cycle", R6) advances the estimate
   // one averaged cycle: the skipped cycle is expected to run a mean length.
@@ -459,7 +557,31 @@ CyclePrediction computePrediction({
       ? meanDays * kSkipAdvanceCycles
       : 0;
   final firstEstimateStart = lastStart.addDays(meanDays + skipAdvanceDays);
+  return _CycleLengthEstimate(
+    mean: mean,
+    meanDays: meanDays,
+    firstEstimateStart: firstEstimateStart,
+  );
+}
 
+/// The 6-cycle spread metric and derived confidence tier (issue #213,
+/// item 2/3 — split out of `computePrediction` for the CRAP gate).
+class _SpreadAndTier {
+  const _SpreadAndTier({
+    required this.averageWindow,
+    required this.spreadDays,
+    required this.tier,
+  });
+
+  final List<int> averageWindow;
+  final double spreadDays;
+  final CycleConfidence tier;
+}
+
+_SpreadAndTier _spreadAndTier({
+  required List<int> usableLengths,
+  required List<int> recentLengths,
+}) {
   // Issue #213, item 2/3: the 6-cycle average window feeds the spread
   // metric, the confidence tier, and the period-length average — distinct
   // from the (up to 12-cycle) window that feeds the estimate itself.
@@ -484,7 +606,31 @@ CyclePrediction computePrediction({
     spreadDays: spreadDays,
     validRatio: validRatio,
   );
+  return _SpreadAndTier(
+    averageWindow: averageWindow,
+    spreadDays: spreadDays,
+    tier: tier,
+  );
+}
 
+/// The 6-episode period-length average and the (clamped) length fed to the
+/// forecast (issue #213, item 3 — split out of `computePrediction` for the
+/// CRAP gate).
+class _MeanPeriodLength {
+  const _MeanPeriodLength({
+    required this.meanPeriodLengthDays,
+    required this.periodLengthDays,
+  });
+
+  final double meanPeriodLengthDays;
+  final int periodLengthDays;
+}
+
+_MeanPeriodLength _meanPeriodLength({
+  required List<Episode> sorted,
+  required Set<LocalDate> omittedCycleStarts,
+  required int meanCycleDays,
+}) {
   final recentEpisodesOffset =
       sorted.length > kRecencyWindowCycles + 1
           ? sorted.length - (kRecencyWindowCycles + 1)
@@ -508,32 +654,13 @@ CyclePrediction computePrediction({
   // data" if that ever changed. kDefaultPeriodLengthDays names the
   // fallback honestly instead (mirrors forecast.dart's own
   // kDefaultPredictedPeriodDays).
-  final maxPeriodLengthDays = meanDays <= 0 ? 1 : meanDays;
+  final maxPeriodLengthDays = meanCycleDays <= 0 ? 1 : meanCycleDays;
   final periodLengthDays = periodWindow.isEmpty
       ? kDefaultPeriodLengthDays.clamp(1, maxPeriodLengthDays)
       : meanPeriodLengthDays.round().clamp(1, maxPeriodLengthDays);
-  final forecast = _buildForecast(
-    firstStart: firstEstimateStart,
-    meanCycleDays: meanDays,
-    periodLengthDays: periodLengthDays,
-    baseTier: tier,
-    baseSpreadDays: spreadDays,
-  );
-
-  return ActivePrediction(
-    today: today,
-    lastEpisodeStart: lastStart,
-    estimatedNextStart: forecast.first.start,
-    averagedCycleLengths: List.unmodifiable(averaged),
-    meanCycleLengthDays: mean,
-    cycleDay: today.difference(lastStart) + 1,
-    duringEpisode: sorted.any((episode) => episode.contains(today)),
-    completedCycleCount: lengths.length,
-    validCycleCount: validLengths.length,
+  return _MeanPeriodLength(
     meanPeriodLengthDays: meanPeriodLengthDays,
-    spreadDays: spreadDays,
-    tier: tier,
-    forecast: forecast,
+    periodLengthDays: periodLengthDays,
   );
 }
 
