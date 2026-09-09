@@ -154,6 +154,22 @@ class Profiles extends Table {
   IntColumn get typicalPeriodLengthDays =>
       integer().named('typical_period_length_days').nullable()();
 
+  /// Per-profile BBT display unit (Issue #255), mirrored by
+  /// `domain.BbtUnit` and the server's `profiles_bbt_unit_check` CHECK
+  /// (`celsius|fahrenheit`). Non-null, defaulting to `celsius`; an
+  /// unrecognised value decodes to `celsius` rather than throwing (see
+  /// `row_codec.dart`). Presentation only — a stored `observations`
+  /// temperature always keeps the unit it was entered/imported in
+  /// (`observations.unit`); this decides only how it renders.
+  TextColumn get bbtUnit =>
+      text().named('bbt_unit').withDefault(const Constant('celsius'))();
+
+  /// Per-profile weight display unit (Issue #255), mirrored by
+  /// `domain.WeightUnit` and the server's `profiles_weight_unit_check`
+  /// CHECK (`kg|lb`). Same contract as [bbtUnit].
+  TextColumn get weightUnit =>
+      text().named('weight_unit').withDefault(const Constant('kg'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

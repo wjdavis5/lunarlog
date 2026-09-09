@@ -1,0 +1,6 @@
+[
+  {"date": "2026-05-01", "type": "weight", "value": {"kilograms": 61.2}},
+  {"date": "2026-05-02", "type": "weight", "value": {"pounds": 134.9}},
+  {"date": "2026-05-03", "type": "weight", "value": {"option": "61"}},
+  {"date": "2026-05-04", "type": "weight", "value": 61.2}
+]
