@@ -60,6 +60,14 @@
 	<!-- U7: why the app requests Face ID (device-credential gate). -->
 	<key>NSFaceIDUsageDescription</key>
 	<string>Lunarlog uses Face ID to unlock your data.</string>
+	<!-- Issue #156: HealthKit platform plumbing. No HealthKit call site
+	     exists yet (that lands with #173, HS-4); these strings are required
+	     by Apple before the app can request the entitlement's authorization
+	     at all, and must already describe the one-profile-at-a-time design. -->
+	<key>NSHealthShareUsageDescription</key>
+	<string>lunarlog can write the bound profile's period and symptom data to Apple Health, and read what Apple Health holds, only for the one profile you choose in Settings.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>lunarlog can write the bound profile's period and symptom data to Apple Health, and read what Apple Health holds, only for the one profile you choose in Settings.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

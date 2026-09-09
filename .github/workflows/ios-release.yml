@@ -339,11 +339,8 @@ jobs:
             --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
             --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
 
-      - name: Install CocoaPods dependencies (if present)
-        run: |
-          if [ -f ios/Podfile ]; then
-            cd ios && pod install && cd ..
-          fi
+      - name: Install CocoaPods dependencies
+        run: cd ios && pod install && cd ..
 
       - name: Archive
         run: |
