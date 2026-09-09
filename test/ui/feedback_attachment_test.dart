@@ -17,6 +17,10 @@ class FakeAttachmentSource implements AttachmentSource {
   int pickCalls = 0;
   FeedbackAttachment? nextResult;
 
+  /// When set, [pickImage] throws this instead of returning [nextResult] —
+  /// e.g. [AttachmentTooLargeException], the pre-read size rejection (#207).
+  Object? throwOnPick;
+
   /// When set, [pickImage] doesn't return until this completes, so a test
   /// can act (fire a lifecycle event, expire the gate's system-UI deadline)
   /// while the platform picker is still "open".
@@ -27,6 +31,8 @@ class FakeAttachmentSource implements AttachmentSource {
     pickCalls++;
     final held = hold;
     if (held != null) return held.future;
+    final thrown = throwOnPick;
+    if (thrown != null) throw thrown;
     return nextResult;
   }
 }
@@ -161,6 +167,24 @@ void main() {
     expect(find.byKey(const ValueKey('feedback-attachment-error')), findsOneWidget);
     expect(find.textContaining('not supported'), findsOneWidget);
     expect(received, isNull);
+  });
+
+  testWidgets('a source that rejects the pick before reading it (too large, #207) '
+      'shows the recoverable too-large copy', (tester) async {
+    final source = FakeAttachmentSource()..throwOnPick = const AttachmentTooLargeException();
+    FeedbackAttachment? received;
+    await pumpField(tester, source, (a) => received = a);
+
+    await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
+    await tester.pumpAndSettle();
+
+    expect(source.pickCalls, 1);
+    expect(find.byKey(const ValueKey('feedback-attachment-error')), findsOneWidget);
+    expect(find.textContaining('too large'), findsOneWidget);
+    expect(received, isNull);
+    expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsNothing);
   });
 
   testWidgets('a valid selection shows filename and size and passes the attachment through', (tester) async {
