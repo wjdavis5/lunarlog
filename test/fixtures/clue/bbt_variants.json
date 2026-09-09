@@ -1,0 +1,9 @@
+[
+  {"date": "2026-02-01", "type": "bbt", "value": {"celsius": 36.4}},
+  {"date": "2026-02-02", "type": "bbt", "value": {"fahrenheit": 97.9}},
+  {"date": "2026-02-03", "type": "bbt", "value": {"temperature": 36.5}},
+  {"date": "2026-02-04", "type": "bbt", "value": {"value": 36.6}},
+  {"date": "2026-02-05", "type": "bbt", "value": {"celsius": 36.7, "excluded": true}},
+  {"date": "2026-02-06", "type": "temperature", "value": {"celsius": 36.8}},
+  {"date": "2026-02-07", "type": "bbt", "value": {"celsius": "36.9"}}
+]

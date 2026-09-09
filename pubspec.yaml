@@ -58,6 +58,13 @@ dependencies:
   flutter_timezone: ^5.1.0
   package_info_plus: ^10.2.1
   device_info_plus: ^13.2.0
+  # Issue #190: reads a Clue export's AES/ZipCrypto-encrypted zip. Pure
+  # Dart, no network, no FFI/native code — see
+  # lib/domain/import/clue/clue_zip_reader.dart and
+  # docs/import/clue-mapping.md ("Zip decryption") for the evaluation.
+  # Pinned exactly (not `^`) since this is a security-sensitive decode
+  # path — bump deliberately, not via a routine `flutter pub upgrade`.
+  archive: 4.2.0
   uuid: ^4.6.0
   image_picker: ^1.2.3
   share_plus: ^13.3.0

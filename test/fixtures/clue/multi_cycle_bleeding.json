@@ -1,0 +1,13 @@
+[
+  {"date": "2026-01-01", "type": "period", "value": {"option": "light"}},
+  {"date": "2026-01-02", "type": "period", "value": {"option": "medium"}},
+  {"date": "2026-01-03", "type": "spotting", "value": {"option": "light"}},
+  {"date": "2026-01-04", "type": "period", "value": {"option": "heavy"}},
+  {"date": "2026-01-10", "type": "spotting", "value": {"option": "light"}},
+  {"date": "2026-01-11", "type": "spotting", "value": {"option": "light"}},
+  {"date": "2026-01-12", "type": "spotting", "value": {"option": "light"}},
+  {"date": "2026-01-15", "type": "period", "value": {"option": "none"}},
+  {"date": "2026-01-20", "type": "period", "value": {"option": "light"}},
+  {"date": "2026-01-21", "type": "period", "value": {"option": "medium"}},
+  {"date": "2026-01-22", "type": "period", "value": {"option": "light"}}
+]
