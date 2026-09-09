@@ -1,9 +1,25 @@
-/// Widget tests for issue #132: the cycle-history section (R4/R5) and the
-/// three-option late resolver (R6), walked against the issue's acceptance
-/// checklist — reverse-chronological list, omit-from-average moving the
-/// estimate, reversibility, confidence framing, statistics, the resolver's
-/// three options, the paused "log it" path, snooze, read-only, and the
-/// disclaimer/device-local captions.
+/// Widget tests for issue #132: the cycle-history section (R4/R5) — the
+/// reverse-chronological list, omit-from-average with reversibility,
+/// confidence framing, statistics, read-only gating, and the disclaimer/
+/// device-local captions.
+///
+/// Issue #314: [CycleHistorySection] no longer mounts inside
+/// `OverviewPanel`/`ProfileDetailScreen` — its only production mount point
+/// is now `AnalysisTab` (Insights), covered by `test/ui/
+/// analysis_tab_test.dart`. This file mounts the section directly instead
+/// (the same isolated pattern the old "showStatistics/showDisclaimer"
+/// group already used), so it stays focused on the section's own
+/// mechanics without coupling to whichever screen happens to host it. Two
+/// groups that tested cross-widget behavior moved elsewhere:
+///
+/// * The three-option late resolver (AC6) and the unusually-long-cycle
+///   "log it" path (AC7) test [LateResolver], which stays in
+///   `OverviewPanel` — moved to `test/ui/overview_test.dart`.
+/// * The auth-driven attribution seam (a sign-in not disturbing the
+///   mounted history) tested `OverviewPanel`'s own auth listener, not
+///   anything [CycleHistorySection] does itself (it never reads
+///   `AuthController`) — the equivalent listener now lives on
+///   `AnalysisTab`, so that test moved to `test/ui/analysis_tab_test.dart`.
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -14,27 +30,14 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
-import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
-import 'package:lunarlog/domain/prediction/prediction_service.dart';
-import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
-import 'package:lunarlog/domain/repositories/profiles_repository.dart';
-import 'package:lunarlog/domain/repositories/settings_store.dart';
-import 'package:lunarlog/ui/account/auth_controller.dart';
-import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
-import 'package:lunarlog/ui/overview/notification_permission_state.dart';
-import 'package:lunarlog/ui/profiles/profile_controller.dart';
-import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:provider/provider.dart';
-
-import '../support/fake_auth_service.dart';
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
 const String kDeviceLocalNote =
@@ -89,10 +92,7 @@ final List<LocalDate> kIrregularRatioStarts = [
 ];
 
 /// Lengths 28, 28, 20, 28: the 20-day cycle is the one STARTING Apr 5 (it
-/// runs Apr 5 -> Apr 25); with issue #213's 12-cycle prediction window all
-/// four lengths feed the mean (26.0 exactly) -> estimate Jun 18, and today
-/// Jun 21 makes that late. Omitting it restores 28, 28, 28 -> estimate
-/// Jun 20 -> not late.
+/// runs Apr 5 -> Apr 25).
 final List<LocalDate> kShortOutlierStarts = [
   LocalDate(2026, 2, 8), // 28-day cycle starts here
   LocalDate(2026, 3, 8), // 28
@@ -101,23 +101,12 @@ final List<LocalDate> kShortOutlierStarts = [
   LocalDate(2026, 5, 23), // 28; open cycle
 ];
 
-/// 30-day cycles with today day 45 of the open cycle: estimate Jul 27 is
-/// 15 days past -> late; skipping advances the estimate to Aug 26.
+/// 30-day cycles, used by the read-only group below.
 final List<LocalDate> kSkipStarts = [
   LocalDate(2026, 3, 29),
   LocalDate(2026, 4, 28),
   LocalDate(2026, 5, 28),
   LocalDate(2026, 6, 27),
-];
-
-/// Four 30-day cycles ending 2026-06-26: open cycle 65 days -> unusually
-/// long (issue #221/A2-12: rolled forward, not paused). Original estimate
-/// Jul 26, 35 days late by aug30 -> rolled forward twice to Sep 24.
-final List<LocalDate> kPausedStarts = [
-  LocalDate(2026, 3, 28),
-  LocalDate(2026, 4, 27),
-  LocalDate(2026, 5, 27),
-  LocalDate(2026, 6, 26),
 ];
 
 class Harness {
@@ -128,44 +117,26 @@ class Harness {
   final DriftDayEntriesRepository entries;
   final DriftSettingsStore settings;
 
-  Widget appFor(
-    Profile profile, {
-    bool readOnly = false,
-    AuthController? authController,
-  }) {
+  /// Mounts [CycleHistorySection] directly (issue #314 -- see the file
+  /// doc comment for why this is no longer through `OverviewPanel`/
+  /// `ProfileDetailScreen`).
+  Widget appFor({bool readOnly = false}) {
     return MultiProvider(
       providers: [
-        Provider<ProfilesRepository>.value(
-          value: DriftProfilesRepository(db.storage),
-        ),
-        Provider<DayEntriesRepository>.value(value: entries),
-        Provider<SettingsStore>.value(value: settings),
-        if (authController != null)
-          ChangeNotifierProvider<AuthController>.value(value: authController),
-        Provider<CyclePredictionService>.value(
-          value: CyclePredictionService(entries, settings: settings),
-        ),
         Provider<CycleHistoryService>.value(
           value: CycleHistoryService(entries, settings: settings),
         ),
-        Provider<CycleExclusionList>.value(value: CycleExclusionList(settings)),
-        ChangeNotifierProvider<NotificationPermissionState>.value(
-          value: NotificationPermissionState(
-            NotificationAvailability.available,
-          ),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: DriftProfilesRepository(db.storage),
-            settingsStore: settings,
-          )..load(),
+        Provider<CycleExclusionList>.value(
+          value: CycleExclusionList(settings),
         ),
       ],
       child: MaterialApp(
-        home: ProfileDetailScreen(
-          profile: profile,
-          readOnly: readOnly,
-          todayProvider: () => today,
+        home: Scaffold(
+          body: CycleHistorySection(
+            profileId: profile.id,
+            todayProvider: () => today,
+            readOnly: readOnly,
+          ),
         ),
       ),
     );
@@ -209,9 +180,7 @@ Future<Harness> pumpHistory(
     }
   }
   final harness = Harness(db, profile, entries, settings)..today = today;
-  await tester.pumpWidget(harness.appFor(profile, readOnly: readOnly));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Overview'));
+  await tester.pumpWidget(harness.appFor(readOnly: readOnly));
   await tester.pumpAndSettle();
   return harness;
 }
@@ -290,46 +259,28 @@ void main() {
   });
 
   group('AC2/AC3: omit-from-average', () {
-    testWidgets('omitting an outlier cycle moves the estimate and clears the '
-        'false late flag; the row stays visible and reversible', (
-      tester,
-    ) async {
+    testWidgets(
+        'omitting a cycle marks its row visibly excluded but still '
+        'visible, and toggling Include reverses it', (tester) async {
       final h = await pumpHistory(
         tester,
         today: LocalDate(2026, 6, 21),
         starts: kShortOutlierStarts,
       );
 
-      // Issue #213: only 4 usable cycles feed a 6-cycle average window
-      // that is not yet full, so this reads `learning` (item 5), not
-      // `high` — and lengths [28, 28, 20, 28] have a real, non-degenerate
-      // spread (population std-dev ≈3.46, rounds to 3). Issue #221: the
-      // original June 18 estimate is 3 days past due (more than the
-      // 2-day grace), so it rolls forward one 26-day mean cycle to
-      // July 14 before the range (± 3) is taken.
       expect(
-        find.text('Next period estimate: July 11, 2026 – July 17, 2026'),
+        find.byKey(const ValueKey('history-item-2026-04-05')),
         findsOneWidget,
       );
+      expect(find.text('Excluded from averages'), findsNothing);
       expect(
-        find.byKey(const ValueKey('late-resolver')),
+        find.byKey(const ValueKey('history-omit-2026-04-05')),
         findsOneWidget,
-        reason: 'the dragged-down mean makes this a false late',
       );
 
       await tester.tap(find.byKey(const ValueKey('history-omit-2026-04-05')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Next period estimate: June 20, 2026'),
-        findsOneWidget,
-        reason: 'the estimate moves once the outlier stops feeding it',
-      );
-      expect(
-        find.byKey(const ValueKey('late-resolver')),
-        findsNothing,
-        reason: 'the false late flag clears',
-      );
       // Still visible, visibly excluded (AC3).
       expect(
         find.byKey(const ValueKey('history-item-2026-04-05')),
@@ -346,10 +297,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('Next period estimate: July 11, 2026 – July 17, 2026'),
+        find.text('Excluded from averages'),
+        findsNothing,
+        reason: 'reversible: including it clears the excluded styling',
+      );
+      expect(
+        find.byKey(const ValueKey('history-omit-2026-04-05')),
         findsOneWidget,
-        reason: 'reversible: including it restores the old (ranged, '
-            'rolled-forward) estimate',
+        reason: 'the Omit affordance comes back',
       );
       await disposeHistory(tester, h);
     });
@@ -375,14 +330,57 @@ void main() {
     });
   });
 
+  group('AC2/AC3: open-cycle skip/undo (issue #314 review item 2)', () {
+    testWidgets(
+        'omitting the open cycle shows the "Skipped — excluded from '
+        'averages" subtitle and an Undo control on its row; tapping Undo '
+        'includes it again', (tester) async {
+      final h = await pumpHistory(
+        tester,
+        today: LocalDate(2026, 8, 11),
+        starts: kSkipStarts,
+      );
+      final openStart = LocalDate(2026, 6, 27);
+
+      // The open cycle has no "Omit" affordance of its own on this
+      // section (only `LateResolver`'s "Skip this cycle" writes it, and
+      // that widget is not mounted here) -- so drive the same
+      // `CycleExclusionList` directly, exactly as the task says.
+      await CycleExclusionList(h.settings).omit(h.profile.id, openStart);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Current cycle — started June 27, 2026'),
+        findsOneWidget,
+      );
+      expect(find.text('Skipped — excluded from averages'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('history-undo-skip')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('history-undo-skip')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Skipped — excluded from averages'), findsNothing);
+      expect(find.byKey(const ValueKey('history-undo-skip')), findsNothing);
+      expect(
+        parseOmittedCycles(
+          await h.settings.get(omittedCyclesSettingKey(h.profile.id)),
+        ),
+        isNot(contains(openStart)),
+        reason: 'Undo drives CycleExclusionList.include, restoring the '
+            'cycle to the average',
+      );
+      await disposeHistory(tester, h);
+    });
+  });
+
   group('AC4/AC5: confidence and statistics', () {
     testWidgets('steady 30-day history: high confidence, avg cycle 30, avg '
         'period 4, variation 0, disclaimer, device-local note', (tester) async {
       final h = await pumpHistory(tester, today: aug30, starts: kSteadyStarts);
 
-      // Issue #209: the Today card above this one carries its own
-      // confidence chip with the same tier label, so this checks the
-      // history card's copy specifically rather than a bare `find.text`.
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('history-confidence')),
@@ -430,9 +428,6 @@ void main() {
         today: aug30,
         starts: kIrregularRatioStarts,
       );
-      // Issue #209: the Today card above this one carries its own
-      // confidence chip with the same tier label, so this checks the
-      // history card's copy specifically rather than a bare `find.text`.
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('history-confidence')),
@@ -440,146 +435,16 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Issue #213 item 1: the history badge and the overview's own tier
-      // caption now share one derivation, so the same "vary a lot"
-      // summary renders in both places for the same data — never
-      // divergent, unlike the two separate derivations this issue
-      // replaced.
-      expect(find.textContaining('vary a lot'), findsNWidgets(2));
+      expect(find.textContaining('vary a lot'), findsOneWidget);
       expectNoFertilityVocabulary(tester, 'irregular confidence');
       await disposeHistory(tester, h);
     });
   });
 
-  group('AC6: three-option late resolver', () {
-    testWidgets('skip this cycle appends the open start to the exclusion list '
-        'and replans the late window', (tester) async {
-      final h = await pumpHistory(
-        tester,
-        today: LocalDate(2026, 8, 11),
-        starts: kSkipStarts,
-      );
-
-      // Issue #221: 15 days past the original July 27 estimate (more than
-      // the 2-day grace) rolls it forward one 30-day mean cycle to
-      // August 26 before the skip ever happens.
-      expect(find.text('Next period estimate: August 26, 2026'), findsOneWidget);
-      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('resolver-skip')));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text('Next period estimate: August 26, 2026'),
-        findsOneWidget,
-        reason: 'the skip advances the un-rolled estimate one averaged '
-            'cycle (Jul 27 + 30) to the same date the late roll had '
-            'already reached',
-      );
-      expect(
-        find.byKey(const ValueKey('late-resolver')),
-        findsNothing,
-        reason: 'the late window replanned — no longer late',
-      );
-      expect(
-        parseOmittedCycles(
-          await h.settings.get(omittedCyclesSettingKey(h.profile.id)),
-        ),
-        contains(LocalDate(2026, 6, 27)),
-        reason: 'skip feeds the same exclusion list as manual omit',
-      );
-      expect(
-        find.text('Current cycle — started June 27, 2026'),
-        findsOneWidget,
-      );
-      expect(find.text('Skipped — excluded from averages'), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('history-undo-skip')));
-      await tester.pumpAndSettle();
-      expect(
-        find.text('Next period estimate: August 26, 2026'),
-        findsOneWidget,
-        reason: 'undoing the skip restores the late window (and, issue '
-            '#221, the same rolled-forward estimate as before the skip)',
-      );
-      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
-      await disposeHistory(tester, h);
-    });
-
-    testWidgets('remind me in 3 days snoozes the resolver until the snooze '
-        'date', (tester) async {
-      final h = await pumpHistory(
-        tester,
-        today: LocalDate(2026, 8, 11),
-        starts: kSkipStarts,
-      );
-
-      await tester.tap(find.byKey(const ValueKey('resolver-remind')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
-      expect(find.byKey(const ValueKey('late-snoozed')), findsOneWidget);
-      expect(
-        find.text('We will check back on August 14.'),
-        findsOneWidget,
-        reason: 'today (Aug 11) + 3 days',
-      );
-      expect(
-        await h.settings.get(lateSnoozeSettingKey(h.profile.id)),
-        '2026-08-14',
-      );
-
-      await tester.tap(find.byKey(const ValueKey('late-snooze-show-now')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('late-resolver')),
-        findsOneWidget,
-        reason: 'the snooze is dismissible early',
-      );
-      await disposeHistory(tester, h);
-    });
-
-    testWidgets('"log it" opens the day sheet for today', (tester) async {
-      final h = await pumpHistory(
-        tester,
-        today: LocalDate(2026, 8, 11),
-        starts: kSkipStarts,
-      );
-
-      await tester.tap(find.byKey(const ValueKey('resolver-log')));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(DaySheet), findsOneWidget);
-      await disposeHistory(tester, h);
-    });
-  });
-
-  group('AC7: unusually-long-cycle state resolves through log it', () {
-    testWidgets('an open cycle over sixty days still shows the resolver '
-        'with the log-it action (issue #221/A2-12: no more dead-end '
-        'pause)', (tester) async {
-      final h = await pumpHistory(tester, today: aug30, starts: kPausedStarts);
-
-      expect(find.text('Awaiting next period'), findsNothing);
-      expect(find.text('35 days late'), findsOneWidget);
-      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('resolver-log')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byType(DaySheet),
-        findsOneWidget,
-        reason: 'the way through the unusually-long-cycle state is logging',
-      );
-      await disposeHistory(tester, h);
-    });
-  });
-
   group('read-only callers', () {
-    testWidgets('an archived profile sees the history and the late '
-        'information without any actions', (tester) async {
+    testWidgets(
+        'an archived profile (or a viewer-role guardian) sees the '
+        'history with no omit/include affordance', (tester) async {
       final h = await pumpHistory(
         tester,
         today: LocalDate(2026, 8, 11),
@@ -592,76 +457,17 @@ void main() {
         find.byKey(const ValueKey('history-omit-2026-05-28')),
         findsNothing,
       );
-      expect(find.text('Log it'), findsNothing);
-      expect(find.text('Skip this cycle'), findsNothing);
-      expect(find.text('Remind me in 3 days'), findsNothing);
-      expect(
-        find.text('15 days late'),
-        findsOneWidget,
-        reason: 'the informational line remains, now with the day count '
-            '(issue #221/A2-11)',
-      );
-      await disposeHistory(tester, h);
-    });
-  });
-
-  group('auth-driven attribution seam', () {
-    testWidgets('signing in while the overview is mounted updates the '
-        'attribution context without disturbing the history', (tester) async {
-      tester.view.physicalSize = const Size(800, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final db = LunarLogDatabase(NativeDatabase.memory());
-      final profiles = DriftProfilesRepository(db.storage);
-      final settings = DriftSettingsStore(db.storage);
-      final entries = DriftDayEntriesRepository(db.storage);
-      final profile = await profiles.create(displayName: 'Alice', isMinor: false);
-      for (var i = 0; i < 4; i++) {
-        await entries.save(DayEntry(
-          id: '',
-          profileId: profile.id,
-          localDate: LocalDate(2026, 6, 27).addDays(i),
-          tz: 'UTC',
-          flow: FlowLevel.medium,
-          tags: const [],
-          note: null,
-          updatedAt: DateTime.utc(2026, 1, 1),
-          deletedAt: null,
-        ));
-      }
-
-      final auth = FakeAuthService();
-      addTearDown(auth.dispose);
-      final controller = AuthController(authService: auth);
-      addTearDown(controller.dispose);
-
-      final h = Harness(db, profile, entries, settings)
-        ..today = LocalDate(2026, 7, 15);
-      await tester.pumpWidget(h.appFor(profile, authController: controller));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Overview'));
-      await tester.pumpAndSettle();
-
-      // A sign-in while mounted re-runs the panel's auth listener; the
-      // history and estimate stay coherent across the change.
-      auth.emit(
-        AuthSessionState.signedIn,
-        user: const AuthUser(id: 'user-1'),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
-      expectNoFertilityVocabulary(tester, 'signed-in attribution refresh');
+      expect(find.textContaining('Omit'), findsNothing);
+      expect(find.textContaining('Include'), findsNothing);
       await disposeHistory(tester, h);
     });
   });
 
   group('showStatistics/showDisclaimer (#223 follow-up)', () {
     testWidgets(
-        'both false renders neither the stats row nor the disclaimer, '
-        'mounted directly (not through OverviewPanel, whose own mount '
-        'keeps both default-true)', (tester) async {
+        'both false renders neither the stats row nor the disclaimer -- '
+        'the shape AnalysisTab mounts this section with, since its own '
+        'headline card owns those numbers', (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);

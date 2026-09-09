@@ -21,6 +21,18 @@
 /// estimate (at `irregular` confidence) with its own "this cycle is
 /// unusually long" prompt instead, so this panel never renders a state
 /// with no date and no way forward.
+///
+/// Issue #314: [CycleHistorySection] no longer mounts here -- once #223
+/// gave the Analysis tab (`insights/analysis_tab.dart`) its own mount of
+/// the same section, this panel's copy rendered a second time and ran a
+/// second, redundant `CycleHistoryService.watch` subscription per profile.
+/// This panel keeps the late resolver and the long-cycle prompt's "Exclude
+/// this cycle" (both use [CycleExclusionList] directly, never the
+/// section's own widget state) and, in their place, a "See cycle history"
+/// link that switches to Insights through the #313 tab-switch seam
+/// ([AppShellScope]) -- hidden entirely when no shell is mounted above
+/// this panel (`ProfileDetailScreen`'s archived read-only view, and any
+/// test tree that pumps this panel directly).
 library;
 
 import 'dart:async';
@@ -44,11 +56,11 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
-import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
@@ -94,6 +106,7 @@ class OverviewPanel extends StatefulWidget {
     this.readOnly = false,
     this.timezoneProvider,
     this.guardiansRepository,
+    this.trailingChildren = const [],
   });
 
   final String profileId;
@@ -106,8 +119,12 @@ class OverviewPanel extends StatefulWidget {
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
 
-  /// Archived-profile read-only (U5): the resolver shows no actions and
-  /// the history list shows no omit toggles.
+  /// Archived-profile read-only (U5): the resolver shows no actions.
+  /// (Issue #314: this panel itself never mounts the history list any
+  /// more -- see the file doc comment. `ProfileDetailScreen`'s archived
+  /// view, the only caller that still sets this, mounts its own read-only
+  /// `CycleHistorySection` separately, below this panel, since it has no
+  /// shell above it for this panel's "See cycle history" link to reach.)
   final bool readOnly;
 
   /// Provider for the resolved IANA time zone identifier (paired with
@@ -118,6 +135,14 @@ class OverviewPanel extends StatefulWidget {
   /// check (same shape as [MonthCalendar.guardiansRepository]); null in
   /// local-only use.
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// Issue #314 review item 3: extra widgets appended below this panel's
+  /// own content, inside the same [ListView] -- one scroll region rather
+  /// than a caller stacking a second scrollable underneath. `
+  /// ProfileDetailScreen`'s archived view uses this to place its read-only
+  /// [CycleHistorySection] here instead of in its own `Expanded`
+  /// `SingleChildScrollView` half.
+  final List<Widget> trailingChildren;
 
   @override
   State<OverviewPanel> createState() => _OverviewPanelState();
@@ -315,16 +340,37 @@ class _OverviewPanelState extends State<OverviewPanel> {
               ActivePrediction() => _activeCard(context, prediction),
               NotEnoughHistory() => _notEnoughCard(context),
             },
-            CycleHistorySection(
-              profileId: widget.profileId,
-              todayProvider: widget.todayProvider,
-              readOnly: _effectiveReadOnly,
-            ),
+            _seeHistoryLink(context),
             if (availability == NotificationAvailability.denied)
               const _ReminderHint(),
+            ...widget.trailingChildren,
           ],
         );
       },
+    );
+  }
+
+  /// Issue #314: replaces the [CycleHistorySection] this panel used to
+  /// mount directly -- the history list now lives exclusively on Insights
+  /// ([AnalysisTab]), so this is a link there instead of a second copy of
+  /// the section. [AppShellScope.maybeOf] is null in
+  /// `ProfileDetailScreen`'s archived read-only view (no shell mounted
+  /// above it) and in any test tree that pumps this panel on its own; in
+  /// both cases there is nowhere for the link to switch to, so it renders
+  /// nothing rather than a dead button.
+  Widget _seeHistoryLink(BuildContext context) {
+    final scope = AppShellScope.maybeOf(context);
+    if (scope == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          key: const ValueKey('overview-see-history-link'),
+          onPressed: () => scope.select(AppTab.insights),
+          child: const Text('See cycle history'),
+        ),
+      ),
     );
   }
 

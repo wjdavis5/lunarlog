@@ -5,6 +5,15 @@
 /// Archived profiles open in read-only mode (view-only day sheets, no
 /// logging affordances, and the overview's resolver and history omit
 /// actions hidden) with an unarchive action.
+///
+/// Issue #314 follow-up: [OverviewPanel] stopped mounting
+/// [CycleHistorySection] once the Analysis tab became its sole home, but
+/// this screen's archived read-only path has no app shell and so no
+/// Insights tab for [OverviewPanel]'s "See cycle history" link to reach —
+/// leaving an archived profile with no history surface at all, a
+/// regression of #132. The Overview tab here mounts [CycleHistorySection]
+/// itself, directly below [OverviewPanel], read-only, whenever this screen
+/// is archived.
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +23,7 @@ import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
@@ -134,14 +144,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           ),
           Expanded(
             child: _tab == _DetailTab.overview
-                ? OverviewPanel(
-                    profileId: widget.profile.id,
-                    mode: widget.profile.mode,
-                    todayProvider: widget.todayProvider,
-                    readOnly: widget.readOnly,
-                    timezoneProvider: widget.timezoneProvider,
-                    guardiansRepository: guardiansRepository,
-                  )
+                ? _overviewContent(guardiansRepository)
                 : MonthCalendar(
                     profileId: widget.profile.id,
                     readOnly: widget.readOnly,
@@ -153,6 +156,35 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// The Overview tab's content. Not archived: just [OverviewPanel], same
+  /// as before #314's follow-up. Archived: [OverviewPanel] with the
+  /// read-only [CycleHistorySection] this screen's doc comment explains
+  /// passed as [OverviewPanel.trailingChildren] so both render inside the
+  /// panel's own single [ListView] (issue #314 review item 3) instead of
+  /// the two independently-scrolling half-height panes this used to stack
+  /// -- which left the bottom half blank whenever there was no history.
+  Widget _overviewContent(ProfileGuardiansRepository? guardiansRepository) {
+    return OverviewPanel(
+      profileId: widget.profile.id,
+      mode: widget.profile.mode,
+      todayProvider: widget.todayProvider,
+      readOnly: widget.readOnly,
+      timezoneProvider: widget.timezoneProvider,
+      guardiansRepository: guardiansRepository,
+      trailingChildren: !widget.readOnly
+          ? const []
+          : [
+              CycleHistorySection(
+                profileId: widget.profile.id,
+                todayProvider: widget.todayProvider,
+                readOnly: true,
+                showStatistics: true,
+                showDisclaimer: true,
+              ),
+            ],
     );
   }
 }

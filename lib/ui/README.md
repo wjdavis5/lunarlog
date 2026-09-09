@@ -36,6 +36,21 @@ selected and then kept alive under an `IndexedStack`, so switching tabs
 preserves that tab's own state without starting every tab's live streams and
 animations up front.
 
+Issue #313's tab-switch seam, `components/app_shell_scope.dart`'s
+`AppShellScope` (an `InheritedWidget` wrapping the shell's whole `Scaffold`),
+lets any widget mounted inside the shell switch tabs itself:
+`AppShellScope.maybeOf(context)` returns the current `AppTab` plus a
+`select(AppTab)` callback, or null when no shell is mounted above the calling
+context (`ProfileDetailScreen`'s archived read-only view, and any test tree
+that pumps a tab's content directly) — callers must treat null as "nowhere
+to switch to", not a bug. `AppTab`/`AppShellScope` live in their own file
+rather than `app_shell.dart` itself (though that file still re-exports both)
+so `overview_panel.dart` can depend on the seam without a mutual import
+between the two files — the same reason `kEstimateDisclaimer` moved out of
+`overview_panel.dart` into `estimate_copy.dart` (see that file's doc
+comment). `OverviewPanel`'s "See cycle history" link (below) is the seam's
+first caller.
+
 `AnalysisTab` (issue #223, A2-18/A2-19) renders the headline cycle statistics
 `ActivePrediction` already computed but nothing in the UI rendered before this
 issue — average cycle length, average period length, and a variability/tier
@@ -44,11 +59,13 @@ so `irregular` mode shows a number-free summary instead of raw digits — the
 same R17 disclaimer, an honest not-enough-history `EmptyState` below three
 valid cycles, and `overview/cycle_history_section.dart`'s existing
 `CycleHistorySection` mounted below the headline as this tab's scrollable
-history list. `OverviewPanel` (Today) still embeds that same
-`CycleHistorySection` too — removing it from there is a follow-up, left alone
-here since #209 is concurrently rewriting that file. `AnalysisTab` builds its
-sections as a list precisely so #135 (statistics/trends) can append another
-entry once it lands, rather than reshaping the widget.
+history list. Issue #314: this is now `CycleHistorySection`'s *only* mount —
+`OverviewPanel` (Today) used to embed the same section too (left open by
+#223 since #209 was concurrently rewriting that file), rendering it twice
+and running two `CycleHistoryService.watch` subscriptions per profile;
+Today links here instead now (see below). `AnalysisTab` builds its sections
+as a list precisely so #135 (statistics/trends) can append another entry
+once it lands, rather than reshaping the widget.
 
 The app bar shared by Today/Calendar/Insights (not shown on More, which is
 Settings' own screen) carries the active profile name as a tappable switcher
@@ -56,7 +73,15 @@ opening the existing profile picker, the `SyncStatusGlyph`
 (`account/sync_status_tile.dart`), and a Settings action that just switches to
 the More tab. `ProfileDetailScreen` (`profiles/profile_detail_screen.dart`)
 remains only for the archived-profile read-only view, still pushed explicitly
-from the picker.
+from the picker — it mounts `OverviewPanel` directly, outside any `AppShell`,
+so `OverviewPanel`'s own "See cycle history" link hides itself there
+(`AppShellScope` is never mounted above it, and there is no Insights tab on
+that screen to link to). That would otherwise leave an archived profile with
+no cycle-history surface at all (a regression of issue #132), so
+`ProfileDetailScreen`'s Overview tab mounts a read-only `CycleHistorySection`
+of its own directly below `OverviewPanel` whenever the screen is archived,
+keeping the history card available there without the omit/include
+affordances.
 
 ## Today card and cycle wheel (issue #209)
 
@@ -89,6 +114,13 @@ that keeps a second tap (or a day already logged heavier via the full day
 sheet) from ever downgrading an existing flow level — the upsert's own
 (profileId, date) identity is what keeps a second tap from ever creating a
 second entry.
+
+Issue #314: below the active/not-enough card, `OverviewPanel` renders a
+"See cycle history" `TextButton` (`ValueKey('overview-see-history-link')`)
+that switches the shell to Insights via the tab-switch seam above —
+`AppShellScope.maybeOf(context)?.select(AppTab.insights)` — instead of
+mounting its own copy of `CycleHistorySection` the way it used to. The link
+renders nothing when no `AppShellScope` is present.
 
 `components/today_log_fab.dart` (`TodayLogFab`) is the shell-level "Log
 today" `FloatingActionButton.extended` (issue #209 item 4a): it floats over

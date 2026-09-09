@@ -374,6 +374,39 @@ void main() {
       await disposeApp(tester, db);
     });
 
+    testWidgets('issue #314 follow-up: an archived profile keeps a '
+        'read-only cycle-history card on its Overview tab, with no omit/'
+        'include affordances and no "See cycle history" link', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await seedTwoProfiles(db, extra: (aId, bId) async {
+          final entries = DriftDayEntriesRepository(db.storage);
+          await entries.save(entryFor(aId, LocalDate(2026, 3, 1)));
+          await DriftProfilesRepository(db.storage).setArchived(aId, true);
+        });
+      });
+
+      await tester.tap(find.text('Archived (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Alice'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alice (archived)'), findsOneWidget);
+
+      await tester.tap(find.text('Overview'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget,
+          reason: '#132 history visibility restored for archived profiles');
+      expect(find.text('Omit'), findsNothing,
+          reason: 'read-only: no omit affordance');
+      expect(find.text('Include'), findsNothing,
+          reason: 'read-only: no include affordance');
+      expect(find.byKey(const ValueKey('history-undo-skip')), findsNothing);
+      expect(find.byKey(const ValueKey('overview-see-history-link')),
+          findsNothing,
+          reason: 'no app shell here for the link to switch tabs on');
+      await disposeApp(tester, db);
+    });
+
     testWidgets('one-tap unarchive from the archived section restores the '
         'profile to the active list', (tester) async {
       final db = await pumpApp(tester, seed: (db) async {

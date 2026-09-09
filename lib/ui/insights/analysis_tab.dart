@@ -30,10 +30,11 @@
 /// under the headline's 12-cycle-window numbers, disagreeing on one
 /// screen.
 ///
-/// TODO(#314): `OverviewPanel` (Today tab) still embeds this same
-/// [CycleHistorySection] too, so it renders twice (once per tab) today.
-/// Removing it from Overview is deliberately left to that follow-up — #209
-/// is concurrently rewriting `overview_panel.dart`.
+/// Issue #314: `OverviewPanel` (Today tab) no longer embeds this same
+/// [CycleHistorySection] — this tab is now its only mount, and the single
+/// `CycleHistoryService.watch` subscription per profile that follows from
+/// that. `OverviewPanel` instead carries a "See cycle history" link that
+/// switches to this tab through the #313 tab-switch seam.
 ///
 /// This tab's read-only gating mirrors [OverviewPanel]'s: within the app
 /// shell a profile is always the active, non-archived one (an archived

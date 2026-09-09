@@ -5,7 +5,12 @@
 /// profile". Issue #223: the Insights destination now mounts the real
 /// [AnalysisTab] rather than the placeholder `_InsightsTab` #182 shipped —
 /// that widget's own rendering is covered by `test/ui/analysis_tab_test
-/// .dart`, so this file only pins that the placeholder is gone.
+/// .dart`, so this file only pins that the placeholder is gone. Issue
+/// #314: the "See cycle history" link's tab switch, and that
+/// [CycleHistorySection] mounts exactly once across the shell once both
+/// Today and Insights have been visited (it used to mount twice — once
+/// per tab, each running its own `CycleHistoryService.watch` subscription
+/// — until Overview stopped embedding its own copy).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -14,18 +19,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/app_shell_scope.dart' show AppTab;
 import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 
@@ -66,11 +76,16 @@ class Harness {
 
   /// Seeds one profile and marks it active, so the app opens directly on
   /// its AppShell (no picker in between). [seedGuardians] runs after the
-  /// profile exists but before the widget pumps.
+  /// profile exists but before the widget pumps. [seedEntries] (issue
+  /// #314) does the same for day entries -- so a test can seed real cycle
+  /// history before the shell's streams start, rather than saving through
+  /// a repository after the fact and waiting on `pumpAndSettle`.
   Future<void> pump({
     bool withSync = true,
     Future<void> Function(LunarLogDatabase db, String profileId)?
         seedGuardians,
+    Future<void> Function(LunarLogDatabase db, String profileId)?
+        seedEntries,
   }) async {
     final profile = await DriftProfilesRepository(db.storage)
         .create(displayName: 'Alice', isMinor: false);
@@ -79,6 +94,9 @@ class Harness {
         .set(SettingsKeys.lastActiveProfile, profile.id);
     if (seedGuardians != null) {
       await seedGuardians(db, profile.id);
+    }
+    if (seedEntries != null) {
+      await seedEntries(db, profile.id);
     }
     await tester.pumpWidget(LunarLogApp(
       db: db,
@@ -97,6 +115,25 @@ class Harness {
 }
 
 Finder tabKey(String name) => find.byKey(ValueKey('app-shell-tab-$name'));
+
+/// Two 4-day bleed episodes -- just enough for [CycleHistorySection] to
+/// render a populated card (issue #314's tests below only need a
+/// non-empty history, not any particular confidence tier).
+Future<void> seedEpisodes(LunarLogDatabase db, String profileId) async {
+  final entries = DriftDayEntriesRepository(db.storage);
+  for (final start in [LocalDate(2026, 1, 1), LocalDate(2026, 2, 1)]) {
+    for (var i = 0; i < 4; i++) {
+      await entries.save(DayEntry(
+        id: '',
+        profileId: profileId,
+        localDate: start.addDays(i),
+        tz: 'America/Chicago',
+        flow: FlowLevel.medium,
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ));
+    }
+  }
+}
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -362,6 +399,70 @@ void main() {
       expect(contentRect.bottom, lessThanOrEqualTo(fabRect.top),
           reason: 'the calendar\'s own bottom edge must never reach into '
               'the FAB\'s footprint');
+      await h.dispose();
+    });
+  });
+
+  group('issue #314: cycle history lives only on Insights', () {
+    testWidgets(
+        'exactly one history-card mounts once Today and Insights have '
+        'both been visited -- CycleHistorySection is not duplicated '
+        'across the shell\'s IndexedStack', (tester) async {
+      final h = Harness(tester);
+      await h.pump(seedEntries: seedEpisodes);
+
+      // Today is the default tab: Overview must not mount its own copy.
+      expect(find.byType(CycleHistorySection), findsNothing);
+      expect(find.byKey(const ValueKey('history-card')), findsNothing);
+
+      await tester.tap(tabKey('insights'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CycleHistorySection), findsOneWidget);
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
+
+      // Today stays mounted alongside Insights under the lazy
+      // IndexedStack (issue #182) -- switching back must not surface a
+      // second one.
+      await tester.tap(tabKey('today'));
+      await tester.pumpAndSettle();
+      // Insights is still built under the IndexedStack (issue #182's lazy
+      // keep-alive), just not the painted tab any more -- Flutter's
+      // finders skip offstage elements by default, so `skipOffstage:
+      // false` is what proves it is still there rather than disposed.
+      expect(
+        find.byType(CycleHistorySection, skipOffstage: false),
+        findsOneWidget,
+        reason: 'Insights stays built in the background, but Overview '
+            'never adds a second CycleHistorySection',
+      );
+      expect(
+        find.byKey(const ValueKey('history-card'), skipOffstage: false),
+        findsOneWidget,
+      );
+      await h.dispose();
+    });
+
+    testWidgets(
+        '"See cycle history" on Overview switches the shell to Insights '
+        'via the #313 tab-switch seam', (tester) async {
+      final h = Harness(tester);
+      await h.pump(seedEntries: seedEpisodes);
+
+      expect(
+        find.byKey(const ValueKey('overview-see-history-link')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('overview-see-history-link')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AnalysisTab), findsOneWidget);
+      final navBar =
+          tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, AppTab.insights.index,
+          reason: 'the link switched the shell\'s own selected tab, not '
+              'just pushed a new screen on top of it');
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
       await h.dispose();
     });
   });
