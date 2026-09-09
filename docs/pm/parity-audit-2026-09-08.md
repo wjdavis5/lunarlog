@@ -109,3 +109,43 @@ Decisions made without the owner, recorded in the relevant issues' Assumptions s
 ## Source material
 
 The six reviewer reports, the synthesis decision record, and the issue-writer rules were produced in the session scratchpad and are not committed. Every issue cites its source finding ids (`A1-43`, `D-16`, and so on) in its Context section, and the finding text with its evidence is reproduced in the issue body, so the backlog stands on its own.
+
+## Execution log — orchestrated coding run, 2026-09-08/09
+
+Run under the rules: every issue in its own worktree, `in-progress` label as the claim (shared with the zcode coordinator, which paused its own dispatch during this run), review before merge, rebase onto `main` before every merge, CI green on the rebased head, squash merge. Local test runs had to be dropped mid-run because the desktop was memory-starved by orphaned `flutter_tester` processes that the session was not permitted to kill; from that point coders ran `flutter analyze` locally and CI was the gate for tests, pgTAP, and the quality gate.
+
+### Merged (issue → PR)
+
+| Issue | PR | What landed |
+|---|---|---|
+| #237 (P0) | #279 | Unknown tag codes preserved instead of locking an entry forever |
+| #163 | #280 | `push-dispatch` in the deploy step; drift and advisor gates (gates run last, advisors fail on `error` until #158/#194/leaked-password land) |
+| #200 | #283 | Drift `SchemaVerifier` harness v1→v5, codegen-freshness CI step; index re-assert gap fixed |
+| #158 | #281 | `anon` EXECUTE revoked on four SECURITY DEFINER functions; catalog guard in pgTAP; migration `20260908121000` |
+| #177 | #289 | Streaming push in bounded batches, resumable across pauses, profiles paged every round, bounded reads pinned by test |
+| #243 | #282 | Attachment cleanup before row deletion (paginated, recursive, fail-closed), explicit ticket deletion, client mapping; migration `20260908130000` |
+| #156 | #294 | Podfile + lock from a real `pod install`, HealthKit entitlements and usage strings; human step: regenerate the provisioning profile |
+| #224 | #285 | Tombstones clear `flow` in `sync_push` (rebuilt on the care-modes body), all four client paths, backfill + CHECK; migration `20260908140000` |
+| #168 | #284 | Android 13+ notification permission requested; denial count persisted; startup prompt inside the system-UI window; Darwin settings fallback |
+| #248 | #291 | `export_account_data()` right-of-access RPC scoped to RLS, no secrets, 69 pgTAP assertions; an `invited_by` UID exposure found and fixed during rebase; migration `20260908150000` |
+
+Awaiting CI at the time of writing: #286 (issue #244, iOS DB relocation out of iCloud backup — three review rounds; round 2 had introduced a fresh-install wipe that round 3 removed and pinned) and #293 (issue #153, the P0 health-store binding guard — write-side guard now reads the stored binding itself). In progress: #240 (P0 `observations` schema), #213 (prediction engine v2), #176 (design tokens).
+
+### Filed as discoveries (never fixed in passing)
+
+#287 FCM and local paths both request `POST_NOTIFICATIONS`; #288 AGENTS.md per-file pgTAP counts drift; #290 `_hasPushableDirty` materialises the dirty set; #292 `public.settings` absent from the right-of-access export; #295 whether `isMinor` should stay guardian-editable (product decision, `needs-human-review`); #296 prerequisites before `healthSyncMinorBindingAllowed` may be flipped.
+
+### Needs a human
+
+- #156: regenerate the App Store provisioning profile with the HealthKit capability before the next signed release (signing fails until then).
+- #244: device verification on the Mac after #286 merges (backup exclusion, protection class, relocation of a pre-#244 install).
+- #295: the `isMinor` decision.
+- #163: the first production run of the amended `supabase-migrate.yml` needs the required reviewer, and the `FCM_*`/`PUSH_DISPATCH_WEBHOOK_SECRET` environment secrets.
+- Process: a permission rule allowing `Stop-Process` on `flutter_tester.exe`/`dart.exe` would let a future run shed load instead of degrading to CI-only verification.
+
+### Lessons recorded
+
+- Every migration PR edits the same two AGENTS.md sentences (schema paragraph, pgTAP total), so each merge conflicts the next; the resolution is mechanical and was scripted mid-run. A structural fix is tracked in #288.
+- Migration timestamps must be assigned by the orchestrator at dispatch time: four in-flight PRs independently picked `20260908120000`.
+- Squash-merge a PR's fix-up commits before rebasing; multi-commit branches conflict once per commit.
+- Concurrent `flutter test --coverage` runs from several coders exhaust a 32 GB desktop; serialise gates or push them to CI.
