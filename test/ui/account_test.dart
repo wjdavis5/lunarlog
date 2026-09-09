@@ -711,8 +711,16 @@ void main() {
         'after "Not now"', (tester) async {
       final h = AccountHarness(tester);
       await h.pump();
-      expect(find.text(kNoticeText), findsOneWidget);
+      // #216: the introduction precedes the account step; the notice is
+      // its third card, still before any form.
+      expect(find.text('A private cycle log for your family'),
+          findsOneWidget);
       expect(key('auth-email'), findsNothing);
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+      expect(find.text(kNoticeText), findsOneWidget);
       await tester.tap(find.text('I understand'));
       await tester.pumpAndSettle();
 
@@ -721,7 +729,7 @@ void main() {
       await tester.tap(key('first-run-not-now'));
       await tester.pumpAndSettle();
       expect(key('auth-email'), findsNothing);
-      expect(find.text('Create profile'), findsOneWidget);
+      expect(find.text('Continue'), findsOneWidget);
       await h.dispose();
     });
 
@@ -730,7 +738,7 @@ void main() {
         'form shown', (tester) async {
       final h = AccountHarness(tester);
       await h.pump();
-      await tester.tap(find.text('I understand'));
+      await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       await tester.enterText(key('auth-email'), 'a@b.c');
       await tester.enterText(key('auth-password'), 'twelve chars!');
@@ -761,7 +769,7 @@ void main() {
         'through to the name form', (tester) async {
       final h = AccountHarness(tester);
       await h.pump();
-      await tester.tap(find.text('I understand'));
+      await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       await tester.enterText(key('auth-email'), 'a@b.c');
       await tester.enterText(key('auth-password'), 'twelve chars!');
@@ -778,7 +786,7 @@ void main() {
       );
       await h.settle();
       expect(key('restoring'), findsNothing);
-      expect(find.text('Create profile'), findsOneWidget);
+      expect(find.text('Continue'), findsOneWidget);
       expect(
         key('sync-status'),
         findsOneWidget,
@@ -792,7 +800,7 @@ void main() {
         (tester) async {
       final h = AccountHarness(tester);
       await h.pump();
-      await tester.tap(find.text('I understand'));
+      await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       await tester.enterText(key('auth-email'), 'a@b.c');
       await tester.enterText(key('auth-password'), 'twelve chars!');
@@ -858,7 +866,7 @@ void main() {
         'for an account that holds a profile (#2 U3; R8)', (tester) async {
       final h = AccountHarness(tester);
       await h.pump();
-      await tester.tap(find.text('I understand'));
+      await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       expect(key('auth-email'), findsOneWidget, reason: 'account step');
 
@@ -933,7 +941,9 @@ void main() {
       expect(h.resets, 1);
       h.engine.emitPhase(SyncPhase.idle);
       await h.settle();
-      expect(find.text(kNoticeText), findsOneWidget, reason: 'first-run');
+      // #216: first-run now opens on the introduction's first card.
+      expect(find.text('A private cycle log for your family'), findsOneWidget,
+          reason: 'first-run');
       await h.dispose();
     });
 
@@ -1990,7 +2000,9 @@ void main() {
       await tester.tap(key('account-sign-out-discard'));
       await h.settle();
       expect(h.resets, 1);
-      expect(find.text(kNoticeText), findsOneWidget, reason: 'first-run');
+      // #216: first-run now opens on the introduction's first card.
+      expect(find.text('A private cycle log for your family'), findsOneWidget,
+          reason: 'first-run');
       await h.dispose();
     });
 
@@ -2025,7 +2037,9 @@ void main() {
       await h.settle();
       expect(h.resets, 1);
       expect(h.auth.signOutCalls, [AuthSignOutScope.local]);
-      expect(find.text(kNoticeText), findsOneWidget);
+      // #216: first-run now opens on the introduction's first card.
+      expect(find.text('A private cycle log for your family'),
+          findsOneWidget);
       await h.dispose();
     });
 
@@ -2054,7 +2068,9 @@ void main() {
       await h.settle();
       expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
       expect(h.resets, 1);
-      expect(find.text(kNoticeText), findsOneWidget);
+      // #216: first-run now opens on the introduction's first card.
+      expect(find.text('A private cycle log for your family'),
+          findsOneWidget);
       // #1/#9 (review fix): push-device removal must happen while the
       // session is still authenticated - before signOut(global) tears it
       // down and before resetDevice runs - not left to a later reaction to
