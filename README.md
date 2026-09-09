@@ -164,11 +164,13 @@ closed in the dashboard and every create path says accounts are set up by
 the account owner. Passkeys are deferred (Supabase passkeys are beta and
 need an HTTPS relying-party domain the app does not yet have). The Google
 button is hidden in any build without both `GOOGLE_*` defines. A signed-in
-operator can also export a JSON copy of their profiles and entries, or
-delete the account outright (server rows, the account, an Apple revocation
-when applicable, then the device reset) — both behind the same
-device-credential check as adding a sign-in method; see
-[`PRIVACY.md`](PRIVACY.md) for what each does. The parent who created a
+operator can delete the account outright (server rows, the account, an
+Apple revocation when applicable, then the device reset) — a fresh
+device-credential check runs first, the same as adding a sign-in method.
+Exporting a JSON copy of profiles and entries does not require that check:
+it sits behind the app's own lock, lives under Settings → Your data, and
+needs no account at all (server data is included in the export only when
+signed in); see [`PRIVACY.md`](PRIVACY.md) for what each does. The parent who created a
 minor's profile can also **transfer ownership** of it to the minor's own
 account (Issue #4): a "Transfer profile" action on the caregivers screen
 lets the parent pick their own post-transfer role (co-manager or
@@ -297,7 +299,7 @@ Part of the home lab; the canonical inventory lives in the lab root's
 - Backup is account-based: a device signed in to an account keeps a copy of
   its data in that account and can restore it on another device. A device
   that never signed in has no backup — losing it loses the data. "Export my
-  data" (account section) saves a JSON file of profiles and entries through
+  data" (Your data section) saves a JSON file of profiles and entries through
   the share sheet, but it is a manual, one-time export, not a backup
   mechanism.
 - In-app account deletion and JSON export have shipped in code (issue

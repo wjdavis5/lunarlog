@@ -566,7 +566,7 @@ the account-deletion deploy itself is skipped.
       re-homes any stray `day_entries` a second time immediately before
       the last step, then deletes the `auth.users` row last (KTD4), and
       the client runs the existing `resetDevice()` afterward (KTD16). JSON
-      data export ("Export my data" in the account section) shipped
+      data export ("Export my data" in the Your data section) shipped
       alongside it.
 - [ ] **Release gate: still mechanically closed.** No App Store submission
       and no Play `production` dispatch until an operator sets the
@@ -815,8 +815,9 @@ account and fabricated profiles only.
       no Apple ceremony: device credential → confirmation → first-run.
       Confirm in the Supabase dashboard (Authentication → Users) that the
       user row is gone.
-- [ ] **Export on iPhone and open the file.** Tap "Export my data", pick
-      Files (or AirDrop to a Mac) from the share sheet, and open the saved
+- [ ] **Export on iPhone and open the file.** In Settings → Your data, tap
+      "Export my data", pick Files (or AirDrop to a Mac) from the share
+      sheet, and open the saved
       `lunarlog-export-<timestamp>.json`: it parses, lists only that
       operator's fabricated profiles and entries, and contains no
       `user_id`, `server_version`, guardian ids, tokens, or emails (R9).

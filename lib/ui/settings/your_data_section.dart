@@ -33,6 +33,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -84,6 +85,12 @@ class _YourDataSectionState extends State<YourDataSection> {
       (profiles) {
         if (mounted) setState(() => _profiles = profiles);
       },
+      onError: (Object error, StackTrace stackTrace) {
+        // A broken profiles stream shouldn't surface as an unhandled zone
+        // error; treat it like "no profiles yet" and hide the section.
+        debugPrint('lunarlog your-data: profiles watch failed ($error)');
+        if (mounted) setState(() => _profiles = null);
+      },
     );
   }
 
@@ -100,7 +107,11 @@ class _YourDataSectionState extends State<YourDataSection> {
       return const SizedBox.shrink();
     }
     final auth = Provider.of<AuthController?>(context);
-    final signedIn = auth?.signedIn ?? false;
+    // Matches `AccountSection._isSignedIn`: a `passwordRecovery` session
+    // counts as signed in for rendering purposes here too, a pre-existing
+    // soft bucket this section inherits rather than fixes.
+    final signedIn = auth?.state == AuthSessionState.signedIn ||
+        auth?.state == AuthSessionState.passwordRecovery;
     final theme = Theme.of(context);
     final exportError = _exportError;
     return Column(

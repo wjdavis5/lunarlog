@@ -45,6 +45,10 @@ class FakeProfilesRepository implements ProfilesRepository {
     _controller.add(profiles);
   }
 
+  /// Simulates the underlying stream breaking (e.g. a drift/sqlite3
+  /// failure) after the section has already subscribed.
+  void addError(Object error) => _controller.addError(error);
+
   @override
   Future<List<Profile>> list() async => _profiles;
 
@@ -83,6 +87,15 @@ AuthController _signedIn() {
 
 AuthController _signedOut() {
   final service = FakeAuthService();
+  addTearDown(service.dispose);
+  final controller = AuthController(authService: service);
+  addTearDown(controller.dispose);
+  return controller;
+}
+
+AuthController _passwordRecovery() {
+  final service = FakeAuthService()
+    ..latchRecovery(user: const AuthUser(id: 'u1', email: 'a@b.c'));
   addTearDown(service.dispose);
   final controller = AuthController(authService: service);
   addTearDown(controller.dispose);
@@ -194,6 +207,22 @@ void main() {
       );
     });
 
+    testWidgets(
+        'password recovery: counts as signed in for the subtitle, matching '
+        "AccountSection's _isSignedIn", (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      await _pump(tester, profiles: profiles, auth: _passwordRecovery());
+
+      expect(key('your-data-export'), findsOneWidget);
+      expect(
+        find.text(
+          "Save your profiles and day entries as a JSON file, including "
+          "your account's server data.",
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('a profile arriving after first build (first-run completes '
         'while Settings is open) makes the tile appear reactively',
         (tester) async {
@@ -243,6 +272,21 @@ void main() {
       expect(key('your-data-export'), findsOneWidget);
       expect(find.text('Save your profiles and day entries as a JSON file.'),
           findsOneWidget);
+    });
+  });
+
+  group('profiles watch failure', () {
+    testWidgets(
+        'a broken profiles stream hides the section instead of throwing an '
+        'unhandled zone error', (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      await _pump(tester, profiles: profiles);
+      expect(key('your-data-export'), findsOneWidget);
+
+      profiles.addError(StateError('drift stream broke'));
+      await tester.pumpAndSettle();
+
+      expect(key('your-data-export'), findsNothing);
     });
   });
 }
