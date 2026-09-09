@@ -653,6 +653,26 @@ observation; record the date and build number next to it when it passes.
       Sentry issue shows file names and line numbers rather than bare
       addresses. Cross-reference issue #19's own checklist so the two
       documents do not drift on what "done" means here.
+- [ ] **iOS database backup exclusion and at-rest protection (issue #244,
+      round 2 — the one item `flutter test`/`flutter build apk` cannot
+      cover, since it's iOS-only platform-channel code).** On a real iPhone
+      build with the app foregrounded and unlocked, lock the device, then
+      resume and confirm the app is still readable (it should not have
+      relocked mid-lock in a way that loses content). Then: with the app
+      foregrounded, lock the device, wait roughly 10 seconds (the
+      `NSFileProtectionComplete` class evicts the encryption key ~10s after
+      lock — Apple does not document an exact figure, so treat 10s as a
+      floor, not a guarantee), unlock, and write a new day entry — it must
+      save successfully with no error, confirming the file is usable again
+      once unlocked and was never silently left unprotected. Separately,
+      confirm the backup exclusion itself took effect: back up the device
+      to a Mac (Finder, unencrypted local backup is fine for this check),
+      then inspect the backup contents (e.g. via a backup browser tool) and
+      confirm no `lunarlog.db*` file is present. If `protectDatabaseFile`
+      ever fails on-device, it now reports (a type-only breadcrumb plus
+      `Sentry.captureException`, per the module doc comment in
+      `lib/startup/startup_native.dart`) rather than swallowing the failure
+      silently — check Sentry for that event type if this item fails.
 
 ### Social logins and passwordless (issue #2)
 
@@ -1039,8 +1059,23 @@ pgTAP tests.
   "pull now" hint; Apple Sign-In on Android/web; client-side syncing of
   `settings`; `birth_year` / `color` profile attributes; client-side
   encryption of `note` and `display_name`; managing auth settings via
-  `supabase config push`; iCloud backup exclusion and the `ThisDeviceOnly`
-  key-class migration; `https` App Links; new-device sign-in email notice.
+  `supabase config push`; the `ThisDeviceOnly` key-class migration (moot as
+  of `e7c787c` — SQLCipher and its app-managed database key were removed
+  entirely, so there is no key left to migrate a class for); `https` App
+  Links; new-device sign-in email notice. iCloud backup exclusion is **no
+  longer deferred as of issue #244**: the database moved to
+  `getApplicationSupportDirectory()` (a crash-safe, one-time migration off
+  the old `Documents/` path — see `lib/startup/database_relocation.dart`)
+  and is marked `NSURLIsExcludedFromBackupKey`/`NSFileProtectionComplete`
+  via `AppDelegate.swift`. That marking, not the directory move, is the
+  actual control: Application Support is included in iOS device/iCloud
+  backup by default the same as `Documents/` — only `tmp/` and
+  `Library/Caches/` are excluded automatically. Android gained the
+  equivalent `android:dataExtractionRules` (declarative — see
+  `android/app/src/main/res/xml/data_extraction_rules.xml`). See README
+  "Known limitations" for the iOS device-verification status (unverified on
+  real hardware as of this writing — this repo's Windows dev box cannot
+  build iOS; add it to the device checklist below).
   (In-app account deletion and JSON export shipped in issue #17 — see the
   "Release gate" and "Account deletion (issue #17)" sections above.) Sentry
   debug-symbol upload is **no longer deferred as of issue #7** — both

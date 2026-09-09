@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/startup/startup_native.dart';
+import 'package:lunarlog/startup/database_relocation.dart';
 
 Future<File> freshDbFile(String name) async {
   final dir = Directory.systemTemp.createTempSync('lunarlog_reset_${name}_');

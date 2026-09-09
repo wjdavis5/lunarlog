@@ -13,3 +13,10 @@ Future<LunarLogDbFactory> buildDbFactory() async => webDbFactory();
 /// including `sync_state`. Kept so the conditional export exposes one
 /// `deleteLocalDatabase()` on every platform; a deliberate no-op here.
 Future<void> deleteLocalDatabase() async {}
+
+/// Web has no database file to protect (issue #244 is a native-only
+/// concern — there is no iOS/Android backup or file-protection class on
+/// web). Kept so the conditional export exposes one `protectDatabaseFile()`
+/// on every platform; a deliberate no-op here, same treatment as
+/// [deleteLocalDatabase].
+Future<void> protectDatabaseFile() async {}

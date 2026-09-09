@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Issue #244: the API 31+ control for both cloud backup and device-to-device
+  transfer (the "Copy your data" / Wi-Fi Direct-or-cable migration flow when
+  setting up a new device). `android:allowBackup="false"` (AndroidManifest.xml)
+  already disables Auto Backup to the cloud outright, but device-to-device
+  transfer on API 31+ is governed independently by this file's
+  <device-transfer> section — without it, the local database (a household's
+  full cycle history, including minors' records) would still copy to a new
+  device during setup even with allowBackup false. <cloud-backup> is
+  included too, belt-and-suspenders: it only takes effect if allowBackup ever
+  becomes true, at which point this exclusion is already in place instead of
+  needing to be added in the same change.
+
+  Round 2 correction: the framework's schema for this file (API 31+) is
+  <cloud-backup> and <device-transfer> — the "-content" suffix belongs only
+  to the legacy <full-backup-content> root used by backup_rules.xml (the
+  pre-31 schema, a completely different file/tag). The previous version of
+  this file used <cloud-backup-content>/<device-transfer-content>, names the
+  API 31+ parser does not recognize; an unrecognized root/section is
+  silently ignored rather than rejected at build time, so this file had no
+  effect at all and device-to-device transfer was copying the full local
+  database to a new device unexcluded.
+
+  Paths are relative to the "file" domain (Context.getFilesDir(), which is
+  what path_provider's getApplicationSupportDirectory() resolves to on
+  Android — see lib/startup/startup_native.dart's localDatabaseFile()).
+
+  Round 3: also exclude the staging artifacts `lib/startup/database_relocation.dart`'s
+  relocateLegacyDatabase can leave next to lunarlog.db while a relocation is
+  in flight (`.migrating`-marked names, staged before promotion) and its
+  `.relocation-complete` sentinel — none of these are the live database,
+  but all of them can briefly contain a copy of its bytes (the staging
+  files) or reveal migration state (the sentinel), so they get the same
+  treatment as the database itself.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="lunarlog.db"/>
+        <exclude domain="file" path="lunarlog.db-wal"/>
+        <exclude domain="file" path="lunarlog.db-shm"/>
+        <exclude domain="file" path="lunarlog.db-journal"/>
+        <exclude domain="file" path="lunarlog.db.migrating"/>
+        <exclude domain="file" path="lunarlog.db.migrating-wal"/>
+        <exclude domain="file" path="lunarlog.db.migrating-shm"/>
+        <exclude domain="file" path="lunarlog.db.migrating-journal"/>
+        <exclude domain="file" path=".relocation-complete"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="lunarlog.db"/>
+        <exclude domain="file" path="lunarlog.db-wal"/>
+        <exclude domain="file" path="lunarlog.db-shm"/>
+        <exclude domain="file" path="lunarlog.db-journal"/>
+        <exclude domain="file" path="lunarlog.db.migrating"/>
+        <exclude domain="file" path="lunarlog.db.migrating-wal"/>
+        <exclude domain="file" path="lunarlog.db.migrating-shm"/>
+        <exclude domain="file" path="lunarlog.db.migrating-journal"/>
+        <exclude domain="file" path=".relocation-complete"/>
+    </device-transfer>
+</data-extraction-rules>

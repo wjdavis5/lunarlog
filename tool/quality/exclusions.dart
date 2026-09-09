@@ -33,6 +33,29 @@ class CoverageExclusion {
 
 final List<CoverageExclusion> excludedLibFilePaths = [
   const CoverageExclusion(
+    'lib/startup/startup_native.dart',
+    'protectDatabaseFile (issue #244) is an iOS-only platform-channel call '
+        '(NSFileProtectionComplete/NSURLIsExcludedFromBackupKey via '
+        'AppDelegate.swift) gated on defaultTargetPlatform == '
+        'TargetPlatform.iOS, which flutter test never reports on this '
+        'suite\'s host platforms — the branch cannot be driven true, so the '
+        'method scores 0% covered no matter how it is called, same '
+        'treatment as google_sign_in_client.dart. localDatabaseFile, '
+        '_legacyDatabaseFile, buildDbFactory, and deleteLocalDatabase are '
+        'thin path_provider wrappers with no branching logic worth testing '
+        'in isolation, same treatment. Round 2 (review) moved every piece '
+        'of pure, testable relocation logic — relocateLegacyDatabase and '
+        'its helpers, the copier seam, staged-copy verification, '
+        'deleteDatabaseFiles, deleteRelocationArtifacts, and the sentinel '
+        'handling — out of this file into '
+        'lib/startup/database_relocation.dart, which is NOT excluded and '
+        'is directly, fully unit-tested against real temp-directory files '
+        'in test/startup/database_relocation_test.dart; this file keeps '
+        'only the path_provider-dependent wrappers and the iOS-only '
+        'channel call, so excluding it no longer hides any testable logic '
+        'from the gate\'s denominator.',
+  ),
+  const CoverageExclusion(
     'lib/data/auth/google_sign_in_client.dart',
     'PluginGoogleSignInClient wraps the google_sign_in plugin and cannot '
         'run under flutter test; the file also holds a trivial immutable '
