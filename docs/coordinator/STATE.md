@@ -5,7 +5,6 @@
 |---|---|---|---|---|---|
 | 255 | feat/255-numeric-measurements | ../lunarlog-wt/255-numeric-measurements | 2026-09-10T03:00Z | — | coding |
 | 259 | feat/259-tracking-prefs | ../lunarlog-wt/259-tracking-prefs | 2026-09-10T03:00Z | — | coding |
-| 296 | fix/296-health-binding-prereqs | ../lunarlog-wt/296-health-binding-prereqs | 2026-09-10T03:00Z | — | coding |
 | 218 | feat/218-provisional-seeding | ../lunarlog-wt/218-provisional-seeding | 2026-09-09T14:35Z | — | coding (domain/data side; #216 owns the form) |
 | 242 | fix/242-ownership-token-hash-unreadable | ../lunarlog-wt/242-ownership-token-hash-unreadable | 2026-09-09T00:05Z | — | coding |
 | 125 | feat/125-alert-digest | ../lunarlog-wt/125-alert-digest | 2026-09-08T23:10Z | — | coding |
@@ -38,6 +37,7 @@
 | 193 | 374 | 2026-09-10T02:40Z |
 | 249 | 371 | 2026-09-10T02:50Z |
 | 254 | 375 | 2026-09-10T03:30Z |
+| 296 | 376 | 2026-09-10T04:00Z |
 | 136 | 367 | 2026-09-10T01:20Z |
 
 ## Externally in-flight (ANOTHER orchestrator session's set — do NOT review/merge from this session to avoid racing its loop)

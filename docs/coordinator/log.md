@@ -26,3 +26,4 @@
 2026-09-10T01:55Z merged PR #370 (#220 closed) and PR #369 (#151 closed, incl. coder's integration fix for the #364 badge double-stack). Wave 7 dispatched: #178 reminder kinds, #193 iOS health writes, #249 taxonomy physical (deps verified closed at dispatch).
 2026-09-10T03:00Z merged PR #372 (#178) and PR #374 (#193; projection conflict resolved in favor of main's engine-phase). Fleet bumped to 4 per owner: dispatched #255 #254 #259 #296 (all deps verified closed at dispatch).
 2026-09-10T03:30Z merged PR #375 (#254 closed). Note for operator: Play production dispatches now fail closed until PLAY_HEALTH_DECLARATION_CONFIRMED repo variable is set (by design, #254). In flight: #255 #259 #296.
+2026-09-10T04:10Z merged PR #376 (#296 closed). Fleet at 4: #255, #378-integration (259 worktree), #206, #207.
