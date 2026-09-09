@@ -40,15 +40,20 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'TargetPlatform.iOS, which flutter test never reports on this '
         'suite\'s host platforms — the branch cannot be driven true, so the '
         'method scores 0% covered no matter how it is called, same '
-        'treatment as google_sign_in_client.dart. The file\'s other '
-        'logic — relocateLegacyDatabase and its helpers, the one-time '
-        '#244 migration off Documents/ — is pure dart:io/sqlite3 and is '
-        'directly, fully unit-tested against real temp-directory files in '
-        'test/startup/startup_native_test.dart; excluding the whole file '
-        'only removes it from the gate\'s denominator, per this file\'s own '
-        'doc comment, same treatment as '
-        'notifications/firebase_push_token_source.dart\'s '
-        'buildFirebaseOptions().',
+        'treatment as google_sign_in_client.dart. localDatabaseFile, '
+        '_legacyDatabaseFile, buildDbFactory, and deleteLocalDatabase are '
+        'thin path_provider wrappers with no branching logic worth testing '
+        'in isolation, same treatment. Round 2 (review) moved every piece '
+        'of pure, testable relocation logic — relocateLegacyDatabase and '
+        'its helpers, the copier seam, staged-copy verification, '
+        'deleteDatabaseFiles, deleteRelocationArtifacts, and the sentinel '
+        'handling — out of this file into '
+        'lib/startup/database_relocation.dart, which is NOT excluded and '
+        'is directly, fully unit-tested against real temp-directory files '
+        'in test/startup/database_relocation_test.dart; this file keeps '
+        'only the path_provider-dependent wrappers and the iOS-only '
+        'channel call, so excluding it no longer hides any testable logic '
+        'from the gate\'s denominator.',
   ),
   const CoverageExclusion(
     'lib/data/auth/google_sign_in_client.dart',

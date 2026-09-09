@@ -5,28 +5,38 @@
   setting up a new device). `android:allowBackup="false"` (AndroidManifest.xml)
   already disables Auto Backup to the cloud outright, but device-to-device
   transfer on API 31+ is governed independently by this file's
-  <device-transfer-content> — without it, the local database (a household's
+  <device-transfer> section — without it, the local database (a household's
   full cycle history, including minors' records) would still copy to a new
-  device during setup even with allowBackup false. <cloud-backup-content> is
+  device during setup even with allowBackup false. <cloud-backup> is
   included too, belt-and-suspenders: it only takes effect if allowBackup ever
   becomes true, at which point this exclusion is already in place instead of
   needing to be added in the same change.
+
+  Round 2 correction: the framework's schema for this file (API 31+) is
+  <cloud-backup> and <device-transfer> — the "-content" suffix belongs only
+  to the legacy <full-backup-content> root used by backup_rules.xml (the
+  pre-31 schema, a completely different file/tag). The previous version of
+  this file used <cloud-backup-content>/<device-transfer-content>, names the
+  API 31+ parser does not recognize; an unrecognized root/section is
+  silently ignored rather than rejected at build time, so this file had no
+  effect at all and device-to-device transfer was copying the full local
+  database to a new device unexcluded.
 
   Paths are relative to the "file" domain (Context.getFilesDir(), which is
   what path_provider's getApplicationSupportDirectory() resolves to on
   Android — see lib/startup/startup_native.dart's localDatabaseFile()).
 -->
 <data-extraction-rules>
-    <cloud-backup-content>
+    <cloud-backup>
         <exclude domain="file" path="lunarlog.db"/>
         <exclude domain="file" path="lunarlog.db-wal"/>
         <exclude domain="file" path="lunarlog.db-shm"/>
         <exclude domain="file" path="lunarlog.db-journal"/>
-    </cloud-backup-content>
-    <device-transfer-content>
+    </cloud-backup>
+    <device-transfer>
         <exclude domain="file" path="lunarlog.db"/>
         <exclude domain="file" path="lunarlog.db-wal"/>
         <exclude domain="file" path="lunarlog.db-shm"/>
         <exclude domain="file" path="lunarlog.db-journal"/>
-    </device-transfer-content>
+    </device-transfer>
 </data-extraction-rules>

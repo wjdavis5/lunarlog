@@ -50,6 +50,35 @@ import UIKit
   /// or throws back across the channel.
   private static func protectDatabaseFile(atPath path: String) {
     let fileManager = FileManager.default
+    let directoryPath = (path as NSString).deletingLastPathComponent
+
+    // Round 2: protect the containing directory itself, not just the
+    // files that exist at call time. A child inherits its parent
+    // directory's NSFileProtectionComplete class, and
+    // NSURLIsExcludedFromBackupKey on a directory excludes its current
+    // *and future* contents — so a sqlite `-journal` sidecar created
+    // after this method has already run once (this call only iterates
+    // siblings that already exist below) is covered anyway.
+    if fileManager.fileExists(atPath: directoryPath) {
+      do {
+        try fileManager.setAttributes(
+          [.protectionKey: FileProtectionType.complete],
+          ofItemAtPath: directoryPath
+        )
+      } catch {
+        // Best effort only — see the Dart-side doc comment.
+      }
+
+      var directoryUrl = URL(fileURLWithPath: directoryPath, isDirectory: true)
+      var directoryResourceValues = URLResourceValues()
+      directoryResourceValues.isExcludedFromBackup = true
+      do {
+        try directoryUrl.setResourceValues(directoryResourceValues)
+      } catch {
+        // Best effort only — see the Dart-side doc comment.
+      }
+    }
+
     let suffixes = ["", "-wal", "-shm", "-journal"]
     for suffix in suffixes {
       let siblingPath = path + suffix

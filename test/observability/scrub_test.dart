@@ -279,7 +279,7 @@ void main() {
               'errno = 13)',
           stackTrace: SentryStackTrace(frames: [
             SentryStackFrame(
-              absPath: 'package:lunarlog/startup/startup_native.dart',
+              absPath: 'package:lunarlog/startup/database_relocation.dart',
               function: 'deleteDatabaseFiles',
             ),
           ]),

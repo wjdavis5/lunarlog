@@ -1,20 +1,29 @@
 /// Native (mobile/desktop) startup wiring for the database factory: a file
 /// in Application Support (issue #244 — moved off `Documents/`, which is
-/// included in iOS device/iCloud backup by default; Application Support is
-/// not), opened by U2's factory (fail-closed on an existing file that won't
-/// open). Also the native half of the device-reset primitives (KTD16).
+/// included in iOS device/iCloud backup by default; Application Support
+/// **is included by default too** — only `tmp/` and `Library/Caches/` are
+/// excluded automatically. The directory move is hygiene, not the control:
+/// `protectDatabaseFile` below applying `NSURLIsExcludedFromBackupKey`
+/// (`AppDelegate.swift`) is what actually keeps the file out of backup on
+/// iOS. Android's equivalent is declarative (`android:dataExtractionRules`,
+/// `data_extraction_rules.xml`) rather than a runtime call. Opened by U2's
+/// factory (fail-closed on an existing file that won't open). Also the
+/// native half of the device-reset primitives (KTD16).
 library;
 
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart' show MethodChannel;
+import 'package:lunarlog/app_lifecycle.dart' show kPrivacyChannel;
 import 'package:lunarlog/data/db/db_factory.dart';
 import 'package:lunarlog/data/db/native_db.dart';
-import 'package:meta/meta.dart' show visibleForTesting;
+import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/startup/database_relocation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite3;
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 /// The one database file this install uses.
 Future<File> localDatabaseFile() async {
@@ -23,146 +32,64 @@ Future<File> localDatabaseFile() async {
 }
 
 /// Where this install's database lived before issue #244 — `Documents/`.
-/// Only consulted by [relocateLegacyDatabase]; never opened directly.
+/// Only consulted by [relocateLegacyDatabase] (via [buildDbFactory]) and
+/// [deleteLocalDatabase]; never opened directly.
 Future<File> _legacyDatabaseFile() async {
   final dir = await getApplicationDocumentsDirectory();
   return File('${dir.path}${Platform.pathSeparator}lunarlog.db');
 }
 
-/// Runs the one-time relocation (issue #244) before wiring the factory to
-/// [localDatabaseFile]. Callers apply [protectDatabaseFile] themselves after
-/// `.open()` succeeds (see `main.dart`) — the file is only guaranteed to
-/// exist on disk once `LunarLogDbFactory.open()`'s own `SELECT 1` probe has
-/// run, which this function cannot see from in here.
+/// Runs the one-time relocation (issue #244; crash-safety hardened in
+/// round 2 — see `lib/startup/database_relocation.dart`) before wiring the
+/// factory to whichever file the relocation says to open. Callers apply
+/// [protectDatabaseFile] themselves after `.open()` succeeds (see
+/// `main.dart`) — the file is only guaranteed to exist on disk once
+/// `LunarLogDbFactory.open()`'s own `SELECT 1` probe has run, which this
+/// function cannot see from in here.
 Future<LunarLogDbFactory> buildDbFactory() async {
   final target = await localDatabaseFile();
-  await relocateLegacyDatabase(
-    legacyFile: await _legacyDatabaseFile(),
-    targetFile: target,
-  );
-  return nativeDbFactory(file: target);
+  final legacy = await _legacyDatabaseFile();
+  final fileToOpen =
+      await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+  if (fileToOpen.path == legacy.path) {
+    // Round 2: relocation was attempted and failed verification (or a
+    // staging copy/rename threw) — report it (type-only; never a path or
+    // content) so a systematic failure is visible, then fall back to
+    // opening the legacy file rather than a possibly-corrupt copy, same
+    // as `_openDatabase`'s own U7 catch in `app_lifecycle.dart`.
+    defaultBreadcrumbLog.record(
+        'startup', 'relocateLegacyDatabase fell back to the legacy file');
+    unawaited(Sentry.captureException(
+        StateError('relocateLegacyDatabase fell back to the legacy file')));
+  }
+  return nativeDbFactory(file: fileToOpen);
 }
 
 /// Deletes this install's database file and its `-wal`, `-shm` and
-/// `-journal` siblings. A device-reset primitive only: the caller
-/// (`resetDevice`, KTD16) must have closed the database first. Nothing else
-/// is touched.
-Future<void> deleteLocalDatabase() async =>
-    deleteDatabaseFiles(await localDatabaseFile());
-
-/// Sibling suffixes sqlite may leave beside a database file.
-const List<String> kDatabaseSiblingSuffixes = ['', '-wal', '-shm', '-journal'];
-
-/// [deleteLocalDatabase] for an explicit [dbFile] (testable without the
-/// platform's documents directory). Missing files are skipped.
-Future<void> deleteDatabaseFiles(File dbFile) async {
-  for (final suffix in kDatabaseSiblingSuffixes) {
-    final sibling = File('${dbFile.path}$suffix');
-    if (await sibling.exists()) {
-      await sibling.delete();
-    }
-  }
-}
-
-/// One-time startup migration (issue #244): moves a pre-#244 install's
-/// `Documents/lunarlog.db` (and whichever of its `-wal`/`-shm`/`-journal`
-/// siblings exist) to [targetFile]'s directory (Application Support).
-/// Idempotent and safe to call on every startup:
+/// `-journal` siblings, **and** whatever the issue #244 relocation could
+/// have left behind: the legacy `Documents/lunarlog.db` (and its own
+/// siblings) and the relocation sentinel. Without also clearing the legacy
+/// copy, a device reset (`resetDevice`, KTD16) that only wiped the current
+/// (Application Support) file would leave the legacy file in place for the
+/// very next [buildDbFactory] call to "recover" right back — resurrecting
+/// the wiped data on the immediate reopen that follows a reset.
 ///
-/// * No-op when [targetFile] already exists — a prior run already migrated
-///   (or this is a fresh install that never had a legacy file), and this
-///   run must never clobber a target a previous run already verified
-///   openable.
-/// * No-op when there is nothing at [legacyFile].
-/// * Otherwise: copies every existing sibling to the target directory
-///   (creating it if needed), opens the copied main file with a raw sqlite3
-///   handle to verify it is actually a readable database, and only *then*
-///   deletes the legacy siblings — "never delete the old file until the new
-///   one is verified openable". A copy or verify failure rolls back the
-///   partial copy at the target and leaves the legacy file untouched, so a
-///   later startup retries from a clean slate instead of being stuck behind
-///   a half-populated target that would make the first bullet above
-///   short-circuit every future attempt.
-///
-/// This only moves files; it never opens [targetFile] through drift, so it
-/// cannot itself trigger [LunarLogDbFactory]'s quarantine path — a
-/// corrupt-but-openable-by-sqlite3 legacy file would still migrate and then
-/// surface as a normal quarantine on the next real open, exactly as it
-/// would have at the old path.
-@visibleForTesting
-Future<void> relocateLegacyDatabase({
-  required File legacyFile,
-  required File targetFile,
-}) async {
-  if (await targetFile.exists()) return;
-  if (!await legacyFile.exists()) return;
-
-  final targetDir = targetFile.parent;
-  if (!await targetDir.exists()) {
-    await targetDir.create(recursive: true);
-  }
-
-  await _copyDatabaseSiblings(from: legacyFile, to: targetFile);
-
-  if (await _isOpenableDatabase(targetFile)) {
-    // Never delete the old file until the new one is verified openable.
-    await deleteDatabaseFiles(legacyFile);
-  } else {
-    // Roll back the partial copy — reusing [deleteDatabaseFiles] deletes
-    // exactly whichever siblings [_copyDatabaseSiblings] managed to create
-    // at the target before the failure, so a later startup sees a clean
-    // slate at both ends and retries from scratch instead of being stuck
-    // behind a half-populated target (which would make the first bullet
-    // above short-circuit every future attempt).
-    await deleteDatabaseFiles(targetFile);
-  }
-}
-
-/// Copies every existing `[legacyFile-suffix]` sibling (main file plus
-/// whichever of [kDatabaseSiblingSuffixes] exist) to the matching path under
-/// [to]. A missing sibling is simply skipped.
-Future<void> _copyDatabaseSiblings({required File from, required File to}) async {
-  for (final suffix in kDatabaseSiblingSuffixes) {
-    final source = File('${from.path}$suffix');
-    if (!await source.exists()) continue;
-    await source.copy('${to.path}$suffix');
-  }
-}
-
-/// Whether [file] is a real, readable sqlite database — the "never delete
-/// the old file until the new one is verified openable" check for
-/// [relocateLegacyDatabase]. `sqlite3.open` alone does not validate the file
-/// format (that happens lazily, on first access), so this runs a cheap read
-/// to force it.
-Future<bool> _isOpenableDatabase(File file) async {
-  try {
-    final raw = sqlite3.sqlite3.open(file.path);
-    try {
-      raw.select('PRAGMA schema_version');
-    } finally {
-      raw.close();
-    }
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-/// Platform channel shared with Android's FLAG_SECURE hardening
-/// (`app_lifecycle.dart`'s `applyPlatformPrivacyProtections` /
-/// `MainActivity.kt`'s `setFlagSecure`) — same channel name, an additional
-/// iOS-only method.
-const String _kPrivacyChannel = 'lunarlog/privacy';
+/// A device-reset primitive only: the caller must have closed the database
+/// first. Nothing else is touched.
+Future<void> deleteLocalDatabase() async => deleteRelocationArtifacts(
+      legacyFile: await _legacyDatabaseFile(),
+      targetFile: await localDatabaseFile(),
+    );
 
 /// iOS-only, best-effort file hardening for the database (issue #244):
-/// excludes it (and its `-wal`/`-shm`/`-journal` siblings) from iCloud/device
-/// backup (`NSURLIsExcludedFromBackupKey`) and marks them
-/// `NSFileProtectionComplete` (unreadable while the device is locked), via a
-/// tiny platform channel to `AppDelegate.swift` — the same shape as
-/// Android's `setFlagSecure` channel in `MainActivity.kt`. Called after every
-/// successful database open (`main.dart`'s `dbOpener`, including a
-/// device-reset reopen — KTD16 — which creates a fresh file that needs the
-/// same protection reapplied).
+/// excludes it (and its `-wal`/`-shm`/`-journal` siblings, plus the
+/// containing directory itself — round 2) from iCloud/device backup
+/// (`NSURLIsExcludedFromBackupKey`) and marks them `NSFileProtectionComplete`
+/// (unreadable while the device is locked), via a tiny platform channel to
+/// `AppDelegate.swift` — the same shape as Android's `setFlagSecure`
+/// channel in `MainActivity.kt`. Called after every successful database
+/// open (`main.dart`'s `dbOpener`, including a device-reset reopen — KTD16
+/// — which creates a fresh file that needs the same protection reapplied).
 ///
 /// **Why `Complete`, not `CompleteUntilFirstUserAuthentication`:** the gate
 /// (`lib/data/gate/`) already keeps the database closed until the operator
@@ -183,20 +110,27 @@ const String _kPrivacyChannel = 'lunarlog/privacy';
 /// the app's own credential prompt requires the device to already be
 /// unlocked).
 ///
-/// Best effort: a failure here (channel missing, `FileManager` error) is
-/// swallowed exactly like `applyPlatformPrivacyProtections` swallows a
-/// FLAG_SECURE failure — the Application Support directory move (not backed
-/// up by default) is the primary control; this is belt-and-suspenders on
-/// top of it, not the only thing standing between the file and a backup.
+/// Best effort in the sense that a failure here never stops the app from
+/// running — the caller gets no exception either way — but it is no
+/// longer *silent*: a channel error or `FileManager` failure is reported
+/// (round 2) via a type-only breadcrumb and `Sentry.captureException` (no
+/// path or content), so a permanently failing exclusion is visible instead
+/// of disappearing into an empty catch block forever. The Application
+/// Support directory move is hygiene; `NSURLIsExcludedFromBackupKey` here
+/// is the actual control (see the module doc comment above) — which is
+/// exactly why a failure here needs to be seen, not swallowed.
 Future<void> protectDatabaseFile() async {
   if (defaultTargetPlatform != TargetPlatform.iOS) return;
   try {
     final file = await localDatabaseFile();
-    await const MethodChannel(_kPrivacyChannel).invokeMethod<void>(
+    await const MethodChannel(kPrivacyChannel).invokeMethod<void>(
       'protectDatabaseFile',
       <String, String>{'path': file.path},
     );
-  } catch (_) {
-    // Best effort only.
+  } catch (error, stackTrace) {
+    // U7-style (KTD12): never log the path or content, only the type.
+    defaultBreadcrumbLog
+        .record('startup', 'protectDatabaseFile failed: ${error.runtimeType}');
+    unawaited(Sentry.captureException(error, stackTrace: stackTrace));
   }
 }
