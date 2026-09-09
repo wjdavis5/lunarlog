@@ -7,29 +7,39 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_permission_action.dart';
+import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 typedef LocalTimeZoneProvider = Future<String> Function();
 
-/// Computes the exact [tz.TZDateTime] for a morning reminder on [fireOn]
-/// in the given [location] (default 9:00 AM local civil time).
+/// The Darwin notification category the reminder actions (Issue #136) are
+/// registered under. Every non-log reminder carries this category
+/// identifier so iOS offers its action buttons; the actions themselves are
+/// registered once in [FlutterLocalNotificationsScheduler.initialize].
+const String kReminderCategoryId = 'lunarlog_reminder';
+
+/// Computes the exact [tz.TZDateTime] for a reminder on [fireOn] at
+/// [minuteOfDay] (minutes since local midnight; default 09:00 — the
+/// pre-#136 hardcoded hour) in the given [location].
 tz.TZDateTime calculateReminderFireAt({
   required LocalDate fireOn,
   required tz.Location location,
-  int hour = 9,
+  int minuteOfDay = kDefaultReminderTimeMinutes,
 }) {
   return tz.TZDateTime(
     location,
     fireOn.year,
     fireOn.month,
     fireOn.day,
-    hour,
+    minuteOfDay ~/ 60,
+    minuteOfDay % 60,
   );
 }
 
@@ -47,9 +57,11 @@ Future<String> defaultLocalTimeZoneProvider() async {
 abstract interface class ReminderScheduler {
   /// Initializes the plugin, requests permission, and reports whether
   /// notifications are actually enabled. [onLaunchFromNotification] fires
-  /// for a notification tap (warm) and for a cold start launched by a tap.
+  /// for a notification tap (warm) and for a cold start launched by a tap,
+  /// decoded into a [ReminderLaunch] — whose [ReminderLaunch.actionId]
+  /// distinguishes an action-button tap (Issue #136) from a plain tap.
   Future<NotificationAvailability> initialize({
-    void Function(String profileId)? onLaunchFromNotification,
+    void Function(ReminderLaunch launch)? onLaunchFromNotification,
   });
 
   /// Reads the current OS permission without reinitializing the plugin.
@@ -130,7 +142,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
 
   @override
   Future<NotificationAvailability> initialize({
-    void Function(String profileId)? onLaunchFromNotification,
+    void Function(ReminderLaunch launch)? onLaunchFromNotification,
   }) async {
     if (tz.timeZoneDatabase.locations.isEmpty) {
       tzdata.initializeTimeZones();
@@ -144,22 +156,43 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       // subsequent lookup fails.
       tz.setLocalLocation(tz.UTC);
     }
+    // Issue #136: the action buttons the reminders offer. Registered once
+    // here so a notification carrying the category identifier presents
+    // them (Darwin); Android carries the same actions per-notification in
+    // [rescheduleAll]. Generic words only — no health detail (KTD7).
+    // (DarwinNotificationAction.plain is a factory, not const.)
+    final darwinActions = [
+      DarwinNotificationAction.plain(
+          kReminderActionStarted, kReminderActionStartedLabel),
+      DarwinNotificationAction.plain(
+          kReminderActionSpotting, kReminderActionSpottingLabel),
+      DarwinNotificationAction.plain(
+          kReminderActionNotYet, kReminderActionNotYetLabel),
+    ];
+    final reminderCategory = DarwinNotificationCategory(
+      kReminderCategoryId,
+      actions: darwinActions,
+    );
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const darwin = DarwinInitializationSettings(
+    final darwin = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: false,
       requestSoundPermission: false,
+      notificationCategories: [reminderCategory],
     );
     await _plugin.initialize(
-      settings: const InitializationSettings(
+      settings: InitializationSettings(
         android: android,
         iOS: darwin,
         macOS: darwin,
       ),
       onDidReceiveNotificationResponse: (response) {
-        final payload = response.payload;
-        if (payload != null && payload.isNotEmpty) {
-          onLaunchFromNotification?.call(payload);
+        final launch = decodeReminderLaunch(
+          response.payload,
+          actionId: response.actionId,
+        );
+        if (launch != null) {
+          onLaunchFromNotification?.call(launch);
         }
       },
     );
@@ -207,13 +240,21 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     }
     _initialized = true;
 
-    // Cold start from a notification tap carries its payload here.
+    // Cold start from a notification tap carries its payload (and, for an
+    // action-button launch, its action id — Issue #136) here.
     final launchDetails = await _plugin.getNotificationAppLaunchDetails();
-    final payload = launchDetails?.notificationResponse?.payload;
+    final response = launchDetails?.notificationResponse;
     if (launchDetails?.didNotificationLaunchApp == true &&
-        payload != null &&
-        payload.isNotEmpty) {
-      onLaunchFromNotification?.call(payload);
+        response != null &&
+        response.payload != null &&
+        response.payload!.isNotEmpty) {
+      final launch = decodeReminderLaunch(
+        response.payload,
+        actionId: response.actionId,
+      );
+      if (launch != null) {
+        onLaunchFromNotification?.call(launch);
+      }
     }
 
     return checkAvailability();
@@ -328,17 +369,24 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     if (!_initialized) return;
     await _plugin.cancelAllPendingNotifications();
     final loc = locationProvider?.call() ?? tz.local;
-    for (final (index, reminder) in reminders.indexed) {
+    for (final reminder in reminders) {
       final fireAt = calculateReminderFireAt(
         fireOn: reminder.fireOn,
         location: loc,
+        minuteOfDay: reminder.timeOfDayMinutes,
       );
+      // Issue #136: the period reminders (upcoming, PMS-watch, late) offer
+      // the Started / Spotting / Not yet action buttons; the daily log
+      // nudge offers none (a generic nudge opens the app, nothing more).
+      // The action ids ride [kReminderActionIds]; on Darwin they reach the
+      // notification via the category registered in [initialize].
+      final hasActions = reminder.kind != ReminderKind.log;
       await _plugin.zonedSchedule(
-        id: index,
+        id: reminder.id,
         title: kReminderTitle,
         body: kReminderBody,
         scheduledDate: fireAt,
-        notificationDetails: const NotificationDetails(
+        notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             'Reminders',
@@ -348,12 +396,37 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
             // visibility is a user OS setting — generic content is the only
             // app-controlled iOS control (KTD7).
             visibility: NotificationVisibility.secret,
+            actions: hasActions
+                ? const [
+                    AndroidNotificationAction(
+                        kReminderActionStarted, kReminderActionStartedLabel),
+                    AndroidNotificationAction(kReminderActionSpotting,
+                        kReminderActionSpottingLabel),
+                    AndroidNotificationAction(kReminderActionNotYet,
+                        kReminderActionNotYetLabel),
+                  ]
+                : null,
           ),
+          // Previously no Darwin details were passed at all; passing only
+          // the category identifier (every presentation field left null)
+          // keeps iOS/macOS presentation exactly as it was while attaching
+          // the action buttons (Issue #136).
+          iOS: hasActions
+              ? const DarwinNotificationDetails(
+                  categoryIdentifier: kReminderCategoryId)
+              : null,
+          macOS: hasActions
+              ? const DarwinNotificationDetails(
+                  categoryIdentifier: kReminderCategoryId)
+              : null,
         ),
         // Inexact on purpose: no SCHEDULE_EXACT_ALARM permission needed
         // (Android 12+), and minute-level drift is fine for ±2-day windows.
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        payload: reminder.profileId,
+        payload: encodeReminderPayload(
+          profileId: reminder.profileId,
+          kind: reminder.kind,
+        ),
       );
     }
   }
@@ -370,7 +443,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
 class NoopReminderScheduler implements ReminderScheduler {
   @override
   Future<NotificationAvailability> initialize({
-    void Function(String profileId)? onLaunchFromNotification,
+    void Function(ReminderLaunch launch)? onLaunchFromNotification,
   }) async => NotificationAvailability.available;
 
   @override

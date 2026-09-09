@@ -9,6 +9,7 @@ library;
 import 'dart:async';
 
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 
@@ -45,7 +46,20 @@ class FakeReminderScheduler implements ReminderScheduler {
   int cancelCalls = 0;
   int availabilityChecks = 0;
   int requestPermissionCalls = 0;
-  void Function(String profileId)? launchSink;
+  void Function(ReminderLaunch launch)? launchSink;
+
+  /// Emits [launch] through the callback the coordinator registered —
+  /// the tap path. Tests call this after `start()` with a decoded
+  /// [ReminderLaunch] (or a legacy plain-profileId one via
+  /// [fireLegacyPayload]).
+  void fireLaunch(ReminderLaunch launch) => launchSink?.call(launch);
+
+  /// Same, from a raw payload string (a pre-#136 notification's plain
+  /// profile id payload still pending on a device when the app updates).
+  void fireLegacyPayload(String payload) {
+    final launch = decodeReminderLaunch(payload);
+    if (launch != null) launchSink?.call(launch);
+  }
 
   /// Answer for the next [requestPermission] (issue #168's "Turn on
   /// reminders" tap), when it should differ from [currentAvailability].
@@ -53,7 +67,7 @@ class FakeReminderScheduler implements ReminderScheduler {
 
   @override
   Future<NotificationAvailability> initialize({
-    void Function(String profileId)? onLaunchFromNotification,
+    void Function(ReminderLaunch launch)? onLaunchFromNotification,
   }) async {
     initializeCalls++;
     launchSink = onLaunchFromNotification;

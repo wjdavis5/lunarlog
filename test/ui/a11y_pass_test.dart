@@ -273,6 +273,13 @@ class _NoInvitesSharingService implements SharingService {
     required String profileId,
     required String targetUserId,
   }) => throw UnimplementedError();
+
+  @override
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  }) => throw UnimplementedError();
 }
 
 ProfileGuardian _guardian(
