@@ -3,19 +3,24 @@
 /// profiles live in a collapsed section at the bottom with one-tap unarchive.
 /// The app bar carries the sync status glyph when the build has a sync
 /// engine (U6); tapping it opens Settings.
+///
+/// Issue #126: active profiles are grouped into "My profiles" (held as
+/// primary guardian, or not yet known) and "Shared with me" (held via
+/// membership, with the operator's role shown). A profile with more than
+/// one accepted guardian carries a small shared indicator, and a profile
+/// with an outstanding invitation carries a badge — both without opening
+/// any menu. Badges are best-effort: offline they render badge-free with
+/// no error and no spinner.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
-import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
-import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -26,7 +31,9 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/routes.dart';
-import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
+import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
+import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
+import 'package:lunarlog/ui/sharing/sharing_overview_controller.dart';
 import 'package:provider/provider.dart';
 
 String formatCreatedDate(DateTime utc) {
@@ -36,8 +43,42 @@ String formatCreatedDate(DateTime utc) {
       '${two(local.hour)}:${two(local.minute)}';
 }
 
-class ProfilePickerScreen extends StatelessWidget {
+class ProfilePickerScreen extends StatefulWidget {
   const ProfilePickerScreen({super.key});
+
+  @override
+  State<ProfilePickerScreen> createState() => _ProfilePickerScreenState();
+}
+
+class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
+  SharingOverviewController? _overview;
+
+  @override
+  void initState() {
+    super.initState();
+    final storage = Provider.of<LunarLogStorage?>(context, listen: false);
+    if (storage != null) {
+      final controller = SharingOverviewController(
+        storage: storage,
+        currentUserId: Provider.of<AuthController?>(context, listen: false)
+            ?.currentUserId,
+      );
+      controller.addListener(_onOverviewChanged);
+      _overview = controller;
+    }
+  }
+
+  void _onOverviewChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _overview?.removeListener(_onOverviewChanged);
+    _overview?.dispose();
+    _overview = null;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +87,11 @@ class ProfilePickerScreen extends StatelessWidget {
     final archived = controller.archivedProfiles;
     final hasSync = Provider.of<SyncStatusController?>(context) != null;
     void openSettings() => pushNamedScreen<void>(context, kRouteSettingsScreen);
+    final overview = _overview;
+    if (overview != null) {
+      overview.observeProfiles([for (final profile in active) profile.id]);
+    }
+    final sharing = Provider.of<SharingService?>(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profiles'),
@@ -73,25 +119,7 @@ class ProfilePickerScreen extends StatelessWidget {
             )
           : ListView(
               children: [
-                for (final profile in active)
-                  ListTile(
-                    title: Text(profile.displayName),
-                    subtitle: Text(
-                        'Created ${formatCreatedDate(profile.createdAt)}'),
-                    onTap: () => controller.selectProfile(profile.id),
-                    trailing: PopupMenuButton<String>(
-                      tooltip: 'Profile actions',
-                      onSelected: (action) =>
-                          _onRowAction(context, profile, action),
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                            value: 'caregivers', child: Text('Caregivers')),
-                        PopupMenuItem(value: 'rename', child: Text('Rename')),
-                        PopupMenuItem(
-                            value: 'archive', child: Text('Archive')),
-                      ],
-                    ),
-                  ),
+                ..._activeRows(context, overview, sharing, active),
                 if (archived.isNotEmpty)
                   ExpansionTile(
                     key: const Key('archived-section'),
@@ -125,6 +153,82 @@ class ProfilePickerScreen extends StatelessWidget {
     );
   }
 
+  /// Active rows partitioned into "My profiles" and "Shared with me".
+  /// Without sharing state (unconfigured build, or nobody shared with
+  /// you) this is exactly the old flat list — no headers.
+  List<Widget> _activeRows(
+    BuildContext context,
+    SharingOverviewController? overview,
+    SharingService? sharing,
+    List<Profile> active,
+  ) {
+    if (overview == null) {
+      return [for (final profile in active) _row(context, null, sharing, profile)];
+    }
+    final owned = [
+      for (final profile in active)
+        if (overview.infoFor(profile.id).group == ProfileSharingGroup.owned)
+          profile,
+    ];
+    final shared = [
+      for (final profile in active)
+        if (overview.infoFor(profile.id).group ==
+            ProfileSharingGroup.sharedWithMe)
+          profile,
+    ];
+    if (shared.isEmpty) {
+      return [for (final profile in owned) _row(context, overview, sharing, profile)];
+    }
+    return [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Text(
+          'My profiles',
+          key: ValueKey('my-profiles-header'),
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      for (final profile in owned) _row(context, overview, sharing, profile),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Text(
+          'Shared with me',
+          key: ValueKey('shared-with-me-header'),
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      for (final profile in shared) _row(context, overview, sharing, profile),
+    ];
+  }
+
+  Widget _row(
+    BuildContext context,
+    SharingOverviewController? overview,
+    SharingService? sharing,
+    Profile profile,
+  ) {
+    final info = overview?.infoFor(profile.id) ?? const SharingProfileInfo.unknown();
+    final roleSubtitle = SharingProfileInfo.roleSubtitle(info);
+    return ProfileSharingTile(
+      key: ValueKey('profile-row-${profile.id}'),
+      profile: profile,
+      info: info,
+      sharingService: sharing,
+      refreshToken: overview?.badgeEpoch ?? 0,
+      subtitle: roleSubtitle ?? 'Created ${formatCreatedDate(profile.createdAt)}',
+      onTap: () => context.read<ProfileController>().selectProfile(profile.id),
+      trailing: PopupMenuButton<String>(
+        tooltip: 'Profile actions',
+        onSelected: (action) => _onRowAction(context, profile, action),
+        itemBuilder: (context) => const [
+          PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
+          PopupMenuItem(value: 'rename', child: Text('Rename')),
+          PopupMenuItem(value: 'archive', child: Text('Archive')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _addProfile(BuildContext context) async {
     final controller = context.read<ProfileController>();
     final result = await showProfileEditDialog(context);
@@ -144,29 +248,10 @@ class ProfilePickerScreen extends StatelessWidget {
       BuildContext context, Profile profile, String action) async {
     final controller = context.read<ProfileController>();
     if (action == 'caregivers') {
-      final storage = Provider.of<LunarLogStorage?>(context, listen: false);
-      final sharing = Provider.of<SharingService?>(context, listen: false);
-      final ownershipTransfer =
-          Provider.of<OwnershipTransferService?>(context, listen: false);
-      if (storage != null && sharing != null) {
-        Navigator.of(context).push(
-          buildNamedRoute<void>(
-            name: kRouteManageGuardiansScreen,
-            builder: (_) => ManageGuardiansScreen(
-              profile: profile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
-              sharingService: sharing,
-              currentUserId:
-                  context.read<AuthController?>()?.currentUserId,
-              ownershipTransferService: ownershipTransfer,
-              notificationPreferencesService:
-                  Provider.of<NotificationPreferencesService?>(
-                      context, listen: false),
-              activityRepository: ActivityFeedRepository(storage),
-            ),
-          ),
-        );
-      }
+      // Returning from Manage Guardians may have cancelled an invitation:
+      // refresh outside badges so the change surfaces without a restart.
+      openManageGuardians(context, profile)
+          ?.then((_) => _overview?.refreshBadges());
     } else if (action == 'rename') {
       final result = await showProfileEditDialog(context, existing: profile);
       if (result == null) return;
