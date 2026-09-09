@@ -15,6 +15,16 @@
 ///
 /// Active-profile scoping (R3): the calendar operates on exactly one
 /// profile id and one repository stream; no drift types cross here.
+///
+/// Issue #191 (B-2, B-11): a logged bleed day's fill is now graded by
+/// [FlowLevel] with the #176 `flow*` ramp tokens (spotting a ring + centre
+/// dot, light/medium/heavy climbing the ramp's saturation), plus a
+/// non-colour dot-count channel so the same distinction survives without
+/// colour; a legend strip keys every mark the grid can show; the month
+/// grid is a swipeable [PageView] (the chevrons drive the same
+/// controller); a "Today" header action jumps to and highlights the
+/// current month; and tapping the month label opens a month/year picker
+/// sheet bounded by the same forward limit the chevron already enforced.
 library;
 
 import 'dart:async';
@@ -40,6 +50,7 @@ import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
     show kEstimateDisclaimer;
+import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:provider/provider.dart';
 
 const List<String> kMonthNames = [
@@ -86,6 +97,35 @@ List<Color> symptomLayerPalette(Brightness brightness) =>
 /// distinction instead (KTD3).
 double futureCellOpacity(bool isFuture, bool hasForecastContent) =>
     isFuture && !hasForecastContent ? 0.35 : 1;
+
+/// A logged bleed [level]'s fill/on-fill pair from the #176 `flow*` ramp
+/// (issue #191 B-2). `spotting`'s `fill` doubles as its ring/centre-dot
+/// colour in [_MonthCalendarState._flowCircle] — it never fills the whole
+/// circle. [_MonthCalendarState._dayCircle] only ever calls this with a
+/// bleed level (`isBleed(level)`, which excludes `none`); `none` shares
+/// spotting's case rather than adding a branch no caller can reach.
+({Color fill, Color onFill}) _flowTone(FlowLevel level, LunarLogColors colors) =>
+    switch (level) {
+      FlowLevel.none || FlowLevel.spotting => (
+        fill: colors.flowSpotting,
+        onFill: colors.onFlowSpotting,
+      ),
+      FlowLevel.light => (fill: colors.flowLight, onFill: colors.onFlowLight),
+      FlowLevel.medium => (fill: colors.flowMedium, onFill: colors.onFlowMedium),
+      FlowLevel.heavy => (fill: colors.flowHeavy, onFill: colors.onFlowHeavy),
+    };
+
+/// The non-colour intensity channel (issue #191 B-2): a small dot count
+/// climbing from 1 (spotting) to 4 (heavy), independent of the `flow*`
+/// ramp's hue/saturation — asserted directly in widget tests via the
+/// `flow-mark-<i>-<iso>` keys [_MonthCalendarState._flowCircle] renders.
+/// See [_flowTone] on why `none` shares spotting's case.
+int _flowLevelMarkCount(FlowLevel level) => switch (level) {
+  FlowLevel.none || FlowLevel.spotting => 1,
+  FlowLevel.light => 2,
+  FlowLevel.medium => 3,
+  FlowLevel.heavy => 4,
+};
 
 Color pmsBadgeColor(Brightness brightness) => brightness == Brightness.light
     ? const Color(0xFF5E35B1)
@@ -142,6 +182,28 @@ String _predictedDaySemanticLabel(LocalDate date, ForecastDayCell cell) {
 }
 
 int _monthIndex(int year, int month) => year * 12 + (month - 1);
+
+/// How [_MonthCalendarState._legendSwatch] draws one legend entry's swatch
+/// — mirrors the three shapes the grid itself uses so the legend key
+/// actually matches what a cell renders (a plain fill, spotting/today's
+/// ring, or #133's hatched predicted band).
+enum _LegendSwatchStyle { fill, ring, hatched }
+
+/// One row of the legend strip (issue #191; B-2, B-11): a swatch plus its
+/// label, keyed by [code] (`legend-<code>`) for direct widget-test lookup.
+class _LegendEntry {
+  const _LegendEntry(
+    this.code,
+    this.color,
+    this.label, {
+    this.style = _LegendSwatchStyle.fill,
+  });
+
+  final String code;
+  final Color color;
+  final String label;
+  final _LegendSwatchStyle style;
+}
 
 class MonthCalendar extends StatefulWidget {
   const MonthCalendar({
@@ -208,6 +270,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
   Set<String> _activeLayers = const {};
   bool _layersExpanded = false;
 
+  /// Swipe navigation (issue #191): one page per month, indexed by
+  /// [_pageIndexFor]/[_monthForPageIndex] against a fixed epoch offset so
+  /// page indices never go negative for any real calendar year.
+  late final PageController _pageController;
+
   @override
   void initState() {
     super.initState();
@@ -224,6 +291,9 @@ class _MonthCalendarState extends State<MonthCalendar> {
     }
     _watchGuardians();
     _resetToTodaysMonth();
+    _pageController = PageController(
+      initialPage: _pageIndexFor(_displayedYear, _displayedMonth),
+    );
   }
 
   void _onAuthChanged() {
@@ -267,6 +337,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
       _rewatchPrediction();
       _watchGuardians();
       _resetToTodaysMonth();
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(
+          _pageIndexFor(_displayedYear, _displayedMonth),
+        );
+      }
     }
   }
 
@@ -276,6 +351,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     _guardiansSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -295,12 +371,84 @@ class _MonthCalendarState extends State<MonthCalendar> {
     _displayedMonth = today.month;
   }
 
-  void _shiftMonth(int delta) {
+  /// Fixed epoch offset (issue #191): keeps every [_pageIndexFor] result
+  /// non-negative for any realistic calendar year, so [_pageController]
+  /// never has to reason about negative [PageView] indices.
+  static const int _kPageIndexOffset = 1000000;
+
+  int _pageIndexFor(int year, int month) =>
+      _monthIndex(year, month) + _kPageIndexOffset;
+
+  (int, int) _monthForPageIndex(int pageIndex) {
+    final index = pageIndex - _kPageIndexOffset;
+    return (index ~/ 12, index % 12 + 1);
+  }
+
+  /// [PageView.onPageChanged] (issue #191): keeps `_displayed*` — and so
+  /// the header/legend/empty-state chrome, which reads that state directly
+  /// — in sync with whichever page the swipe gesture actually settles on.
+  /// A no-op guard skips the redundant `setState` [_goToMonth] already
+  /// performed for a programmatic (chevron/Today/picker) navigation.
+  void _onPageChanged(int pageIndex) {
+    final (year, month) = _monthForPageIndex(pageIndex);
+    if (year == _displayedYear && month == _displayedMonth) return;
     setState(() {
-      final index = _monthIndex(_displayedYear, _displayedMonth) + delta;
-      _displayedYear = index ~/ 12;
-      _displayedMonth = index % 12 + 1;
+      _displayedYear = year;
+      _displayedMonth = month;
     });
+  }
+
+  /// Programmatic navigation to one specific month (chevrons, Today, and
+  /// the month/year picker all funnel through this): updates the display
+  /// state immediately and drives [_pageController] to match, animated for
+  /// the one-page chevron step and instant (a jump) for the
+  /// possibly-many-pages-away Today/picker destinations.
+  void _goToMonth(int year, int month, {required bool animate}) {
+    final page = _pageIndexFor(year, month);
+    if (animate) {
+      _pageController.animateToPage(
+        page,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    } else if (_pageController.hasClients) {
+      _pageController.jumpToPage(page);
+    }
+    setState(() {
+      _displayedYear = year;
+      _displayedMonth = month;
+    });
+  }
+
+  void _shiftMonth(int delta) {
+    final index = _monthIndex(_displayedYear, _displayedMonth) + delta;
+    _goToMonth(index ~/ 12, index % 12 + 1, animate: true);
+  }
+
+  void _goToToday() {
+    final today = widget.todayProvider();
+    _goToMonth(today.year, today.month, animate: false);
+  }
+
+  /// Tapping the month label (issue #191): a small custom sheet in place of
+  /// six-tap chevron navigation, bounded by the same forward limit
+  /// [nextDisabled] already enforces on the chevron (never further ahead
+  /// than [kForwardMonthLimit] months past today).
+  Future<void> _openMonthYearPicker() async {
+    final today = widget.todayProvider();
+    final maxMonthIndex = _monthIndex(today.year, today.month) + kForwardMonthLimit;
+    final result = await showModalBottomSheet<(int, int)>(
+      context: context,
+      showDragHandle: true,
+      routeSettings: const RouteSettings(name: kRouteMonthYearPickerDialog),
+      builder: (_) => _MonthYearPickerSheet(
+        initialYear: _displayedYear,
+        initialMonth: _displayedMonth,
+        maxMonthIndex: maxMonthIndex,
+      ),
+    );
+    if (result == null) return;
+    _goToMonth(result.$1, result.$2, animate: false);
   }
 
   Future<void> _openDay(LocalDate date, DayEntry? entry) async {
@@ -422,6 +570,9 @@ class _MonthCalendarState extends State<MonthCalendar> {
     required bool nextDisabled,
   }) {
     final theme = Theme.of(context);
+    final colors =
+        theme.extension<LunarLogColors>() ??
+        LunarLogColors.forColorScheme(theme.colorScheme);
     final estimateActive = prediction is ActivePrediction;
     final cycles = estimateActive
         ? deriveForecast(prediction: prediction, history: history, today: today)
@@ -432,20 +583,35 @@ class _MonthCalendarState extends State<MonthCalendar> {
         : {for (final tag in defaultLayerTags(entries)) tag};
     final layerList = activeLayers.toList(growable: false);
     final palette = symptomLayerPalette(theme.brightness);
+    final maxPageIndex =
+        _pageIndexFor(today.year, today.month) + kForwardMonthLimit;
 
     return Column(
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(
               tooltip: 'Previous month',
               icon: const Icon(Icons.chevron_left),
               onPressed: () => _shiftMonth(-1),
             ),
-            Text(
-              '${kMonthNames[_displayedMonth - 1]} $_displayedYear',
-              style: theme.textTheme.titleMedium,
+            Expanded(
+              child: InkWell(
+                key: const ValueKey('month-year-label'),
+                onTap: _openMonthYearPicker,
+                child: Center(
+                  child: Text(
+                    '${kMonthNames[_displayedMonth - 1]} $_displayedYear',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('today-button'),
+              tooltip: 'Today',
+              icon: const Icon(Icons.today_outlined),
+              onPressed: _goToToday,
             ),
             IconButton(
               tooltip: 'Next month',
@@ -454,9 +620,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
           ],
         ),
+        _legendStrip(theme, colors),
         _layersHeader(layerList, theme),
         if (_layersExpanded) _layersPanel(activeLayers),
         Padding(
+          key: const ValueKey('calendar-weekday-header'),
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
             children: [
@@ -483,25 +651,106 @@ class _MonthCalendarState extends State<MonthCalendar> {
             body: 'Tap a day to log it',
           ),
         Expanded(
-          child: SingleChildScrollView(
-            child: GridView.count(
-              crossAxisCount: 7,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              children: _cells(
-                byIso: byIso,
-                forecastByIso: forecastByIso,
-                cycles: cycles,
-                today: today,
-                theme: theme,
-                layerList: layerList,
-                palette: palette,
-              ),
-            ),
+          child: PageView.builder(
+            key: const ValueKey('calendar-page-view'),
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            itemCount: maxPageIndex + 1,
+            itemBuilder: (context, pageIndex) {
+              final (year, month) = _monthForPageIndex(pageIndex);
+              return SingleChildScrollView(
+                child: GridView.count(
+                  key: ValueKey('calendar-grid-$year-$month'),
+                  crossAxisCount: 7,
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: _cells(
+                    year: year,
+                    month: month,
+                    byIso: byIso,
+                    forecastByIso: forecastByIso,
+                    cycles: cycles,
+                    today: today,
+                    theme: theme,
+                    colors: colors,
+                    layerList: layerList,
+                    palette: palette,
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],
     );
+  }
+
+  /// The legend strip under the month header (issue #191; B-2, B-11): keys
+  /// every mark the grid can show — the four logged flow levels, a
+  /// symptom-only day, today's ring, and #133's predicted band — so the
+  /// colour-graded fills and the hatched forecast are readable without
+  /// having to guess what a swatch means.
+  Widget _legendStrip(ThemeData theme, LunarLogColors colors) {
+    // Labels say "... flow"/"day" rather than the bare `flowLabel(level)`
+    // strings `DaySheet`'s flow chips use (issue #191 review): the day
+    // sheet renders as a modal over this still-mounted calendar, so a bare
+    // "Medium"/"Heavy" here would collide with `find.text` in every widget
+    // test that opens it with a chip selected.
+    final entries = [
+      _LegendEntry('spotting', colors.flowSpotting, 'Spotting flow', style: _LegendSwatchStyle.ring),
+      _LegendEntry('light', colors.flowLight, 'Light flow'),
+      _LegendEntry('medium', colors.flowMedium, 'Medium flow'),
+      _LegendEntry('heavy', colors.flowHeavy, 'Heavy flow'),
+      _LegendEntry('symptom', colors.symptomDot, 'Symptom day'),
+      _LegendEntry('today', theme.colorScheme.primary, 'Today', style: _LegendSwatchStyle.ring),
+      _LegendEntry('predicted', colors.predictedBorder, 'Predicted day', style: _LegendSwatchStyle.hatched),
+    ];
+    return Padding(
+      key: const ValueKey('calendar-legend'),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 4,
+        children: [for (final entry in entries) _legendChip(entry, theme)],
+      ),
+    );
+  }
+
+  Widget _legendChip(_LegendEntry entry, ThemeData theme) {
+    return Row(
+      key: ValueKey('legend-${entry.code}'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _legendSwatch(entry),
+        const SizedBox(width: 4),
+        Text(entry.label, style: theme.textTheme.labelSmall),
+      ],
+    );
+  }
+
+  Widget _legendSwatch(_LegendEntry entry) {
+    return switch (entry.style) {
+      _LegendSwatchStyle.fill => Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: entry.color),
+      ),
+      _LegendSwatchStyle.ring => Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: entry.color, width: 1.5),
+        ),
+      ),
+      _LegendSwatchStyle.hatched => _HatchedCircle(
+        color: entry.color,
+        opacity: 1,
+        diameter: 14,
+        child: const SizedBox.shrink(),
+      ),
+    };
   }
 
   /// Whether any entry falls within the displayed month (issue #187) —
@@ -598,22 +847,24 @@ class _MonthCalendarState extends State<MonthCalendar> {
   }
 
   List<Widget> _cells({
+    required int year,
+    required int month,
     required Map<String, DayEntry> byIso,
     required Map<String, ForecastDayCell> forecastByIso,
     required List<ForecastCycle> cycles,
     required LocalDate today,
     required ThemeData theme,
+    required LunarLogColors colors,
     required List<String> layerList,
     required List<Color> palette,
   }) {
-    final firstOfMonth = LocalDate(_displayedYear, _displayedMonth, 1);
-    final firstOfNext = _displayedMonth == 12
-        ? LocalDate(_displayedYear + 1, 1, 1)
-        : LocalDate(_displayedYear, _displayedMonth + 1, 1);
+    final firstOfMonth = LocalDate(year, month, 1);
+    final firstOfNext = month == 12
+        ? LocalDate(year + 1, 1, 1)
+        : LocalDate(year, month + 1, 1);
     final daysInMonth = firstOfNext.difference(firstOfMonth);
     // DateTime.weekday is 1=Monday..7=Sunday; the grid starts on Sunday.
-    final leadingBlanks =
-        DateTime(_displayedYear, _displayedMonth, 1).weekday % 7;
+    final leadingBlanks = DateTime(year, month, 1).weekday % 7;
     return [
       for (var blank = 0; blank < leadingBlanks; blank++)
         const SizedBox.shrink(),
@@ -625,6 +876,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           cycles: cycles,
           today: today,
           theme: theme,
+          colors: colors,
           layerList: layerList,
           palette: palette,
         ),
@@ -638,6 +890,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     required List<ForecastCycle> cycles,
     required LocalDate today,
     required ThemeData theme,
+    required LunarLogColors colors,
     required List<String> layerList,
     required List<Color> palette,
   }) {
@@ -647,7 +900,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     // KTD3: a logged day always renders as logged — forecast markers only
     // ever pair a future date that has no entry.
     final forecastCell = entry == null && isFuture ? forecastByIso[iso] : null;
-    final bleed = entry != null && isBleed(entry.flow);
+    final bleedLevel = entry != null && isBleed(entry.flow) ? entry.flow : null;
     final selectable = !isFuture && (!_effectiveReadOnly || entry != null);
     return InkWell(
       key: ValueKey('day-cell-$iso'),
@@ -674,10 +927,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
             children: [
               _dayCircle(
                 date,
-                bleed: bleed,
+                bleedLevel: bleedLevel,
                 forecastCell: forecastCell,
                 isToday: date == today,
                 theme: theme,
+                colors: colors,
               ),
               const SizedBox(height: 2),
               SizedBox(
@@ -713,40 +967,31 @@ class _MonthCalendarState extends State<MonthCalendar> {
     return null;
   }
 
-  /// The day-number circle: solid primary fill for a logged bleed day
-  /// (key `bleed-<iso>`), a hatched primary band for a predicted bleed day
+  /// The day-number circle: a `flow*`-ramp-graded fill for a logged bleed
+  /// day (key `bleed-<iso>`; issue #191 B-2 — spotting is a ring plus a
+  /// small centre dot rather than a full fill, light/medium/heavy climb the
+  /// ramp's saturation), a hatched predicted band for a forecast bleed day
   /// (key `predicted-<iso>` — hatched, never filled, KTD3), otherwise a
   /// thin primary ring when the cell is today.
   Widget _dayCircle(
     LocalDate date, {
-    required bool bleed,
+    required FlowLevel? bleedLevel,
     required ForecastDayCell? forecastCell,
     required bool isToday,
     required ThemeData theme,
+    required LunarLogColors colors,
   }) {
     final iso = date.iso;
     final label = Text('${date.day}');
-    if (bleed) {
-      return Container(
-        key: ValueKey('bleed-$iso'),
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: theme.colorScheme.primary,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          '${date.day}',
-          style: TextStyle(color: theme.colorScheme.onPrimary),
-        ),
-      );
+    final level = bleedLevel;
+    if (level != null) {
+      return _flowCircle(iso, level, label, theme, colors);
     }
     final predictedBleed = forecastCell?.predictedBleed ?? false;
     if (predictedBleed) {
       return _HatchedCircle(
         key: ValueKey('predicted-$iso'),
-        color: theme.colorScheme.primary,
+        color: colors.predictedBorder,
         opacity: forecastBandOpacity(forecastCell!.tier),
         child: label,
       );
@@ -762,6 +1007,72 @@ class _MonthCalendarState extends State<MonthCalendar> {
       ),
       alignment: Alignment.center,
       child: label,
+    );
+  }
+
+  /// The graded fill for one bleed [level] (issue #191 B-2): the `flow*`
+  /// ramp token carries the colour channel; [_flowLevelMarkCount] small
+  /// dots keyed `flow-level-<level>-<iso>` carry a second, non-colour
+  /// channel (1 dot for spotting climbing to 4 for heavy) so the same
+  /// distinction survives for an operator who can't rely on hue alone.
+  /// Spotting additionally renders as a ring plus a small centre dot,
+  /// never a full fill, per the issue's own proposed design.
+  Widget _flowCircle(
+    String iso,
+    FlowLevel level,
+    Widget dayLabel,
+    ThemeData theme,
+    LunarLogColors colors,
+  ) {
+    final tone = _flowTone(level, colors);
+    final isSpotting = level == FlowLevel.spotting;
+    final textColor = isSpotting ? theme.colorScheme.onSurface : tone.onFill;
+    return Container(
+      key: ValueKey('bleed-$iso'),
+      width: 34,
+      height: 34,
+      decoration: isSpotting
+          ? BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: tone.fill, width: 2),
+            )
+          : BoxDecoration(shape: BoxShape.circle, color: tone.fill),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (isSpotting)
+            Container(
+              key: ValueKey('flow-spotting-dot-$iso'),
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: tone.fill),
+            ),
+          DefaultTextStyle.merge(
+            style: TextStyle(color: textColor),
+            child: dayLabel,
+          ),
+          Positioned(
+            bottom: 3,
+            child: Row(
+              key: ValueKey('flow-level-${level.name}-$iso'),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < _flowLevelMarkCount(level); i++)
+                  Container(
+                    key: ValueKey('flow-mark-$i-$iso'),
+                    width: 3,
+                    height: 3,
+                    margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: textColor,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -838,7 +1149,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
       height: 6,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Theme.of(context).colorScheme.tertiary,
+        // The same token the legend's 'Symptom day' swatch draws (#176's
+        // symptomDot, solved for >= 3:1 against surface) so the legend keys
+        // the mark it actually explains (review finding on #191).
+        color: Theme.of(context).extension<LunarLogColors>()?.symptomDot ??
+            LunarLogColors.forColorScheme(Theme.of(context).colorScheme)
+                .symptomDot,
       ),
     );
   }
@@ -856,17 +1172,26 @@ class _HatchedCircle extends StatelessWidget {
     required this.color,
     required this.opacity,
     required this.child,
+    this.diameter = 34,
   });
 
   final Color color;
   final double opacity;
   final Widget child;
 
+  /// Defaults to the grid cell's own 34px circle; the legend swatch
+  /// (issue #191) passes a smaller value for the same hatch pattern.
+  final double diameter;
+
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       painter: _HatchPainter(color: color, opacity: opacity),
-      child: SizedBox(width: 34, height: 34, child: Center(child: child)),
+      child: SizedBox(
+        width: diameter,
+        height: diameter,
+        child: Center(child: child),
+      ),
     );
   }
 }
@@ -1015,4 +1340,105 @@ class _FutureDayExplainer extends StatelessWidget {
   int _spreadFor(ForecastDayCell cell) => cycles.isEmpty
       ? 0
       : cycles[cell.cycleIndex.clamp(0, cycles.length - 1)].spreadDays;
+}
+
+/// The month/year picker sheet (issue #191): tapping the month label opens
+/// this instead of six-tap chevron navigation. Bounded by [maxMonthIndex]
+/// (the same forward limit the chevron's `nextDisabled` already enforces)
+/// so a month past today + [kForwardMonthLimit] can never be selected;
+/// there is no backward bound, matching the chevrons' own unlimited past
+/// navigation. Pops the chosen `(year, month)`, or nothing if dismissed.
+class _MonthYearPickerSheet extends StatefulWidget {
+  const _MonthYearPickerSheet({
+    required this.initialYear,
+    required this.initialMonth,
+    required this.maxMonthIndex,
+  });
+
+  final int initialYear;
+  final int initialMonth;
+  final int maxMonthIndex;
+
+  @override
+  State<_MonthYearPickerSheet> createState() => _MonthYearPickerSheetState();
+}
+
+class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
+  late int _year;
+
+  @override
+  void initState() {
+    super.initState();
+    _year = widget.initialYear;
+  }
+
+  bool _monthDisabled(int month) =>
+      _monthIndex(_year, month) > widget.maxMonthIndex;
+
+  void _shiftYear(int delta) => setState(() => _year += delta);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final nextYearDisabled = _monthIndex(_year + 1, 1) > widget.maxMonthIndex;
+    return SafeArea(
+      child: Padding(
+        key: const ValueKey('month-year-picker'),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  key: const ValueKey('month-picker-prev-year'),
+                  tooltip: 'Previous year',
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: () => _shiftYear(-1),
+                ),
+                Text(
+                  '$_year',
+                  key: const ValueKey('month-picker-year'),
+                  style: theme.textTheme.titleMedium,
+                ),
+                IconButton(
+                  key: const ValueKey('month-picker-next-year'),
+                  tooltip: 'Next year',
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: nextYearDisabled ? null : () => _shiftYear(1),
+                ),
+              ],
+            ),
+            GridView.count(
+              crossAxisCount: 3,
+              // Button-shaped cells, not square tiles (issue #191 review):
+              // the default 1:1 ratio made four rows of a 12-month grid
+              // tall enough to overflow a phone-height sheet.
+              childAspectRatio: 2.4,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                for (var month = 1; month <= 12; month++) _monthButton(month),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _monthButton(int month) {
+    final disabled = _monthDisabled(month);
+    return Padding(
+      padding: const EdgeInsets.all(4),
+      child: OutlinedButton(
+        key: ValueKey('month-picker-$_year-$month'),
+        onPressed: disabled
+            ? null
+            : () => Navigator.of(context).pop((_year, month)),
+        child: Text(kMonthNames[month - 1].substring(0, 3)),
+      ),
+    );
+  }
 }
