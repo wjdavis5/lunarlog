@@ -63,6 +63,8 @@ const String kProfileGuardiansProfileIndexSql =
   DayEntries,
   ProfileGuardians,
   Observations,
+  ProfileModes,
+  CycleOverrides,
   AppSettings,
   SyncState,
 ])
@@ -94,8 +96,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   `updated_at` index on `day_entries` for the sync engine's dirty scan
   ///   and incremental reads, and a `profile_id` index on
   ///   `profile_guardians`. No table/column changes.
+  /// * 9 — `profile_modes` + `cycle_overrides` tables (Issue #188,
+  ///   life-stage modes and manual cycle corrections) and their two pull
+  ///   cursors on `sync_state`.
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -127,6 +132,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `observations.import_id`. Issue #197 adds
   /// `day_entries.profile_date_index`, `day_entries.dirty_index`,
   /// `day_entries.updated_at_index`, `profile_guardians.profile_id_index`.
+  /// Issue #188 adds `profile_modes`, `cycle_overrides`,
+  /// `sync_state.cursor_profile_modes`, `sync_state.cursor_cycle_overrides`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -247,6 +254,26 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profile_guardians.profile_id_index');
       });
     }
+    if (from < 9) {
+      await transaction(() async {
+        await m.createTable(profileModes);
+        await migrationStepHook?.call('profile_modes');
+        await m.createTable(cycleOverrides);
+        await migrationStepHook?.call('cycle_overrides');
+        // Same `sync_state` gotcha as `cursor_observations` (v6): the
+        // `from < 2` block's `m.createTable(syncState)` builds the table
+        // from the *current* `SyncState` class, which already declares both
+        // new cursor columns — so a device upgrading straight from v1 has
+        // them by the time it reaches here, and only a device that already
+        // had `sync_state` (from >= 2) needs the explicit addColumns.
+        if (from >= 2) {
+          await m.addColumn(syncState, syncState.cursorProfileModes);
+          await migrationStepHook?.call('sync_state.cursor_profile_modes');
+          await m.addColumn(syncState, syncState.cursorCycleOverrides);
+          await migrationStepHook?.call('sync_state.cursor_cycle_overrides');
+        }
+      });
+    }
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -266,8 +293,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// tombstones go too. Native device reset deletes the file instead.
   Future<void> wipeAllData() async {
     await transaction(() async {
-      // observations references day_entries(id) and profiles(id): it must
-      // be emptied before either or the FK fails the whole wipe.
+      // observations references day_entries(id) and profiles(id); the two
+      // Issue #188 tables reference profiles(id): all of them must be
+      // emptied before their parents or the FK fails the whole wipe.
+      await delete(cycleOverrides).go();
+      await delete(profileModes).go();
       await delete(observations).go();
       await delete(dayEntries).go();
       // profile_guardians references profiles(id): it must be emptied

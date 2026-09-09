@@ -396,9 +396,11 @@ select is((select count(*) from pg_proc p
   0::bigint, 'PUBLIC and anon hold no EXECUTE on sync_push');
 -- Issue #240: sync_push gained a third p_observations parameter (the old
 -- 2-arg overload was dropped, not left to fork alongside the new one - see
--- 20260908160000_observations.sql's header) - the signature this literal
--- must resolve is now the 3-arg one.
-select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb, jsonb)', 'execute'),
+-- 20260908160000_observations.sql's header); Issue #188 added
+-- p_profile_modes/p_cycle_overrides the same way (dropping the 3-arg
+-- overload first - see 20260909000000's header) - the signature this
+-- literal must resolve is now the 5-arg one.
+select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
   'authenticated can execute sync_push');
 select is((select prosecdef from pg_proc where proname = 'sync_push' and pronamespace = 'public'::regnamespace),
   false, 'sync_push is security invoker');

@@ -13,18 +13,22 @@ import 'package:meta/meta.dart';
 import 'remote_rows.dart';
 import 'row_codec.dart' show JsonRow;
 
-/// One `sync_push` call: profiles, day entries, then observations (Issue
-/// #240), each at most [maxRows] rows (the RPC raises `22023` beyond that).
-/// Rows are the codec's JSON objects, already validated.
+/// One `sync_push` call: profiles, day entries, observations, then the two
+/// Issue #188 tables, each at most [maxRows] rows (the RPC raises `22023`
+/// beyond that). Rows are the codec's JSON objects, already validated.
 @immutable
 class PushBatch {
   PushBatch({
     List<JsonRow> profiles = const [],
     List<JsonRow> dayEntries = const [],
     List<JsonRow> observations = const [],
+    List<JsonRow> profileModes = const [],
+    List<JsonRow> cycleOverrides = const [],
   })  : profiles = List.unmodifiable(profiles),
         dayEntries = List.unmodifiable(dayEntries),
-        observations = List.unmodifiable(observations) {
+        observations = List.unmodifiable(observations),
+        profileModes = List.unmodifiable(profileModes),
+        cycleOverrides = List.unmodifiable(cycleOverrides) {
     if (profiles.length > maxRows) {
       throw ArgumentError.value(profiles.length, 'profiles',
           'a push batch carries at most $maxRows profiles');
@@ -37,6 +41,14 @@ class PushBatch {
       throw ArgumentError.value(observations.length, 'observations',
           'a push batch carries at most $maxRows observations');
     }
+    if (profileModes.length > maxRows) {
+      throw ArgumentError.value(profileModes.length, 'profileModes',
+          'a push batch carries at most $maxRows profile mode rows');
+    }
+    if (cycleOverrides.length > maxRows) {
+      throw ArgumentError.value(cycleOverrides.length, 'cycleOverrides',
+          'a push batch carries at most $maxRows cycle overrides');
+    }
   }
 
   /// The RPC's per-array limit (KTD3).
@@ -48,15 +60,26 @@ class PushBatch {
   /// Issue #240: `sync_push`'s third parameter.
   final List<JsonRow> observations;
 
+  /// Issue #188: `sync_push`'s fourth parameter.
+  final List<JsonRow> profileModes;
+
+  /// Issue #188: `sync_push`'s fifth parameter.
+  final List<JsonRow> cycleOverrides;
+
   int get rowCount =>
-      profiles.length + dayEntries.length + observations.length;
+      profiles.length +
+      dayEntries.length +
+      observations.length +
+      profileModes.length +
+      cycleOverrides.length;
 
   bool get isEmpty => rowCount == 0;
 
   @override
   String toString() =>
       'PushBatch(profiles: ${profiles.length}, dayEntries: ${dayEntries.length}, '
-      'observations: ${observations.length})';
+      'observations: ${observations.length}, profileModes: ${profileModes.length}, '
+      'cycleOverrides: ${cycleOverrides.length})';
 }
 
 /// What `sync_push` answered (KTD3).

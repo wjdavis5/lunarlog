@@ -12,8 +12,16 @@ library;
 
 import '../db/tables.dart';
 
-/// The synced tables (per-table pull cursors, KTD2, Issue #8, Issue #240).
-enum SyncTable { profiles, dayEntries, profileGuardians, observations }
+/// The synced tables (per-table pull cursors, KTD2, Issue #8, Issue #240,
+/// Issue #188).
+enum SyncTable {
+  profiles,
+  dayEntries,
+  profileGuardians,
+  observations,
+  profileModes,
+  cycleOverrides,
+}
 
 /// A server copy of a synced row.
 sealed class RemoteRow {
@@ -260,6 +268,96 @@ final class RemoteObservationRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.observations;
+}
+
+/// A server copy of a `profile_modes` row (Issue #188): the profile's
+/// life-stage mode. Exactly one row per profile and no tombstone — the row
+/// is created lazily on first write and dies with its profile, so
+/// [deletedAt] is always null and [id] is the owning profile's id.
+final class RemoteProfileModeRow extends RemoteRow {
+  const RemoteProfileModeRow({
+    required this.profileId,
+    required this.mode,
+    this.modeStartedOn,
+    this.birthControlMethod,
+    this.birthControlStartedOn,
+    this.birthControlStoppedOn,
+    this.healthSyncConsent = false,
+    required this.updatedAt,
+    this.serverVersion = 0,
+  });
+
+  /// The owning profile (also the server table's primary key).
+  final String profileId;
+
+  /// Raw `LifecycleMode` `toDb()` string (Issue #188 — NOT #131's care
+  /// mode; the two axes are orthogonal and never merged).
+  /// `row_codec.dart`'s `decodeProfileMode` already normalises an absent or
+  /// unrecognised value to `tracking` against the closed set before
+  /// constructing this row.
+  final String mode;
+
+  /// ISO calendar date `yyyy-MM-dd`, or null.
+  final String? modeStartedOn;
+  final String? birthControlMethod;
+  final String? birthControlStartedOn;
+  final String? birthControlStoppedOn;
+
+  /// D-29: distinct per-profile health-platform sync consent.
+  final bool healthSyncConsent;
+
+  @override
+  String get id => profileId;
+  @override
+  final DateTime updatedAt;
+  @override
+  DateTime? get deletedAt => null;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.profileModes;
+}
+
+/// A server copy of a `cycle_overrides` row (Issue #188): one manual
+/// cycle-boundary correction. Tombstones (deletedAt set) carry no payload —
+/// the server's `cycle_overrides_tombstone_payload_check` clears
+/// `excludedFromAverage`/`manualStart`/`noteId`, keeping
+/// `cycleStartDate`/`id`/`profileId`.
+final class RemoteCycleOverrideRow extends RemoteRow {
+  const RemoteCycleOverrideRow({
+    required this.id,
+    required this.profileId,
+    required this.cycleStartDate,
+    this.excludedFromAverage = false,
+    this.manualStart = false,
+    this.noteId,
+    required this.updatedAt,
+    required this.deletedAt,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd` of the manual boundary.
+  final String cycleStartDate;
+  final bool excludedFromAverage;
+  final bool manualStart;
+
+  /// Placeholder id of a future notes-table row (#132).
+  final String? noteId;
+
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.cycleOverrides;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today

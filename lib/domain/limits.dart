@@ -85,3 +85,17 @@ const int kMaxTzLength = 64;
 /// (well over a canonical UUID's 36 characters) purely so a malformed file
 /// cannot smuggle an unbounded string through this column.
 const int kMaxImportIdLength = 128;
+
+/// Maximum `profile_modes.birth_control_method` length (Issue #188,
+/// `profile_modes_birth_control_method_length_check` in
+/// `supabase/migrations/20260909000000_profile_modes_and_cycle_overrides.sql`).
+/// Deliberately not a closed set — #260 owns the method vocabulary, and an
+/// unknown value round-trips rather than being rejected.
+const int kMaxBirthControlMethodLength = 64;
+
+/// Maximum `cycle_overrides.note_id` length (Issue #188,
+/// `cycle_overrides_note_id_length_check`,
+/// `supabase/migrations/20260909000000_profile_modes_and_cycle_overrides.sql`).
+/// A placeholder bound for #132's future notes-table reference (the
+/// `import_id` precedent: a real FK lands with the table it references).
+const int kMaxCycleOverrideNoteIdLength = 64;
