@@ -28,6 +28,7 @@
 | 173 | 345 | 2026-09-09T14:00Z |
 | 216 | 349 | 2026-09-09T15:10Z |
 | 138 | 351 | 2026-09-09T15:25Z |
+| 162 | 365 | 2026-09-10T00:15Z |
 
 ## Externally in-flight (ANOTHER orchestrator session's set — do NOT review/merge from this session to avoid racing its loop)
 PRs #335 (#247), #329 (#321), #327 (#167), #325 (#140), #336 (docs). Issues labeled in-progress not ours: #143 #152 #157.
