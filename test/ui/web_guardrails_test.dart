@@ -1,12 +1,14 @@
 /// U8 web guardrail tests (KTD9): non-dismissible banner, confirmation-
 /// guarded wipe, one-time blocking first-profile acknowledgment.
 ///
-/// Also Issue #17 R11 (KTD9's own rule extended): "Export my data" and
-/// "Delete account" never ship on web, regardless of `LUNARLOG_WEB_SYNC`.
-/// `kIsWeb` cannot be forced true inside a `flutter test` VM run, so this
-/// uses [AccountSection.showExportAndDelete] as the injectable proxy for
-/// "is web", the same technique `showAddApple`/`showAddGoogle` already use
-/// for "is iOS" (`test/ui/account_test.dart`).
+/// Also Issue #17 R11 (KTD9's own rule extended): "Delete account" never
+/// ships on web, regardless of `LUNARLOG_WEB_SYNC` ("Export my data" moved
+/// to `YourDataSection` under Issue #222 - its own web guard is covered in
+/// `test/ui/your_data_section_test.dart`, not here). `kIsWeb` cannot be
+/// forced true inside a `flutter test` VM run, so this uses
+/// [AccountSection.showExportAndDelete] as the injectable proxy for "is
+/// web", the same technique `showAddApple`/`showAddGoogle` already use for
+/// "is iOS" (`test/ui/account_test.dart`).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -218,10 +220,10 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
   });
 
-  group('Issue #17 R11: export/delete never ship on web', () {
-    testWidgets('showExportAndDelete: false hides both tiles even with an '
-        'AccountDeletionService present; the null default (this VM test '
-        'platform, i.e. not web) shows them', (tester) async {
+  group('Issue #17 R11: delete never ships on web', () {
+    testWidgets('showExportAndDelete: false hides the delete tile even with '
+        'an AccountDeletionService present; the null default (this VM test '
+        'platform, i.e. not web) shows it', (tester) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
       auth.emit(
@@ -246,7 +248,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('account-export')), findsNothing);
       expect(find.byKey(const ValueKey('account-delete')), findsNothing);
 
       await tester.pumpWidget(
@@ -261,7 +262,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('account-export')), findsOneWidget);
       expect(find.byKey(const ValueKey('account-delete')), findsOneWidget);
     });
   });

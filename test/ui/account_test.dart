@@ -2042,7 +2042,10 @@ void main() {
   });
 
   group('no auth service', () {
-    testWidgets('the Account section is absent', (tester) async {
+    testWidgets(
+        'the Account section is absent, but Your data (Issue #222) still '
+        'shows the export tile - it needs no AuthController at all',
+        (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       await AccountHarness.seedOneProfile(db);
       await tester.pumpWidget(LunarLogApp(db: db));
@@ -2053,37 +2056,44 @@ void main() {
       expect(find.text('Account'), findsNothing);
       expect(key('relock-toggle'), findsOneWidget);
       expect(find.byType(ProfileHomeGate), findsNothing);
-      // Issue #17 R11: an unconfigured build shows neither the export nor
-      // the delete tile - they render only inside the signed-in block this
-      // whole section never reaches here.
-      expect(key('account-export'), findsNothing);
+      // Issue #17 R11: an unconfigured build shows no "Delete account"
+      // tile - it renders only inside the signed-in block this whole
+      // section never reaches here.
       expect(key('account-delete'), findsNothing);
+      // Issue #222: "Export my data" moved to its own section that needs
+      // only a profile, not an AuthController.
+      expect(key('your-data-export'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
     });
   });
 
-  group('export and delete tiles (Issue #17 U6; R11)', () {
-    testWidgets('signed out: neither tile renders', (tester) async {
+  group('delete tile (Issue #17 U6; R11) - "Export my data" moved to '
+      'YourDataSection, Issue #222', () {
+    testWidgets(
+        'signed out: the delete tile does not render, but Your data\'s '
+        'export tile does (Issue #222 - it needs only a profile)',
+        (tester) async {
       final h = AccountHarness(tester);
       await h.pump(seed: AccountHarness.seedOneProfile);
       await h.openSettings();
-      expect(key('account-export'), findsNothing);
       expect(key('account-delete'), findsNothing);
+      expect(key('your-data-export'), findsOneWidget);
       await h.dispose();
     });
 
-    testWidgets('signed in with no AccountDeletionService: export renders, '
-        'delete does not (export needs no deletion collaborator)',
-        (tester) async {
+    testWidgets(
+        'signed in with no AccountDeletionService: delete does not render '
+        '(it needs a deletion collaborator); Your data\'s export tile still '
+        'does', (tester) async {
       final h = AccountHarness(tester);
       await h.pump(seed: AccountHarness.seedOneProfile);
       h.signIn();
       await h.openSettings();
       await h.settle();
-      expect(key('account-export'), findsOneWidget);
       expect(key('account-delete'), findsNothing);
+      expect(key('your-data-export'), findsOneWidget);
       await h.dispose();
     });
   });

@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -15,6 +18,36 @@ import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_feedback_service.dart';
+
+/// A [ProfilesRepository] whose [watch] emits [profiles] immediately on
+/// subscription and never changes thereafter - all `SettingsScreen`
+/// placement tests below need is a fixed, non-empty or empty list.
+class _FakeProfilesRepository implements ProfilesRepository {
+  _FakeProfilesRepository(this.profiles);
+  final List<Profile> profiles;
+
+  @override
+  Future<List<Profile>> list() async => profiles;
+
+  @override
+  Stream<List<Profile>> watch() => Stream.value(profiles);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeDayEntriesRepository implements DayEntriesRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Profile _profile(String id) => Profile(
+      id: id,
+      displayName: 'Alice',
+      isMinor: false,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
 
 class FakeSettingsStore implements SettingsStore {
   final Map<String, String> _values = {};
@@ -336,6 +369,71 @@ void main() {
       addTearDown(controller.dispose);
       expect(controller.signedIn, isFalse);
       expect(confirmedHealthSyncUserId(controller), isNull);
+    });
+  });
+
+  group('Your data placement (Issue #222)', () {
+    Future<void> pumpWithProfiles(
+      WidgetTester tester, {
+      required List<Profile> profiles,
+      AuthController? authController,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              Provider<SettingsStore>.value(value: FakeSettingsStore()),
+              Provider<ProfilesRepository>.value(
+                  value: _FakeProfilesRepository(profiles)),
+              Provider<DayEntriesRepository>.value(
+                  value: _FakeDayEntriesRepository()),
+              if (authController != null)
+                ChangeNotifierProvider<AuthController>.value(
+                    value: authController),
+            ],
+            child: const SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+        'renders above the Account section when both are present, and '
+        "AccountSection no longer renders its own export tile",
+        (tester) async {
+      await pumpWithProfiles(
+        tester,
+        profiles: [_profile('p1')],
+        authController: signedInAuth(),
+      );
+
+      expect(find.byKey(const ValueKey('your-data-export')), findsOneWidget);
+      expect(find.text('Your data'), findsOneWidget);
+      expect(find.byKey(const ValueKey('account-export')), findsNothing);
+
+      final yourDataY =
+          tester.getTopLeft(find.text('Your data')).dy;
+      final accountY = tester.getTopLeft(find.text('Account')).dy;
+      expect(yourDataY, lessThan(accountY),
+          reason: '"Your data" sits above "Account" in the list');
+    });
+
+    testWidgets('no profiles: the section (and its header) is absent',
+        (tester) async {
+      await pumpWithProfiles(tester, profiles: const []);
+      expect(find.text('Your data'), findsNothing);
+      expect(find.byKey(const ValueKey('your-data-export')), findsNothing);
+    });
+
+    testWidgets(
+        'signed out, no AuthController at all: the section still renders '
+        'with a profile present (Account section is absent instead)',
+        (tester) async {
+      await pumpWithProfiles(tester, profiles: [_profile('p1')]);
+      expect(find.text('Your data'), findsOneWidget);
+      expect(find.byKey(const ValueKey('your-data-export')), findsOneWidget);
+      expect(find.text('Account'), findsNothing);
     });
   });
 }
