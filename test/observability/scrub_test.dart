@@ -748,6 +748,60 @@ void main() {
         expect(isDenyListedKey(word), isFalse, reason: word);
       }
     });
+
+    test('Issue #128: every shared-care-content key is deny-listed (AC5)',
+        () {
+      for (final key in [
+        'body',
+        'care_note',
+        'care_notes',
+        'careNotes',
+        'visit_prep',
+        'visit_prep_item',
+        'visit_prep_items',
+        'visitPrepItems',
+        'prep_item',
+        'prep_items',
+        'p_care_notes',
+        'p_visit_prep_items',
+        'pCareNotes',
+      ]) {
+        expect(isDenyListedKey(key), isTrue, reason: key);
+      }
+    });
+
+    test('Issue #128: care content never survives an event (AC5)', () {
+      const body = 'Prefers the blue inhaler at night';
+      final out = scrubEvent(SentryEvent(
+        logger: 'care_notes.body',
+        message: SentryMessage('saved care_notes $body', params: [body]),
+        // ignore: deprecated_member_use
+        extra: {
+          'care_notes': [
+            {'body': body}
+          ],
+        },
+        tags: {'visit_prep_items': body, 'environment': 'development'},
+        breadcrumbs: [
+          Breadcrumb(category: 'sync', data: {
+            'p_care_notes': [
+              {'body': body}
+            ]
+          }),
+          Breadcrumb(category: 'sync', data: const {'rows': 2}),
+        ],
+      ))!;
+      final json = _json(out);
+      expect(json, isNot(contains(body)));
+      expect(json, isNot(contains('p_care_notes')));
+      expect(json, isNot(contains('visit_prep_items')),
+          reason: 'the deny-listed tag key goes, with its health-content value');
+      expect(json, contains('environment'),
+          reason: 'non-health tags still pass');
+      expect(json, contains('rows'),
+          reason: 'a content-free metadata breadcrumb survives; only the '
+              'breadcrumb carrying a deny-listed key is dropped');
+    });
   });
 
   group('scrubTransaction (U4; KTD9, R9, R10)', () {

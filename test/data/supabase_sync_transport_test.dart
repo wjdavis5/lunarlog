@@ -160,6 +160,8 @@ void main() {
         'p_observations': [],
         'p_profile_modes': [],
         'p_cycle_overrides': [],
+        'p_care_notes': [],
+        'p_visit_prep_items': [],
       });
 
       expect(result.resolved, hasLength(2));
@@ -229,7 +231,8 @@ void main() {
       expect(result.rejectedIds, isEmpty);
       expect(jsonDecode(requests.single.body),
           {'p_profiles': [], 'p_day_entries': [], 'p_observations': [],
-            'p_profile_modes': [], 'p_cycle_overrides': []});
+            'p_profile_modes': [], 'p_cycle_overrides': [],
+            'p_care_notes': [], 'p_visit_prep_items': []});
     });
 
     test('sends at most 500 rows per array', () async {

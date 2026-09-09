@@ -99,3 +99,15 @@ const int kMaxBirthControlMethodLength = 64;
 /// A placeholder bound for #132's future notes-table reference (the
 /// `import_id` precedent: a real FK lands with the table it references).
 const int kMaxCycleOverrideNoteIdLength = 64;
+
+/// Maximum `care_notes.body` length (Issue #128,
+/// `care_notes_body_length_check`). Mirrors `kMaxNoteLength`: a standing
+/// care note carries the same kind of free-text health content as a day
+/// entry note.
+const int kMaxCareNoteLength = 2000;
+
+/// Maximum `visit_prep_items.body` length (Issue #128,
+/// `visit_prep_items_body_length_check`). A checklist item/question is a
+/// short prompt, not an essay — 500 characters is generous headroom over a
+/// one-line question while still bounding the server-side payload.
+const int kMaxVisitPrepItemLength = 500;

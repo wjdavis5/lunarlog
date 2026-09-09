@@ -431,9 +431,101 @@ class CycleOverrides extends Table {
   Set<Column> get primaryKey => {id, profileId};
 }
 
+@DataClassName('CareNoteData')
+class CareNotes extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  /// The profile this note belongs to (notes are per-profile, never
+  /// per-date).
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// Free-text standing note (health content; bounded by
+  /// `kMaxCareNoteLength`, cleared on a tombstone like every other payload
+  /// column).
+  TextColumn get body => text()();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  /// Supabase auth user who created this note (stamped by server).
+  TextColumn get loggedByUserId =>
+      text().named('logged_by_user_id').nullable()();
+
+  /// Supabase auth user who last edited this note (stamped by server).
+  TextColumn get lastModifiedByUserId =>
+      text().named('last_modified_by_user_id').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// One item on a profile's visit-prep checklist (Issue #128): a
+/// question or to-bring for an upcoming appointment. Each item is an
+/// independent row converging as a set (see
+/// `domain/models/visit_prep_item.dart`'s resolution rule); checked items
+/// stay visible until explicitly cleared.
+@DataClassName('VisitPrepItemData')
+class VisitPrepItems extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  /// The profile this item belongs to.
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// The item/question text (health content; bounded by
+  /// `kMaxVisitPrepItemLength`, cleared on a tombstone).
+  TextColumn get body => text()();
+
+  /// Whether the item has been checked off. Checking never deletes.
+  BoolColumn get isChecked =>
+      boolean().named('is_checked').withDefault(const Constant(false))();
+
+  /// The auth user who checked the item (AC3), null while unchecked.
+  /// Cleared (alongside [checkedAt]) when the item is unchecked or
+  /// tombstoned.
+  TextColumn get checkedByUserId =>
+      text().named('checked_by_user_id').nullable()();
+
+  /// UTC instant the item was checked, null while unchecked.
+  DateTimeColumn get checkedAt =>
+      dateTime().named('checked_at').nullable()();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  /// Supabase auth user who added this item (stamped by server).
+  TextColumn get loggedByUserId =>
+      text().named('logged_by_user_id').nullable()();
+
+  /// Supabase auth user who last edited this item (stamped by server).
+  TextColumn get lastModifiedByUserId =>
+      text().named('last_modified_by_user_id').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('AppSetting')
-class AppSettings extends Table {
-  TextColumn get key => text()();
+class AppSettings extends Table {  TextColumn get key => text()();
 
   TextColumn get value => text()();
 
@@ -484,6 +576,16 @@ class SyncState extends Table {
   /// [cursorDayEntries].
   IntColumn get cursorCycleOverrides =>
       integer().named('cursor_cycle_overrides').withDefault(const Constant(0))();
+
+  /// Issue #128: the `care_notes` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorCareNotes =>
+      integer().named('cursor_care_notes').withDefault(const Constant(0))();
+
+  /// Issue #128: the `visit_prep_items` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorVisitPrepItems =>
+      integer().named('cursor_visit_prep_items').withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>
       dateTime().named('last_full_pull_at').nullable()();

@@ -107,7 +107,7 @@ final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 
 /// Remote table name for [table] (`profiles` / `day_entries` /
 /// `profile_guardians` / `observations` / `profile_modes` /
-/// `cycle_overrides`).
+/// `cycle_overrides` / `care_notes` / `visit_prep_items`).
 String syncTableName(SyncTable table) => switch (table) {
       SyncTable.profiles => 'profiles',
       SyncTable.dayEntries => 'day_entries',
@@ -115,6 +115,8 @@ String syncTableName(SyncTable table) => switch (table) {
       SyncTable.observations => 'observations',
       SyncTable.profileModes => 'profile_modes',
       SyncTable.cycleOverrides => 'cycle_overrides',
+      SyncTable.careNotes => 'care_notes',
+      SyncTable.visitPrepItems => 'visit_prep_items',
     };
 
 /// Inverse of [syncTableName]; null for anything else.
@@ -125,6 +127,8 @@ SyncTable? syncTableFromName(String name) => switch (name) {
       'observations' => SyncTable.observations,
       'profile_modes' => SyncTable.profileModes,
       'cycle_overrides' => SyncTable.cycleOverrides,
+      'care_notes' => SyncTable.careNotes,
+      'visit_prep_items' => SyncTable.visitPrepItems,
       _ => null,
     };
 
@@ -266,6 +270,55 @@ JsonRow encodeProfileMode(ProfileModeData row) {
     'birth_control_stopped_on': row.birthControlStoppedOn,
     'health_sync_consent': row.healthSyncConsent,
     'updated_at': encodeTimestamp(row.updatedAt),
+  };
+}
+
+/// The `p_care_notes` element for [row] (Issue #128). `body` is emitted
+/// as-is — free text, never validated against a closed set here (the
+/// storage layer bounds it and the server's CHECK is the enforcement
+/// point). `checked_by`/`checked_at` have no care-note analogue; the
+/// server stamps `logged_by`/`last_modified_by` itself, like day entries.
+JsonRow encodeCareNote(CareNoteData row) {
+  const table = SyncTable.careNotes;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'body': row.body,
+    'updated_at': encodeTimestamp(row.updatedAt),
+    'deleted_at': _encodeNullable(row.deletedAt),
+  };
+}
+
+/// The `p_visit_prep_items` element for [row] (Issue #128).
+/// `checked_by_user_id`/`checked_at` are deliberately *not* emitted: the
+/// server stamps them from the caller when `is_checked` is set (the
+/// attribution-stamping precedent), so a client can never forge "who
+/// checked it".
+JsonRow encodeVisitPrepItem(VisitPrepItemData row) {
+  const table = SyncTable.visitPrepItems;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'body': row.body,
+    'is_checked': row.isChecked,
+    'updated_at': encodeTimestamp(row.updatedAt),
+    'deleted_at': _encodeNullable(row.deletedAt),
   };
 }
 
@@ -498,6 +551,43 @@ RemoteCycleOverrideRow decodeCycleOverride(JsonRow json) {
   );
 }
 
+/// Decodes a `care_notes` row (Issue #128). `body` is read as-is — free
+/// text, never validated against a closed set.
+RemoteCareNoteRow decodeCareNote(JsonRow json) {
+  const table = SyncTable.careNotes;
+  final r = _Reader(json, table);
+  return RemoteCareNoteRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    body: r.string('body'),
+    updatedAt: r.timestamp('updated_at'),
+    deletedAt: r.timestampOrNull('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+    loggedByUserId: r.stringOrNull('logged_by_user_id'),
+    lastModifiedByUserId: r.stringOrNull('last_modified_by_user_id'),
+  );
+}
+
+/// Decodes a `visit_prep_items` row (Issue #128). `body` is read as-is —
+/// free text, never validated against a closed set.
+RemoteVisitPrepItemRow decodeVisitPrepItem(JsonRow json) {
+  const table = SyncTable.visitPrepItems;
+  final r = _Reader(json, table);
+  return RemoteVisitPrepItemRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    body: r.string('body'),
+    isChecked: json['is_checked'] == null ? false : r.boolean('is_checked'),
+    checkedByUserId: r.stringOrNull('checked_by_user_id'),
+    checkedAt: r.timestampOrNull('checked_at'),
+    updatedAt: r.timestamp('updated_at'),
+    deletedAt: r.timestampOrNull('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+    loggedByUserId: r.stringOrNull('logged_by_user_id'),
+    lastModifiedByUserId: r.stringOrNull('last_modified_by_user_id'),
+  );
+}
+
 /// Decodes a pull-page row of [table].
 RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
       SyncTable.profiles => decodeProfile(json),
@@ -506,6 +596,8 @@ RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
       SyncTable.observations => decodeObservation(json),
       SyncTable.profileModes => decodeProfileMode(json),
       SyncTable.cycleOverrides => decodeCycleOverride(json),
+      SyncTable.careNotes => decodeCareNote(json),
+      SyncTable.visitPrepItems => decodeVisitPrepItem(json),
     };
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`

@@ -9,10 +9,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -97,6 +100,67 @@ class FakeObservationsRepository implements ObservationsRepository {
   Future<void> delete(String id) async {}
 }
 
+class FakeCareContentRepository implements CareContentRepository {
+  Map<String, List<CareNote>> careNotesByProfile = const {};
+  Map<String, List<VisitPrepItem>> prepItemsByProfile = const {};
+
+  @override
+  Future<List<CareNote>> listCareNotes(String profileId) async =>
+      careNotesByProfile[profileId] ?? const [];
+
+  @override
+  Stream<List<CareNote>> watchCareNotes(String profileId) =>
+      Stream.value(careNotesByProfile[profileId] ?? const []);
+
+  @override
+  Future<CareNote> saveCareNote({
+    String? id,
+    required String profileId,
+    required String body,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteCareNote(String id) async {}
+
+  @override
+  Future<List<VisitPrepItem>> listPrepItems(String profileId) async =>
+      prepItemsByProfile[profileId] ?? const [];
+
+  @override
+  Stream<List<VisitPrepItem>> watchPrepItems(String profileId) =>
+      Stream.value(prepItemsByProfile[profileId] ?? const []);
+
+  @override
+  Future<VisitPrepItem> addPrepItem({
+    String? id,
+    required String profileId,
+    required String body,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<VisitPrepItem?> editPrepItem({
+    required String id,
+    required String body,
+  }) async =>
+      null;
+
+  @override
+  Future<VisitPrepItem?> setPrepItemChecked({
+    required String id,
+    required bool checked,
+    String? checkedByUserId,
+  }) async =>
+      null;
+
+  @override
+  Future<void> deletePrepItem(String id) async {}
+
+  @override
+  Future<int> clearCheckedPrepItems(String profileId) async => 0;
+}
+
 AuthController _signedIn() {
   final service = FakeAuthService()
     ..emit(AuthSessionState.signedIn,
@@ -129,6 +193,7 @@ Future<void> _pump(
   required FakeProfilesRepository profiles,
   FakeDayEntriesRepository? dayEntries,
   FakeObservationsRepository? observations,
+  FakeCareContentRepository? careContent,
   bool? showExport,
   ExportAccountCollaborator? exportAccount,
   AuthController? auth,
@@ -143,6 +208,8 @@ Future<void> _pump(
               value: dayEntries ?? FakeDayEntriesRepository()),
           Provider<ObservationsRepository>.value(
               value: observations ?? FakeObservationsRepository()),
+          Provider<CareContentRepository>.value(
+              value: careContent ?? FakeCareContentRepository()),
           if (auth != null)
             ChangeNotifierProvider<AuthController>.value(value: auth),
         ],
@@ -174,6 +241,8 @@ void main() {
           required profiles,
           required entriesByProfile,
           Map<String, List<Observation>>? observationsByProfile = const {},
+          Map<String, List<CareNote>>? careNotesByProfile = const {},
+          Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -182,7 +251,8 @@ void main() {
       );
 
       expect(key('your-data-export'), findsOneWidget);
-      expect(find.text('Save your profiles and day entries as a JSON file.'),
+      expect(find.text('Save your profiles, day entries, care notes, and visit-prep '
+          'lists as a JSON file.'),
           findsOneWidget,
           reason: 'signed out: no claim of server data being included');
 
@@ -221,6 +291,8 @@ void main() {
           required profiles,
           required entriesByProfile,
           Map<String, List<Observation>>? observationsByProfile = const {},
+          Map<String, List<CareNote>>? careNotesByProfile = const {},
+          Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -266,8 +338,8 @@ void main() {
       expect(key('your-data-export'), findsOneWidget);
       expect(
         find.text(
-          "Save your profiles and day entries as a JSON file, including "
-          "your account's server data.",
+          "Save your profiles, day entries, care notes, and visit-prep "
+          "lists as a JSON file, including your account's server data.",
         ),
         findsOneWidget,
       );
@@ -282,8 +354,8 @@ void main() {
       expect(key('your-data-export'), findsOneWidget);
       expect(
         find.text(
-          "Save your profiles and day entries as a JSON file, including "
-          "your account's server data.",
+          "Save your profiles, day entries, care notes, and visit-prep "
+          "lists as a JSON file, including your account's server data.",
         ),
         findsOneWidget,
       );
@@ -313,6 +385,8 @@ void main() {
           required profiles,
           required entriesByProfile,
           Map<String, List<Observation>>? observationsByProfile = const {},
+          Map<String, List<CareNote>>? careNotesByProfile = const {},
+          Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -337,7 +411,8 @@ void main() {
       final profiles = FakeProfilesRepository([_profile('p1')]);
       await _pump(tester, profiles: profiles, auth: _signedOut());
       expect(key('your-data-export'), findsOneWidget);
-      expect(find.text('Save your profiles and day entries as a JSON file.'),
+      expect(find.text('Save your profiles, day entries, care notes, and visit-prep '
+          'lists as a JSON file.'),
           findsOneWidget);
     });
   });

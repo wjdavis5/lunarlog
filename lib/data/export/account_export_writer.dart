@@ -26,9 +26,11 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/export/account_export.dart';
 import '../../domain/export/account_export_remote_source.dart';
+import '../../domain/models/care_note.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
+import '../../domain/models/visit_prep_item.dart';
 
 class AccountExportWriter {
   const AccountExportWriter({this.remoteSource});
@@ -42,6 +44,8 @@ class AccountExportWriter {
     required List<Profile> profiles,
     required Map<String, List<DayEntry>> entriesByProfile,
     Map<String, List<Observation>> observationsByProfile = const {},
+    Map<String, List<CareNote>> careNotesByProfile = const {},
+    Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
     required String appVersion,
   }) async {
     final exportedAt = DateTime.now().toUtc();
@@ -49,6 +53,8 @@ class AccountExportWriter {
       profiles: profiles,
       entriesByProfile: entriesByProfile,
       observationsByProfile: observationsByProfile,
+      careNotesByProfile: careNotesByProfile,
+      visitPrepByProfile: visitPrepByProfile,
       exportedAt: exportedAt,
       appVersion: appVersion,
       remoteSource: remoteSource,

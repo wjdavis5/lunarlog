@@ -41,6 +41,15 @@
 ///   `excluded_from_average`/`manual_start` reset to false and `note_id`
 ///   clears, while `cycle_start_date` (identity) survives — mirroring the
 ///   server's `cycle_overrides_tombstone_payload_check` exactly.
+/// * Care notes and visit-prep items (Issue #128) are per-profile,
+///   non-date-bound rows keyed by id alone, with per-id LWW and no
+///   same-date resolver (see `domain/models/visit_prep_item.dart`'s
+///   resolution rule: the checklist converges as a set; a care-note edit
+///   races only against another write to the same note id). Both
+///   tombstone like day entries: `body` clears (prep items additionally
+///   reset `is_checked` and clear `checked_by`/`checked_at`), mirroring
+///   the server's `care_notes_tombstone_payload_check` /
+///   `visit_prep_items_tombstone_payload_check` exactly.
 /// * UI reads filter tombstones; full-fidelity reads (tombstones included)
 ///   exist for sync.
 library;
@@ -62,12 +71,14 @@ export 'package:lunarlog/domain/sync/local_row_counts.dart' show LocalRowCounts;
 
 export '../sync/remote_rows.dart'
     show
+        RemoteCareNoteRow,
         RemoteCycleOverrideRow,
         RemoteDayEntryRow,
         RemoteObservationRow,
         RemoteProfileModeRow,
         RemoteProfileRow,
         RemoteRow,
+        RemoteVisitPrepItemRow,
         RetryableSyncApplyError,
         SyncTable;
 
@@ -253,6 +264,19 @@ void _validateCycleOverridePayload({String? noteId}) {
   _boundedOrThrow(noteId, kMaxCycleOverrideNoteIdLength, 'noteId');
 }
 
+/// Issue #128: mirrors `care_notes_body_length_check`. Only the max bound
+/// — an empty note is meaningless but harmless, and the day-entry note
+/// precedent (`_validateNote`) likewise bounds only the maximum.
+void _validateCareNoteBody(String body) {
+  _boundedOrThrow(body, kMaxCareNoteLength, 'body');
+}
+
+/// Issue #128: mirrors `visit_prep_items_body_length_check` (same
+/// max-only shape as [_validateCareNoteBody]).
+void _validateVisitPrepItemBody(String body) {
+  _boundedOrThrow(body, kMaxVisitPrepItemLength, 'body');
+}
+
 /// The `sync_state` row as read when none has been written yet.
 const SyncStateRow kDefaultSyncState = SyncStateRow(
   id: 1,
@@ -262,6 +286,8 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorObservations: 0,
   cursorProfileModes: 0,
   cursorCycleOverrides: 0,
+  cursorCareNotes: 0,
+  cursorVisitPrepItems: 0,
 );
 
 class LunarLogStorage {
@@ -1044,6 +1070,257 @@ class LunarLogStorage {
         .watch();
   }
 
+  // --------------------------------------------------------------- care notes
+
+  /// Creates or updates a standing care note (Issue #128), keyed by [id]
+  /// (a fresh ULID is generated when omitted). Marks the row dirty and
+  /// bumps `local_rev`; an update stamps `updated_at` strictly after the
+  /// stored value and revives a tombstone (`deleted_at` cleared — under
+  /// LWW a newer non-delete wins). Throws [ArgumentError] for a [body]
+  /// over [kMaxCareNoteLength].
+  Future<CareNoteData> upsertCareNote({
+    String? id,
+    required String profileId,
+    required String body,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateCareNoteBody(body);
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      CareNoteData? existing;
+      if (id != null) existing = await _careNoteOrNull(id);
+      if (existing == null) {
+        final rowId = id ?? _generator.next();
+        await db.into(db.careNotes).insert(CareNotesCompanion.insert(
+              id: rowId,
+              profileId: profileId,
+              body: body,
+              updatedAt: now,
+              dirty: const Value(true),
+              localRev: const Value(1),
+            ));
+        return _careNoteById(rowId);
+      }
+      final rowId = existing.id;
+      await (db.update(db.careNotes)..where((t) => t.id.equals(rowId))).write(
+        CareNotesCompanion(
+          body: Value(body),
+          updatedAt: Value(_afterStored(now, existing.updatedAt)),
+          deletedAt: const Value(null),
+          dirty: const Value(true),
+          localRev: Value(existing.localRev + 1),
+        ),
+      );
+      return _careNoteById(rowId);
+    });
+  }
+
+  /// Tombstones the care note [id]: sets `deleted_at` (and bumps
+  /// `updated_at`), clears `body` (tombstones carry no payload — the
+  /// server's `care_notes_tombstone_payload_check` mirror). Marks the row
+  /// dirty. Idempotent: re-deleting a tombstone does nothing. No-op when
+  /// the row is not held locally.
+  Future<void> softDeleteCareNote(String id) async {
+    await db.transaction(() async {
+      final existing = await _careNoteOrNull(id);
+      if (existing == null || existing.deletedAt != null) return;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.careNotes)..where((t) => t.id.equals(id))).write(
+        CareNotesCompanion(
+          body: const Value(''),
+          updatedAt: Value(at),
+          deletedAt: Value(at),
+          dirty: const Value(true),
+          localRev: Value(existing.localRev + 1),
+        ),
+      );
+    });
+  }
+
+  /// A profile's standing care notes — UI reads (default) filter
+  /// tombstones; `includeTombstones: true` gives full-fidelity reads for
+  /// sync. Ordered by `updated_at` then id (stable for the UI list).
+  Future<List<CareNoteData>> getCareNotesForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _careNoteQuery(profileId, includeTombstones: includeTombstones)
+        .get();
+  }
+
+  /// Stream variant of [getCareNotesForProfile] for reactive UI.
+  Stream<List<CareNoteData>> watchCareNotesForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _careNoteQuery(profileId, includeTombstones: includeTombstones)
+        .watch();
+  }
+
+  // ---------------------------------------------------------- visit prep list
+
+  /// Adds a visit-prep item (Issue #128), keyed by [id] (a fresh ULID is
+  /// generated when omitted). A new item always lands unchecked
+  /// (`checked_by`/`checked_at` null) — checking is [setVisitPrepItemChecked]'s
+  /// job, never this one's. Marks the row dirty and bumps `local_rev`.
+  /// Throws [ArgumentError] for a [body] over [kMaxVisitPrepItemLength].
+  Future<VisitPrepItemData> addVisitPrepItem({
+    String? id,
+    required String profileId,
+    required String body,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateVisitPrepItemBody(body);
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      final rowId = id ?? _generator.next();
+      await db.into(db.visitPrepItems).insert(VisitPrepItemsCompanion.insert(
+            id: rowId,
+            profileId: profileId,
+            body: body,
+            updatedAt: now,
+            dirty: const Value(true),
+            localRev: const Value(1),
+          ));
+      return _visitPrepItemById(rowId);
+    });
+  }
+
+  /// Edits a prep item's text (Issue #128). The check state is identity,
+  /// not payload, for this operation: the stored `is_checked`/
+  /// `checked_by`/`checked_at` survive a text edit, and a tombstone is
+  /// revived (`deleted_at` cleared). Marks the row dirty and bumps
+  /// `local_rev`. Throws [ArgumentError] for a [body] over
+  /// [kMaxVisitPrepItemLength]. No-op when the row is not held locally.
+  Future<VisitPrepItemData?> editVisitPrepItem({
+    required String id,
+    required String body,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateVisitPrepItemBody(body);
+    return db.transaction(() async {
+      final existing = await _visitPrepItemOrNull(id);
+      if (existing == null) return null;
+      final now = (updatedAt ?? _now()).toUtc();
+      await (db.update(db.visitPrepItems)..where((t) => t.id.equals(id)))
+          .write(VisitPrepItemsCompanion(
+        body: Value(body),
+        updatedAt: Value(_afterStored(now, existing.updatedAt)),
+        deletedAt: const Value(null),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _visitPrepItemById(id);
+    });
+  }
+
+  /// Checks (or unchecks) a prep item (Issue #128, AC3). Checking records
+  /// who checked it ([checkedByUserId], the bound account — null for a
+  /// never-synced local-only operator) and when; unchecking clears both.
+  /// The item stays visible either way — checking never deletes. Marks the
+  /// row dirty and bumps `local_rev`. No-op when the row is not held
+  /// locally or is tombstoned.
+  Future<VisitPrepItemData?> setVisitPrepItemChecked({
+    required String id,
+    required bool checked,
+    String? checkedByUserId,
+    DateTime? updatedAt,
+  }) async {
+    return db.transaction(() async {
+      final existing = await _visitPrepItemOrNull(id);
+      if (existing == null || existing.deletedAt != null) return null;
+      final at = _afterStored((updatedAt ?? _now()).toUtc(), existing.updatedAt);
+      await (db.update(db.visitPrepItems)..where((t) => t.id.equals(id)))
+          .write(VisitPrepItemsCompanion(
+        isChecked: Value(checked),
+        checkedByUserId: Value(checked ? checkedByUserId : null),
+        checkedAt: Value(checked ? at : null),
+        updatedAt: Value(at),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _visitPrepItemById(id);
+    });
+  }
+
+  /// Tombstones the prep item [id]: sets `deleted_at` (and bumps
+  /// `updated_at`), clears `body`, resets the check state (tombstones
+  /// carry no payload — the server's
+  /// `visit_prep_items_tombstone_payload_check` mirror). Marks the row
+  /// dirty. Idempotent; no-op when the row is not held locally.
+  Future<void> softDeleteVisitPrepItem(String id) async {
+    await db.transaction(() async {
+      final existing = await _visitPrepItemOrNull(id);
+      if (existing == null || existing.deletedAt != null) return;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.visitPrepItems)..where((t) => t.id.equals(id)))
+          .write(VisitPrepItemsCompanion(
+        body: const Value(''),
+        isChecked: const Value(false),
+        checkedByUserId: const Value(null),
+        checkedAt: const Value(null),
+        updatedAt: Value(at),
+        deletedAt: Value(at),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+    });
+  }
+
+  /// Clears a profile's visit-prep list (Issue #128): tombstones every
+  /// *checked*, live item — unchecked items survive the clear, so clearing
+  /// means "we covered these", not "drop the whole list". Returns the
+  /// number of items cleared. Each tombstone is marked dirty (the clear
+  /// itself syncs); already-tombstoned rows are untouched.
+  Future<int> clearCheckedVisitPrepItems(String profileId) async {
+    return db.transaction(() async {
+      final checked = await (_carePrepCheckedQuery(profileId)).get();
+      for (final row in checked) {
+        final at = _afterStored(_now(), row.updatedAt);
+        await (db.update(db.visitPrepItems)
+              ..where((t) => t.id.equals(row.id)))
+            .write(VisitPrepItemsCompanion(
+          body: const Value(''),
+          isChecked: const Value(false),
+          checkedByUserId: const Value(null),
+          checkedAt: const Value(null),
+          updatedAt: Value(at),
+          deletedAt: Value(at),
+          dirty: const Value(true),
+          localRev: Value(row.localRev + 1),
+        ));
+      }
+      return checked.length;
+    });
+  }
+
+  /// A profile's visit-prep items — UI reads (default) filter tombstones;
+  /// `includeTombstones: true` gives full-fidelity reads for sync.
+  /// Checked items sort after unchecked ones (unchecked first, then by
+  /// `updated_at`, then id), so the open questions stay on top while what
+  /// was covered remains visible below until cleared.
+  Future<List<VisitPrepItemData>> getVisitPrepItemsForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _visitPrepItemQuery(profileId,
+            includeTombstones: includeTombstones)
+        .get();
+  }
+
+  /// Stream variant of [getVisitPrepItemsForProfile] for reactive UI.
+  Stream<List<VisitPrepItemData>> watchVisitPrepItemsForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _visitPrepItemQuery(profileId,
+            includeTombstones: includeTombstones)
+        .watch();
+  }
+
   // ------------------------------------------------------------- app settings
 
   /// Device-local key-value state. Not part of the sync model (open design
@@ -1170,6 +1447,37 @@ class LunarLogStorage {
     return query.get();
   }
 
+  /// Care notes with unpushed local changes, tombstones included, ordered
+  /// by id (Issue #128). Same keyset-paging contract as [readDirtyProfiles].
+  Future<List<CareNoteData>> readDirtyCareNotes(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.careNotes)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
+  /// Visit-prep items with unpushed local changes, tombstones included,
+  /// ordered by id (Issue #128). Same keyset-paging contract as
+  /// [readDirtyProfiles].
+  Future<List<VisitPrepItemData>> readDirtyVisitPrepItems(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.visitPrepItems)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
   /// still equals [localRevAtPush] (the value read when the push was
   /// assembled). Returns whether the flag was cleared; `false` means a
@@ -1211,6 +1519,16 @@ class LunarLogStorage {
               ..where((t) =>
                   t.id.equals(id) & t.localRev.equals(localRevAtPush)))
             .write(const CycleOverridesCompanion(dirty: Value(false)));
+      case SyncTable.careNotes:
+        changed = await (db.update(db.careNotes)
+              ..where((t) =>
+                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const CareNotesCompanion(dirty: Value(false)));
+      case SyncTable.visitPrepItems:
+        changed = await (db.update(db.visitPrepItems)
+              ..where((t) =>
+                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const VisitPrepItemsCompanion(dirty: Value(false)));
       case SyncTable.profileGuardians:
         changed = 0;
     }
@@ -1230,7 +1548,11 @@ class LunarLogStorage {
         db.profileModes.dirty.equals(true));
     final co = await _count(db.cycleOverrides, db.cycleOverrides.id,
         db.cycleOverrides.dirty.equals(true));
-    return p + d + o + pm + co;
+    final cn = await _count(
+        db.careNotes, db.careNotes.id, db.careNotes.dirty.equals(true));
+    final vp = await _count(db.visitPrepItems, db.visitPrepItems.id,
+        db.visitPrepItems.dirty.equals(true));
+    return p + d + o + pm + co + cn + vp;
   }
 
   /// Flags every row, live and tombstoned, in every synced table for push
@@ -1257,6 +1579,14 @@ class LunarLogStorage {
             dirty: const Constant(true),
             localRev: db.cycleOverrides.localRev + const Constant(1),
           ));
+      await db.update(db.careNotes).write(CareNotesCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.careNotes.localRev + const Constant(1),
+          ));
+      await db.update(db.visitPrepItems).write(VisitPrepItemsCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.visitPrepItems.localRev + const Constant(1),
+          ));
     });
   }
 
@@ -1282,7 +1612,11 @@ class LunarLogStorage {
     if (await _count(db.profileModes, db.profileModes.profileId) != 0) {
       return false;
     }
-    return await _count(db.cycleOverrides, db.cycleOverrides.id) == 0;
+    if (await _count(db.cycleOverrides, db.cycleOverrides.id) != 0) {
+      return false;
+    }
+    if (await _count(db.careNotes, db.careNotes.id) != 0) return false;
+    return await _count(db.visitPrepItems, db.visitPrepItems.id) == 0;
   }
 
   // ---------------------------------------------------- sync: remote applies
@@ -1329,6 +1663,20 @@ class LunarLogStorage {
   Future<bool> applyRemoteCycleOverride(RemoteCycleOverrideRow remote) =>
       db.transaction(() => _applyCycleOverride(remote, onlyExisting: false));
 
+  /// Applies a server copy of a care note keyed by id (Issue #128; per-id
+  /// LWW rule as for cycle overrides — a newer `updated_at` wins, the
+  /// remote copy wins ties; a tombstone clears `body`). Throws
+  /// [RetryableSyncApplyError] when the profile is not held locally yet.
+  Future<bool> applyRemoteCareNote(RemoteCareNoteRow remote) =>
+      db.transaction(() => _applyCareNote(remote, onlyExisting: false));
+
+  /// Applies a server copy of a visit-prep item keyed by id (Issue #128;
+  /// same per-id LWW rule as care notes; a tombstone clears `body` and the
+  /// check state). Throws [RetryableSyncApplyError] when the profile is
+  /// not held locally yet.
+  Future<bool> applyRemoteVisitPrepItem(RemoteVisitPrepItemRow remote) =>
+      db.transaction(() => _applyVisitPrepItem(remote, onlyExisting: false));
+
   /// Applies one pull page: every row (all of [table]) and the table's new
   /// cursor in ONE transaction, so a crash can only re-fetch rows, never
   /// skip them (KTD2). A throwing row rolls the whole page back, cursor
@@ -1366,6 +1714,10 @@ class LunarLogStorage {
         await _applyProfileMode(row, onlyExisting: false);
       case RemoteCycleOverrideRow():
         await _applyCycleOverride(row, onlyExisting: false);
+      case RemoteCareNoteRow():
+        await _applyCareNote(row, onlyExisting: false);
+      case RemoteVisitPrepItemRow():
+        await _applyVisitPrepItem(row, onlyExisting: false);
     }
   }
 
@@ -1383,6 +1735,10 @@ class LunarLogStorage {
           SyncStateCompanion(cursorProfileModes: Value(newCursor)),
         SyncTable.cycleOverrides =>
           SyncStateCompanion(cursorCycleOverrides: Value(newCursor)),
+        SyncTable.careNotes =>
+          SyncStateCompanion(cursorCareNotes: Value(newCursor)),
+        SyncTable.visitPrepItems =>
+          SyncStateCompanion(cursorVisitPrepItems: Value(newCursor)),
         SyncTable.profileGuardians =>
           const SyncStateCompanion(),
       },
@@ -1417,6 +1773,12 @@ class LunarLogStorage {
       for (final row in rows.whereType<RemoteCycleOverrideRow>()) {
         await _applyCycleOverride(row, onlyExisting: false);
       }
+      for (final row in rows.whereType<RemoteCareNoteRow>()) {
+        await _applyCareNote(row, onlyExisting: false);
+      }
+      for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
+        await _applyVisitPrepItem(row, onlyExisting: false);
+      }
     });
   }
 
@@ -1443,6 +1805,12 @@ class LunarLogStorage {
       }
       for (final row in rows.whereType<RemoteCycleOverrideRow>()) {
         await _applyCycleOverride(row, onlyExisting: true);
+      }
+      for (final row in rows.whereType<RemoteCareNoteRow>()) {
+        await _applyCareNote(row, onlyExisting: true);
+      }
+      for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
+        await _applyVisitPrepItem(row, onlyExisting: true);
       }
     });
   }
@@ -1584,6 +1952,12 @@ class LunarLogStorage {
   /// unpushed local edits are wiped too: once revoked, the server rejects
   /// those pushes regardless.
   ///
+  /// Issue #128: the profile's care notes and visit-prep items are wiped
+  /// the same way (payload cleared, not dirty). They are the same category
+  /// of health content as day entries — leaving them readable offline
+  /// after revocation would keep a removed guardian's access alive on the
+  /// device.
+  ///
   /// `updated_at` is deliberately left untouched (finding #9): neither
   /// `revoke_guardian` nor `accept_guardian_invitation` bumps the server's
   /// `profiles.updated_at`, so stamping the tombstone with `revokedAt` would
@@ -1602,6 +1976,25 @@ class LunarLogStorage {
           flow: const Value(FlowLevel.none),
           note: const Value(null),
           tags: const Value(<String>[]),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    await (db.update(db.careNotes)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(CareNotesCompanion(
+          body: const Value(''),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    await (db.update(db.visitPrepItems)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(VisitPrepItemsCompanion(
+          body: const Value(''),
+          isChecked: const Value(false),
+          checkedByUserId: const Value(null),
+          checkedAt: const Value(null),
           deletedAt: Value(stamp),
           dirty: const Value(false),
         ));
@@ -2021,6 +2414,188 @@ class LunarLogStorage {
     return true;
   }
 
+  /// Issue #128: applies a server copy of a care note keyed by id — the
+  /// same per-id LWW rule [_applyCycleOverride] uses, with no resolver. A
+  /// tombstone clears `body` (mirroring the server's
+  /// `care_notes_tombstone_payload_check`).
+  Future<bool> _applyCareNote(RemoteCareNoteRow remote,
+      {required bool onlyExisting}) async {
+    final local = await _careNoteOrNull(remote.id);
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return false;
+    }
+    if (await _profileOrNull(remote.profileId) == null) {
+      throw RetryableSyncApplyError(
+          'care note ${remote.id} references a profile not held locally');
+    }
+    final tombstone = remote.isTombstone;
+    final updatedAt = remote.updatedAt.toUtc();
+    final deletedAt = remote.deletedAt?.toUtc();
+    if (local == null) {
+      await _insertCareNote(remote, tombstone, updatedAt, deletedAt);
+      return true;
+    }
+    await _updateCareNote(remote, local, tombstone, updatedAt, deletedAt);
+    return true;
+  }
+
+  /// The insert half of [_applyCareNote], split out so neither method
+  /// exceeds the CRAP-gate complexity budget on its own.
+  Future<void> _insertCareNote(
+    RemoteCareNoteRow remote,
+    bool tombstone,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+  ) async {
+    await db.into(db.careNotes).insert(CareNotesCompanion.insert(
+          id: remote.id,
+          profileId: remote.profileId,
+          body: tombstone ? '' : remote.body,
+          updatedAt: updatedAt,
+          deletedAt: Value(deletedAt),
+          dirty: const Value(false),
+          localRev: const Value(0),
+          loggedByUserId: Value(remote.loggedByUserId),
+          lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+        ));
+  }
+
+  /// The update half of [_applyCareNote], split out for the same reason. A
+  /// null stamp on the remote copy never wipes a known local one (the
+  /// _applyObservation precedent: pull/resolved rows always carry stamps;
+  /// only a hand-built row is ever null here).
+  Future<void> _updateCareNote(
+    RemoteCareNoteRow remote,
+    CareNoteData local,
+    bool tombstone,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+  ) async {
+    await (db.update(db.careNotes)..where((t) => t.id.equals(remote.id)))
+        .write(CareNotesCompanion(
+      body: Value(tombstone ? '' : remote.body),
+      updatedAt: Value(updatedAt),
+      deletedAt: Value(deletedAt),
+      dirty: const Value(false),
+      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
+      lastModifiedByUserId: Value(
+          remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
+    ));
+  }
+
+  /// The redacted payload columns for a visit-prep item row: the cleared
+  /// state for a tombstone (mirroring the server's
+  /// `visit_prep_items_tombstone_payload_check`); the remote values as-is
+  /// for a live row whose check state transitioned; the *stored* check
+  /// stamp for a live row whose check state did not transition (a text
+  /// edit on a co-guardian's checked item must not silently re-stamp who
+  /// checked it — the sync_push CASE mirror).
+  ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt})
+      _visitPrepItemPayload(
+          RemoteVisitPrepItemRow remote, bool tombstone, VisitPrepItemData? local) {
+    if (tombstone) {
+      return (body: '', isChecked: false, checkedByUserId: null, checkedAt: null);
+    }
+    if (local != null && remote.isChecked == local.isChecked) {
+      return (
+        body: remote.body,
+        isChecked: remote.isChecked,
+        checkedByUserId: local.checkedByUserId,
+        checkedAt: local.checkedAt,
+      );
+    }
+    return (
+      body: remote.body,
+      isChecked: remote.isChecked,
+      checkedByUserId: remote.checkedByUserId,
+      checkedAt: remote.checkedAt?.toUtc(),
+    );
+  }
+
+  /// Issue #128: applies a server copy of a visit-prep item keyed by id —
+  /// the same per-id LWW rule [_applyCareNote] uses. A tombstone clears
+  /// `body` and resets the check state (mirroring the server's
+  /// `visit_prep_items_tombstone_payload_check`).
+  Future<bool> _applyVisitPrepItem(RemoteVisitPrepItemRow remote,
+      {required bool onlyExisting}) async {
+    final local = await _visitPrepItemOrNull(remote.id);
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return false;
+    }
+    if (await _profileOrNull(remote.profileId) == null) {
+      throw RetryableSyncApplyError(
+          'visit prep item ${remote.id} references a profile not held locally');
+    }
+    final tombstone = remote.isTombstone;
+    final updatedAt = remote.updatedAt.toUtc();
+    final deletedAt = remote.deletedAt?.toUtc();
+    final payload = _visitPrepItemPayload(remote, tombstone, local);
+    if (local == null) {
+      await _insertVisitPrepItem(remote, payload, updatedAt, deletedAt);
+      return true;
+    }
+    await _updateVisitPrepItem(remote, local, payload, updatedAt, deletedAt);
+    return true;
+  }
+
+  /// The insert half of [_applyVisitPrepItem], split out so neither method
+  /// exceeds the CRAP-gate complexity budget on its own.
+  Future<void> _insertVisitPrepItem(
+    RemoteVisitPrepItemRow remote,
+    ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt}) payload,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+  ) async {
+    await db.into(db.visitPrepItems).insert(VisitPrepItemsCompanion.insert(
+          id: remote.id,
+          profileId: remote.profileId,
+          body: payload.body,
+          isChecked: Value(payload.isChecked),
+          checkedByUserId: Value(payload.checkedByUserId),
+          checkedAt: Value(payload.checkedAt),
+          updatedAt: updatedAt,
+          deletedAt: Value(deletedAt),
+          dirty: const Value(false),
+          localRev: const Value(0),
+          loggedByUserId: Value(remote.loggedByUserId),
+          lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+        ));
+  }
+
+  /// The update half of [_applyVisitPrepItem], split out for the same
+  /// reason. A null stamp on the remote copy never wipes a known local
+  /// one (the _applyObservation precedent).
+  Future<void> _updateVisitPrepItem(
+    RemoteVisitPrepItemRow remote,
+    VisitPrepItemData local,
+    ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt}) payload,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+  ) async {
+    await (db.update(db.visitPrepItems)
+          ..where((t) => t.id.equals(remote.id)))
+        .write(VisitPrepItemsCompanion(
+      body: Value(payload.body),
+      isChecked: Value(payload.isChecked),
+      checkedByUserId: Value(payload.checkedByUserId),
+      checkedAt: Value(payload.checkedAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: Value(deletedAt),
+      dirty: const Value(false),
+      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
+      lastModifiedByUserId: Value(
+          remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
+    ));
+  }
+
   static bool _tagsEqual(List<String> a, List<String> b) {
     if (identical(a, b)) return true;
     final setA = a.toSet();
@@ -2337,6 +2912,83 @@ class LunarLogStorage {
       })
       ..orderBy([
         (t) => OrderingTerm(expression: t.cycleStartDate),
+        (t) => OrderingTerm(expression: t.id),
+      ]);
+    return query;
+  }
+
+  Future<CareNoteData?> _careNoteOrNull(String id) =>
+      (db.select(db.careNotes)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  Future<CareNoteData> _careNoteById(String id) async {
+    final row = await _careNoteOrNull(id);
+    if (row == null) throw StateError('care note disappeared: $id');
+    return row;
+  }
+
+  /// The shared builder behind [getCareNotesForProfile] and its watch
+  /// variant: ordered by `updated_at` then id, tombstones filtered unless
+  /// [includeTombstones].
+  Selectable<CareNoteData> _careNoteQuery(
+    String profileId, {
+    required bool includeTombstones,
+  }) {
+    final query = db.select(db.careNotes)
+      ..where((t) {
+        var condition = t.profileId.equals(profileId);
+        if (!includeTombstones) {
+          condition = condition & t.deletedAt.isNull();
+        }
+        return condition;
+      })
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.updatedAt),
+        (t) => OrderingTerm(expression: t.id),
+      ]);
+    return query;
+  }
+
+  Future<VisitPrepItemData?> _visitPrepItemOrNull(String id) =>
+      (db.select(db.visitPrepItems)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  Future<VisitPrepItemData> _visitPrepItemById(String id) async {
+    final row = await _visitPrepItemOrNull(id);
+    if (row == null) throw StateError('visit prep item disappeared: $id');
+    return row;
+  }
+
+  /// The checked, live items behind [clearCheckedVisitPrepItems].
+  Selectable<VisitPrepItemData> _carePrepCheckedQuery(String profileId) {
+    final query = db.select(db.visitPrepItems)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.isChecked.equals(true) &
+          t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query;
+  }
+
+  /// The shared builder behind [getVisitPrepItemsForProfile] and its watch
+  /// variant: unchecked first (open questions on top, covered items below
+  /// until cleared), then by `updated_at`, then id; tombstones filtered
+  /// unless [includeTombstones].
+  Selectable<VisitPrepItemData> _visitPrepItemQuery(
+    String profileId, {
+    required bool includeTombstones,
+  }) {
+    final query = db.select(db.visitPrepItems)
+      ..where((t) {
+        var condition = t.profileId.equals(profileId);
+        if (!includeTombstones) {
+          condition = condition & t.deletedAt.isNull();
+        }
+        return condition;
+      })
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.isChecked),
+        (t) => OrderingTerm(expression: t.updatedAt),
         (t) => OrderingTerm(expression: t.id),
       ]);
     return query;

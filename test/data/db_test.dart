@@ -248,7 +248,7 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 9);
+  expect(await userVersion(db), 10);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
   expect(
@@ -339,10 +339,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 9 and database opens with the expected tables',
+    test('schema version is 10 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 9);
-      expect(await userVersion(db), 9);
+      expect(db.schemaVersion, 10);
+      expect(await userVersion(db), 10);
 
       final tables = (await db
               .customSelect(
@@ -353,7 +353,8 @@ void main() {
           .toSet();
       expect(tables,
           containsAll(['profiles', 'day_entries', 'profile_guardians', 'app_settings', 'sync_state',
-              'observations', 'profile_modes', 'cycle_overrides']));
+              'observations', 'profile_modes', 'cycle_overrides',
+              'care_notes', 'visit_prep_items']));
       expect(await columnsOf(db, 'profiles'),
           containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
       expect(
@@ -370,12 +371,21 @@ void main() {
       expect(await columnsOf(db, 'cycle_overrides'),
           containsAll(['id', 'profile_id', 'cycle_start_date', 'excluded_from_average',
               'manual_start', 'note_id', 'deleted_at', 'updated_at', 'dirty', 'local_rev']));
+      expect(await columnsOf(db, 'care_notes'),
+          containsAll(['id', 'profile_id', 'body', 'updated_at', 'deleted_at',
+              'dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id']));
+      expect(await columnsOf(db, 'visit_prep_items'),
+          containsAll(['id', 'profile_id', 'body', 'is_checked', 'checked_by_user_id',
+              'checked_at', 'updated_at', 'deleted_at', 'dirty', 'local_rev',
+              'logged_by_user_id', 'last_modified_by_user_id']));
       expect(await columnsOf(db, 'sync_state'),
-          containsAll(['cursor_profile_modes', 'cursor_cycle_overrides']));
+          containsAll(['cursor_profile_modes', 'cursor_cycle_overrides',
+              'cursor_care_notes', 'cursor_visit_prep_items']));
 
       // Issue #197: the four read-path indexes exist on a fresh onCreate
       // too, not just via onUpgradeSteps (see schema_migration_test.dart
-      // for the upgrade-path assertion).
+      // for the upgrade-path assertion). Issue #128 adds two more
+      // (care_notes / visit_prep_items profile_id), asserted the same way.
       final indexNames = (await db
               .customSelect(
                 "SELECT name FROM sqlite_master WHERE type = 'index'",
@@ -390,6 +400,8 @@ void main() {
             'ix_day_entries_dirty',
             'ix_day_entries_updated_at',
             'ix_profile_guardians_profile_id',
+            'ix_care_notes_profile_id',
+            'ix_visit_prep_items_profile_id',
           ]));
     });
 
@@ -1772,7 +1784,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 9);
+      expect(await userVersion(second), 10);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1785,7 +1797,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 9);
+      expect(await userVersion(db), 10);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1830,7 +1842,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 9);
+      expect(await userVersion(db), 10);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1855,7 +1867,7 @@ void main() {
       expect(edited.mode, 'irregular');
     });
 
-    test('a v7 fixture upgrades to v9 by adding profile_modes and '
+    test('a v7 fixture upgrades to v10 by adding profile_modes and '
         'cycle_overrides with their sync_state cursors, preserving every '
         'row (Issue #188)', () async {
       final raw = sqlite3.sqlite3.openInMemory();
@@ -1863,7 +1875,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 9);
+      expect(await userVersion(db), 10);
       expect(await columnsOf(db, 'profile_modes'),
           containsAll(['profile_id', 'mode', 'mode_started_on',
               'birth_control_method', 'birth_control_started_on',
@@ -1966,7 +1978,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 9);
+      expect(await userVersion(db), 10);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

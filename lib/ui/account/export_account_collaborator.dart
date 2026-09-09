@@ -8,9 +8,11 @@ library;
 
 import '../../data/export/account_export_writer.dart';
 import '../../domain/export/account_export_remote_source.dart';
+import '../../domain/models/care_note.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
+import '../../domain/models/visit_prep_item.dart';
 
 /// The app's version string as carried into an export document (Issue #17
 /// U5/U6). Kept in step with `pubspec.yaml`'s `version:` by hand - `lib/ui`
@@ -30,6 +32,8 @@ typedef ExportAccountCollaborator = Future<void> Function({
   required List<Profile> profiles,
   required Map<String, List<DayEntry>> entriesByProfile,
   Map<String, List<Observation>> observationsByProfile,
+  Map<String, List<CareNote>> careNotesByProfile,
+  Map<String, List<VisitPrepItem>> visitPrepByProfile,
   required String appVersion,
 });
 
@@ -39,7 +43,8 @@ typedef ExportAccountCollaborator = Future<void> Function({
 /// function, so a caller can read the remote source from `context` at call
 /// time. Issue #240 widened [ExportAccountCollaborator] with an optional
 /// `observationsByProfile` parameter (default `const {}`), so existing test
-/// doubles only need that parameter declared, not necessarily used.
+/// doubles only need that parameter declared, not necessarily used. Issue
+/// #128 widens it the same way with `careNotesByProfile`/`visitPrepByProfile`.
 ExportAccountCollaborator defaultExportAccountCollaborator(
   AccountExportRemoteSource? remoteSource,
 ) =>
@@ -47,11 +52,15 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
       required List<Profile> profiles,
       required Map<String, List<DayEntry>> entriesByProfile,
       Map<String, List<Observation>> observationsByProfile = const {},
+      Map<String, List<CareNote>> careNotesByProfile = const {},
+      Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
       required String appVersion,
     }) =>
         AccountExportWriter(remoteSource: remoteSource).exportAndShare(
           profiles: profiles,
           entriesByProfile: entriesByProfile,
           observationsByProfile: observationsByProfile,
+          careNotesByProfile: careNotesByProfile,
+          visitPrepByProfile: visitPrepByProfile,
           appVersion: appVersion,
         );

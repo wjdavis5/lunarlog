@@ -221,6 +221,8 @@ select is(
     'day_entries', 0, 'day_entries_rehomed', 0, 'observations', 0,
     -- Issue #188 added these two counts to the returned document.
     'profile_modes', 0, 'cycle_overrides', 0,
+    -- Issue #128 adds these two counts to the returned document.
+    'care_notes', 0, 'visit_prep_items', 0,
     'guardian_invitations', 0,
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,

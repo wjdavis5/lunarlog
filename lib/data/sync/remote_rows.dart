@@ -13,7 +13,7 @@ library;
 import '../db/tables.dart';
 
 /// The synced tables (per-table pull cursors, KTD2, Issue #8, Issue #240,
-/// Issue #188).
+/// Issue #188, Issue #128).
 enum SyncTable {
   profiles,
   dayEntries,
@@ -21,6 +21,8 @@ enum SyncTable {
   observations,
   profileModes,
   cycleOverrides,
+  careNotes,
+  visitPrepItems,
 }
 
 /// A server copy of a synced row.
@@ -358,6 +360,84 @@ final class RemoteCycleOverrideRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.cycleOverrides;
+}
+
+/// A server copy of a `care_notes` row (Issue #128): one standing,
+/// non-date-bound note on a profile. Tombstones (deletedAt set) carry no
+/// payload — the server's `care_notes_tombstone_payload_check` clears
+/// `body`, keeping `id`/`profileId`.
+final class RemoteCareNoteRow extends RemoteRow {
+  const RemoteCareNoteRow({
+    required this.id,
+    required this.profileId,
+    required this.body,
+    required this.updatedAt,
+    required this.deletedAt,
+    this.serverVersion = 0,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// Free-text standing note. Empty on a tombstone.
+  final String body;
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt;
+  @override
+  final int serverVersion;
+
+  final String? loggedByUserId;
+  final String? lastModifiedByUserId;
+
+  @override
+  SyncTable get table => SyncTable.careNotes;
+}
+
+/// A server copy of a `visit_prep_items` row (Issue #128): one checklist
+/// item on a profile's visit-prep list. Tombstones (deletedAt set) carry no
+/// payload — the server's `visit_prep_items_tombstone_payload_check` clears
+/// `body` and resets the check state, keeping `id`/`profileId`.
+final class RemoteVisitPrepItemRow extends RemoteRow {
+  const RemoteVisitPrepItemRow({
+    required this.id,
+    required this.profileId,
+    required this.body,
+    this.isChecked = false,
+    this.checkedByUserId,
+    this.checkedAt,
+    required this.updatedAt,
+    required this.deletedAt,
+    this.serverVersion = 0,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// The item/question text. Empty on a tombstone.
+  final String body;
+  final bool isChecked;
+  final String? checkedByUserId;
+  final DateTime? checkedAt;
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt;
+  @override
+  final int serverVersion;
+
+  final String? loggedByUserId;
+  final String? lastModifiedByUserId;
+
+  @override
+  SyncTable get table => SyncTable.visitPrepItems;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today
