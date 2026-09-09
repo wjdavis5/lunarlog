@@ -43,6 +43,22 @@ enum ObservationSource {
       };
 }
 
+// TODO(#186): mirror the server's observations_derive_local_date trigger
+// (supabase/migrations/20260908180000_timezone_contract.sql, issue #180)
+// here on the client, so a locally-constructed Observation carrying
+// observedAt always has a local_date consistent with the day-boundary
+// contract in lib/domain/health/day_boundary.dart before it ever reaches
+// sync_push. Not done in issue #180 itself: localDate is a required,
+// independently-supplied constructor argument used by five call sites
+// (lib/data/db/storage.dart, lib/data/repositories/mappers.dart,
+// lib/data/sync/row_codec.dart, lib/data/sync/supabase_sync_engine.dart,
+// lib/domain/export/account_export.dart) that read/write stored rows
+// as-is, several of which must NOT recompute localDate from observedAt
+// (a row read back from storage or the wire already carries the
+// server-resolved value) — making derivation automatic here would need to
+// distinguish "constructing a brand-new client-authored observation" from
+// "rehydrating an already-resolved one," which is a bigger, call-site-aware
+// change than this issue's scope, not a one-place constructor edit.
 class Observation {
   Observation({
     required this.id,
