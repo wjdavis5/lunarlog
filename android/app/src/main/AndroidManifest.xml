@@ -10,6 +10,17 @@
     <!-- U4: account sign-in and sync talk to Supabase; absent before, so
          earlier builds had no network at all. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Issue #166: Health Connect permissions for the v1 (menstruation-only)
+         baseline scoped by #202 (HS-7). No Dart call site reads or writes
+         through these yet; AppConfig.hasHealthSync stays false until #173
+         lands the platform-channel adapter. Extend this list (never widen it
+         silently) as later HS issues add data types; do NOT add history,
+         background, sexual-activity, or BBT permissions here; those belong
+         to #186/#210/#228. -->
+    <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
+    <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
+    <uses-permission android:name="android.permission.health.READ_INTERMENSTRUAL_BLEEDING"/>
+    <uses-permission android:name="android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING"/>
     <application
         android:label="lunarlog"
         android:name="${applicationName}"
@@ -54,6 +65,32 @@
                 <data android:scheme="lunarlog" android:host="invite"/>
             </intent-filter>
         </activity>
+        <!-- Issue #166: minimal, standalone activity (not Flutter; Health
+             Connect can launch this without booting the Flutter engine) that
+             satisfies both rationale entry points Health Connect requires:
+             the permissions-grant flow (SHOW_PERMISSIONS_RATIONALE) and the
+             Android 14+ "why does this app have access" surface, exposed via
+             an activity-alias restricted to the platform's own
+             START_VIEW_PERMISSION_USAGE caller. Both show the same static
+             privacy-policy content; see PermissionsRationaleActivity.kt. -->
+        <activity
+            android:name=".PermissionsRationaleActivity"
+            android:exported="true"
+            android:label="lunarlog">
+            <intent-filter>
+                <action android:name="androidx.health.connect.action.SHOW_PERMISSIONS_RATIONALE"/>
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name=".PermissionsRationaleActivityAlias"
+            android:exported="true"
+            android:targetActivity=".PermissionsRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE"/>
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
+            </intent-filter>
+        </activity-alias>
         <!-- U8: flutter_local_notifications receivers (schedule delivery and
              restore after reboot). -->
         <receiver
@@ -83,5 +120,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Issue #166: lets the app see whether the Health Connect app is
+             installed (SdkAvailability check) despite package-visibility
+             restrictions; required regardless of whether Health Connect is
+             built into the OS (Android 14+) or a separate installable app
+             (Android 9-13). -->
+        <package android:name="com.google.android.apps.healthdata"/>
     </queries>
 </manifest>
