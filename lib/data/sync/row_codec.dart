@@ -200,6 +200,9 @@ JsonRow encodeDayEntry(DayEntry row) {
     'flow': row.flow.name,
     'tags': List<String>.of(row.tags),
     'note': row.note,
+    'source': row.source,
+    'source_id': row.sourceId,
+    'import_id': row.importId,
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
   };
@@ -259,6 +262,7 @@ JsonRow encodeObservation(Observation row) {
     'excluded': row.excluded,
     'source': row.source,
     'source_id': row.sourceId,
+    'import_id': row.importId,
     'raw': _decodeRawForWire(row.raw),
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
@@ -316,6 +320,13 @@ RemoteDayEntryRow decodeDayEntry(JsonRow json) {
     serverVersion: r.integerOr('server_version', 0),
     loggedByUserId: r.stringOrNull('logged_by_user_id'),
     lastModifiedByUserId: r.stringOrNull('last_modified_by_user_id'),
+    // Issue #159: read as-is, never validated against a closed set here
+    // (mirrors observations.source/source_id's precedent above) —
+    // `mappers.dart`'s `DayEntrySource.fromDb` normalises on the way to
+    // the domain model.
+    source: r.stringOrNull('source') ?? 'manual',
+    sourceId: r.stringOrNull('source_id'),
+    importId: r.stringOrNull('import_id'),
   );
 }
 
@@ -364,6 +375,7 @@ RemoteObservationRow decodeObservation(JsonRow json) {
     excluded: json['excluded'] == null ? false : r.boolean('excluded'),
     source: r.stringOrNull('source') ?? 'manual',
     sourceId: r.stringOrNull('source_id'),
+    importId: r.stringOrNull('import_id'),
     raw: json['raw'] == null ? null : jsonEncode(json['raw']),
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),

@@ -49,6 +49,9 @@ domain.DayEntry dayEntryToDomain(db.DayEntry row) => domain.DayEntry(
       deletedAt: row.deletedAt,
       loggedByUserId: row.loggedByUserId,
       lastModifiedByUserId: row.lastModifiedByUserId,
+      source: domain.DayEntrySource.fromDb(row.source),
+      sourceId: row.sourceId,
+      importId: row.importId,
     );
 
 /// Issue #240: drift-row -> domain [domain.Observation]. Mirrors
@@ -83,6 +86,7 @@ domain.Observation observationToDomain(db.Observation row) =>
       excluded: row.excluded,
       source: domain.ObservationSource.fromDb(row.source),
       sourceId: row.sourceId,
+      importId: row.importId,
       raw: row.raw,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,

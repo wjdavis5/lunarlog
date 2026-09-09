@@ -1,7 +1,10 @@
 /// Unit tests for the pure `DayEntry` value type — construction, copyWith,
-/// equality/hashCode, and toString. Previously untested (no
-/// `test/domain/models/` coverage existed), which is why `==` and
-/// `toString` showed up as CRAP-gate offenders (0% and low coverage).
+/// equality/hashCode, toString, and `DayEntrySource` (de)serialization.
+/// Previously untested (no `test/domain/models/` coverage existed), which is
+/// why `==` and `toString` showed up as CRAP-gate offenders (0% and low
+/// coverage); the `DayEntrySource` table-driven cases below mirror
+/// `observation_test.dart`'s `ObservationSource` coverage (Issue #159
+/// review finding: `toDb`/`fromDb`'s remaining arms were untested).
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -132,6 +135,38 @@ void main() {
     test('tombstoned: includes the tombstoned marker', () {
       final entry = _entry(deletedAt: DateTime.utc(2026, 9, 2));
       expect(entry.toString(), contains('tombstoned'));
+    });
+  });
+
+  group('DayEntrySource (de)serialization', () {
+    test('toDb renders every value as the server''s enum string', () {
+      expect(DayEntrySource.manual.toDb(), 'manual');
+      expect(DayEntrySource.clueImport.toDb(), 'clue_import');
+      expect(DayEntrySource.healthkit.toDb(), 'healthkit');
+      expect(DayEntrySource.healthConnect.toDb(), 'health_connect');
+      expect(DayEntrySource.fileImport.toDb(), 'file_import');
+    });
+
+    test('fromDb parses every known value', () {
+      expect(DayEntrySource.fromDb('manual'), DayEntrySource.manual);
+      expect(DayEntrySource.fromDb('clue_import'), DayEntrySource.clueImport);
+      expect(DayEntrySource.fromDb('healthkit'), DayEntrySource.healthkit);
+      expect(DayEntrySource.fromDb('health_connect'),
+          DayEntrySource.healthConnect);
+      expect(
+          DayEntrySource.fromDb('file_import'), DayEntrySource.fileImport);
+    });
+
+    test('fromDb degrades an unrecognised or null value to manual', () {
+      expect(DayEntrySource.fromDb('some_future_source'),
+          DayEntrySource.manual);
+      expect(DayEntrySource.fromDb(null), DayEntrySource.manual);
+    });
+
+    test('toDb -> fromDb round-trips every value', () {
+      for (final source in DayEntrySource.values) {
+        expect(DayEntrySource.fromDb(source.toDb()), source);
+      }
     });
   });
 }

@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(127);
+select plan(147);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -12,7 +12,8 @@ insert into ts values
   ('t0', '2026-09-01T09:00:00Z'),
   ('t1', '2026-09-01T10:00:00Z'),
   ('t2', '2026-09-01T11:00:00Z'),
-  ('t3', '2026-09-01T12:00:00Z');
+  ('t3', '2026-09-01T12:00:00Z'),
+  ('t4', '2026-09-01T13:00:00Z');
 grant select on table ts to authenticated;
 
 create function pg_temp.ts_txt(k text) returns text language sql as
@@ -660,6 +661,117 @@ insert into r select 'mode_entry', public.sync_push('[]'::jsonb,
     'tz', 'UTC', 'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
 select is(pg_temp.resp('mode_entry') -> 'rejected', '[]'::jsonb,
   '#131: a caregiver still writes day entries on a profile with any mode');
+
+-- ---------------------------------------------------------------------------
+-- Issue #159: day_entries provenance (source/source_id/import_id)
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('user_a');
+
+-- Round trip: a brand-new entry pushed with all three keys stores them
+-- verbatim.
+insert into r select 'provenance_insert', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'tz', 'UTC', 'flow', 'none', 'source', 'clue_import', 'source_id', 'clue-abc',
+    'import_id', '11111111-1111-1111-1111-111111111111',
+    'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('provenance_insert') -> 'rejected', '[]'::jsonb,
+  '#159: a valid source/source_id/import_id day_entries push is accepted');
+select is((select source from public.day_entries where id = tests.ulid(300)), 'clue_import',
+  '#159: source round-trips');
+select is((select source_id from public.day_entries where id = tests.ulid(300)), 'clue-abc',
+  '#159: source_id round-trips');
+select is((select import_id::text from public.day_entries where id = tests.ulid(300)),
+  '11111111-1111-1111-1111-111111111111',
+  '#159: import_id round-trips');
+
+-- Default: an entry pushed without a source key at all defaults to manual.
+insert into r select 'provenance_default', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(301), 'profile_id', tests.ulid(1), 'local_date', '2026-10-02',
+    'tz', 'UTC', 'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
+select is((select source from public.day_entries where id = tests.ulid(301)), 'manual',
+  '#159: an absent source key defaults to manual on insert');
+select is((select source_id from public.day_entries where id = tests.ulid(301)), null,
+  '#159: source_id defaults to null on insert');
+
+-- Rejection: a source value outside the closed set is rejected by the
+-- CHECK, caught as a per-row rejection, not a batch failure.
+insert into r select 'provenance_bad_source', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(302), 'profile_id', tests.ulid(1), 'local_date', '2026-10-03',
+    'tz', 'UTC', 'flow', 'none', 'source', 'not_a_real_source',
+    'updated_at', pg_temp.ts_txt('t1'))));
+select is(jsonb_array_length(pg_temp.resp('provenance_bad_source') -> 'rejected'), 1,
+  '#159: an out-of-set day_entries.source value is rejected');
+select is((select count(*) from public.day_entries where id = tests.ulid(302)), 0::bigint,
+  '#159: the rejected row does not land');
+
+-- Rejection: a malformed import_id (not a UUID) is rejected the same way.
+insert into r select 'provenance_bad_import_id', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(303), 'profile_id', tests.ulid(1), 'local_date', '2026-10-04',
+    'tz', 'UTC', 'flow', 'none', 'import_id', 'not-a-uuid',
+    'updated_at', pg_temp.ts_txt('t1'))));
+select is(jsonb_array_length(pg_temp.resp('provenance_bad_import_id') -> 'rejected'), 1,
+  '#159: a malformed import_id is rejected rather than crashing the batch');
+
+-- source_id length bound (day_entries_source_id_length_check, 128 chars).
+insert into r select 'provenance_long_source_id', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(304), 'profile_id', tests.ulid(1), 'local_date', '2026-10-05',
+    'tz', 'UTC', 'flow', 'none', 'source_id', repeat('x', 129),
+    'updated_at', pg_temp.ts_txt('t1'))));
+select is(jsonb_array_length(pg_temp.resp('provenance_long_source_id') -> 'rejected'), 1,
+  '#159: a 129-character source_id is rejected (day_entries_source_id_length_check)');
+
+-- Containment guard (acceptance criteria: "server does not silently null
+-- them on later same-row updates"): an update that omits source/source_id/
+-- import_id entirely preserves the stored values.
+insert into r select 'provenance_old_client_update', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'tz', 'UTC', 'flow', 'medium', 'updated_at', pg_temp.ts_txt('t2'))));
+select is((select flow from public.day_entries where id = tests.ulid(300)), 'medium',
+  '#159: the old-client push still applies the field it did send');
+select is((select source from public.day_entries where id = tests.ulid(300)), 'clue_import',
+  '#159: an old client omitting source does not reset the stored value');
+select is((select source_id from public.day_entries where id = tests.ulid(300)), 'clue-abc',
+  '#159: an old client omitting source_id does not reset the stored value');
+select is((select import_id::text from public.day_entries where id = tests.ulid(300)),
+  '11111111-1111-1111-1111-111111111111',
+  '#159: an old client omitting import_id does not reset the stored value');
+
+-- Contrast: an explicit key present with a null value DOES clear it - this
+-- is what distinguishes "omitted" from "explicitly cleared" (the same
+-- jsonb `?` containment semantics U1 established for
+-- birth_year/relationship).
+insert into r select 'provenance_explicit_clear', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'tz', 'UTC', 'flow', 'medium', 'source_id', null, 'import_id', null,
+    'updated_at', pg_temp.ts_txt('t3'))));
+select is((select source_id from public.day_entries where id = tests.ulid(300)), null,
+  '#159: an explicit null source_id (key present) clears the stored value');
+select is((select import_id from public.day_entries where id = tests.ulid(300)), null,
+  '#159: an explicit null import_id (key present) clears the stored value');
+select is((select source from public.day_entries where id = tests.ulid(300)), 'clue_import',
+  '#159: source itself is untouched by clearing source_id/import_id (independent columns)');
+
+-- Provenance survives a tombstone (this migration's judgement call): a
+-- direct client soft-delete keeps whatever source/source_id/import_id the
+-- row already carried.
+insert into r select 'provenance_tombstone', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'tz', 'UTC', 'flow', 'none', 'source', 'clue_import', 'source_id', 'clue-abc-2',
+    'updated_at', pg_temp.ts_txt('t4'), 'deleted_at', pg_temp.ts_txt('t4'))));
+select isnt((select deleted_at from public.day_entries where id = tests.ulid(300)), null,
+  '#159: the row is tombstoned');
+select is((select source from public.day_entries where id = tests.ulid(300)), 'clue_import',
+  '#159: source survives the tombstone');
+select is((select source_id from public.day_entries where id = tests.ulid(300)), 'clue-abc-2',
+  '#159: source_id survives the tombstone (day_entries never clears provenance, unlike flow/tags/note)');
 
 select * from finish();
 rollback;

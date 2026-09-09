@@ -995,6 +995,38 @@ class $DayEntriesTable extends DayEntries
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('manual'),
+  );
+  static const VerificationMeta _sourceIdMeta = const VerificationMeta(
+    'sourceId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceId = GeneratedColumn<String>(
+    'source_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _importIdMeta = const VerificationMeta(
+    'importId',
+  );
+  @override
+  late final GeneratedColumn<String> importId = GeneratedColumn<String>(
+    'import_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1010,6 +1042,9 @@ class $DayEntriesTable extends DayEntries
     localRev,
     loggedByUserId,
     lastModifiedByUserId,
+    source,
+    sourceId,
+    importId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1099,6 +1134,24 @@ class $DayEntriesTable extends DayEntries
         ),
       );
     }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('source_id')) {
+      context.handle(
+        _sourceIdMeta,
+        sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    }
+    if (data.containsKey('import_id')) {
+      context.handle(
+        _importIdMeta,
+        importId.isAcceptableOrUnknown(data['import_id']!, _importIdMeta),
+      );
+    }
     return context;
   }
 
@@ -1164,6 +1217,18 @@ class $DayEntriesTable extends DayEntries
         DriftSqlType.string,
         data['${effectivePrefix}last_modified_by_user_id'],
       ),
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      sourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_id'],
+      ),
+      importId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}import_id'],
+      ),
     );
   }
 
@@ -1207,6 +1272,22 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
 
   /// Supabase auth user who last edited this entry (stamped by server).
   final String? lastModifiedByUserId;
+
+  /// Import/device provenance (Issue #159), mirroring `public.day_entries`'
+  /// `day_entries_source_check` (`manual`/`clue_import`/`healthkit`/
+  /// `health_connect`/`file_import` — a different closed set from
+  /// [Observations.source]'s, see `domain.DayEntrySource`'s doc comment).
+  /// Never cleared on a tombstone (see `sync_push`'s doc comment in
+  /// `supabase/migrations/20260908170000_import_provenance.sql`).
+  final String source;
+
+  /// Import/device provenance key, for idempotent re-import; paired with
+  /// [source] in the server's partial unique index.
+  final String? sourceId;
+
+  /// Placeholder FK to a future `import_jobs(id)` row (Issue #159,
+  /// unconstrained server-side until #167 adds that table).
+  final String? importId;
   const DayEntry({
     required this.id,
     required this.profileId,
@@ -1221,6 +1302,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     required this.localRev,
     this.loggedByUserId,
     this.lastModifiedByUserId,
+    required this.source,
+    this.sourceId,
+    this.importId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1254,6 +1338,13 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     if (!nullToAbsent || lastModifiedByUserId != null) {
       map['last_modified_by_user_id'] = Variable<String>(lastModifiedByUserId);
     }
+    map['source'] = Variable<String>(source);
+    if (!nullToAbsent || sourceId != null) {
+      map['source_id'] = Variable<String>(sourceId);
+    }
+    if (!nullToAbsent || importId != null) {
+      map['import_id'] = Variable<String>(importId);
+    }
     return map;
   }
 
@@ -1278,6 +1369,13 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       lastModifiedByUserId: lastModifiedByUserId == null && nullToAbsent
           ? const Value.absent()
           : Value(lastModifiedByUserId),
+      source: Value(source),
+      sourceId: sourceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceId),
+      importId: importId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(importId),
     );
   }
 
@@ -1302,6 +1400,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       lastModifiedByUserId: serializer.fromJson<String?>(
         json['lastModifiedByUserId'],
       ),
+      source: serializer.fromJson<String>(json['source']),
+      sourceId: serializer.fromJson<String?>(json['sourceId']),
+      importId: serializer.fromJson<String?>(json['importId']),
     );
   }
   @override
@@ -1321,6 +1422,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       'localRev': serializer.toJson<int>(localRev),
       'loggedByUserId': serializer.toJson<String?>(loggedByUserId),
       'lastModifiedByUserId': serializer.toJson<String?>(lastModifiedByUserId),
+      'source': serializer.toJson<String>(source),
+      'sourceId': serializer.toJson<String?>(sourceId),
+      'importId': serializer.toJson<String?>(importId),
     };
   }
 
@@ -1338,6 +1442,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     int? localRev,
     Value<String?> loggedByUserId = const Value.absent(),
     Value<String?> lastModifiedByUserId = const Value.absent(),
+    String? source,
+    Value<String?> sourceId = const Value.absent(),
+    Value<String?> importId = const Value.absent(),
   }) => DayEntry(
     id: id ?? this.id,
     profileId: profileId ?? this.profileId,
@@ -1356,6 +1463,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     lastModifiedByUserId: lastModifiedByUserId.present
         ? lastModifiedByUserId.value
         : this.lastModifiedByUserId,
+    source: source ?? this.source,
+    sourceId: sourceId.present ? sourceId.value : this.sourceId,
+    importId: importId.present ? importId.value : this.importId,
   );
   DayEntry copyWithCompanion(DayEntriesCompanion data) {
     return DayEntry(
@@ -1376,6 +1486,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       lastModifiedByUserId: data.lastModifiedByUserId.present
           ? data.lastModifiedByUserId.value
           : this.lastModifiedByUserId,
+      source: data.source.present ? data.source.value : this.source,
+      sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      importId: data.importId.present ? data.importId.value : this.importId,
     );
   }
 
@@ -1394,7 +1507,10 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           ..write('dirty: $dirty, ')
           ..write('localRev: $localRev, ')
           ..write('loggedByUserId: $loggedByUserId, ')
-          ..write('lastModifiedByUserId: $lastModifiedByUserId')
+          ..write('lastModifiedByUserId: $lastModifiedByUserId, ')
+          ..write('source: $source, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('importId: $importId')
           ..write(')'))
         .toString();
   }
@@ -1414,6 +1530,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     localRev,
     loggedByUserId,
     lastModifiedByUserId,
+    source,
+    sourceId,
+    importId,
   );
   @override
   bool operator ==(Object other) =>
@@ -1431,7 +1550,10 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           other.dirty == this.dirty &&
           other.localRev == this.localRev &&
           other.loggedByUserId == this.loggedByUserId &&
-          other.lastModifiedByUserId == this.lastModifiedByUserId);
+          other.lastModifiedByUserId == this.lastModifiedByUserId &&
+          other.source == this.source &&
+          other.sourceId == this.sourceId &&
+          other.importId == this.importId);
 }
 
 class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
@@ -1448,6 +1570,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
   final Value<int> localRev;
   final Value<String?> loggedByUserId;
   final Value<String?> lastModifiedByUserId;
+  final Value<String> source;
+  final Value<String?> sourceId;
+  final Value<String?> importId;
   final Value<int> rowid;
   const DayEntriesCompanion({
     this.id = const Value.absent(),
@@ -1463,6 +1588,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.localRev = const Value.absent(),
     this.loggedByUserId = const Value.absent(),
     this.lastModifiedByUserId = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.importId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DayEntriesCompanion.insert({
@@ -1479,6 +1607,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.localRev = const Value.absent(),
     this.loggedByUserId = const Value.absent(),
     this.lastModifiedByUserId = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.importId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        profileId = Value(profileId),
@@ -1500,6 +1631,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Expression<int>? localRev,
     Expression<String>? loggedByUserId,
     Expression<String>? lastModifiedByUserId,
+    Expression<String>? source,
+    Expression<String>? sourceId,
+    Expression<String>? importId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1517,6 +1651,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       if (loggedByUserId != null) 'logged_by_user_id': loggedByUserId,
       if (lastModifiedByUserId != null)
         'last_modified_by_user_id': lastModifiedByUserId,
+      if (source != null) 'source': source,
+      if (sourceId != null) 'source_id': sourceId,
+      if (importId != null) 'import_id': importId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1535,6 +1672,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Value<int>? localRev,
     Value<String?>? loggedByUserId,
     Value<String?>? lastModifiedByUserId,
+    Value<String>? source,
+    Value<String?>? sourceId,
+    Value<String?>? importId,
     Value<int>? rowid,
   }) {
     return DayEntriesCompanion(
@@ -1551,6 +1691,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       localRev: localRev ?? this.localRev,
       loggedByUserId: loggedByUserId ?? this.loggedByUserId,
       lastModifiedByUserId: lastModifiedByUserId ?? this.lastModifiedByUserId,
+      source: source ?? this.source,
+      sourceId: sourceId ?? this.sourceId,
+      importId: importId ?? this.importId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1603,6 +1746,15 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
         lastModifiedByUserId.value,
       );
     }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (sourceId.present) {
+      map['source_id'] = Variable<String>(sourceId.value);
+    }
+    if (importId.present) {
+      map['import_id'] = Variable<String>(importId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1625,6 +1777,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
           ..write('localRev: $localRev, ')
           ..write('loggedByUserId: $loggedByUserId, ')
           ..write('lastModifiedByUserId: $lastModifiedByUserId, ')
+          ..write('source: $source, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('importId: $importId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2370,6 +2525,17 @@ class $ObservationsTable extends Observations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _importIdMeta = const VerificationMeta(
+    'importId',
+  );
+  @override
+  late final GeneratedColumn<String> importId = GeneratedColumn<String>(
+    'import_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _rawMeta = const VerificationMeta('raw');
   @override
   late final GeneratedColumn<String> raw = GeneratedColumn<String>(
@@ -2465,6 +2631,7 @@ class $ObservationsTable extends Observations
     excluded,
     source,
     sourceId,
+    importId,
     raw,
     updatedAt,
     deletedAt,
@@ -2580,6 +2747,12 @@ class $ObservationsTable extends Observations
       context.handle(
         _sourceIdMeta,
         sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    }
+    if (data.containsKey('import_id')) {
+      context.handle(
+        _importIdMeta,
+        importId.isAcceptableOrUnknown(data['import_id']!, _importIdMeta),
       );
     }
     if (data.containsKey('raw')) {
@@ -2701,6 +2874,10 @@ class $ObservationsTable extends Observations
         DriftSqlType.string,
         data['${effectivePrefix}source_id'],
       ),
+      importId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}import_id'],
+      ),
       raw: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}raw'],
@@ -2790,6 +2967,10 @@ class Observation extends DataClass implements Insertable<Observation> {
   /// Import/device provenance key, for idempotent re-import.
   final String? sourceId;
 
+  /// Placeholder FK to a future `import_jobs(id)` row (Issue #159,
+  /// unconstrained server-side until #167 adds that table).
+  final String? importId;
+
   /// Escape hatch for an unrecognised type/value shape (A1-45); the entire
   /// original datapoint as JSON text.
   final String? raw;
@@ -2823,6 +3004,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     required this.excluded,
     required this.source,
     this.sourceId,
+    this.importId,
     this.raw,
     required this.updatedAt,
     this.deletedAt,
@@ -2864,6 +3046,9 @@ class Observation extends DataClass implements Insertable<Observation> {
     map['source'] = Variable<String>(source);
     if (!nullToAbsent || sourceId != null) {
       map['source_id'] = Variable<String>(sourceId);
+    }
+    if (!nullToAbsent || importId != null) {
+      map['import_id'] = Variable<String>(importId);
     }
     if (!nullToAbsent || raw != null) {
       map['raw'] = Variable<String>(raw);
@@ -2912,6 +3097,9 @@ class Observation extends DataClass implements Insertable<Observation> {
       sourceId: sourceId == null && nullToAbsent
           ? const Value.absent()
           : Value(sourceId),
+      importId: importId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(importId),
       raw: raw == null && nullToAbsent ? const Value.absent() : Value(raw),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -2949,6 +3137,7 @@ class Observation extends DataClass implements Insertable<Observation> {
       excluded: serializer.fromJson<bool>(json['excluded']),
       source: serializer.fromJson<String>(json['source']),
       sourceId: serializer.fromJson<String?>(json['sourceId']),
+      importId: serializer.fromJson<String?>(json['importId']),
       raw: serializer.fromJson<String?>(json['raw']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -2979,6 +3168,7 @@ class Observation extends DataClass implements Insertable<Observation> {
       'excluded': serializer.toJson<bool>(excluded),
       'source': serializer.toJson<String>(source),
       'sourceId': serializer.toJson<String?>(sourceId),
+      'importId': serializer.toJson<String?>(importId),
       'raw': serializer.toJson<String?>(raw),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -3005,6 +3195,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     bool? excluded,
     String? source,
     Value<String?> sourceId = const Value.absent(),
+    Value<String?> importId = const Value.absent(),
     Value<String?> raw = const Value.absent(),
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -3028,6 +3219,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     excluded: excluded ?? this.excluded,
     source: source ?? this.source,
     sourceId: sourceId.present ? sourceId.value : this.sourceId,
+    importId: importId.present ? importId.value : this.importId,
     raw: raw.present ? raw.value : this.raw,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -3061,6 +3253,7 @@ class Observation extends DataClass implements Insertable<Observation> {
       excluded: data.excluded.present ? data.excluded.value : this.excluded,
       source: data.source.present ? data.source.value : this.source,
       sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      importId: data.importId.present ? data.importId.value : this.importId,
       raw: data.raw.present ? data.raw.value : this.raw,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -3093,6 +3286,7 @@ class Observation extends DataClass implements Insertable<Observation> {
           ..write('excluded: $excluded, ')
           ..write('source: $source, ')
           ..write('sourceId: $sourceId, ')
+          ..write('importId: $importId, ')
           ..write('raw: $raw, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -3121,6 +3315,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     excluded,
     source,
     sourceId,
+    importId,
     raw,
     updatedAt,
     deletedAt,
@@ -3148,6 +3343,7 @@ class Observation extends DataClass implements Insertable<Observation> {
           other.excluded == this.excluded &&
           other.source == this.source &&
           other.sourceId == this.sourceId &&
+          other.importId == this.importId &&
           other.raw == this.raw &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
@@ -3173,6 +3369,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
   final Value<bool> excluded;
   final Value<String> source;
   final Value<String?> sourceId;
+  final Value<String?> importId;
   final Value<String?> raw;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -3197,6 +3394,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     this.excluded = const Value.absent(),
     this.source = const Value.absent(),
     this.sourceId = const Value.absent(),
+    this.importId = const Value.absent(),
     this.raw = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3222,6 +3420,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     this.excluded = const Value.absent(),
     this.source = const Value.absent(),
     this.sourceId = const Value.absent(),
+    this.importId = const Value.absent(),
     this.raw = const Value.absent(),
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
@@ -3252,6 +3451,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     Expression<bool>? excluded,
     Expression<String>? source,
     Expression<String>? sourceId,
+    Expression<String>? importId,
     Expression<String>? raw,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -3277,6 +3477,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
       if (excluded != null) 'excluded': excluded,
       if (source != null) 'source': source,
       if (sourceId != null) 'source_id': sourceId,
+      if (importId != null) 'import_id': importId,
       if (raw != null) 'raw': raw,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -3305,6 +3506,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     Value<bool>? excluded,
     Value<String>? source,
     Value<String?>? sourceId,
+    Value<String?>? importId,
     Value<String?>? raw,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -3330,6 +3532,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
       excluded: excluded ?? this.excluded,
       source: source ?? this.source,
       sourceId: sourceId ?? this.sourceId,
+      importId: importId ?? this.importId,
       raw: raw ?? this.raw,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -3389,6 +3592,9 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     if (sourceId.present) {
       map['source_id'] = Variable<String>(sourceId.value);
     }
+    if (importId.present) {
+      map['import_id'] = Variable<String>(importId.value);
+    }
     if (raw.present) {
       map['raw'] = Variable<String>(raw.value);
     }
@@ -3436,6 +3642,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
           ..write('excluded: $excluded, ')
           ..write('source: $source, ')
           ..write('sourceId: $sourceId, ')
+          ..write('importId: $importId, ')
           ..write('raw: $raw, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -5083,6 +5290,9 @@ typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
   Value<int> localRev,
   Value<String?> loggedByUserId,
   Value<String?> lastModifiedByUserId,
+  Value<String> source,
+  Value<String?> sourceId,
+  Value<String?> importId,
   Value<int> rowid,
 });
 typedef $$DayEntriesTableUpdateCompanionBuilder = DayEntriesCompanion Function({
@@ -5099,6 +5309,9 @@ typedef $$DayEntriesTableUpdateCompanionBuilder = DayEntriesCompanion Function({
   Value<int> localRev,
   Value<String?> loggedByUserId,
   Value<String?> lastModifiedByUserId,
+  Value<String> source,
+  Value<String?> sourceId,
+  Value<String?> importId,
   Value<int> rowid,
 });
 
@@ -5211,6 +5424,21 @@ class $$DayEntriesTableFilterComposer
 
   ColumnFilters<String> get lastModifiedByUserId => $composableBuilder(
     column: $table.lastModifiedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get importId => $composableBuilder(
+    column: $table.importId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5332,6 +5560,21 @@ class $$DayEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get importId => $composableBuilder(
+    column: $table.importId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProfilesTableOrderingComposer get profileId {
     final $$ProfilesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -5404,6 +5647,15 @@ class $$DayEntriesTableAnnotationComposer
     column: $table.lastModifiedByUserId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceId =>
+      $composableBuilder(column: $table.sourceId, builder: (column) => column);
+
+  GeneratedColumn<String> get importId =>
+      $composableBuilder(column: $table.importId, builder: (column) => column);
 
   $$ProfilesTableAnnotationComposer get profileId {
     final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
@@ -5495,6 +5747,9 @@ class $$DayEntriesTableTableManager
                 Value<int> localRev = const Value.absent(),
                 Value<String?> loggedByUserId = const Value.absent(),
                 Value<String?> lastModifiedByUserId = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sourceId = const Value.absent(),
+                Value<String?> importId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayEntriesCompanion(
                 id: id,
@@ -5510,6 +5765,9 @@ class $$DayEntriesTableTableManager
                 localRev: localRev,
                 loggedByUserId: loggedByUserId,
                 lastModifiedByUserId: lastModifiedByUserId,
+                source: source,
+                sourceId: sourceId,
+                importId: importId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5527,6 +5785,9 @@ class $$DayEntriesTableTableManager
                 Value<int> localRev = const Value.absent(),
                 Value<String?> loggedByUserId = const Value.absent(),
                 Value<String?> lastModifiedByUserId = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sourceId = const Value.absent(),
+                Value<String?> importId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayEntriesCompanion.insert(
                 id: id,
@@ -5542,6 +5803,9 @@ class $$DayEntriesTableTableManager
                 localRev: localRev,
                 loggedByUserId: loggedByUserId,
                 lastModifiedByUserId: lastModifiedByUserId,
+                source: source,
+                sourceId: sourceId,
+                importId: importId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -6057,6 +6321,7 @@ typedef $$ObservationsTableCreateCompanionBuilder =
       Value<bool> excluded,
       Value<String> source,
       Value<String?> sourceId,
+      Value<String?> importId,
       Value<String?> raw,
       required DateTime updatedAt,
       Value<DateTime?> deletedAt,
@@ -6083,6 +6348,7 @@ typedef $$ObservationsTableUpdateCompanionBuilder =
       Value<bool> excluded,
       Value<String> source,
       Value<String?> sourceId,
+      Value<String?> importId,
       Value<String?> raw,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -6204,6 +6470,11 @@ class $$ObservationsTableFilterComposer
 
   ColumnFilters<String> get sourceId => $composableBuilder(
     column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get importId => $composableBuilder(
+    column: $table.importId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6363,6 +6634,11 @@ class $$ObservationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get importId => $composableBuilder(
+    column: $table.importId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get raw => $composableBuilder(
     column: $table.raw,
     builder: (column) => ColumnOrderings(column),
@@ -6495,6 +6771,9 @@ class $$ObservationsTableAnnotationComposer
   GeneratedColumn<String> get sourceId =>
       $composableBuilder(column: $table.sourceId, builder: (column) => column);
 
+  GeneratedColumn<String> get importId =>
+      $composableBuilder(column: $table.importId, builder: (column) => column);
+
   GeneratedColumn<String> get raw =>
       $composableBuilder(column: $table.raw, builder: (column) => column);
 
@@ -6612,6 +6891,7 @@ class $$ObservationsTableTableManager
                 Value<bool> excluded = const Value.absent(),
                 Value<String> source = const Value.absent(),
                 Value<String?> sourceId = const Value.absent(),
+                Value<String?> importId = const Value.absent(),
                 Value<String?> raw = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -6636,6 +6916,7 @@ class $$ObservationsTableTableManager
                 excluded: excluded,
                 source: source,
                 sourceId: sourceId,
+                importId: importId,
                 raw: raw,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -6662,6 +6943,7 @@ class $$ObservationsTableTableManager
                 Value<bool> excluded = const Value.absent(),
                 Value<String> source = const Value.absent(),
                 Value<String?> sourceId = const Value.absent(),
+                Value<String?> importId = const Value.absent(),
                 Value<String?> raw = const Value.absent(),
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -6686,6 +6968,7 @@ class $$ObservationsTableTableManager
                 excluded: excluded,
                 source: source,
                 sourceId: sourceId,
+                importId: importId,
                 raw: raw,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,

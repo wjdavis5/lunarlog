@@ -1858,6 +1858,80 @@ void main() {
     });
   });
 
+  group('day sheet Save preserves import provenance (Issue #159 review '
+      'finding)', () {
+    // A bare `DayEntry(...)` in `_save()` defaults to manual/null/null —
+    // saving an imported day, even with no edits at all, must not silently
+    // reset it back to manual.
+    testWidgets('Save with no edits leaves a clue_import entry\'s source, '
+        'sourceId, and importId unchanged', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage).save(DayEntry(
+            id: '',
+            profileId: profileId,
+            localDate: kToday,
+            tz: 'America/Chicago',
+            flow: FlowLevel.medium,
+            updatedAt: DateTime.utc(2026, 1, 1),
+            source: DayEntrySource.clueImport,
+            sourceId: 'clue-source-1',
+            importId: 'import-job-1',
+          ));
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.source, DayEntrySource.clueImport,
+          reason: 'a no-op Save must not reset an imported entry to manual');
+      expect(saved.sourceId, 'clue-source-1');
+      expect(saved.importId, 'import-job-1');
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('Save with a flow edit still leaves a clue_import entry\'s '
+        'provenance unchanged', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage).save(DayEntry(
+            id: '',
+            profileId: profileId,
+            localDate: kToday,
+            tz: 'America/Chicago',
+            flow: FlowLevel.light,
+            updatedAt: DateTime.utc(2026, 1, 1),
+            source: DayEntrySource.clueImport,
+            sourceId: 'clue-source-2',
+            importId: 'import-job-2',
+          ));
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.heavy,
+          reason: 'sanity check: the edit itself did apply');
+      expect(saved.source, DayEntrySource.clueImport,
+          reason: 'a genuine content edit must still preserve provenance');
+      expect(saved.sourceId, 'clue-source-2');
+      expect(saved.importId, 'import-job-2');
+      await disposeLogging(tester, h);
+    });
+  });
+
   group('offline-save confirmation (issue #182 AC8)', () {
     /// Pumps [DaySheet] as an actual `showModalBottomSheet` on top of a host
     /// page's own `Scaffold` -- the real shape every push site in the app

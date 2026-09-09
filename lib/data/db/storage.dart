@@ -28,9 +28,12 @@
 ///   is no same-date uniqueness to resolve: multiple live rows per
 ///   (profile, date, category) are the whole point of this child table.
 ///   Their tombstone clears every payload column, `category` included —
-///   only `local_date` and `tz` survive a delete (see
-///   `supabase/migrations/20260908160000_observations.sql`'s
-///   `observations_tombstone_payload_check`).
+///   only `local_date`/`tz`/`source`/`source_id`/`import_id` survive a
+///   delete (Issue #159: provenance is not health content, and a deleted
+///   row must stay recognisable to a future re-import; see
+///   `supabase/migrations/20260908170000_import_provenance.sql`'s
+///   `observations_tombstone_payload_check`). `day_entries.source`/
+///   `source_id`/`import_id` (Issue #159) get the same treatment.
 /// * UI reads filter tombstones; full-fidelity reads (tombstones included)
 ///   exist for sync.
 library;
@@ -149,6 +152,48 @@ void _boundedUtf8BytesOrThrow(String? value, int max, String name) {
   if (byteLength > max) {
     throw ArgumentError.value(byteLength, name, 'must be at most $max UTF-8 bytes');
   }
+}
+
+/// Issue #159: mirrors `day_entries_source_id_length_check`
+/// (`supabase/migrations/20260908170000_import_provenance.sql`).
+void _validateDayEntryProvenance({String? sourceId}) {
+  _boundedOrThrow(sourceId, kMaxDayEntrySourceIdLength, 'sourceId');
+}
+
+/// The `source`/`sourceId`/`importId` to write on an [upsertDayEntry]
+/// update, one column set at a time (`this` fixed, `other` varies).
+typedef _DayEntryProvenance = ({
+  String source,
+  String? sourceId,
+  String? importId,
+});
+
+/// Issue #159 review finding: [DayEntry] domain objects built without an
+/// explicit provenance default to the `manual`/null/null triple
+/// (`domain.DayEntry`'s constructor), so a plain save of an *imported* day
+/// — e.g. the day sheet re-saving an entry it loaded — must not be read as
+/// "reset this back to manual". A caller-supplied `manual`/null/null triple
+/// against an existing **non-manual** [live] row is therefore treated as
+/// "provenance unspecified" and the stored provenance is kept; any other
+/// combination (a real reset to manual, an explicit re-import, a `live`
+/// that was already manual) writes exactly what the caller passed, as
+/// before. `day_sheet.dart` no longer relies on this — it forwards the
+/// loaded entry's own provenance — but the storage layer stays defensive
+/// for any other caller that does the same as it once did.
+_DayEntryProvenance _resolvedProvenanceForUpdate({
+  required DayEntry live,
+  required String source,
+  required String? sourceId,
+  required String? importId,
+}) {
+  final callerUnspecified =
+      source == 'manual' && sourceId == null && importId == null;
+  final liveIsNonManual =
+      live.source != 'manual' || live.sourceId != null || live.importId != null;
+  if (callerUnspecified && liveIsNonManual) {
+    return (source: live.source, sourceId: live.sourceId, importId: live.importId);
+  }
+  return (source: source, sourceId: sourceId, importId: importId);
 }
 
 void _validateObservation({
@@ -348,12 +393,16 @@ class LunarLogStorage {
     List<String> tags = const [],
     String? note,
     DateTime? updatedAt,
+    String source = 'manual',
+    String? sourceId,
+    String? importId,
   }) async {
     // Async so validation failures surface as failed futures, not sync
     // throws, for callers awaiting the result.
     _validateLocalDate(localDate);
     _validateNote(note);
     _validateTags(tags);
+    _validateDayEntryProvenance(sourceId: sourceId);
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
       final live = await _liveDayEntry(profileId, localDate);
@@ -369,9 +418,18 @@ class LunarLogStorage {
               updatedAt: now,
               dirty: const Value(true),
               localRev: const Value(1),
+              source: Value(source),
+              sourceId: Value(sourceId),
+              importId: Value(importId),
             ));
       } else {
         final rowId = live.id;
+        final provenance = _resolvedProvenanceForUpdate(
+          live: live,
+          source: source,
+          sourceId: sourceId,
+          importId: importId,
+        );
         await (db.update(db.dayEntries)..where((t) => t.id.equals(rowId)))
             .write(DayEntriesCompanion(
           tz: Value(tz),
@@ -382,6 +440,9 @@ class LunarLogStorage {
           deletedAt: const Value(null),
           dirty: const Value(true),
           localRev: Value(live.localRev + 1),
+          source: Value(provenance.source),
+          sourceId: Value(provenance.sourceId),
+          importId: Value(provenance.importId),
         ));
       }
       final rows = await _liveDayEntries(profileId, localDate);
@@ -498,6 +559,7 @@ class LunarLogStorage {
     bool excluded = false,
     String source = 'manual',
     String? sourceId,
+    String? importId,
     String? raw,
     DateTime? updatedAt,
   }) async {
@@ -535,6 +597,7 @@ class LunarLogStorage {
               excluded: Value(excluded),
               source: Value(source),
               sourceId: Value(sourceId),
+              importId: Value(importId),
               raw: Value(raw),
               updatedAt: now,
               dirty: const Value(true),
@@ -559,6 +622,7 @@ class LunarLogStorage {
         excluded: Value(excluded),
         source: Value(source),
         sourceId: Value(sourceId),
+        importId: Value(importId),
         raw: Value(raw),
         updatedAt: Value(_afterStored(now, existing.updatedAt)),
         deletedAt: const Value(null),
@@ -592,7 +656,11 @@ class LunarLogStorage {
           unit: const Value(null),
           intensity: const Value(null),
           excluded: const Value(false),
-          sourceId: const Value(null),
+          // Issue #159: sourceId (and importId, never touched by this
+          // write) survive a tombstone -- a deleted row must stay
+          // recognisable to a future re-import (reverses #240's original
+          // "sourceId: const Value(null)" here; see the server-side
+          // decision in supabase/migrations/20260908170000_import_provenance.sql).
           raw: const Value(null),
           updatedAt: Value(at),
           deletedAt: Value(at),
@@ -1159,6 +1227,11 @@ class LunarLogStorage {
             localRev: Value(dirty ? 1 : 0),
             loggedByUserId: Value(remote.loggedByUserId),
             lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+            // Issue #159: never cleared for a tombstone (unlike
+            // flow/tags/note above) -- provenance survives a delete.
+            source: Value(remote.source),
+            sourceId: Value(remote.sourceId),
+            importId: Value(remote.importId),
           ));
       return true;
     }
@@ -1176,6 +1249,9 @@ class LunarLogStorage {
       localRev: dirty ? Value(local.localRev + 1) : const Value.absent(),
       loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
       lastModifiedByUserId: Value(remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
+      source: Value(remote.source),
+      sourceId: Value(remote.sourceId),
+      importId: Value(remote.importId),
     ));
     return true;
   }
@@ -1244,9 +1320,12 @@ class LunarLogStorage {
   /// `false`) for a tombstone — mirroring `_dayEntryFlow`/`_dayEntryTags`/
   /// `_dayEntryNote`'s precedent, but built once as a single record so
   /// [_applyObservation]'s insert and update branches can share it instead of
-  /// repeating the same ten `tombstone ? … : remote.…` ternaries twice.
-  /// Split into a cleared constant and a live builder so no single method
-  /// carries ten conditionals (the CRAP gate counts each `?:`).
+  /// repeating the same ternaries twice. Split into a cleared constant and a
+  /// live builder so no single method carries ten conditionals (the CRAP
+  /// gate counts each `?:`). `sourceId`/`importId` (Issue #159) are
+  /// deliberately NOT part of this record — provenance survives a
+  /// tombstone (unlike every column here), so [_applyObservation] always
+  /// writes them from `remote` directly, tombstone or not.
   ({
     DateTime? observedAt,
     String? category,
@@ -1256,7 +1335,6 @@ class LunarLogStorage {
     String? unit,
     int? intensity,
     bool excluded,
-    String? sourceId,
     String? raw,
   }) _observationPayload(RemoteObservationRow remote, bool tombstone) =>
       tombstone ? _clearedObservationPayload : _liveObservationPayload(remote);
@@ -1272,7 +1350,6 @@ class LunarLogStorage {
     String? unit,
     int? intensity,
     bool excluded,
-    String? sourceId,
     String? raw,
   }) _clearedObservationPayload = (
     observedAt: null,
@@ -1283,7 +1360,6 @@ class LunarLogStorage {
     unit: null,
     intensity: null,
     excluded: false,
-    sourceId: null,
     raw: null,
   );
 
@@ -1297,7 +1373,6 @@ class LunarLogStorage {
     String? unit,
     int? intensity,
     bool excluded,
-    String? sourceId,
     String? raw,
   }) _liveObservationPayload(RemoteObservationRow remote) => (
         observedAt: remote.observedAt?.toUtc(),
@@ -1308,7 +1383,6 @@ class LunarLogStorage {
         unit: remote.unit,
         intensity: remote.intensity,
         excluded: remote.excluded,
-        sourceId: remote.sourceId,
         raw: remote.raw,
       );
 
@@ -1353,7 +1427,11 @@ class LunarLogStorage {
             intensity: Value(payload.intensity),
             excluded: Value(payload.excluded),
             source: Value(remote.source),
-            sourceId: Value(payload.sourceId),
+            // Issue #159: sourceId/importId are never cleared for a
+            // tombstone (unlike every column in `payload` above) --
+            // written from `remote` directly regardless of tombstone.
+            sourceId: Value(remote.sourceId),
+            importId: Value(remote.importId),
             raw: Value(payload.raw),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
@@ -1379,7 +1457,8 @@ class LunarLogStorage {
       intensity: Value(payload.intensity),
       excluded: Value(payload.excluded),
       source: Value(remote.source),
-      sourceId: Value(payload.sourceId),
+      sourceId: Value(remote.sourceId),
+      importId: Value(remote.importId),
       raw: Value(payload.raw),
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),

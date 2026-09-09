@@ -60,6 +60,7 @@ class Observation {
     this.excluded = false,
     this.source = ObservationSource.manual,
     this.sourceId,
+    this.importId,
     this.raw,
     required this.updatedAt,
     this.deletedAt,
@@ -104,6 +105,11 @@ class Observation {
   /// Import/device provenance key, for idempotent re-import.
   final String? sourceId;
 
+  /// Placeholder FK to a future `import_jobs(id)` row (Issue #159,
+  /// unconstrained server-side until #167 adds that table). Never cleared
+  /// on a tombstone.
+  final String? importId;
+
   /// Escape hatch for an unrecognised type/value shape (A1-45): the entire
   /// original datapoint, as a raw JSON string.
   final String? raw;
@@ -139,6 +145,7 @@ class Observation {
     bool? excluded,
     ObservationSource? source,
     Object? sourceId = _unset,
+    Object? importId = _unset,
     Object? raw = _unset,
     DateTime? updatedAt,
     Object? deletedAt = _unset,
@@ -161,6 +168,7 @@ class Observation {
         excluded: excluded ?? this.excluded,
         source: source ?? this.source,
         sourceId: _resolveNullable(sourceId, this.sourceId),
+        importId: _resolveNullable(importId, this.importId),
         raw: _resolveNullable(raw, this.raw),
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: _resolveNullable(deletedAt, this.deletedAt),
@@ -204,6 +212,7 @@ class Observation {
   bool _sameProvenance(Observation other) =>
       other.source == source &&
       other.sourceId == sourceId &&
+      other.importId == importId &&
       other.raw == raw &&
       other.updatedAt == updatedAt &&
       other.deletedAt == deletedAt &&
@@ -222,6 +231,7 @@ class Observation {
         code,
         valueNum,
         Object.hash(valueText, unit, intensity, excluded, source, sourceId),
+        importId,
         raw,
         updatedAt,
         deletedAt,

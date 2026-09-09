@@ -43,6 +43,9 @@ DayEntry _entry(
   String? note,
   String? loggedByUserId,
   String? lastModifiedByUserId,
+  DayEntrySource source = DayEntrySource.manual,
+  String? sourceId,
+  String? importId,
 }) =>
     DayEntry(
       id: id,
@@ -55,6 +58,9 @@ DayEntry _entry(
       updatedAt: DateTime.utc(2026, 1, 2),
       loggedByUserId: loggedByUserId,
       lastModifiedByUserId: lastModifiedByUserId,
+      source: source,
+      sourceId: sourceId,
+      importId: importId,
     );
 
 Observation _observation(
@@ -67,6 +73,7 @@ Observation _observation(
   double? valueNum,
   int? intensity,
   String? raw,
+  String? importId,
 }) =>
     Observation(
       id: id,
@@ -79,6 +86,7 @@ Observation _observation(
       valueNum: valueNum,
       intensity: intensity,
       raw: raw,
+      importId: importId,
       updatedAt: DateTime.utc(2026, 1, 2),
     );
 
@@ -301,9 +309,10 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 3,
+      expect(kAccountExportSchemaVersion, 4,
           reason: 'profiles[].mode was v2''s shape change; the constant has '
-              'since moved to v3 for profiles[].observations (Issue #240)');
+              'since moved to v4 for profiles[].observations (Issue #240) '
+              'and dayEntries[].source/sourceId/importId (Issue #159)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
@@ -456,7 +465,7 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 3,
+      expect(kAccountExportSchemaVersion, 4,
           reason: 'adding profiles[].observations is a shape change');
       final profiles = doc['profiles'] as List;
       final p1 = profiles[0] as Map;
@@ -505,6 +514,69 @@ void main() {
       final observation = (profile['observations'] as List).single as Map;
       expect(observation['raw'], {'type': 'bbt', 'value': 36.5});
       expect(() => jsonEncode(doc), returnsNormally);
+    });
+  });
+
+  group('import provenance (Issue #159, kAccountExportSchemaVersion v4)', () {
+    test('dayEntries carries source/sourceId/importId for an imported entry',
+        () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [
+            _entry('e1', 'p-1', '2026-09-01',
+                source: DayEntrySource.clueImport,
+                sourceId: 'clue-42',
+                importId: 'job-1'),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final entry = (profile['dayEntries'] as List).single as Map;
+      expect(entry['source'], 'clue_import');
+      expect(entry['sourceId'], 'clue-42');
+      expect(entry['importId'], 'job-1');
+    });
+
+    test('a manually-logged dayEntry exports source manual and null '
+        'sourceId/importId', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-09-01')],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final entry = (profile['dayEntries'] as List).single as Map;
+      expect(entry['source'], 'manual');
+      expect(entry['sourceId'], isNull);
+      expect(entry['importId'], isNull);
+    });
+
+    test('observations carries importId', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-09-01')],
+        },
+        observationsByProfile: {
+          'p-1': [
+            _observation('o1', 'e1', 'p-1', '2026-09-01', importId: 'job-1'),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final observation = (profile['observations'] as List).single as Map;
+      expect(observation['importId'], 'job-1');
     });
   });
 }

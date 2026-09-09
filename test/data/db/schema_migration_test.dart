@@ -47,15 +47,15 @@ import 'generated_migrations/schema.dart';
 
 /// The current schema version, kept in lockstep with
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
-/// dump. A mismatch here is caught by the `schema version is 6` assertion
+/// dump. A mismatch here is caught by the `schema version is 7` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 6;
+const int _kCurrentSchemaVersion = 7;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -142,6 +142,38 @@ void main() {
         ]),
         reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must land the '
             'full observations column shape, not just an empty table',
+      );
+    });
+
+    test(
+        'upgrading from v$fromVersion adds source/source_id/import_id to '
+        'day_entries and import_id to observations (Issue #159)', () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+
+      final dayEntryColumns =
+          await db.customSelect("PRAGMA table_info('day_entries')").get();
+      final dayEntryColumnNames =
+          dayEntryColumns.map((row) => row.data['name'] as String).toSet();
+      expect(
+        dayEntryColumnNames,
+        containsAll(['source', 'source_id', 'import_id']),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
+            'day_entries.source/source_id/import_id (Issue #159)',
+      );
+
+      final observationColumns =
+          await db.customSelect("PRAGMA table_info('observations')").get();
+      final observationColumnNames =
+          observationColumns.map((row) => row.data['name'] as String).toSet();
+      expect(
+        observationColumnNames,
+        contains('import_id'),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
+            'observations.import_id (Issue #159)',
       );
     });
   }
