@@ -67,9 +67,18 @@ jobs:
           ACTIONLINT_VERSION: '1.7.7'
         run: |
           set -euo pipefail
+          # OS/arch-aware download (#352): this job can land on the self-hosted macOS runner, where a linux binary fails with "cannot execute binary file" (exit 126).
+          case "$(uname -s)/$(uname -m)" in
+            Darwin/arm64)  ASSET=darwin_arm64 ;;
+            Darwin/*)      ASSET=darwin_amd64 ;;
+            Linux/arm64|Linux/aarch64) ASSET=linux_arm64 ;;
+            *)             ASSET=linux_amd64 ;;
+          esac
+
           curl -sSL -o actionlint.tar.gz \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_${ASSET}.tar.gz"
           tar -xzf actionlint.tar.gz actionlint
+          chmod +x actionlint
           rm actionlint.tar.gz
 
       - name: Verify actionlint
