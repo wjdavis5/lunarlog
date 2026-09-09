@@ -1,16 +1,22 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
@@ -20,6 +26,7 @@ void main() {
   late LunarLogDatabase db;
   late ProfilesRepository profiles;
   late DayEntriesRepository dayEntries;
+  late ObservationsRepository observations;
   late SettingsStore settings;
 
   setUp(() {
@@ -27,6 +34,7 @@ void main() {
     addTearDown(() => db.close());
     profiles = DriftProfilesRepository(db.storage);
     dayEntries = DriftDayEntriesRepository(db.storage);
+    observations = DriftObservationsRepository(db.storage);
     settings = DriftSettingsStore(db.storage);
   });
 
@@ -215,9 +223,12 @@ void main() {
       );
     });
 
-    test('all five flow levels round-trip through storage', () async {
+    test(
+        'every non-deprecated flow level round-trips through storage '
+        '(Issue #247 adds notBleeding/superHeavy)', () async {
       final profile = await profiles.create(displayName: 'P', isMinor: false);
-      for (final flow in FlowLevel.values) {
+      // ignore: deprecated_member_use_from_same_package
+      for (final flow in FlowLevel.values.where((f) => f != FlowLevel.spotting)) {
         final saved = await dayEntries.save(
             entryFor(profile.id, LocalDate(2026, 7, 1).addDays(flow.index),
                 flow: flow));
@@ -225,6 +236,122 @@ void main() {
         expect(
             (await dayEntries.find(profile.id, saved.localDate))!.flow, flow);
       }
+    });
+
+    test(
+        'a stored deprecated spotting row reads back as notBleeding, never '
+        'spotting itself (Issue #247 alias, mappers.dart flowToDomain)',
+        () async {
+      final profile = await profiles.create(displayName: 'P', isMinor: false);
+      final saved = await dayEntries.save(entryFor(
+          profile.id, LocalDate(2026, 7, 20),
+          // ignore: deprecated_member_use_from_same_package
+          flow: FlowLevel.spotting));
+      expect(saved.flow, FlowLevel.notBleeding);
+      expect((await dayEntries.find(profile.id, saved.localDate))!.flow,
+          FlowLevel.notBleeding);
+    });
+
+    group(
+        'legacy spotting flow -> synthesised observation alias (review '
+        'follow-up, PR #335, issue #247)', () {
+      test(
+          'spottingAliasId is a valid ULID and matches the server backfill\'s '
+          'own md5 formula for a fixture id', () {
+        const dayEntryId = '01J0000000000000000000FIX1';
+        final id = spottingAliasId(dayEntryId);
+        expect(isValidUlid(id), isTrue);
+        // Mirrors 20260908200000_flow_model.sql's
+        // `substr(upper(md5(day_entry_id || ':flow:spotting')), 1, 26)`
+        // exactly -- computed independently here (not via spottingAliasId
+        // itself) so this test cannot pass merely because both sides share
+        // a bug.
+        final expected = md5
+            .convert(utf8.encode('$dayEntryId:flow:spotting'))
+            .toString()
+            .toUpperCase()
+            .substring(0, 26);
+        expect(id, expected);
+        expect(id.length, 26);
+      });
+
+      test(
+          'spottingAliasId is deterministic and namespaced apart from a '
+          'plain tag-backfill id for the same day entry + "spotting" text',
+          () {
+        const dayEntryId = '01J0000000000000000000FIX2';
+        final flowAliasId = spottingAliasId(dayEntryId);
+        expect(spottingAliasId(dayEntryId), flowAliasId,
+            reason: 'deterministic: two calls never disagree');
+        final tagBackfillId = md5
+            .convert(utf8.encode('$dayEntryId:spotting'))
+            .toString()
+            .toUpperCase()
+            .substring(0, 26);
+        expect(flowAliasId, isNot(tagBackfillId),
+            reason: 'the ":flow:" namespace segment keeps this keyspace '
+                'disjoint from the tag backfill\'s own md5(id || \':\' || '
+                'tag) formula for a literal "spotting" tag');
+      });
+
+      test(
+          'listForProfile synthesises a spotting observation for a live '
+          'legacy flow = spotting day entry, with a valid-ULID alias id',
+          () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final saved = await dayEntries.save(entryFor(
+            profile.id, LocalDate(2026, 7, 21),
+            // ignore: deprecated_member_use_from_same_package
+            flow: FlowLevel.spotting));
+
+        final obs = await observations.listForProfile(profile.id);
+        final spotting = obs.where((o) => o.category == 'spotting').toList();
+        expect(spotting, hasLength(1));
+        expect(spotting.single.dayEntryId, saved.id);
+        expect(spotting.single.id, spottingAliasId(saved.id));
+        expect(isValidUlid(spotting.single.id), isTrue);
+      });
+
+      test(
+          'listForProfile does not duplicate the synthesised alias once a '
+          'real spotting observation is persisted for the same day entry',
+          () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final saved = await dayEntries.save(entryFor(
+            profile.id, LocalDate(2026, 7, 22),
+            // ignore: deprecated_member_use_from_same_package
+            flow: FlowLevel.spotting));
+
+        await observations.save(Observation(
+          id: '',
+          dayEntryId: saved.id,
+          profileId: profile.id,
+          localDate: saved.localDate,
+          tz: saved.tz,
+          category: 'spotting',
+          code: 'spotting',
+          updatedAt: DateTime.utc(2026, 7, 22),
+        ));
+
+        final obs = await observations.listForProfile(profile.id);
+        final spotting = obs.where((o) => o.category == 'spotting').toList();
+        expect(spotting, hasLength(1),
+            reason: 'a real persisted spotting observation suppresses the '
+                'synthesised alias for the same day entry, never both');
+        expect(isValidUlid(spotting.single.id), isTrue);
+      });
+
+      test(
+          'listForProfile never synthesises an alias for a day entry whose '
+          'flow was never spotting', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        await dayEntries.save(entryFor(
+            profile.id, LocalDate(2026, 7, 23),
+            flow: FlowLevel.notBleeding));
+
+        final obs = await observations.listForProfile(profile.id);
+        expect(obs.where((o) => o.category == 'spotting'), isEmpty);
+      });
     });
 
     test(

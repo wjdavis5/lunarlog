@@ -17,10 +17,16 @@
 /// profile id and one repository stream; no drift types cross here.
 ///
 /// Issue #191 (B-2, B-11): a logged bleed day's fill is now graded by
-/// [FlowLevel] with the #176 `flow*` ramp tokens (spotting a ring + centre
-/// dot, light/medium/heavy climbing the ramp's saturation), plus a
-/// non-colour dot-count channel so the same distinction survives without
-/// colour; a legend strip keys every mark the grid can show; the month
+/// [FlowLevel] with the #176 `flow*` ramp tokens (light/medium/heavy
+/// climbing the ramp's saturation; issue #247's `superHeavy` reuses
+/// `heavy`'s tone), plus a non-colour dot-count channel so the same
+/// distinction survives without colour. Issue #247: spotting is no
+/// longer a flow level (it is an `observations` category row, and a
+/// stored legacy `flow = 'spotting'` row reads back as the explicit
+/// `notBleeding` assertion) — it no longer renders here at all, so the
+/// ring-plus-centre-dot spotting treatment this comment used to describe
+/// is gone along with it. A legend strip keys every mark the grid can
+/// show; the month
 /// grid is a swipeable [PageView] (the chevrons drive the same
 /// controller); a "Today" header action jumps to and highlights the
 /// current month; and tapping the month label opens a month/year picker
@@ -185,29 +191,41 @@ double futureCellOpacity(bool isFuture, bool hasForecastContent) =>
 /// (issue #191 B-2). `spotting`'s `fill` doubles as its ring/centre-dot
 /// colour in [_MonthCalendarState._flowCircle] — it never fills the whole
 /// circle. [_MonthCalendarState._dayCircle] only ever calls this with a
-/// bleed level (`isBleed(level)`, which excludes `none`); `none` shares
-/// spotting's case rather than adding a branch no caller can reach.
+/// bleed level (`isBleed(level)`, which excludes `none`, the deprecated
+/// `spotting` alias, and `notBleeding` — Issue #247); those three share
+/// spotting's case rather than adding branches no caller can reach.
+/// Issue #247: [FlowLevel.superHeavy] has no dedicated ramp slot — it
+/// reuses [LunarLogColors.flowHeavy]/`onFlowHeavy`, distinguished from
+/// plain `heavy` only by [_flowLevelMarkCount]'s extra mark (the design
+/// decision's documented fallback over adding a fifth ramp step).
 ({Color fill, Color onFill}) _flowTone(FlowLevel level, LunarLogColors colors) =>
     switch (level) {
-      FlowLevel.none || FlowLevel.spotting => (
+      // ignore: deprecated_member_use_from_same_package
+      FlowLevel.none || FlowLevel.spotting || FlowLevel.notBleeding => (
         fill: colors.flowSpotting,
         onFill: colors.onFlowSpotting,
       ),
       FlowLevel.light => (fill: colors.flowLight, onFill: colors.onFlowLight),
       FlowLevel.medium => (fill: colors.flowMedium, onFill: colors.onFlowMedium),
-      FlowLevel.heavy => (fill: colors.flowHeavy, onFill: colors.onFlowHeavy),
+      FlowLevel.heavy || FlowLevel.superHeavy => (
+        fill: colors.flowHeavy,
+        onFill: colors.onFlowHeavy,
+      ),
     };
 
 /// The non-colour intensity channel (issue #191 B-2): a small dot count
-/// climbing from 1 (spotting) to 4 (heavy), independent of the `flow*`
-/// ramp's hue/saturation — asserted directly in widget tests via the
-/// `flow-mark-<i>-<iso>` keys [_MonthCalendarState._flowCircle] renders.
-/// See [_flowTone] on why `none` shares spotting's case.
+/// climbing from 1 (spotting) to 5 (super heavy, issue #247), independent
+/// of the `flow*` ramp's hue/saturation — asserted directly in widget
+/// tests via the `flow-mark-<i>-<iso>` keys [_MonthCalendarState._flowCircle]
+/// renders. See [_flowTone] on why `none`/`notBleeding` share spotting's
+/// case, and on `superHeavy` reusing `heavy`'s colour.
 int _flowLevelMarkCount(FlowLevel level) => switch (level) {
-  FlowLevel.none || FlowLevel.spotting => 1,
+  // ignore: deprecated_member_use_from_same_package
+  FlowLevel.none || FlowLevel.spotting || FlowLevel.notBleeding => 1,
   FlowLevel.light => 2,
   FlowLevel.medium => 3,
   FlowLevel.heavy => 4,
+  FlowLevel.superHeavy => 5,
 };
 
 /// The spotting-day numeral drawn with a thin [haloColor] outline behind
@@ -1113,10 +1131,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final brightness = theme.brightness;
     final l10n = AppLocalizations.of(context);
     final entries = [
-      _LegendEntry('spotting', colors.flowSpotting, l10n.calendarLegendSpotting, style: _LegendSwatchStyle.ring),
       _LegendEntry('light', colors.flowLight, l10n.calendarLegendLight),
       _LegendEntry('medium', colors.flowMedium, l10n.calendarLegendMedium),
       _LegendEntry('heavy', colors.flowHeavy, l10n.calendarLegendHeavy),
+      // Issue #247: superHeavy shares heavy's ramp token, so the dot count in
+      // the label is the only distinguishing signal (mirrors _flowLevelMarkCount).
+      _LegendEntry('superheavy', colors.flowHeavy, 'Super heavy flow (5 marks)'),
       _LegendEntry('symptom', colors.symptomDot, l10n.calendarLegendSymptom),
       _LegendEntry('today', theme.colorScheme.primary, l10n.calendarLegendToday, style: _LegendSwatchStyle.ring),
       _LegendEntry('predicted', colors.predictedBorder, l10n.calendarLegendPredicted, style: _LegendSwatchStyle.hatched),
@@ -1525,6 +1545,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
   }) {
     final iso = date.iso;
     final tone = _flowTone(level, colors);
+    // Issue #247: unreachable in practice now (the `isBleed` gate above
+    // this widget's only caller never passes the deprecated `spotting`
+    // alias through), kept only so this comparison still compiles against
+    // every FlowLevel value without a runtime branch this file can't test.
+    // ignore: deprecated_member_use_from_same_package
     final isSpotting = level == FlowLevel.spotting;
     final textColor = isSpotting ? theme.colorScheme.onSurface : tone.onFill;
     // Issue #312 review: `textColor` (onSurface) sits directly over the

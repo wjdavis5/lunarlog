@@ -156,10 +156,10 @@ void main() {
 
       expect(find.byKey(const ValueKey('calendar-legend')), findsOneWidget);
       for (final label in [
-        'Spotting flow',
         'Light flow',
         'Medium flow',
         'Heavy flow',
+        'Super heavy flow (5 marks)',
         'Symptom day',
         'Today',
         'Predicted day',
@@ -169,6 +169,11 @@ void main() {
       ]) {
         expect(find.text(label), findsOneWidget, reason: 'missing legend entry: $label');
       }
+      // Issue #247: spotting is no longer a flow level (it reads back as
+      // `notBleeding`, which is never a bleed marker) and the ramp has no
+      // dedicated slot for it, so the legend no longer carries a
+      // "Spotting flow" entry.
+      expect(find.text('Spotting flow'), findsNothing);
       await disposeCalendar(tester, h);
     });
 
@@ -178,17 +183,17 @@ void main() {
         (tester) async {
       final expandedHarness = await pumpCalendar(tester, textScale: 1.5);
       expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
-      expect(find.text('Spotting flow'), findsOneWidget,
+      expect(find.text('Light flow'), findsOneWidget,
           reason: 'below the 1.6 threshold the legend stays expanded');
       await disposeCalendar(tester, expandedHarness);
 
       final collapsedHarness = await pumpCalendar(tester, textScale: 1.6);
-      expect(find.text('Spotting flow'), findsNothing,
+      expect(find.text('Light flow'), findsNothing,
           reason: 'at the 1.6 threshold the legend starts collapsed');
 
       await tester.tap(find.byKey(const ValueKey('legend-toggle')));
       await tester.pumpAndSettle();
-      expect(find.text('Spotting flow'), findsOneWidget,
+      expect(find.text('Light flow'), findsOneWidget,
           reason: 'the toggle re-expands it even at a large text scale');
       await disposeCalendar(tester, collapsedHarness);
     });
@@ -197,53 +202,50 @@ void main() {
   group('flow-graded cells', () {
     testWidgets(
         'each bleed level fills with its own flow* ramp token and carries a '
-        'distinct dot-count non-colour channel; spotting is a ring, not a '
-        'fill', (tester) async {
+        'distinct dot-count non-colour channel; superHeavy reuses heavy\'s '
+        'ramp token with an extra mark', (tester) async {
       final h = await pumpCalendar(
         tester,
         seed: (db, profileId) async {
           final repo = DriftDayEntriesRepository(db.storage);
-          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 1), FlowLevel.spotting));
           await repo.save(_entryFor(profileId, LocalDate(2026, 8, 2), FlowLevel.light));
           await repo.save(_entryFor(profileId, LocalDate(2026, 8, 3), FlowLevel.medium));
           await repo.save(_entryFor(profileId, LocalDate(2026, 8, 4), FlowLevel.heavy));
+          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 5), FlowLevel.superHeavy));
         },
       );
 
       const expected = {
-        'spotting': (iso: '2026-08-01', marks: 1),
         'light': (iso: '2026-08-02', marks: 2),
         'medium': (iso: '2026-08-03', marks: 3),
         'heavy': (iso: '2026-08-04', marks: 4),
+        'superHeavy': (iso: '2026-08-05', marks: 5),
       };
 
       for (final level in FlowLevel.values) {
-        if (level == FlowLevel.none) continue;
-        final entry = expected[level.name]!;
+        final entry = expected[level.name];
+        // Issue #247: `none`, the deprecated `spotting` alias, and
+        // `notBleeding` are never bleed levels — none of them render a
+        // `bleed-<iso>` marker at all, so they are skipped here rather
+        // than asserted against a date this test never seeded.
+        if (entry == null) continue;
         final iso = entry.iso;
 
         final container = tester.widget<Container>(
           find.byKey(ValueKey('bleed-$iso')),
         );
         final decoration = container.decoration! as BoxDecoration;
-        if (level == FlowLevel.spotting) {
-          expect(decoration.color, isNull, reason: 'spotting is a ring, never a fill');
-          expect(decoration.border, isNotNull);
-          expect(find.byKey(ValueKey('flow-spotting-dot-$iso')), findsOneWidget);
-        } else {
-          expect(decoration.border, isNull);
-          expect(
-            decoration.color,
-            switch (level) {
-              FlowLevel.light => colors.flowLight,
-              FlowLevel.medium => colors.flowMedium,
-              FlowLevel.heavy => colors.flowHeavy,
-              _ => throw StateError('unreachable'),
-            },
-            reason: '$level should fill with its own flow* ramp token',
-          );
-          expect(find.byKey(ValueKey('flow-spotting-dot-$iso')), findsNothing);
-        }
+        expect(decoration.border, isNull);
+        expect(
+          decoration.color,
+          switch (level) {
+            FlowLevel.light => colors.flowLight,
+            FlowLevel.medium => colors.flowMedium,
+            FlowLevel.heavy || FlowLevel.superHeavy => colors.flowHeavy,
+            _ => throw StateError('unreachable'),
+          },
+          reason: '$level should fill with its own flow* ramp token',
+        );
 
         final marksRow = tester.widget<Row>(
           find.byKey(ValueKey('flow-level-${level.name}-$iso')),
@@ -253,6 +255,26 @@ void main() {
           entry.marks,
           reason: '$level should carry ${entry.marks} intensity mark(s)',
         );
+      }
+      await disposeCalendar(tester, h);
+    });
+
+    testWidgets(
+        'the deprecated spotting alias and the explicit notBleeding '
+        'assertion both read back as a non-bleed day (Issue #247): neither '
+        'renders a bleed marker', (tester) async {
+      final h = await pumpCalendar(
+        tester,
+        seed: (db, profileId) async {
+          final repo = DriftDayEntriesRepository(db.storage);
+          // ignore: deprecated_member_use_from_same_package
+          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 6), FlowLevel.spotting));
+          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 7), FlowLevel.notBleeding));
+        },
+      );
+
+      for (final iso in ['2026-08-06', '2026-08-07']) {
+        expect(find.byKey(ValueKey('bleed-$iso')), findsNothing);
       }
       await disposeCalendar(tester, h);
     });

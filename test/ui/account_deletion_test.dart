@@ -67,6 +67,16 @@ class FakeObservationsRepository implements ObservationsRepository {
   @override
   Future<List<Observation>> listForProfile(String profileId) async =>
       observationsByProfile[profileId] ?? const [];
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
+      const [];
+
+  @override
+  Future<Observation> save(Observation observation) async => observation;
+
+  @override
+  Future<void> delete(String id) async {}
 }
 
 class FakeAccountDeletionService implements AccountDeletionService {

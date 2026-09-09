@@ -178,13 +178,32 @@ void main() {
           LocalDate.fromIso('2026-01-05'));
     });
 
-    test('every accepted schema version (1-4) parses', () {
+    test('every accepted schema version (1-5) parses', () {
       for (var v = kAccountImportMinSchemaVersion;
           v <= kAccountImportMaxSchemaVersion;
           v++) {
         final result = parseAccountImport(_bytes(_rawDocument(schemaVersion: v)));
         expect(result, isA<AccountImportParsed>(), reason: 'schemaVersion $v');
       }
+    });
+
+    test(
+        'a v5 file with a super_heavy flow value imports (Issue #247, '
+        'review follow-up PR #335: kAccountExportSchemaVersion bumped to '
+        '5 for the super_heavy/not_bleeding wire values)', () {
+      final result = parseAccountImport(_bytes(_rawDocument(
+        schemaVersion: 5,
+        profiles: [
+          _rawProfile(_p1, dayEntries: [
+            _rawDayEntry(_e1, '2026-01-05', flow: 'super_heavy'),
+          ]),
+        ],
+      )));
+      expect(result, isA<AccountImportParsed>());
+      final document = (result as AccountImportParsed).document;
+      expect(document.schemaVersion, 5);
+      expect(document.profiles.single.dayEntries.single.flow,
+          FlowLevel.superHeavy);
     });
 
     test('an explicit "none" flow value parses as FlowLevel.none', () {

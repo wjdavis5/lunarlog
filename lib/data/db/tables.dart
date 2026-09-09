@@ -15,8 +15,48 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 /// Menstrual flow levels (cycle/flow-only logging; fertility-signal
-/// logging fields arrive with #144).
-enum FlowLevel { none, spotting, light, medium, heavy }
+/// logging fields arrive with #144). Issue #247 adds `superHeavy` (a
+/// fourth bleed level) and `notBleeding` (an explicit "not bleeding
+/// today" assertion, distinct from `none`/unlogged); `spotting` stays as
+/// a deprecated alias for already-stored data -- see the domain mirror's
+/// doc comment, `lib/domain/models/flow_level.dart`, for the full
+/// rationale. Member names here are local-storage-only (this converter's
+/// `toSql`/`fromSql` use `.name` directly, opaque to SQLite) and need not
+/// match the server wire string -- [toDb]/[fromDb] below are what
+/// `lib/data/sync/row_codec.dart` uses for that.
+enum FlowLevel {
+  none,
+  spotting,
+  notBleeding,
+  light,
+  medium,
+  heavy,
+  superHeavy;
+
+  /// Server wire string -- mirrors the domain enum's `toDb()`
+  /// (`lib/domain/models/flow_level.dart`), duplicated here rather than
+  /// shared since `lib/data/` and `lib/domain/` deliberately keep
+  /// separate `FlowLevel` types (R14/R16).
+  String toDb() => switch (this) {
+        FlowLevel.none => 'none',
+        FlowLevel.spotting => 'spotting',
+        FlowLevel.notBleeding => 'not_bleeding',
+        FlowLevel.light => 'light',
+        FlowLevel.medium => 'medium',
+        FlowLevel.heavy => 'heavy',
+        FlowLevel.superHeavy => 'super_heavy',
+      };
+
+  static FlowLevel fromDb(String value) => switch (value) {
+        'spotting' => FlowLevel.spotting,
+        'not_bleeding' => FlowLevel.notBleeding,
+        'light' => FlowLevel.light,
+        'medium' => FlowLevel.medium,
+        'heavy' => FlowLevel.heavy,
+        'super_heavy' => FlowLevel.superHeavy,
+        _ => FlowLevel.none,
+      };
+}
 
 class FlowLevelConverter extends TypeConverter<FlowLevel, String> {
   const FlowLevelConverter();
