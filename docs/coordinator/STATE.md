@@ -4,7 +4,6 @@
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
 | 255 | feat/255-numeric-measurements | ../lunarlog-wt/255-numeric-measurements | 2026-09-10T03:00Z | — | coding |
-| 254 | feat/254-store-compliance | ../lunarlog-wt/254-store-compliance | 2026-09-10T03:00Z | — | coding |
 | 259 | feat/259-tracking-prefs | ../lunarlog-wt/259-tracking-prefs | 2026-09-10T03:00Z | — | coding |
 | 296 | fix/296-health-binding-prereqs | ../lunarlog-wt/296-health-binding-prereqs | 2026-09-10T03:00Z | — | coding |
 | 218 | feat/218-provisional-seeding | ../lunarlog-wt/218-provisional-seeding | 2026-09-09T14:35Z | — | coding (domain/data side; #216 owns the form) |
@@ -38,6 +37,7 @@
 | 178 | 372 | 2026-09-10T02:20Z |
 | 193 | 374 | 2026-09-10T02:40Z |
 | 249 | 371 | 2026-09-10T02:50Z |
+| 254 | 375 | 2026-09-10T03:30Z |
 | 136 | 367 | 2026-09-10T01:20Z |
 
 ## Externally in-flight (ANOTHER orchestrator session's set — do NOT review/merge from this session to avoid racing its loop)
