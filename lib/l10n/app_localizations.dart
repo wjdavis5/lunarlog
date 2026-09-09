@@ -1084,6 +1084,18 @@ abstract class AppLocalizations {
   /// **'PMS'**
   String get daySheetPmsGroup;
 
+  /// Heading and accessibility group label for the graded 1-5 intensity selectors under a pain code in the day sheet (Issue #256). Clue grades each option inside its own option set; here the grade rides the option's observations row.
+  ///
+  /// In en, this message translates to:
+  /// **'Intensity'**
+  String get daySheetIntensityGroup;
+
+  /// The clear affordance on a pain-code intensity selector (Issue #256): removes the recorded intensity, leaving the row ungraded ('no severity recorded'), never 'low'.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get daySheetIntensityClear;
+
   /// Overview line naming the predicted PMS band (Issue #220); range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
   ///
   /// In en, this message translates to:

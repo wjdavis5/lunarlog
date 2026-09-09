@@ -578,6 +578,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetPmsGroup => 'PMS';
 
   @override
+  String get daySheetIntensityGroup => 'Intensity';
+
+  @override
+  String get daySheetIntensityClear => 'Clear';
+
+  @override
   String overviewPmsBandLabel(String range) {
     return 'Predicted PMS: $range';
   }
