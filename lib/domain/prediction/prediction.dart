@@ -313,7 +313,12 @@ class ActivePrediction extends CyclePrediction {
 
   /// Mean bleed (episode) length over the [kAverageWindowCycles] window
   /// (issue #213, item 3) — same aggregation shape as
-  /// [meanCycleLengthDays], sourced from [Episode.lengthDays].
+  /// [meanCycleLengthDays], sourced from [Episode.lengthDays]. The
+  /// underlying episode window is offset by one cycle from the cycle-length
+  /// window: N cycles are bounded by N+1 episode starts, so recency is
+  /// applied over [kRecencyWindowCycles] + 1 episodes before this average
+  /// takes its own most-recent [kAverageWindowCycles] slice (see
+  /// `_meanPeriodLength`'s `recentEpisodesOffset`).
   final double meanPeriodLengthDays;
 
   /// Population standard deviation of the cycle lengths inside the
@@ -414,7 +419,7 @@ CyclePrediction computePrediction({
     return PausedAwaitingNextPeriod(today: today, lastEpisodeStart: lastStart);
   }
 
-  final estimate = _estimateRange(
+  final estimate = _cycleLengthEstimate(
     usableLengths: windows.usableLengths,
     lastStart: lastStart,
     omittedCycleStarts: omittedCycleStarts,
@@ -533,7 +538,7 @@ class _CycleLengthEstimate {
   final LocalDate firstEstimateStart;
 }
 
-_CycleLengthEstimate _estimateRange({
+_CycleLengthEstimate _cycleLengthEstimate({
   required List<int> usableLengths,
   required LocalDate lastStart,
   required Set<LocalDate> omittedCycleStarts,
@@ -568,12 +573,10 @@ _CycleLengthEstimate _estimateRange({
 /// item 2/3 — split out of `computePrediction` for the CRAP gate).
 class _SpreadAndTier {
   const _SpreadAndTier({
-    required this.averageWindow,
     required this.spreadDays,
     required this.tier,
   });
 
-  final List<int> averageWindow;
   final double spreadDays;
   final CycleConfidence tier;
 }
@@ -607,7 +610,6 @@ _SpreadAndTier _spreadAndTier({
     validRatio: validRatio,
   );
   return _SpreadAndTier(
-    averageWindow: averageWindow,
     spreadDays: spreadDays,
     tier: tier,
   );

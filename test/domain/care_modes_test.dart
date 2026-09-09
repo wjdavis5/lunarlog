@@ -50,6 +50,17 @@ void main() {
           isFalse);
     });
 
+    test('only irregular hides the tier caption — its overdue status '
+        'label already carries the "variation is expected" framing '
+        '(Issue #131)', () {
+      expect(careModeCopyFor(ProfileMode.irregular).showsTierCaption,
+          isFalse);
+      expect(careModeCopyFor(ProfileMode.standard).showsTierCaption, isTrue);
+      expect(careModeCopyFor(ProfileMode.teen).showsTierCaption, isTrue);
+      expect(careModeCopyFor(ProfileMode.caregiver).showsTierCaption,
+          isTrue);
+    });
+
     test('irregular overdue copy never uses late framing', () {
       final copy = careModeCopyFor(ProfileMode.irregular);
       expect(copy.overdueStatusLabel, contains('common'));

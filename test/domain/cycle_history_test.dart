@@ -158,10 +158,10 @@ void main() {
         () {
       // 7 completed valid cycles, lengths 21..27 (chronological, oldest to
       // newest) plus an 8th open episode. `counted` is built newest-first,
-      // so kAverageWindowCycles(6)'s own tail-slice keeps the six OLDEST
-      // (21..26) and drops the single newest (27): mean 23.5. This fails
-      // if kAverageWindowCycles moves at all: 5 would additionally drop 26
-      // (mean 23.0 over 21..25); 7 would keep every length (mean 24.0).
+      // so kAverageWindowCycles(6)'s own head-slice keeps the six NEWEST
+      // (22..27) and drops the single oldest (21): mean 24.5. This fails
+      // if kAverageWindowCycles moves at all: 5 would additionally drop 22
+      // (mean 25.0 over 23..27); 7 would keep every length (mean 24.0).
       final starts = <LocalDate>[d(2026, 1, 1)];
       var start = starts.first;
       for (final length in [21, 22, 23, 24, 25, 26, 27]) {
@@ -173,7 +173,30 @@ void main() {
         today: start.addDays(2),
       );
       expect(view.averagedCycleCount, 7);
-      expect(view.meanCycleLengthDays, 23.5);
+      expect(view.meanCycleLengthDays, 24.5);
+    });
+
+    test('confidence tier and history stats agree on the most-recent '
+        'window even when the older cycles are wildly different '
+        '(reviewer failure scenario)', () {
+      // 12 valid cycles: oldest six alternate 20/45 (well outside a
+      // consistent range), newest six are all steady 28s. The averages
+      // (and the confidence tier, since #213 shares one derivation) must
+      // read off the newest six only — chip and stats agreeing at
+      // `high`/28/0 — never a "mixed" number pulled from the stale tail.
+      final starts = <LocalDate>[d(2025, 1, 1)];
+      var start = starts.first;
+      for (final length in [20, 45, 20, 45, 20, 45, 28, 28, 28, 28, 28, 28]) {
+        start = start.addDays(length);
+        starts.add(start);
+      }
+      final view = deriveCycleHistory(
+        episodes: episodesFromStarts(starts),
+        today: start.addDays(2),
+      );
+      expect(view.confidence, CycleConfidence.high);
+      expect(view.meanCycleLengthDays, 28.0);
+      expect(view.variationDays, 0);
     });
 
     test('omitting a cycle changes the averaged window and the spread', () {

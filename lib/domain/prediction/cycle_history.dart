@@ -275,7 +275,7 @@ CycleHistoryView deriveCycleHistory({
   ];
   final averaged = counted.length <= kAverageWindowCycles
       ? counted
-      : counted.sublist(counted.length - kAverageWindowCycles);
+      : counted.sublist(0, kAverageWindowCycles);
   final bleedLengths = <int>[
     for (final episode in sorted)
       if (!omittedCycleStarts.contains(episode.start)) episode.lengthDays,

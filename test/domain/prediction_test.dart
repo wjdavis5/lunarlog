@@ -749,8 +749,12 @@ void main() {
           reason: 'the 6-cycle average window drops the oldest (55), '
               'leaving six identical 28-day lengths');
       expect(p.meanPeriodLengthDays, closeTo(4.0, 1e-9),
-          reason: "the 6-cycle average window also drops the oldest "
-              "episode's 10-day bleed");
+          reason: 'the episode window is offset one from the cycle window '
+              '(8 episodes for 7 cycles), so the 6-cycle average window '
+              'drops the oldest two episodes here — the 10-day bleed and '
+              'the first 4-day episode alongside it — not just the one '
+              '10-day outlier; the mean stays 4.0 only because that extra '
+              'dropped episode is also a 4, same as the six that remain');
     });
 
     test('a 13-cycle fixture: the 12-cycle recency window excludes the '
