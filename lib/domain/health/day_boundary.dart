@@ -155,6 +155,28 @@ DateTime localDayInstant(LocalDate date, String tzName) {
   return tz.TZDateTime(location, date.year, date.month, date.day).toUtc();
 }
 
+/// The UTC instant of the *next* local midnight after [date] in
+/// [tzName] — the genuinely **exclusive** end a Health Connect interval
+/// record wants (e.g. #202's `MenstruationPeriodRecord.endTime`), as
+/// distinct from [localDayInterval]'s inclusive `end` (next midnight
+/// minus one second, this project's HealthKit-facing convention).
+///
+/// Added per #173's contract note from the #319 (#180) review: Health
+/// Connect interval records carry an exclusive `endTime` plus its own
+/// `endZoneOffset` (see [endZoneOffsetFor]), and on a DST-transition day
+/// that offset differs from [zoneOffsetFor]'s midnight offset — which is
+/// exactly why the exclusive end and its offset are computed together
+/// here rather than derived from [localDayInterval]'s outputs.
+///
+/// Throws [TimeZoneResolutionException] if [tzName] cannot be resolved
+/// (see [localDayInterval]'s doc comment).
+DateTime localDayEndExclusive(LocalDate date, String tzName) {
+  final location = _resolveLocation(tzName);
+  final nextDay = date.addDays(1);
+  return tz.TZDateTime(location, nextDay.year, nextDay.month, nextDay.day)
+      .toUtc();
+}
+
 /// Resolves the [LocalDate] an imported platform sample belongs to, using
 /// the SAMPLE'S OWN zone or offset — never the device's current zone
 /// (`tz.local`). Exactly one of [tzName] or [offset] must be supplied:
@@ -204,5 +226,22 @@ LocalDate localDateForSample(
 Duration zoneOffsetFor(LocalDate date, String tzName) {
   final location = _resolveLocation(tzName);
   return tz.TZDateTime(location, date.year, date.month, date.day)
+      .timeZoneOffset;
+}
+
+/// The UTC offset in effect at [localDayEndExclusive]'s instant — Health
+/// Connect's `endZoneOffset` for an interval record covering [date] in
+/// [tzName]. Companion of [localDayEndExclusive] (same #173/#319
+/// contract note): on a day whose exclusive end falls after a DST
+/// transition, this differs from [zoneOffsetFor]'s midnight offset, and
+/// using the midnight offset for the end would silently encode the
+/// wrong day boundary.
+///
+/// Throws [TimeZoneResolutionException] if [tzName] cannot be resolved
+/// (see [localDayInterval]'s doc comment).
+Duration endZoneOffsetFor(LocalDate date, String tzName) {
+  final location = _resolveLocation(tzName);
+  final nextDay = date.addDays(1);
+  return tz.TZDateTime(location, nextDay.year, nextDay.month, nextDay.day)
       .timeZoneOffset;
 }

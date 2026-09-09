@@ -98,6 +98,11 @@ dependencies {
     // sentry-android-ndk 8.53.0). Re-check this pin whenever sentry_flutter
     // is upgraded.
     implementation("io.sentry:sentry-native-ndk:0.16.2")
+    // Issue #173: Health Connect client for the first-party
+    // "lunarlog/health" channel adapter (HealthConnectAdapter.kt). 1.1.0 is
+    // the current stable line (1.2.x is alpha-only as of this writing);
+    // the minSdk 26 pin above already satisfies its floor per #166.
+    implementation("androidx.health.connect:connect-client:1.1.0")
 }
 
 flutter {

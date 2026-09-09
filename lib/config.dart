@@ -171,16 +171,18 @@ abstract final class AppConfig {
       fcmIosApiKey != '' &&
       fcmIosAppId != '';
 
-  /// True once a HealthKit/Health Connect adapter exists for this build
-  /// (Issue #153 is domain + local-storage only — the profile-to-device
-  /// binding invariant and guardian-write guard the whole Health Platform
-  /// Sync epic, #156 through #246, depends on; no platform adapter exists
-  /// yet). Deliberately a hardcoded `false`, not a `--dart-define`: there is
-  /// no build-time toggle to flip today, only a future code change once an
-  /// adapter lands. Gates the Settings "Health app sync" entry so that UI
-  /// ships dormant (built and fully tested) rather than live with nothing
-  /// behind it — flip this to `true` in the PR that adds the first
-  /// adapter, never before.
+  /// True once a HealthKit/Health Connect adapter exists AND a
+  /// user-visible write flow runs through it. The first-party
+  /// platform-channel adapter layer itself landed with Issue #173
+  /// (`lib/domain/health/health_platform.dart` + `lib/data/health/` +
+  /// the Swift/Kotlin halves of the `lunarlog/health` channel), but no
+  /// call site writes a data type through it yet — #193 (HealthKit
+  /// menstrual flow) / #202 (Health Connect) add the first real write
+  /// flows, which is when this flips to `true`: until then the Settings
+  /// "Health app sync" entry would still be live with nothing observable
+  /// behind it, the exact state this flag exists to prevent. Deliberately
+  /// a hardcoded constant, not a `--dart-define`: there is no
+  /// build-time toggle to flip today, only a future code change.
   static const bool hasHealthSync = false;
 
   /// Master switch (Issue #153 P0 review) for whether a minor profile may
@@ -195,11 +197,12 @@ abstract final class AppConfig {
   /// nowhere else, so a future platform adapter cannot invent its own
   /// per-call bypass the way the pre-review write guard let both of its
   /// call sites neutralise the device-binding check by supplying their
-  /// own value. Currently `false` — no platform adapter exists yet to
-  /// exercise the transferred-minor path at all; flip only alongside that
-  /// adapter, never before. The server-side half of this consent (a
-  /// `profiles` column gating writes at the database layer) is deferred to
-  /// issue #188 — this flag is client-side only.
+  /// own value. Currently `false` — the #173 adapter layer exists but no
+  /// write flow runs through it yet (#193/#202 add the first callers), so
+  /// nothing exercises the transferred-minor path; flip only alongside
+  /// that first write flow, never before. The server-side half of this
+  /// consent (a `profiles` column gating writes at the database layer) is
+  /// deferred to issue #188 — this flag is client-side only.
   static const bool healthSyncMinorBindingAllowed = false;
 }
 
