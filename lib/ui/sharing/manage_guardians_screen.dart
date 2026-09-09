@@ -16,12 +16,14 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../data/repositories/activity_feed_repository.dart';
 import '../../data/repositories/profile_guardians_repository.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/sharing_service.dart';
+import 'activity_feed_screen.dart';
 import 'invite_guardian_dialog.dart';
 import 'notification_preferences_screen.dart';
 import 'transfer_ownership_screen.dart';
@@ -35,6 +37,7 @@ class ManageGuardiansScreen extends StatefulWidget {
     required this.currentUserId,
     this.ownershipTransferService,
     this.notificationPreferencesService,
+    this.activityRepository,
   });
 
   final Profile profile;
@@ -54,6 +57,12 @@ class ManageGuardiansScreen extends StatefulWidget {
   /// platform/build with push unavailable) hides the action entirely - this
   /// is what keeps R17 true with zero conditionals in the caller.
   final NotificationPreferencesService? notificationPreferencesService;
+
+  /// Issue #124: when present, an AppBar "Activity" action opens
+  /// [ActivityFeedScreen] - the feed is reachable from Manage Guardians as
+  /// well as from the profile screen. Null (no storage wired at the push
+  /// site) hides the action.
+  final ActivityFeedRepository? activityRepository;
 
   @override
   State<ManageGuardiansScreen> createState() => _ManageGuardiansScreenState();
@@ -389,6 +398,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         // profile's accepted primary guardian, and only when an
         // OwnershipTransferService is actually configured on this build.
         actions: [
+          if (widget.activityRepository != null)
+            ActivityFeedButton(
+              profile: widget.profile,
+              repository: widget.activityRepository!,
+            ),
           StreamBuilder<List<ProfileGuardian>?>(
             stream: _guardianRows,
             builder: (context, snapshot) {
