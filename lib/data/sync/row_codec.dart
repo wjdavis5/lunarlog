@@ -18,6 +18,12 @@
 ///   normalises to `standard` (presentation-only, never a security field).
 ///   `profiles.transferred_at` (R5) is pulled but never pushed — server-
 ///   owned, written only by `accept_ownership_transfer`.
+/// * `observations.category`/`code` (Issue #240) are free text and
+///   deliberately NOT validated against a closed set here — unlike
+///   `flow`/`mode`, an unrecognised value round-trips unchanged (the D-10
+///   companion note: the ~200 option codes are stored, never rejected).
+///   `observations.raw` is a JSON value on the wire but a JSON-text column
+///   client-side, matching `tags`' `TagsConverter` precedent.
 /// * Failures are a typed [RowCodecError] naming the table and field and
 ///   the kind of problem — never the offending value, never the row.
 ///
@@ -26,6 +32,8 @@
 /// import below, of the small closed-set `ProfileRelationship` enum, is the
 /// normal data-depends-on-domain direction and does not violate that).
 library;
+
+import 'dart:convert';
 
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -63,6 +71,9 @@ enum RowCodecErrorKind {
 
   /// A resolved row's `table` key is absent or not a synced table.
   unknownTable,
+
+  /// `observations.raw` (Issue #240) does not parse as JSON.
+  invalidRaw,
 }
 
 /// Typed codec failure. Deliberately carries no payload: the table, the
@@ -86,11 +97,13 @@ final RegExp _isoDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 
 
-/// Remote table name for [table] (`profiles` / `day_entries` / `profile_guardians`).
+/// Remote table name for [table] (`profiles` / `day_entries` /
+/// `profile_guardians` / `observations`).
 String syncTableName(SyncTable table) => switch (table) {
       SyncTable.profiles => 'profiles',
       SyncTable.dayEntries => 'day_entries',
       SyncTable.profileGuardians => 'profile_guardians',
+      SyncTable.observations => 'observations',
     };
 
 /// Inverse of [syncTableName]; null for anything else.
@@ -98,6 +111,7 @@ SyncTable? syncTableFromName(String name) => switch (name) {
       'profiles' => SyncTable.profiles,
       'day_entries' => SyncTable.dayEntries,
       'profile_guardians' => SyncTable.profileGuardians,
+      'observations' => SyncTable.observations,
       _ => null,
     };
 
@@ -194,6 +208,63 @@ JsonRow encodeDayEntry(DayEntry row) {
 String? _encodeNullable(DateTime? value) =>
     value == null ? null : encodeTimestamp(value);
 
+/// [Observations.raw] is stored client-side as JSON text (mirroring
+/// [TagsConverter]'s approach for `tags`); the wire payload wants the
+/// decoded JSON value, not a doubly-encoded string.
+Object? _decodeRawForWire(String? raw) {
+  if (raw == null) return null;
+  try {
+    return jsonDecode(raw);
+  } on FormatException {
+    throw const RowCodecError(RowCodecErrorKind.invalidRaw,
+        table: SyncTable.observations, field: 'raw');
+  }
+}
+
+/// The `p_observations` element for [row] (Issue #240). `category`/`code`
+/// are emitted as-is — free text, never validated against a closed set
+/// here (the write RPC is the validation point per the issue's D-10
+/// companion note).
+JsonRow encodeObservation(Observation row) {
+  const table = SyncTable.observations;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.dayEntryId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'day_entry_id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  if (!_isoDate.hasMatch(row.localDate)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidDate,
+        table: table, field: 'local_date');
+  }
+  return {
+    'id': row.id,
+    'day_entry_id': row.dayEntryId,
+    'profile_id': row.profileId,
+    'local_date': row.localDate,
+    'observed_at': _encodeNullable(row.observedAt),
+    'tz': row.tz,
+    'category': row.category,
+    'code': row.code,
+    'value_num': row.valueNum,
+    'value_text': row.valueText,
+    'unit': row.unit,
+    'intensity': row.intensity,
+    'excluded': row.excluded,
+    'source': row.source,
+    'source_id': row.sourceId,
+    'raw': _decodeRawForWire(row.raw),
+    'updated_at': encodeTimestamp(row.updatedAt),
+    'deleted_at': _encodeNullable(row.deletedAt),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // decode (server JSON → RemoteRow)
 // ---------------------------------------------------------------------------
@@ -266,11 +337,48 @@ RemoteProfileGuardianRow decodeProfileGuardian(JsonRow json) {
   );
 }
 
+/// Decodes an `observations` row (Issue #240). `category`/`code` are read
+/// as-is — never validated against a closed set (see this file's doc
+/// comment on `profiles.mode`/`relationship` for the contrasting cases that
+/// do have one). `category` is read nullable (review finding: the server
+/// clears it on a tombstone too, like every other payload column — see
+/// `RemoteObservationRow.category`'s own doc comment). `raw` is re-encoded
+/// to JSON text for client-side storage (mirroring [Observations.raw]'s
+/// text-column shape).
+RemoteObservationRow decodeObservation(JsonRow json) {
+  const table = SyncTable.observations;
+  final r = _Reader(json, table);
+  return RemoteObservationRow(
+    id: r.ulid('id'),
+    dayEntryId: r.ulid('day_entry_id'),
+    profileId: r.ulid('profile_id'),
+    localDate: r.isoDate('local_date'),
+    observedAt: r.timestampOrNull('observed_at'),
+    tz: r.string('tz'),
+    category: r.stringOrNull('category'),
+    code: r.stringOrNull('code'),
+    valueNum: r.doubleOrNull('value_num'),
+    valueText: r.stringOrNull('value_text'),
+    unit: r.stringOrNull('unit'),
+    intensity: r.integerOrNull('intensity'),
+    excluded: json['excluded'] == null ? false : r.boolean('excluded'),
+    source: r.stringOrNull('source') ?? 'manual',
+    sourceId: r.stringOrNull('source_id'),
+    raw: json['raw'] == null ? null : jsonEncode(json['raw']),
+    updatedAt: r.timestamp('updated_at'),
+    deletedAt: r.timestampOrNull('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+    loggedByUserId: r.stringOrNull('logged_by_user_id'),
+    lastModifiedByUserId: r.stringOrNull('last_modified_by_user_id'),
+  );
+}
+
 /// Decodes a pull-page row of [table].
 RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
       SyncTable.profiles => decodeProfile(json),
       SyncTable.dayEntries => decodeDayEntry(json),
       SyncTable.profileGuardians => decodeProfileGuardian(json),
+      SyncTable.observations => decodeObservation(json),
     };
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`
@@ -337,6 +445,20 @@ class _Reader {
     final value = json[field];
     if (value == null) return null;
     return _asInt(value, field);
+  }
+
+  /// `observations.value_num` (Issue #240): PostgREST/`sync_push` may
+  /// render a `numeric` as a JSON number or, for values it cannot represent
+  /// exactly, a numeric string — accept either.
+  double? doubleOrNull(String field) {
+    final value = json[field];
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final parsed = double.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+    _fail(RowCodecErrorKind.wrongType, field);
   }
 
   int _asInt(Object value, String field) {

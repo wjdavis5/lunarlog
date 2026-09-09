@@ -36,8 +36,10 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
@@ -172,6 +174,7 @@ class _YourDataSectionState extends State<YourDataSection> {
     try {
       final profilesRepo = context.read<ProfilesRepository>();
       final entriesRepo = context.read<DayEntriesRepository>();
+      final observationsRepo = context.read<ObservationsRepository>();
       // Read before the first `await` below (not after -
       // `use_build_context_synchronously`), same as `AccountSection`'s
       // `_runExport`; null for an unconfigured build or a caller that
@@ -180,14 +183,18 @@ class _YourDataSectionState extends State<YourDataSection> {
       final remoteSource = context.read<AccountExportRemoteSource?>();
       final profiles = await profilesRepo.list();
       final entriesByProfile = <String, List<DayEntry>>{};
+      final observationsByProfile = <String, List<Observation>>{};
       for (final profile in profiles) {
         entriesByProfile[profile.id] =
             await entriesRepo.listForProfile(profile.id);
+        observationsByProfile[profile.id] =
+            await observationsRepo.listForProfile(profile.id);
       }
       await (widget.exportAccount ??
           defaultExportAccountCollaborator(remoteSource))(
         profiles: profiles,
         entriesByProfile: entriesByProfile,
+        observationsByProfile: observationsByProfile,
         appVersion: kAppVersionForExport,
       );
     } catch (error) {

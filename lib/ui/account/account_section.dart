@@ -73,7 +73,9 @@ import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -737,6 +739,7 @@ class _AccountSectionState extends State<AccountSection> {
   Future<void> _runExport(BuildContext context) async {
     final profilesRepo = context.read<ProfilesRepository>();
     final entriesRepo = context.read<DayEntriesRepository>();
+    final observationsRepo = context.read<ObservationsRepository>();
     // Issue #248: read before the first `await` below (not after -
     // `use_build_context_synchronously`); null for an unconfigured build
     // (no Supabase client) - the same "nothing to merge" degrade as a
@@ -745,14 +748,18 @@ class _AccountSectionState extends State<AccountSection> {
     final remoteSource = context.read<AccountExportRemoteSource?>();
     final profiles = await profilesRepo.list();
     final entriesByProfile = <String, List<DayEntry>>{};
+    final observationsByProfile = <String, List<Observation>>{};
     for (final profile in profiles) {
       entriesByProfile[profile.id] =
           await entriesRepo.listForProfile(profile.id);
+      observationsByProfile[profile.id] =
+          await observationsRepo.listForProfile(profile.id);
     }
     await (widget.exportAccount ??
         defaultExportAccountCollaborator(remoteSource))(
       profiles: profiles,
       entriesByProfile: entriesByProfile,
+      observationsByProfile: observationsByProfile,
       appVersion: kAppVersionForExport,
     );
   }

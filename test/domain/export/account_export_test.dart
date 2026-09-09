@@ -9,6 +9,7 @@ import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 
@@ -55,6 +56,32 @@ DayEntry _entry(
       loggedByUserId: loggedByUserId,
       lastModifiedByUserId: lastModifiedByUserId,
     );
+
+Observation _observation(
+  String id,
+  String dayEntryId,
+  String profileId,
+  String isoDate, {
+  String category = 'pain',
+  String? code = 'headache',
+  double? valueNum,
+  int? intensity,
+  String? raw,
+}) =>
+    Observation(
+      id: id,
+      dayEntryId: dayEntryId,
+      profileId: profileId,
+      localDate: LocalDate.fromIso(isoDate),
+      tz: 'UTC',
+      category: category,
+      code: code,
+      valueNum: valueNum,
+      intensity: intensity,
+      raw: raw,
+      updatedAt: DateTime.utc(2026, 1, 2),
+    );
+
 
 void main() {
   final fixedExportedAt = DateTime.utc(2026, 9, 6, 12, 30);
@@ -274,8 +301,9 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 2,
-          reason: 'adding profiles[].mode is a shape change');
+      expect(kAccountExportSchemaVersion, 3,
+          reason: 'profiles[].mode was v2''s shape change; the constant has '
+              'since moved to v3 for profiles[].observations (Issue #240)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
@@ -381,6 +409,101 @@ void main() {
       expect(doc['serverIncluded'], true);
       expect(doc['server'], remoteSource.result);
       expect((doc['profiles'] as List), hasLength(1));
+      expect(() => jsonEncode(doc), returnsNormally);
+    });
+
+    test('threads observationsByProfile through to the local document '
+        '(Issue #240) — the same path AccountExportWriter.exportAndShare '
+        'and its UI callers use end to end, not just buildAccountExport '
+        'directly', () async {
+      final doc = await buildMergedAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-09-01')],
+        },
+        observationsByProfile: {
+          'p-1': [
+            _observation('o1', 'e1', 'p-1', '2026-09-01', intensity: 4),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final observations = profile['observations'] as List;
+      expect(observations, hasLength(1));
+      expect((observations.single as Map)['id'], 'o1');
+      expect((observations.single as Map)['intensity'], 4);
+    });
+  });
+
+  group('observations (Issue #240)', () {
+    test('each exported profile carries its observations, and the schema '
+        'version was bumped for the new key', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1'), _profile('p-2')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-09-01')],
+        },
+        observationsByProfile: {
+          'p-1': [
+            _observation('o1', 'e1', 'p-1', '2026-09-01',
+                intensity: 3, valueNum: 98.4),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      expect(kAccountExportSchemaVersion, 3,
+          reason: 'adding profiles[].observations is a shape change');
+      final profiles = doc['profiles'] as List;
+      final p1 = profiles[0] as Map;
+      final p2 = profiles[1] as Map;
+      expect((p1['observations'] as List), hasLength(1));
+      expect((p2['observations'] as List), isEmpty);
+      final observation = (p1['observations'] as List).single as Map;
+      expect(observation['category'], 'pain');
+      expect(observation['code'], 'headache');
+      expect(observation['intensity'], 3);
+      expect(observation['valueNum'], 98.4);
+      expect(observation['dayEntryId'], 'e1');
+    });
+
+    test('a profile with no key in observationsByProfile still gets an '
+        'empty observations list, not a missing key', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      expect(profile['observations'], isEmpty);
+    });
+
+    test('observations.raw round-trips as decoded JSON, not a doubly-'
+        'encoded string', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-09-01')],
+        },
+        observationsByProfile: {
+          'p-1': [
+            _observation('o1', 'e1', 'p-1', '2026-09-01',
+                raw: '{"type":"bbt","value":36.5}'),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final observation = (profile['observations'] as List).single as Map;
+      expect(observation['raw'], {'type': 'bbt', 'value': 36.5});
       expect(() => jsonEncode(doc), returnsNormally);
     });
   });

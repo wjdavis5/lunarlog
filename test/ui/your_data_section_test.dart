@@ -10,8 +10,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
@@ -76,6 +79,14 @@ class FakeDayEntriesRepository implements DayEntriesRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class FakeObservationsRepository implements ObservationsRepository {
+  Map<String, List<Observation>> observationsByProfile = const {};
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async =>
+      observationsByProfile[profileId] ?? const [];
+}
+
 AuthController _signedIn() {
   final service = FakeAuthService()
     ..emit(AuthSessionState.signedIn,
@@ -107,6 +118,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required FakeProfilesRepository profiles,
   FakeDayEntriesRepository? dayEntries,
+  FakeObservationsRepository? observations,
   bool? showExport,
   ExportAccountCollaborator? exportAccount,
   AuthController? auth,
@@ -119,6 +131,8 @@ Future<void> _pump(
           Provider<ProfilesRepository>.value(value: profiles),
           Provider<DayEntriesRepository>.value(
               value: dayEntries ?? FakeDayEntriesRepository()),
+          Provider<ObservationsRepository>.value(
+              value: observations ?? FakeObservationsRepository()),
           if (auth != null)
             ChangeNotifierProvider<AuthController>.value(value: auth),
         ],
@@ -149,6 +163,7 @@ void main() {
         exportAccount: ({
           required profiles,
           required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -167,6 +182,46 @@ void main() {
       expect(exportCalls, 1);
       expect(capturedProfiles?.single.id, 'p1');
       expect(key('your-data-export-error'), findsNothing);
+    });
+
+    testWidgets('threads this profile\'s observations through to the export '
+        'collaborator (pins the observationsRepo.listForProfile call in '
+        '_YourDataSectionState._runExport)', (tester) async {
+      Map<String, List<Observation>>? captured;
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      final observations = FakeObservationsRepository()
+        ..observationsByProfile = {
+          'p1': [
+            Observation(
+              id: 'o1',
+              dayEntryId: 'de1',
+              profileId: 'p1',
+              localDate: LocalDate(2026, 9, 1),
+              tz: 'UTC',
+              category: 'pain',
+              updatedAt: DateTime.utc(2026, 9, 1),
+            ),
+          ],
+        };
+      await _pump(
+        tester,
+        profiles: profiles,
+        observations: observations,
+        exportAccount: ({
+          required profiles,
+          required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
+          required appVersion,
+        }) async {
+          captured = observationsByProfile;
+        },
+      );
+
+      await tester.tap(key('your-data-export'));
+      await tester.pumpAndSettle();
+
+      expect(captured, isNotNull);
+      expect(captured!['p1'], isNotEmpty);
     });
 
     testWidgets('no profiles: the tile is absent', (tester) async {
@@ -247,6 +302,7 @@ void main() {
         exportAccount: ({
           required profiles,
           required entriesByProfile,
+          Map<String, List<Observation>>? observationsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');

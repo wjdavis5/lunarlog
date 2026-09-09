@@ -1,7 +1,7 @@
 -- RLS isolation, privilege, and constraint proof for the three sync tables
 -- (plan U2: AE1, AE2, AE12, column-list grants, CHECKs, server_version, anon).
 begin;
-select plan(52);
+select plan(53);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: users A and B each own one profile, one day entry, one setting.
@@ -81,16 +81,23 @@ select throws_ok(
   '42501', null, 'B cannot reference A''s profile_id (RLS rejects non-guardian write)');
 
 -- ---------------------------------------------------------------------------
--- Reusing A's profile ULID is rejected by profiles_id_uq (globally unique profile ID)
+-- Reusing A's profile ULID is rejected by profiles_id_uq (globally unique
+-- profile ID). Issue #240 (20260908160000_observations.sql) added the same
+-- global-uniqueness constraint to day_entries.id (day_entries_id_uq) - a
+-- prerequisite for observations.day_entry_id to reference it - so reusing
+-- A's day-entry ULID is now rejected too, mirroring profiles_id_uq exactly;
+-- this used to `lives_ok` (day_entries.id was unique only per (id,
+-- user_id) until this migration).
 -- ---------------------------------------------------------------------------
 select throws_ok(
   $$insert into public.profiles (id, display_name, updated_at)
       values (tests.ulid(1), 'Bob two', now())$$,
   '23505', null, 'B cannot insert a profile whose id equals A''s profile ULID');
-select lives_ok(
+select throws_ok(
   $$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
       values (tests.ulid(2), tests.ulid(11), '2026-09-03', 'UTC', 'none', now())$$,
-  'B inserts a day entry whose id equals A''s ULID as an own row');
+  '23505', null,
+  'B cannot insert a day entry whose id equals A''s day-entry ULID (day_entries_id_uq, Issue #240)');
 
 -- ---------------------------------------------------------------------------
 -- Column-list UPDATE grant: user_id and server_version are not updatable
@@ -169,13 +176,17 @@ select cmp_ok((select v from sv where n = 3), '>', (select v from sv where n = 2
   'server_version increases on the second update');
 
 -- ---------------------------------------------------------------------------
--- From the owner's view (bypassrls): AE12 rows coexist under both users
+-- From the owner's view (bypassrls): A's original rows survive B's attempts
+-- untouched. AE12 originally proved a same-id day entry could coexist under
+-- two different users; that is no longer possible after Issue #240 added
+-- day_entries_id_uq (see the throws_ok above), so this now asserts the
+-- ULID is globally unique here too, mirroring profiles.
 -- ---------------------------------------------------------------------------
 select tests.clear_authentication();
 select is((select count(*) from public.profiles where id = tests.ulid(1)), 1::bigint,
   'profile ULID is globally unique across users');
-select is((select count(*) from public.day_entries where id = tests.ulid(2)), 2::bigint,
-  'the same day entry ULID exists once per user');
+select is((select count(*) from public.day_entries where id = tests.ulid(2)), 1::bigint,
+  'day entry ULID is globally unique across users too (day_entries_id_uq, Issue #240)');
 select is((select display_name from public.profiles
             where id = tests.ulid(1) and user_id = tests.get_supabase_uid('user_a')),
   'Alice', 'A''s profile is untouched by B''s writes');
@@ -197,22 +208,29 @@ select tests.clear_authentication();
 select is((select count(*) from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) a
-           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings')
+           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations')
              and (a.grantee = 0 or a.grantee = 'anon'::regrole)),
-  0::bigint, 'PUBLIC and anon hold no privilege on any sync table');
+  0::bigint, 'PUBLIC and anon hold no privilege on any sync table (Issue #240: observations joins this catalog guard)');
 select is((select count(*) from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) a
-           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings')
+           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations')
              and a.grantee = 'authenticated'::regrole and a.privilege_type in ('DELETE', 'TRUNCATE')),
   0::bigint, 'authenticated holds no DELETE or TRUNCATE privilege on any sync table');
 select is((select count(*) from pg_policies
            where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings')),
-  12::bigint, 'four policies exist on each of the three tables');
+  12::bigint, 'four policies exist on each of the three original tables');
+-- Issue #240: observations carries three policies (select/insert/update),
+-- not four -- it has no client DELETE policy either, but unlike
+-- profiles/day_entries/settings it was never given one to begin with, so
+-- there's no fourth policy to expect here.
 select is((select count(*) from pg_policies
-           where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings')
+           where schemaname = 'public' and tablename = 'observations'),
+  3::bigint, 'observations carries exactly its three documented policies');
+select is((select count(*) from pg_policies
+           where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings', 'observations')
              and roles <> '{authenticated}'),
-  0::bigint, 'every policy is scoped to authenticated');
+  0::bigint, 'every policy on every sync table, observations included, is scoped to authenticated');
 
 -- ---------------------------------------------------------------------------
 -- Issue #158: catalog-wide guard against a future migration forgetting a

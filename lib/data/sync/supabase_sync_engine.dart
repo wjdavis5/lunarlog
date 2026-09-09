@@ -127,7 +127,9 @@ class _PushCursor {
 
   String? _profileCursor;
   String? _entryCursor;
+  String? _observationCursor;
   bool entriesDone = false;
+  bool observationsDone = false;
 
   Future<List<Profile>> readProfilePage() async {
     final page = await _storage.readDirtyProfiles(
@@ -141,6 +143,15 @@ class _PushCursor {
         limit: batchSize, afterId: _entryCursor);
     entriesDone = page.length < batchSize;
     if (page.isNotEmpty) _entryCursor = page.last.id;
+    return page;
+  }
+
+  /// Issue #240: same keyset-paging contract as [readEntryPage].
+  Future<List<Observation>> readObservationPage() async {
+    final page = await _storage.readDirtyObservations(
+        limit: batchSize, afterId: _observationCursor);
+    observationsDone = page.length < batchSize;
+    if (page.isNotEmpty) _observationCursor = page.last.id;
     return page;
   }
 }
@@ -256,7 +267,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     _authSub = _auth.states.listen((_) => requestSync());
     final db = _storage.db;
     _writeSub = db
-        .tableUpdates(TableUpdateQuery.onAllTables([db.profiles, db.dayEntries]))
+        .tableUpdates(TableUpdateQuery.onAllTables(
+            [db.profiles, db.dayEntries, db.observations]))
         .listen((_) => _onLocalWrite());
     _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
       _rejected.clear();
@@ -373,7 +385,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       return true;
     }
     final entries = await _storage.readDirtyDayEntries();
-    return _pushable(entries, (e) => e.id, (e) => e.localRev).isNotEmpty;
+    if (_pushable(entries, (e) => e.id, (e) => e.localRev).isNotEmpty) {
+      return true;
+    }
+    final observations = await _storage.readDirtyObservations();
+    return _pushable(observations, (o) => o.id, (o) => o.localRev).isNotEmpty;
   }
 
   /// Dirty rows the server has not rejected at their current `local_rev`
@@ -737,7 +753,24 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
               encodeDayEntry(row), profileId: row.profileId),
       ]);
     }
-    return (batch: batch, done: profilesEmptyThisRound && cursor.entriesDone);
+    // Issue #240: observations ride the same chaining rule day entries use
+    // relative to profiles — read this round only once day entries are
+    // (now, or already) exhausted, so the three tables share one keyset
+    // scan's worth of batching rather than each getting its own full
+    // [_batchSize] allotment every round.
+    if (cursor.entriesDone && !cursor.observationsDone) {
+      final observationPage = await cursor.readObservationPage();
+      batch.addAll([
+        for (final row
+            in _pushable(observationPage, (o) => o.id, (o) => o.localRev))
+          _PushItem(SyncTable.observations, row.id, row.localRev,
+              encodeObservation(row), profileId: row.profileId),
+      ]);
+    }
+    return (
+      batch: batch,
+      done: profilesEmptyThisRound && cursor.entriesDone && cursor.observationsDone,
+    );
   }
 
   /// One push batch's request/response handling, split out of [_push]
@@ -754,6 +787,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       result = await _transport.push(PushBatch(
         profiles: [for (final i in batch) if (i.table == SyncTable.profiles) i.json],
         dayEntries: [for (final i in batch) if (i.table == SyncTable.dayEntries) i.json],
+        observations: [for (final i in batch) if (i.table == SyncTable.observations) i.json],
       ));
     } on SyncTransportRejectedError catch (error) {
       // A transport without per-row results: the named rows are rejected,
@@ -846,6 +880,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.profiles,
       SyncTable.profileGuardians,
       SyncTable.dayEntries,
+      // Issue #240: pulled last — an observation references a day entry,
+      // which references a profile, so both must already be applied for
+      // applyRemoteObservation's referential check to succeed without a
+      // retry.
+      SyncTable.observations,
     ]) {
       if (await _pullTable(table, uid)) retry = true;
     }
@@ -863,6 +902,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     var after = switch (table) {
       SyncTable.profiles => state.cursorProfiles,
       SyncTable.dayEntries => state.cursorDayEntries,
+      SyncTable.observations => state.cursorObservations,
       SyncTable.profileGuardians => 0,
     };
     var failed = false;
@@ -933,6 +973,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.profiles,
       SyncTable.profileGuardians,
       SyncTable.dayEntries,
+      // Issue #240: same ordering rationale as _pullIncremental.
+      SyncTable.observations,
     ]) {
       var after = 0;
       while (true) {
@@ -970,6 +1012,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
             await _storage.applyRemoteRows([row]);
           case RemoteDayEntryRow():
             await _storage.applyRemoteDayEntry(row);
+          case RemoteObservationRow():
+            await _storage.applyRemoteObservation(row);
         }
       } on RetryableSyncApplyError {
         retry = true;

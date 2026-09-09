@@ -212,7 +212,8 @@ select tests.authenticate_as('user_a');
 select is(
   public.delete_account_data(),
   jsonb_build_object(
-    'day_entries', 0, 'day_entries_rehomed', 0, 'guardian_invitations', 0,
+    'day_entries', 0, 'day_entries_rehomed', 0, 'observations', 0,
+    'guardian_invitations', 0,
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,
     'notification_outbox', 0, 'profile_reminder_windows', 0,

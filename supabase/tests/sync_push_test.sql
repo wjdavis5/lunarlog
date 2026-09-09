@@ -393,7 +393,11 @@ select is((select count(*) from pg_proc p
            where n.nspname = 'public' and p.proname = 'sync_push'
              and (a.grantee = 0 or a.grantee = 'anon'::regrole)),
   0::bigint, 'PUBLIC and anon hold no EXECUTE on sync_push');
-select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb)', 'execute'),
+-- Issue #240: sync_push gained a third p_observations parameter (the old
+-- 2-arg overload was dropped, not left to fork alongside the new one - see
+-- 20260908160000_observations.sql's header) - the signature this literal
+-- must resolve is now the 3-arg one.
+select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb, jsonb)', 'execute'),
   'authenticated can execute sync_push');
 select is((select prosecdef from pg_proc where proname = 'sync_push' and pronamespace = 'public'::regnamespace),
   false, 'sync_push is security invoker');

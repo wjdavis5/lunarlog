@@ -21,7 +21,14 @@ const String kLiveDayEntryIndexSql =
     'CREATE UNIQUE INDEX IF NOT EXISTS uq_day_entries_profile_date_live '
     'ON day_entries (profile_id, local_date) WHERE deleted_at IS NULL';
 
-@DriftDatabase(tables: [Profiles, DayEntries, ProfileGuardians, AppSettings, SyncState])
+@DriftDatabase(tables: [
+  Profiles,
+  DayEntries,
+  ProfileGuardians,
+  Observations,
+  AppSettings,
+  SyncState,
+])
 class LunarLogDatabase extends _$LunarLogDatabase {
   LunarLogDatabase(super.executor);
 
@@ -39,8 +46,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 4 — `birth_year` + `relationship` + `transferred_at` on profiles
   ///   (Issue #4, parent-first custodianship and ownership transfer).
   /// * 5 — `mode` on profiles (Issue #131, care modes).
+  /// * 6 — `observations` table (Issue #240, the Clue tracking model's
+  ///   child-table observation shape) and `cursor_observations` on
+  ///   `sync_state`.
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -60,9 +70,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `day_entries.dirty`, `day_entries.local_rev`, `sync_state`,
   /// `day_entries.logged_by_user_id`, `day_entries.last_modified_by_user_id`,
   /// `profile_guardians`, `profiles.birth_year`, `profiles.relationship`,
-  /// `profiles.transferred_at`, `profiles.mode`, `day_entries.live_index`). A
-  /// hook that throws proves the transaction wrapper rolls the whole upgrade
-  /// back. Must be set before the first query. Null in production.
+  /// `profiles.transferred_at`, `profiles.mode`, `day_entries.live_index`,
+  /// `observations`, `sync_state.cursor_observations`). A hook that throws
+  /// proves the transaction wrapper rolls the whole upgrade back. Must be
+  /// set before the first query. Null in production.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -122,6 +133,26 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profiles.mode');
       });
     }
+    if (from < 6) {
+      await transaction(() async {
+        await m.createTable(observations);
+        await migrationStepHook?.call('observations');
+        // `sync_state` itself is only ever created once, above, by
+        // `m.createTable(syncState)` in the `from < 2` block — and
+        // `createTable` builds it from the *current* `SyncState` table
+        // class, which already declares `cursorObservations`. So a device
+        // upgrading straight from v1 (where this `from < 2` block is the
+        // one that creates `sync_state` for the first time) already has
+        // the column by the time execution reaches here; adding it again
+        // would be a duplicate-column error. Only a device that already
+        // had `sync_state` *before* this version (from >= 2) is missing
+        // the column and needs the explicit `addColumn` below.
+        if (from >= 2) {
+          await m.addColumn(syncState, syncState.cursorObservations);
+          await migrationStepHook?.call('sync_state.cursor_observations');
+        }
+      });
+    }
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -141,6 +172,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// tombstones go too. Native device reset deletes the file instead.
   Future<void> wipeAllData() async {
     await transaction(() async {
+      // observations references day_entries(id) and profiles(id): it must
+      // be emptied before either or the FK fails the whole wipe.
+      await delete(observations).go();
       await delete(dayEntries).go();
       // profile_guardians references profiles(id): it must be emptied
       // before profiles or the FK fails the whole wipe.

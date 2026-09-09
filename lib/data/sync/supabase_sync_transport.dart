@@ -36,6 +36,7 @@ class SupabaseSyncTransport implements SyncTransport {
       data = await _client.rpc<dynamic>(_rpc, params: {
         'p_profiles': batch.profiles,
         'p_day_entries': batch.dayEntries,
+        'p_observations': batch.observations,
       });
     } catch (error) {
       throw mapSyncTransportError(error);

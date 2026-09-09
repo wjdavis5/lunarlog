@@ -27,6 +27,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../domain/export/account_export.dart';
 import '../../domain/export/account_export_remote_source.dart';
 import '../../domain/models/day_entry.dart';
+import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 
 class AccountExportWriter {
@@ -40,12 +41,14 @@ class AccountExportWriter {
   Future<void> exportAndShare({
     required List<Profile> profiles,
     required Map<String, List<DayEntry>> entriesByProfile,
+    Map<String, List<Observation>> observationsByProfile = const {},
     required String appVersion,
   }) async {
     final exportedAt = DateTime.now().toUtc();
     final document = await buildMergedAccountExport(
       profiles: profiles,
       entriesByProfile: entriesByProfile,
+      observationsByProfile: observationsByProfile,
       exportedAt: exportedAt,
       appVersion: appVersion,
       remoteSource: remoteSource,
