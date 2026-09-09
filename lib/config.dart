@@ -170,6 +170,18 @@ abstract final class AppConfig {
       fcmAndroidAppId != '' &&
       fcmIosApiKey != '' &&
       fcmIosAppId != '';
+
+  /// True once a HealthKit/Health Connect adapter exists for this build
+  /// (Issue #153 is domain + local-storage only — the profile-to-device
+  /// binding invariant and guardian-write guard the whole Health Platform
+  /// Sync epic, #156 through #246, depends on; no platform adapter exists
+  /// yet). Deliberately a hardcoded `false`, not a `--dart-define`: there is
+  /// no build-time toggle to flip today, only a future code change once an
+  /// adapter lands. Gates the Settings "Health app sync" entry so that UI
+  /// ships dormant (built and fully tested) rather than live with nothing
+  /// behind it — flip this to `true` in the PR that adds the first
+  /// adapter, never before.
+  static const bool hasHealthSync = false;
 }
 
 /// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.

@@ -73,6 +73,16 @@ const String kRouteAttachmentConsentDialog = 'AttachmentConsentDialog';
 /// `lib/ui/account/account_mismatch_screen.dart`.
 const String kRouteAccountMismatchDialog = 'AccountMismatchDialog';
 
+/// `lib/ui/settings/health_sync_screen.dart` (Issue #153). Dormant behind
+/// `AppConfig.hasHealthSync` until a HealthKit/Health Connect adapter
+/// exists — see that flag's doc comment.
+const String kRouteHealthSyncScreen = 'HealthSyncScreen';
+
+/// `lib/ui/settings/health_sync_screen.dart` (Issue #153) — the confirm
+/// dialog naming what binding a profile means, not a trivial confirm/cancel
+/// (U2 Approach 2b).
+const String kRouteHealthSyncBindDialog = 'HealthSyncBindDialog';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -93,4 +103,6 @@ const Set<String> kSentryRouteNames = {
   kRouteFutureDayExplainerScreen,
   kRouteAttachmentConsentDialog,
   kRouteAccountMismatchDialog,
+  kRouteHealthSyncScreen,
+  kRouteHealthSyncBindDialog,
 };

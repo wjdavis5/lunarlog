@@ -1,0 +1,211 @@
+/// Settings screen for binding "this device's health-store profile" (Issue
+/// #153): lists every profile, showing why each ineligible one is refused,
+/// lets the operator bind an eligible one behind a confirm dialog naming
+/// what binding means, and offers an unbind action once one is bound.
+///
+/// Dormant in production: `SettingsScreen` only reaches this screen behind
+/// `AppConfig.hasHealthSync` (currently a hardcoded `false` — no
+/// HealthKit/Health Connect adapter exists yet) and never on web. This
+/// file and its widget are still fully exercised directly by
+/// `test/ui/health_sync_screen_test.dart`, bypassing that gate, which is
+/// what "ships dormant but testable" means here.
+///
+/// No platform write path exists in this PR — this screen only ever
+/// changes the device-local [SettingsKeys.healthStoreProfileId] setting
+/// via [HealthSyncBinding]. `lib/domain/health/health_sync_policy.dart`'s
+/// doc comment is the canonical statement of the guard every future write
+/// entry point must call before this epic may write anything.
+library;
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../../domain/health/health_sync_binding.dart';
+import '../../domain/health/health_sync_policy.dart';
+import '../../domain/models/profile.dart';
+import '../../domain/models/profile_guardian.dart';
+import '../../domain/repositories/profiles_repository.dart';
+import '../../observability/route_names.dart';
+
+/// Resolves the guardian rows for one profile, mapped to the domain model.
+/// Production wiring passes `ProfileGuardiansRepository.getForProfile`
+/// directly (a plain method tear-off satisfies this exactly); this is a
+/// bare function type rather than the concrete repository so the widget
+/// can be tested with a simple fake, no database required (R14/R16 —
+/// storage types never cross into `lib/ui/`; this goes one step further
+/// and drops the repository *class* dependency too, since nothing here
+/// needs anything else it exposes).
+typedef GuardiansForProfile = Future<List<ProfileGuardian>> Function(
+    String profileId);
+
+class HealthSyncScreen extends StatefulWidget {
+  const HealthSyncScreen({
+    super.key,
+    required this.profilesRepository,
+    required this.guardiansForProfile,
+    required this.binding,
+    required this.signedInUserId,
+  });
+
+  final ProfilesRepository profilesRepository;
+  final GuardiansForProfile guardiansForProfile;
+  final HealthSyncBinding binding;
+
+  /// The signed-in account's user id, or null when signed out — passed in
+  /// rather than read from an `AuthController` here so this widget stays
+  /// testable without standing up auth wiring (mirrors
+  /// `ManageGuardiansScreen.currentUserId`).
+  final String? signedInUserId;
+
+  @override
+  State<HealthSyncScreen> createState() => _HealthSyncScreenState();
+}
+
+class _HealthSyncScreenState extends State<HealthSyncScreen> {
+  bool _loading = true;
+  String? _boundProfileId;
+  List<Profile> _profiles = const [];
+  Map<String, String?> _ownerUserIdByProfile = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final bound = await widget.binding.boundProfileId();
+    final profiles = await widget.profilesRepository.list();
+    final owners = <String, String?>{};
+    for (final profile in profiles) {
+      final guardians = await widget.guardiansForProfile(profile.id);
+      owners[profile.id] = ownerUserIdFor(guardians);
+    }
+    if (!mounted) return;
+    setState(() {
+      _boundProfileId = bound;
+      _profiles = profiles;
+      _ownerUserIdByProfile = owners;
+      _loading = false;
+    });
+  }
+
+  /// Whether binding [profile] right now would be allowed — evaluated
+  /// against the *proposed* binding (`boundProfileId: profile.id`), so only
+  /// the minor and ownership checks can produce a deny here; matches what
+  /// [HealthSyncBinding.bind] itself checks.
+  HealthSyncCheck _eligibility(Profile profile) => canSyncProfile(
+        profile: profile,
+        boundProfileId: profile.id,
+        signedInUserId: widget.signedInUserId,
+        ownerUserId: _ownerUserIdByProfile[profile.id],
+      );
+
+  String _denyReasonText(HealthSyncCheck check) => switch (check) {
+        HealthSyncCheck.minorRequiresTransfer =>
+          "This profile is a minor — ownership must transfer to the "
+              "minor's own account before health sync can bind here.",
+        HealthSyncCheck.notOwner =>
+          "You are not this profile's owner — only its accepted primary "
+              'guardian can bind health sync.',
+        HealthSyncCheck.noBinding ||
+        HealthSyncCheck.profileNotBound ||
+        HealthSyncCheck.allowed =>
+          '',
+      };
+
+  Future<void> _tapProfile(Profile profile) async {
+    if (!_eligibility(profile).isAllowed) return;
+    final confirmed = await _confirmBind(profile);
+    if (!confirmed || !mounted) return;
+    await widget.binding.bind(
+      profile: profile,
+      signedInUserId: widget.signedInUserId,
+      ownerUserId: _ownerUserIdByProfile[profile.id],
+    );
+    await _load();
+  }
+
+  Future<bool> _confirmBind(Profile profile) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      routeSettings: const RouteSettings(name: kRouteHealthSyncBindDialog),
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Sync ${profile.displayName} to this phone?'),
+        content: Text(
+          "Only ${profile.displayName}'s data will ever be written to "
+          "this phone's Health app. This phone can sync one profile at a "
+          'time — choosing a different profile later replaces this one.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('health-sync-confirm-bind'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Bind'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _unbind() async {
+    await widget.binding.unbind();
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(
+          key: ValueKey('health-sync-loading'),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Health app sync')),
+      body: ListView(
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Choose the one profile whose data this phone may ever write '
+              "to its Health app. Every other profile stays out of this "
+              "phone's Health app entirely.",
+            ),
+          ),
+          for (final profile in _profiles) _profileTile(profile),
+          if (_boundProfileId != null)
+            ListTile(
+              key: const ValueKey('health-sync-unbind-tile'),
+              leading: const Icon(Icons.link_off),
+              title: const Text('Stop syncing to this phone'),
+              onTap: _unbind,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileTile(Profile profile) {
+    final check = _eligibility(profile);
+    final isBound = profile.id == _boundProfileId;
+    return ListTile(
+      key: ValueKey('health-sync-profile-${profile.id}'),
+      title: Text(profile.displayName),
+      subtitle: check.isAllowed ? null : Text(_denyReasonText(check)),
+      trailing: isBound
+          ? const Icon(Icons.check_circle, key: ValueKey('health-sync-bound-check'))
+          : null,
+      enabled: check.isAllowed,
+      onTap: check.isAllowed ? () => _tapProfile(profile) : null,
+    );
+  }
+}

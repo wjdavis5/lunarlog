@@ -24,4 +24,12 @@ class ProfileGuardiansRepository {
       _storage
           .watchGuardiansForProfile(profileId)
           .map((rows) => rows.map(profileGuardianToDomain).toList());
+
+  /// One-shot variant of [watchForProfile] (Issue #153): callers that need
+  /// a single read — e.g. resolving a profile's owner for the health-sync
+  /// binding picker — rather than a live subscription.
+  Future<List<ProfileGuardian>> getForProfile(String profileId) async {
+    final rows = await _storage.getGuardiansForProfile(profileId);
+    return rows.map(profileGuardianToDomain).toList();
+  }
 }
