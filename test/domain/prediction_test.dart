@@ -316,16 +316,20 @@ void main() {
   });
 
   group('predictions from raw entries', () {
-    test('spotting-only episodes count as period starts', () {
+    test(
+        'spotting-only entries never form a period (Issue #247: spotting is '
+        'excluded from bleedDatesOf/deriveEpisodes, so a spotting-only run '
+        'never fabricates a period)', () {
       final result = computePredictionFromEntries(
         entries: entriesFromStarts(
           [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 26), d(2026, 3, 26)],
+          // ignore: deprecated_member_use_from_same_package
           FlowLevel.spotting,
         ),
         today: d(2026, 4, 2),
       );
-      expect(result, isA<ActivePrediction>());
-      expect((result as ActivePrediction).estimatedNextStart, d(2026, 4, 23));
+      expect(result, isA<NotEnoughHistory>());
+      expect((result as NotEnoughHistory).episodeCount, 0);
     });
 
     test('flow-none entries never form episodes', () {
@@ -342,13 +346,15 @@ void main() {
 
     test('entries with mixed flows derive merged episodes before predicting',
         () {
-      // Jan 1-3 heavy + Jan 5 spotting = one episode starting Jan 1.
+      // Jan 1-3 heavy/superHeavy, one-day gap (Jan 4 none), Jan 5 medium =
+      // one episode starting Jan 1 (Issue #247: superHeavy is a real bleed
+      // level and merges exactly like heavy would).
       final result = computePredictionFromEntries(
         entries: [
           entry(d(2026, 1, 1), FlowLevel.heavy),
           entry(d(2026, 1, 2), FlowLevel.medium),
           entry(d(2026, 1, 3), FlowLevel.light),
-          entry(d(2026, 1, 5), FlowLevel.spotting),
+          entry(d(2026, 1, 5), FlowLevel.superHeavy),
           entry(d(2026, 1, 4), FlowLevel.none),
           entry(d(2026, 2, 1), FlowLevel.medium),
           entry(d(2026, 3, 1), FlowLevel.medium),

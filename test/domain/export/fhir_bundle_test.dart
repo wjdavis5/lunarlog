@@ -175,7 +175,9 @@ void main() {
       'day-03',
       profile.id,
       '2026-04-03',
-      flow: FlowLevel.spotting,
+      // Issue #247: spotting is an observation, not a bleed level any more,
+      // so a light day stands in for the third fixture entry.
+      flow: FlowLevel.light,
       loggedByUserId: 'user-secret-999',
       lastModifiedByUserId: 'user-secret-999',
     ),
@@ -342,7 +344,7 @@ void main() {
               r['resourceType'] == 'Observation' &&
               r.containsKey('valueCodeableConcept'))
           .toList();
-      // day-01 (medium) and day-03 (spotting) count; day-02 (none) does not.
+      // day-01 (medium) and day-03 (light) count; day-02 (none) does not.
       expect(flowObs, hasLength(2));
       for (final obs in flowObs) {
         final codes = ((obs['code'] as Map)['coding'] as List)

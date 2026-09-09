@@ -694,22 +694,23 @@ List<String> _parseTags(Object? raw, {required String context}) {
   return tags;
 }
 
-/// Looks [raw] up against [FlowLevel.values] by its `.name` (Issue #140
-/// review, item 8) — the exact strings `lib/domain/export/account_export.
-/// dart` writes (`entry.flow.name`) and the only ones a genuine export
-/// could ever contain, `'none'` included. Unlike the pre-review switch,
-/// an unrecognised value is REJECTED rather than silently degraded to
-/// `none`: a genuine export can only ever contain one of these five
-/// strings, so anything else is exactly the kind of row this file's own
-/// doc comment says to treat as tampering/corruption, not a legitimate
-/// future addition to paper over.
+/// Looks [raw] up against [FlowLevel.values] via [flowNameFromWire] (Issue
+/// #140 review, item 8; updated for #247) — the exact strings
+/// `lib/domain/export/account_export.dart` writes today (`entry.flow
+/// .toDb()`, snake_case) and the only ones a genuine export could ever
+/// contain, `'none'` included. Unlike the pre-review switch, an
+/// unrecognised value is REJECTED rather than silently degraded to
+/// `none`: a genuine export can only ever contain one of [FlowLevel]'s
+/// known wire strings, so anything else is exactly the kind of row this
+/// file's own doc comment says to treat as tampering/corruption, not a
+/// legitimate future addition to paper over.
 FlowLevel _parseFlow(Object? raw, {required String context}) {
   if (raw is! String) {
     throw _ImportFormatException('$context has an invalid flow value.');
   }
-  // Accept the Dart enum name (what today's export writes) and the
-  // snake_case wire/db spelling (e.g. "super_heavy" once #247 lands and the
-  // export switches to the db encoding); anything else is rejected rather
+  // Accept both the Dart enum name (a pre-#247 export, or a hand-edited
+  // file) and the snake_case wire/db spelling #247's export writer
+  // switched to (e.g. "super_heavy"); anything else is rejected rather
   // than degraded to none.
   try {
     return FlowLevel.values.byName(_snakeToCamel(raw));

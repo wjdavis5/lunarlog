@@ -63,25 +63,45 @@ void main() {
   });
 
   group('bleed dates from entries', () {
-    test('any flow above none counts as a bleed day; none does not', () {
+    test(
+        'real bleed levels count as bleed days; none/notBleeding/the '
+        'deprecated spotting alias do not (Issue #247)', () {
       final dates = bleedDatesOf([
+        // ignore: deprecated_member_use_from_same_package
         entry(d(2026, 4, 1), FlowLevel.spotting),
         entry(d(2026, 4, 2), FlowLevel.none),
         entry(d(2026, 4, 3), FlowLevel.heavy),
         entry(d(2026, 4, 4), FlowLevel.light),
         entry(d(2026, 4, 5), FlowLevel.medium),
+        entry(d(2026, 4, 6), FlowLevel.notBleeding),
+        entry(d(2026, 4, 7), FlowLevel.superHeavy),
       ]);
       expect(dates, {
-        d(2026, 4, 1),
         d(2026, 4, 3),
         d(2026, 4, 4),
         d(2026, 4, 5),
+        d(2026, 4, 7),
       });
     });
 
-    test('spotting-only days form episodes', () {
-      final episodes =
-          deriveEpisodes(bleedDatesOf([entry(d(2026, 4, 1), FlowLevel.spotting)]));
+    test(
+        'a spotting-only run of days never produces a derived episode '
+        '(Issue #247: Clue\'s own rule -- spotting is never part of a '
+        'period)', () {
+      final episodes = deriveEpisodes(bleedDatesOf([
+        // ignore: deprecated_member_use_from_same_package
+        entry(d(2026, 4, 1), FlowLevel.spotting),
+        // ignore: deprecated_member_use_from_same_package
+        entry(d(2026, 4, 2), FlowLevel.spotting),
+        entry(d(2026, 4, 3), FlowLevel.notBleeding),
+      ]));
+      expect(episodes, isEmpty);
+    });
+
+    test('a superHeavy-only day still forms a one-day episode (Issue #247)',
+        () {
+      final episodes = deriveEpisodes(
+          bleedDatesOf([entry(d(2026, 4, 1), FlowLevel.superHeavy)]));
       expect(episodes, hasLength(1));
       expect(episodes.single.lengthDays, 1);
     });

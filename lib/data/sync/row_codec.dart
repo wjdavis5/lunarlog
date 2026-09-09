@@ -7,7 +7,9 @@
 ///   Decoding always yields a UTC `DateTime` with microsecond precision so
 ///   the conflict rules compare instants, never strings.
 /// * `local_date` stays the `yyyy-MM-dd` string on both sides.
-/// * `tags` is a JSON array of strings; `flow` is the enum name.
+/// * `tags` is a JSON array of strings; `flow` is `FlowLevel.toDb()`'s wire
+///   string (Issue #247: no longer always the enum's Dart name --
+///   `superHeavy`/`notBleeding` encode as `super_heavy`/`not_bleeding`).
 /// * `day_entries.created_at` is server-only: never emitted, never read.
 /// * `profiles.relationship` (Issue #4 R3) is validated against the closed
 ///   set on decode: an unrecognised value normalises to null rather than
@@ -197,7 +199,7 @@ JsonRow encodeDayEntry(DayEntry row) {
     'profile_id': row.profileId,
     'local_date': row.localDate,
     'tz': row.tz,
-    'flow': row.flow.name,
+    'flow': row.flow.toDb(),
     'tags': List<String>.of(row.tags),
     'note': row.note,
     'source': row.source,
@@ -506,7 +508,7 @@ class _Reader {
   FlowLevel flow(String field) {
     final value = string(field);
     for (final level in FlowLevel.values) {
-      if (level.name == value) return level;
+      if (level.toDb() == value) return level;
     }
     _fail(RowCodecErrorKind.unknownFlow, field);
   }

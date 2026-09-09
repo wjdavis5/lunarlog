@@ -31,8 +31,20 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
       transferredAt: row.transferredAt,
     );
 
+/// Storage `FlowLevel` -> domain `FlowLevel`. Issue #247 spotting-alias
+/// translation: a stored `spotting` row (deprecated -- pre-#247 data, or
+/// an old peer's sync payload) reads as [domain.FlowLevel.notBleeding]
+/// here, never [domain.FlowLevel.spotting] itself (that value exists only
+/// so `fromDb`/`FlowLevelConverter` never throw on old data). The day is
+/// still a definite, positive "something was logged" fact, not
+/// "unlogged" -- the spotting symptom itself is surfaced separately, from
+/// the `observations` layer (`DriftObservationsRepository.listForProfile`
+/// synthesises a `spotting` observation for a live spotting-flow row that
+/// predates this migration's server-side backfill).
 domain.FlowLevel flowToDomain(db.FlowLevel flow) =>
-    domain.FlowLevel.values.byName(flow.name);
+    flow == db.FlowLevel.spotting
+        ? domain.FlowLevel.notBleeding
+        : domain.FlowLevel.values.byName(flow.name);
 
 db.FlowLevel flowFromDomain(domain.FlowLevel flow) =>
     db.FlowLevel.values.byName(flow.name);

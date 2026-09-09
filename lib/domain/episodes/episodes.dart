@@ -1,9 +1,13 @@
 /// Episode derivation: the pure function turning a profile's bleed dates
 /// into maximal bleeding episodes (R8).
 ///
-/// A bleed day is any entry whose flow is above none (spotting counts). An
-/// episode is a maximal run of bleed dates where gaps of at most one
-/// non-bleed day merge into the same episode; a two-day gap splits.
+/// A bleed day is any entry [isBleed]s (Issue #247: `light`/`medium`/
+/// `heavy`/`superHeavy` — `none`, the deprecated `spotting` alias, and the
+/// explicit `notBleeding` assertion are all excluded; lunarlog adopts
+/// Clue's own rule that spotting is never part of a period, so a
+/// spotting-only run of days never produces an episode). An episode is a
+/// maximal run of bleed dates where gaps of at most one non-bleed day
+/// merge into the same episode; a two-day gap splits.
 library;
 
 import '../models/day_entry.dart';
@@ -40,13 +44,14 @@ class Episode implements Comparable<Episode> {
   String toString() => 'Episode(${start.iso}..${end.iso}, $lengthDays days)';
 }
 
-/// The set of bleed dates among [entries]: non-tombstoned days with flow
-/// above none. (Repository reads are already live-only; the deletedAt check
-/// is defensive for full-fidelity inputs.)
+/// The set of bleed dates among [entries]: non-tombstoned days [isBleed]
+/// (Issue #247: excludes `none`, the deprecated `spotting` alias, and the
+/// explicit `notBleeding` assertion; includes `superHeavy`). (Repository
+/// reads are already live-only; the deletedAt check is defensive for
+/// full-fidelity inputs.)
 Set<LocalDate> bleedDatesOf(Iterable<DayEntry> entries) => {
       for (final entry in entries)
-        if (entry.deletedAt == null && entry.flow != FlowLevel.none)
-          entry.localDate,
+        if (entry.deletedAt == null && isBleed(entry.flow)) entry.localDate,
     };
 
 /// Derives episodes from arbitrary bleed dates (input order irrelevant,

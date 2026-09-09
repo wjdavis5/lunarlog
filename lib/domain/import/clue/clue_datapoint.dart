@@ -10,28 +10,24 @@ import '../../models/local_date.dart';
 /// Clue's four bleed levels plus the explicit "not bleeding today"
 /// assertion (`period/none` — a positive assertion, never an absence of
 /// data; see `clue_option_map.dart`'s `kCluePeriodLevels`). Named to
-/// mirror the `FlowLevel` shape Issue #247 will add to the app's own enum
-/// (a `superHeavy` level, and a not-bleeding state distinct from
-/// "unlogged") without depending on that unmerged issue's still-unstable
-/// enum: this type is reconciled to whatever #247 ships when the
-/// bulk-write step (#172) consumes this parser's output.
+/// mirror the `FlowLevel` shape Issue #247 added to the app's own enum (a
+/// `superHeavy` level, and a not-bleeding state distinct from "unlogged").
 ///
 /// **This enum's ordinals do not line up with `FlowLevel`'s**
-/// (`lib/domain/models/flow_level.dart`'s `none, spotting, light, medium,
-/// heavy` — Clue spotting is its own observation category here, never a
-/// flow level; see `clue_option_map.dart`) — never convert between the
-/// two by `.index`.
+/// (`lib/domain/models/flow_level.dart`'s `none, spotting, notBleeding,
+/// light, medium, heavy, superHeavy` — Clue spotting is its own
+/// observation category here, never a flow level; see
+/// `clue_option_map.dart`) — never convert between the two by `.index`;
+/// use `clue_flow_level_mapping.dart`'s `flowLevelFromClue`.
 ///
-/// **Interim collapse rules, until #247 merges** (both lossy — this is
-/// exactly why **#172 (the bulk-write step) must not consume this
-/// parser's output before #247 merges**, or these collapses become
-/// permanent data loss rather than a temporary interim mapping):
-/// - [superHeavy] has no `FlowLevel` counterpart yet and would collapse
-///   to `FlowLevel.heavy`.
-/// - [notBleeding] has no `FlowLevel` counterpart distinct from
-///   "unlogged" yet and would collapse to `FlowLevel.none` —
-///   re-conflating an explicit "not bleeding today" assertion with a day
-///   nothing was logged for at all.
+/// **Resolved as of Issue #247** (this enum's mapping to `FlowLevel` is
+/// now lossless — see `clue_flow_level_mapping.dart`, and
+/// `docs/import/clue-mapping.md`'s now-obsolete "interim collapse rules"
+/// section this doc comment used to describe): [superHeavy] maps to
+/// `FlowLevel.superHeavy`, never collapsing to `FlowLevel.heavy`;
+/// [notBleeding] maps to `FlowLevel.notBleeding`, never collapsing to
+/// `FlowLevel.none` (which would re-conflate an explicit "not bleeding
+/// today" assertion with a day nothing was logged for at all).
 enum ClueFlowLevel { notBleeding, light, medium, heavy, superHeavy }
 
 /// Whether a [ClueFlowLevel] records bleeding — mirrors

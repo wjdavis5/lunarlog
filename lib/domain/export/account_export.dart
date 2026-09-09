@@ -51,8 +51,12 @@ import 'account_export_remote_source.dart';
 /// sync bookkeeping or guardian attribution (the R9 exclusions this file's
 /// doc comment names above) — it is user-relevant data about where an
 /// entry came from ("Imported from Clue"), so unlike those it belongs in
-/// the export.
-const int kAccountExportSchemaVersion = 4;
+/// the export. v5 adds two new `dayEntries[].flow` wire values,
+/// `super_heavy` and `not_bleeding` (Issue #247): a reader written against
+/// v4 that treats an unrecognised flow string as a hard error must be
+/// updated before it can read a v5 file; `account_import.dart`'s
+/// `_parseFlow` already accepts both via `flowNameFromWire`.
+const int kAccountExportSchemaVersion = 5;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -123,7 +127,10 @@ Map<String, Object?> _exportDayEntry(DayEntry entry) => {
       'id': entry.id,
       'localDate': entry.localDate.iso,
       'tz': entry.tz,
-      'flow': entry.flow.name,
+      // Issue #247: the wire string, matching `source`'s toDb() below --
+      // `superHeavy`/`notBleeding` are no longer the same as the enum's
+      // Dart name (`super_heavy`/`not_bleeding`).
+      'flow': entry.flow.toDb(),
       'tags': entry.tags,
       'note': entry.note,
       // Issue #159 (kAccountExportSchemaVersion v4).
