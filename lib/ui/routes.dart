@@ -1,7 +1,9 @@
 /// Central named-route construction (issue #182 AC6). This app never calls
 /// `Navigator.pushNamed` (see `app.dart`'s note on `onGenerateRoute`) -- every
 /// push is a direct `Navigator.of(context).push(...)` -- but every one of
-/// those pushes now builds its [Route] through [buildNamedRoute], and the
+/// full-screen pushes the #182 pass migrated build their [Route] through
+/// [buildNamedRoute] (a few older sites in `lib/ui/sharing/` still hand-roll
+/// theirs -- see the follow-up issue), and the
 /// handful of parameterless destinations reused across more than one push
 /// site are collected in [kAppRoutes], keyed by the `kRoute*` constants in
 /// `lib/observability/route_names.dart`. Pairing a route name with the

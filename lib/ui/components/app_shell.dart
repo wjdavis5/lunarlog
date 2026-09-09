@@ -35,7 +35,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
-import 'package:lunarlog/ui/overview/cycle_history_section.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
@@ -138,10 +138,7 @@ class _AppShellState extends State<AppShell> {
           timezoneProvider: widget.timezoneProvider,
           guardiansRepository: guardiansRepository,
         ),
-      AppTab.insights => _InsightsTab(
-          profileId: widget.profile.id,
-          todayProvider: widget.todayProvider,
-        ),
+      AppTab.insights => const _InsightsTab(),
       AppTab.more => const SettingsScreen(),
     };
   }
@@ -151,7 +148,11 @@ class _AppShellState extends State<AppShell> {
     final storage = context.read<LunarLogStorage?>();
     final guardiansRepository =
         storage == null ? null : ProfileGuardiansRepository(storage);
-    final hasSync = Provider.of<SyncStatusController?>(context) != null;
+    // listen: false -- only existence is read here; the glyph does its own
+    // watch, and listening would rebuild the whole IndexedStack on every
+    // sync snapshot (review finding on #182).
+    final hasSync =
+        Provider.of<SyncStatusController?>(context, listen: false) != null;
     return Scaffold(
       appBar: _tab == AppTab.more ? null : _shellAppBar(hasSync),
       body: IndexedStack(
@@ -254,21 +255,19 @@ class _ProfileSwitcher extends StatelessWidget {
 /// Issue #182: a placeholder hosting the existing [CycleHistorySection]
 /// until #223 lands the real Analysis tab -- no analysis UI belongs here.
 class _InsightsTab extends StatelessWidget {
-  const _InsightsTab({required this.profileId, required this.todayProvider});
-
-  final String profileId;
-  final LocalDate Function() todayProvider;
+  const _InsightsTab();
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        CycleHistorySection(
-          profileId: profileId,
-          todayProvider: todayProvider,
-        ),
-      ],
+    // A genuine placeholder until #223 lands the Analysis tab: Overview
+    // already embeds CycleHistorySection (#132), so re-mounting it here
+    // would duplicate the card and run a second history stream per profile
+    // (review finding on #182).
+    return const EmptyState(
+      key: ValueKey('insights-placeholder'),
+      title: 'Insights are on the way',
+      body: 'Cycle history lives on Today for now. Statistics and trends '
+          'arrive with the Analysis tab.',
     );
   }
 }

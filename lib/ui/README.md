@@ -48,6 +48,7 @@ from the picker.
 `MaterialPageRoute`, and `kAppRoutes`/`pushNamedScreen` cover the handful of
 parameterless destinations reused across more than one push site. This app
 never calls `Navigator.pushNamed` (see `app.dart`'s `onGenerateRoute` note) —
-every push is a direct `Navigator.of(context).push(...)` that builds its
-route through one of these two, so a route name always lives in exactly one
-place.
+every push is a direct `Navigator.of(context).push(...)`; the sites the #182
+pass migrated build their route through one of these two so a route name
+lives in exactly one place (a few older pushes in `lib/ui/sharing/` still
+hand-roll theirs — tracked as a follow-up).
