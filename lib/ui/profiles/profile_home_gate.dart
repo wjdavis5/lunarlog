@@ -188,7 +188,7 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     // view, still pushed explicitly from the picker.
     return AppShell(
       profile: active,
-      initiallyShowOverview: active.id == _overviewLaunchId,
+      resetToTodayOnProfileSwitch: active.id == _overviewLaunchId,
     );
   }
 

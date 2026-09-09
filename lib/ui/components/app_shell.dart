@@ -30,6 +30,11 @@
 /// animations immediately -- including an indeterminate sync spinner that
 /// can run inside Settings' Account section and never let `pumpAndSettle`
 /// converge.
+///
+/// Issue #313: the body is wrapped in an [AppShellScope] so tab content can
+/// switch tabs itself (issue #314's "See cycle history" link on
+/// [OverviewPanel] is the first caller) without reaching into this file's
+/// private state -- see `app_shell_scope.dart`.
 library;
 
 import 'package:flutter/material.dart';
@@ -47,16 +52,13 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
-/// The shell's four destinations, in NavigationBar order (issue #182's
-/// documented assumption: Clue's own B-9/B-29 ordering, no owner sign-off
-/// obtained on the exact labels or order).
-enum AppTab { today, calendar, insights, more }
+import 'app_shell_scope.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.profile,
-    this.initiallyShowOverview = false,
+    this.resetToTodayOnProfileSwitch = false,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
   });
@@ -70,8 +72,12 @@ class AppShell extends StatefulWidget {
   /// in-place profile *switch* (see [_AppShellState.didUpdateWidget]) --
   /// without it, an operator who was on the Calendar tab for the previous
   /// profile would stay there for the profile the notification named,
-  /// rather than landing on that profile's Today/overview as U7 intends.
-  final bool initiallyShowOverview;
+  /// rather than landing on that profile's Today tab as U7 intends. Issue
+  /// #313 follow-up: renamed from `initiallyShowOverview`, a name left over
+  /// from the pre-#182 `ProfileDetailScreen` seam this replaced -- it never
+  /// affects this shell's *initial* tab (always Today), only whether a
+  /// later in-place profile switch resets back to it.
+  final bool resetToTodayOnProfileSwitch;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -105,7 +111,7 @@ class _AppShellState extends State<AppShell> {
     // An ordinary profile switch keeps the operator's current tab; only the
     // U7 launch payload forces the new profile open on Today.
     if (widget.profile.id != oldWidget.profile.id &&
-        widget.initiallyShowOverview) {
+        widget.resetToTodayOnProfileSwitch) {
       _tab = AppTab.today;
     }
   }
@@ -191,56 +197,65 @@ class _AppShellState extends State<AppShell> {
     // sync snapshot (review finding on #182).
     final hasSync =
         Provider.of<SyncStatusController?>(context, listen: false) != null;
-    return Scaffold(
-      appBar: _tab == AppTab.more ? null : _shellAppBar(hasSync),
-      body: IndexedStack(
-        index: _tab.index,
-        children: [
-          for (final tab in AppTab.values)
-            _tabContent(tab, storage, guardiansRepository),
-        ],
-      ),
-      // Issue #209 item 4a: "Log today" opens the day sheet directly, only
-      // where logging today makes sense (Today/Calendar) -- not Insights or
-      // More. Hidden for a viewer-role guardian by TodayLogFab itself.
-      floatingActionButton: _tab == AppTab.today || _tab == AppTab.calendar
-          ? TodayLogFab(
-              profileId: widget.profile.id,
-              mode: widget.profile.mode,
-              todayProvider: widget.todayProvider,
-              timezoneProvider: widget.timezoneProvider,
-              guardiansRepository: guardiansRepository,
-            )
-          : null,
-      bottomNavigationBar: NavigationBar(
-        key: const ValueKey('app-shell-nav-bar'),
-        selectedIndex: _tab.index,
-        onDestinationSelected: (index) => _selectTab(AppTab.values[index]),
-        destinations: const [
-          NavigationDestination(
-            key: ValueKey('app-shell-tab-today'),
-            icon: Icon(Icons.today_outlined),
-            selectedIcon: Icon(Icons.today),
-            label: 'Today',
-          ),
-          NavigationDestination(
-            key: ValueKey('app-shell-tab-calendar'),
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Calendar',
-          ),
-          NavigationDestination(
-            key: ValueKey('app-shell-tab-insights'),
-            icon: Icon(Icons.insights_outlined),
-            selectedIcon: Icon(Icons.insights),
-            label: 'Insights',
-          ),
-          NavigationDestination(
-            key: ValueKey('app-shell-tab-more'),
-            icon: Icon(Icons.more_horiz),
-            label: 'More',
-          ),
-        ],
+    // Issue #313: the seam wraps the whole Scaffold (not just its body) so
+    // it is reachable from anywhere under this shell -- app bar included --
+    // even though today's only caller (#314's "See cycle history" link)
+    // only needs it from the body.
+    return AppShellScope(
+      current: _tab,
+      select: _selectTab,
+      child: Scaffold(
+        appBar: _tab == AppTab.more ? null : _shellAppBar(hasSync),
+        body: IndexedStack(
+          index: _tab.index,
+          children: [
+            for (final tab in AppTab.values)
+              _tabContent(tab, storage, guardiansRepository),
+          ],
+        ),
+        // Issue #209 item 4a: "Log today" opens the day sheet directly,
+        // only where logging today makes sense (Today/Calendar) -- not
+        // Insights or More. Hidden for a viewer-role guardian by
+        // TodayLogFab itself.
+        floatingActionButton: _tab == AppTab.today || _tab == AppTab.calendar
+            ? TodayLogFab(
+                profileId: widget.profile.id,
+                mode: widget.profile.mode,
+                todayProvider: widget.todayProvider,
+                timezoneProvider: widget.timezoneProvider,
+                guardiansRepository: guardiansRepository,
+              )
+            : null,
+        bottomNavigationBar: NavigationBar(
+          key: const ValueKey('app-shell-nav-bar'),
+          selectedIndex: _tab.index,
+          onDestinationSelected: (index) => _selectTab(AppTab.values[index]),
+          destinations: const [
+            NavigationDestination(
+              key: ValueKey('app-shell-tab-today'),
+              icon: Icon(Icons.today_outlined),
+              selectedIcon: Icon(Icons.today),
+              label: 'Today',
+            ),
+            NavigationDestination(
+              key: ValueKey('app-shell-tab-calendar'),
+              icon: Icon(Icons.calendar_month_outlined),
+              selectedIcon: Icon(Icons.calendar_month),
+              label: 'Calendar',
+            ),
+            NavigationDestination(
+              key: ValueKey('app-shell-tab-insights'),
+              icon: Icon(Icons.insights_outlined),
+              selectedIcon: Icon(Icons.insights),
+              label: 'Insights',
+            ),
+            NavigationDestination(
+              key: ValueKey('app-shell-tab-more'),
+              icon: Icon(Icons.more_horiz),
+              label: 'More',
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -57,6 +57,20 @@ final List<LocalDate> kNotEnoughStarts = [
   LocalDate(2026, 7, 29),
 ];
 
+/// Lengths 28, 28, 20, 28 (matches `test/ui/cycle_history_test.dart`'s
+/// fixture of the same name): the 20-day cycle is the one STARTING Apr 5.
+/// All four feed the mean exactly (26.0); omitting the short one leaves
+/// [28, 28, 28] (28.0 exactly) -- a clean, whole-number transition for
+/// asserting the headline stat moves when a cycle is omitted through the
+/// mounted history section (issue #314).
+final List<LocalDate> kShortOutlierStarts = [
+  LocalDate(2026, 2, 8),
+  LocalDate(2026, 3, 8),
+  LocalDate(2026, 4, 5), // the short outlier
+  LocalDate(2026, 4, 25),
+  LocalDate(2026, 5, 23), // open cycle
+];
+
 Future<void> seedEpisodes(
   DriftDayEntriesRepository entries,
   String profileId,
@@ -114,6 +128,7 @@ class Harness {
     bool readOnly = false,
     AuthController? authController,
     ProfileGuardiansRepository? guardiansRepository,
+    LocalDate? today,
   }) {
     final settings = DriftSettingsStore(db.storage);
     final entries = DriftDayEntriesRepository(db.storage);
@@ -136,7 +151,7 @@ class Harness {
           body: AnalysisTab(
             profileId: profileId,
             mode: mode,
-            todayProvider: () => kToday,
+            todayProvider: () => today ?? kToday,
             readOnly: readOnly,
             guardiansRepository: guardiansRepository,
           ),
@@ -152,6 +167,7 @@ class Harness {
     bool readOnly = false,
     AuthController? authController,
     ProfileGuardiansRepository? guardiansRepository,
+    LocalDate? today,
   }) async {
     final profiles = DriftProfilesRepository(db.storage);
     final entries = DriftDayEntriesRepository(db.storage);
@@ -166,6 +182,7 @@ class Harness {
       readOnly: readOnly,
       authController: authController,
       guardiansRepository: guardiansRepository,
+      today: today,
     ));
     await tester.pumpAndSettle();
     return profile.id;
@@ -259,6 +276,32 @@ void main() {
 
     expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
     expect(find.text('Cycle history'), findsOneWidget);
+
+    await h.dispose();
+  });
+
+  testWidgets(
+      'issue #314: omitting a cycle through the mounted history section '
+      'updates this tab\'s own headline stats -- both read the same '
+      'CyclePredictionService/CycleExclusionList now that Overview no '
+      'longer has its own copy of either the section or the estimate to '
+      'cross-check against', (tester) async {
+    final h = Harness(tester);
+    await h.pump(starts: kShortOutlierStarts, today: LocalDate(2026, 6, 21));
+
+    // Lengths [28, 28, 20, 28] average to 26.0 exactly.
+    expect(textAt(tester, 'analysis-mean-cycle-length'), '26 days');
+
+    await tester.tap(find.byKey(const ValueKey('history-omit-2026-04-05')));
+    await tester.pumpAndSettle();
+
+    // Omitting the 20-day cycle leaves [28, 28, 28] -- 28.0 exactly. The
+    // headline card and the history section below it derive this from
+    // the same CyclePredictionService/CycleExclusionList pair, so the
+    // omit tap (a history-section affordance) is reflected here with no
+    // separate wiring.
+    expect(textAt(tester, 'analysis-mean-cycle-length'), '28 days');
+    expect(find.text('Excluded from averages'), findsOneWidget);
 
     await h.dispose();
   });
@@ -363,5 +406,42 @@ void main() {
         reason: 'no cross-profile carryover');
 
     await h.dispose();
+  });
+
+  group('auth-driven attribution seam (moved from '
+      'test/ui/cycle_history_test.dart under issue #314 -- this tab now '
+      'has the same auth listener OverviewPanel does, and is the only '
+      'screen still mounting CycleHistorySection alongside it)', () {
+    testWidgets(
+        'signing in while this tab is mounted updates the attribution '
+        'context without disturbing the history section below', (tester) async {
+      final h = Harness(tester);
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final entries = DriftDayEntriesRepository(h.db.storage);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      await seedEpisodes(entries, profile.id, kSteadyStarts);
+
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final authController = AuthController(authService: auth);
+      addTearDown(authController.dispose);
+
+      await tester.pumpWidget(h.widgetFor(
+        profile.id,
+        authController: authController,
+      ));
+      await tester.pumpAndSettle();
+
+      // A sign-in while mounted re-runs this tab's auth listener; the
+      // history section stays coherent across the change.
+      auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-1'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
+      expect(find.byKey(const ValueKey('analysis-stats')), findsOneWidget);
+
+      await h.dispose();
+    });
   });
 }

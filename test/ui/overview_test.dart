@@ -33,7 +33,9 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
@@ -118,6 +120,20 @@ final List<LocalDate> kLateStarts = [
   LocalDate(2026, 5, 10),
   LocalDate(2026, 6, 7),
   LocalDate(2026, 7, 5),
+];
+
+/// Four 30-day episodes ending 2026-06-26: 15 days past the original
+/// July 27 estimate by 2026-08-11 (more than the 2-day grace) rolls it
+/// forward one 30-day mean cycle to August 26. Feeds the interactive
+/// late-resolver action tests below (issue #132 AC6) -- moved here from
+/// `test/ui/cycle_history_test.dart` under issue #314, since they
+/// exercise [LateResolver], which stays in `OverviewPanel`, not the
+/// cycle-history section that moved to the Analysis tab.
+final List<LocalDate> kSkipStarts = [
+  LocalDate(2026, 3, 29),
+  LocalDate(2026, 4, 28),
+  LocalDate(2026, 5, 28),
+  LocalDate(2026, 6, 27),
 ];
 
 /// 30-day episodes ending 2026-08-28 with a 4-day bleed spanning today.
@@ -326,6 +342,10 @@ void main() {
       expect(find.text('≈5 days until next period'), findsOneWidget);
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
           reason: 'not late: estimate is 5 days ahead');
+      // Issue #314: CycleHistorySection no longer mounts on Overview --
+      // it lives exclusively on the Analysis tab now (test/ui/
+      // cycle_history_test.dart, test/ui/analysis_tab_test.dart).
+      expect(find.byKey(const ValueKey('history-card')), findsNothing);
       expectNoFertilityVocabulary(tester, 'active mid-cycle');
       await disposeOverview(tester, h);
     });
@@ -339,8 +359,8 @@ void main() {
       );
 
       expect(find.text(kDisclaimer), findsWidgets,
-          reason: 'the estimate card and the history stats each carry it '
-              '(R17; issue #132 AC8)');
+          reason: 'the Today card carries it, plus the late resolver or '
+              'status line whenever one of those also renders (R17)');
       await disposeOverview(tester, h);
     });
 
@@ -367,11 +387,13 @@ void main() {
         findsOneWidget,
       );
 
-      // Issue #132: the cycle-history card now renders below the estimate
-      // card for every profile with episodes, and it legitimately shows
-      // recorded dates and lengths (real history, not a partial estimate).
-      // The no-partial-numbers rule (R11) governs the estimate surface, so
-      // the sweep is scoped to the not-enough card itself.
+      // Issue #314: the sweep is scoped to the not-enough card itself
+      // (rather than the whole tree) because the no-partial-numbers rule
+      // (R11) governs the estimate surface specifically -- the "See cycle
+      // history" link right below it is plain, digit-free copy either
+      // way, so scoping is now belt-and-suspenders rather than load-
+      // bearing the way it was when the cycle-history card (with its own
+      // legitimate dates and lengths) used to render there too.
       final texts = tester.widgetList<Text>(
         find.descendant(
           of: find.byKey(const ValueKey('overview-not-enough')),
@@ -436,9 +458,15 @@ void main() {
             'snackbar',
       );
       expect(find.text(kDisclaimer), findsWidgets,
-          reason: 'the estimate card, resolver, and history stats each '
-              'carry it');
+          reason: 'the Today card and the resolver each carry it');
       expectNoFertilityVocabulary(tester, 'unusually long cycle');
+
+      // Issue #132 (AC7)/#314: the resolver's "log it" is the way through
+      // this state, and (now that the history section moved to Insights)
+      // opens the ordinary day sheet the same as anywhere else.
+      await tester.tap(find.byKey(const ValueKey('resolver-log')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DaySheet), findsOneWidget);
       await disposeOverview(tester, h);
     });
 
@@ -502,6 +530,113 @@ void main() {
           reason: 'the estimate card and the resolver each carry it');
       expectNoFertilityVocabulary(tester, 'late');
       await disposeOverview(tester, h);
+    });
+
+    group('issue #132 (AC6): three-option late resolver actions -- moved '
+        'here from cycle_history_test.dart under issue #314, since the '
+        'resolver stays in OverviewPanel while the cycle-history section '
+        'it used to sit next to moved to the Analysis tab', () {
+      testWidgets('skip this cycle appends the open start to the '
+          'exclusion list and replans the late window; undoing through '
+          'the same exclusion list the Insights history section reads '
+          'restores it', (tester) async {
+        final h = await pumpOverview(
+          tester,
+          today: LocalDate(2026, 8, 11),
+          seed: (entries, profileId) =>
+              seedEpisodes(entries, profileId, kSkipStarts),
+        );
+
+        expect(find.text('Next period estimate: August 26, 2026'),
+            findsOneWidget);
+        expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('resolver-skip')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Next period estimate: August 26, 2026'),
+            findsOneWidget,
+            reason: 'the skip advances the un-rolled estimate one '
+                'averaged cycle (Jul 27 + 30) to the same date the late '
+                'roll had already reached');
+        expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
+            reason: 'the late window replanned -- no longer late');
+        expect(
+          parseOmittedCycles(
+            await h._settings.get(omittedCyclesSettingKey(h.profile.id)),
+          ),
+          contains(LocalDate(2026, 6, 27)),
+          reason: 'skip feeds the same device-local exclusion list the '
+              'cycle-history section on Insights reads',
+        );
+
+        // Issue #314: the history section's own "Undo" button on the
+        // open-cycle row lived on this screen before; it moved to
+        // Insights along with the section, so this drives the same
+        // CycleExclusionList it would have called directly instead.
+        await CycleExclusionList(h._settings)
+            .include(h.profile.id, LocalDate(2026, 6, 27));
+        await tester.pumpAndSettle();
+        expect(find.text('Next period estimate: August 26, 2026'),
+            findsOneWidget,
+            reason: 'reversible: including it restores the late window');
+        expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+        await disposeOverview(tester, h);
+      });
+
+      testWidgets('remind me in 3 days snoozes the resolver until the '
+          'snooze date', (tester) async {
+        final h = await pumpOverview(
+          tester,
+          today: LocalDate(2026, 8, 11),
+          seed: (entries, profileId) =>
+              seedEpisodes(entries, profileId, kSkipStarts),
+        );
+
+        await tester.tap(find.byKey(const ValueKey('resolver-remind')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
+        expect(find.byKey(const ValueKey('late-snoozed')), findsOneWidget);
+        expect(
+          find.text('We will check back on August 14.'),
+          findsOneWidget,
+          reason: 'today (Aug 11) + 3 days',
+        );
+        expect(
+          await h._settings.get(lateSnoozeSettingKey(h.profile.id)),
+          '2026-08-14',
+        );
+
+        await tester.tap(find.byKey(const ValueKey('late-snooze-show-now')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('late-resolver')),
+          findsOneWidget,
+          reason: 'the snooze is dismissible early',
+        );
+        await disposeOverview(tester, h);
+      });
+
+      testWidgets('a read-only (archived) profile sees the late line but '
+          'no actions -- the resolver still renders, "Log it"/"Skip this '
+          'cycle"/"Remind me in 3 days" are absent (issue #314 review '
+          'item 1)', (tester) async {
+        final h = await pumpOverview(
+          tester,
+          today: LocalDate(2026, 8, 11),
+          readOnly: true,
+          seed: (entries, profileId) =>
+              seedEpisodes(entries, profileId, kSkipStarts),
+        );
+
+        expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+        expect(find.text('15 days late'), findsOneWidget);
+        expect(find.text('Log it'), findsNothing);
+        expect(find.text('Skip this cycle'), findsNothing);
+        expect(find.text('Remind me in 3 days'), findsNothing);
+        await disposeOverview(tester, h);
+      });
     });
 
     testWidgets('mid-cycle phase reads "Cycle day N" and never "Period"',
@@ -950,9 +1085,9 @@ void main() {
       );
       expect(find.byKey(const ValueKey('today-card-confidence-chip')),
           findsOneWidget);
-      // Issue #132's own cycle-history card (below this one) carries its
-      // own confidence chip with the same tier label, so this checks the
-      // Today card's copy specifically rather than a bare `find.text`.
+      // Descendant-scoped (rather than a bare `find.text`) since the
+      // history section's own confidence chip carries the same tier
+      // label on Insights (issue #314: no longer on this screen at all).
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('today-card-confidence-chip')),
@@ -1061,6 +1196,42 @@ void main() {
 
       expect(
         find.byKey(const ValueKey('today-card-confidence-chip')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+  });
+
+  group('issue #314: "See cycle history" link', () {
+    testWidgets(
+        'no AppShellScope is mounted here (ProfileDetailScreen pumps '
+        'OverviewPanel outside any AppShell), so the link renders '
+        'nothing rather than a dead button', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      expect(
+        find.byKey(const ValueKey('overview-see-history-link')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets(
+        'still absent in the not-enough-history state -- the link is '
+        'gated on the shell scope, not on which card renders above it',
+        (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kNotEnoughStarts),
+      );
+
+      expect(
+        find.byKey(const ValueKey('overview-see-history-link')),
         findsNothing,
       );
       await disposeOverview(tester, h);
@@ -1197,6 +1368,65 @@ void main() {
       expect(restored.tags, ['cramps']);
       expect(restored.note, 'before the quick log');
       await disposeOverview(tester, h);
+    });
+  });
+
+  group('issue #314 review item 3: OverviewPanel.trailingChildren', () {
+    testWidgets(
+        'a trailing widget renders inside the same ListView, below the '
+        'estimate content', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final entries = DriftDayEntriesRepository(db.storage);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      await seedEpisodes(entries, profile.id, kActiveStarts);
+
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<DayEntriesRepository>.value(value: entries),
+          Provider<SettingsStore>.value(value: settings),
+          Provider<CyclePredictionService>.value(
+            value: CyclePredictionService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+          ChangeNotifierProvider<NotificationPermissionState>.value(
+            value:
+                NotificationPermissionState(NotificationAvailability.available),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: OverviewPanel(
+              profileId: profile.id,
+              todayProvider: () => kToday,
+              trailingChildren: const [
+                Text('trailing marker', key: ValueKey('trailing-marker')),
+              ],
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.byKey(const ValueKey('trailing-marker')),
+        ),
+        findsOneWidget,
+        reason: 'trailingChildren is appended inside the panel\'s own '
+            'ListView -- one scroll region, not a second scrollable',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
     });
   });
 }
