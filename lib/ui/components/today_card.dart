@@ -167,7 +167,17 @@ class _TodayCardState extends State<TodayCard> {
         ),
         if (widget.showConfidenceChip) ...[
           const SizedBox(width: 8),
-          _ConfidenceChip(tier: widget.tier),
+          // #138: the chip's bare tier word ("High") reads ambiguously on
+          // its own — the wrapper announces the same phrase the calendar's
+          // future-day explainer uses, reusing its ARB key rather than
+          // adding a near-duplicate string.
+          Semantics(
+            label: AppLocalizations.of(
+              context,
+            ).futureExplainerConfidence(widget.tier.label.toLowerCase()),
+            excludeSemantics: true,
+            child: _ConfidenceChip(tier: widget.tier),
+          ),
         ],
       ],
     );

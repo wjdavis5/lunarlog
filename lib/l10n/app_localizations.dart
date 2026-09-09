@@ -178,6 +178,12 @@ abstract class AppLocalizations {
   /// **'Heavy flow'**
   String get calendarLegendHeavy;
 
+  /// Legend entry for a super-heavy logged bleed day; the parenthetical names its non-colour dot-count channel.
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy flow (5 marks)'**
+  String get calendarLegendSuperHeavy;
+
   /// Legend entry for a logged symptom-only day.
   ///
   /// In en, this message translates to:
@@ -243,6 +249,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Keep logging — predicted bands appear once a few cycles are recorded.'**
   String get calendarKeepLogging;
+
+  /// The date half of a calendar day cell's screen-reader label, e.g. 'Wednesday, September 9'.
+  ///
+  /// In en, this message translates to:
+  /// **'{weekday}, {month} {day}'**
+  String calendarCellDateLabel(String weekday, String month, int day);
+
+  /// Screen-reader fragment naming a logged day's bleed level, e.g. 'Medium flow'.
+  ///
+  /// In en, this message translates to:
+  /// **'{level} flow'**
+  String calendarCellFlowState(String level);
+
+  /// Screen-reader fragment for a logged day that also carries tags or a note.
+  ///
+  /// In en, this message translates to:
+  /// **'symptoms logged'**
+  String get calendarCellSymptomsLogged;
+
+  /// Screen-reader fragment for a logged day with no tags and no note.
+  ///
+  /// In en, this message translates to:
+  /// **'no symptoms'**
+  String get calendarCellNoSymptoms;
+
+  /// Screen-reader fragment for a symptom-only logged day (no bleed).
+  ///
+  /// In en, this message translates to:
+  /// **'logged symptoms'**
+  String get calendarCellLoggedSymptoms;
+
+  /// Screen-reader fragment for a logged day with no bleed and no symptoms.
+  ///
+  /// In en, this message translates to:
+  /// **'logged'**
+  String get calendarCellLogged;
+
+  /// Screen-reader fragment for a past or present day with no entry.
+  ///
+  /// In en, this message translates to:
+  /// **'not logged'**
+  String get calendarCellNotLogged;
+
+  /// Screen-reader fragment marking the calendar's today cell.
+  ///
+  /// In en, this message translates to:
+  /// **'today'**
+  String get calendarCellToday;
+
+  /// Screen-reader fragment explaining why a future calendar cell opens an explainer instead of the log sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'future date, not yet loggable'**
+  String get calendarCellFuture;
+
+  /// Screen-reader fragment marking a past calendar cell whose day sheet opens read-only (viewer role).
+  ///
+  /// In en, this message translates to:
+  /// **'read-only'**
+  String get calendarCellReadOnly;
+
+  /// Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike.
+  ///
+  /// In en, this message translates to:
+  /// **'predicted period day'**
+  String get calendarCellPredictedPeriod;
+
+  /// Screen-reader fragment for a predicted bleed day's cycle-day numeral.
+  ///
+  /// In en, this message translates to:
+  /// **'cycle day {day}'**
+  String calendarCellCycleDay(int day);
+
+  /// Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'cycle day {day} of the first predicted cycle'**
+  String calendarCellCycleDayFirstCycle(int day);
+
+  /// Screen-reader fragment for a day carrying the PMS badge.
+  ///
+  /// In en, this message translates to:
+  /// **'predicted premenstrual window'**
+  String get calendarCellPmsWindow;
+
+  /// Screen-reader fragment for a day carrying the cramps badge.
+  ///
+  /// In en, this message translates to:
+  /// **'predicted cramps window'**
+  String get calendarCellCrampsWindow;
+
+  /// Screen-reader fragment for a future day whose forecast cell carries no marker.
+  ///
+  /// In en, this message translates to:
+  /// **'no prediction for this date'**
+  String get calendarCellNoPrediction;
 
   /// Tooltip on the month/year picker's back-year chevron.
   ///
@@ -333,6 +435,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Heavy'**
   String get flowLevelHeavy;
+
+  /// Day sheet flow chip label for an explicit no-bleed assertion (issue #247).
+  ///
+  /// In en, this message translates to:
+  /// **'Not bleeding'**
+  String get flowLevelNotBleeding;
+
+  /// Day sheet flow chip label for super-heavy flow (issue #247).
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy'**
+  String get flowLevelSuperHeavy;
 
   /// Title of the day entry delete confirmation dialog.
   ///
@@ -568,6 +682,30 @@ abstract class AppLocalizations {
   /// **'Turn on reminders'**
   String get overviewTurnOnReminders;
 
+  /// The overview wheel's centre label mid-cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle day {day}'**
+  String cycleWheelCenterCycleDay(int day);
+
+  /// The overview wheel's centre label during a logged bleed episode.
+  ///
+  /// In en, this message translates to:
+  /// **'Period · day {day}'**
+  String cycleWheelCenterPeriodDay(int day);
+
+  /// The phase half of the overview wheel's screen-reader label during a bleed episode.
+  ///
+  /// In en, this message translates to:
+  /// **'Period, day {day}'**
+  String cycleWheelPhasePeriodDay(int day);
+
+  /// The overview wheel's screen-reader label; {phase} is a cycleWheelCenter*/cycleWheelPhase* fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'{phase} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsBody(String phase, int cycleDays, int periodDays);
+
   /// The settings screen's app bar title.
   ///
   /// In en, this message translates to:
@@ -675,6 +813,258 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Close'**
   String get settingsClose;
+
+  /// Headline of the first onboarding card (identity/value).
+  ///
+  /// In en, this message translates to:
+  /// **'A private cycle log for your family'**
+  String get firstRunValueHeadline;
+
+  /// Body of the identity/value card: the differentiators stated plainly (family co-management, offline-first, no ads/tracking, no paywalled predictions).
+  ///
+  /// In en, this message translates to:
+  /// **'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.'**
+  String get firstRunValueBody;
+
+  /// Title of the second onboarding card (what a profile and a guardian are).
+  ///
+  /// In en, this message translates to:
+  /// **'Profiles and guardians'**
+  String get firstRunGuardiansTitle;
+
+  /// Body of the profiles/guardians card.
+  ///
+  /// In en, this message translates to:
+  /// **'Each profile holds one person\'s cycle log. After signing in, you can invite another guardian — a co-parent or caregiver — to view or help log it.'**
+  String get firstRunGuardiansBody;
+
+  /// Heading of the minor-checkbox explanation inside the second onboarding card.
+  ///
+  /// In en, this message translates to:
+  /// **'About the minor checkbox'**
+  String get firstRunMinorExplainerTitle;
+
+  /// The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; the health-sync binding is the one real gate).
+  ///
+  /// In en, this message translates to:
+  /// **'It\'s a label with one real effect today: the profile is kept out of this phone\'s Health app sync. It doesn\'t restrict anything else — wording and reminders come from the care mode picked on the next screen, not from this checkbox.'**
+  String get firstRunMinorExplainerBody;
+
+  /// The third onboarding card: today's data/sync notice, kept verbatim from the pre-#216 first run (the #334 repositioned copy).
+  ///
+  /// In en, this message translates to:
+  /// **'Signing in syncs this profile across your devices and lets you share it with other guardians. Until then, everything you log stays on this device.'**
+  String get firstRunNoticeBody;
+
+  /// Advance-one-card button on the onboarding cards.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get firstRunNext;
+
+  /// Skip button on the onboarding cards; skips the whole introduction.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get firstRunSkip;
+
+  /// Advance button on the data/sync notice card (today's label, kept).
+  ///
+  /// In en, this message translates to:
+  /// **'I understand'**
+  String get firstRunUnderstand;
+
+  /// App bar title of the first-run name form and cycle-questions steps.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a profile'**
+  String get firstRunCreateTitle;
+
+  /// Label of the profile display-name field in the first-run form.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get firstRunNameLabel;
+
+  /// The minor checkbox label in the first-run form (kept from the pre-#216 form).
+  ///
+  /// In en, this message translates to:
+  /// **'This profile is for a minor'**
+  String get firstRunMinorLabel;
+
+  /// One-line hint under the minor checkbox in the first-run form.
+  ///
+  /// In en, this message translates to:
+  /// **'A label with one effect: this profile is kept out of this phone\'s Health app sync.'**
+  String get firstRunMinorHint;
+
+  /// Label above the care-mode dropdown in the first-run form (kept).
+  ///
+  /// In en, this message translates to:
+  /// **'Care mode'**
+  String get firstRunCareModeLabel;
+
+  /// Submit button of the first-run name form; validates and moves to the cycle questions.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get firstRunContinue;
+
+  /// Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability.
+  ///
+  /// In en, this message translates to:
+  /// **'A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.'**
+  String get firstRunCycleCaption;
+
+  /// Label of the last-period-start question.
+  ///
+  /// In en, this message translates to:
+  /// **'Last period start'**
+  String get firstRunCycleLastPeriodLabel;
+
+  /// Button opening the last-period-start date picker when no date is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose date'**
+  String get firstRunCycleChooseDate;
+
+  /// Button re-opening the last-period-start date picker once a date is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Change date'**
+  String get firstRunCycleChangeDate;
+
+  /// Button clearing the chosen last-period-start date (skips the question).
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get firstRunCycleClearDate;
+
+  /// Label of the typical-cycle-length question.
+  ///
+  /// In en, this message translates to:
+  /// **'Typical cycle length (days)'**
+  String get firstRunCycleTypicalCycleLabel;
+
+  /// Hint inside the typical-cycle-length field.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. 28'**
+  String get firstRunCycleTypicalCycleHint;
+
+  /// Label of the typical-period-length question.
+  ///
+  /// In en, this message translates to:
+  /// **'Typical period length (days)'**
+  String get firstRunCycleTypicalPeriodLabel;
+
+  /// Hint inside the typical-period-length field.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. 5'**
+  String get firstRunCycleTypicalPeriodHint;
+
+  /// Validation error for an out-of-range typical cycle length.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a number between 10 and 90'**
+  String get firstRunCycleLengthRangeError;
+
+  /// Validation error for an out-of-range typical period length.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a number between 1 and 14'**
+  String get firstRunPeriodLengthRangeError;
+
+  /// Label of the birth-control-method question.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth-control method'**
+  String get firstRunCycleBirthControlLabel;
+
+  /// Label of the goal/life-stage-mode question.
+  ///
+  /// In en, this message translates to:
+  /// **'Goal / mode'**
+  String get firstRunCycleGoalLabel;
+
+  /// Final button of the cycle-questions step; creates the profile (today's label, kept).
+  ///
+  /// In en, this message translates to:
+  /// **'Create profile'**
+  String get firstRunCreateButton;
+
+  /// Label above the life-stage-mode dropdown in the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Life-stage mode'**
+  String get lifeStageModeLabel;
+
+  /// Birth-control selector option meaning the question was skipped; stores nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Not answered'**
+  String get birthControlNotAnswered;
+
+  /// Birth-control selector option: no method in use.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get birthControlNone;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Pill'**
+  String get birthControlPill;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Hormonal IUD'**
+  String get birthControlHormonalIud;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Copper IUD'**
+  String get birthControlCopperIud;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Implant'**
+  String get birthControlImplant;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Injection'**
+  String get birthControlInjection;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Vaginal ring'**
+  String get birthControlRing;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Patch'**
+  String get birthControlPatch;
+
+  /// Birth-control selector option.
+  ///
+  /// In en, this message translates to:
+  /// **'Condom'**
+  String get birthControlCondom;
+
+  /// Birth-control selector option for a method not listed.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get birthControlOther;
 }
 
 class _AppLocalizationsDelegate

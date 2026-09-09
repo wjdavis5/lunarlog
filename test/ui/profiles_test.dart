@@ -17,15 +17,18 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
+import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
@@ -115,16 +118,25 @@ void main() {
   });
 
   group('first run (F1)', () {
-    testWidgets('zero profiles forces creation through the key-loss notice; '
-        'created profile (name + minor flag) is selectable with empty history',
-        (tester) async {
+    testWidgets('zero profiles forces creation through the intro cards and '
+        'the key-loss notice; created profile (name + minor flag) is '
+        'selectable with empty history', (tester) async {
       final db = await pumpApp(tester);
 
-      expect(find.text(kNoticeText), findsOneWidget);
+      // Card 1 (identity/value) first — no form, no notice yet (#216).
+      expect(find.text('A private cycle log for your family'),
+          findsOneWidget);
       expect(find.byType(TextFormField), findsNothing,
-          reason: 'no name form before the notice');
+          reason: 'no name form before the introduction');
       expect(find.text('Create profile'), findsNothing,
-          reason: 'no skip past the notice');
+          reason: 'no skip past the introduction');
+
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+      expect(find.text(kNoticeText), findsOneWidget,
+          reason: 'card 3 is the data/sync notice, kept from today');
 
       await tester.tap(find.text('I understand'));
       await tester.pumpAndSettle();
@@ -133,6 +145,8 @@ void main() {
       await tester.enterText(find.byType(TextFormField), 'Luna');
       await tester.tap(find.text('This profile is for a minor'));
       await tester.pump();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Create profile'));
       await tester.pumpAndSettle();
 
@@ -159,9 +173,11 @@ void main() {
     testWidgets('relaunch with the same install opens the profile directly '
         'and never resurfaces the notice', (tester) async {
       final db = await pumpApp(tester);
-      await tester.tap(find.text('I understand'));
+      await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), 'Luna');
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Create profile'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Luna'));
@@ -207,8 +223,10 @@ void main() {
       await tester.pumpWidget(
           LunarLogApp(db: db, authService: auth, syncEngine: engine));
       await tester.pumpAndSettle();
-      expect(find.text(kNoticeText), findsOneWidget);
-      await tester.tap(find.text('I understand'));
+      expect(find.text('A private cycle log for your family'),
+          findsOneWidget,
+          reason: 'the introduction precedes everything (#216)');
+      await tester.tap(find.text('Skip'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -244,10 +262,11 @@ void main() {
       final db2 = LunarLogDatabase(NativeDatabase.memory());
       await tester.pumpWidget(LunarLogApp(db: db2, authService: auth2));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('I understand'));
+      await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('restoring')), findsNothing);
-      expect(find.text('Create profile'), findsOneWidget);
+      expect(find.text('Continue'), findsOneWidget,
+          reason: 'nothing to restore from: the name form shows (#216)');
       await disposeApp(tester, db2);
     });
   });
@@ -967,6 +986,50 @@ void main() {
       await disposeApp(tester, db);
     });
 
+    testWidgets('the #216 onboarding answers (life-stage mode, '
+        'birth-control method) are editable later through the Rename '
+        'dialog', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alex', isMinor: false);
+      });
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      final profileId = profiles.single.id;
+      expect(await db.storage.getProfileMode(profileId), isNull,
+          reason: 'no onboarding answers were given for this profile');
+
+      final tile = find.ancestor(
+          of: find.text('Alex'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: tile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+
+      await tester
+          .ensureVisible(find.byType(DropdownButton<LifecycleMode>));
+      await tester.tap(find.byType(DropdownButton<LifecycleMode>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Conceive').last);
+      await tester.pumpAndSettle();
+
+      await tester
+          .ensureVisible(find.byType(DropdownButton<BirthControlChoice>));
+      await tester.tap(find.byType(DropdownButton<BirthControlChoice>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pill').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.mode, 'conceive',
+          reason: 'the goal/mode answer is editable later (#216 AC)');
+      expect(row.birthControlMethod, 'Pill');
+      await disposeApp(tester, db);
+    });
+
     testWidgets('mode is never derived: a minor profile with a birth year '
         'still reads standard until a human chooses otherwise '
         '(isMinor/birthYear gate nothing automatically)', (tester) async {
@@ -1007,7 +1070,11 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<ProfileController>.value(
           value: controller,
-          child: const MaterialApp(home: ProfilePickerScreen()),
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const ProfilePickerScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
