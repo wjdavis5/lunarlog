@@ -80,9 +80,13 @@ class ManageGuardiansScreen extends StatefulWidget {
   final PredictionConnectionService? predictionConnectionService;
 
   /// Issue #151: called after a prediction connection is created or
-  /// revoked so the shell can (re)publish the projection snapshot right
-  /// away - a freshly created connection gets data on the recipient's
-  /// first fetch without waiting for the sharer's next prediction change.
+  /// revoked, and also whenever this screen discovers (on load) that the
+  /// connection has just transitioned from pending to active, so the
+  /// shell can (re)publish the projection snapshot right away - a
+  /// freshly redeemed connection gets data on the recipient's first
+  /// fetch without waiting on the sharer's next unrelated prediction
+  /// change (which could otherwise lag by days - the recipient would see
+  /// a misleading "connection ended" state in the meantime).
   final void Function(String profileId)? onPredictionConnectionChanged;
 
   @override
@@ -120,10 +124,27 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         profileId: widget.profile.id,
       );
       if (!mounted) return;
+      // Issue #151 fix-up: the recipient's redemption happens on their
+      // own device, so the sharer's client has no push telling it the
+      // connection just went from pending to active - the only place it
+      // finds out is the next time it asks (here). Publishing right when
+      // that transition is observed closes most of the gap where the
+      // recipient would otherwise see "connection ended" until the
+      // sharer's device next happens to publish on its own (foreground,
+      // or a new day-entry write - which could be days). This still
+      // publishes only from the sharer's side, computed by the sharer's
+      // own prediction engine - nothing here is computed by or sent
+      // through the recipient.
+      final justActivated = connection != null &&
+          !connection.pending &&
+          (_predictionConnection == null || _predictionConnection!.pending);
       setState(() {
         _predictionConnection = connection;
         _predictionConnectionLoaded = true;
       });
+      if (justActivated) {
+        widget.onPredictionConnectionChanged?.call(widget.profile.id);
+      }
     } on PredictionConnectionFailure {
       if (!mounted) return;
       setState(() => _predictionConnectionLoaded = true);

@@ -10,6 +10,18 @@
 /// ([PredictionConnectionService.fetchProjection]); a null result after a
 /// revocation renders the "connection ended" state — revocation takes
 /// effect on the recipient's next fetch with no residual view.
+///
+/// Issue #151 fix-up: a null projection is ambiguous on its own — it is
+/// the same result whether the connection was revoked/never existed, or
+/// the connection is freshly active and the sharer just hasn't published
+/// a first snapshot yet (arming happens before `recipient_user_id` is
+/// set, so nothing is published to publish to at that moment, and the
+/// sharer's device only self-corrects on its own next prediction change
+/// or foreground — which can lag by a long time). So a null projection is
+/// disambiguated against [PredictionConnectionService.listIncomingConnections]:
+/// an active connection for this profile with nothing published yet shows
+/// a distinct "waiting for the first update" state instead of "connection
+/// ended".
 library;
 
 import 'package:flutter/material.dart';
@@ -39,6 +51,12 @@ class PredictionConnectionCalendarScreen extends StatefulWidget {
 class _PredictionConnectionCalendarScreenState
     extends State<PredictionConnectionCalendarScreen> {
   late Future<PredictionProjection?> _projectionFuture;
+
+  /// Only fetched (and only consulted in [build]) when the projection
+  /// comes back null — it disambiguates "connection ended" from
+  /// "connection is active, nothing published yet" without adding a
+  /// round trip to the common case where a projection is already there.
+  Future<List<IncomingPredictionConnection>>? _connectionsFuture;
   late LocalDate _month;
 
   @override
@@ -52,7 +70,12 @@ class _PredictionConnectionCalendarScreenState
     setState(() {
       _projectionFuture =
           widget.service.fetchProjection(profileId: widget.profileId);
+      _connectionsFuture = null;
     });
+  }
+
+  Future<List<IncomingPredictionConnection>> _connections() {
+    return _connectionsFuture ??= widget.service.listIncomingConnections();
   }
 
   void _shiftMonth(int delta) {
@@ -98,27 +121,78 @@ class _PredictionConnectionCalendarScreenState
 
           final projection = snapshot.data;
           if (projection == null) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.link_off,
-                        size: 48, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(height: 12),
-                    Text('Connection ended',
-                        style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'This prediction connection is no longer active.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            return FutureBuilder<List<IncomingPredictionConnection>>(
+              future: _connections(),
+              builder: (context, connSnapshot) {
+                if (connSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  ],
-                ),
-              ),
+                  );
+                }
+                // Issue #151 fix: a live connection to this profile with
+                // nothing published yet is not "ended" - the sharer just
+                // hasn't emitted a first snapshot. Only when no active
+                // connection for this profile turns up (revoked, or the
+                // lookup itself failed) do we fall back to "ended".
+                final hasActiveConnection = connSnapshot.data
+                        ?.any((c) => c.profileId == widget.profileId) ??
+                    false;
+                if (hasActiveConnection) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        key: const ValueKey('prediction-waiting-for-update'),
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.hourglass_top,
+                              size: 48,
+                              color: theme.colorScheme.onSurfaceVariant),
+                          const SizedBox(height: 12),
+                          Text('Waiting for the first update',
+                              style: theme.textTheme.titleMedium),
+                          const SizedBox(height: 4),
+                          Text(
+                            "You're connected. Their predictions will "
+                            'appear here as soon as they are shared.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      key: const ValueKey('prediction-connection-ended'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.link_off,
+                            size: 48,
+                            color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(height: 12),
+                        Text('Connection ended',
+                            style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text(
+                          'This prediction connection is no longer active.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             );
           }
 

@@ -158,6 +158,66 @@ void main() {
       expect(find.text('Connection ended'), findsOneWidget);
     });
 
+    testWidgets(
+        'a null projection with an active incoming connection for this '
+        'profile renders "waiting for the first update", not "ended" '
+        '(issue #151 fix-up: right after redeeming, the sharer has not '
+        'published a snapshot yet)', (tester) async {
+      final service = _FakePredictionConnectionService(
+        projection: null,
+        connections: [
+          IncomingPredictionConnection(
+            connectionId: 'conn-1',
+            profileId: 'p1',
+            acceptedAt: DateTime.utc(2026, 9, 9),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: PredictionConnectionCalendarScreen(
+          profileId: 'p1',
+          profileName: 'Riley',
+          service: service,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Waiting for the first update'), findsOneWidget);
+      expect(find.text('Connection ended'), findsNothing);
+      expect(
+          find.byKey(const ValueKey('prediction-waiting-for-update')),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'a null projection with an incoming connection for a *different* '
+        'profile still renders "ended" (the active-connection check is '
+        'scoped to this profile)', (tester) async {
+      final service = _FakePredictionConnectionService(
+        projection: null,
+        connections: [
+          IncomingPredictionConnection(
+            connectionId: 'conn-2',
+            profileId: 'some-other-profile',
+            acceptedAt: DateTime.utc(2026, 9, 9),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: PredictionConnectionCalendarScreen(
+          profileId: 'p1',
+          profileName: 'Riley',
+          service: service,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Connection ended'), findsOneWidget);
+      expect(find.text('Waiting for the first update'), findsNothing);
+    });
+
     testWidgets('month navigation re-renders the grid', (tester) async {
       final asOf = LocalDate(2026, 9, 7);
       final service = _FakePredictionConnectionService(
@@ -418,6 +478,45 @@ void main() {
 
       expect(connectionService.lastRevokedConnectionId, 'conn-1');
       expect(find.text('Prediction sharing ended'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'discovering a newly-active (no-longer-pending) connection on load '
+        'publishes a snapshot right away (issue #151 fix-up: the '
+        "recipient's redemption happens on their own device, so the "
+        "sharer's client only finds out the next time it asks)",
+        (tester) async {
+      connectionService.getActiveConnectionResult =
+          ActivePredictionConnection(
+        connectionId: 'conn-1',
+        profileId: testProfile.id,
+        pending: false,
+        recipientLabel: 'Partner',
+        createdAt: DateTime.utc(2026, 9, 1),
+        expiresAt: DateTime.utc(2026, 9, 8),
+      );
+      final published = <String>[];
+
+      await storage.applyRemoteRows([guardianRow('user-mom', 'primary_guardian')]);
+      await tester.pumpWidget(MaterialApp(
+        home: ManageGuardiansScreen(
+          profile: testProfile,
+          guardiansRepository: ProfileGuardiansRepository(storage),
+          sharingService: _NoInvitesSharingService(),
+          currentUserId: 'user-mom',
+          predictionConnectionService: connectionService,
+          onPredictionConnectionChanged: published.add,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(published, [testProfile.id],
+          reason: 'the screen discovered an active connection on its very '
+              'first load and published immediately rather than waiting on '
+              "the sharer's next unrelated prediction change");
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
