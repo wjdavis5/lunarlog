@@ -193,6 +193,27 @@ class SupabaseSharingService implements SharingService {
     }
   }
 
+  @override
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  }) async {
+    try {
+      await client.rpc<dynamic>('update_guardian_role', params: {
+        'p_profile_id': profileId,
+        'p_target_user_id': targetUserId,
+        'p_new_role': newRole.toDb(),
+      });
+      // The changed row re-pulls with a bumped server_version, so this
+      // request is what delivers the new role to every device - including
+      // the affected guardian's own - on the next cycle.
+      syncEngine.requestSync();
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
   SharingFailure _mapError(Object error) {
     if (error is SharingFailure) return error;
     if (error is SocketException || error is http.ClientException) {

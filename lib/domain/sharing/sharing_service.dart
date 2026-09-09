@@ -282,4 +282,131 @@ abstract interface class SharingService {
   /// Cancels a single outstanding invitation (R2), after which its token
   /// can never be redeemed. Idempotent (R5) - see [InviteCancellation].
   Future<InviteCancellation> cancelInvite(String invitationId);
+
+  /// Changes an accepted guardian's role without revoke-and-reinvite
+  /// (Issue #127). The server enforces the ladder (primary may change
+  /// anyone; a co-parent may move a caregiver/viewer to caregiver/viewer),
+  /// refuses self-changes, and never grants `primary_guardian` through this
+  /// path - the caller must still gate the control with
+  /// [canUpdateGuardianRole] so unauthorized rows never offer it. The new
+  /// role reaches the affected device on its next sync pull.
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  });
+}
+
+/// Whether [callerRole] may change [target]'s role to [newRole] (Issue
+/// #127) - the client-side mirror of `update_guardian_role`'s server-side
+/// ladder, used to gate the role control in `ManageGuardiansScreen`. The
+/// server re-checks everything; this only decides what the UI offers.
+///
+/// - Unknown callers ([callerRole] null), non-accepted [target] rows, and
+///   self-changes never qualify - in particular, nobody may escalate
+///   themselves.
+/// - `primary_guardian` is never an assignable [newRole] here, and
+///   re-applying the target's current role is not offered either.
+/// - A primary guardian may change anyone else's role; a co-parent may move
+///   a caregiver/viewer to caregiver/viewer only.
+bool canUpdateGuardianRole({
+  required GuardianRole? callerRole,
+  required ProfileGuardian target,
+  required String? currentUserId,
+  required GuardianRole newRole,
+}) {
+  if (callerRole == null) return false;
+  if (!_roleChangePartiesEligible(
+    target: target,
+    currentUserId: currentUserId,
+    newRole: newRole,
+  )) {
+    return false;
+  }
+  if (callerRole == GuardianRole.primaryGuardian) return true;
+  if (callerRole == GuardianRole.coParent) {
+    return _coParentMayMove(target: target, newRole: newRole);
+  }
+  return false;
+}
+
+/// The target-side half of [canUpdateGuardianRole]: the row must be
+/// accepted, must not be the caller's own, the new role must be assignable
+/// here, and must actually differ from the current one.
+bool _roleChangePartiesEligible({
+  required ProfileGuardian target,
+  required String? currentUserId,
+  required GuardianRole newRole,
+}) {
+  if (target.status != GuardianStatus.accepted) return false;
+  if (currentUserId != null && target.userId == currentUserId) return false;
+  if (newRole == GuardianRole.primaryGuardian) return false;
+  return newRole != target.role;
+}
+
+/// The co-parent half of the ladder: a caregiver/viewer may move to
+/// caregiver/viewer only - never touching primary/co-parent rows and never
+/// minting a peer.
+bool _coParentMayMove({
+  required ProfileGuardian target,
+  required GuardianRole newRole,
+}) {
+  const assignable = {GuardianRole.caregiver, GuardianRole.viewer};
+  return assignable.contains(target.role) && assignable.contains(newRole);
+}
+
+/// Every role the caller may move [target] to (Issue #127) - the menu items
+/// for the role control, in ladder order. Empty means no control is shown.
+List<GuardianRole> allowedNewRoles({
+  required GuardianRole? callerRole,
+  required ProfileGuardian target,
+  required String? currentUserId,
+}) =>
+    [
+      GuardianRole.coParent,
+      GuardianRole.caregiver,
+      GuardianRole.viewer,
+    ].where((role) => canUpdateGuardianRole(
+          callerRole: callerRole,
+          target: target,
+          currentUserId: currentUserId,
+          newRole: role,
+        )).toList();
+
+/// Consequence copy for the role-change confirmation (Issue #127): names
+/// what access [from] -> [to] adds or takes away, derived from the same
+/// capability flags the logging UI enforces (`canLog`, `canEditProfile`,
+/// `canManageGuardians`), so the dialog can never promise something the
+/// day sheet won't do. Never empty for distinct roles.
+String roleChangeConsequence(GuardianRole from, GuardianRole to) {
+  const labels = ['log entries', 'edit profile details', 'manage caregivers'];
+  final fromCaps = _roleCapabilities(from);
+  final toCaps = _roleCapabilities(to);
+  final gains = <String>[];
+  final loses = <String>[];
+  for (var i = 0; i < labels.length; i++) {
+    if (!fromCaps[i] && toCaps[i]) gains.add(labels[i]);
+    if (fromCaps[i] && !toCaps[i]) loses.add(labels[i]);
+  }
+  final parts = <String>[];
+  if (gains.isNotEmpty) {
+    parts.add('gain the ability to ${_joinAbilities(gains)}');
+  }
+  if (loses.isNotEmpty) {
+    parts.add('lose the ability to ${_joinAbilities(loses)}');
+    if (!to.canLog) parts.add('their day sheet will become read-only');
+  }
+  return 'They will ${parts.join(' and ')}.';
+}
+
+/// The enforceable capabilities of [role], in the same order as
+/// [roleChangeConsequence]'s labels.
+List<bool> _roleCapabilities(GuardianRole role) =>
+    [role.canLog, role.canEditProfile, role.canManageGuardians];
+
+String _joinAbilities(List<String> abilities) {
+  if (abilities.length == 1) return abilities.single;
+  if (abilities.length == 2) return '${abilities[0]} and ${abilities[1]}';
+  return '${abilities.sublist(0, abilities.length - 1).join(', ')}, '
+      'and ${abilities.last}';
 }
