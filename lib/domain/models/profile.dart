@@ -186,7 +186,14 @@ class Profile {
       other.birthYear == birthYear &&
       other.relationship == relationship &&
       other.transferredAt == transferredAt &&
-      other.transferredToUserId == transferredToUserId &&
+      other.transferredToUserId == transferredToUserId;
+
+  /// Cycle facts (#218) and the tracking-preferences document (#259):
+  /// split from [_sameProfileDetails] for the same reason that method was
+  /// split from [_sameProfileIdentity] - the merge of #376's
+  /// transferred_to_user_id and #259's tracking_preferences pushed the
+  /// single details method over the CRAP gate's complexity floor.
+  bool _sameProfileCuration(Profile other) =>
       other.lastPeriodStart == lastPeriodStart &&
       other.typicalCycleLengthDays == typicalCycleLengthDays &&
       other.typicalPeriodLengthDays == typicalPeriodLengthDays &&
@@ -197,7 +204,8 @@ class Profile {
       identical(this, other) ||
       other is Profile &&
           _sameProfileIdentity(other) &&
-          _sameProfileDetails(other);
+          _sameProfileDetails(other) &&
+          _sameProfileCuration(other);
 
   @override
   int get hashCode => Object.hash(
