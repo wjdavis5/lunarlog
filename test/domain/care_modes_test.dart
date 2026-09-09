@@ -59,6 +59,45 @@ void main() {
           isTrue);
     });
 
+    test('only irregular hides the fertile-window row; every mode carries '
+        'a real (non-empty) fertileWindowLabel/fertileWindowLegend, '
+        "including irregular — teen's is deliberately plainer than "
+        'standard/caregiver\'s (issue #143 review)', () {
+      expect(
+        careModeCopyFor(ProfileMode.irregular).showsFertileWindow,
+        isFalse,
+      );
+      expect(
+        careModeCopyFor(ProfileMode.standard).showsFertileWindow,
+        isTrue,
+      );
+      expect(careModeCopyFor(ProfileMode.teen).showsFertileWindow, isTrue);
+      expect(
+        careModeCopyFor(ProfileMode.caregiver).showsFertileWindow,
+        isTrue,
+      );
+
+      for (final mode in ProfileMode.values) {
+        final copy = careModeCopyFor(mode);
+        expect(copy.fertileWindowLabel, isNotEmpty, reason: '$mode label');
+        expect(copy.fertileWindowLegend, isNotEmpty, reason: '$mode legend');
+      }
+
+      final standard = careModeCopyFor(ProfileMode.standard);
+      final teen = careModeCopyFor(ProfileMode.teen);
+      expect(
+        teen.fertileWindowLabel,
+        isNot(standard.fertileWindowLabel),
+        reason: 'teen uses plainer, less clinical phrasing',
+      );
+      expect(teen.fertileWindowLegend, isNot(standard.fertileWindowLegend));
+      expect(
+        careModeCopyFor(ProfileMode.caregiver).fertileWindowLabel,
+        standard.fertileWindowLabel,
+        reason: 'caregiver matches standard\'s clinical framing',
+      );
+    });
+
     test('irregular overdue copy never uses late framing', () {
       final copy = careModeCopyFor(ProfileMode.irregular);
       expect(copy.overdueStatusLabel, contains('common'));

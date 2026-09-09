@@ -40,6 +40,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     required this.symptomDot,
     required this.predictedBand,
     required this.predictedBorder,
+    required this.fertileBand,
+    required this.fertileBorder,
     required this.confidenceHigh,
     required this.confidenceLearning,
     required this.confidenceIrregular,
@@ -102,6 +104,26 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     // alone, so the fill itself only needs to be a soft wash.
     final predictedBand = predictedBorder.withValues(alpha: 0.16);
 
+    // Fertile-window token (issue #143, hue fixed in review): originally
+    // just [tertiaryHue] -- distinct from [predictedBorder] (primary) but
+    // *identical* to [symptomDot] (also tertiary), so the two accidentally
+    // shared one hue. Offsetting by a fixed 60 degrees keeps it derived
+    // from the scheme's own tertiary (not a hardcoded badge-style hue) while
+    // giving it real, independently-verified separation (>=30 degrees,
+    // asserted in `test/ui/theme_test.dart`) from both [predictedBorder]
+    // and [symptomDot] -- the generated primary/tertiary hues sit ~35-40
+    // degrees apart for this app's seed colour, so +60 clears both with
+    // margin to spare in either brightness.
+    final fertileHue = (tertiaryHue + 60) % 360;
+    final fertileBorder = _toneAtContrast(
+      hue: fertileHue,
+      saturation: 0.32,
+      backgroundLuminance: surfaceLuminance,
+      toneLighterThanBackground: toneLighterThanSurface,
+      minContrast: 3.0,
+    );
+    final fertileBand = fertileBorder.withValues(alpha: 0.16);
+
     Color badge(double hue, double saturation) => _toneAtContrast(
           hue: hue,
           saturation: saturation,
@@ -122,6 +144,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       symptomDot: symptomDot,
       predictedBand: predictedBand,
       predictedBorder: predictedBorder,
+      fertileBand: fertileBand,
+      fertileBorder: fertileBorder,
       // Fixed hues (not the primary/tertiary hue) so these badge families
       // stay visually distinct from the flow ramp and from each other.
       confidenceHigh: badge(142, 0.45), // green -- regular, well-established
@@ -154,6 +178,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   /// colour alone.
   final Color predictedBand;
   final Color predictedBorder;
+
+  /// Low-chroma fill and contrasting border for a fertile-window/ovulation
+  /// calendar cell (issue #143) — a distinct hue (tertiary, not primary)
+  /// from [predictedBand]/[predictedBorder] so the two estimates read as
+  /// different at a glance; the consuming widget also draws a dashed
+  /// (rather than hatched) ring so the distinction survives without colour
+  /// too, mirroring [predictedBorder]'s own non-colour pairing.
+  final Color fertileBand;
+  final Color fertileBorder;
 
   /// Prediction-confidence badge colours.
   final Color confidenceHigh;
@@ -190,6 +223,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     Color? symptomDot,
     Color? predictedBand,
     Color? predictedBorder,
+    Color? fertileBand,
+    Color? fertileBorder,
     Color? confidenceHigh,
     Color? confidenceLearning,
     Color? confidenceIrregular,
@@ -210,6 +245,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       symptomDot: _or(symptomDot, this.symptomDot),
       predictedBand: _or(predictedBand, this.predictedBand),
       predictedBorder: _or(predictedBorder, this.predictedBorder),
+      fertileBand: _or(fertileBand, this.fertileBand),
+      fertileBorder: _or(fertileBorder, this.fertileBorder),
       confidenceHigh: _or(confidenceHigh, this.confidenceHigh),
       confidenceLearning: _or(confidenceLearning, this.confidenceLearning),
       confidenceIrregular: _or(confidenceIrregular, this.confidenceIrregular),
@@ -238,6 +275,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       symptomDot: Color.lerp(symptomDot, other.symptomDot, t)!,
       predictedBand: Color.lerp(predictedBand, other.predictedBand, t)!,
       predictedBorder: Color.lerp(predictedBorder, other.predictedBorder, t)!,
+      fertileBand: Color.lerp(fertileBand, other.fertileBand, t)!,
+      fertileBorder: Color.lerp(fertileBorder, other.fertileBorder, t)!,
       confidenceHigh: Color.lerp(confidenceHigh, other.confidenceHigh, t)!,
       confidenceLearning:
           Color.lerp(confidenceLearning, other.confidenceLearning, t)!,
@@ -266,7 +305,9 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   bool _sameAccentColors(LunarLogColors other) =>
       other.symptomDot == symptomDot &&
       other.predictedBand == predictedBand &&
-      other.predictedBorder == predictedBorder;
+      other.predictedBorder == predictedBorder &&
+      other.fertileBand == fertileBand &&
+      other.fertileBorder == fertileBorder;
 
   bool _sameConfidenceColors(LunarLogColors other) =>
       other.confidenceHigh == confidenceHigh &&
@@ -307,6 +348,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
         symptomDot,
         predictedBand,
         predictedBorder,
+        fertileBand,
+        fertileBorder,
         confidenceHigh,
         confidenceLearning,
         confidenceIrregular,

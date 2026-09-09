@@ -27,6 +27,14 @@ double _luminance(Color color) {
       0.0722 * linearize(color.b);
 }
 
+/// Circular distance between two hue-circle degrees (`[0, 360)` each), in
+/// `[0, 180]` — the short way around the wheel, so e.g. 350 and 10 are 20
+/// degrees apart, not 340.
+double _hueDistance(double a, double b) {
+  final diff = (a - b).abs() % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
 /// WCAG 2.x contrast ratio between two colours, in `[1, 21]`.
 /// https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio
 double _contrast(Color a, Color b) {
@@ -72,6 +80,8 @@ void main() {
           'symptomDot': c.symptomDot,
           'predictedBand': c.predictedBand,
           'predictedBorder': c.predictedBorder,
+          'fertileBand': c.fertileBand,
+          'fertileBorder': c.fertileBorder,
           'confidenceHigh': c.confidenceHigh,
           'confidenceLearning': c.confidenceLearning,
           'confidenceIrregular': c.confidenceIrregular,
@@ -181,6 +191,56 @@ void main() {
           ratio,
           greaterThanOrEqualTo(3.0),
           reason: '$name predictedBorder/surface contrast was $ratio',
+        );
+      });
+
+      test(
+          '$name theme: fertileBorder clears 3:1 against surface, and is a '
+          'distinct colour from predictedBorder (issue #143)', () {
+        final colors = theme.extension<LunarLogColors>()!;
+        final ratio = _contrast(
+          colors.fertileBorder,
+          theme.colorScheme.surface,
+        );
+        expect(
+          ratio,
+          greaterThanOrEqualTo(3.0),
+          reason: '$name fertileBorder/surface contrast was $ratio',
+        );
+        expect(
+          colors.fertileBorder,
+          isNot(colors.predictedBorder),
+          reason: 'the two estimates must not share one colour token',
+        );
+      });
+
+      // Issue #143 review: `fertileBorder` used to sit at the exact same
+      // hue as `symptomDot` (both derived from `tertiaryHue`, unlike
+      // `isNot` above which only rules out sharing `predictedBorder`'s
+      // primary-derived hue) -- a same-hue-different-lightness pair reads
+      // as one colour family at a glance. Asserts a real (>=30 degree)
+      // circular hue separation from *both* siblings, not just inequality.
+      test(
+          '$name theme: fertileBorder\'s hue is genuinely distinct '
+          '(>=30 degrees) from both predictedBorder and symptomDot '
+          '(issue #143)', () {
+        final colors = theme.extension<LunarLogColors>()!;
+        final fertileHue = HSLColor.fromColor(colors.fertileBorder).hue;
+        final predictedHue = HSLColor.fromColor(colors.predictedBorder).hue;
+        final symptomHue = HSLColor.fromColor(colors.symptomDot).hue;
+        expect(
+          _hueDistance(fertileHue, predictedHue),
+          greaterThanOrEqualTo(30.0),
+          reason:
+              '$name fertileBorder/predictedBorder hue distance was '
+              '${_hueDistance(fertileHue, predictedHue)}',
+        );
+        expect(
+          _hueDistance(fertileHue, symptomHue),
+          greaterThanOrEqualTo(30.0),
+          reason:
+              '$name fertileBorder/symptomDot hue distance was '
+              '${_hueDistance(fertileHue, symptomHue)}',
         );
       });
     }

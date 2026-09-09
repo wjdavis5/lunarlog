@@ -31,6 +31,9 @@ class CareModeCopy {
     required this.overdueStatusLabel,
     required this.silencesLateBanner,
     required this.showsTierCaption,
+    required this.showsFertileWindow,
+    required this.fertileWindowLabel,
+    required this.fertileWindowLegend,
     required this.categoriesInOrder,
     required this.categoryLabels,
   });
@@ -65,6 +68,30 @@ class CareModeCopy {
   /// thing a second time.
   final bool showsTierCaption;
 
+  /// Whether the fertile-window/ovulation estimate (issue #143) renders for
+  /// this mode — the calendar band, its legend entry, and the Analysis
+  /// headline row all gate on this one flag. Only `irregular` silences it:
+  /// a fertile window is exactly as precise-looking as the period estimate
+  /// it is derived from (a specific date range, not a vaguer framing), and
+  /// `irregular` mode's whole posture is avoiding that false precision —
+  /// the same reasoning [showsTierCaption] and [silencesLateBanner] already
+  /// apply, extended to this estimate rather than inventing a third rule.
+  final bool showsFertileWindow;
+
+  /// Row label for the fertile-window estimate on the Analysis tab (issue
+  /// #143 review, per-mode vocabulary — the same reasoning as
+  /// [nextEstimateLabel]): `teen` gets plainer, less clinical phrasing than
+  /// `standard`/`caregiver`. Meaningless (never rendered) when
+  /// [showsFertileWindow] is false, but still a real, non-empty string —
+  /// [CareModeCopy] never leaves a field blank just because one mode
+  /// doesn't currently use it.
+  final String fertileWindowLabel;
+
+  /// Legend-strip and future-day-explainer wording for the same estimate
+  /// (issue #143 review) — a shorter phrase than [fertileWindowLabel] fit
+  /// for a legend swatch key or mid-sentence use, same per-mode variance.
+  final String fertileWindowLegend;
+
   /// Which tracking categories are surfaced first (Issue #131 defaults):
   /// the day sheet renders headings in this order. Always a permutation of
   /// [TagCategory.values] — teen reorders (body literacy first), it never
@@ -92,6 +119,9 @@ const CareModeCopy _standard = CareModeCopy(
   overdueStatusLabel: '',
   silencesLateBanner: false,
   showsTierCaption: true,
+  showsFertileWindow: true,
+  fertileWindowLabel: 'Estimated fertile window',
+  fertileWindowLegend: 'Estimated fertile days',
   categoriesInOrder: TagCategory.values,
   categoryLabels: _standardCategoryLabels,
 );
@@ -104,6 +134,13 @@ const CareModeCopy _teen = CareModeCopy(
   overdueStatusLabel: '',
   silencesLateBanner: false,
   showsTierCaption: true,
+  showsFertileWindow: true,
+  // Issue #143 review: plainer, less clinical phrasing than
+  // standard/caregiver's "Estimated fertile window" — matches this mode's
+  // existing body-literacy framing (e.g. `categoryLabels`'s "How your body
+  // feels" above).
+  fertileWindowLabel: 'Days pregnancy is more likely (estimate)',
+  fertileWindowLegend: 'Days pregnancy is more likely',
   // Body-literacy framing surfaces how the body feels first; every
   // standard category is still here, only reordered (not a reduced app).
   categoriesInOrder: [
@@ -128,6 +165,9 @@ const CareModeCopy _caregiver = CareModeCopy(
   overdueStatusLabel: '',
   silencesLateBanner: false,
   showsTierCaption: true,
+  showsFertileWindow: true,
+  fertileWindowLabel: 'Estimated fertile window',
+  fertileWindowLegend: 'Estimated fertile days',
   categoriesInOrder: TagCategory.values,
   categoryLabels: _standardCategoryLabels,
 );
@@ -144,6 +184,17 @@ const CareModeCopy _irregular = CareModeCopy(
   // this mode's own "variation is expected" framing, so the tier caption
   // is redundant here — silenced the same way the late banner is.
   showsTierCaption: false,
+  // Issue #143: same reasoning as showsTierCaption above — a fertile-window
+  // estimate is exactly the kind of false precision this mode's status
+  // line already exists to avoid, so it is silenced too rather than
+  // rendered alongside a "variation is common and expected" message.
+  showsFertileWindow: false,
+  // Unused while showsFertileWindow is false — kept as real,
+  // standard-matching strings (never blank) so a future mode that flips
+  // showsFertileWindow back on inherits sensible copy rather than an
+  // empty row.
+  fertileWindowLabel: 'Estimated fertile window',
+  fertileWindowLegend: 'Estimated fertile days',
   categoriesInOrder: TagCategory.values,
   categoryLabels: _standardCategoryLabels,
 );

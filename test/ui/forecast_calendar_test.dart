@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
@@ -135,6 +136,8 @@ Future<Harness> pumpForecast(
   Map<LocalDate, List<String>> tagDays = const {},
   Brightness brightness = Brightness.light,
   bool readOnly = false,
+  ProfileMode mode = ProfileMode.standard,
+  bool isMinor = false,
 }) async {
   tester.view.physicalSize = const Size(800, 1600);
   tester.view.devicePixelRatio = 1.0;
@@ -145,7 +148,11 @@ Future<Harness> pumpForecast(
   final profiles = DriftProfilesRepository(db.storage);
   final settings = DriftSettingsStore(db.storage);
   final entries = DriftDayEntriesRepository(db.storage);
-  final profile = await profiles.create(displayName: 'Alice', isMinor: false);
+  final profile = await profiles.create(
+    displayName: 'Alice',
+    isMinor: isMinor,
+    mode: mode,
+  );
   for (final start in bleedStarts) {
     for (var i = 0; i < bleedDays; i++) {
       await entries.save(
@@ -540,16 +547,21 @@ void main() {
       await tester.pumpAndSettle();
 
       // A plain future day with no prediction at all, dimmed as locked.
+      // Nov 25 (not Nov 20, issue #143 review): cycle 3's own fertile
+      // window (ovulation Nov 19, band Nov 14-20) now covers Nov 20, so
+      // this picks a date clear of every band/numeral/fertile-window
+      // island instead.
       await showMonthForward(tester, 2026, 11);
-      expect(find.byKey(const ValueKey('predicted-2026-11-20')), findsNothing);
+      expect(find.byKey(const ValueKey('predicted-2026-11-25')), findsNothing);
+      expect(find.byKey(const ValueKey('fertile-2026-11-25')), findsNothing);
       final opacity = tester.widget<Opacity>(
         find.descendant(
-          of: find.byKey(const ValueKey('day-cell-2026-11-20')),
+          of: find.byKey(const ValueKey('day-cell-2026-11-25')),
           matching: find.byType(Opacity),
         ),
       );
       expect(opacity.opacity, 0.35, reason: 'plain future days stay dimmed');
-      await tester.tap(find.byKey(const ValueKey('day-cell-2026-11-20')));
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-11-25')));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('future-explainer-none')),
@@ -788,6 +800,7 @@ void main() {
             cycleDayNumber: 1,
             pmsBadge: false,
             crampsBadge: true,
+            fertileWindow: false,
             tier: CycleConfidence.high,
             cycleIndex: 0,
           ),
@@ -805,12 +818,223 @@ void main() {
             cycleDayNumber: 17,
             pmsBadge: false,
             crampsBadge: false,
+            fertileWindow: false,
             tier: CycleConfidence.high,
             cycleIndex: 0,
           ),
         ),
         'September 20, cycle day 17 of the first predicted cycle',
       );
+      expect(
+        dayCellSemanticLabel(
+          date: LocalDate(2026, 9, 15),
+          entry: null,
+          today: today,
+          cell: const ForecastDayCell(
+            predictedBleed: false,
+            cycleDayNumber: null,
+            pmsBadge: false,
+            crampsBadge: false,
+            fertileWindow: true,
+            tier: CycleConfidence.high,
+            cycleIndex: 0,
+          ),
+        ),
+        'September 15, estimated fertile window',
+      );
+    });
+  });
+
+  group('AC8 (issue #143): fertile-window band', () {
+    // With today = kToday (Aug 30) and kSteadyStarts, cycle 0's own fertile
+    // window (Aug 16-22) is already in the past (past stays factual, KTD3)
+    // and cycle 0's full-length numeral span (Sep 4 - Oct 3) would collide
+    // with cycle 1's window anyway (`test/domain/forecast_test.dart`'s own
+    // note on the same collision) — cycle 2's window (ovulation Oct 20,
+    // band Oct 15-21) is the first clean, visible one, same as the domain
+    // suite uses.
+    testWidgets('a dashed ring renders on the window days, distinct from '
+        'the hatched predicted band and the solid bleed fill', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+      );
+      await showMonthForward(tester, 2026, 10);
+
+      expect(find.byKey(const ValueKey('fertile-2026-10-15')), findsOneWidget);
+      expect(find.byKey(const ValueKey('predicted-2026-10-15')), findsNothing);
+      expect(find.byKey(const ValueKey('bleed-2026-10-15')), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('fertile-2026-10-15')),
+          matching: find.byType(CustomPaint),
+        ),
+        findsOneWidget,
+        reason: 'a dashed ring painter, not a solid BoxDecoration fill',
+      );
+      // A day just outside the window carries no fertile marker.
+      expect(find.byKey(const ValueKey('fertile-2026-10-14')), findsNothing);
+
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets('bands render in the dark theme too', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+        brightness: Brightness.dark,
+      );
+      await showMonthForward(tester, 2026, 10);
+      expect(find.byKey(const ValueKey('fertile-2026-10-15')), findsOneWidget);
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets(
+        'the legend keys "Estimated fertile days" with a dashed swatch',
+        (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+      );
+      expect(find.text('Estimated fertile days'), findsOneWidget);
+      expect(find.byKey(const ValueKey('legend-fertile')), findsOneWidget);
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets(
+        'irregular mode hides both the band and its legend entry (#143: '
+        'same false-precision reasoning as showsTierCaption/'
+        'silencesLateBanner)', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+        mode: ProfileMode.irregular,
+      );
+      expect(find.text('Estimated fertile days'), findsNothing);
+      expect(find.byKey(const ValueKey('legend-fertile')), findsNothing);
+
+      await showMonthForward(tester, 2026, 10);
+      expect(find.byKey(const ValueKey('fertile-2026-10-15')), findsNothing);
+
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets(
+        'available on a minor profile too — #142 removes any isMinor '
+        'gating', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+        isMinor: true,
+      );
+      await showMonthForward(tester, 2026, 10);
+      expect(find.byKey(const ValueKey('fertile-2026-10-15')), findsOneWidget);
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets(
+        'the future-day explainer names the fertile window and carries '
+        'its own contraception disclaimer', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+      );
+      await showMonthForward(tester, 2026, 10);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-10-15')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('future-explainer-fertile')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('future-explainer-fertile-disclaimer')),
+        findsOneWidget,
+      );
+      expect(find.byType(DaySheet), findsNothing);
+
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets(
+        "cycle 1's fertile window (which lands inside cycle 0's own "
+        'numeral-day span, Sep 15-21 inside Sep 4 - Oct 3) renders and '
+        "explains at cycle 1's own (degraded) tier, not cycle 0's — the "
+        'contested overlap case, issue #143 review', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+      );
+      // kToday (Aug 30) opens on August; Sep 15 needs one month forward.
+      await showMonthForward(tester, 2026, 9);
+      expect(find.byKey(const ValueKey('fertile-2026-09-15')), findsOneWidget);
+      // The day still carries cycle 0's own numeral (day 12 of the first
+      // predicted cycle, Sep 4 being day 1) even though the ring drawn is
+      // cycle 1's fertile window.
+      expect(find.text('12'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-09-15')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('future-explainer-fertile')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Estimate confidence: learning.'),
+        findsOneWidget,
+        reason: "the fertile window belongs to cycle 1 (learning), not "
+            "the numeral-owning cycle 0 (high)",
+      );
+
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets(
+        'irregular mode: a day whose ONLY content was the fertile window '
+        'renders as a plain (dimmed) future day and explains itself as '
+        '"no prediction", not as a brighter "empty" prediction cell '
+        '(issue #143 review)', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kSteadyStarts,
+        mode: ProfileMode.irregular,
+      );
+      await showMonthForward(tester, 2026, 10);
+
+      expect(find.byKey(const ValueKey('fertile-2026-10-15')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('predicted-2026-10-15')),
+        findsNothing,
+      );
+      final opacity = tester.widget<Opacity>(
+        find.descendant(
+          of: find.byKey(const ValueKey('day-cell-2026-10-15')),
+          matching: find.byType(Opacity),
+        ),
+      );
+      expect(opacity.opacity, 0.35,
+          reason: 'a hidden fertile-only day must stay dimmed, like any '
+              'other plain future day');
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-10-15')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('future-explainer-none')),
+        findsOneWidget,
+        reason: 'must read as "no prediction for this date", not a bare '
+            'confidence line for content the mode actually hides',
+      );
+
+      await disposeForecast(tester, h);
     });
   });
 }
