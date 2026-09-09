@@ -12,6 +12,7 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
@@ -24,6 +25,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
@@ -133,6 +135,10 @@ Future<Harness> pumpActivity(
       providers: <SingleChildWidget>[
         Provider<ProfilesRepository>.value(value: profiles),
         Provider<DayEntriesRepository>.value(value: entries),
+        // Issue #247: DaySheet (opened from a feed row) reads this on Save.
+        Provider<ObservationsRepository>.value(
+          value: DriftObservationsRepository(db.storage),
+        ),
         Provider<SettingsStore>.value(value: settings),
         if (authController != null)
           ChangeNotifierProvider<AuthController>.value(value: authController),

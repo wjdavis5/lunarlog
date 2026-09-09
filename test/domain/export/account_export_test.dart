@@ -143,6 +143,30 @@ void main() {
     });
   });
 
+  group('flow wire strings (Issue #247)', () {
+    test(
+        'superHeavy/notBleeding export as their wire strings, not their '
+        'Dart enum names', () {
+      final profile = _profile('p-a');
+      final doc = buildAccountExport(
+        profiles: [profile],
+        entriesByProfile: {
+          'p-a': [
+            _entry('e1', 'p-a', '2026-09-01', flow: FlowLevel.superHeavy),
+            _entry('e2', 'p-a', '2026-09-02', flow: FlowLevel.notBleeding),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final entries =
+          (((doc['profiles'] as List).single as Map)['dayEntries'] as List)
+              .cast<Map>();
+      expect(entries[0]['flow'], 'super_heavy');
+      expect(entries[1]['flow'], 'not_bleeding');
+    });
+  });
+
   group('determinism', () {
     test('the encoded output is byte-identical across two calls with the '
         'same input and a fixed exportedAt', () {
@@ -309,10 +333,11 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 4,
+      expect(kAccountExportSchemaVersion, 5,
           reason: 'profiles[].mode was v2''s shape change; the constant has '
-              'since moved to v4 for profiles[].observations (Issue #240) '
-              'and dayEntries[].source/sourceId/importId (Issue #159)');
+              'since moved to v5 for profiles[].observations (Issue #240), '
+              'dayEntries[].source/sourceId/importId (Issue #159), and the '
+              'super_heavy/not_bleeding flow wire values (Issue #247)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
@@ -465,7 +490,7 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 4,
+      expect(kAccountExportSchemaVersion, 5,
           reason: 'adding profiles[].observations is a shape change');
       final profiles = doc['profiles'] as List;
       final p1 = profiles[0] as Map;

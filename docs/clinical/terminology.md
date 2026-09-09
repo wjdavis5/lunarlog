@@ -161,6 +161,23 @@ rather than dressing it up as a clinical code it isn't.
 `light`, `medium`, `heavy`) were checked against SNOMED CT for a verified
 flow-amount scale and none was found that fits without overreaching:
 
+**System URI (#157 review fix, 2026-09-09):** flow levels are coded on
+their own local system, `kSystemLunarlogLocalFlow`
+(`https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/flow`, defined in
+`lib/domain/export/fhir_bundle.dart`) — **not** `kSystemLunarlogLocal`
+(`.../CodeSystem/tag`, this file's own subject above). The two URIs exist
+because they cover genuinely different concept spaces: `kSystemLunarlogLocal`
+is specifically *the 17-code tag taxonomy* (`lib/domain/tags.dart`), and a
+flow level was never one of those 17 codes — v1 of the FHIR export coded
+it on the tag system anyway (an oversight, not a decision), which this
+fix corrects. `Provenance.activity`'s `self-reported` marker (see
+`docs/clinical/fhir-export.md`'s "Self-reported" section) stays on
+`kSystemLunarlogLocal` — a self-report marker is a single fixed value, not
+a competing taxonomy the way flow levels are, so splitting it out into
+its own system would not buy the same clarity. Both systems' rows are
+**permanent once emitted**, the same as `kSystemLunarlogLocal` itself —
+neither is to be changed casually.
+
 - The only close matches describe *abnormal* flow as a standalone
   concept, not a neutral descriptor of a given cycle day's flow amount —
   e.g. `64206003` **Hypomenorrhea (finding)** (abnormally light/scanty

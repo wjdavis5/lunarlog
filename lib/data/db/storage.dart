@@ -542,17 +542,25 @@ class LunarLogStorage {
   /// Day entries for one profile — UI reads (default) filter tombstones;
   /// `includeTombstones: true` gives full-fidelity reads for sync.
   /// [updatedAfter] narrows to rows changed after that instant
-  /// (incremental-sync support). Per-profile isolation (R3) is structural:
-  /// every query is scoped to exactly one profileId.
+  /// (incremental-sync support). [fromLocalDate]/[toLocalDate] narrow to an
+  /// inclusive `yyyy-MM-dd` range (issue #197: the calendar's windowed
+  /// subscription) — lexicographic string comparison on that format sorts
+  /// identically to chronological order, so no date parsing is needed here.
+  /// Per-profile isolation (R3) is structural: every query is scoped to
+  /// exactly one profileId.
   Future<List<DayEntry>> getDayEntries({
     required String profileId,
     bool includeTombstones = false,
     DateTime? updatedAfter,
+    String? fromLocalDate,
+    String? toLocalDate,
   }) {
     return _dayEntryQuery(
       profileId: profileId,
       includeTombstones: includeTombstones,
       updatedAfter: updatedAfter,
+      fromLocalDate: fromLocalDate,
+      toLocalDate: toLocalDate,
     ).get();
   }
 
@@ -610,16 +618,21 @@ class LunarLogStorage {
     return rows.isEmpty ? null : rows.first;
   }
 
-  /// Stream variant of [getDayEntries] for reactive UI.
+  /// Stream variant of [getDayEntries] for reactive UI. See [getDayEntries]
+  /// for [fromLocalDate]/[toLocalDate] (issue #197).
   Stream<List<DayEntry>> watchDayEntries({
     required String profileId,
     bool includeTombstones = false,
     DateTime? updatedAfter,
+    String? fromLocalDate,
+    String? toLocalDate,
   }) {
     return _dayEntryQuery(
       profileId: profileId,
       includeTombstones: includeTombstones,
       updatedAfter: updatedAfter,
+      fromLocalDate: fromLocalDate,
+      toLocalDate: toLocalDate,
     ).watch();
   }
 
@@ -869,10 +882,20 @@ class LunarLogStorage {
 
   /// Day entries with unpushed local changes, tombstones included, ordered
   /// by id. Same keyset-paging contract as [readDirtyProfiles].
+  ///
+  /// The dirty predicate is `t.dirty.equalsExp(const Constant(true))`
+  /// (review follow-up, issue #197), not the more usual `t.dirty.equals` —
+  /// `equals` binds its argument as a `?` placeholder, and sqlite cannot
+  /// prove a bound parameter satisfies `ix_day_entries_dirty`'s partial
+  /// index condition (`WHERE dirty = 1`) at plan time, so that predicate
+  /// fell back to a full table scan despite the index existing. `Constant`
+  /// writes the value as a SQL literal (`dirty = 1`) instead, which the
+  /// partial index does match — see the `EXPLAIN QUERY PLAN` coverage in
+  /// `test/data/storage_sync_test.dart`.
   Future<List<DayEntry>> readDirtyDayEntries({int? limit, String? afterId}) {
     final query = db.select(db.dayEntries)
       ..where((t) =>
-          t.dirty.equals(true) &
+          t.dirty.equalsExp(const Constant(true)) &
           (afterId == null
               ? const Constant(true)
               : t.id.isBiggerThanValue(afterId)))
@@ -1757,10 +1780,16 @@ class LunarLogStorage {
 
   /// The shared builder behind the day-entry reads. [localDate] narrows to
   /// one date (the single-row [getDayEntry] lookup); the list reads omit it.
+  /// [fromLocalDate]/[toLocalDate] narrow to an inclusive range instead of a
+  /// single date (issue #197) — `day_entries(profile_id, local_date)`
+  /// (`kDayEntriesProfileDateIndexSql` in `lib/data/db/db.dart`) makes this
+  /// a cheap index range scan rather than a full-table scan.
   Selectable<DayEntry> _dayEntryQuery({
     required String profileId,
     required bool includeTombstones,
     String? localDate,
+    String? fromLocalDate,
+    String? toLocalDate,
     DateTime? updatedAfter,
   }) {
     final query = db.select(db.dayEntries)
@@ -1768,6 +1797,14 @@ class LunarLogStorage {
         var condition = row.profileId.equals(profileId);
         if (localDate != null) {
           condition = condition & row.localDate.equals(localDate);
+        }
+        if (fromLocalDate != null) {
+          condition =
+              condition & row.localDate.isBiggerOrEqualValue(fromLocalDate);
+        }
+        if (toLocalDate != null) {
+          condition =
+              condition & row.localDate.isSmallerOrEqualValue(toLocalDate);
         }
         if (!includeTombstones) {
           condition = condition & row.deletedAt.isNull();

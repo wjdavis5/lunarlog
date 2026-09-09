@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
@@ -28,6 +29,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -65,7 +67,8 @@ class Harness {
   Harness(
     this.db,
     this.profile,
-    this.entries, {
+    this.entries,
+    this.observations, {
     this.authService,
     this.authController,
   });
@@ -73,6 +76,11 @@ class Harness {
   final LunarLogDatabase db;
   final Profile profile;
   final DriftDayEntriesRepository entries;
+
+  /// Issue #247: always present (unlike `storage`, which is behind
+  /// `withStorage`) so every test can exercise the day sheet's spotting
+  /// toggle without opting in separately.
+  final DriftObservationsRepository observations;
 
   /// Present only when [pumpLogging] was called with `authService:` (U2;
   /// R1/R7). Exposed so a test can flip the signed-in user mid-flight.
@@ -157,11 +165,14 @@ List<SingleChildWidget> loggingProviders({
   required ProfilesRepository profiles,
   required DayEntriesRepository dayEntries,
   required SettingsStore settings,
+  required ObservationsRepository observations,
   AuthController? authController,
   LunarLogStorage? storage,
 }) => [
   Provider<ProfilesRepository>.value(value: profiles),
   Provider<DayEntriesRepository>.value(value: dayEntries),
+  // Issue #247: DaySheet reads this to sync the "Spotting" toggle.
+  Provider<ObservationsRepository>.value(value: observations),
   Provider<SettingsStore>.value(value: settings),
   ChangeNotifierProvider(
     create: (_) =>
@@ -199,6 +210,7 @@ Future<Harness> pumpLogging(
     await seed(db, profile.id);
   }
   final entries = DriftDayEntriesRepository(db.storage);
+  final observations = DriftObservationsRepository(db.storage);
 
   final authController = authService == null
       ? null
@@ -210,6 +222,7 @@ Future<Harness> pumpLogging(
         profiles: profiles,
         dayEntries: entryRepositoryOverride ?? entries,
         settings: settings,
+        observations: observations,
         authController: authController,
         // Matches lib/app.dart's provider set (KTD2): LunarLogStorage is
         // what ProfileDetailScreen reads to decide whether MonthCalendar
@@ -233,6 +246,7 @@ Future<Harness> pumpLogging(
     db,
     profile,
     entries,
+    observations,
     authService: authService,
     authController: authController,
   );
@@ -308,7 +322,11 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   Future<List<DayEntry>> listForProfile(String profileId) async => seeded;
 
   @override
-  Stream<List<DayEntry>> watchForProfile(String profileId) =>
+  Stream<List<DayEntry>> watchForProfile(
+    String profileId, {
+    LocalDate? from,
+    LocalDate? to,
+  }) =>
       Stream.value(seeded);
 
   @override
@@ -692,7 +710,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      expect(find.byType(FilterChip), findsNWidgets(17));
+      // Issue #247: the curated 17 tag chips plus the standalone spotting
+      // toggle, which is also a FilterChip (see `_editableBody`).
+      expect(find.byType(FilterChip), findsNWidgets(18));
       for (final header in ['Pain', 'Body', 'Mood', 'Other']) {
         expect(find.text(header), findsOneWidget);
       }
@@ -956,6 +976,281 @@ void main() {
         findsNothing,
         reason: 'no entry-creation affordance in read-only mode',
       );
+      await disposeLogging(tester, h);
+    });
+  });
+
+  group('spotting and the new flow levels (Issue #247)', () {
+    testWidgets(
+        '"Super heavy" and "Not bleeding" chips are offered and persist '
+        'their FlowLevel', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DaySheet), findsOneWidget);
+
+      expect(find.widgetWithText(ChoiceChip, 'Super heavy'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Not bleeding'), findsOneWidget);
+      // Issue #247: spotting is its own observations category, not a
+      // selectable FlowLevel chip.
+      expect(find.widgetWithText(ChoiceChip, 'Spotting'), findsNothing);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Super heavy'));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.superHeavy);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('the "Not bleeding" chip persists FlowLevel.notBleeding',
+        (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Not bleeding'));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.notBleeding);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'checking the Spotting chip with no other flow chosen saves flow: '
+        'notBleeding plus a spotting observation', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('spotting-chip')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.notBleeding,
+          reason: 'spotting alone still asserts an explicit not-bleeding day');
+      final observations = await h.observations.listForDayEntry(saved.id);
+      expect(observations, hasLength(1));
+      expect(observations.single.category, 'spotting');
+      expect(observations.single.code, 'spotting');
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'checking Spotting alongside a real bleed level keeps that level '
+        'and still records the spotting observation', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Light'));
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.light);
+      final observations = await h.observations.listForDayEntry(saved.id);
+      expect(observations.map((o) => o.category), contains('spotting'));
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'unchecking a previously-saved spotting observation deletes it on '
+        'save', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await pumpAutosave(tester);
+
+      final firstSave = await h.entries.find(h.profile.id, kToday);
+      expect(
+          await h.observations.listForDayEntry(firstSave!.id), hasLength(1));
+
+      // #198: autosave never closes the sheet — dismiss it to end the
+      // first editing session before reopening the day.
+      await dismissDaySheet(tester);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      final chip =
+          tester.widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')));
+      expect(chip.selected, isTrue);
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await pumpAutosave(tester);
+
+      final resaved = await h.entries.find(h.profile.id, kToday);
+      expect(await h.observations.listForDayEntry(resaved!.id), isEmpty);
+      expect(resaved.flow, FlowLevel.none,
+          reason: 'review fix (blocking): unchecking spotting on a '
+              'spotting-only day reverts flow to none rather than leaving '
+              'the spotting-derived notBleeding behind as if it had been '
+              'asserted on purpose');
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'unchecking spotting after explicitly choosing "Not bleeding" in '
+        'the SAME sheet session keeps flow: notBleeding', (tester) async {
+      final h = await pumpLogging(tester);
+
+      // First session: save a spotting-only day (flow ends up
+      // notBleeding purely as spotting's side effect, per the ternary in
+      // `_resolveEffectiveFlow` -- never an explicit chip tap).
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await pumpAutosave(tester);
+
+      final firstSave = await h.entries.find(h.profile.id, kToday);
+      expect(firstSave!.flow, FlowLevel.notBleeding);
+
+      // #198: autosave never closes the sheet — dismiss it to end the
+      // first editing session before reopening the day.
+      await dismissDaySheet(tester);
+
+      // Second (reopened) session: `_flowExplicitlySet` starts false again
+      // here -- it does not persist across sheet instances, only within
+      // one. Explicitly re-choosing "Not bleeding" (tapping away to
+      // "Light" first, since ChoiceChip's tap toggles an already-selected
+      // chip off rather than re-firing `selected: true`) marks it
+      // deliberate, so unchecking spotting afterwards, in the same
+      // session, must not revert it to none.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      final chip =
+          tester.widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')));
+      expect(chip.selected, isTrue,
+          reason: 'the spotting toggle re-seeds from the persisted '
+              'observation on reopen');
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Light'));
+      // The pump between taps matters: ChoiceChip built with selected:true
+      // (this session opened with the spotting-derived notBleeding still
+      // selected) toggles OFF on tap — `onSelected(false)` — and the
+      // sheet's handler deliberately ignores it. Pumping first rebuilds
+      // the row so "Not bleeding" is visibly unselected and its tap fires
+      // `onSelected(true)` (the #335 test's original sequencing).
+      await tester.pump();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Not bleeding'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await pumpAutosave(tester);
+
+      final resaved = await h.entries.find(h.profile.id, kToday);
+      expect(resaved!.flow, FlowLevel.notBleeding,
+          reason: 'review fix (blocking): the user explicitly tapped "Not '
+              'bleeding" this session, so unchecking spotting must not '
+              'revert it — that flow value is an independent, deliberate '
+              'assertion, not merely spotting-derived');
+      await disposeLogging(tester, h);
+    });
+  });
+
+  group('legacy spotting flow (review follow-up, PR #335)', () {
+    testWidgets(
+        'opening a legacy flow = spotting day seeds the Spotting toggle on, '
+        'and saving preserves the spotting fact as an observation',
+        (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          // ignore: deprecated_member_use_from_same_package
+          await DriftDayEntriesRepository(db.storage).save(
+            entryFor(profileId, kToday, flow: FlowLevel.spotting),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // The mapper reads a legacy `spotting` row as notBleeding
+      // (`mappers.dart`'s `flowToDomain`) -- the chip row reflects that --
+      // but the review fix means the Spotting toggle picks up the alias
+      // observation `DriftObservationsRepository.listForProfile`
+      // synthesises for it, even though no real observation row exists yet.
+      expect(
+        tester
+            .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
+            .selected,
+        isTrue,
+        reason: 'review fix (blocking): a legacy spotting day seeds the '
+            'Spotting toggle on via listForProfile\'s synthesised alias, '
+            'not listForDayEntry (which never sees it)',
+      );
+
+      await tester.enterText(
+          find.byKey(const ValueKey('note-field')), 'still spotting');
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.notBleeding);
+      expect(saved.note, 'still spotting');
+      final observations = await h.observations.listForDayEntry(saved.id);
+      expect(observations, hasLength(1),
+          reason: 'review fix (blocking): the autosave now writes a real '
+              'spotting observation for the legacy row instead of silently '
+              'dropping the fact');
+      expect(observations.single.category, 'spotting');
+      await disposeLogging(tester, h);
+    });
+  });
+
+  group('autosave provenance carry-forward (#198 x #159)', () {
+    testWidgets(
+        'an imported entry\'s source/sourceId/importId survive an autosave '
+        'write triggered by an unrelated change', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          // An imported entry (#159): provenance is set by the importer,
+          // never by the day sheet. The seed goes through the repository
+          // (not `applyRemoteRows`) because provenance is exactly what a
+          // local upsert must round-trip for this regression to mean
+          // anything.
+          await DriftDayEntriesRepository(db.storage).save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.medium,
+              tags: const [],
+              note: null,
+              updatedAt: DateTime.utc(2026, 1, 1),
+              source: DayEntrySource.clueImport,
+              sourceId: 'clue-2026-08-30',
+              importId: 'job-1',
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // An unrelated edit (a flow chip) is enough to trigger the debounced
+      // autosave — the exact path a bare `DayEntry(...)` default would have
+      // silently reset provenance on (the #159 review finding, now asserted
+      // against #198's `_composeEntry` instead of the removed Save button).
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.flow, FlowLevel.heavy, reason: 'the edit itself lands');
+      expect(saved.source, DayEntrySource.clueImport,
+          reason: 'autosave must carry forward the imported entry\'s '
+              'source, not reset it to manual');
+      expect(saved.sourceId, 'clue-2026-08-30',
+          reason: 'the importer\'s dedup key must survive every autosave '
+              'write or a re-import would duplicate the day');
+      expect(saved.importId, 'job-1',
+          reason: 'the bulk-import job link must survive every autosave '
+              'write too');
       await disposeLogging(tester, h);
     });
   });
@@ -1341,6 +1636,7 @@ void main() {
             profiles: profiles,
             dayEntries: h.entries,
             settings: settings,
+            observations: h.observations,
             authController: h.authController,
             storage: h.db.storage,
           ),
@@ -1862,8 +2158,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      // All 17 curated chips render — nothing is removed by the mode.
-      expect(find.byType(FilterChip), findsNWidgets(17));
+      // All 17 curated chips render — nothing is removed by the mode —
+      // plus the standalone spotting toggle (Issue #247), also a
+      // FilterChip.
+      expect(find.byType(FilterChip), findsNWidgets(18));
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget,
             reason: 'teen mode must not hide ${tag.display}');
@@ -2069,6 +2367,10 @@ void main() {
       final profile = await DriftProfilesRepository(db.storage)
           .create(displayName: 'Alice', isMinor: false);
       final entries = DriftDayEntriesRepository(db.storage);
+      // Issue #247: DaySheet's Save path always reads ObservationsRepository
+      // (to sync the day's spotting observation), so this bespoke harness
+      // must provide one too, same as loggingProviders/pumpLogging does.
+      final observations = DriftObservationsRepository(db.storage);
       final app = MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
@@ -2094,16 +2396,13 @@ void main() {
         ),
       );
       final providers = <SingleChildWidget>[
+        Provider<ObservationsRepository>.value(value: observations),
         if (sync != null)
           ChangeNotifierProvider<SyncStatusController>.value(value: sync),
         if (auth != null)
           ChangeNotifierProvider<AuthController>.value(value: auth),
       ];
-      await tester.pumpWidget(
-        providers.isEmpty
-            ? app
-            : MultiProvider(providers: providers, child: app),
-      );
+      await tester.pumpWidget(MultiProvider(providers: providers, child: app));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('open-day-sheet')));
       await tester.pumpAndSettle();

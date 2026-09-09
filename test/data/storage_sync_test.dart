@@ -1,4 +1,10 @@
-import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:drift/drift.dart'
+    show
+        ApplyInterceptor,
+        QueryExecutor,
+        QueryInterceptor,
+        Value,
+        driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
@@ -11,6 +17,35 @@ class FixedClock {
   DateTime now;
 
   DateTime call() => now;
+}
+
+/// Captures the exact SQL/args drift sends to the executor for the first
+/// `SELECT` whose text contains every string in [match] (issue #197 review
+/// follow-up) — used to run `EXPLAIN QUERY PLAN` against the query
+/// `readDirtyDayEntries` *actually generates*, instead of a hand-retyped
+/// literal that could drift out of sync with the real query (and, worse,
+/// could not have caught the bug this test now guards: `t.dirty.equals`
+/// binds `?` rather than emitting the `dirty = 1` literal the partial
+/// index needs).
+class _CapturingInterceptor extends QueryInterceptor {
+  _CapturingInterceptor(this.match);
+
+  final List<String> match;
+  String? capturedSql;
+  List<Object?>? capturedArgs;
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    if (match.every(statement.contains)) {
+      capturedSql = statement;
+      capturedArgs = args;
+    }
+    return executor.runSelect(statement, args);
+  }
 }
 
 /// U3 storage sync API (KTD4, KTD5): dirty tracking, local revisions,
@@ -183,6 +218,75 @@ void main() {
 
       // No limit given still reads everything, unchanged from before.
       expect(await storage.readDirtyDayEntries(), hasLength(10));
+    });
+
+    test('issue #197: readDirtyDayEntries\' dirty=1 scan, an updated_at '
+        'range scan, and the calendar\'s (profile_id, local_date) range '
+        'scan each use their new index, not a full table scan', () async {
+      // EXPLAIN QUERY PLAN's `detail` column names the index it picked
+      // when the planner used one at all; a full scan reads "SCAN
+      // day_entries" with no "USING INDEX" clause.
+
+      // The dirty-scan case is asserted against the SQL/args
+      // `readDirtyDayEntries` actually sends the executor (captured via a
+      // `QueryInterceptor`), not a re-typed literal — a hand-typed
+      // `WHERE dirty = 1` here would keep passing even if the production
+      // query regressed back to a bound `?` parameter, which sqlite
+      // cannot match against `ix_day_entries_dirty`'s partial-index
+      // condition (see that method's own doc comment).
+      final interceptor = _CapturingInterceptor(const ['day_entries', 'dirty']);
+      final interceptedDb = LunarLogDatabase(
+        NativeDatabase.memory().interceptWith(interceptor),
+      );
+      addTearDown(() => interceptedDb.close());
+      final interceptedStorage = LunarLogStorage(interceptedDb, clock: clock.call);
+      await interceptedStorage.readDirtyDayEntries();
+
+      final capturedSql = interceptor.capturedSql;
+      expect(capturedSql, isNotNull,
+          reason: 'readDirtyDayEntries must issue a SELECT against '
+              'day_entries mentioning dirty for the interceptor to capture');
+      expect(interceptor.capturedArgs, isEmpty,
+          reason: 'readDirtyDayEntries() with no limit/afterId should bind '
+              'no parameters at all now that the dirty predicate is a '
+              'literal too, or this EXPLAIN QUERY PLAN would need to bind '
+              'them itself');
+      final dirtyPlan =
+          await interceptedDb.customSelect('EXPLAIN QUERY PLAN $capturedSql').get();
+      final dirtyDetail =
+          dirtyPlan.map((row) => row.data['detail'] as String).join(' | ');
+      expect(dirtyDetail, contains('ix_day_entries_dirty'),
+          reason: 'readDirtyDayEntries\' generated query ($capturedSql) '
+              'must use ix_day_entries_dirty, not a full table scan: '
+              '$dirtyDetail');
+
+      final updatedAtPlan = await db
+          .customSelect(
+            'EXPLAIN QUERY PLAN SELECT * FROM day_entries '
+            "WHERE updated_at > '2026-01-01T00:00:00.000000Z'",
+          )
+          .get();
+      final updatedAtDetail = updatedAtPlan
+          .map((row) => row.data['detail'] as String)
+          .join(' | ');
+      expect(updatedAtDetail, contains('ix_day_entries_updated_at'),
+          reason: 'an updated_at range scan must use '
+              'ix_day_entries_updated_at, not a full table scan: '
+              '$updatedAtDetail');
+
+      final rangePlan = await db
+          .customSelect(
+            'EXPLAIN QUERY PLAN SELECT * FROM day_entries WHERE '
+            "profile_id = 'x' AND local_date >= '2026-06-01' "
+            "AND local_date <= '2026-06-30'",
+          )
+          .get();
+      final rangeDetail =
+          rangePlan.map((row) => row.data['detail'] as String).join(' | ');
+      expect(rangeDetail, contains('ix_day_entries_profile_date'),
+          reason: 'the calendar\'s windowed (profile_id, local_date) range '
+              'scan must use ix_day_entries_profile_date, not a full table '
+              'scan: $rangeDetail');
     });
 
     test('tombstones carry no payload; a later upsert for the same date '

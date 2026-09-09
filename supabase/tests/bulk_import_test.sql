@@ -9,7 +9,7 @@
 -- carries the shared PUBLIC/anon-privilege and authenticated-DELETE/
 -- TRUNCATE catalog guards import_jobs joins.
 begin;
-select plan(84);
+select plan(87);
 
 create temp table r (name text primary key, v jsonb);
 -- service_role too: section 4 below reads pg_temp.job1() (backed by this
@@ -658,6 +658,24 @@ select is(
   (select r_item ->> 'reason' from jsonb_array_elements(pg_temp.resp('infinity_batch') -> 'rejected') r_item
     where (r_item ->> 'row_index')::int = 0),
   'local_date is not an ISO calendar date', 'a local_date of ''infinity'' is rejected, not cast to the infinity date');
+
+-- ---------------------------------------------------------------------------
+-- 18. Review follow-up (PR #335, issue #247): the flow allow-list gained
+--     super_heavy/not_bleeding (20260908200000_flow_model.sql, item 6) --
+--     proven end-to-end through the RPC, not just the day_entries CHECK.
+-- ---------------------------------------------------------------------------
+insert into r select 'flow247_batch', public.bulk_import_entries(pg_temp.job1(), jsonb_build_array(
+  jsonb_build_object('id', tests.ulid(787), 'profile_id', tests.ulid(700), 'local_date', '2026-10-04',
+    'tz', 'UTC', 'flow', 'super_heavy', 'source_id', 'flow247-super-heavy', 'updated_at', now()::text),
+  jsonb_build_object('id', tests.ulid(788), 'profile_id', tests.ulid(700), 'local_date', '2026-10-05',
+    'tz', 'UTC', 'flow', 'not_bleeding', 'source_id', 'flow247-not-bleeding', 'updated_at', now()::text)
+));
+select is(pg_temp.resp('flow247_batch') -> 'rejected', '[]'::jsonb,
+  'a super_heavy row and a not_bleeding row are not rejected by the RPC''s flow allow-list');
+select is((select flow from public.day_entries where id = tests.ulid(787)), 'super_heavy',
+  'a super_heavy row imports and is stored verbatim');
+select is((select flow from public.day_entries where id = tests.ulid(788)), 'not_bleeding',
+  'a not_bleeding row imports and is stored verbatim');
 
 select tests.clear_authentication();
 

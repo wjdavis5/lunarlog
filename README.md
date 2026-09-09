@@ -187,7 +187,13 @@ device-credential check runs first, the same as adding a sign-in method.
 Exporting a JSON copy of profiles and entries does not require that check:
 it sits behind the app's own lock, lives under Settings → Your data, and
 needs no account at all (server data is included in the export only when
-signed in); see [`PRIVACY.md`](PRIVACY.md) for what each does. The parent who created a
+signed in); see [`PRIVACY.md`](PRIVACY.md) for what each does. The same
+section also offers "Export clinical summary (FHIR)" (issue #157): a
+separate, IPS-shaped FHIR R4 document Bundle — self-reported cycle
+Observations, a Composition, a Patient carrying only the display name, and
+one Provenance record — built entirely on-device and delivered the same
+share-sheet way; see [`docs/clinical/fhir-export.md`](docs/clinical/fhir-export.md).
+The parent who created a
 minor's profile can also **transfer ownership** of it to the minor's own
 account (Issue #4): a "Transfer profile" action on the caregivers screen
 lets the parent pick their own post-transfer role (co-manager or

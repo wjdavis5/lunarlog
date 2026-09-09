@@ -29,8 +29,21 @@ const FlowLevel kQuickLogFlowLevel = FlowLevel.medium;
 /// * An entry already at or above [kQuickLogFlowLevel] → returned
 ///   unchanged -- a second tap (or a day already logged heavier than the
 ///   quick-log default, e.g. by the full day sheet) is never downgraded.
-/// * An entry below [kQuickLogFlowLevel] (e.g. [FlowLevel.none] or
-///   [FlowLevel.spotting]) → raised to [kQuickLogFlowLevel].
+/// * An entry below [kQuickLogFlowLevel] (e.g. [FlowLevel.none],
+///   [FlowLevel.notBleeding], or the deprecated [FlowLevel.spotting]) →
+///   raised to [kQuickLogFlowLevel].
+///
+/// **Enum declaration order is load-bearing here (review finding, PR
+/// #335):** the "below"/"at or above" comparison is plain `.index`
+/// comparison against [FlowLevel]'s declaration order (`none, spotting,
+/// notBleeding, light, medium, heavy, superHeavy`), not any severity
+/// ranking maintained independently of it. Reordering that enum -- e.g.
+/// inserting a future member between `notBleeding` and `light` -- would
+/// silently change which existing values this function treats as "below"
+/// [kQuickLogFlowLevel] without touching a single line here.
+/// `test/domain/logging/quick_log_test.dart` pins the declaration order
+/// directly (`FlowLevel.values` compared index-for-index) so a reorder
+/// fails loudly instead of only changing quick-log behaviour by accident.
 FlowLevel quickLogFlowLevel(FlowLevel? existing) {
   if (existing == null) return kQuickLogFlowLevel;
   return existing.index >= kQuickLogFlowLevel.index

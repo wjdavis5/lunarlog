@@ -18,6 +18,18 @@
 /// scrolls away, and the sheet's shell pads itself by the keyboard inset so
 /// the note field and that pinned area stay above the keyboard.
 ///
+/// Issue #247 (flow model, ported from #335 into the autosave compose
+/// path): the chip row offers [kSelectableFlowLevels] — the deprecated
+/// [FlowLevel.spotting] alias is gone from it, and `notBleeding` and
+/// `superHeavy` are offered. Spotting is an `observations` category row
+/// written/cleared by [_syncSpottingObservation] after every successful
+/// entry write (its toggle seeds via [_loadExistingSpotting] at init), and
+/// [_composeEntry] persists [_resolveEffectiveFlow]'s value so
+/// spotting-only days still assert an explicit `notBleeding` day while an
+/// un-checked spotting-only day reverts to `none`. Provenance
+/// (`source`/`sourceId`/`importId`, issue #159's review finding) carries
+/// forward on every write so an imported entry is never reset to manual.
+///
 /// Issue #131: the profile's care mode selects the category headings and
 /// the order they are surfaced in (`careModeCopyFor`) — a prospective
 /// logging-default only. Every category remains available in every mode
@@ -42,8 +54,10 @@ import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -77,10 +91,36 @@ String daySheetDateLabel(LocalDate date, LocalDate today) {
   return dates.relativeDayLabel(civil(date), civil(today));
 }
 
-String flowLabel(FlowLevel flow) {
-  final name = flow.name;
-  return name[0].toUpperCase() + name.substring(1);
-}
+/// The flow levels the chip row offers (issue #247): the deprecated
+/// [FlowLevel.spotting] alias is excluded — spotting is logged via the
+/// separate "Spotting" toggle below the flow row instead, which writes an
+/// `observations` row, never a flow level (see [_syncSpottingObservation]).
+const List<FlowLevel> kSelectableFlowLevels = [
+  FlowLevel.none,
+  FlowLevel.notBleeding,
+  FlowLevel.light,
+  FlowLevel.medium,
+  FlowLevel.heavy,
+  FlowLevel.superHeavy,
+];
+
+/// Issue #160: the localized flow-chip label. Same strings [flowLabel]
+/// derives for `en`; this variant reads them from [AppLocalizations] so
+/// the sheet's chips follow the active locale (`flowLabel` stays as the
+/// `en` fallback for callers outside the four localized screens, e.g. the
+/// activity feed).
+String localizedFlowLabel(FlowLevel flow, AppLocalizations l10n) =>
+    switch (flow) {
+      FlowLevel.none => l10n.flowLevelNone,
+      // ignore: deprecated_member_use_from_same_package
+      FlowLevel.spotting => l10n.flowLevelSpotting,
+      FlowLevel.light => l10n.flowLevelLight,
+      FlowLevel.medium => l10n.flowLevelMedium,
+      FlowLevel.heavy => l10n.flowLevelHeavy,
+      // Issue #247 values: no ARB keys yet (#160 follow-up) — `en` fallback.
+      FlowLevel.notBleeding => 'Not bleeding',
+      FlowLevel.superHeavy => 'Super heavy',
+    };
 
 class DaySheet extends StatefulWidget {
   const DaySheet({
@@ -161,6 +201,38 @@ class _DaySheetState extends State<DaySheet> {
   /// would be invisible behind its barrier (issue #182 AC8 shape).
   ScaffoldMessengerState? _offlineAckMessenger;
 
+  /// Issue #247: spotting is logged as its own `observations` row
+  /// (`category: 'spotting'`), not a [FlowLevel] value — this toggle
+  /// tracks it independently of [_flow]. Initialised from any already
+  /// -persisted (or synthesised-from-legacy-`spotting`-flow) spotting
+  /// observation by [_loadExistingSpotting]; starts `false` for a new
+  /// entry.
+  bool _spotting = false;
+
+  /// Review fix (blocking): `true` once [_loadExistingSpotting] finds the
+  /// day already had spotting on load — kept `true` even after the user
+  /// unchecks the toggle, so [_resolveEffectiveFlow] can tell "spotting
+  /// was just removed" apart from "spotting was never on this session".
+  bool _hadSpottingOnLoad = false;
+
+  /// Review fix (blocking): `true` once the user taps any flow chip this
+  /// session (including re-tapping the already-selected one) — an
+  /// explicit choice, as opposed to [_flow]'s initial value merely being
+  /// inherited from the loaded entry (which, for a spotting-only day, is
+  /// [FlowLevel.notBleeding] only because spotting raised it there, never
+  /// because anyone chose "Not bleeding" on purpose). See
+  /// [_resolveEffectiveFlow]'s `revertToNone`.
+  bool _flowExplicitlySet = false;
+
+  /// The observations repository backing the spotting toggle (#247),
+  /// resolved once the sheet is in the tree ([Provider.of] is illegal in
+  /// `initState`) and cached so a write started while mounted can finish
+  /// its [_syncSpottingObservation] step after the sheet has gone (a
+  /// dismissal-time autosave flush outlives its widget — #335's save
+  /// skipped the sync in that case; autosave must not silently drop the
+  /// toggle's state instead).
+  ObservationsRepository? _observationsRepository;
+
   /// The mode's headings and surfacing order (Issue #131).
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
@@ -197,6 +269,20 @@ class _DaySheetState extends State<DaySheet> {
     // is created with its initial text above, so the listener never fires
     // for the seeded value itself.
     _noteController.addListener(_markDirty);
+    if (existing != null) {
+      _loadExistingSpotting(existing.id);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Nullable lookup: a sheet pumped where no repository is reachable at
+    // all (e.g. the future-date guard in tests) resolves null rather than
+    // throwing — [_syncSpottingObservation] then simply skips, since no
+    // write can happen in those states anyway.
+    _observationsRepository ??=
+        Provider.of<ObservationsRepository?>(context, listen: false);
   }
 
   @override
@@ -209,13 +295,17 @@ class _DaySheetState extends State<DaySheet> {
       // bypassed a pop. The entry is composed before the controller dies;
       // the write itself is fire-and-forget — there is no sheet left to
       // render a failure into, and the PopScope guard has already handled
-      // the interactive failure case above it.
+      // the interactive failure case above it. The spotting sync (#247)
+      // rides along so the persisted entry and its observation row can
+      // never disagree about whether the day had spotting.
       final pending = _pendingEntry;
       final repository = widget.repository;
+      final observations = _observationsRepository;
       if (pending != null) {
         scheduleMicrotask(() async {
           try {
-            await repository.save(pending);
+            final saved = await repository.save(pending);
+            await _syncSpottingObservation(saved, pending.tz, observations);
           } catch (_) {}
         });
       }
@@ -236,6 +326,9 @@ class _DaySheetState extends State<DaySheet> {
   /// Snapshots the current editing state into the entry the next write
   /// will persist — called synchronously on change and before any await,
   /// never from a disposed context (the note controller must be alive).
+  /// The flow written is [_resolveEffectiveFlow]'s (#247): spotting's
+  /// presence/absence is expressed in the entry's `flow` exactly the way
+  /// #335's explicit Save did, on every debounced write.
   DayEntry _composeEntry() {
     final note = _noteController.text.trim();
     final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
@@ -244,7 +337,7 @@ class _DaySheetState extends State<DaySheet> {
       profileId: widget.profileId,
       localDate: widget.date,
       tz: tz,
-      flow: _flow,
+      flow: _resolveEffectiveFlow(),
       tags: _tags.toList(),
       note: note.isEmpty ? null : note,
       updatedAt: DateTime.now().toUtc(),
@@ -292,8 +385,16 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   /// Persists [pending]; on failure restores the pending state (the sheet
-  /// keeps every entered value) and raises the inline retry error.
+  /// keeps every entered value) and raises the inline retry error. After a
+  /// successful entry write it syncs the day's spotting observation (#247)
+  /// — exactly the step #335's Save performed next, moved into the
+  /// autosave path; an observation-write failure surfaces through the same
+  /// catch (the entry save and its spotting sync are one logical write).
   Future<bool> _writePending(DayEntry pending) async {
+    // Captured while every caller is still mounted: the sync below may
+    // complete after this sheet has gone (a dismissal-time flush), and
+    // `Provider.of` from a dead context throws.
+    final observations = _observationsRepository;
     try {
       // Only the codes freshly picked this session from the visible
       // taxonomy chip grid are validated (#237) — never the full adopted
@@ -301,7 +402,8 @@ class _DaySheetState extends State<DaySheet> {
       // does not recognise (`_unrecognisedTags`). That code is preserved,
       // not silently re-validated and rejected, on every autosave.
       validateTagCodes(_sessionSelectedTags);
-      await widget.repository.save(pending);
+      final saved = await widget.repository.save(pending);
+      await _syncSpottingObservation(saved, pending.tz, observations);
       return true;
     } catch (_) {
       _dirty = true;
@@ -324,6 +426,101 @@ class _DaySheetState extends State<DaySheet> {
     _savedIndicatorTimer = Timer(kDaySheetSavedIndicatorDuration, () {
       if (mounted) setState(() => _showSaved = false);
     });
+  }
+
+  /// Issue #247: the day sheet doesn't otherwise load `observations` rows
+  /// — this is the one exception, populating the "Spotting" toggle's
+  /// initial state from any already-persisted spotting observation for
+  /// [dayEntryId]. Review fix (blocking): goes through
+  /// [ObservationsRepository.listForProfile] rather than
+  /// [ObservationsRepository.listForDayEntry] specifically because only
+  /// `listForProfile` synthesises the alias observation for a legacy
+  /// `flow = 'spotting'` row that hasn't synced the server-side backfill
+  /// yet (see that method's doc comment) — `listForDayEntry` alone would
+  /// leave this toggle off for such a day, and the next autosave would
+  /// then silently drop the spotting fact (raising the stored flow to
+  /// `notBleeding` with no accompanying observation, live or synthesised).
+  Future<void> _loadExistingSpotting(String dayEntryId) async {
+    final observations = await Provider.of<ObservationsRepository>(
+      context,
+      listen: false,
+    ).listForProfile(widget.profileId);
+    if (!mounted) return;
+    if (observations.any(
+      (o) => o.dayEntryId == dayEntryId && o.category == 'spotting',
+    )) {
+      setState(() {
+        _spotting = true;
+        _hadSpottingOnLoad = true;
+      });
+    }
+  }
+
+  /// The `flow` value actually written by every autosave compose (#247,
+  /// #335's `_resolveEffectiveFlow` verbatim): selecting "Spotting" on a
+  /// day with no other flow chosen is still a positive fact about the day,
+  /// not "unlogged" — it is raised to notBleeding. A day already logged at
+  /// a real bleed level keeps that level; spotting is recorded alongside
+  /// it as its own observation, never overwriting a chosen flow.
+  ///
+  /// Review fix (blocking): the mirror image — unchecking Spotting on a
+  /// day whose only signal *was* spotting reverts `flow` back to
+  /// [FlowLevel.none] rather than leaving the previously-derived
+  /// [FlowLevel.notBleeding] behind as if it had been asserted on
+  /// purpose. Guarded to fire only when the user never touched a flow
+  /// chip this session ([_flowExplicitlySet]) — tapping "Not bleeding"
+  /// (even alongside spotting) is a deliberate, independent assertion
+  /// that survives unchecking spotting.
+  FlowLevel _resolveEffectiveFlow() {
+    if (_spotting && _flow == FlowLevel.none) return FlowLevel.notBleeding;
+    final revertToNone =
+        _hadSpottingOnLoad &&
+        !_spotting &&
+        !_flowExplicitlySet &&
+        _flow == FlowLevel.notBleeding;
+    return revertToNone ? FlowLevel.none : _flow;
+  }
+
+  /// Issue #247: spotting is its own `observations` category row, not a
+  /// `FlowLevel` value — writes or clears the day's spotting observation
+  /// to match [_spotting], keyed by [saved]'s id (Issue #240's per-day
+  /// -entry child rows). Re-reads [saved]'s observations rather than
+  /// trusting [_loadExistingSpotting]'s initial snapshot, so this stays
+  /// correct even if another device wrote (or cleared) the same day's
+  /// spotting observation since this sheet opened. The repository is a
+  /// parameter (not a `Provider.of` here) so a write started while the
+  /// sheet was mounted can finish this step after it has gone; a null
+  /// [observations] (no provider reachable) skips the sync rather than
+  /// failing the already-persisted entry write.
+  Future<void> _syncSpottingObservation(
+    DayEntry saved,
+    String tz,
+    ObservationsRepository? observations,
+  ) async {
+    if (observations == null) return;
+    final existingSpotting = [
+      for (final o in await observations.listForDayEntry(saved.id))
+        if (o.category == 'spotting') o,
+    ];
+    if (!_spotting) {
+      for (final o in existingSpotting) {
+        await observations.delete(o.id);
+      }
+      return;
+    }
+    if (existingSpotting.isNotEmpty) return;
+    await observations.save(
+      Observation(
+        id: '',
+        dayEntryId: saved.id,
+        profileId: widget.profileId,
+        localDate: widget.date,
+        tz: tz,
+        category: 'spotting',
+        code: 'spotting',
+        updatedAt: DateTime.now().toUtc(),
+      ),
+    );
   }
 
   /// Issue #182 AC8: captured before the sheet goes away (the sheet's own
@@ -505,8 +702,53 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
+  /// The flow chip row plus the standalone spotting toggle (issue #247).
+  /// Split out of [_editableBody] to keep each method under the CRAP gate.
+  /// Every chip re-arms the autosave debounce (#198) — a flow/spotted
+  /// change is a change like any other.
+  Widget _flowChips(AppLocalizations l10n) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final level in kSelectableFlowLevels)
+          ChoiceChip(
+            label: Text(localizedFlowLabel(level, l10n)),
+            selected: _flow == level,
+            onSelected: _busy
+                ? null
+                : (selected) {
+                    if (selected) {
+                      setState(() {
+                        _flow = level;
+                        _flowExplicitlySet = true;
+                      });
+                      _markDirty();
+                    }
+                  },
+          ),
+        // Issue #247: spotting is its own `observations` category,
+        // not a flow level — a standalone toggle rather than one of
+        // the flow chips above, so it can coexist with any flow
+        // selection (see `_syncSpottingObservation`).
+        FilterChip(
+          key: const ValueKey('spotting-chip'),
+          label: const Text('Spotting'),
+          selected: _spotting,
+          onSelected: _busy
+              ? null
+              : (selected) {
+                  setState(() => _spotting = selected);
+                  _markDirty();
+                },
+        ),
+      ],
+    );
+  }
+
   Widget _editableBody() {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -544,25 +786,7 @@ class _DaySheetState extends State<DaySheet> {
                     ],
                   ),
                 ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    for (final level in FlowLevel.values)
-                      ChoiceChip(
-                        label: Text(flowLabel(level)),
-                        selected: _flow == level,
-                        onSelected: _busy
-                            ? null
-                            : (selected) {
-                                if (selected) {
-                                  setState(() => _flow = level);
-                                  _markDirty();
-                                }
-                              },
-                      ),
-                  ],
-                ),
+                _flowChips(l10n),
                 for (final category in _copy.categoriesInOrder) ...[
                   Padding(
                     padding: const EdgeInsets.only(top: 12, bottom: 4),
@@ -606,8 +830,8 @@ class _DaySheetState extends State<DaySheet> {
                     key: const ValueKey('note-field'),
                     controller: _noteController,
                     enabled: !_busy,
-                    decoration: const InputDecoration(
-                      labelText: 'Note',
+                    decoration: InputDecoration(
+                      labelText: l10n.daySheetNoteLabel,
                       alignLabelWithHint: true,
                     ),
                     maxLines: 3,
@@ -631,6 +855,7 @@ class _DaySheetState extends State<DaySheet> {
   /// matter how many chip categories are expanded — and above the
   /// keyboard, thanks to the shell's view-inset padding.
   Widget _pinnedBottomArea(ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -638,13 +863,13 @@ class _DaySheetState extends State<DaySheet> {
         if (_saveFailed)
           InlineError(
             key: const ValueKey('save-error'),
-            message: "Couldn't save — try again",
+            message: l10n.daySheetSaveError,
             onRetry: _performAutosave,
           ),
         if (_deleteFailed)
           InlineError(
             key: const ValueKey('delete-error'),
-            message: "Couldn't delete — try again",
+            message: l10n.daySheetDeleteError,
             onRetry: _delete,
           ),
         Padding(
@@ -653,7 +878,7 @@ class _DaySheetState extends State<DaySheet> {
             children: [
               if (widget.existing != null)
                 IconButton(
-                  tooltip: 'Delete entry',
+                  tooltip: l10n.daySheetDeleteTooltip,
                   icon: const Icon(Icons.delete_outline),
                   onPressed: _busy ? null : _delete,
                 ),
@@ -719,7 +944,10 @@ class _DaySheetState extends State<DaySheet> {
   List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
     Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 4),
-      child: Text(AppLocalizations.of(context).daySheetUnrecognised, style: theme.textTheme.labelMedium),
+      child: Text(
+        AppLocalizations.of(context).daySheetUnrecognised,
+        style: theme.textTheme.labelMedium,
+      ),
     ),
     Wrap(
       spacing: 8,
@@ -745,6 +973,7 @@ class _DaySheetState extends State<DaySheet> {
 
   Widget _readOnlyBody() {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final reason = _readOnlyReason;
     final existing = widget.existing;
     if (existing == null) {
@@ -795,7 +1024,7 @@ class _DaySheetState extends State<DaySheet> {
         ),
         const SizedBox(height: 12),
         Text(AppLocalizations.of(context).daySheetFlowLabel, style: theme.textTheme.labelMedium),
-        Text(flowLabel(existing.flow), style: theme.textTheme.titleSmall),
+        Text(localizedFlowLabel(existing.flow, l10n), style: theme.textTheme.titleSmall),
         if (existing.tags.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(AppLocalizations.of(context).daySheetTagsLabel, style: theme.textTheme.labelMedium),
@@ -812,7 +1041,7 @@ class _DaySheetState extends State<DaySheet> {
         Text(AppLocalizations.of(context).daySheetNoteLabel, style: theme.textTheme.labelMedium),
         Text(
           (existing.note == null || existing.note!.isEmpty)
-              ? 'No note'
+              ? AppLocalizations.of(context).daySheetNoNote
               : existing.note!,
         ),
       ],

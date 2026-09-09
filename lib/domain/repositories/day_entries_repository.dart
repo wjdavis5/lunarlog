@@ -19,7 +19,15 @@ abstract interface class DayEntriesRepository {
 
   /// Reactive variant of [listForProfile]; emits again on every write or
   /// tombstone affecting that profile (tombstoned rows excluded).
-  Stream<List<DayEntry>> watchForProfile(String profileId);
+  ///
+  /// [from]/[to] optionally narrow to an inclusive civil-date range (issue
+  /// #197: the calendar's windowed subscription) instead of the profile's
+  /// full history; omitting both (every existing caller) is unchanged.
+  Stream<List<DayEntry>> watchForProfile(
+    String profileId, {
+    LocalDate? from,
+    LocalDate? to,
+  });
 
   /// Tombstones the live entry for (profileId, localDate); idempotent.
   Future<void> delete(String profileId, LocalDate localDate);

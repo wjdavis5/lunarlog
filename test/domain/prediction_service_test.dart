@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,53 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+
+/// A [DayEntriesRepository] whose `watchForProfile` stream is entirely
+/// caller-driven (issue #197): lets a test emit several ticks in a row —
+/// including two carrying the exact same entries — to prove
+/// [CyclePredictionService.watch] only recomputes when the cheap stamp
+/// (row count + max `updatedAt`) actually changes. Every other member is
+/// unused by these tests and throws if ever called.
+class _StubDayEntriesRepository implements DayEntriesRepository {
+  final _controller = StreamController<List<DayEntry>>.broadcast();
+
+  void emit(List<DayEntry> entries) => _controller.add(entries);
+
+  Future<void> close() => _controller.close();
+
+  @override
+  Stream<List<DayEntry>> watchForProfile(
+    String profileId, {
+    LocalDate? from,
+    LocalDate? to,
+  }) =>
+      _controller.stream;
+
+  @override
+  Future<DayEntry> save(DayEntry entry) => throw UnimplementedError();
+
+  @override
+  Future<DayEntry?> find(String profileId, LocalDate localDate) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<DayEntry>> listForProfile(String profileId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> delete(String profileId, LocalDate localDate) =>
+      throw UnimplementedError();
+}
+
+DayEntry _entry(String id, LocalDate date, DateTime updatedAt) => DayEntry(
+      id: id,
+      profileId: 'p',
+      localDate: date,
+      tz: 'UTC',
+      flow: FlowLevel.medium,
+      updatedAt: updatedAt,
+    );
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -233,6 +282,179 @@ void main() {
       final p = await omissionAware.current(profile.id, today: () => today);
       expect((p as ActivePrediction).estimatedNextStart,
           LocalDate(2026, 6, 10));
+    });
+  });
+
+  group('memoised recomputation (issue #197)', () {
+    test('two emissions carrying the same entries stamp compute the '
+        'prediction once — the second reuses the same object, it does '
+        'not just happen to equal it', () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final memoised = CyclePredictionService(stub);
+
+      final seen = <CyclePrediction>[];
+      final sub =
+          memoised.watch('p', today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final entries = [
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+      ];
+      stub.emit(entries);
+      await pumpEventQueue();
+      // A distinct List instance carrying equal rows (same count, same
+      // max updatedAt) — a stubbed high-frequency emitter re-ticking with
+      // nothing new, the case this memoisation targets.
+      stub.emit(List.of(entries));
+      await pumpEventQueue();
+
+      expect(seen, hasLength(2),
+          reason: 'the stream itself still emits on both ticks');
+      expect(identical(seen[0], seen[1]), isTrue,
+          reason: 'an unchanged stamp must reuse the cached prediction '
+              'instead of recomputing');
+    });
+
+    test('a genuinely changed stamp does recompute', () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final memoised = CyclePredictionService(stub);
+
+      final seen = <CyclePrediction>[];
+      final sub =
+          memoised.watch('p', today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+
+      stub.emit([_entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1))]);
+      await pumpEventQueue();
+      stub.emit([
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+        _entry('e2', LocalDate(2026, 5, 2), DateTime.utc(2026, 5, 2)),
+      ]);
+      await pumpEventQueue();
+
+      expect(seen, hasLength(2));
+      expect(identical(seen[0], seen[1]), isFalse,
+          reason: 'a changed row count must recompute, not reuse the '
+              'cached prediction');
+    });
+
+    test('omission-aware watch also memoises on (entries stamp, omission '
+        'set), and recomputes when only the omission set changes',
+        () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final settingsDb = LunarLogDatabase(NativeDatabase.memory());
+      addTearDown(() => settingsDb.close());
+      final omissionSettings = DriftSettingsStore(settingsDb.storage);
+      final omissionAwareMemoised =
+          CyclePredictionService(stub, settings: omissionSettings);
+
+      final seen = <CyclePrediction>[];
+      final sub = omissionAwareMemoised
+          .watch('p', today: () => today)
+          .listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final entries = [
+        _entry('e1', LocalDate(2026, 2, 1), DateTime.utc(2026, 2, 1)),
+      ];
+      stub.emit(entries);
+      await pumpEventQueue();
+      // Same entries stamp, re-ticked — must reuse the cached prediction.
+      stub.emit(List.of(entries));
+      await pumpEventQueue();
+      expect(identical(seen[0], seen[1]), isTrue,
+          reason: 'an unchanged (stamp, omissions) pair must reuse the '
+              'cached prediction');
+
+      // The entries stamp is unchanged, but the omission set now is —
+      // this must recompute even though the entries list itself did not
+      // change.
+      await CycleExclusionList(omissionSettings)
+          .omit('p', LocalDate(2026, 2, 1));
+      await pumpEventQueue();
+      expect(identical(seen.last, seen[1]), isFalse,
+          reason: 'a changed omission set must recompute even when the '
+              'entries stamp alone is unchanged');
+    });
+
+    test(
+        'a changed flow recomputes even when row count and max updatedAt '
+        'are unchanged (review follow-up: a synced edit writes the remote '
+        'updatedAt verbatim, which can be older than the profile max, so '
+        'the old count+max stamp alone missed it)', () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final memoised = CyclePredictionService(stub);
+
+      final seen = <CyclePrediction>[];
+      final sub = memoised.watch('p', today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final t1 = DateTime.utc(2026, 5, 1);
+      final t2 = DateTime.utc(2026, 5, 2); // stays the max in both emissions
+      stub.emit([
+        _entry('e1', LocalDate(2026, 5, 1), t1),
+        _entry('e2', LocalDate(2026, 5, 2), t2),
+      ]);
+      await pumpEventQueue();
+
+      // Same ids, dates, and updatedAts (so the same count and the same
+      // max) — but e1's flow changed. A synced remote edit landing with an
+      // updatedAt that does not move the profile's max is exactly this
+      // case, since per-row LWW writes the remote timestamp verbatim.
+      stub.emit([
+        DayEntry(
+          id: 'e1',
+          profileId: 'p',
+          localDate: LocalDate(2026, 5, 1),
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+          updatedAt: t1,
+        ),
+        _entry('e2', LocalDate(2026, 5, 2), t2),
+      ]);
+      await pumpEventQueue();
+
+      expect(seen, hasLength(2));
+      expect(identical(seen[0], seen[1]), isFalse,
+          reason: 'a changed flow must recompute even when row count and '
+              'max updatedAt are unchanged');
+    });
+
+    test('today advancing recomputes even with unchanged entries (review '
+        'follow-up: watch documents today is evaluated per emission so '
+        'subscriptions stay correct across midnight — the memo key must '
+        'include it)', () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final memoised = CyclePredictionService(stub);
+
+      var currentToday = today;
+      final seen = <CyclePrediction>[];
+      final sub = memoised
+          .watch('p', today: () => currentToday)
+          .listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final entries = [
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+      ];
+      stub.emit(entries);
+      await pumpEventQueue();
+
+      currentToday = today.addDays(1);
+      // A distinct List instance carrying equal rows — the entries
+      // fingerprint alone is unchanged, only today advanced.
+      stub.emit(List.of(entries));
+      await pumpEventQueue();
+
+      expect(seen, hasLength(2));
+      expect(identical(seen[0], seen[1]), isFalse,
+          reason: 'today advancing must recompute even though the entries '
+              'fingerprint is unchanged');
     });
   });
 }

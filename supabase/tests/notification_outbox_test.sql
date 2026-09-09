@@ -353,8 +353,18 @@ select is(pg_temp.outbox_count(tests.ulid(404), tests.get_supabase_uid('dad_d'))
   '#7: a genuine content edit (note actually changes) still enqueues a row');
 
 -- ---------------------------------------------------------------------------
--- Group E (profile 405, #3 review fix): an unrecognized guardian time_zone
--- must not abort the profile holder's own entry write.
+-- Group E (profile 405): Issue #321 follow-up superseded the original #3
+-- scenario here -- notification_preferences.time_zone now carries
+-- notification_preferences_time_zone_valid (the same is_valid_timezone
+-- CHECK observations.tz/day_entries.tz already had --
+-- 20260908210000_notification_tz_check.sql), so an unrecognized guardian
+-- time_zone can no longer be stored in this column at all, and
+-- resolve_deliver_after's ad hoc defence that used to degrade around one
+-- has been removed (direct coverage of both:
+-- notification_tz_check_test.sql). This group now proves (a) the CHECK
+-- itself is what stops the write, at the row that used to slip through,
+-- and (b) a guardian with a genuinely valid zone still doesn't block the
+-- profile holder's entry write or the alert.
 -- ---------------------------------------------------------------------------
 select tests.create_supabase_user('mom_e');
 select tests.create_supabase_user('dad_e');
@@ -371,12 +381,25 @@ select tests.authenticate_as('dad_e');
 select public.accept_guardian_invitation(
   '8888888888888888888888888888888888888888888888888888888888888888', 'Dad'
 );
-insert into public.notification_preferences
-  (user_id, profile_id, alert_on_log, quiet_hours_start, quiet_hours_end, time_zone)
-values (
-  tests.get_supabase_uid('dad_e'), tests.ulid(405), true,
-  '22:00'::time, '07:00'::time, 'Not/ARealZone'
+
+select throws_ok(
+  format(
+    $$insert into public.notification_preferences
+        (user_id, profile_id, alert_on_log, quiet_hours_start, quiet_hours_end, time_zone)
+      values (%L, %L, true, '22:00'::time, '07:00'::time, 'Not/ARealZone')$$,
+    tests.get_supabase_uid('dad_e'), tests.ulid(405)
+  ),
+  '23514', null,
+  'Issue #321: notification_preferences_time_zone_valid now rejects the same unrecognized zone '
+  || 'this group used to have to insert unguarded to exercise resolve_deliver_after''s (now removed) '
+  || 'ad hoc defence'
 );
+
+-- No quiet hours on this row (null start/end): resolve_deliver_after
+-- returns p_now unconditionally regardless of real wall-clock time at test
+-- run, keeping the alert-enqueued assertion below deterministic.
+insert into public.notification_preferences (user_id, profile_id, alert_on_log, time_zone)
+values (tests.get_supabase_uid('dad_e'), tests.ulid(405), true, 'America/New_York');
 
 select tests.authenticate_as('mom_e');
 select lives_ok(
@@ -385,22 +408,11 @@ select lives_ok(
       values (%L, %L, '2026-09-01', 'UTC', 'none', now())$$,
     tests.ulid(450), tests.ulid(405)
   ),
-  '#3: an unrecognized guardian time_zone does not abort the entry write'
+  'a guardian with a genuinely valid time_zone does not block the profile holder''s entry write'
 );
 
 select is(pg_temp.outbox_count(tests.ulid(405), tests.get_supabase_uid('dad_e')), 1::bigint,
-  '#3: the alert is still enqueued despite the invalid time_zone');
-
--- notification_outbox carries no authenticated grant at all (KTD1) --
--- inspecting deliver_after directly needs service_role, like every other
--- direct read of this table elsewhere in this file.
-select set_config('request.jwt.claims', '', true);
-select set_config('role', 'service_role', true);
-select ok(
-  (select deliver_after <= now() from public.notification_outbox
-    where profile_id = tests.ulid(405) and recipient_user_id = tests.get_supabase_uid('dad_e')),
-  '#3: an invalid time_zone degrades to no quiet hours (deliver_after = now, not deferred)'
-);
+  'the alert is still enqueued for a guardian with a valid time_zone');
 
 -- ---------------------------------------------------------------------------
 -- Structural stop-condition guard, service_role, and pure-function coverage.

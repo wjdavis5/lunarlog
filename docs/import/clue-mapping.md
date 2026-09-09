@@ -9,12 +9,11 @@ spec are still assumption-based and need a real export to confirm.
 
 Related issues: #199 (the `observations.raw` escape hatch this parser
 targets), #247 (spotting-as-its-own-category and the `superHeavy`/
-not-bleeding flow states this parser's output already assumes, even
-though #247 itself hasn't merged), #240 (the `observations` table this
-parser's output is shaped for), #172 (the bulk-write step that will
-actually consume this parser's output — out of scope here), #134
-(lunarlog-internal taxonomy migrations — see "Not Clue-side renames"
-below).
+not-bleeding flow states this parser's output already assumed — **merged**,
+see the note below), #240 (the `observations` table this parser's output
+is shaped for), #172 (the bulk-write step that will actually consume this
+parser's output — out of scope here), #134 (lunarlog-internal taxonomy
+migrations — see "Not Clue-side renames" below).
 
 **Reusing #140's `ImportPlan` (added after this spec was written):** issue
 #140 shipped restore-from-file import for the app's own export format —
@@ -53,13 +52,13 @@ never mints its own row ids either), and should not try to route around it
 — the alternative (always minting a fresh id) reintroduces the
 cross-device duplicate-row problem item 3 exists to close.
 
-**Sequencing — #247 before #172:** this parser's `ClueFlowLevel` already
-matches #247's still-unmerged shape, but until #247 actually ships,
-converting a `ClueFlowLevel` to the app's own `FlowLevel` is lossy (see
-"`ClueFlowLevel` — interim collapse rules" below). **#172 (the bulk-write
-step) must not consume this parser's output before #247 merges**, or
-that lossiness becomes permanent data loss rather than a temporary
-interim mapping.
+**Sequencing — #247 before #172 (resolved):** #247 has merged
+(`lib/domain/import/clue/clue_flow_level_mapping.dart`'s `flowLevelFromClue`),
+so converting a `ClueFlowLevel` to the app's own `FlowLevel` is now
+**lossless** — the "`ClueFlowLevel` — interim collapse rules" section
+below describes lossy collapses that no longer happen; it is kept for
+history, not as current guidance. **#172 (the bulk-write step) may now
+consume this parser's output** — the constraint that blocked it is gone.
 
 ## What's in scope here, and what isn't
 
@@ -111,25 +110,30 @@ does that grouping (sorted by date) for any caller that needs it — the
 bulk-write step included — so that acceptance need is met by this
 module, not deferred to every caller reimplementing it.
 
-## `ClueFlowLevel` — interim collapse rules
+## `ClueFlowLevel` — mapping to `FlowLevel` (Issue #247: now lossless)
 
 `ClueFlowLevel`'s ordinals **do not** line up with the app's own
 `FlowLevel` (`lib/domain/models/flow_level.dart`: `none, spotting,
-light, medium, heavy` — Clue spotting is its own `observations` category
-here, never a flow level) — never convert between the two by `.index`.
-Until #247 ships the real `FlowLevel.superHeavy` and a not-bleeding state
-distinct from "unlogged", any conversion is lossy in two specific ways:
+notBleeding, light, medium, heavy, superHeavy` — Clue spotting is its own
+`observations` category here, never a flow level) — never convert
+between the two by `.index`; use
+`lib/domain/import/clue/clue_flow_level_mapping.dart`'s
+`flowLevelFromClue`.
 
-- `ClueFlowLevel.superHeavy` has no `FlowLevel` counterpart yet and would
-  collapse to `FlowLevel.heavy`.
-- `ClueFlowLevel.notBleeding` has no `FlowLevel` counterpart distinct
-  from "unlogged" yet and would collapse to `FlowLevel.none` —
-  re-conflating an explicit "not bleeding today" assertion with a day
-  nothing was logged for at all.
+**Historical note — this section used to describe two lossy interim
+collapses, both now obsolete now that #247 has merged:**
 
-This is exactly why the "Sequencing — #247 before #172" note above
-matters: consuming this parser's output before #247 merges turns a
-temporary, documented interim mapping into permanent data loss.
+- `ClueFlowLevel.superHeavy` → `FlowLevel.superHeavy` (used to collapse
+  to `FlowLevel.heavy` before #247 shipped that value).
+- `ClueFlowLevel.notBleeding` → `FlowLevel.notBleeding` (used to collapse
+  to `FlowLevel.none` — re-conflating an explicit "not bleeding today"
+  assertion with a day nothing was logged for at all — before #247
+  shipped a state distinct from "unlogged").
+
+The "Sequencing — #247 before #172" note above is resolved for the same
+reason: #172 (the bulk-write step) can now consume this parser's output
+without turning either of those collapses into permanent data loss,
+because neither collapse happens anymore.
 
 ## Category/option mapping table
 

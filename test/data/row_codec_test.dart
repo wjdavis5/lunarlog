@@ -350,6 +350,20 @@ void main() {
       expect(decoded.table, SyncTable.dayEntries);
     });
 
+    test(
+        'superHeavy/notBleeding encode as their wire strings, not their '
+        'Dart enum names (Issue #247)', () {
+      final superHeavy = makeEntry(flow: FlowLevel.superHeavy);
+      final superHeavyJson = encodeDayEntry(superHeavy);
+      expect(superHeavyJson['flow'], 'super_heavy');
+      expect(decodeDayEntry(superHeavyJson).flow, FlowLevel.superHeavy);
+
+      final notBleeding = makeEntry(flow: FlowLevel.notBleeding);
+      final notBleedingJson = encodeDayEntry(notBleeding);
+      expect(notBleedingJson['flow'], 'not_bleeding');
+      expect(decodeDayEntry(notBleedingJson).flow, FlowLevel.notBleeding);
+    });
+
     test('round-trips an empty tags list and a null note', () {
       final row = makeEntry(tags: const [], note: null);
       final json = encodeDayEntry(row);

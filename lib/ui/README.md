@@ -93,6 +93,64 @@ of its own directly below `OverviewPanel` whenever the screen is archived,
 keeping the history card available there without the omit/include
 affordances.
 
+## Calendar windowed entries subscription (issue #197)
+
+`logging/month_calendar.dart`'s `MonthCalendar` no longer subscribes to a
+profile's *full* day-entry history — that made every emission a full-history
+SELECT/decode/rebuild, repeated on every profile's calendar regardless of how
+many months of history it held. It now calls
+`DayEntriesRepository.watchForProfile(profileId, from:, to:)` with a window
+computed by the public, pure `calendarEntriesWindowFor(year, month)`:
+`kCalendarWindowLookbehindDays`/`kCalendarWindowLookaheadDays` (45 days each,
+documented at their declaration) before/after the displayed month's own
+first/last day — enough to keep episode-continuity rendering correct across a
+month boundary and to cover the forecast bands' fixed PMS/cramps badge
+offsets near the edges of the displayed month. `_MonthCalendarState` tracks
+the range it is currently subscribed to and only resubscribes
+(`_maybeRewatchEntriesFor`, called from `_onPageChanged`/`_goToMonth`) once
+the newly displayed month's own date range falls outside it — paging one
+month at a time within an already-fetched window reuses the existing stream
+rather than re-querying on every swipe. The prediction/history streams
+(`CyclePredictionService`/`CycleHistoryService`) are unaffected: they still
+read the profile's full history, since a cycle estimate needs the complete
+record, not just the displayed window (see that service's own memoisation
+note for how it avoids recomputing on a redundant emission instead).
+`kCalendarWindowLookbehindDays`/`kCalendarWindowLookaheadDays` being 45 (more
+than any calendar month) is itself the guarantee that the window always
+covers a neighbour page in full: the displayed month's own first/last day
+minus/plus 45 always reaches past the *previous*/*next* month's own
+first/last day, whichever month lengths are involved — see
+`calendarEntriesWindowFor`'s coverage test in
+`test/ui/calendar_navigation_test.dart` for the exhaustive check.
+
+Review follow-up: `_MonthCalendarState._entries` holds that window's
+entries as plain state, populated by an explicit subscription rather than
+read off a `StreamBuilder` snapshot — a window crossing leaves `_entries`
+untouched until the replacement stream's first emission lands, so paging
+across the window's edge keeps rendering the previous window's days (and
+keeps the `PageView` mounted) instead of a full-bleed spinner for that one
+frame. The one exception is a profile switch, which clears `_entries`
+immediately (the old profile's days are a different data set, not
+something to bridge).
+
+That same follow-up also touches the two places `build()`/`_calendar()`
+derive from `entries` directly rather than from the injected services:
+when no `CyclePredictionService`/`CycleHistoryService` is provided,
+`computePredictionFromEntries`/`deriveCycleHistoryFromEntries` now run over
+`_entries`' *windowed* list instead of the profile's full history, and
+`defaultLayerTags(entries)` (the symptom-layer default, unconditional on
+whether those services are injected) does too. In production both
+services are always provided — `lib/app.dart` wires both unconditionally —
+so the prediction/history fallback is reachable only from a test that
+mounts `MonthCalendar` on its own (e.g.
+`test/ui/calendar_navigation_test.dart`'s harness), not from the real app.
+`defaultLayerTags` is different: it always reads the windowed list
+regardless of whether those services are wired, so real devices now rank
+the symptom-layer default from roughly the displayed month ±45 days rather
+than the whole profile — an accepted behaviour change from before this
+issue, not a bug, since the layers a person is actively logging rarely
+shift outside a ~3-month window anyway.
+
 ## Today card and cycle wheel (issue #209)
 
 `components/cycle_wheel.dart` (`CycleWheel`) is the ring visualization of
@@ -183,3 +241,18 @@ repositories when the screen isn't given one directly. Parsing
 and synchronous once bytes are in hand — see
 `lib/domain/import/account_import.dart` for the merge policy those feed
 into.
+
+## Clinical export tile (issue #157)
+
+`settings/clinical_export_tile.dart` (`ClinicalExportTile`) is a standalone
+"Export clinical summary (FHIR)" `ListTile`, not a case inside
+`settings/your_data_section.dart`'s own `build` — that method was mid-flight
+restructuring under PR #325 when this landed, so the two files share one
+insertion line instead of a conflicting diff inside that method. It follows
+`YourDataSection`'s own shape (a `ProfilesRepository.watch()` subscription,
+an injectable `FhirExportCollaborator` seam, `InlineError` on failure) but
+owns its state independently and disables itself with a reason when the
+device's first profile has no day entries yet. Builds the Bundle via
+`lib/domain/export/fhir_bundle.dart`'s `buildFhirDocumentBundle` and hands
+it to `lib/data/export/fhir_bundle_writer.dart`'s `FhirBundleWriter` for
+delivery — see `docs/clinical/fhir-export.md`.
