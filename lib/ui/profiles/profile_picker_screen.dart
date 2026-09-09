@@ -10,12 +10,14 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
+import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -27,6 +29,7 @@ import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
+import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:provider/provider.dart';
 
 String formatCreatedDate(DateTime utc) {
@@ -51,6 +54,7 @@ class ProfilePickerScreen extends StatelessWidget {
         title: const Text('Profiles'),
         actions: [
           if (hasSync) SyncStatusGlyph(onPressed: openSettings),
+          const SharedWithMeAction(),
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings),
@@ -159,6 +163,15 @@ class ProfilePickerScreen extends StatelessWidget {
               currentUserId:
                   context.read<AuthController?>()?.currentUserId,
               ownershipTransferService: ownershipTransfer,
+              predictionConnectionService:
+                  Provider.of<PredictionConnectionService?>(
+                      context, listen: false),
+              onPredictionConnectionChanged: (profileId) =>
+                  Provider.of<PredictionProjectionPublisher?>(
+                        context,
+                        listen: false,
+                      )
+                      ?.publishNow(profileId),
               notificationPreferencesService:
                   Provider.of<NotificationPreferencesService?>(
                       context, listen: false),
@@ -205,6 +218,34 @@ class ProfilePickerScreen extends StatelessWidget {
         lifecycleMode: result.lifecycleMode,
         birthControlMethod:
             birthControlStoredValue(result.birthControlChoice, l10n),
+      ),
+    );
+  }
+}
+
+/// Issue #151: the app-bar entry point for prediction-only connections
+/// shared WITH this account. Present only when a
+/// [PredictionConnectionService] is configured - an unconfigured build
+/// keeps the app bar exactly as before (R26's null-gating discipline).
+class SharedWithMeAction extends StatelessWidget {
+  const SharedWithMeAction({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final service = Provider.of<PredictionConnectionService?>(
+        context, listen: false);
+    if (service == null) return const SizedBox.shrink();
+    return IconButton(
+      key: const ValueKey('shared-with-me'),
+      tooltip: 'Shared with me',
+      icon: const Icon(Icons.calendar_month),
+      onPressed: () => Navigator.of(context).push(
+        buildNamedRoute<void>(
+          name: kRoutePredictionConnectionsScreen,
+          builder: (_) => PredictionConnectionsScreen(
+            service: service,
+          ),
+        ),
       ),
     );
   }

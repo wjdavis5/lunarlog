@@ -22,6 +22,7 @@ import '../../domain/models/profile.dart';
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
+import '../../domain/sharing/prediction_connection_service.dart';
 import '../../domain/sharing/sharing_service.dart';
 import '../../observability/route_names.dart';
 import '../components/inline_error.dart';
@@ -29,6 +30,7 @@ import '../routes.dart';
 import 'activity_feed_screen.dart';
 import 'invite_guardian_dialog.dart';
 import 'notification_preferences_screen.dart';
+import 'share_predictions_dialog.dart';
 import 'transfer_ownership_screen.dart';
 
 class ManageGuardiansScreen extends StatefulWidget {
@@ -41,6 +43,8 @@ class ManageGuardiansScreen extends StatefulWidget {
     this.ownershipTransferService,
     this.notificationPreferencesService,
     this.activityRepository,
+    this.predictionConnectionService,
+    this.onPredictionConnectionChanged,
   });
 
   final Profile profile;
@@ -67,6 +71,20 @@ class ManageGuardiansScreen extends StatefulWidget {
   /// site) hides the action.
   final ActivityFeedRepository? activityRepository;
 
+  /// Issue #151: when present, a "Predictions-only sharing" section sits
+  /// below the pending invitations - the primary guardian can arm one
+  /// phases-only connection per profile and revoke it, mirroring the
+  /// guardian-revocation UX. Null (an unconfigured build) hides the
+  /// section entirely, the same null-gating discipline as
+  /// [ownershipTransferService].
+  final PredictionConnectionService? predictionConnectionService;
+
+  /// Issue #151: called after a prediction connection is created or
+  /// revoked so the shell can (re)publish the projection snapshot right
+  /// away - a freshly created connection gets data on the recipient's
+  /// first fetch without waiting for the sharer's next prediction change.
+  final void Function(String profileId)? onPredictionConnectionChanged;
+
   @override
   State<ManageGuardiansScreen> createState() => _ManageGuardiansScreenState();
 }
@@ -77,10 +95,107 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// behind it (KTD3).
   late Future<List<PendingInvite>> _pendingInvitesFuture;
 
+  /// Issue #151: the profile's live prediction connection (pending invite
+  /// or active share), or null. Loaded once on init and reloaded after a
+  /// create or revoke - read on demand, never synced (KTD3). Null once
+  /// loaded means "no connection"; before that, the section shows a
+  /// spinner rather than a create affordance built on absent data.
+  PredictionConnectionService? get _predictionService =>
+      widget.predictionConnectionService;
+  ActivePredictionConnection? _predictionConnection;
+  bool _predictionConnectionLoaded = false;
+
   @override
   void initState() {
     super.initState();
     _loadPendingInvites();
+    _loadPredictionConnection();
+  }
+
+  Future<void> _loadPredictionConnection() async {
+    final service = _predictionService;
+    if (service == null) return;
+    try {
+      final connection = await service.getActiveConnection(
+        profileId: widget.profile.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _predictionConnection = connection;
+        _predictionConnectionLoaded = true;
+      });
+    } on PredictionConnectionFailure {
+      if (!mounted) return;
+      setState(() => _predictionConnectionLoaded = true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _predictionConnectionLoaded = true);
+    }
+  }
+
+  Future<void> _sharePredictions() async {
+    final service = _predictionService;
+    if (service == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => SharePredictionsDialog(
+        profileId: widget.profile.id,
+        profileName: widget.profile.displayName,
+        service: service,
+      ),
+    );
+    if (!mounted) return;
+    await _loadPredictionConnection();
+    widget.onPredictionConnectionChanged?.call(widget.profile.id);
+  }
+
+  Future<void> _revokePredictionConnection() async {
+    final service = _predictionService;
+    final connection = _predictionConnection;
+    if (service == null || connection == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('End prediction sharing?'),
+        content: const Text(
+            'They will immediately lose the shared predictions calendar. '
+            'You can create a new connection any time.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('End sharing'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await service.revokeConnection(connectionId: connection.connectionId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Prediction sharing ended')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Failed to end sharing. Check connection.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    await _loadPredictionConnection();
+    widget.onPredictionConnectionChanged?.call(widget.profile.id);
   }
 
   void _loadPendingInvites() {
@@ -518,11 +633,110 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               children: [
                 guardianList,
                 _pendingInvitesSection(rows, callerRole),
+                _predictionSection(rows, callerRole),
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  /// Issue #151: the predictions-only sharing section. Hidden entirely
+  /// when no PredictionConnectionService is configured (R26's null-gating
+  /// discipline); the create affordance shows only for the profile's
+  /// accepted primary guardian - the server enforces both again.
+  Widget _predictionSection(List<ProfileGuardian>? rows, GuardianRole? callerRole) {
+    final service = _predictionService;
+    if (service == null) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    final isPrimary = callerRole == GuardianRole.primaryGuardian;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text('Predictions-only sharing', style: theme.textTheme.titleSmall),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Shares estimated period, fertile, ovulation, and PMS days on a '
+            'read-only calendar - never notes or logs. One connection.',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+          ),
+        ),
+        if (!_predictionConnectionLoaded)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+                child:
+                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+          )
+        else if (_predictionConnection == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: isPrimary
+                ? OutlinedButton.icon(
+                    key: const ValueKey('share-predictions'),
+                    onPressed: _sharePredictions,
+                    icon: const Icon(Icons.calendar_month),
+                    label: const Text('Share predictions only...'),
+                  )
+                : Text(
+                    'Only the primary guardian can share predictions.',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.outline),
+                  ),
+          )
+        else
+          _predictionTile(_predictionConnection!, isPrimary),
+      ],
+    );
+  }
+
+  Widget _predictionTile(ActivePredictionConnection connection, bool isPrimary) {
+    final theme = Theme.of(context);
+    final title = connection.pending
+        ? (connection.recipientLabel?.isNotEmpty == true
+            ? connection.recipientLabel!
+            : 'Waiting for code redemption')
+        : (connection.recipientLabel?.isNotEmpty == true
+            ? connection.recipientLabel!
+            : 'Sharing predictions');
+    return ListTile(
+      key: const ValueKey('prediction-connection-tile'),
+      leading: Icon(
+        connection.pending ? Icons.schedule : Icons.calendar_month,
+      ),
+      title: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 6,
+        children: [
+          Text(title),
+          if (connection.pending)
+            Text('pending',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+        ],
+      ),
+      subtitle: Text(
+        connection.pending
+            ? _expiryLabel(connection.expiresAt)
+            : 'Phases-only calendar • not a guardian',
+      ),
+      trailing: isPrimary
+          ? IconButton(
+              key: const ValueKey('revoke-prediction-connection'),
+              icon: const Icon(Icons.link_off),
+              tooltip: 'End prediction sharing',
+              onPressed: _revokePredictionConnection,
+            )
+          : null,
     );
   }
 

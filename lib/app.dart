@@ -16,6 +16,7 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
+import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
@@ -39,6 +40,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
+import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -47,12 +49,15 @@ import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
+import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
+import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
@@ -68,6 +73,7 @@ class LunarLogApp extends StatefulWidget {
     this.feedbackService,
     this.accountDeletionService,
     this.ownershipTransferService,
+    this.predictionConnectionService,
     this.notificationPreferencesService,
     this.accountExportRemoteSource,
     this.reminderWindowUpsert,
@@ -101,6 +107,13 @@ class LunarLogApp extends StatefulWidget {
   /// `context.read<OwnershipTransferService>()`; when null nothing
   /// ownership-transfer-related is provided.
   final OwnershipTransferService? ownershipTransferService;
+
+  /// Prediction-only connection seam (Issue #151). When present, the
+  /// connection UI (Manage guardians' sharing section, the "Shared with
+  /// me" screen, and kind=prediction invite links) is live; when null
+  /// (an unconfigured build) none of it is reachable, the same
+  /// null-gating discipline as [ownershipTransferService].
+  final PredictionConnectionService? predictionConnectionService;
 
   /// Caregiver alert preference service (Issue #5, U8). When present,
   /// Manage guardians gains a "Notifications" entry (R1, R3, R4); when null
@@ -211,6 +224,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
       sentryNavigatorObservers();
   ReminderCoordinator? _coordinator;
   ReminderWindowPublisher? _reminderWindowPublisher;
+  PredictionProjectionPublisher? _predictionProjectionPublisher;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
@@ -343,6 +357,25 @@ class _LunarLogAppState extends State<LunarLogApp> {
     );
     _reminderWindowPublisher = publisher;
     publisher.start();
+    _startPredictionProjectionPublisher();
+  }
+
+  /// Issue #151: keep the server's derived-phase snapshot in step for the
+  /// profiles this account shares predictions OUT. Starts only when a
+  /// [PredictionConnectionService] is configured - an unconfigured build
+  /// has nothing to publish to and never constructs the publisher, the
+  /// same zero-conditional gating the reminder publisher uses.
+  void _startPredictionProjectionPublisher() {
+    final service = widget.predictionConnectionService;
+    if (service == null) return;
+    final publisher = PredictionProjectionPublisher(
+      activeProfiles: _profiles.watch(),
+      predictionFor: _prediction.watch,
+      service: service,
+      isSignedIn: _isSignedIn,
+    );
+    _predictionProjectionPublisher = publisher;
+    publisher.start();
   }
 
   bool _isSignedIn() => _authController?.signedIn ?? false;
@@ -376,14 +409,19 @@ class _LunarLogAppState extends State<LunarLogApp> {
   }
 
   /// U10: `kind == 'claim'` routes to [ClaimProfileSheet] (needs
-  /// [widget.ownershipTransferService]); anything else (null or
+  /// [widget.ownershipTransferService]); issue #151: `kind ==
+  /// 'prediction'` routes to [AcceptPredictionConnectionSheet] (needs
+  /// [widget.predictionConnectionService]); anything else (null or
   /// unrecognised) keeps the ordinary [AcceptInviteSheet] path (needs
   /// [widget.sharingService]) unchanged.
   void _maybePresentInvite(String code, String? profileId, String? kind) {
     final isClaim = kind == 'claim';
+    final isPrediction = kind == 'prediction';
     final collaboratorPresent = isClaim
         ? widget.ownershipTransferService != null
-        : widget.sharingService != null;
+        : isPrediction
+            ? widget.predictionConnectionService != null
+            : widget.sharingService != null;
     if (!collaboratorPresent || _inviteSheetOpen) return;
     if (_authController?.signedIn ?? false) {
       _presentSheet(code, profileId, kind);
@@ -402,6 +440,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
   void _presentSheet(String code, String? profileId, String? kind) {
     if (kind == 'claim') {
       _showClaimSheet(code, profileId);
+    } else if (kind == 'prediction') {
+      _showPredictionConnectionSheet(code);
     } else {
       _showInviteSheet(code, profileId);
     }
@@ -483,6 +523,60 @@ class _LunarLogAppState extends State<LunarLogApp> {
     );
   }
 
+  /// Issue #151: the kind=prediction counterpart of [_showClaimSheet],
+  /// sharing the same [_inviteSheetOpen] re-entrancy guard. The cold-start
+  /// latch clears `_pendingInviteKind` on the navigator-missing fallback
+  /// by passing the kind through from the caller; a deep link arriving
+  /// live never latches.
+  void _showPredictionConnectionSheet(String code) {
+    final service = widget.predictionConnectionService;
+    if (service == null || _inviteSheetOpen) return;
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) {
+      setState(() {
+        _pendingInviteCode = code;
+        _profileIdOfPendingInvite = null;
+        _pendingInviteKind = 'prediction';
+      });
+      return;
+    }
+    _inviteSheetOpen = true;
+    setState(() {
+      _pendingInviteCode = null;
+      _profileIdOfPendingInvite = null;
+      _pendingInviteKind = null;
+    });
+    unawaited(
+      showModalBottomSheet<void>(
+        context: ctx,
+        isScrollControlled: true,
+        showDragHandle: true,
+        routeSettings:
+            const RouteSettings(name: kRouteAcceptPredictionConnectionSheet),
+        builder: (_) => AcceptPredictionConnectionSheet(
+          rawToken: code,
+          service: service,
+          onAccepted: (result) {
+            // Push the phase-only calendar for the newly connected
+            // profile (the sheet pops itself first).
+            final navContext = _navigatorKey.currentContext;
+            if (navContext == null) return;
+            Navigator.of(navContext).push(
+              buildNamedRoute<void>(
+                name: kRoutePredictionCalendarScreen,
+                builder: (_) => PredictionConnectionCalendarScreen(
+                  profileId: result.profileId,
+                  profileName: result.profileName,
+                  service: service,
+                ),
+              ),
+            );
+          },
+        ),
+      ).whenComplete(() => _inviteSheetOpen = false),
+    );
+  }
+
   /// Issue #168: runs the coordinator's automatic startup permission
   /// request (`coordinator.start()`, which now requests the Android
   /// permission unconditionally, same as Darwin already did) inside the
@@ -553,9 +647,14 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _coordinator = null;
     final publisherTeardown =
         _reminderWindowPublisher?.dispose() ?? Future<void>.value();
+    final projectionPublisherTeardown =
+        _predictionProjectionPublisher?.dispose() ?? Future<void>.value();
     _reminderWindowPublisher = null;
-    final teardown =
-        Future.wait([coordinatorTeardown, publisherTeardown]).then((_) {});
+    final teardown = Future.wait([
+      coordinatorTeardown,
+      publisherTeardown,
+      projectionPublisherTeardown,
+    ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {
       onTeardown(teardown);
@@ -612,6 +711,12 @@ class _LunarLogAppState extends State<LunarLogApp> {
         if (widget.ownershipTransferService != null)
           Provider<OwnershipTransferService>.value(
               value: widget.ownershipTransferService!),
+        if (widget.predictionConnectionService != null)
+          Provider<PredictionConnectionService>.value(
+              value: widget.predictionConnectionService!),
+        if (_predictionProjectionPublisher != null)
+          Provider<PredictionProjectionPublisher>.value(
+              value: _predictionProjectionPublisher!),
         if (widget.feedbackService != null)
           Provider<FeedbackService>.value(value: widget.feedbackService!),
         if (widget.accountDeletionService != null)
