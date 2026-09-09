@@ -107,7 +107,10 @@ void main() {
     final privacyTile = find.byKey(const ValueKey('privacy-policy-tile'));
     expect(privacyTile, findsOneWidget);
     expect(find.text('Privacy policy'), findsOneWidget);
-    expect(find.text('Local-first, encrypted, zero tracking'), findsOneWidget);
+    expect(
+      find.text('Sync & family sharing, protected at rest, zero tracking'),
+      findsOneWidget,
+    );
 
     // Tap privacy policy tile
     await tester.tap(privacyTile);
@@ -115,7 +118,8 @@ void main() {
 
     // Verify dialog opened
     expect(find.text('LunarLog Privacy Policy'), findsOneWidget);
-    expect(find.textContaining('Local & Encrypted'), findsOneWidget);
+    expect(find.textContaining('Sync & Family Sharing'), findsOneWidget);
+    expect(find.textContaining('Protected at Rest'), findsOneWidget);
     expect(find.textContaining('Zero Ads & Tracking'), findsOneWidget);
 
     // Tap Close button

@@ -128,19 +128,20 @@
   <div class="container">
     <h1>LunarLog Privacy Policy</h1>
     <div class="meta">
-      <strong>Effective Date:</strong> September 3, 2026 &bull; 
-      <strong>Last Updated:</strong> September 3, 2026
+      <strong>Effective Date:</strong> September 3, 2026 &bull;
+      <strong>Last Updated:</strong> September 9, 2026 (repositioned the product framing around sync and multi-guardian family collaboration rather than offline operation, and replaced the retired SQLCipher at-rest description with the app's actual OS-level at-rest protection &mdash; see PRIVACY.md for the full change history)
     </div>
 
     <div class="highlight-card">
-      <strong>Privacy First:</strong> LunarLog is a local-first menstrual cycle tracker. Your records stay encrypted on your device. Cloud sync is strictly optional, and we never display advertisements, monetize health information, or share data with data brokers.
+      <strong>Privacy First:</strong> LunarLog is built around an account that syncs a profile across your devices and lets it be shared with other guardians &mdash; co-parents, caregivers &mdash; each with their own role, so sync and multi-guardian collaboration are the product's priority, not a bolted-on option. Your records are protected at rest by your device's own operating system encryption, cloud sync only starts once you sign in, and we never display advertisements, monetize health information, or share data with data brokers.
     </div>
 
     <h2>1. Core Principles</h2>
     <ul>
-      <li><strong>Local-First &amp; Offline:</strong> LunarLog operates fully offline without an account. All cycle entries, symptoms, and profiles remain on your hardware.</li>
-      <li><strong>Encrypted at Rest:</strong> Device storage is encrypted using SQLCipher (AES-256) and secured behind device biometric or passcode authentication.</li>
+      <li><strong>Built For Sync &amp; Family Collaboration:</strong> An account (Supabase Auth) is what lets a profile sync across your own devices and be shared with other guardians &mdash; co-parents and caregivers each get their own role and attribution. This is the product's priority and its differentiator, not an add-on.</li>
+      <li><strong>Protected at Rest:</strong> Device storage relies on your operating system's own at-rest protection (iOS Data Protection / Android device encryption) and is secured behind device biometric or passcode authentication.</li>
       <li><strong>No Advertising or Tracking:</strong> We do not show ads, sell data, or participate in cross-app tracking networks.</li>
+      <li><strong>Resilient Offline:</strong> LunarLog keeps logging, viewing history, and predicting even when you have no network connection &mdash; a reliability property, not a requirement to avoid an account; syncing and sharing a profile with other guardians does require signing in.</li>
       <li><strong>Estimates From Your Own Logged Data:</strong> LunarLog estimates the timing of the next period from the cycle history you log, computed entirely on your device. Fertility-related estimation (fertile windows, ovulation) is part of the product's intended scope &mdash; not present in the app today &mdash; and will follow the same protections and the same guardian-visibility rules as all other cycle data when it ships. Conception and pregnancy features remain outside the product's scope.</li>
       <li><strong>Scrubbed Telemetry:</strong> Diagnostic crash logs (Sentry) are scrubbed on-device prior to transmission, stripping all health details, notes, dates, and identities.</li>
     </ul>
@@ -202,7 +203,7 @@
 
     <h2>6. Security Protections</h2>
     <ul>
-      <li><strong>SQLCipher AES-256:</strong> Local database is fully encrypted at rest.</li>
+      <li><strong>OS-Level At-Rest Protection:</strong> Local database relies on your operating system's own at-rest protection (iOS Data Protection / Android device encryption), not an app-managed cipher.</li>
       <li><strong>Biometric Protection:</strong> Requires Face ID, Touch ID, or device passcode to unlock.</li>
       <li><strong>Inactivity Relocking:</strong> Automatically locks the app after inactivity and upon backgrounding.</li>
       <li><strong>Screen Obfuscation:</strong> Privacy cover obscures sensitive screens in the app switcher.</li>

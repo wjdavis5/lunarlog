@@ -14,7 +14,7 @@ execution: code
 
 - **Objective:** The operator plans months ahead from the calendar, logs in seconds, trusts estimates after irregular cycles, gets useful nudges, hands the phone to a teen without worry, exports for a clinician, deletes the account in-app, and reads the app day or night.
 - **Means:** One phased roadmap plan over seven workstreams with seven public-issue payloads (KTD1).
-- **Authority:** PRIVACY.md (privacy commitments, local-first) outranks AGENTS.md (gates, migration flow), which outranks this plan on mechanism.
+- **Authority:** PRIVACY.md (privacy commitments, sync-and-sharing positioning) outranks AGENTS.md (gates, migration flow), which outranks this plan on mechanism.
 - **Stop conditions:** Stop a unit when its acceptance in the Verification Contract passes; stop the roadmap when the Definition of Done holds.
 - **Execution profile:** code; per-workstream worktree and branch per repo rule.
 - **Tail ownership:** ce-work or a human implementer, unit by unit in phase order.

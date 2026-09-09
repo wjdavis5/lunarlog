@@ -151,7 +151,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             key: const ValueKey('privacy-policy-tile'),
             leading: const Icon(Icons.shield_outlined),
             title: const Text('Privacy policy'),
-            subtitle: const Text('Local-first, encrypted, zero tracking'),
+            subtitle: const Text(
+              'Sync & family sharing, protected at rest, zero tracking',
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showPrivacyPolicy(context),
           ),
@@ -221,11 +223,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('LunarLog Privacy Policy'),
         content: const SingleChildScrollView(
           child: Text(
-            'LunarLog is a privacy-first, local-first cycle tracker.\n\n'
-            '• Local & Encrypted: All cycle data is encrypted on your device '
-            'behind biometric authentication.\n'
-            '• Optional Sync: Cloud accounts (Supabase) are optional. No data is '
-            'uploaded without your explicit consent.\n'
+            'LunarLog is a family cycle tracker built for sync and sharing.\n\n'
+            '• Sync & Family Sharing: An account (Supabase) syncs a profile '
+            "across your devices and lets it be shared with other guardians, "
+            'each with their own role. No data is uploaded without your '
+            'explicit consent.\n'
+            '• Protected at Rest: Cycle data is protected at rest by your '
+            "device's own operating system encryption and shown only behind "
+            'biometric authentication.\n'
+            '• Works Offline: Logging, viewing, and predictions keep working '
+            'without a network; sharing a profile with another guardian does '
+            'require signing in.\n'
             '• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n'
             '• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health '
             'and personal details on-device.\n'

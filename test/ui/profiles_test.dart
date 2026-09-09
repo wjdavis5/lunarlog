@@ -37,7 +37,9 @@ import '../support/fake_settings_store.dart';
 import '../support/fake_sync_engine.dart';
 
 const String kNoticeText =
-    'Data stays on this device unless you sign in to sync it to your account.';
+    'Signing in syncs this profile across your devices and lets you share '
+    'it with other guardians. Until then, everything you log stays on '
+    'this device.';
 
 Future<LunarLogDatabase> pumpApp(
   WidgetTester tester, {
