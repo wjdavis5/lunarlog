@@ -48,6 +48,13 @@
 /// #135 (statistics/trends) mounts as an additional entry in [_sections]
 /// below — that section-list shape is the seam this issue leaves open.
 /// #135 mounts here.
+///
+/// Issue #143: the headline card also renders an "Estimated fertile
+/// window" row (dates plus, per [CareModeCopy.showsTierCaption], the tier
+/// name) and [kFertileWindowDisclaimer] right under it — both gated on
+/// [CareModeCopy.showsFertileWindow], hidden in the same not-enough-history
+/// state the rest of the card already is, and available on every profile
+/// including `isMinor` ones (#142) with no separate check here.
 library;
 
 import 'dart:async';
@@ -60,12 +67,15 @@ import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/models/profile_mode.dart';
+import '../../domain/prediction/fertile_window.dart';
 import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
 import '../account/auth_controller.dart';
 import '../components/empty_state.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import '../overview/cycle_history_section.dart';
-import '../overview/overview_panel.dart' show kEstimateDisclaimer;
+import '../overview/overview_panel.dart'
+    show kEstimateDisclaimer, kFertileWindowDisclaimer;
 
 class AnalysisTab extends StatefulWidget {
   const AnalysisTab({
@@ -242,6 +252,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
             ),
             const SizedBox(height: 8),
             ..._headlineStats(theme, prediction),
+            ..._fertileWindowSection(theme, prediction),
             const SizedBox(height: 12),
             Text(
               kEstimateDisclaimer,
@@ -291,14 +302,81 @@ class _AnalysisTabState extends State<AnalysisTab> {
     return '${prediction.tier.label} ($spread)';
   }
 
+  /// Issue #143: the fertile-window row and its contraception-specific
+  /// disclaimer, gated on [CareModeCopy.showsFertileWindow] the same way
+  /// the calendar band is — empty (never rendered) for a mode that hides
+  /// the estimate. Split out of [_statsCard] to keep that method's own
+  /// branch count low (the quality gate's per-method CRAP rule).
+  ///
+  /// Issue #143 review: uses [currentFertileWindow] rather than
+  /// [estimateFertileWindow] — the latter always describes the *next*
+  /// cycle's window even once it has entirely passed, which read as a
+  /// stale window shown as current; this instead walks
+  /// [ActivePrediction.forecast] for the first window that has not yet
+  /// passed, hiding the row entirely if none remain (defensive — see that
+  /// function's own doc comment).
+  List<Widget> _fertileWindowSection(
+    ThemeData theme,
+    ActivePrediction prediction,
+  ) {
+    if (!_copy.showsFertileWindow) return const [];
+    final fertile = currentFertileWindow(prediction);
+    if (fertile == null) return const [];
+    return [
+      _statRow(
+        theme,
+        'analysis-fertile-window',
+        _copy.fertileWindowLabel,
+        _fertileWindowText(fertile),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        kFertileWindowDisclaimer,
+        key: const ValueKey('analysis-fertile-disclaimer'),
+        style: theme.textTheme.bodySmall,
+      ),
+    ];
+  }
+
+  /// Same tier-caption rule as [_variabilityText]: the date range always
+  /// renders, and [CareModeCopy.showsTierCaption] only adds the tier-name
+  /// prefix — this estimate is never hidden behind a caption gate of its
+  /// own, only the whole-row [CareModeCopy.showsFertileWindow] gate above.
+  String _fertileWindowText(FertileWindowEstimate fertile) {
+    final range =
+        '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
+    if (!_copy.showsTierCaption) return range;
+    return '${fertile.tier.label} ($range)';
+  }
+
+  // Issue #160: locale-derived long date (the `en` fallback renders
+  // "August 16, 2026", the same shape the old kMonthNames concatenation gave).
+  String _formatDate(LocalDate date) =>
+      dates.formatMonthDayYear(DateTime(date.year, date.month, date.day));
+
+  // Issue #143 review: the fertile-window row's value ("High confidence
+  // (August 16, 2026 – August 22, 2026)") is far longer than the other
+  // rows' plain "±N days" — the value is now wrapped in `Expanded` with
+  // right-aligned, wrapping text instead of two bare `Text`s in a
+  // `spaceBetween` row, so a long value wraps onto a second line rather
+  // than overflowing the card horizontally.
   Widget _statRow(ThemeData theme, String key, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: theme.textTheme.bodyMedium),
-          Text(value, key: ValueKey(key), style: theme.textTheme.bodyMedium),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              key: ValueKey(key),
+              textAlign: TextAlign.end,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
         ],
       ),
     );

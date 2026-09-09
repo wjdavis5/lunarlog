@@ -1,0 +1,9 @@
+# Flutter gen-l10n configuration (issue #160): `en` is the only locale
+# today; `lib/l10n/app_en.arb` is the template and the single source of the
+# app's English copy. The generated Dart (lib/l10n/app_localizations*.dart)
+# is committed, matching the repo's convention for generated code. Regenerate
+# with `flutter gen-l10n` after editing the ARB.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+nullable-getter: false

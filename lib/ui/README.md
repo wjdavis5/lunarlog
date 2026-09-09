@@ -61,7 +61,12 @@ so `irregular` mode shows a number-free summary instead of raw digits — the
 same R17 disclaimer, an honest not-enough-history `EmptyState` below three
 valid cycles, and `overview/cycle_history_section.dart`'s existing
 `CycleHistorySection` mounted below the headline as this tab's scrollable
-history list. Issue #314: this is now `CycleHistorySection`'s *only* mount —
+history list. Issue #143 adds a fourth headline row, "Estimated fertile
+window" (`domain/prediction/fertile_window.dart`'s `estimateFertileWindow`,
+reusing `ActivePrediction`'s own tier rather than deriving a second one),
+plus its own `kFertileWindowDisclaimer` right under the shared R17 one —
+gated on `CareModeCopy.showsFertileWindow`, hidden the same way in the
+not-enough-history state, and with no `isMinor` check anywhere (#142). Issue #314: this is now `CycleHistorySection`'s *only* mount —
 `OverviewPanel` (Today) used to embed the same section too (left open by
 #223 since #209 was concurrently rewriting that file), rendering it twice
 and running two `CycleHistoryService.watch` subscriptions per profile;
@@ -100,7 +105,15 @@ widget; the `CustomPainter` itself stays a thin dispatcher over per-layer
 helper methods to keep the quality gate's per-method CRAP score down.
 Colours come from the theme — plain `ColorScheme` roles for the base
 ring/elapsed arc, `LunarLogColors.predictedBand`/`predictedBorder` (issue
-#176) for the band — never literals.
+#176) for the band — never literals. `logging/month_calendar.dart`'s
+twelve-month forecast (issue #133) uses those same predicted-band tokens
+for its hatched bleed bands, plus a separate pair, `LunarLogColors
+.fertileBand`/`fertileBorder` (issue #143, a distinct tertiary-hue token),
+for its fertile-window/ovulation estimate — rendered as a *dashed* ring
+rather than the bleed band's solid hatch so the two estimates stay
+distinguishable without relying on colour alone, keyed in the calendar
+legend as "Estimated fertile days" and gated, like every other prediction
+number, on `CareModeCopy.showsFertileWindow` (`irregular` mode hides it).
 
 `components/today_card.dart` (`TodayCard`) wraps the wheel with the
 next-period estimate, a compact confidence chip (`LunarLogColors`'
@@ -143,3 +156,30 @@ its route through one of these two so a route name lives in exactly one
 place (issue #313 closed out the last three hand-rolled `lib/ui/sharing/`
 pushes — the Activity Feed action and Manage Guardians' Transfer Ownership
 and Notifications actions).
+
+## Your data: export and import (issues #222, #140)
+
+`settings/your_data_section.dart`'s `YourDataSection` is Settings' "Your
+data" section: a thin, always-Provider-driven pair of tiles, reachable
+without a cloud account and independent of sign-in state. "Export my data"
+(#222) shows only once at least one profile exists — nothing to export
+before that — and calls `AccountExportWriter` through the injectable
+`ExportAccountCollaborator` seam. "Import from file" (#140) shows
+unconditionally (even with zero profiles — restoring a device that has none
+yet is the point) and just pushes `settings/import_screen.dart`'s
+`ImportScreen` via `kRouteImportScreen`; the screen owns the whole
+pick/parse/preview/confirm/apply flow itself. Both tiles share the same
+`showExport`/`showImport` "not web" default, independently overridable for
+tests.
+
+`ImportScreen` never touches Drift or `file_picker` directly in a test: file
+bytes come from an injectable `ImportFileReader` (default
+`lib/data/import/import_file_picker.dart`'s `pickImportFile`, excluded from
+the coverage gate the same way `AccountExportWriter` is), and planning/
+applying go through an injectable `AccountImportCoordinator`
+(`lib/data/import/account_importer.dart`) built from `Provider`-supplied
+repositories when the screen isn't given one directly. Parsing
+(`parseAccountImport`) and the preview summary (`previewImport`) are pure
+and synchronous once bytes are in hand — see
+`lib/domain/import/account_import.dart` for the merge policy those feed
+into.

@@ -34,8 +34,9 @@ library;
 import 'dart:async' show Timer, scheduleMicrotask, unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
-import 'package:intl/intl.dart' show DateFormat;
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -71,15 +72,9 @@ const Duration kDaySheetSavedIndicatorDuration = Duration(seconds: 2);
 /// date formatter can absorb this helper wholesale once it lands (same
 /// inputs, same shape); until then it is the sheet's own thin local helper.
 String daySheetDateLabel(LocalDate date, LocalDate today) {
-  final asDateTime = DateTime(date.year, date.month, date.day);
-  final delta = today.difference(date);
-  if (delta == 0) {
-    return 'Today · ${DateFormat('EEE d MMM').format(asDateTime)}';
-  }
-  if (delta == 1) {
-    return 'Yesterday';
-  }
-  return DateFormat('EEE d MMM yyyy').format(asDateTime);
+  // Thin bridge onto #160's shared helper: LocalDate -> civil DateTime.
+  DateTime civil(LocalDate d) => DateTime(d.year, d.month, d.day);
+  return dates.relativeDayLabel(civil(date), civil(today));
 }
 
 String flowLabel(FlowLevel flow) {
@@ -351,19 +346,19 @@ class _DaySheetState extends State<DaySheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete this entry?'),
+        title: Text(AppLocalizations.of(context).daySheetDeleteTitle),
         content: Text(
-          'The entry for ${daySheetDateLabel(widget.date, widget.today)} is '
-          'removed from the calendar.',
+          AppLocalizations.of(context)
+              .daySheetDeleteBody(daySheetDateLabel(widget.date, widget.today)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).daySheetCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
+            child: Text(AppLocalizations.of(context).daySheetDelete),
           ),
         ],
       ),
@@ -433,7 +428,7 @@ class _DaySheetState extends State<DaySheet> {
     final discard = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Discard unsaved changes?'),
+        title: Text(AppLocalizations.of(context).daySheetDiscardTitle),
         content: const Text(
           "The last change couldn't be saved. Discarding removes it from "
           'this device.',
@@ -441,11 +436,11 @@ class _DaySheetState extends State<DaySheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Keep editing'),
+            child: Text(AppLocalizations.of(context).daySheetKeepEditing),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Discard'),
+            child: Text(AppLocalizations.of(context).daySheetDiscard),
           ),
         ],
       ),
@@ -471,7 +466,7 @@ class _DaySheetState extends State<DaySheet> {
     if (widget.date.isAfter(widget.today)) {
       body = Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
-        child: const Text("Future dates can't be logged."),
+        child: Text(AppLocalizations.of(context).daySheetFutureDate),
       );
     } else if (widget.readOnly) {
       body = _readOnlyBody();
@@ -691,7 +686,7 @@ class _DaySheetState extends State<DaySheet> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: 8),
-          Text('Saving…', style: theme.textTheme.bodySmall),
+          Text(AppLocalizations.of(context).daySheetSaving, style: theme.textTheme.bodySmall),
         ],
       );
     } else if (_showSaved) {
@@ -701,7 +696,7 @@ class _DaySheetState extends State<DaySheet> {
         children: [
           Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
           const SizedBox(width: 4),
-          Text('Saved', style: theme.textTheme.bodySmall),
+          Text(AppLocalizations.of(context).daySheetSaved, style: theme.textTheme.bodySmall),
         ],
       );
     } else {
@@ -724,7 +719,7 @@ class _DaySheetState extends State<DaySheet> {
   List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
     Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 4),
-      child: Text('Unrecognised', style: theme.textTheme.labelMedium),
+      child: Text(AppLocalizations.of(context).daySheetUnrecognised, style: theme.textTheme.labelMedium),
     ),
     Wrap(
       spacing: 8,
@@ -762,7 +757,7 @@ class _DaySheetState extends State<DaySheet> {
               Text(reason, style: theme.textTheme.bodyMedium),
               const SizedBox(height: 4),
             ],
-            Text('No entry for this day.', style: theme.textTheme.bodyMedium),
+            Text(AppLocalizations.of(context).daySheetNoEntry, style: theme.textTheme.bodyMedium),
           ],
         ),
       );
@@ -799,11 +794,11 @@ class _DaySheetState extends State<DaySheet> {
           ],
         ),
         const SizedBox(height: 12),
-        Text('Flow', style: theme.textTheme.labelMedium),
+        Text(AppLocalizations.of(context).daySheetFlowLabel, style: theme.textTheme.labelMedium),
         Text(flowLabel(existing.flow), style: theme.textTheme.titleSmall),
         if (existing.tags.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('Tags', style: theme.textTheme.labelMedium),
+          Text(AppLocalizations.of(context).daySheetTagsLabel, style: theme.textTheme.labelMedium),
           Wrap(
             spacing: 8,
             runSpacing: 4,
@@ -814,7 +809,7 @@ class _DaySheetState extends State<DaySheet> {
           ),
         ],
         const SizedBox(height: 12),
-        Text('Note', style: theme.textTheme.labelMedium),
+        Text(AppLocalizations.of(context).daySheetNoteLabel, style: theme.textTheme.labelMedium),
         Text(
           (existing.note == null || existing.note!.isEmpty)
               ? 'No note'

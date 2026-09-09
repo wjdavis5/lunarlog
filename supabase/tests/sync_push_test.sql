@@ -667,6 +667,15 @@ select is(pg_temp.resp('mode_entry') -> 'rejected', '[]'::jsonb,
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('user_a');
 
+-- Issue #167 gave import_id a real `references import_jobs(id)` FK (this
+-- column was an unconstrained placeholder before that migration), so the
+-- id used below must be a real import_jobs row, not an arbitrary literal
+-- uuid -- a fixed id inserted directly, since nothing else in this file
+-- needs to look it back up.
+insert into public.import_jobs (id, profile_id, source, status, total_rows, created_by)
+values ('11111111-1111-1111-1111-111111111111'::uuid, tests.ulid(1), 'clue_import', 'pending', 1,
+        tests.get_supabase_uid('user_a'));
+
 -- Round trip: a brand-new entry pushed with all three keys stores them
 -- verbatim.
 insert into r select 'provenance_insert', public.sync_push('[]'::jsonb,

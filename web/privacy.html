@@ -129,7 +129,7 @@
     <h1>LunarLog Privacy Policy</h1>
     <div class="meta">
       <strong>Effective Date:</strong> September 3, 2026 &bull;
-      <strong>Last Updated:</strong> September 9, 2026 (repositioned the product framing around sync and multi-guardian family collaboration rather than offline operation, and replaced the retired SQLCipher at-rest description with the app's actual OS-level at-rest protection &mdash; see PRIVACY.md for the full change history)
+      <strong>Last Updated:</strong> September 9, 2026 (LunarLog now computes a fertile-window and ovulation estimate from your logged cycle history, on-device &mdash; see the &ldquo;Estimates From Your Own Logged Data&rdquo; principle below; repositioned the product framing around sync and multi-guardian family collaboration rather than offline operation, and replaced the retired SQLCipher at-rest description with the app's actual OS-level at-rest protection &mdash; see PRIVACY.md for the full change history)
     </div>
 
     <div class="highlight-card">
@@ -142,7 +142,7 @@
       <li><strong>Protected at Rest:</strong> Device storage relies on your operating system's own at-rest protection (iOS Data Protection / Android device encryption) and is secured behind device biometric or passcode authentication.</li>
       <li><strong>No Advertising or Tracking:</strong> We do not show ads, sell data, or participate in cross-app tracking networks.</li>
       <li><strong>Resilient Offline:</strong> LunarLog keeps logging, viewing history, and predicting even when you have no network connection &mdash; a reliability property, not a requirement to avoid an account; syncing and sharing a profile with other guardians does require signing in.</li>
-      <li><strong>Estimates From Your Own Logged Data:</strong> LunarLog estimates the timing of the next period from the cycle history you log, computed entirely on your device. Fertility-related estimation (fertile windows, ovulation) is part of the product's intended scope &mdash; not present in the app today &mdash; and will follow the same protections and the same guardian-visibility rules as all other cycle data when it ships. Conception and pregnancy features remain outside the product's scope.</li>
+      <li><strong>Estimates From Your Own Logged Data:</strong> LunarLog estimates the timing of the next period from the cycle history you log, computed entirely on your device. LunarLog also estimates a fertile window and an ovulation day the same way &mdash; a calendar-method back-calculation (next predicted period start minus an assumed luteal-phase length), computed entirely on your device from that same logged cycle history, carrying the same reliability tier as the period estimate it is derived from and covered by the same guardian-visibility and ownership-transfer rules as all other cycle data. It is not based on any additional signal you log and <strong>must not be used to prevent pregnancy</strong> &mdash; it is not birth control, nor a backup to birth control. Conception and pregnancy features remain outside the product's scope.</li>
       <li><strong>Scrubbed Telemetry:</strong> Diagnostic crash logs (Sentry) are scrubbed on-device prior to transmission, stripping all health details, notes, dates, and identities.</li>
     </ul>
 

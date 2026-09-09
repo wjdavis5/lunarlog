@@ -69,3 +69,19 @@ const int kMaxObservationsPerDay = 200;
 /// as `kMaxObservationSourceIdLength`, kept as its own named constant since
 /// the two tables' provenance columns are validated independently.
 const int kMaxDayEntrySourceIdLength = 128;
+
+/// Maximum `day_entries.tz`/`observations.tz` length (`char_length(tz) <=
+/// 64` in both tables' CHECK constraints, `supabase/migrations/
+/// 20260903014208_initial_sync_schema.sql` and
+/// `20260908160000_observations.sql`). Issue #140 review: restore-from-file
+/// import mirrors this bound explicitly, since a `tz` read from an
+/// untrusted file previously had no client-side length check at all.
+const int kMaxTzLength = 64;
+
+/// Maximum `day_entries.import_id`/`observations.import_id` length as read
+/// from an untrusted import file (Issue #140 review): the column itself is
+/// an unconstrained `uuid` server-side (Issue #159's placeholder FK), so
+/// there is no server bound to mirror — this is a generous cap
+/// (well over a canonical UUID's 36 characters) purely so a malformed file
+/// cannot smuggle an unbounded string through this column.
+const int kMaxImportIdLength = 128;

@@ -5,10 +5,12 @@
 /// Issue #132 adds the two surfaces below the estimate card: the
 /// three-option late resolver (R6) replacing the old single-line banner,
 /// and the cycle-history section (R4/R5) with omit-from-average,
-/// statistics, and confidence framing. Wording is date-based only today —
-/// no fertility vocabulary in any state until #143 lands — and every
-/// estimate sits next to the fixed non-medical disclaimer (R17). No drift
-/// types cross into this file.
+/// statistics, and confidence framing. Wording is date-based only here —
+/// #143's fertile-window/ovulation estimate renders on the Analysis tab
+/// (`AnalysisTab`) and the forward calendar (`month_calendar.dart`)
+/// instead, never on this panel — and every estimate sits next to the
+/// fixed non-medical disclaimer (R17). No drift types cross into this
+/// file.
 ///
 /// Issue #131: the profile's care mode selects the vocabulary
 /// (`careModeCopyFor`) — status labels, estimate framing, and the
@@ -54,13 +56,14 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
-import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
@@ -72,10 +75,7 @@ import 'package:provider/provider.dart';
 // `estimate_copy.dart`'s doc comment for why the constant itself moved out
 // of this file (it broke a mutual import with `today_card.dart`).
 export 'package:lunarlog/ui/overview/estimate_copy.dart'
-    show kEstimateDisclaimer;
-
-String _formatDate(LocalDate date) =>
-    '${kMonthNames[date.month - 1]} ${date.day}, ${date.year}';
+    show kEstimateDisclaimer, kFertileWindowDisclaimer;
 
 /// Issue #213: `high` confidence keeps the single exact-date estimate
 /// (unchanged from before this issue); any other tier renders the range
@@ -85,16 +85,22 @@ String _formatDate(LocalDate date) =>
 /// history that has not yet filled the 6-cycle average window): showing
 /// "June 18, 2026 – June 18, 2026" would be a redundant, confusing range
 /// for a single date, so that case falls back to the plain date instead.
-String _estimateDateText(ActivePrediction prediction) {
+/// Issue #160: month names are locale-derived via `lib/ui/l10n/dates.dart`,
+/// replacing the old `kMonthNames` list this file used to re-import.
+String _estimateDateText(ActivePrediction prediction, String locale) {
+  String format(LocalDate date) => dates.formatMonthDayYear(
+        DateTime(date.year, date.month, date.day),
+        locale: locale,
+      );
   if (prediction.tier == CycleConfidence.high) {
-    return _formatDate(prediction.estimatedNextStart);
+    return format(prediction.estimatedNextStart);
   }
   final rangeStart = prediction.estimatedRangeStart;
   final rangeEnd = prediction.estimatedRangeEnd;
   if (rangeStart == rangeEnd) {
-    return _formatDate(prediction.estimatedNextStart);
+    return format(prediction.estimatedNextStart);
   }
-  return '${_formatDate(rangeStart)} – ${_formatDate(rangeEnd)}';
+  return '${format(rangeStart)} – ${format(rangeEnd)}';
 }
 
 class OverviewPanel extends StatefulWidget {
@@ -297,13 +303,14 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final messenger = ScaffoldMessenger.of(context);
     await repository.save(entry);
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     messenger.showSnackBar(SnackBar(
-      content: const Text(
-        'Recorded a medium-flow period start for today.',
-        key: ValueKey('today-card-logged-snackbar'),
+      content: Text(
+        l10n.overviewLoggedSnackbar,
+        key: const ValueKey('today-card-logged-snackbar'),
       ),
       action: SnackBarAction(
-        label: 'Undo',
+        label: l10n.overviewUndo,
         onPressed: () => _undoLogToday(previous, today),
       ),
     ));
@@ -368,7 +375,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
         child: TextButton(
           key: const ValueKey('overview-see-history-link'),
           onPressed: () => scope.select(AppTab.insights),
-          child: const Text('See cycle history'),
+          child: Text(AppLocalizations.of(context).overviewSeeHistory),
         ),
       ),
     );
@@ -435,7 +442,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               cycleLengthDays: prediction.meanCycleLengthDays.round(),
               periodLengthDays: prediction.meanPeriodLengthDays.round(),
               estimateText:
-                  '${_copy.nextEstimateLabel} ${_estimateDateText(prediction)}',
+                  '${_copy.nextEstimateLabel} ${_estimateDateText(prediction, dates.calendarLocale(context))}',
               tier: prediction.tier,
               showConfidenceChip: _copy.showsTierCaption,
               canLog: !_effectiveReadOnly,
@@ -489,13 +496,14 @@ class _OverviewPanelState extends State<OverviewPanel> {
     BuildContext context,
     ActivePrediction prediction,
   ) async {
+    // Captured before the await (both the messenger and the localized
+    // copy): nothing touches [context] past the `mounted` check below.
     final messenger = ScaffoldMessenger.of(context);
+    final copy = AppLocalizations.of(context).overviewExcludedSnackbar;
     await _exclusions.omit(widget.profileId, prediction.lastEpisodeStart);
     if (!mounted) return;
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('This cycle is excluded from future averages.'),
-      ),
+      SnackBar(content: Text(copy)),
     );
   }
 
@@ -516,6 +524,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     ActivePrediction prediction,
     ThemeData theme,
   ) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       key: const ValueKey('overview-long-cycle-prompt'),
       margin: const EdgeInsets.only(top: 4),
@@ -528,7 +537,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'This cycle is unusually long',
+            l10n.overviewLongCycleTitle,
             key: const ValueKey('overview-long-cycle-title'),
             style: theme.textTheme.titleSmall?.copyWith(
               color: theme.colorScheme.onSecondaryContainer,
@@ -536,9 +545,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
           ),
           const SizedBox(height: 4),
           Text(
-            'It has run well past a typical cycle for this profile. You can '
-            'exclude it from future averages, or turn off predictions if '
-            'long cycles are common for this profile.',
+            l10n.overviewLongCycleBody,
             key: const ValueKey('overview-long-cycle-body'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSecondaryContainer,
@@ -553,17 +560,17 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 OutlinedButton(
                   key: const ValueKey('long-cycle-exclude'),
                   onPressed: () => _excludeLongCycle(context, prediction),
-                  child: const Text('Exclude this cycle'),
+                  child: Text(l10n.overviewLongCycleExclude),
                 ),
                 // TODO(#225): wire this up once profile-level "turn
                 // predictions off" exists. Until then it stays a disabled,
                 // honestly-labeled button rather than a live one that only
                 // ever shows a "coming soon" snackbar — a button that always
                 // just defers reads as broken, not as a placeholder.
-                const OutlinedButton(
-                  key: ValueKey('long-cycle-predictions-off'),
+                OutlinedButton(
+                  key: const ValueKey('long-cycle-predictions-off'),
                   onPressed: null,
-                  child: Text('Turn off predictions (coming soon)'),
+                  child: Text(l10n.overviewLongCyclePredictionsOff),
                 ),
               ],
             ),
@@ -643,6 +650,7 @@ class _ReminderHintState extends State<_ReminderHint> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final request = context.read<RequestNotificationPermissionCallback?>();
     return Padding(
       key: const ValueKey('reminder-hint'),
@@ -657,7 +665,7 @@ class _ReminderHintState extends State<_ReminderHint> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Reminders unavailable — notifications are off',
+              l10n.overviewReminderHint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.tertiary,
               ),
@@ -667,7 +675,7 @@ class _ReminderHintState extends State<_ReminderHint> {
             TextButton(
               key: const ValueKey('reminder-hint-action'),
               onPressed: _requesting ? null : () => _onTap(request),
-              child: const Text('Turn on reminders'),
+              child: Text(l10n.overviewTurnOnReminders),
             ),
         ],
       ),

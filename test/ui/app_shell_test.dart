@@ -44,6 +44,7 @@ import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -195,7 +196,7 @@ void main() {
       month += 12;
       year -= 1;
     }
-    final twoMonthsBackLabel = '${kMonthNames[month - 1]} $year';
+    final twoMonthsBackLabel = '${monthNames()[month - 1]} $year';
 
     await tester.tap(find.byTooltip('Previous month'));
     await tester.pumpAndSettle();

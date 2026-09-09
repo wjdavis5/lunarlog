@@ -31,6 +31,7 @@ import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
@@ -1661,7 +1662,11 @@ void main() {
 
       await tester.pumpWidget(Provider<SettingsStore>.value(
         value: store,
-        child: const MaterialApp(home: SettingsScreen()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: SettingsScreen(),
+        ),
       ));
       await tester.pump();
       await tester.pumpAndSettle();

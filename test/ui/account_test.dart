@@ -2013,6 +2013,15 @@ void main() {
 
     testWidgets('Sign out everywhere states the expiry caveat, calls '
         'signOut(global), then resets', (tester) async {
+      // Issue #140 added a new "Import from file" tile above the Account
+      // section, pushing "Sign out everywhere" below the default 800x600
+      // test viewport — same taller-surface fix used elsewhere in this
+      // suite for a long Settings/scroll list (e.g. overview_test.dart).
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final h = AccountHarness(tester);
       await h.pump(seed: AccountHarness.seedOneProfile);
       h.signIn();
@@ -2041,6 +2050,12 @@ void main() {
 
     testWidgets('Sign out everywhere when global sign out fails still runs '
         'reset and shows snackbar', (tester) async {
+      // See the sibling test above for why this is needed (Issue #140).
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final h = AccountHarness(tester);
       await h.pump(seed: AccountHarness.seedOneProfile);
       h.signIn();

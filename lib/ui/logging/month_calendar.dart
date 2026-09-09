@@ -25,12 +25,19 @@
 /// controller); a "Today" header action jumps to and highlights the
 /// current month; and tapping the month label opens a month/year picker
 /// sheet bounded by the same forward limit the chevron already enforced.
+///
+/// Issue #143: a dashed (never hatched) fertile-window ring renders ahead
+/// of each forecasted period band, keyed by the legend's "Estimated
+/// fertile days" entry — gated, like every other prediction number, by
+/// [CareModeCopy.showsFertileWindow] (`_MonthCalendarState._cellForMode`).
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -44,31 +51,51 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/symptoms/symptom_layers.dart';
 import 'package:lunarlog/domain/tags.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
-    show kEstimateDisclaimer;
+    show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:provider/provider.dart';
 
-const List<String> kMonthNames = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
+/// The weekday the month grid's weeks start on, as a `DateTime` weekday
+/// constant (`DateTime.monday` .. `DateTime.sunday`). Explicit seam
+/// (issue #160): the grid previously baked Sunday-start into
+/// `DateTime.weekday % 7` arithmetic. The value stays Sunday to preserve
+/// today's layout; deriving a default from the active locale and persisting
+/// a user override in Settings are tracked follow-on work — both consumers
+/// of this seam ([leadingBlanksFor] and [weekdayHeaderLabels]) already
+/// honour it.
+const int kFirstDayOfWeek = DateTime.sunday;
 
-const List<String> kWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/// Leading blank cells before day 1 of [year]/[month] in a grid whose weeks
+/// start on [firstDayOfWeek] (a `DateTime` weekday constant).
+/// `DateTime.weekday` is 1=Monday..7=Sunday; Dart's `%` keeps the result
+/// non-negative for a positive divisor, so `(weekday - firstDay) % 7` is
+/// correct for every seam value. Public and pure for direct testing, the
+/// same discipline as [dayCellSemanticLabel] below.
+int leadingBlanksFor(
+  int year,
+  int month, {
+  int firstDayOfWeek = kFirstDayOfWeek,
+}) => (DateTime(year, month, 1).weekday - firstDayOfWeek) % 7;
+
+/// The weekday header's single-letter initials, ordered for a grid whose
+/// weeks start on [firstDayOfWeek] — the first initial is that day's.
+/// [dates.narrowWeekdayInitials] is locale-derived and Sunday-first, so a
+/// Sunday start is the identity ordering (the old `kWeekdayLabels` list).
+/// Public and pure for direct testing.
+List<String> weekdayHeaderLabels({
+  String locale = dates.kFallbackLocale,
+  int firstDayOfWeek = kFirstDayOfWeek,
+}) {
+  final narrow = dates.narrowWeekdayInitials(locale: locale);
+  return [for (var i = 0; i < 7; i++) narrow[(firstDayOfWeek + i) % 7]];
+}
 
 /// Forward navigation may move at most this many months past the current
 /// one (R1); [kForecastHorizonMonths] in the forecast module covers it.
@@ -190,30 +217,38 @@ Color crampsBadgeColor(Brightness brightness) => brightness == Brightness.light
     ? const Color(0xFF9A6A00)
     : const Color(0xFFFFCC80);
 
-String _formatDate(LocalDate date) =>
-    '${kMonthNames[date.month - 1]} ${date.day}, ${date.year}';
-
 /// The semantic (screen-reader) label for one day cell (#133 brief: the
 /// predicted/logged distinction must be semantic, not just visual). Public
 /// for direct testing; the calendar wraps every cell's contents with it.
+///
+/// Issue #160: [monthNames] is the locale-derived full-month-name list the
+/// widget passes in (`dates.monthNames(locale: dates.calendarLocale(...))`);
+/// it defaults to the `en` list so this pure, context-free helper (and its
+/// direct tests) keep working without a widget tree.
 String dayCellSemanticLabel({
   required LocalDate date,
   required DayEntry? entry,
   required LocalDate today,
   required ForecastDayCell? cell,
+  List<String>? monthNames,
 }) {
-  if (!date.isAfter(today)) return _loggedDaySemanticLabel(date, entry);
+  final names = monthNames ?? dates.monthNames();
+  if (!date.isAfter(today)) return _loggedDaySemanticLabel(date, entry, names);
   final safeCell = cell;
   return safeCell == null
-      ? '${_dateLabel(date)}, future date, not yet loggable'
-      : _predictedDaySemanticLabel(date, safeCell);
+      ? '${_dateLabel(date, names)}, future date, not yet loggable'
+      : _predictedDaySemanticLabel(date, safeCell, names);
 }
 
-String _dateLabel(LocalDate date) =>
-    '${kMonthNames[date.month - 1]} ${date.day}';
+String _dateLabel(LocalDate date, List<String> monthNames) =>
+    '${monthNames[date.month - 1]} ${date.day}';
 
-String _loggedDaySemanticLabel(LocalDate date, DayEntry? entry) {
-  final label = _dateLabel(date);
+String _loggedDaySemanticLabel(
+  LocalDate date,
+  DayEntry? entry,
+  List<String> monthNames,
+) {
+  final label = _dateLabel(date, monthNames);
   if (entry == null) return '$label, not logged';
   if (isBleed(entry.flow)) return '$label, logged period day';
   if (entry.tags.isNotEmpty || entry.note != null) {
@@ -222,7 +257,11 @@ String _loggedDaySemanticLabel(LocalDate date, DayEntry? entry) {
   return '$label, logged';
 }
 
-String _predictedDaySemanticLabel(LocalDate date, ForecastDayCell cell) {
+String _predictedDaySemanticLabel(
+  LocalDate date,
+  ForecastDayCell cell,
+  List<String> monthNames,
+) {
   final parts = <String>[
     if (cell.predictedBleed)
       'predicted period day'
@@ -231,10 +270,25 @@ String _predictedDaySemanticLabel(LocalDate date, ForecastDayCell cell) {
       'cycle day ${cell.cycleDayNumber} of the first predicted cycle',
     if (cell.pmsBadge) 'predicted premenstrual window',
     if (cell.crampsBadge) 'predicted cramps window',
+    if (cell.fertileWindow) 'estimated fertile window',
   ];
   if (parts.isEmpty) parts.add('no prediction for this date');
-  return '${_dateLabel(date)}, ${parts.join(', ')}';
+  return '${_dateLabel(date, monthNames)}, ${parts.join(', ')}';
 }
+
+/// Whether [cell] still carries something worth rendering as a forecast
+/// cell (issue #143 review, used by [_MonthCalendarState._cellForMode]
+/// once a care mode has already stripped [ForecastDayCell.fertileWindow]):
+/// a cell whose only content was the fertile window must not survive as a
+/// non-null, all-false cell — see [_MonthCalendarState._cellForMode]'s own
+/// doc comment for why. Deliberately excludes [ForecastDayCell.tier]/
+/// [ForecastDayCell.cycleIndex], which are always present and carry no
+/// visible meaning on their own.
+bool _hasAnyMarker(ForecastDayCell cell) =>
+    cell.predictedBleed ||
+    cell.cycleDayNumber != null ||
+    cell.pmsBadge ||
+    cell.crampsBadge;
 
 int _monthIndex(int year, int month) => year * 12 + (month - 1);
 
@@ -251,10 +305,10 @@ int _monthIndex(int year, int month) => year * 12 + (month - 1);
 bool canDrivePageController({required bool hasClients}) => hasClients;
 
 /// How [_MonthCalendarState._legendSwatch] draws one legend entry's swatch
-/// — mirrors the three shapes the grid itself uses so the legend key
-/// actually matches what a cell renders (a plain fill, spotting/today's
-/// ring, or #133's hatched predicted band).
-enum _LegendSwatchStyle { fill, ring, hatched, icon }
+/// — mirrors the shapes the grid itself uses so the legend key actually
+/// matches what a cell renders (a plain fill, spotting/today's ring,
+/// #133's hatched predicted band, or #143's dashed fertile-window ring).
+enum _LegendSwatchStyle { fill, ring, hatched, dashed, icon }
 
 /// One row of the legend strip (issue #191; B-2, B-11; issue #312 review:
 /// `icon` added for the PMS/cramps badges): a swatch plus its label, keyed
@@ -374,6 +428,42 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// call claims the latest token; only the callback still holding it may
   /// clear the guard.
   int _animateToken = 0;
+
+  /// Issue #143: the fertile-window band, its legend entry, and its
+  /// explainer text all gate on [CareModeCopy.showsFertileWindow] through
+  /// this one lookup — presentation only, same posture as every other
+  /// `CareModeCopy` consumer.
+  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+
+  /// Care-mode gate for a forecast cell's fertile-window flag (issue #143):
+  /// when the mode hides the estimate, this strips [ForecastDayCell
+  /// .fertileWindow] before the cell reaches [_dayCircle], [_futureMarkers],
+  /// the semantic label, or the future-day explainer — one gate covers
+  /// every rendering rather than repeating the check at each call site.
+  ///
+  /// Issue #143 review: when the fertile window was the cell's *only*
+  /// content, stripping it left a non-null, all-false [ForecastDayCell] —
+  /// which [futureCellOpacity] reads as "has forecast content" (full
+  /// opacity, not the dimmed plain-future-day weight) and which skipped
+  /// [_FutureDayExplainer]'s honest "no prediction for this date" copy in
+  /// favour of a bare confidence line. Returning `null` instead (via
+  /// [_hasAnyMarker]) makes a hidden fertile-only day render and explain
+  /// exactly like any other plain future day.
+  ForecastDayCell? _cellForMode(ForecastDayCell? cell) {
+    if (cell == null || _copy.showsFertileWindow || !cell.fertileWindow) {
+      return cell;
+    }
+    final stripped = ForecastDayCell(
+      predictedBleed: cell.predictedBleed,
+      cycleDayNumber: cell.cycleDayNumber,
+      pmsBadge: cell.pmsBadge,
+      crampsBadge: cell.crampsBadge,
+      fertileWindow: false,
+      tier: cell.tier,
+      cycleIndex: cell.cycleIndex,
+    );
+    return _hasAnyMarker(stripped) ? stripped : null;
+  }
 
   @override
   void initState() {
@@ -602,8 +692,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
       context: context,
       showDragHandle: true,
       routeSettings: const RouteSettings(name: kRouteFutureDayExplainerScreen),
-      builder: (_) =>
-          _FutureDayExplainer(date: date, cell: cell, cycles: cycles),
+      builder: (_) => _FutureDayExplainer(
+        date: date,
+        cell: cell,
+        cycles: cycles,
+        copy: _copy,
+      ),
     );
   }
 
@@ -611,10 +705,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final selected = current.contains(code);
     if (!selected && current.length >= kMaxSymptomLayers) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          key: ValueKey('layer-limit-snack'),
-          content: Text('Up to three symptom layers at once'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          key: const ValueKey('layer-limit-snack'),
+          content: Text(
+            AppLocalizations.of(context).calendarLayerLimitSnack,
+          ),
+          duration: const Duration(seconds: 2),
         ),
       );
       return;
@@ -704,13 +800,15 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final palette = symptomLayerPalette(theme.brightness);
     final maxPageIndex =
         _pageIndexFor(today.year, today.month) + kForwardMonthLimit;
+    final l10n = AppLocalizations.of(context);
+    final locale = dates.calendarLocale(context);
 
     return Column(
       children: [
         Row(
           children: [
             IconButton(
-              tooltip: 'Previous month',
+              tooltip: l10n.calendarPreviousMonthTooltip,
               icon: const Icon(Icons.chevron_left),
               onPressed: () => _shiftMonth(-1),
             ),
@@ -720,7 +818,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
                 onTap: _openMonthYearPicker,
                 child: Center(
                   child: Text(
-                    '${kMonthNames[_displayedMonth - 1]} $_displayedYear',
+                    l10n.calendarMonthYearLabel(
+                      dates.monthNames(locale: locale)[_displayedMonth - 1],
+                      _displayedYear,
+                    ),
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
@@ -728,12 +829,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
             IconButton(
               key: const ValueKey('today-button'),
-              tooltip: 'Today',
+              tooltip: l10n.calendarTodayTooltip,
               icon: const Icon(Icons.today_outlined),
               onPressed: _goToToday,
             ),
             IconButton(
-              tooltip: 'Next month',
+              tooltip: l10n.calendarNextMonthTooltip,
               icon: const Icon(Icons.chevron_right),
               onPressed: nextDisabled ? null : () => _shiftMonth(1),
             ),
@@ -747,7 +848,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
             children: [
-              for (final label in kWeekdayLabels)
+              for (final label
+                  in weekdayHeaderLabels(locale: locale))
                 Expanded(
                   child: Center(
                     child: Text(label, style: theme.textTheme.labelSmall),
@@ -793,8 +895,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
                         // (e.g. mid-swipe, both the outgoing and incoming
                         // page built).
                         key: ValueKey('calendar-month-empty-$year-$month'),
-                        title: 'No entries this month',
-                        body: 'Tap a day to log it',
+                        title: l10n.calendarNoEntriesTitle,
+                        body: l10n.calendarNoEntriesBody,
                       ),
                     GridView.count(
                       key: ValueKey('calendar-grid-$year-$month'),
@@ -835,6 +937,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   Widget _legendStrip(BuildContext context, ThemeData theme, LunarLogColors colors) {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final expanded = _legendExpanded ?? textScale < kLegendCollapseTextScale;
+    final l10n = AppLocalizations.of(context);
     return Column(
       key: const ValueKey('calendar-legend'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -843,7 +946,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Semantics(
             button: true,
-            label: expanded ? 'Hide legend' : 'Show legend',
+            label: expanded ? l10n.calendarHideLegend : l10n.calendarShowLegend,
             excludeSemantics: true,
             child: InkWell(
               key: const ValueKey('legend-toggle'),
@@ -856,7 +959,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
                     size: 16,
                   ),
                   const SizedBox(width: 2),
-                  Text('Legend', style: theme.textTheme.bodySmall),
+                  Text(l10n.calendarLegend, style: theme.textTheme.bodySmall),
                 ],
               ),
             ),
@@ -880,16 +983,19 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// test that opens it with a chip selected.
   Widget _legendEntries(ThemeData theme, LunarLogColors colors) {
     final brightness = theme.brightness;
+    final l10n = AppLocalizations.of(context);
     final entries = [
-      _LegendEntry('spotting', colors.flowSpotting, 'Spotting flow', style: _LegendSwatchStyle.ring),
-      _LegendEntry('light', colors.flowLight, 'Light flow'),
-      _LegendEntry('medium', colors.flowMedium, 'Medium flow'),
-      _LegendEntry('heavy', colors.flowHeavy, 'Heavy flow'),
-      _LegendEntry('symptom', colors.symptomDot, 'Symptom day'),
-      _LegendEntry('today', theme.colorScheme.primary, 'Today', style: _LegendSwatchStyle.ring),
-      _LegendEntry('predicted', colors.predictedBorder, 'Predicted day', style: _LegendSwatchStyle.hatched),
-      _LegendEntry('pms', pmsBadgeColor(brightness), 'PMS window', style: _LegendSwatchStyle.icon, icon: Icons.spa),
-      _LegendEntry('cramps', crampsBadgeColor(brightness), 'Cramps window', style: _LegendSwatchStyle.icon, icon: Icons.bolt),
+      _LegendEntry('spotting', colors.flowSpotting, l10n.calendarLegendSpotting, style: _LegendSwatchStyle.ring),
+      _LegendEntry('light', colors.flowLight, l10n.calendarLegendLight),
+      _LegendEntry('medium', colors.flowMedium, l10n.calendarLegendMedium),
+      _LegendEntry('heavy', colors.flowHeavy, l10n.calendarLegendHeavy),
+      _LegendEntry('symptom', colors.symptomDot, l10n.calendarLegendSymptom),
+      _LegendEntry('today', theme.colorScheme.primary, l10n.calendarLegendToday, style: _LegendSwatchStyle.ring),
+      _LegendEntry('predicted', colors.predictedBorder, l10n.calendarLegendPredicted, style: _LegendSwatchStyle.hatched),
+      if (_copy.showsFertileWindow)
+        _LegendEntry('fertile', colors.fertileBorder, _copy.fertileWindowLegend, style: _LegendSwatchStyle.dashed),
+      _LegendEntry('pms', pmsBadgeColor(brightness), l10n.calendarLegendPms, style: _LegendSwatchStyle.icon, icon: Icons.spa),
+      _LegendEntry('cramps', crampsBadgeColor(brightness), l10n.calendarLegendCramps, style: _LegendSwatchStyle.icon, icon: Icons.bolt),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -929,7 +1035,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
         // selected (issue #312 review) — a shared label would collide
         // with every `find.text` lookup in a widget test that opens with
         // the default (unselected) layer set.
-        Text('Symptom layer dots', style: theme.textTheme.labelSmall),
+        Text(
+          AppLocalizations.of(context).calendarLegendLayerDots,
+          style: theme.textTheme.labelSmall,
+        ),
       ],
     );
   }
@@ -967,6 +1076,18 @@ class _MonthCalendarState extends State<MonthCalendar> {
         diameter: 14,
         child: const SizedBox.shrink(),
       ),
+      _LegendSwatchStyle.dashed => _DashedCircle(
+        color: entry.color,
+        // The legend only ever carries the border colour (`fertileBorder`)
+        // via `_LegendEntry.color`; 0.16 mirrors
+        // `LunarLogColors.fertileBand`'s own fixed alpha over that same
+        // border colour (issue #143 review) rather than the painter's old
+        // ad-hoc 0.18.
+        bandColor: entry.color.withValues(alpha: 0.16),
+        opacity: 1,
+        diameter: 14,
+        child: const SizedBox.shrink(),
+      ),
       _LegendSwatchStyle.icon => Icon(entry.icon, size: 14, color: entry.color),
     };
   }
@@ -986,9 +1107,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// The symptom-layers control (R2): a collapsed summary row (tap to
   /// expand) over the collapsible chip panel.
   Widget _layersHeader(List<String> layerList, ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
     final summary = layerList.isEmpty
-        ? 'Symptom layers'
-        : 'Layers: ${layerList.map(_displayOf).join(', ')}';
+        ? l10n.calendarSymptomLayers
+        : l10n.calendarLayersSummary(layerList.map(_displayOf).join(', '));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
@@ -996,8 +1118,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
           IconButton(
             key: const ValueKey('symptom-layers-toggle'),
             tooltip: _layersExpanded
-                ? 'Hide symptom layers'
-                : 'Show symptom layers',
+                ? l10n.calendarHideSymptomLayers
+                : l10n.calendarShowSymptomLayers,
             icon: Icon(_layersExpanded ? Icons.expand_less : Icons.expand_more),
             visualDensity: VisualDensity.compact,
             onPressed: () => setState(() => _layersExpanded = !_layersExpanded),
@@ -1043,9 +1165,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// like any other estimate, so the only caller left of this strip is
   /// [NotEnoughHistory].
   Widget _keepLoggingStrip(ThemeData theme) {
-    const message =
-        'Keep logging — predicted bands appear once a few cycles are '
-        'recorded.';
+    final message = AppLocalizations.of(context).calendarKeepLogging;
     return Padding(
       key: const ValueKey('keep-logging-strip'),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -1083,8 +1203,9 @@ class _MonthCalendarState extends State<MonthCalendar> {
         ? LocalDate(year + 1, 1, 1)
         : LocalDate(year, month + 1, 1);
     final daysInMonth = firstOfNext.difference(firstOfMonth);
-    // DateTime.weekday is 1=Monday..7=Sunday; the grid starts on Sunday.
-    final leadingBlanks = DateTime(year, month, 1).weekday % 7;
+    // Issue #160: the grid's week start is the explicit [kFirstDayOfWeek]
+    // seam (today Sunday), no longer `weekday % 7` arithmetic.
+    final leadingBlanks = leadingBlanksFor(year, month);
     return [
       for (var blank = 0; blank < leadingBlanks; blank++)
         const SizedBox.shrink(),
@@ -1118,8 +1239,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final entry = byIso[iso];
     final isFuture = date.isAfter(today);
     // KTD3: a logged day always renders as logged — forecast markers only
-    // ever pair a future date that has no entry.
-    final forecastCell = entry == null && isFuture ? forecastByIso[iso] : null;
+    // ever pair a future date that has no entry. `_cellForMode` (issue
+    // #143) strips the fertile-window flag when the care mode hides it.
+    final forecastCell = _cellForMode(
+      entry == null && isFuture ? forecastByIso[iso] : null,
+    );
     final bleedLevel = entry != null && isBleed(entry.flow) ? entry.flow : null;
     final selectable = !isFuture && (!_effectiveReadOnly || entry != null);
     return InkWell(
@@ -1138,6 +1262,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
           entry: entry,
           today: today,
           cell: forecastCell,
+          monthNames:
+              dates.monthNames(locale: dates.calendarLocale(context)),
         ),
         excludeSemantics: true,
         child: Opacity(
@@ -1191,8 +1317,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// day (key `bleed-<iso>`; issue #191 B-2 — spotting is a ring plus a
   /// small centre dot rather than a full fill, light/medium/heavy climb the
   /// ramp's saturation), a hatched predicted band for a forecast bleed day
-  /// (key `predicted-<iso>` — hatched, never filled, KTD3), otherwise a
-  /// thin primary ring when the cell is today.
+  /// (key `predicted-<iso>` — hatched, never filled, KTD3), a dashed
+  /// fertile-window ring for a forecast fertile day (key `fertile-<iso>` —
+  /// issue #143, a deliberately different pattern from the predicted
+  /// band's hatch so the two estimates stay distinguishable without
+  /// colour), otherwise a thin primary ring when the cell is today.
   Widget _dayCircle(
     LocalDate date, {
     required FlowLevel? bleedLevel,
@@ -1214,6 +1343,22 @@ class _MonthCalendarState extends State<MonthCalendar> {
         color: colors.predictedBorder,
         opacity: forecastBandOpacity(forecastCell!.tier),
         borderOpacity: forecastBorderOpacity(forecastCell.tier),
+        child: label,
+      );
+    }
+    if (forecastCell?.fertileWindow ?? false) {
+      // Issue #143 review: the fertile window's own tier
+      // (`fertileTier`), not `tier` — the cell's `tier` belongs to
+      // whichever cycle's band/numeral claimed this date first, which can
+      // be an earlier, higher-confidence cycle than the one whose fertile
+      // window is actually drawn here.
+      final fertileTier = forecastCell!.fertileTier ?? forecastCell.tier;
+      return _DashedCircle(
+        key: ValueKey('fertile-$iso'),
+        color: colors.fertileBorder,
+        bandColor: colors.fertileBand,
+        opacity: forecastBandOpacity(fertileTier),
+        borderOpacity: forecastBorderOpacity(fertileTier),
         child: label,
       );
     }
@@ -1505,6 +1650,107 @@ class _HatchPainter extends CustomPainter {
       oldDelegate.borderOpacity != borderOpacity;
 }
 
+/// A fertile-window calendar cell (issue #143): a faint circular wash plus
+/// a *dashed* ring, deliberately not the predicted band's solid hatch —
+/// the two estimates need to stay distinguishable without relying on
+/// [LunarLogColors.fertileBorder] vs. [LunarLogColors.predictedBorder]
+/// alone (same non-colour-channel rule [_HatchedCircle] follows).
+class _DashedCircle extends StatelessWidget {
+  const _DashedCircle({
+    super.key,
+    required this.color,
+    required this.bandColor,
+    required this.opacity,
+    required this.child,
+    this.diameter = 34,
+    double? borderOpacity,
+  }) : borderOpacity = borderOpacity ?? opacity;
+
+  final Color color;
+
+  /// The fill wash colour (issue #143 review): [LunarLogColors.fertileBand]
+  /// — its own low-chroma token, not an ad-hoc alpha scaled off [color] —
+  /// mirroring how [_HatchedCircle] would use [LunarLogColors.predictedBand]
+  /// if that sibling token were wired the same way.
+  final Color bandColor;
+  final double opacity;
+  final Widget child;
+
+  /// Defaults to the grid cell's own 34px circle; the legend swatch passes
+  /// a smaller value, mirroring [_HatchedCircle.diameter].
+  final double diameter;
+
+  /// The dashed ring's own alpha, independent of [opacity] — mirrors
+  /// [_HatchedCircle.borderOpacity]'s confidence-floor reasoning.
+  final double borderOpacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DashPainter(
+        color: color,
+        bandColor: bandColor,
+        opacity: opacity,
+        borderOpacity: borderOpacity,
+      ),
+      child: SizedBox(
+        width: diameter,
+        height: diameter,
+        child: Center(child: child),
+      ),
+    );
+  }
+}
+
+class _DashPainter extends CustomPainter {
+  const _DashPainter({
+    required this.color,
+    required this.bandColor,
+    required this.opacity,
+    required this.borderOpacity,
+  });
+
+  final Color color;
+  final Color bandColor;
+  final double opacity;
+  final double borderOpacity;
+
+  /// How many dash segments make up the ring, and what fraction of each
+  /// segment is drawn (the remainder is the gap) — a fixed, named pattern
+  /// so the dashes read the same at every cell size.
+  static const int _dashCount = 10;
+  static const double _dashFraction = 0.55;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final radius = size.shortestSide / 2;
+    final center = size.center(Offset.zero);
+    // Issue #143 review: [bandColor] (`LunarLogColors.fertileBand`) already
+    // carries its own fixed low-chroma alpha — scale that by the
+    // confidence-tier `opacity` rather than re-deriving a wash alpha from
+    // [color] with an ad-hoc constant.
+    final wash = Paint()
+      ..color = bandColor.withValues(alpha: bandColor.a * opacity);
+    canvas.drawCircle(center, radius, wash);
+    final dash = Paint()
+      ..color = color.withValues(alpha: borderOpacity)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final segment = 2 * math.pi / _dashCount;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    for (var i = 0; i < _dashCount; i++) {
+      canvas.drawArc(rect, segment * i, segment * _dashFraction, false, dash);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.bandColor != bandColor ||
+      oldDelegate.opacity != opacity ||
+      oldDelegate.borderOpacity != borderOpacity;
+}
+
 /// The read-only explainer for a tapped future cell (KTD8): what is
 /// predicted for the date and why, with the fixed non-medical disclaimer.
 /// Never a logging surface.
@@ -1513,11 +1759,18 @@ class _FutureDayExplainer extends StatelessWidget {
     required this.date,
     required this.cell,
     required this.cycles,
+    required this.copy,
   });
 
   final LocalDate date;
   final ForecastDayCell? cell;
   final List<ForecastCycle> cycles;
+
+  /// The mounting calendar's care-mode vocabulary (issue #143 review): the
+  /// fertile-window explainer sentence names [CareModeCopy.fertileWindowLabel]
+  /// rather than a hardcoded "estimated fertile window" phrase, so `teen`'s
+  /// plainer wording matches what the Analysis tab and legend already say.
+  final CareModeCopy copy;
 
   @override
   Widget build(BuildContext context) {
@@ -1531,12 +1784,15 @@ class _FutureDayExplainer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _formatDate(date),
+              dates.formatMonthDayYear(
+                DateTime(date.year, date.month, date.day),
+                locale: dates.calendarLocale(context),
+              ),
               key: const ValueKey('future-explainer-date'),
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
-            ..._body(theme),
+            ..._body(theme, AppLocalizations.of(context)),
             const SizedBox(height: 16),
             Text(
               kEstimateDisclaimer,
@@ -1549,13 +1805,12 @@ class _FutureDayExplainer extends StatelessWidget {
     );
   }
 
-  List<Widget> _body(ThemeData theme) {
+  List<Widget> _body(ThemeData theme, AppLocalizations l10n) {
     final body = theme.textTheme.bodyMedium;
     if (cycles.isEmpty) {
       return [
         Text(
-          'No estimates yet — keep logging. Predicted bands appear on the '
-          'calendar once a few cycles are recorded.',
+          l10n.futureExplainerNoEstimate,
           key: const ValueKey('future-explainer-no-estimate'),
           style: body,
         ),
@@ -1565,8 +1820,7 @@ class _FutureDayExplainer extends StatelessWidget {
     if (cell == null) {
       return [
         Text(
-          'No prediction for this date. Days can be logged once they '
-          'arrive.',
+          l10n.futureExplainerNone,
           key: const ValueKey('future-explainer-none'),
           style: body,
         ),
@@ -1576,38 +1830,34 @@ class _FutureDayExplainer extends StatelessWidget {
     return [
       if (cell.predictedBleed)
         Text(
-          'Predicted period day'
-          '${cell.cycleDayNumber == null ? '' : ' — cycle day ${cell.cycleDayNumber} of the first predicted cycle'}. '
-          'The date may shift by about $spread day${spread == 1 ? '' : 's'} '
-          'either way as new periods are logged.',
+          cell.cycleDayNumber == null
+              ? l10n.futureExplainerBand(spread)
+              : l10n.futureExplainerBandWithCycleDay(cell.cycleDayNumber!, spread),
           key: const ValueKey('future-explainer-band'),
           style: body,
         ),
       if (cell.pmsBadge)
         Text(
-          'Inside the predicted premenstrual window — symptoms like mood '
-          'shifts and bloating often show up in the week before a period.',
+          l10n.futureExplainerPms,
           key: const ValueKey('future-explainer-pms'),
           style: body,
         ),
       if (cell.crampsBadge)
         Text(
-          'Inside the predicted cramps window — cramps commonly occur '
-          'within two days of a period start.',
+          l10n.futureExplainerCramps,
           key: const ValueKey('future-explainer-cramps'),
           style: body,
         ),
+      ..._fertileWindowExplainer(cell, body),
       if (cell.cycleDayNumber != null && !cell.predictedBleed)
         Text(
-          'Cycle day ${cell.cycleDayNumber} of the first predicted cycle. '
-          'Only the first predicted cycle is counted day by day — '
-          'estimates compound too much further out.',
+          l10n.futureExplainerNumeral(cell.cycleDayNumber!),
           key: const ValueKey('future-explainer-numeral'),
           style: body,
         ),
       const SizedBox(height: 8),
       Text(
-        'Estimate confidence: ${cell.tier.label.toLowerCase()}.',
+        l10n.futureExplainerConfidence(_confidenceLabel(cell).toLowerCase()),
         key: const ValueKey('future-explainer-confidence'),
         style: body,
       ),
@@ -1617,6 +1867,49 @@ class _FutureDayExplainer extends StatelessWidget {
   int _spreadFor(ForecastDayCell cell) => cycles.isEmpty
       ? 0
       : cycles[cell.cycleIndex.clamp(0, cycles.length - 1)].spreadDays;
+
+  /// The confidence label this explainer's bottom line names (issue #143
+  /// review): for a fertile-window day, [ForecastDayCell.fertileTier] —
+  /// the fertile window's own source cycle, which can differ from
+  /// [ForecastDayCell.tier] (the cycle whose band/numeral claimed this
+  /// date first, see [ForecastDayCell.fertileTier]'s own doc comment) —
+  /// rather than always the cell's general [ForecastDayCell.tier]. A day
+  /// that is *also* a predicted-bleed day keeps [ForecastDayCell.tier]:
+  /// that band is this cell's primary content, and (per
+  /// `fertile_window.dart`'s own doc comment) a fertile window never
+  /// actually overlaps its own cycle's bleed band in practice.
+  String _confidenceLabel(ForecastDayCell cell) {
+    final tier = cell.predictedBleed || !cell.fertileWindow
+        ? cell.tier
+        : (cell.fertileTier ?? cell.tier);
+    return tier.label;
+  }
+
+  /// Split out of [_body] (issue #143) purely to keep that method's own
+  /// branch count under the quality gate's per-method CRAP cap, same
+  /// reasoning as every other `_split out of` helper in this file. Empty
+  /// when the cell carries no fertile-window flag (already care-mode-gated
+  /// upstream by `_MonthCalendarState._cellForMode`, so this never needs a
+  /// second gate of its own). Names [copy]'s own [CareModeCopy
+  /// .fertileWindowLabel] (issue #143 review) rather than a hardcoded
+  /// "estimated fertile window" phrase, so `teen`'s plainer wording is
+  /// used here too.
+  List<Widget> _fertileWindowExplainer(ForecastDayCell cell, TextStyle? body) {
+    if (!cell.fertileWindow) return const [];
+    return [
+      Text(
+        '${copy.fertileWindowLabel} — the days around estimated ovulation, '
+        'back-calculated from the predicted period date.',
+        key: const ValueKey('future-explainer-fertile'),
+        style: body,
+      ),
+      Text(
+        kFertileWindowDisclaimer,
+        key: const ValueKey('future-explainer-fertile-disclaimer'),
+        style: body,
+      ),
+    ];
+  }
 }
 
 /// The month/year picker sheet (issue #191): tapping the month label opens
@@ -1657,6 +1950,7 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final nextYearDisabled = _monthIndex(_year + 1, 1) > widget.maxMonthIndex;
     return SafeArea(
       child: Padding(
@@ -1670,7 +1964,7 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
               children: [
                 IconButton(
                   key: const ValueKey('month-picker-prev-year'),
-                  tooltip: 'Previous year',
+                  tooltip: l10n.monthPickerPreviousYear,
                   icon: const Icon(Icons.chevron_left),
                   onPressed: () => _shiftYear(-1),
                 ),
@@ -1681,7 +1975,7 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
                 ),
                 IconButton(
                   key: const ValueKey('month-picker-next-year'),
-                  tooltip: 'Next year',
+                  tooltip: l10n.monthPickerNextYear,
                   icon: const Icon(Icons.chevron_right),
                   onPressed: nextYearDisabled ? null : () => _shiftYear(1),
                 ),
@@ -1714,7 +2008,11 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
         onPressed: disabled
             ? null
             : () => Navigator.of(context).pop((_year, month)),
-        child: Text(kMonthNames[month - 1].substring(0, 3)),
+        child: Text(
+          dates.shortMonthNames(
+            locale: dates.calendarLocale(context),
+          )[month - 1],
+        ),
       ),
     );
   }

@@ -37,7 +37,6 @@ dependencies:
   # #198: locale-aware date formatting for the day sheet (B-14); already in
   # the tree transitively — pinned directly until #160's shared l10n
   # scaffolding makes it the app-wide dependency of record.
-  intl: ^0.20.3
   drift: ^2.34.3
   sqlite3: ^3.5.2
   flutter_secure_storage: ^11.0.0
@@ -45,6 +44,12 @@ dependencies:
   meta: ^1.18.3
   provider: ^6.1.2
   path_provider: ^2.1.5
+  # Issue #140: restore-from-file import's file picker. Pinned to an exact
+  # version (not `^12.2.0`) rather than the rest of this file's `^`
+  # convention, since it is a brand-new platform dependency this PR
+  # introduces — 12.2.0's own `environment: sdk:` is `>=3.10.0 <4.0.0`, inside
+  # this repo's `^3.13.2` constraint.
+  file_picker: 12.2.0
   flutter_local_notifications: ^22.3.0
   timezone: ^0.11.1
   supabase_flutter: ^2.17.2
@@ -79,6 +84,11 @@ dependencies:
   # at runtime.
   firebase_core: ^4.1.1
   firebase_messaging: ^16.0.2
+  # Issue #160: localization scaffolding. intl is pinned exactly (not `^`)
+  # to match flutter_localizations' own pin — the two must move together.
+  flutter_localizations:
+    sdk: flutter
+  intl: 0.20.3
 
 dev_dependencies:
   flutter_test:
@@ -105,6 +115,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Issue #160: enables flutter gen-l10n (see l10n.yaml); the generated
+  # lib/l10n/app_localizations*.dart files are committed.
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

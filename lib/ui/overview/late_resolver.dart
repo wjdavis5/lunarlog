@@ -20,12 +20,18 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
-import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 
-String _formatDate(LocalDate date) =>
-    '${kMonthNames[date.month - 1]} ${date.day}';
+/// Issue #160: month names are locale-derived (`lib/ui/l10n/dates.dart`),
+/// replacing the `kMonthNames` list this file used to import from the
+/// month calendar.
+String _formatDate(LocalDate date, BuildContext context) =>
+    dates.formatMonthDay(
+      DateTime(date.year, date.month, date.day),
+      locale: dates.calendarLocale(context),
+    );
 
 class LateResolver extends StatefulWidget {
   const LateResolver({
@@ -92,7 +98,7 @@ class _LateResolverState extends State<LateResolver> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'We will check back on ${_formatDate(until)}.',
+              'We will check back on ${_formatDate(until, context)}.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.tertiary,
               ),

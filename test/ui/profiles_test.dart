@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
@@ -95,7 +96,7 @@ Future<void> seedTwoProfiles(LunarLogDatabase db,
 /// previous-month arrow until the month label appears (the app's "today" is
 /// the real device date, so the tap count is computed dynamically).
 Future<void> showMonth(WidgetTester tester, int year, int month) async {
-  final label = '${kMonthNames[month - 1]} $year';
+  final label = '${monthNames()[month - 1]} $year';
   var guard = 0;
   while (find.text(label).evaluate().isEmpty) {
     expect(guard++, lessThan(1200), reason: 'month never reached: $label');

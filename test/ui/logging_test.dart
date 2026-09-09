@@ -39,9 +39,10 @@ import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
     show kOfflineSaveConfirmationCopy, shouldConfirmOfflineSave;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
-import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
@@ -216,6 +217,8 @@ Future<Harness> pumpLogging(
         storage: withStorage ? db.storage : null,
       ),
       child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: ProfileDetailScreen(
           profile: profile,
           readOnly: readOnly,
@@ -261,7 +264,7 @@ Future<void> dismissDaySheet(WidgetTester tester) async {
 }
 
 Future<void> showMonth(WidgetTester tester, int year, int month) async {
-  final label = '${kMonthNames[month - 1]} $year';
+  final label = '${monthNames()[month - 1]} $year';
   var guard = 0;
   while (find.text(label).evaluate().isEmpty) {
     expect(guard++, lessThan(1200), reason: 'month never reached: $label');
@@ -530,6 +533,8 @@ void main() {
         'directly', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: DaySheet(
               repository: ThrowingDayEntriesRepository(),
@@ -1340,6 +1345,8 @@ void main() {
             storage: h.db.storage,
           ),
           child: MaterialApp(
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
             home: ProfileDetailScreen(
               profile: profileB,
               todayProvider: () => kToday,
@@ -2063,6 +2070,8 @@ void main() {
           .create(displayName: 'Alice', isMinor: false);
       final entries = DriftDayEntriesRepository(db.storage);
       final app = MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(

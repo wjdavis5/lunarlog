@@ -12,12 +12,21 @@
 /// `prediction.dart`'s posture.
 ///
 /// Everything emits days strictly after "today" only (past stays factual —
-/// a logged day always renders as logged, KTD3), and the vocabulary is
-/// bleed-estimate only: no fertility or ovulation wording exists here.
+/// a logged day always renders as logged, KTD3).
+///
+/// Issue #143: each [ForecastCycle] also carries its own
+/// [FertileWindowEstimate] — [fertile_window.dart]'s calendar-method
+/// back-calculation applied to that *cycle's* predicted start rather than
+/// only the live [ActivePrediction.estimatedNextStart], so a fertile window
+/// renders on the calendar ahead of every forecasted cycle, not only the
+/// next one, at that cycle's own (already-degrading) tier. [ForecastDayCell
+/// .fertileWindow] marks the per-date lookup the same way
+/// `predictedBleed`/`pmsBadge`/`crampsBadge` already do.
 library;
 
 import '../models/local_date.dart';
 import 'cycle_history.dart';
+import 'fertile_window.dart';
 import 'prediction.dart' show ActivePrediction;
 
 /// The forward calendar navigates this many months past the current one
@@ -59,6 +68,7 @@ class ForecastCycle {
     required this.periodLengthDays,
     required this.spreadDays,
     required this.tier,
+    required this.fertileWindow,
   });
 
   /// 0-based; 0 is the first predicted cycle (the one anchored at the
@@ -84,13 +94,21 @@ class ForecastCycle {
   /// the uncertainty compounds.
   final CycleConfidence tier;
 
+  /// This cycle's own fertile-window/ovulation estimate (issue #143):
+  /// [start] minus the assumed luteal-phase length, at this cycle's own
+  /// [tier] — the ovulation this window describes precedes [start] (it
+  /// belongs to the cycle *ending* in this predicted period, not the one
+  /// starting from it).
+  final FertileWindowEstimate fertileWindow;
+
   /// Estimated last bleed day of this cycle's band (inclusive).
   LocalDate get end => start.addDays(periodLengthDays - 1);
 
   @override
   String toString() =>
       'ForecastCycle(#$index ${start.iso}..${end.iso}, '
-      'length: $lengthDays, spread: $spreadDays, tier: ${tier.name})';
+      'length: $lengthDays, spread: $spreadDays, tier: ${tier.name}, '
+      'fertileWindow: $fertileWindow)';
 }
 
 /// The derived forecast state for one future date (KTD3: only ever a date
@@ -102,8 +120,11 @@ class ForecastDayCell {
     required this.cycleDayNumber,
     required this.pmsBadge,
     required this.crampsBadge,
+    required this.fertileWindow,
     required this.tier,
     required this.cycleIndex,
+    this.fertileTier,
+    this.fertileCycleIndex,
   });
 
   /// The date falls inside a predicted bleed band.
@@ -119,24 +140,56 @@ class ForecastDayCell {
   /// The date falls in the cramps window (estimate − 2 … + 2).
   final bool crampsBadge;
 
-  /// The cycle whose band/window covers this date.
+  /// The date falls inside a predicted fertile window (issue #143:
+  /// estimated ovulation − 5 … + 1, per `fertile_window.dart`).
+  final bool fertileWindow;
+
+  /// The cycle whose band/numeral/PMS/cramps badges cover this date — not
+  /// necessarily the same cycle whose fertile window also touches it, see
+  /// [fertileTier]/[fertileCycleIndex].
   final CycleConfidence tier;
   final int cycleIndex;
 
-  ForecastDayCell _withBadges({required bool pms, required bool cramps}) =>
+  /// The tier of the cycle whose *fertile window* covers this date (issue
+  /// #143 review): a later, lower-confidence cycle's fertile window can
+  /// land on a date an earlier cycle's band/numeral already claimed (e.g.
+  /// cycle 1's fertile window sitting inside cycle 0's full-length numeral
+  /// span) — carrying that source cycle's own tier separately from [tier]
+  /// is what lets the calendar wash/explainer describe the fertile window
+  /// at *its* confidence, rather than silently inheriting whichever cycle
+  /// happened to create the cell first. Non-null exactly when
+  /// [fertileWindow] is true.
+  final CycleConfidence? fertileTier;
+
+  /// The 0-based index of the cycle whose fertile window covers this date
+  /// — see [fertileTier]. Non-null exactly when [fertileWindow] is true.
+  final int? fertileCycleIndex;
+
+  ForecastDayCell _withBadges({
+    required bool pms,
+    required bool cramps,
+    bool fertile = false,
+    CycleConfidence? fertileTier,
+    int? fertileCycleIndex,
+  }) =>
       ForecastDayCell(
         predictedBleed: predictedBleed,
         cycleDayNumber: cycleDayNumber,
         pmsBadge: pmsBadge || pms,
         crampsBadge: crampsBadge || cramps,
+        fertileWindow: fertileWindow || fertile,
         tier: tier,
         cycleIndex: cycleIndex,
+        fertileTier: fertile ? fertileTier : this.fertileTier,
+        fertileCycleIndex:
+            fertile ? fertileCycleIndex : this.fertileCycleIndex,
       );
 
   @override
   String toString() =>
       'ForecastDayCell(bleed: $predictedBleed, cycleDay: $cycleDayNumber, '
-      'pms: $pmsBadge, cramps: $crampsBadge, tier: ${tier.name})';
+      'pms: $pmsBadge, cramps: $crampsBadge, fertile: $fertileWindow, '
+      'tier: ${tier.name}, fertileTier: ${fertileTier?.name})';
 }
 
 /// Steps a confidence tier down one level for every cycle past the first
@@ -171,6 +224,7 @@ List<ForecastCycle> deriveForecast({
   var start = prediction.estimatedNextStart;
   while (!start.isAfter(horizonEnd) && cycles.length < kForecastMaxCycles) {
     final index = cycles.length;
+    final tier = index == 0 ? baseTier : degradeForecastTier(baseTier);
     cycles.add(
       ForecastCycle(
         index: index,
@@ -178,7 +232,13 @@ List<ForecastCycle> deriveForecast({
         lengthDays: step,
         periodLengthDays: periodLength,
         spreadDays: baseSpread + index * kForecastSpreadGrowthPerCycle,
-        tier: index == 0 ? baseTier : degradeForecastTier(baseTier),
+        tier: tier,
+        // Issue #143: each cycle's own fertile window precedes *that*
+        // cycle's predicted period start, at that cycle's own (already
+        // degrading) tier — the same [fertileWindowFor] core
+        // [estimateFertileWindow] uses for the live estimate, so the two
+        // call sites can never drift onto different formulas.
+        fertileWindow: fertileWindowFor(start: start, tier: tier),
       ),
     );
     start = start.addDays(step);
@@ -190,35 +250,65 @@ List<ForecastCycle> deriveForecast({
 /// dates strictly after [today] are present (KTD3 — the past stays
 /// factual); the widget additionally suppresses forecast rendering on any
 /// date that carries a logged entry.
+///
+/// Split into three helpers (issue #143 review, CI CRAP gate — this method
+/// alone scored complexity 12): [_markCycleDays] lays down each cycle's own
+/// band/numeral cells first, [_markLiveEstimateBadges] adds the PMS/cramps
+/// badges off the live estimate, and [_markFertileWindows] layers every
+/// cycle's own fertile window on top last, so a fertile day can correctly
+/// land on (and update) a cell an earlier step already created.
 Map<String, ForecastDayCell> forecastDayCells({
   required List<ForecastCycle> cycles,
   required LocalDate today,
 }) {
   final cells = <String, ForecastDayCell>{};
   for (final cycle in cycles) {
-    // The first predicted cycle walks its full length (numerals cover the
-    // whole cycle, not just the band); later cycles walk the band only.
-    final spanDays = cycle.index == 0
-        ? cycle.lengthDays
-        : cycle.periodLengthDays;
-    for (var i = 0; i < spanDays; i++) {
-      final date = cycle.start.addDays(i);
-      if (!date.isAfter(today)) continue;
-      final iso = date.iso;
-      if (cells.containsKey(iso)) continue; // defensive: cycles never overlap
-      cells[iso] = ForecastDayCell(
-        predictedBleed: i < cycle.periodLengthDays,
-        cycleDayNumber: cycle.index == 0 ? i + 1 : null,
-        pmsBadge: false,
-        crampsBadge: false,
-        tier: cycle.tier,
-        cycleIndex: cycle.index,
-      );
-    }
+    _markCycleDays(cells, cycle, today);
   }
   if (cycles.isEmpty) return cells;
-  final estimate = cycles.first.start;
-  final estimateTier = cycles.first.tier;
+  _markLiveEstimateBadges(cells, cycles.first, today);
+  _markFertileWindows(cells, cycles, today);
+  return cells;
+}
+
+/// Lays down one [cycle]'s own band/numeral cells (KTD3/KTD5): the first
+/// predicted cycle walks its full length (numerals cover the whole cycle,
+/// not just the band); later cycles walk the band only. Cycles never
+/// overlap, so a date already present is left alone (defensive).
+void _markCycleDays(
+  Map<String, ForecastDayCell> cells,
+  ForecastCycle cycle,
+  LocalDate today,
+) {
+  final spanDays =
+      cycle.index == 0 ? cycle.lengthDays : cycle.periodLengthDays;
+  for (var i = 0; i < spanDays; i++) {
+    final date = cycle.start.addDays(i);
+    if (!date.isAfter(today)) continue;
+    final iso = date.iso;
+    if (cells.containsKey(iso)) continue; // defensive: cycles never overlap
+    cells[iso] = ForecastDayCell(
+      predictedBleed: i < cycle.periodLengthDays,
+      cycleDayNumber: cycle.index == 0 ? i + 1 : null,
+      pmsBadge: false,
+      crampsBadge: false,
+      fertileWindow: false,
+      tier: cycle.tier,
+      cycleIndex: cycle.index,
+    );
+  }
+}
+
+/// The fixed-offset PMS/cramps badges (roadmap KTD7), only ever shown off
+/// the live (next) [estimateCycle] — unlike the fertile window below, they
+/// never repeat for later forecast cycles.
+void _markLiveEstimateBadges(
+  Map<String, ForecastDayCell> cells,
+  ForecastCycle estimateCycle,
+  LocalDate today,
+) {
+  final estimate = estimateCycle.start;
+  final tier = estimateCycle.tier;
   for (var i = kPmsLeadDays; i >= 1; i--) {
     _markBadge(
       cells,
@@ -226,7 +316,8 @@ Map<String, ForecastDayCell> forecastDayCells({
       today,
       pms: true,
       cramps: false,
-      tier: estimateTier,
+      tier: tier,
+      cycleIndex: 0,
     );
   }
   for (var i = -kCrampsLeadDays; i <= kCrampsTrailDays; i++) {
@@ -236,10 +327,37 @@ Map<String, ForecastDayCell> forecastDayCells({
       today,
       pms: false,
       cramps: true,
-      tier: estimateTier,
+      tier: tier,
+      cycleIndex: 0,
     );
   }
-  return cells;
+}
+
+/// Issue #143: every forecasted [cycles] entry marks its own fertile
+/// window (not only the next one, unlike [_markLiveEstimateBadges] above)
+/// — the calendar surfaces a fertile band ahead of each future predicted
+/// period, not just the nearest, each at that cycle's own tier.
+void _markFertileWindows(
+  Map<String, ForecastDayCell> cells,
+  List<ForecastCycle> cycles,
+  LocalDate today,
+) {
+  for (final cycle in cycles) {
+    var date = cycle.fertileWindow.windowStart;
+    while (!date.isAfter(cycle.fertileWindow.windowEnd)) {
+      _markBadge(
+        cells,
+        date,
+        today,
+        pms: false,
+        cramps: false,
+        fertile: true,
+        tier: cycle.tier,
+        cycleIndex: cycle.index,
+      );
+      date = date.addDays(1);
+    }
+  }
 }
 
 void _markBadge(
@@ -249,6 +367,8 @@ void _markBadge(
   required bool pms,
   required bool cramps,
   required CycleConfidence tier,
+  required int cycleIndex,
+  bool fertile = false,
 }) {
   if (!date.isAfter(today)) return;
   final existing = cells[date.iso];
@@ -258,10 +378,19 @@ void _markBadge(
           cycleDayNumber: null,
           pmsBadge: pms,
           crampsBadge: cramps,
+          fertileWindow: fertile,
           tier: tier,
-          cycleIndex: 0,
+          cycleIndex: cycleIndex,
+          fertileTier: fertile ? tier : null,
+          fertileCycleIndex: fertile ? cycleIndex : null,
         )
-      : existing._withBadges(pms: pms, cramps: cramps);
+      : existing._withBadges(
+          pms: pms,
+          cramps: cramps,
+          fertile: fertile,
+          fertileTier: tier,
+          fertileCycleIndex: cycleIndex,
+        );
 }
 
 /// The last day of the month [horizonMonths] after [today]'s month — the

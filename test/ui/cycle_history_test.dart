@@ -37,6 +37,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
@@ -131,6 +132,8 @@ class Harness {
         ),
       ],
       child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CycleHistorySection(
             profileId: profile.id,
@@ -505,6 +508,8 @@ void main() {
           ),
         ],
         child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: CycleHistorySection(
               profileId: profile.id,

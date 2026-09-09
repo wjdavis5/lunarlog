@@ -18,10 +18,13 @@ Three parties receive data off-device, all only for app functionality:
 (crash reports reduced to an allowlist — no user, no health content), and
 **Resend** (transactional support email — an admin alert when you submit an
 in-app feedback ticket, and the reply email if the admin responds; never the
-ticket's message body or any attachment). Today the app tracks cycles and flow
-and estimates the next period; fertility-related estimation (fertile-window and
-ovulation) is part of the product's intended scope but does not exist in the
-app yet (issues #142 and #143).
+ticket's message body or any attachment). Today the app tracks cycles and
+flow, estimates the next period, and estimates a fertile window and ovulation
+day from that same logged history (issue #143) — a calendar-method
+back-calculation only, with the same confidence tiering as the period
+estimate and no new user input; fertility-signal logging (BBT, cervical
+mucus, ovulation tests, issue #144) that would refine it further does not
+exist yet.
 Targets iOS (iPhone first-class), Android, and
 an installable web PWA used for iteration only. The app holds sensitive health
 data, including minors'; this repo stays private and must never contain real
@@ -314,8 +317,12 @@ Part of the home lab; the canonical inventory lives in the lab root's
   its data in that account and can restore it on another device. A device
   that never signed in has no backup — losing it loses the data. "Export my
   data" (Your data section) saves a JSON file of profiles and entries through
-  the share sheet, but it is a manual, one-time export, not a backup
-  mechanism.
+  the share sheet; it is still a manual, one-time export, not an automatic
+  backup mechanism, but as of issue #140 that file is no longer a dead end —
+  "Import from file" (same section) reads it back, previews what would
+  change, and merges it into the local store, so exporting before a wipe or
+  reinstall is a real (manual) restore path even for a device that never
+  signed in.
 - In-app account deletion and JSON export have shipped in code (issue
   #17), but release itself still **gates** on the mechanically-enforced
   check: no App Store submission and no Play `production` dispatch until
@@ -330,11 +337,17 @@ Part of the home lab; the canonical inventory lives in the lab root's
   access until their JWT expires, which is why the project's JWT expiry is
   set to the dashboard minimum.
 - The former "no fertility features, by design; do not add them" commitment
-  was removed (#142, following the owner decision in #123): fertile-window and
-  ovulation estimation (#143) and fertility-signal logging — BBT, cervical
-  mucus, ovulation tests (#144) — are planned on all profiles, including
-  minors'. None of it is built yet; nothing in the app claims it today, and
-  [`PRIVACY.md`](PRIVACY.md) records the narrowed promise in its change
+  was removed (#142, following the owner decision in #123). Fertile-window and
+  ovulation estimation (#143) has shipped: a calendar-method back-calculation
+  (next predicted period start minus an assumed 14-day luteal-phase length,
+  window ovulation −5…+1 days) computed on-device from already-logged cycle
+  dates, carrying the exact same confidence tier as the period prediction it
+  is derived from, shown on the calendar and in Insights with its own
+  not-contraception disclaimer, and available on every profile including
+  minors' with no restriction. Fertility-signal logging — BBT, cervical
+  mucus, ovulation tests (#144), which would refine the estimate beyond
+  calendar math — is still not built. [`PRIVACY.md`](PRIVACY.md) records both
+  the narrowed promise and the fertile-window disclosure in its change
   history.
 - App-switcher snapshots are suppressed by an opaque Flutter cover whenever
   the app is not resumed, plus FLAG_SECURE on Android (a tiny platform
