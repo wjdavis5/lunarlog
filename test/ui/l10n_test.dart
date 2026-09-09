@@ -257,6 +257,89 @@ void main() {
       );
       expect(l10n.settingsClose, 'Close');
     });
+
+    testWidgets('first-run flow (#216): extracted pre-existing literals '
+        'plus the new onboarding copy', (tester) async {
+      final l10n = await pumpL10n(tester);
+      // Extracted verbatim from the pre-#216 first-run surface (the
+      // parity promise: no visible change).
+      expect(
+        l10n.firstRunNoticeBody,
+        'Signing in syncs this profile across your devices and lets you '
+        'share it with other guardians. Until then, everything you log '
+        'stays on this device.',
+      );
+      expect(l10n.firstRunUnderstand, 'I understand');
+      expect(l10n.firstRunCreateTitle, 'Create a profile');
+      expect(l10n.firstRunNameLabel, 'Name');
+      expect(l10n.firstRunMinorLabel, 'This profile is for a minor');
+      expect(l10n.firstRunCareModeLabel, 'Care mode');
+      expect(l10n.firstRunCreateButton, 'Create profile');
+      // New #216 copy, pinned for review.
+      expect(l10n.firstRunValueHeadline,
+          'A private cycle log for your family');
+      expect(
+        l10n.firstRunValueBody,
+        'Guardians can share a profile and log it together. Everything '
+        'works offline. No ads, no data selling, no behavioral tracking — '
+        'and predictions are never paywalled.',
+      );
+      expect(l10n.firstRunGuardiansTitle, 'Profiles and guardians');
+      expect(
+        l10n.firstRunGuardiansBody,
+        "Each profile holds one person's cycle log. After signing in, you "
+        'can invite another guardian — a co-parent or caregiver — to view '
+        'or help log it.',
+      );
+      expect(l10n.firstRunMinorExplainerTitle, 'About the minor checkbox');
+      expect(
+        l10n.firstRunMinorExplainerBody,
+        "It's a label with one real effect today: the profile is kept out "
+        "of this phone's Health app sync. It doesn't restrict anything "
+        'else — wording and reminders come from the care mode picked on '
+        'the next screen, not from this checkbox.',
+      );
+      expect(l10n.firstRunMinorHint,
+          "A label with one effect: this profile is kept out of this "
+          "phone's Health app sync.");
+      expect(l10n.firstRunNext, 'Next');
+      expect(l10n.firstRunSkip, 'Skip');
+      expect(l10n.firstRunContinue, 'Continue');
+      expect(
+        l10n.firstRunCycleCaption,
+        'A few optional questions to set this profile up — every one can '
+        'be skipped. The goal and birth-control answers can be changed '
+        'later when editing the profile.',
+      );
+      expect(l10n.firstRunCycleLastPeriodLabel, 'Last period start');
+      expect(l10n.firstRunCycleChooseDate, 'Choose date');
+      expect(l10n.firstRunCycleChangeDate, 'Change date');
+      expect(l10n.firstRunCycleClearDate, 'Clear');
+      expect(l10n.firstRunCycleTypicalCycleLabel,
+          'Typical cycle length (days)');
+      expect(l10n.firstRunCycleTypicalCycleHint, 'e.g. 28');
+      expect(l10n.firstRunCycleTypicalPeriodLabel,
+          'Typical period length (days)');
+      expect(l10n.firstRunCycleTypicalPeriodHint, 'e.g. 5');
+      expect(l10n.firstRunCycleLengthRangeError,
+          'Enter a number between 10 and 90');
+      expect(l10n.firstRunPeriodLengthRangeError,
+          'Enter a number between 1 and 14');
+      expect(l10n.firstRunCycleBirthControlLabel, 'Birth-control method');
+      expect(l10n.firstRunCycleGoalLabel, 'Goal / mode');
+      expect(l10n.lifeStageModeLabel, 'Life-stage mode');
+      expect(l10n.birthControlNotAnswered, 'Not answered');
+      expect(l10n.birthControlNone, 'None');
+      expect(l10n.birthControlPill, 'Pill');
+      expect(l10n.birthControlHormonalIud, 'Hormonal IUD');
+      expect(l10n.birthControlCopperIud, 'Copper IUD');
+      expect(l10n.birthControlImplant, 'Implant');
+      expect(l10n.birthControlInjection, 'Injection');
+      expect(l10n.birthControlRing, 'Vaginal ring');
+      expect(l10n.birthControlPatch, 'Patch');
+      expect(l10n.birthControlCondom, 'Condom');
+      expect(l10n.birthControlOther, 'Other');
+    });
   });
 
   group('delegate registration (both MaterialApps)', () {
