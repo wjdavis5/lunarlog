@@ -5,10 +5,16 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(65);
+select plan(69);
 
 create temp table snap (name text primary key, v jsonb);
-grant all on table snap to authenticated;
+-- Issue #167: section 12 below is the first place in this file that reads a
+-- key via pg_temp.snap() for the first time while role = service_role (the
+-- account-deletion fixed-role sections that came before it only ever
+-- re-read a key that had already been read once earlier under
+-- `authenticated`) -- granted to service_role too so a first-time read
+-- under that role does not hit a bare missing-grant permission error.
+grant all on table snap to authenticated, service_role;
 
 create function pg_temp.snapshot(n text, v jsonb) returns void language sql as
   $$ insert into snap values (n, v) on conflict (name) do update set v = excluded.v $$;
@@ -217,7 +223,7 @@ select is(
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,
     'notification_outbox', 0, 'profile_reminder_windows', 0,
-    'missed_entry_alert_state', 0, 'feedback_tickets', 0
+    'missed_entry_alert_state', 0, 'feedback_tickets', 0, 'import_jobs', 0
   ),
   'calling delete_account_data twice reports zero counts the second time'
 );
@@ -778,9 +784,30 @@ select pg_temp.snapshot('p_ticket_id', to_jsonb((select id from ins)::text));
 insert into public.feedback_replies (ticket_id, author_type, message)
 values ((pg_temp.snap('p_ticket_id') #>> '{}')::uuid, 'user', 'a P reply');
 
+-- Issue #167: an import job P created_by themselves, on a profile P owns.
+-- import_jobs.id is a real uuid (gen_random_uuid() default), unlike every
+-- other id in this schema which is a ULID -- left to default and captured
+-- via RETURNING rather than tests.ulid()::uuid (a Crockford ULID is not a
+-- syntactically valid uuid literal).
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(60), 'P''s kid', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+with ins as (
+  insert into public.import_jobs (profile_id, source, status, total_rows, processed_rows, created_by)
+  values (tests.ulid(60), 'clue_import', 'completed', 10, 10, tests.get_supabase_uid('user_p'))
+  returning id
+)
+select pg_temp.snapshot('p_import_job_id', to_jsonb((select id from ins)::text));
+
 select tests.authenticate_as('user_q');
 insert into public.feedback_tickets (user_id, reply_email, category, message)
 values (tests.get_supabase_uid('user_q'), 'q@example.com', 'bug', 'a Q ticket');
+
+-- Issue #167: a different user's own import job, on a profile they own,
+-- must survive user_p's account deletion untouched.
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(62), 'Q''s kid', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+insert into public.import_jobs (profile_id, source, status, total_rows, processed_rows, created_by)
+values (tests.ulid(62), 'clue_import', 'running', 100, 40, tests.get_supabase_uid('user_q'));
 
 select tests.authenticate_as('user_p');
 select pg_temp.snapshot('p_result', public.delete_account_data());
@@ -788,6 +815,10 @@ select pg_temp.snapshot('p_result', public.delete_account_data());
 select is(
   pg_temp.snap('p_result') -> 'feedback_tickets', '1'::jsonb,
   'Issue #243: result includes a feedback_tickets count of 1'
+);
+select is(
+  pg_temp.snap('p_result') -> 'import_jobs', '1'::jsonb,
+  'Issue #167: result includes an import_jobs count of 1 (created_by = v_uid)'
 );
 
 select set_config('request.jwt.claims', '', true);
@@ -807,6 +838,21 @@ select is(
   (select count(*) from public.feedback_tickets where user_id = tests.get_supabase_uid('user_q')),
   1::bigint,
   'Issue #243: a different user''s feedback ticket survives untouched'
+);
+select is(
+  (select count(*) from public.import_jobs where created_by = tests.get_supabase_uid('user_p')),
+  0::bigint,
+  'Issue #167: after delete_account_data, the caller has zero import_jobs rows'
+);
+select is(
+  (select count(*) from public.import_jobs where id = (pg_temp.snap('p_import_job_id') #>> '{}')::uuid),
+  0::bigint,
+  'Issue #167: P''s own import job is gone (also cascaded via the profiles delete''s on delete cascade)'
+);
+select is(
+  (select count(*) from public.import_jobs where created_by = tests.get_supabase_uid('user_q')),
+  1::bigint,
+  'Issue #167: a different user''s own import job survives untouched'
 );
 
 select tests.clear_authentication();

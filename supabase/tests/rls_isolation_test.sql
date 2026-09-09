@@ -1,7 +1,7 @@
 -- RLS isolation, privilege, and constraint proof for the three sync tables
 -- (plan U2: AE1, AE2, AE12, column-list grants, CHECKs, server_version, anon).
 begin;
-select plan(53);
+select plan(54);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: users A and B each own one profile, one day entry, one setting.
@@ -208,13 +208,13 @@ select tests.clear_authentication();
 select is((select count(*) from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) a
-           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations')
+           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations', 'import_jobs')
              and (a.grantee = 0 or a.grantee = 'anon'::regrole)),
-  0::bigint, 'PUBLIC and anon hold no privilege on any sync table (Issue #240: observations joins this catalog guard)');
+  0::bigint, 'PUBLIC and anon hold no privilege on any sync table (Issue #240: observations joins this catalog guard; Issue #167: import_jobs too)');
 select is((select count(*) from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) a
-           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations')
+           where n.nspname = 'public' and c.relname in ('profiles', 'day_entries', 'settings', 'observations', 'import_jobs')
              and a.grantee = 'authenticated'::regrole and a.privilege_type in ('DELETE', 'TRUNCATE')),
   0::bigint, 'authenticated holds no DELETE or TRUNCATE privilege on any sync table');
 select is((select count(*) from pg_policies
@@ -227,10 +227,16 @@ select is((select count(*) from pg_policies
 select is((select count(*) from pg_policies
            where schemaname = 'public' and tablename = 'observations'),
   3::bigint, 'observations carries exactly its three documented policies');
+-- Issue #167: import_jobs carries the same shape as observations -- three
+-- policies (select/insert/update), no client DELETE policy at all (a job's
+-- lifecycle ends at completed/failed, never removal by the client).
 select is((select count(*) from pg_policies
-           where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings', 'observations')
+           where schemaname = 'public' and tablename = 'import_jobs'),
+  3::bigint, 'import_jobs carries exactly its three documented policies (Issue #167)');
+select is((select count(*) from pg_policies
+           where schemaname = 'public' and tablename in ('profiles', 'day_entries', 'settings', 'observations', 'import_jobs')
              and roles <> '{authenticated}'),
-  0::bigint, 'every policy on every sync table, observations included, is scoped to authenticated');
+  0::bigint, 'every policy on every sync table, observations and import_jobs included, is scoped to authenticated');
 
 -- ---------------------------------------------------------------------------
 -- Issue #158: catalog-wide guard against a future migration forgetting a
