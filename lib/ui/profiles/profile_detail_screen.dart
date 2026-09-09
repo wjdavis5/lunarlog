@@ -22,11 +22,14 @@ import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
+import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:provider/provider.dart';
 
 enum _DetailTab { overview, calendar }
@@ -123,6 +126,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
       ),
       body: Column(
         children: [
+          // Issue #126: a co-managed profile reads as co-managed right
+          // below its header — no menu to open. Solo profiles render
+          // nothing here.
+          if (guardiansRepository != null)
+            _sharedChip(context, guardiansRepository),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: SegmentedButton<_DetailTab>(
@@ -159,8 +167,43 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     );
   }
 
-  /// The Overview tab's content. Not archived: just [OverviewPanel], same
-  /// as before #314's follow-up. Archived: [OverviewPanel] with the
+  /// Issue #126 shared chip: visible only when the local guardian rows
+  /// show more than one accepted guardian. Routes to Manage Guardians
+  /// when the build can open it; otherwise a plain (disabled) indicator.
+  /// Local rows render offline, so this never errors or spins.
+  Widget _sharedChip(
+    BuildContext context,
+    ProfileGuardiansRepository guardiansRepository,
+  ) {
+    return StreamBuilder<List<ProfileGuardian>>(
+      stream: guardiansRepository.watchForProfile(widget.profile.id),
+      builder: (context, snapshot) {
+        final accepted = [
+          for (final guardian in snapshot.data ?? const <ProfileGuardian>[])
+            if (guardian.status == GuardianStatus.accepted) guardian,
+        ];
+        if (accepted.length < 2) return const SizedBox.shrink();
+        final sharing =
+            Provider.of<SharingService?>(context, listen: false);
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ActionChip(
+              key: const ValueKey('profile-shared-chip'),
+              avatar: const Icon(Icons.people_outline, size: 18),
+              label: Text('Shared · ${accepted.length} guardians'),
+              onPressed: sharing == null
+                  ? null
+                  : () => openManageGuardians(context, widget.profile),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// The Overview tab's content. Not archived: just [OverviewPanel], same  /// as before #314's follow-up. Archived: [OverviewPanel] with the
   /// read-only [CycleHistorySection] this screen's doc comment explains
   /// passed as [OverviewPanel.trailingChildren] so both render inside the
   /// panel's own single [ListView] (issue #314 review item 3) instead of

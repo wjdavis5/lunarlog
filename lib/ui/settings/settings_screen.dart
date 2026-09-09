@@ -30,6 +30,7 @@ import 'package:lunarlog/ui/feedback/feedback_screen.dart'
 import 'package:lunarlog/ui/feedback/support_history_screen.dart'
     show newestReplyActivityAt;
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/settings/family_sharing_section.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:provider/provider.dart';
@@ -87,6 +88,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         children: [
           const YourDataSection(),
+          // Issue #126: owned and shared-with-you profiles, each routing
+          // to its Manage Guardians screen. Self-hiding when sharing is
+          // unavailable, so unconfigured builds render exactly as before.
+          const FamilySharingSection(),
           if (hasAccount) ...[
             const AccountSection(),
             const Divider(),
