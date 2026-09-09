@@ -192,6 +192,18 @@ class ReminderCoordinator with WidgetsBindingObserver {
   Future<void> requestPermission() async {
     if (_disposed || !_started) return;
     final generation = ++_permissionProbeGeneration;
+    // In practice, the OS permission dialog this awaits is itself a real
+    // app-lifecycle event (backgrounded, then resumed) even though
+    // `app.dart` wraps this call in the gate's system-UI window to stop it
+    // from re-locking. That resume still reaches
+    // `didChangeAppLifecycleState`, which bumps `_permissionProbeGeneration`
+    // again and races its own `_refreshPermissionAndReplan` probe to
+    // completion first -- so by the time `_scheduler.requestPermission()`
+    // resolves here, the guard below usually finds a stale generation and
+    // discards this result rather than applying it. That is intentional,
+    // not a bug to tighten: the resume's probe is the fresher of the two,
+    // and letting this one win instead would occasionally overwrite it
+    // with an answer read a moment earlier.
     final availability = await _scheduler.requestPermission();
     if (_disposed || generation != _permissionProbeGeneration) return;
     _setAvailability(availability);

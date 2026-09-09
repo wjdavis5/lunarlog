@@ -328,14 +328,63 @@ void main() {
 
   group('reminder permission requests run inside the system-UI window '
       '(issue #168)', () {
-    // The automatic startup request (initState -> _startReminders ->
-    // coordinator.start()) is deliberately *not* wrapped in
-    // `duringSystemUi`: it runs during the ancestor's build phase, where
-    // opening a system-UI window's synchronous `notifyListeners()` would
-    // hit `LunarLogRootState` calling `setState()` mid-build. It stays
-    // unwrapped, matching the pre-existing (also unwrapped) Darwin
-    // request it mirrors. Only the explicit, user-triggered re-request
-    // below -- which never runs during a build -- is wrapped.
+    // The automatic startup request (initState -> post-frame callback ->
+    // _startReminders -> coordinator.start()) now runs inside the same
+    // `duringSystemUi` window as the explicit re-request below. It cannot
+    // be wrapped directly from `initState` -- opening the window's
+    // synchronous `notifyListeners()` would hit `LunarLogRootState` calling
+    // `setState()` mid-build -- so `_LunarLogAppState` constructs the
+    // coordinator synchronously in `initState` but defers only the
+    // `start()` call to a post-frame callback, which runs safely after the
+    // ancestor's build phase has finished.
+    testWidgets(
+        'the automatic startup request also runs inside the system-UI '
+        'window', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final initializeGate = Completer<void>();
+      final scheduler = FakeReminderScheduler(initializeGate: initializeGate);
+
+      await tester.pumpWidget(LunarLogRoot(
+        gate: FakeGate(requiresUnlock: false),
+        dbOpener: () async => db,
+        scheduler: scheduler,
+        inactivityTimerFactory: FakeInactivityTimers().factory,
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Not `homeContext` (`find.byType(ProfileHomeGate)`): the automatic
+      // startup request's system-UI window is already open by this point
+      // (it opens as part of the very first settle, unlike the manual tap
+      // below, which only opens one after the harness has already
+      // captured its context) and `GateController.obscured` — content
+      // must stay covered while the app's own system UI is up — makes
+      // `GateShell` mark `ProfileHomeGate` offstage for the duration,
+      // which the default `skipOffstage: true` finder would miss.
+      // `GateShell` itself sits above that offstage wrapper and is never
+      // hidden, so it is a safe, always-present anchor for the context.
+      final gateController =
+          tester.element(find.byType(GateShell)).read<GateController>();
+
+      expect(gateController.systemUiActive, isTrue,
+          reason: 'the automatic startup permission request is system UI '
+              'too');
+      gateController.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(gateController.locked, isFalse,
+          reason: 'this is the app\'s own startup request, not a real '
+              'departure');
+
+      initializeGate.complete();
+      await tester.pumpAndSettle();
+
+      // Not `systemUiActive` here: closing a window starts a settling
+      // tail (bounded by `settleTimeout`) during which it deliberately
+      // stays reported as active — see `GateController._closeSystemUiWindow`.
+      expect(scheduler.initializeCalls, 1);
+
+      await disposeApp(tester, db);
+    });
+
     testWidgets(
         'the "Turn on reminders" re-request is wrapped the same way',
         (tester) async {

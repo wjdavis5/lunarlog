@@ -334,8 +334,9 @@ Part of the home lab; the canonical inventory lives in the lab root's
   whole window; a departure the window absorbed is answered fail-closed
   the moment the system UI comes down, and a window left open locks after
   two minutes regardless of the inactivity toggle. The first-run
-  notification-permission prompt is not yet covered by this and still
-  re-locks.
+  notification-permission prompt is covered by this too, on both
+  platforms (issue #168) — the automatic startup request and the overview
+  hint's "Turn on reminders" re-request both run inside the same window.
 - iOS: the database file is not explicitly excluded from iCloud backups
   (skipped in U7 — it needs AppDelegate work on the Mac; Android covers the
   equivalent with `allowBackup="false"`). There is no app-managed database
