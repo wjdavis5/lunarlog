@@ -9,6 +9,13 @@
 /// Excluded from the coverage/CRAP gate in `tool/quality/exclusions.dart`,
 /// the same treatment as `lib/data/auth/google_sign_in_client.dart`; its
 /// behaviour is proven by the U7 device checklist, not `flutter test`.
+///
+/// [remoteSource] (Issue #248) is the seam for the server-side half of
+/// export; `null` for an unconfigured build or a caller that chooses to
+/// skip it (see `AccountSection`'s wiring), which
+/// [buildMergedAccountExport] treats as "local-only document, no `server`
+/// key" - the same degrade as a configured [remoteSource] that itself
+/// resolves to `null` (signed out, offline, a server error).
 library;
 
 import 'dart:convert';
@@ -18,13 +25,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/export/account_export.dart';
+import '../../domain/export/account_export_remote_source.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/profile.dart';
 
 class AccountExportWriter {
-  const AccountExportWriter();
+  const AccountExportWriter({this.remoteSource});
 
-  /// Builds the export (see [buildAccountExport]), writes it to
+  final AccountExportRemoteSource? remoteSource;
+
+  /// Builds the export (see [buildMergedAccountExport]), writes it to
   /// `lunarlog-export-<yyyyMMdd-HHmmss>.json` under the temp directory, and
   /// hands that file to the platform share sheet.
   Future<void> exportAndShare({
@@ -33,11 +43,12 @@ class AccountExportWriter {
     required String appVersion,
   }) async {
     final exportedAt = DateTime.now().toUtc();
-    final document = buildAccountExport(
+    final document = await buildMergedAccountExport(
       profiles: profiles,
       entriesByProfile: entriesByProfile,
       exportedAt: exportedAt,
       appVersion: appVersion,
+      remoteSource: remoteSource,
     );
     final encoded = const JsonEncoder.withIndent('  ').convert(document);
 

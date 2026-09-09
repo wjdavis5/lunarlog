@@ -43,6 +43,7 @@ import 'package:lunarlog/app.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
+import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
 import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
@@ -60,6 +61,7 @@ import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -730,6 +732,7 @@ class LunarLogRoot extends StatefulWidget {
     this.accountDeletionService,
     this.ownershipTransferService,
     this.notificationPreferencesService,
+    this.accountExportRemoteSource,
     this.supabaseClient,
     this.inviteLinks,
     this.initialInviteCode,
@@ -791,11 +794,18 @@ class LunarLogRoot extends StatefulWidget {
   /// Notifications tile is absent with zero conditionals in the caller.
   final NotificationPreferencesService? notificationPreferencesService;
 
+  /// Server-side export seam (Issue #248), injectable for tests. When null
+  /// (and [supabaseClient] is present) the root constructs the production
+  /// [SupabaseAccountExportRemoteSource] alongside the other Supabase
+  /// services below - same KTD8 precedent.
+  final AccountExportRemoteSource? accountExportRemoteSource;
+
   /// The Supabase client from the successful bootstrap. When present (and
   /// [sharingService]/[feedbackService]/[accountDeletionService]/
-  /// [ownershipTransferService] were not injected) the root constructs the
-  /// production [SupabaseSharingService], [SupabaseFeedbackService],
-  /// [SupabaseAccountDeletionService], [SupabaseOwnershipTransferService],
+  /// [ownershipTransferService]/[accountExportRemoteSource] were not
+  /// injected) the root constructs the production [SupabaseSharingService],
+  /// [SupabaseFeedbackService], [SupabaseAccountDeletionService],
+  /// [SupabaseOwnershipTransferService], [SupabaseAccountExportRemoteSource],
   /// and [RealtimeSyncCoordinator] alongside the sync engine, so those
   /// features are live in production builds.
   final SupabaseClient? supabaseClient;
@@ -845,6 +855,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   AccountDeletionService? _builtAccountDeletionService;
   OwnershipTransferService? _builtOwnershipTransferService;
   NotificationPreferencesService? _builtNotificationPreferencesService;
+  AccountExportRemoteSource? _builtAccountExportRemoteSource;
   ReminderWindowUpsert? _reminderWindowUpsert;
   RealtimeSyncCoordinator? _realtimeCoordinator;
   PushRegistrationCoordinator? _pushCoordinator;
@@ -936,6 +947,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
           SupabaseAccountDeletionService(client: client);
       _builtOwnershipTransferService =
           SupabaseOwnershipTransferService(client: client, syncEngine: engine);
+      _builtAccountExportRemoteSource =
+          SupabaseAccountExportRemoteSource(client: client);
       final coordinator = RealtimeSyncCoordinator(
         client: client,
         syncEngine: engine,
@@ -1010,6 +1023,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     _builtAccountDeletionService = null;
     _builtOwnershipTransferService = null;
     _builtNotificationPreferencesService = null;
+    _builtAccountExportRemoteSource = null;
     _reminderWindowUpsert = null;
     final engine = _syncEngine;
     _syncEngine = null;
@@ -1174,6 +1188,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
             widget.ownershipTransferService ?? _builtOwnershipTransferService,
         notificationPreferencesService: widget.notificationPreferencesService ??
             _builtNotificationPreferencesService,
+        accountExportRemoteSource: widget.accountExportRemoteSource ??
+            _builtAccountExportRemoteSource,
         reminderWindowUpsert: _reminderWindowUpsert,
         inviteLinks: widget.inviteLinks,
         initialInviteCode: widget.initialInviteCode,

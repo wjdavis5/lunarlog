@@ -66,6 +66,7 @@ import 'package:lunarlog/app_lifecycle.dart'
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
+import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -151,16 +152,25 @@ typedef ExportAccountCollaborator = Future<void> Function({
   required String appVersion,
 });
 
-Future<void> _defaultExportAccountCollaborator({
-  required List<Profile> profiles,
-  required Map<String, List<DayEntry>> entriesByProfile,
-  required String appVersion,
-}) =>
-    const AccountExportWriter().exportAndShare(
-      profiles: profiles,
-      entriesByProfile: entriesByProfile,
-      appVersion: appVersion,
-    );
+/// Builds the default collaborator around whatever [AccountExportRemoteSource]
+/// is available (Issue #248; `null` for an unconfigured build - see
+/// `AccountExportWriter`'s own doc). A factory, not a bare top-level
+/// function, so [_runExport] can read the remote source from `context` at
+/// call time without widening [ExportAccountCollaborator]'s own signature
+/// (existing test doubles for that typedef stay unchanged).
+ExportAccountCollaborator _defaultExportAccountCollaborator(
+  AccountExportRemoteSource? remoteSource,
+) =>
+    ({
+      required List<Profile> profiles,
+      required Map<String, List<DayEntry>> entriesByProfile,
+      required String appVersion,
+    }) =>
+        AccountExportWriter(remoteSource: remoteSource).exportAndShare(
+          profiles: profiles,
+          entriesByProfile: entriesByProfile,
+          appVersion: appVersion,
+        );
 
 /// Injectable seam for the Apple authorization-code fetch (Issue #17 U6;
 /// KTD3): the default calls the real native dialog with no scopes (only
@@ -791,13 +801,20 @@ class _AccountSectionState extends State<AccountSection> {
   Future<void> _runExport(BuildContext context) async {
     final profilesRepo = context.read<ProfilesRepository>();
     final entriesRepo = context.read<DayEntriesRepository>();
+    // Issue #248: read before the first `await` below (not after -
+    // `use_build_context_synchronously`); null for an unconfigured build
+    // (no Supabase client) - the same "nothing to merge" degrade as a
+    // configured remote source that itself resolves to null (signed out,
+    // offline, a server error).
+    final remoteSource = context.read<AccountExportRemoteSource?>();
     final profiles = await profilesRepo.list();
     final entriesByProfile = <String, List<DayEntry>>{};
     for (final profile in profiles) {
       entriesByProfile[profile.id] =
           await entriesRepo.listForProfile(profile.id);
     }
-    await (widget.exportAccount ?? _defaultExportAccountCollaborator)(
+    await (widget.exportAccount ??
+        _defaultExportAccountCollaborator(remoteSource))(
       profiles: profiles,
       entriesByProfile: entriesByProfile,
       appVersion: kAppVersionForExport,
