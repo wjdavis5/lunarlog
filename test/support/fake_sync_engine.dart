@@ -40,6 +40,8 @@ class FakeSyncEngine implements SyncEngine {
     int? rejectedCount,
     DateTime? lastSyncAt,
     String? boundUserId,
+    int? pushedRows,
+    int? totalDirtyRows,
   }) =>
       emit(_snapshot.copyWith(
         phase: phase,
@@ -48,6 +50,8 @@ class FakeSyncEngine implements SyncEngine {
         rejectedCount: rejectedCount,
         lastSyncAt: lastSyncAt,
         boundUserId: boundUserId,
+        pushedRows: pushedRows,
+        totalDirtyRows: totalDirtyRows,
       ));
 
   @override

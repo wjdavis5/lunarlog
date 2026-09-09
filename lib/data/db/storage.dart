@@ -438,17 +438,36 @@ class LunarLogStorage {
 
   // ------------------------------------------------------- sync: dirty rows
 
-  /// Profiles with unpushed local changes, tombstones included, by id.
-  Future<List<Profile>> readDirtyProfiles() => (db.select(db.profiles)
-        ..where((t) => t.dirty.equals(true))
-        ..orderBy([(t) => OrderingTerm(expression: t.id)]))
-      .get();
+  /// Profiles with unpushed local changes, tombstones included, ordered by
+  /// id (ULIDs, so this is also insertion order). [afterId] resumes a
+  /// keyset scan after that id (exclusive); [limit] bounds the page so a
+  /// caller can stream a large dirty set batch by batch instead of
+  /// materialising it all at once.
+  Future<List<Profile>> readDirtyProfiles({int? limit, String? afterId}) {
+    final query = db.select(db.profiles)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
 
-  /// Day entries with unpushed local changes, tombstones included, by id.
-  Future<List<DayEntry>> readDirtyDayEntries() => (db.select(db.dayEntries)
-        ..where((t) => t.dirty.equals(true))
-        ..orderBy([(t) => OrderingTerm(expression: t.id)]))
-      .get();
+  /// Day entries with unpushed local changes, tombstones included, ordered
+  /// by id. Same keyset-paging contract as [readDirtyProfiles].
+  Future<List<DayEntry>> readDirtyDayEntries({int? limit, String? afterId}) {
+    final query = db.select(db.dayEntries)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
 
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
   /// still equals [localRevAtPush] (the value read when the push was

@@ -624,26 +624,65 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   // ------------------------------------------------------------------- push
 
-  /// Pushes every pushable dirty row, profiles first, in batches. Returns
-  /// whether any batch answered with resolved rows (a reconcile trigger).
+  /// Pushes every pushable dirty row, profiles first, streaming at most
+  /// [_batchSize] rows per table from storage — and JSON-encoding only
+  /// that page — one batch at a time, instead of materialising and
+  /// encoding the full dirty set up front (which could be thousands of
+  /// rows after a large import). Profile pages are read until exhausted;
+  /// once they are, the same round also reads the first day-entry page so
+  /// the two ride together exactly as the old single-shot chunking did.
+  /// A [_SyncPaused] raised by [_checkpoint] inside [_pushBatch] between
+  /// two batches propagates out of this loop and out of [_cycle]: every
+  /// batch already sent already called `markPushed` and stays committed,
+  /// so the next cycle's fresh keyset scan (this method starting over
+  /// with null cursors) sees only the rows still `dirty` and resumes from
+  /// there — there is no separate persisted resume cursor to maintain.
+  /// Returns whether any batch answered with resolved rows (a reconcile
+  /// trigger).
   Future<bool> _push(String uid) async {
-    final profiles = [
-      for (final row in _pushable(
-          await _storage.readDirtyProfiles(), (p) => p.id, (p) => p.localRev))
-        _PushItem(SyncTable.profiles, row.id, row.localRev, encodeProfile(row)),
-    ];
-    final entries = [
-      for (final row in _pushable(await _storage.readDirtyDayEntries(),
-          (e) => e.id, (e) => e.localRev))
-        _PushItem(
-            SyncTable.dayEntries, row.id, row.localRev, encodeDayEntry(row)),
-    ];
-    if (profiles.isEmpty && entries.isEmpty) return false;
+    final totalDirty = await _storage.dirtyCount();
+    _emit(_snapshot.copyWith(pushedRows: 0, totalDirtyRows: totalDirty));
+    if (totalDirty == 0) return false;
 
     var resolvedSeen = false;
-    for (final batch in _chunk(profiles, entries)) {
+    var pushedRows = 0;
+    String? profileCursor;
+    String? entryCursor;
+    var profilesDone = false;
+    var entriesDone = false;
+    while (!profilesDone || !entriesDone) {
+      final batch = <_PushItem>[];
+      if (!profilesDone) {
+        final page = await _storage.readDirtyProfiles(
+            limit: _batchSize, afterId: profileCursor);
+        profilesDone = page.length < _batchSize;
+        if (page.isNotEmpty) profileCursor = page.last.id;
+        batch.addAll([
+          for (final row
+              in _pushable(page, (p) => p.id, (p) => p.localRev))
+            _PushItem(
+                SyncTable.profiles, row.id, row.localRev, encodeProfile(row)),
+        ]);
+      }
+      // Profiles ride in the earliest batches; day entries only start
+      // once every profile page has been read (matches the merged final
+      // profile batch the old `_chunk` produced).
+      if (profilesDone) {
+        final page = await _storage.readDirtyDayEntries(
+            limit: _batchSize, afterId: entryCursor);
+        entriesDone = page.length < _batchSize;
+        if (page.isNotEmpty) entryCursor = page.last.id;
+        batch.addAll([
+          for (final row in _pushable(page, (e) => e.id, (e) => e.localRev))
+            _PushItem(SyncTable.dayEntries, row.id, row.localRev,
+                encodeDayEntry(row)),
+        ]);
+      }
+      if (batch.isEmpty) continue;
       final outcome = await _pushBatch(uid, batch);
       if (outcome.resolvedSeen) resolvedSeen = true;
+      pushedRows += batch.length;
+      _emit(_snapshot.copyWith(pushedRows: pushedRows));
     }
     return resolvedSeen;
   }
@@ -724,28 +763,6 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         _rejected.remove(entry.id);
       }
     }
-  }
-
-  /// Batches of at most [_batchSize] rows per table with profiles in the
-  /// earliest batches: profile-only batches until the profiles run out, the
-  /// last of which also carries the first day entries.
-  List<List<_PushItem>> _chunk(List<_PushItem> profiles, List<_PushItem> entries) {
-    final batches = <List<_PushItem>>[];
-    var p = 0;
-    var e = 0;
-    while (p < profiles.length || e < entries.length) {
-      final batch = <_PushItem>[];
-      final pEnd = min(p + _batchSize, profiles.length);
-      batch.addAll(profiles.sublist(p, pEnd));
-      p = pEnd;
-      if (p >= profiles.length) {
-        final eEnd = min(e + _batchSize, entries.length);
-        batch.addAll(entries.sublist(e, eEnd));
-        e = eEnd;
-      }
-      batches.add(batch);
-    }
-    return batches;
   }
 
   // ------------------------------------------------------------------- pull

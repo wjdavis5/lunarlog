@@ -377,6 +377,138 @@ void main() {
       expect(await rig.storage.dirtyCount(), 0);
     });
 
+    /// Creates [count] dirty day entries for [profileId] on consecutive
+    /// dates starting 2020-01-01, so a large-import push can be tested
+    /// without depending on any particular seed data.
+    Future<void> seedDirtyEntries(
+      LunarLogStorage storage,
+      String profileId,
+      int count,
+    ) async {
+      final start = DateTime.utc(2020, 1, 1);
+      for (var i = 0; i < count; i++) {
+        final d = start.add(Duration(days: i));
+        final date = '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+            '${d.day.toString().padLeft(2, '0')}';
+        await storage.upsertDayEntry(
+            profileId: profileId,
+            localDate: date,
+            tz: 'UTC',
+            flow: FlowLevel.light);
+      }
+    }
+
+    test('Issue #177: a 1,200-row dirty set streams in 3 batches, never '
+        'more than 500 rows in one transport call, and the snapshot '
+        'reports pushedRows/totalDirtyRows advancing batch by batch',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p =
+          await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      // The profile itself is not part of this dirty set: only the 1,200
+      // day entries are, so every push batch is entries-only and the
+      // per-call row cap is unambiguous.
+      await rig.storage.markPushed(
+          table: SyncTable.profiles,
+          id: p.id,
+          localRevAtPush:
+              (await rig.storage.readDirtyProfiles()).single.localRev);
+      await seedDirtyEntries(rig.storage, p.id, 1200);
+      expect(await rig.storage.dirtyCount(), 1200);
+
+      final progressAtEachCall = <SyncSnapshot>[];
+      rig.transport.onPush = (_) => progressAtEachCall.add(rig.engine.snapshot);
+
+      await rig.start();
+
+      expect(rig.transport.pushes, hasLength(3),
+          reason: '1,200 rows at the default 500-row batch size is 3 calls');
+      expect(rig.transport.pushes[0].dayEntries, hasLength(500));
+      expect(rig.transport.pushes[1].dayEntries, hasLength(500));
+      expect(rig.transport.pushes[2].dayEntries, hasLength(200));
+      for (final batch in rig.transport.pushes) {
+        expect(batch.rowCount, lessThanOrEqualTo(500),
+            reason: 'the transport never receives more than 500 rows in '
+                'one call, however large the dirty set — the engine '
+                'streams and encodes one batch at a time instead of '
+                'materialising the whole dirty set up front');
+      }
+      final allIds = rig.transport.pushes.expand((b) => ids(b.dayEntries));
+      expect(allIds.toSet(), hasLength(1200),
+          reason: 'every row is sent exactly once');
+      expect(await rig.storage.dirtyCount(), 0);
+
+      // Progress as observed at the moment each call was recorded: the
+      // total is fixed at the start of this cycle's push, and pushedRows
+      // reflects only batches that had already committed before this call.
+      expect(progressAtEachCall, hasLength(3));
+      expect(progressAtEachCall[0].totalDirtyRows, 1200);
+      expect(progressAtEachCall[0].pushedRows, 0);
+      expect(progressAtEachCall[1].totalDirtyRows, 1200);
+      expect(progressAtEachCall[1].pushedRows, 500);
+      expect(progressAtEachCall[2].totalDirtyRows, 1200);
+      expect(progressAtEachCall[2].pushedRows, 1000);
+      expect(rig.engine.snapshot.pushedRows, 1200);
+      expect(rig.engine.snapshot.totalDirtyRows, 1200);
+    });
+
+    test('Issue #177: a _SyncPaused between batches (the device locks '
+        'mid-import) leaves the not-yet-sent batches dirty; the next cycle '
+        'resumes and pushes only what is left, never re-pushing an '
+        'already-acknowledged row', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p =
+          await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      await rig.storage.markPushed(
+          table: SyncTable.profiles,
+          id: p.id,
+          localRevAtPush:
+              (await rig.storage.readDirtyProfiles()).single.localRev);
+      await seedDirtyEntries(rig.storage, p.id, 1200);
+
+      // Locks the gate as soon as batch 1 is recorded, so the checkpoint
+      // ahead of batch 2 throws _SyncPaused before any further encoding or
+      // network call.
+      rig.transport.onPush = (_) {
+        if (rig.transport.pushes.length == 1) rig.gate.lock();
+      };
+
+      await rig.start();
+
+      expect(rig.transport.pushes, hasLength(1),
+          reason: 'batch 1 committed; the paused checkpoint stops batch 2 '
+              'before it is built or sent');
+      expect(rig.engine.snapshot.phase, SyncPhase.paused);
+      expect(await rig.storage.dirtyCount(), 700,
+          reason: 'batches 2 and 3 (700 rows) are left dirty for the next '
+              'cycle — nothing was re-read or re-encoded for them yet');
+      final firstBatchIds = ids(rig.transport.pushes[0].dayEntries).toSet();
+      expect(firstBatchIds, hasLength(500));
+
+      rig.transport.onPush = null;
+      rig.gate.unlock();
+      await rig.engine.flush();
+
+      expect(rig.transport.pushes, hasLength(3),
+          reason: 'the resumed cycle finishes the remaining 700 rows in 2 '
+              'more batches, starting from the next dirty rows');
+      expect(rig.transport.pushes[1].dayEntries, hasLength(500));
+      expect(rig.transport.pushes[2].dayEntries, hasLength(200));
+      final resumedIds = rig.transport.pushes
+          .skip(1)
+          .expand((b) => ids(b.dayEntries))
+          .toSet();
+      expect(resumedIds.intersection(firstBatchIds), isEmpty,
+          reason: 'no already-acknowledged row is re-pushed on resume');
+      expect(resumedIds, hasLength(700));
+      expect(await rig.storage.dirtyCount(), 0);
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+    });
+
     test('AE6: a transport that throws after the server accepted leaves rows '
         'dirty; the next cycle re-pushes an identical payload', () async {
       final rig = Rig();

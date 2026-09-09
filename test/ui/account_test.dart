@@ -1824,6 +1824,31 @@ void main() {
         );
       });
 
+      test('Issue #177: pushing with known progress reads "Uploading X of '
+          'Y"; pushing with no progress yet falls back to the plain '
+          'syncing copy', () {
+        expect(
+          copy(
+            snapshot: const SyncSnapshot(
+              phase: SyncPhase.pushing,
+              pushedRows: 1200,
+              totalDirtyRows: 3650,
+            ),
+            authState: AuthSessionState.signedIn,
+          ),
+          'Uploading 1,200 of 3,650',
+        );
+        expect(
+          copy(
+            snapshot: const SyncSnapshot(phase: SyncPhase.pushing),
+            authState: AuthSessionState.signedIn,
+          ),
+          kSyncingCopy,
+          reason: 'no progress reported yet (or a small push it was never '
+              'observed mid-flight for) still reads the plain copy',
+        );
+      });
+
       test('signed out with no rejected rows reads "Not signed in", ahead '
           'of the last-synced copy', () {
         expect(
