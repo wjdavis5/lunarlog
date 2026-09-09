@@ -1073,7 +1073,7 @@ class _DaySheetState extends State<DaySheet> {
           Text(
             reason,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.outline,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),

@@ -350,7 +350,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
           _selectedRole == ParentPostTransferRole.viewer
               ? 'Viewer: read-only access to their calendar and entries.'
               : 'Co-manager: keep logging entries and managing this profile.',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -411,7 +411,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         const SizedBox(height: 12),
         Text(
           'Expires ${formatTransferExpiry(active.expiresAt)}',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
@@ -457,7 +457,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         const SizedBox(height: 12),
         Text(
           'Expires ${formatTransferExpiry(transfer.expiresAt)}',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
