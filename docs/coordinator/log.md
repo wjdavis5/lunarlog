@@ -6,3 +6,4 @@
 2026-09-08T22:41:44Z dispatched #242 (fix/242-ownership-token-hash-unreadable); slots full: #132 #125 #242
 2026-09-08T23:11:03Z merged PR #273 (issue 132), PR #274 (issue 242), PR #275 (issue 125; migration renumbered to 20260908110000, AGENTS.md conflict resolved; CI-event gap on new PRs worked around via branch synchronize). Dispatched wave 2: #131 care-modes, #133 forecast-calendar, #124 activity-feed.
 2026-09-08T23:23:47Z owner instruction: issue lifecycle labels added (in-progress on dispatch; removed on close/block); PROCESS.md codifies the loop + session-recovery notes; tagged #131 #133 #124 in-progress
+2026-09-09T00:15:33Z merged PR #276 (issue 133) and PR #277 (issue 131; main-merge conflicts with #276 calendar + #237 day-sheet resolved additively, verified analyze+tests before push; CI green on merge commit). PR #278 (124) clean against main; branch updated for fresh CI validation of the current merge ref.
