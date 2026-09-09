@@ -15,8 +15,7 @@ field or control (e.g. a background sync hiccup); and **a full screen** only
 when the app genuinely cannot continue at all (e.g. `RestoreErrorScreen`),
 in which case it must still announce its message the way `InlineError` does
 (`Semantics(liveRegion: true, container: true)`) rather than sitting silent
-for a screen-reader user (`RestoreErrorScreen` does not do this yet — a #187
-follow-up). `InlineError` always wraps its message in that same
+for a screen-reader user. `InlineError` always wraps its message in that same
 live region so assistive technology hears the failure the moment it happens,
 without the person needing to move focus onto it. `EmptyState`'s illustration
 slot is deliberately unwired today — #164 (UX-11) owns the bundled

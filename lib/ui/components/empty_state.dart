@@ -22,6 +22,8 @@ class EmptyState extends StatelessWidget {
     required this.body,
     this.primaryActionLabel,
     this.onPrimaryAction,
+    this.titleStyle,
+    this.crossAxisAlignment = CrossAxisAlignment.center,
   }) : assert(
          (primaryActionLabel == null) == (onPrimaryAction == null),
          'primaryActionLabel and onPrimaryAction must both be null or both '
@@ -42,45 +44,81 @@ class EmptyState extends StatelessWidget {
   final String? primaryActionLabel;
   final VoidCallback? onPrimaryAction;
 
+  /// Issue #308: overrides the title's default `titleMedium` weight — e.g.
+  /// [OverviewPanel]'s not-enough card, which wants its old `headlineSmall`
+  /// heading weight back now that it renders through this shared component.
+  final TextStyle? titleStyle;
+
+  /// Issue #308: [CrossAxisAlignment.start] left-aligns title/body/action
+  /// (and the title/body text itself) instead of the default centred
+  /// layout — for callers, like the overview not-enough card, that sit
+  /// this component alongside other left-aligned content.
+  final CrossAxisAlignment crossAxisAlignment;
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final content = Center(child: _content(context));
+        if (!constraints.hasBoundedHeight) return content;
+        // Issue #308: a Scaffold-body use (profile_picker_screen.dart) gets
+        // bounded, viewport-sized constraints here — at large text scale
+        // the column can grow taller than that without this, overflowing
+        // the way the old ListView-based screen never could. A card/panel
+        // use (unbounded height from its parent Column) skips this branch
+        // and keeps the plain centred layout it had before.
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: content,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _content(BuildContext context) {
     final theme = Theme.of(context);
     final onPrimaryAction = this.onPrimaryAction;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: LLSpace.space5,
-          vertical: LLSpace.space6,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (illustration != null) ...[
-              illustration!,
-              const SizedBox(height: LLSpace.space4),
-            ],
-            Text(
-              title,
-              style: LLType.titleMedium.toTextStyle(),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: LLSpace.space1),
-            Text(
-              body,
-              style: LLType.bodyMedium
-                  .toTextStyle()
-                  .copyWith(color: theme.colorScheme.outline),
-              textAlign: TextAlign.center,
-            ),
-            if (onPrimaryAction != null) ...[
-              const SizedBox(height: LLSpace.space4),
-              FilledButton(
-                onPressed: onPrimaryAction,
-                child: Text(primaryActionLabel!),
-              ),
-            ],
+    final textAlign = crossAxisAlignment == CrossAxisAlignment.start
+        ? TextAlign.start
+        : TextAlign.center;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: LLSpace.space5,
+        vertical: LLSpace.space6,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: crossAxisAlignment,
+        children: [
+          if (illustration != null) ...[
+            illustration!,
+            const SizedBox(height: LLSpace.space4),
           ],
-        ),
+          Semantics(
+            header: true,
+            child: Text(
+              title,
+              style: titleStyle ?? theme.textTheme.titleMedium,
+              textAlign: textAlign,
+            ),
+          ),
+          const SizedBox(height: LLSpace.space1),
+          Text(
+            body,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.outline),
+            textAlign: textAlign,
+          ),
+          if (onPrimaryAction != null) ...[
+            const SizedBox(height: LLSpace.space4),
+            FilledButton(
+              onPressed: onPrimaryAction,
+              child: Text(primaryActionLabel!),
+            ),
+          ],
+        ],
       ),
     );
   }
