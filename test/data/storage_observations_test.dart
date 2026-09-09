@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/domain/limits.dart';
 
 class FixedClock {
   FixedClock(this.now);
@@ -177,6 +178,119 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+
+    test('throws for a code over the length bound', () async {
+      final dayEntryId = await entryId();
+      expect(
+        () => storage.upsertObservation(
+          dayEntryId: dayEntryId,
+          profileId: 'p1',
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          category: 'pain',
+          code: 'x' * (kMaxObservationCodeLength + 1),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('accepts a code exactly at the length bound', () async {
+      final dayEntryId = await entryId();
+      final observation = await storage.upsertObservation(
+        dayEntryId: dayEntryId,
+        profileId: 'p1',
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        category: 'pain',
+        code: 'x' * kMaxObservationCodeLength,
+      );
+      expect(observation.code, hasLength(kMaxObservationCodeLength));
+    });
+
+    test('throws for a valueText over the length bound', () async {
+      final dayEntryId = await entryId();
+      expect(
+        () => storage.upsertObservation(
+          dayEntryId: dayEntryId,
+          profileId: 'p1',
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          category: 'pain',
+          valueText: 'x' * (kMaxObservationValueTextLength + 1),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('throws for a unit over the length bound', () async {
+      final dayEntryId = await entryId();
+      expect(
+        () => storage.upsertObservation(
+          dayEntryId: dayEntryId,
+          profileId: 'p1',
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          category: 'bbt',
+          unit: 'x' * (kMaxObservationUnitLength + 1),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('throws for a sourceId over the length bound', () async {
+      final dayEntryId = await entryId();
+      expect(
+        () => storage.upsertObservation(
+          dayEntryId: dayEntryId,
+          profileId: 'p1',
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          category: 'pain',
+          sourceId: 'x' * (kMaxObservationSourceIdLength + 1),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('throws for a raw payload over the UTF-8 byte bound even when '
+        'String.length is under it (multi-byte characters near the '
+        'limit — review finding: the bound is UTF-8 bytes, not UTF-16 code '
+        'units)', () async {
+      final dayEntryId = await entryId();
+      // Each '💙' is one UTF-16 code unit pair (2 code units) but encodes to
+      // 4 UTF-8 bytes, so half as many code units as `kMaxObservationRawLength`
+      // still exceeds it in bytes.
+      final raw = '💙' * ((kMaxObservationRawLength ~/ 4) + 1);
+      expect(raw.length, lessThan(kMaxObservationRawLength));
+      expect(
+        () => storage.upsertObservation(
+          dayEntryId: dayEntryId,
+          profileId: 'p1',
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          category: 'pain',
+          raw: raw,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('accepts a raw payload of multi-byte characters at exactly the '
+        'UTF-8 byte bound', () async {
+      final dayEntryId = await entryId();
+      // 4 bytes each; kMaxObservationRawLength is divisible by 4.
+      expect(kMaxObservationRawLength % 4, 0);
+      final raw = '💙' * (kMaxObservationRawLength ~/ 4);
+      final observation = await storage.upsertObservation(
+        dayEntryId: dayEntryId,
+        profileId: 'p1',
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        category: 'pain',
+        raw: raw,
+      );
+      expect(observation.raw, raw);
     });
   });
 

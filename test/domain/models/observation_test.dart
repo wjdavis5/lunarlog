@@ -160,20 +160,21 @@ void main() {
   });
 
   group('Observation.toString', () {
-    test('bare observation: category and code, no tombstone marker', () {
+    test('with a code: includes the code marker (never the code itself)', () {
       final observation = _observation(category: 'pain', code: 'migraine');
       final s = observation.toString();
       expect(s, contains('p1'));
       expect(s, contains('pain'));
-      expect(s, contains('migraine'));
+      expect(s, contains('code'));
+      expect(s, isNot(contains('migraine')));
       expect(s, isNot(contains('tombstoned')));
     });
 
-    test('a null code omits the slash-code suffix', () {
+    test('a null code omits the code marker', () {
       final observation = _observation(category: 'bbt', code: null);
       final s = observation.toString();
       expect(s, contains('bbt'));
-      expect(s, isNot(contains('/')));
+      expect(s, isNot(contains(' code')));
     });
 
     test('tombstoned: includes the tombstoned marker', () {

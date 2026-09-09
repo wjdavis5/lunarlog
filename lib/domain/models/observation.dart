@@ -183,7 +183,14 @@ class Observation {
       other.profileId == profileId &&
       other.localDate == localDate;
 
+  // Split from a single ==, per-field chain, the same way DayEntry splits
+  // _sameIdentity from _sameContent: a value half and a provenance half, so
+  // neither exceeds the CRAP-gate complexity budget on its own. Same
+  // fields, same order, no behavior change.
   bool _sameContent(Observation other) =>
+      _sameValue(other) && _sameProvenance(other);
+
+  bool _sameValue(Observation other) =>
       other.observedAt == observedAt &&
       other.tz == tz &&
       other.category == category &&
@@ -192,7 +199,9 @@ class Observation {
       other.valueText == valueText &&
       other.unit == unit &&
       other.intensity == intensity &&
-      other.excluded == excluded &&
+      other.excluded == excluded;
+
+  bool _sameProvenance(Observation other) =>
       other.source == source &&
       other.sourceId == sourceId &&
       other.raw == raw &&
@@ -222,7 +231,10 @@ class Observation {
 
   @override
   String toString() =>
+      // `code` is the specific logged symptom (e.g. `migraine`) — elided the
+      // way `DayEntry.toString()` elides note content, never the value
+      // itself. `category` (e.g. `pain`) is coarser and kept.
       'Observation($profileId ${localDate.iso} $category'
-      '${code == null ? '' : '/$code'}'
-      '${deletedAt == null ? '' : ' [tombstoned]}'})';
+      '${code == null ? '' : ' code'}'
+      '${deletedAt == null ? '' : ' [tombstoned]'})';
 }

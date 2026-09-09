@@ -1252,6 +1252,13 @@ begin
     raise exception 'authentication required' using errcode = 'insufficient_privilege';
   end if;
 
+  -- Step 0 (P0 fix; #17 P1 item 5 follow-up): see
+  -- public.rehome_stray_day_entries() above - the delete-account Edge
+  -- Function calls it a second time, standalone (on its service-role
+  -- client, with an explicit p_user_id - #17 P1 round 2 fix), immediately
+  -- before auth.admin.deleteUser. This call runs inside a security-definer
+  -- function, so it executes as the function owner regardless of
+  -- rehome_stray_day_entries()'s own (now-revoked) grants to authenticated.
   v_day_entries_rehomed := public.rehome_stray_day_entries(v_uid);
 
   -- Issue #240: observations on profiles the caller owns, deleted explicitly
@@ -1264,46 +1271,95 @@ begin
    );
   get diagnostics v_observations_deleted = row_count;
 
+  -- day_entries on profiles the caller owns. Deliberately not
+  -- `day_entries.user_id = v_uid`: that column is stamped from auth.uid()
+  -- at insert time (see 20260903014208_initial_sync_schema.sql), so a
+  -- caregiver's own device syncing an entry for someone else's shared
+  -- profile sets it to the caregiver, not the profile owner. Deleting by
+  -- that column would destroy another family's data out from under them
+  -- when the caregiver's account is removed - exactly what R7 forbids.
   delete from public.day_entries
    where profile_id in (
      select id from public.profiles where user_id = v_uid
    );
   get diagnostics v_day_entries_deleted = row_count;
 
+  -- Issue #5, U4: profile_reminder_windows for profiles the caller *owns*.
+  -- Explicit (rather than relying on the profiles delete's cascade below)
+  -- so this function's own returned count reflects it, and so it is gone
+  -- before the profiles delete rather than depending on cascade ordering.
   delete from public.profile_reminder_windows
    where profile_id in (
      select id from public.profiles where user_id = v_uid
    );
   get diagnostics v_reminder_windows_deleted = row_count;
 
+  -- Issue #5, U4: the caller's own pending caregiver alerts, on any
+  -- profile (their own, or one they merely guard). Not scoped to owned
+  -- profiles - the caller may be the *recipient* of alerts for a profile
+  -- someone else owns, and those rows belong to the caller (R20), not the
+  -- profile owner.
   delete from public.notification_outbox
    where recipient_user_id = v_uid;
   get diagnostics v_notification_outbox_deleted = row_count;
 
+  -- Invitations the caller created, for any profile (their own or one they
+  -- co-parent).
   delete from public.guardian_invitations
    where invited_by = v_uid;
   get diagnostics v_invitations_deleted = row_count;
 
+  -- The caller's own guardian memberships. No status filter: a revoked
+  -- membership row is still the caller's row and must go too.
   delete from public.profile_guardians
    where user_id = v_uid;
   get diagnostics v_guardians_deleted = row_count;
 
+  -- Issue #5, U4: the caller's own notification preferences, on any
+  -- profile they guard (their own, or someone else's). A co-guardian's
+  -- preference row for a profile the caller also guards is not the
+  -- caller's row and is untouched by this delete.
   delete from public.notification_preferences
    where user_id = v_uid;
   get diagnostics v_notification_preferences_deleted = row_count;
 
+  -- Issue #5, U4: the caller's own registered devices.
   delete from public.push_devices
    where user_id = v_uid;
   get diagnostics v_push_devices_deleted = row_count;
 
+  -- Round-2 review #8: the caller's own missed-entry dedupe markers, on any
+  -- profile (their own, or one they merely guard) -- same scoping as
+  -- notification_preferences and push_devices above. Not covered by the
+  -- profiles delete's cascade below when the caller does not own the
+  -- profile (e.g. a caregiver deleting their own account while remaining a
+  -- guardian elsewhere is not this path, but a co-guardian's marker on a
+  -- profile the caller owns is a different row and must not be touched
+  -- here regardless).
   delete from public.missed_entry_alert_state
    where user_id = v_uid;
   get diagnostics v_missed_entry_alert_state_deleted = row_count;
 
+  -- Issue #243 (D-25): the caller's own feedback tickets, explicitly -
+  -- rather than depending on feedback_tickets.user_id's `on delete cascade`
+  -- to fire only once the Edge Function's later, separately-failable
+  -- auth.admin.deleteUser call succeeds (see this migration's header).
+  -- feedback_replies cascades from feedback_tickets (`on delete cascade`,
+  -- see 20260906130000_feedback_tickets.sql), so no separate delete is
+  -- needed for replies here.
   delete from public.feedback_tickets
    where user_id = v_uid;
   get diagnostics v_feedback_tickets_deleted = row_count;
 
+  -- The caller's own profiles. Cascades any day_entries,
+  -- guardian_invitations, and profile_guardians rows still tied to these
+  -- specific profiles (e.g. a co-parent's membership, or an invitation
+  -- someone else sent for it) - intended for an owner (R7). Also cascades
+  -- any remaining notification_preferences/notification_outbox/
+  -- profile_reminder_windows rows scoped to these profiles (Issue #5) -
+  -- e.g. a co-guardian's own preference row for a profile the caller
+  -- owned, which is correct: once the profile itself is gone there is
+  -- nothing left to alert anyone about.
   delete from public.profiles
    where user_id = v_uid;
   get diagnostics v_profiles_deleted = row_count;

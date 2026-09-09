@@ -27,9 +27,10 @@
 /// * Observations (Issue #240) are keyed by id alone, like profiles — there
 ///   is no same-date uniqueness to resolve: multiple live rows per
 ///   (profile, date, category) are the whole point of this child table.
-///   Their tombstone clears every payload column except `category`/
-///   `local_date`/`tz` (see `supabase/migrations/20260908160000_observations.sql`
-///   for why `category` is the one exception).
+///   Their tombstone clears every payload column, `category` included —
+///   only `local_date` and `tz` survive a delete (see
+///   `supabase/migrations/20260908160000_observations.sql`'s
+///   `observations_tombstone_payload_check`).
 /// * UI reads filter tombstones; full-fidelity reads (tombstones included)
 ///   exist for sync.
 library;
@@ -124,6 +125,32 @@ void _validateTags(List<String> tags) {
 /// (`supabase/migrations/20260908160000_observations.sql`). `category`/
 /// `code` are bounded but never validated against a closed set — see
 /// `lib/domain/models/observation.dart`'s doc comment.
+/// Throws if [value] is non-null and longer than [max] UTF-16 code units.
+/// Shared by the observation payload columns that are bounded by
+/// `String.length` (the server's CHECK constraints on those columns count
+/// characters, not bytes — see `_boundedUtf8BytesOrThrow` for the one
+/// column, `raw`, that isn't).
+void _boundedOrThrow(String? value, int max, String name) {
+  if (value != null && value.length > max) {
+    throw ArgumentError.value(value.length, name, 'must be at most $max characters');
+  }
+}
+
+/// Throws if [value] is non-null and its UTF-8 encoding is longer than
+/// [max] bytes.
+///
+/// Issue #240 review finding: bound UTF-8 *bytes* (`kMaxObservationRawLength`'s
+/// own doc comment), not `String.length` (UTF-16 code units) — a non-ASCII
+/// payload can encode to more UTF-8 bytes than code units, which is the unit
+/// the server's `pg_column_size` check ultimately cares about.
+void _boundedUtf8BytesOrThrow(String? value, int max, String name) {
+  if (value == null) return;
+  final byteLength = utf8.encode(value).length;
+  if (byteLength > max) {
+    throw ArgumentError.value(byteLength, name, 'must be at most $max UTF-8 bytes');
+  }
+}
+
 void _validateObservation({
   required String category,
   String? code,
@@ -137,34 +164,11 @@ void _validateObservation({
     throw ArgumentError.value(category, 'category',
         'must be 1-$kMaxObservationCategoryLength characters');
   }
-  if (code != null && code.length > kMaxObservationCodeLength) {
-    throw ArgumentError.value(code.length, 'code',
-        'must be at most $kMaxObservationCodeLength characters');
-  }
-  if (valueText != null && valueText.length > kMaxObservationValueTextLength) {
-    throw ArgumentError.value(valueText.length, 'valueText',
-        'must be at most $kMaxObservationValueTextLength characters');
-  }
-  if (unit != null && unit.length > kMaxObservationUnitLength) {
-    throw ArgumentError.value(
-        unit.length, 'unit', 'must be at most $kMaxObservationUnitLength characters');
-  }
-  if (sourceId != null && sourceId.length > kMaxObservationSourceIdLength) {
-    throw ArgumentError.value(sourceId.length, 'sourceId',
-        'must be at most $kMaxObservationSourceIdLength characters');
-  }
-  if (raw != null) {
-    // Issue #240 review finding: bound UTF-8 *bytes*
-    // (`kMaxObservationRawLength`'s own doc comment), not `String.length`
-    // (UTF-16 code units) — a non-ASCII payload can encode to more UTF-8
-    // bytes than code units, which is the unit the server's
-    // `pg_column_size` check ultimately cares about.
-    final rawByteLength = utf8.encode(raw).length;
-    if (rawByteLength > kMaxObservationRawLength) {
-      throw ArgumentError.value(
-          rawByteLength, 'raw', 'must be at most $kMaxObservationRawLength UTF-8 bytes');
-    }
-  }
+  _boundedOrThrow(code, kMaxObservationCodeLength, 'code');
+  _boundedOrThrow(valueText, kMaxObservationValueTextLength, 'valueText');
+  _boundedOrThrow(unit, kMaxObservationUnitLength, 'unit');
+  _boundedOrThrow(sourceId, kMaxObservationSourceIdLength, 'sourceId');
+  _boundedUtf8BytesOrThrow(raw, kMaxObservationRawLength, 'raw');
   if (intensity != null &&
       (intensity < kMinObservationIntensity || intensity > kMaxObservationIntensity)) {
     throw ArgumentError.value(intensity, 'intensity',
@@ -1235,6 +1239,36 @@ class LunarLogStorage {
     }
   }
 
+  /// The redacted payload columns for an observation row: the remote values
+  /// as-is when live, or every payload column cleared (`excluded` reset to
+  /// `false`) for a tombstone — mirroring `_dayEntryFlow`/`_dayEntryTags`/
+  /// `_dayEntryNote`'s precedent, but built once as a single record so
+  /// [_applyObservation]'s insert and update branches can share it instead of
+  /// repeating the same ten `tombstone ? … : remote.…` ternaries twice.
+  ({
+    DateTime? observedAt,
+    String? category,
+    String? code,
+    double? valueNum,
+    String? valueText,
+    String? unit,
+    int? intensity,
+    bool excluded,
+    String? sourceId,
+    String? raw,
+  }) _observationPayload(RemoteObservationRow remote, bool tombstone) => (
+        observedAt: tombstone ? null : remote.observedAt?.toUtc(),
+        category: tombstone ? null : remote.category,
+        code: tombstone ? null : remote.code,
+        valueNum: tombstone ? null : remote.valueNum,
+        valueText: tombstone ? null : remote.valueText,
+        unit: tombstone ? null : remote.unit,
+        intensity: tombstone ? null : remote.intensity,
+        excluded: tombstone ? false : remote.excluded,
+        sourceId: tombstone ? null : remote.sourceId,
+        raw: tombstone ? null : remote.raw,
+      );
+
   /// Issue #240: applies a server copy of an observation keyed by id — the
   /// same per-id LWW rule [_applyProfile] uses, with no same-date resolver
   /// (unlike [_applyDayEntry]): multiple live rows per (profile, date,
@@ -1259,24 +1293,25 @@ class LunarLogStorage {
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
+    final payload = _observationPayload(remote, tombstone);
     if (local == null) {
       await db.into(db.observations).insert(ObservationsCompanion.insert(
             id: remote.id,
             dayEntryId: remote.dayEntryId,
             profileId: remote.profileId,
             localDate: remote.localDate,
-            observedAt: Value(tombstone ? null : remote.observedAt?.toUtc()),
+            observedAt: Value(payload.observedAt),
             tz: remote.tz,
-            category: Value(tombstone ? null : remote.category),
-            code: Value(tombstone ? null : remote.code),
-            valueNum: Value(tombstone ? null : remote.valueNum),
-            valueText: Value(tombstone ? null : remote.valueText),
-            unit: Value(tombstone ? null : remote.unit),
-            intensity: Value(tombstone ? null : remote.intensity),
-            excluded: Value(tombstone ? false : remote.excluded),
+            category: Value(payload.category),
+            code: Value(payload.code),
+            valueNum: Value(payload.valueNum),
+            valueText: Value(payload.valueText),
+            unit: Value(payload.unit),
+            intensity: Value(payload.intensity),
+            excluded: Value(payload.excluded),
             source: Value(remote.source),
-            sourceId: Value(tombstone ? null : remote.sourceId),
-            raw: Value(tombstone ? null : remote.raw),
+            sourceId: Value(payload.sourceId),
+            raw: Value(payload.raw),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
@@ -1291,18 +1326,18 @@ class LunarLogStorage {
       dayEntryId: Value(remote.dayEntryId),
       profileId: Value(remote.profileId),
       localDate: Value(remote.localDate),
-      observedAt: Value(tombstone ? null : remote.observedAt?.toUtc()),
+      observedAt: Value(payload.observedAt),
       tz: Value(remote.tz),
-      category: Value(tombstone ? null : remote.category),
-      code: Value(tombstone ? null : remote.code),
-      valueNum: Value(tombstone ? null : remote.valueNum),
-      valueText: Value(tombstone ? null : remote.valueText),
-      unit: Value(tombstone ? null : remote.unit),
-      intensity: Value(tombstone ? null : remote.intensity),
-      excluded: Value(tombstone ? false : remote.excluded),
+      category: Value(payload.category),
+      code: Value(payload.code),
+      valueNum: Value(payload.valueNum),
+      valueText: Value(payload.valueText),
+      unit: Value(payload.unit),
+      intensity: Value(payload.intensity),
+      excluded: Value(payload.excluded),
       source: Value(remote.source),
-      sourceId: Value(tombstone ? null : remote.sourceId),
-      raw: Value(tombstone ? null : remote.raw),
+      sourceId: Value(payload.sourceId),
+      raw: Value(payload.raw),
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),
       dirty: const Value(false),
