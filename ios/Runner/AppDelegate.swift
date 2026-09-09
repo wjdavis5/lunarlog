@@ -314,7 +314,8 @@ enum HealthKitChannelHandler {
         do {
           // iOS's sheet reports completion, not the user's choice —
           // denial only surfaces on the first actual write.
-          _ = try await store.requestAuthorization(toShare: toShare, read: nil)
+          _ = try await store.requestAuthorization(
+            toShare: toShare, read: [])  // async overload takes a non-optional Set; empty = read nothing
           result("allowed")
         } catch {
           result(
