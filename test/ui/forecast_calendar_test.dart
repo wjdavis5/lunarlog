@@ -673,6 +673,47 @@ void main() {
       );
     });
 
+    // Issue #312 (follow-up review of #191 KTD4 / the original #312 border
+    // floor): `predictedBorder` is solved for only ~3.06:1 against
+    // `surface` at full alpha, so any alpha under ~0.98 already drops the
+    // ring below WCAG's 3:1 non-text floor once blended — even the
+    // original 0.6 floor (irregular tier's own raw band opacity) landed
+    // short of that. `kPredictedBorderMinAlpha` is now 1.0, so every
+    // tier's border draws at full opacity; the hatch fill lines are the
+    // only thing that still scales with `forecastBandOpacity`.
+    test(
+        "an irregular-tier band's border alpha is floored to full opacity, "
+        'above its raw (near-invisible) band fill opacity', () {
+      expect(
+        forecastBandOpacity(CycleConfidence.irregular),
+        lessThan(kPredictedBorderMinAlpha),
+        reason: 'sanity check: the raw tier fill opacity really is below '
+            'the floor for this tier',
+      );
+      expect(
+        forecastBorderOpacity(CycleConfidence.irregular),
+        1.0,
+      );
+    });
+
+    test(
+        'every tier draws its border at full opacity, even though the '
+        'fill opacity keeps scaling by tier', () {
+      for (final tier in CycleConfidence.values) {
+        expect(
+          forecastBorderOpacity(tier),
+          1.0,
+          reason: '$tier border must stay at full opacity for contrast',
+        );
+      }
+      expect(
+        forecastBandOpacity(CycleConfidence.high),
+        greaterThan(forecastBandOpacity(CycleConfidence.irregular)),
+        reason: 'the fill opacity must still scale by tier even though '
+            'the border no longer does',
+      );
+    });
+
     test('the layer palette is brightness-aware', () {
       final light = symptomLayerPalette(Brightness.light);
       final dark = symptomLayerPalette(Brightness.dark);

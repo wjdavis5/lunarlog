@@ -151,6 +151,26 @@ void main() {
         );
       });
 
+      // Issue #312 (contrast review of #191 B-2): the spotting-day numeral
+      // is drawn `onSurface`-coloured with a `surface`-coloured halo
+      // (`_haloedDayNumber` in `month_calendar.dart`) so it stays legible
+      // over the flow-spotting centre dot regardless of what colour sits
+      // underneath — that only works if `onSurface` itself has strong
+      // contrast against the halo colour, `surface`, in both themes.
+      test(
+          '$name theme: onSurface clears 4.5:1 against surface (spotting-day '
+          'numeral halo)', () {
+        final ratio = _contrast(
+          theme.colorScheme.onSurface,
+          theme.colorScheme.surface,
+        );
+        expect(
+          ratio,
+          greaterThanOrEqualTo(4.5),
+          reason: '$name onSurface/surface contrast was $ratio',
+        );
+      });
+
       test('$name theme: predictedBorder clears 3:1 against surface', () {
         final colors = theme.extension<LunarLogColors>()!;
         final ratio = _contrast(

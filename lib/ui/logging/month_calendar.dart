@@ -74,6 +74,14 @@ const List<String> kWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 /// one (R1); [kForecastHorizonMonths] in the forecast module covers it.
 const int kForwardMonthLimit = kForecastHorizonMonths;
 
+/// The [MediaQuery.textScalerOf] scale at and above which the legend strip
+/// starts collapsed by default (issue #312, large-text-budget item): past
+/// this scale the header/legend/layers stack above the single `Expanded`
+/// [PageView] otherwise squeezes the grid too far. Matched in
+/// [_MonthCalendarState._legendStrip]; the operator's own toggle always
+/// overrides this default once touched.
+const double kLegendCollapseTextScale = 1.6;
+
 /// Confidence-appropriate band weight (KTD4): a hatched band's opacity by
 /// its cycle's tier. `high` reads strongest, `irregular` faintest — and
 /// every cycle past the first has already stepped down one tier, so bands
@@ -83,6 +91,21 @@ double forecastBandOpacity(CycleConfidence tier) => switch (tier) {
   CycleConfidence.learning => 0.6,
   CycleConfidence.irregular => 0.35,
 };
+
+/// Floor under [forecastBandOpacity] for a predicted band's *border* stroke
+/// only (issue #312, review of #191 B-2/KTD4, tightened further in #312's
+/// own follow-up review): the hatch fill lines still carry the full
+/// per-tier weighting, but `predictedBorder` is solved for only ~3.06:1
+/// against `surface` at full alpha, so any alpha under ~0.98 already drops
+/// the ring below WCAG's 3:1 non-text floor once blended — a 0.6 floor
+/// (the tier weighting's own top value) was still short of that. The
+/// border now always draws at full opacity, for every tier.
+const double kPredictedBorderMinAlpha = 1.0;
+
+double forecastBorderOpacity(CycleConfidence tier) {
+  final base = forecastBandOpacity(tier);
+  return base < kPredictedBorderMinAlpha ? kPredictedBorderMinAlpha : base;
+}
 
 /// Per-layer dot colors, one per active layer (max
 /// [kMaxSymptomLayers]); brightness-aware so both themes keep the dots
@@ -126,6 +149,38 @@ int _flowLevelMarkCount(FlowLevel level) => switch (level) {
   FlowLevel.medium => 3,
   FlowLevel.heavy => 4,
 };
+
+/// The spotting-day numeral drawn with a thin [haloColor] outline behind
+/// its fill (issue #312, contrast review of #191 B-2): `onSurface` [text]
+/// sits directly atop the flow-spotting centre dot in
+/// [_MonthCalendarState._flowCircle], and in dark mode the two colours can
+/// land close enough in luminance that the digit is unreadable where its
+/// glyph crosses the dot. A `surface`-coloured stroke keeps the numeral
+/// legible regardless of what colour happens to sit underneath it, the
+/// same "outlined text" technique as a map label over varying terrain.
+Widget _haloedDayNumber(
+  String text,
+  TextStyle? baseStyle,
+  Color textColor,
+  Color haloColor,
+) {
+  final base = baseStyle ?? const TextStyle();
+  return Stack(
+    alignment: Alignment.center,
+    children: [
+      Text(
+        text,
+        style: base.copyWith(
+          foreground: Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = haloColor,
+        ),
+      ),
+      Text(text, style: base.copyWith(color: textColor)),
+    ],
+  );
+}
 
 Color pmsBadgeColor(Brightness brightness) => brightness == Brightness.light
     ? const Color(0xFF5E35B1)
@@ -183,26 +238,43 @@ String _predictedDaySemanticLabel(LocalDate date, ForecastDayCell cell) {
 
 int _monthIndex(int year, int month) => year * 12 + (month - 1);
 
+/// Whether a programmatic month navigation
+/// ([_MonthCalendarState._goToMonth]) should touch its [PageController] at
+/// all: both the animate and jump paths need the same `hasClients` guard
+/// (issue #312, symmetry review of #191 — the animate path previously
+/// lacked it while the jump path already had it). Public and pure so the
+/// `!hasClients` case is directly unit-testable: by the time any widget
+/// test can reach a navigation control, the `PageView`'s `Scrollable` has
+/// always already attached, so faking that state through the widget tree
+/// isn't possible — this predicate is the seam. Public for direct testing,
+/// mirroring [dayCellSemanticLabel] elsewhere in this file.
+bool canDrivePageController({required bool hasClients}) => hasClients;
+
 /// How [_MonthCalendarState._legendSwatch] draws one legend entry's swatch
 /// — mirrors the three shapes the grid itself uses so the legend key
 /// actually matches what a cell renders (a plain fill, spotting/today's
 /// ring, or #133's hatched predicted band).
-enum _LegendSwatchStyle { fill, ring, hatched }
+enum _LegendSwatchStyle { fill, ring, hatched, icon }
 
-/// One row of the legend strip (issue #191; B-2, B-11): a swatch plus its
-/// label, keyed by [code] (`legend-<code>`) for direct widget-test lookup.
+/// One row of the legend strip (issue #191; B-2, B-11; issue #312 review:
+/// `icon` added for the PMS/cramps badges): a swatch plus its label, keyed
+/// by [code] (`legend-<code>`) for direct widget-test lookup.
 class _LegendEntry {
   const _LegendEntry(
     this.code,
     this.color,
     this.label, {
     this.style = _LegendSwatchStyle.fill,
+    this.icon,
   });
 
   final String code;
   final Color color;
   final String label;
   final _LegendSwatchStyle style;
+
+  /// Set only when [style] is [_LegendSwatchStyle.icon].
+  final IconData? icon;
 }
 
 class MonthCalendar extends StatefulWidget {
@@ -270,10 +342,38 @@ class _MonthCalendarState extends State<MonthCalendar> {
   Set<String> _activeLayers = const {};
   bool _layersExpanded = false;
 
+  /// The legend strip's expand/collapse state (issue #312): `null` until
+  /// the operator first touches the toggle, meaning
+  /// [_legendStrip] falls back to [kLegendCollapseTextScale]'s
+  /// scale-based default; once touched, the explicit choice always wins.
+  bool? _legendExpanded;
+
   /// Swipe navigation (issue #191): one page per month, indexed by
   /// [_pageIndexFor]/[_monthForPageIndex] against a fixed epoch offset so
   /// page indices never go negative for any real calendar year.
   late final PageController _pageController;
+
+  /// True from the moment a programmatic [_goToMonth] animation starts
+  /// until it settles (issue #312, `_goToMonth` asymmetry review):
+  /// [_onPageChanged] ignores every intermediate settle event while this
+  /// is true, so a (currently unreachable — only [_shiftMonth] animates,
+  /// and only ever one page) multi-page animate call could never
+  /// transiently rewind `_displayed*` to a page it is only passing
+  /// through on the way to the real target.
+  bool _isAnimatingToMonth = false;
+
+  /// Generation counter guarding [_isAnimatingToMonth]'s reset (issue #312
+  /// follow-up review): a second [_goToMonth] `animate: true` call fired
+  /// while the first is still in flight (e.g. two rapid chevron taps)
+  /// starts a new [PageController.animateToPage] on the same controller,
+  /// which resolves the *first* call's still-pending `.animateToPage`
+  /// future early (superseded, not actually settled). Without this token
+  /// that early resolution would clear [_isAnimatingToMonth] while the
+  /// second animation is still running, letting its own intermediate
+  /// [_onPageChanged] settle events rewind `_displayed*`. Each animate
+  /// call claims the latest token; only the callback still holding it may
+  /// clear the guard.
+  int _animateToken = 0;
 
   @override
   void initState() {
@@ -390,6 +490,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// A no-op guard skips the redundant `setState` [_goToMonth] already
   /// performed for a programmatic (chevron/Today/picker) navigation.
   void _onPageChanged(int pageIndex) {
+    // Issue #312: a programmatic animate navigation already committed the
+    // final `_displayed*` directly below in `_goToMonth` — an intermediate
+    // settle event fired while that animation is still in flight is never
+    // the real destination and must not overwrite it.
+    if (_isAnimatingToMonth) return;
     final (year, month) = _monthForPageIndex(pageIndex);
     if (year == _displayedYear && month == _displayedMonth) return;
     setState(() {
@@ -402,17 +507,31 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// the month/year picker all funnel through this): updates the display
   /// state immediately and drives [_pageController] to match, animated for
   /// the one-page chevron step and instant (a jump) for the
-  /// possibly-many-pages-away Today/picker destinations.
+  /// possibly-many-pages-away Today/picker destinations. Both paths share
+  /// the same [canDrivePageController] `hasClients` guard (issue #312 —
+  /// the animate path previously lacked it).
   void _goToMonth(int year, int month, {required bool animate}) {
     final page = _pageIndexFor(year, month);
-    if (animate) {
-      _pageController.animateToPage(
-        page,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
-    } else if (_pageController.hasClients) {
-      _pageController.jumpToPage(page);
+    if (canDrivePageController(hasClients: _pageController.hasClients)) {
+      if (animate) {
+        final token = ++_animateToken;
+        _isAnimatingToMonth = true;
+        unawaited(
+          _pageController
+              .animateToPage(
+                page,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+              )
+              .whenComplete(() {
+                if (mounted && token == _animateToken) {
+                  _isAnimatingToMonth = false;
+                }
+              }),
+        );
+      } else {
+        _pageController.jumpToPage(page);
+      }
     }
     setState(() {
       _displayedYear = year;
@@ -620,7 +739,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
           ],
         ),
-        _legendStrip(theme, colors),
+        _legendStrip(context, theme, colors),
         _layersHeader(layerList, theme),
         if (_layersExpanded) _layersPanel(activeLayers),
         Padding(
@@ -638,18 +757,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
           ),
         ),
         if (!estimateActive) _keepLoggingStrip(theme),
-        // Issue #187 (B-8): a month with zero entries otherwise renders as
-        // a silent grid of bare day numbers with no guidance. The grid
-        // itself stays fully tappable (its cell/forecast rendering is
-        // #133/#191's, untouched here) — this is an explanatory banner
-        // above it, not a replacement, so logging any day in the empty
-        // month still works exactly as it did before this issue.
-        if (!_monthHasEntries(entries))
-          const EmptyState(
-            key: ValueKey('calendar-month-empty'),
-            title: 'No entries this month',
-            body: 'Tap a day to log it',
-          ),
         Expanded(
           child: PageView.builder(
             key: const ValueKey('calendar-page-view'),
@@ -659,24 +766,56 @@ class _MonthCalendarState extends State<MonthCalendar> {
             itemBuilder: (context, pageIndex) {
               final (year, month) = _monthForPageIndex(pageIndex);
               return SingleChildScrollView(
-                child: GridView.count(
-                  key: ValueKey('calendar-grid-$year-$month'),
-                  crossAxisCount: 7,
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: _cells(
-                    year: year,
-                    month: month,
-                    byIso: byIso,
-                    forecastByIso: forecastByIso,
-                    cycles: cycles,
-                    today: today,
-                    theme: theme,
-                    colors: colors,
-                    layerList: layerList,
-                    palette: palette,
-                  ),
+                child: Column(
+                  children: [
+                    // Issue #187 (B-8): a month with zero entries otherwise
+                    // renders as a silent grid of bare day numbers with no
+                    // guidance. The grid itself stays fully tappable (its
+                    // cell/forecast rendering is #133/#191's, untouched
+                    // here) — this is an explanatory banner above it, not a
+                    // replacement, so logging any day in the empty month
+                    // still works exactly as it did before that issue.
+                    //
+                    // Issue #312 review: keyed off *this page's* `year`/
+                    // `month` (the page actually being built) rather than
+                    // `_displayed*` — `_displayed*` only updates once
+                    // `onPageChanged` settles, so reading it here made the
+                    // banner appear/disappear a beat after the swipe
+                    // landed and shifted the grid under the operator's
+                    // thumb.
+                    if (!_monthHasEntries(entries, year: year, month: month))
+                      EmptyState(
+                        // Issue #312 review: unique per page (previously a
+                        // single constant key shared by every page in the
+                        // PageView) — a `find.byKey` lookup on the shared
+                        // key was ambiguous once more than one page's
+                        // empty-state banner existed in the tree at once
+                        // (e.g. mid-swipe, both the outgoing and incoming
+                        // page built).
+                        key: ValueKey('calendar-month-empty-$year-$month'),
+                        title: 'No entries this month',
+                        body: 'Tap a day to log it',
+                      ),
+                    GridView.count(
+                      key: ValueKey('calendar-grid-$year-$month'),
+                      crossAxisCount: 7,
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: _cells(
+                        year: year,
+                        month: month,
+                        byIso: byIso,
+                        forecastByIso: forecastByIso,
+                        cycles: cycles,
+                        today: today,
+                        theme: theme,
+                        colors: colors,
+                        layerList: layerList,
+                        palette: palette,
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
@@ -686,17 +825,61 @@ class _MonthCalendarState extends State<MonthCalendar> {
     );
   }
 
-  /// The legend strip under the month header (issue #191; B-2, B-11): keys
-  /// every mark the grid can show — the four logged flow levels, a
-  /// symptom-only day, today's ring, and #133's predicted band — so the
-  /// colour-graded fills and the hatched forecast are readable without
-  /// having to guess what a swatch means.
-  Widget _legendStrip(ThemeData theme, LunarLogColors colors) {
-    // Labels say "... flow"/"day" rather than the bare `flowLabel(level)`
-    // strings `DaySheet`'s flow chips use (issue #191 review): the day
-    // sheet renders as a modal over this still-mounted calendar, so a bare
-    // "Medium"/"Heavy" here would collide with `find.text` in every widget
-    // test that opens it with a chip selected.
+  /// The legend strip under the month header (issue #191; B-2, B-11; issue
+  /// #312 review: now also keys the PMS/cramps badges and the
+  /// symptom-layer dot palette, and collapses by default at large text
+  /// scales — [kLegendCollapseTextScale] — so the header stack above the
+  /// single `Expanded` [PageView] keeps its vertical budget). Keys every
+  /// mark the grid can show except the cycle-day numeral (a plain count,
+  /// not a colour/shape channel that needs a key of its own).
+  Widget _legendStrip(BuildContext context, ThemeData theme, LunarLogColors colors) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final expanded = _legendExpanded ?? textScale < kLegendCollapseTextScale;
+    return Column(
+      key: const ValueKey('calendar-legend'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Semantics(
+            button: true,
+            label: expanded ? 'Hide legend' : 'Show legend',
+            excludeSemantics: true,
+            child: InkWell(
+              key: const ValueKey('legend-toggle'),
+              onTap: () => setState(() => _legendExpanded = !expanded),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 2),
+                  Text('Legend', style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (expanded) _legendEntries(theme, colors),
+      ],
+    );
+  }
+
+  /// The legend's swatch rows (issue #312, split out of [_legendStrip] to
+  /// keep that method's own branch count low): the four logged flow
+  /// levels, a symptom-only day, today's ring, #133's predicted band, and
+  /// — new in this issue — the PMS/cramps badges and the symptom-layer dot
+  /// palette.
+  ///
+  /// Labels say "... flow"/"day" rather than the bare `flowLabel(level)`
+  /// strings `DaySheet`'s flow chips use (issue #191 review): the day
+  /// sheet renders as a modal over this still-mounted calendar, so a bare
+  /// "Medium"/"Heavy" here would collide with `find.text` in every widget
+  /// test that opens it with a chip selected.
+  Widget _legendEntries(ThemeData theme, LunarLogColors colors) {
+    final brightness = theme.brightness;
     final entries = [
       _LegendEntry('spotting', colors.flowSpotting, 'Spotting flow', style: _LegendSwatchStyle.ring),
       _LegendEntry('light', colors.flowLight, 'Light flow'),
@@ -705,15 +888,49 @@ class _MonthCalendarState extends State<MonthCalendar> {
       _LegendEntry('symptom', colors.symptomDot, 'Symptom day'),
       _LegendEntry('today', theme.colorScheme.primary, 'Today', style: _LegendSwatchStyle.ring),
       _LegendEntry('predicted', colors.predictedBorder, 'Predicted day', style: _LegendSwatchStyle.hatched),
+      _LegendEntry('pms', pmsBadgeColor(brightness), 'PMS window', style: _LegendSwatchStyle.icon, icon: Icons.spa),
+      _LegendEntry('cramps', crampsBadgeColor(brightness), 'Cramps window', style: _LegendSwatchStyle.icon, icon: Icons.bolt),
     ];
     return Padding(
-      key: const ValueKey('calendar-legend'),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: Wrap(
         spacing: 10,
         runSpacing: 4,
-        children: [for (final entry in entries) _legendChip(entry, theme)],
+        children: [
+          for (final entry in entries) _legendChip(entry, theme),
+          _legendPaletteChip(symptomLayerPalette(brightness), theme),
+        ],
       ),
+    );
+  }
+
+  /// The three symptom-layer palette dots, keyed as one legend entry
+  /// (issue #312): unlike a logged day's own [_loggedMarkers] dot, this
+  /// keys the *colour channel* itself (the fixed [symptomLayerPalette]
+  /// order), not any specific tag — which tags occupy which colour is the
+  /// operator's own layer selection.
+  Widget _legendPaletteChip(List<Color> palette, ThemeData theme) {
+    return Row(
+      key: const ValueKey('legend-symptom-layers'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final color in palette)
+          Padding(
+            padding: const EdgeInsets.only(right: 2),
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+            ),
+          ),
+        const SizedBox(width: 2),
+        // "Symptom layer dots", not the bare "Symptom layers" the
+        // [_layersHeader] summary row already shows when no layer is
+        // selected (issue #312 review) — a shared label would collide
+        // with every `find.text` lookup in a widget test that opens with
+        // the default (unselected) layer set.
+        Text('Symptom layer dots', style: theme.textTheme.labelSmall),
+      ],
     );
   }
 
@@ -750,17 +967,20 @@ class _MonthCalendarState extends State<MonthCalendar> {
         diameter: 14,
         child: const SizedBox.shrink(),
       ),
+      _LegendSwatchStyle.icon => Icon(entry.icon, size: 14, color: entry.color),
     };
   }
 
-  /// Whether any entry falls within the displayed month (issue #187) —
-  /// scoped to `_displayedYear`/`_displayedMonth`, not the whole [entries]
-  /// stream, so navigating to a quiet month shows the guidance banner even
-  /// when other months have logged data.
-  bool _monthHasEntries(List<DayEntry> entries) => entries.any(
-        (entry) =>
-            entry.localDate.year == _displayedYear &&
-            entry.localDate.month == _displayedMonth,
+  /// Whether any entry falls within [year]/[month] — scoped to the page
+  /// actually being built (issue #312 review of #187/#191: previously
+  /// `_displayedYear`/`_displayedMonth`, which only updates once
+  /// `onPageChanged` settles, so the banner appeared/disappeared a beat
+  /// after the swipe landed), not the whole [entries] stream, so a quiet
+  /// month shows the guidance banner even when other months have logged
+  /// data.
+  bool _monthHasEntries(List<DayEntry> entries, {required int year, required int month}) =>
+      entries.any(
+        (entry) => entry.localDate.year == year && entry.localDate.month == month,
       );
 
   /// The symptom-layers control (R2): a collapsed summary row (tap to
@@ -982,17 +1202,18 @@ class _MonthCalendarState extends State<MonthCalendar> {
     required LunarLogColors colors,
   }) {
     final iso = date.iso;
-    final label = Text('${date.day}');
     final level = bleedLevel;
     if (level != null) {
-      return _flowCircle(iso, level, label, theme, colors);
+      return _flowCircle(date, level, theme, colors, isToday: isToday);
     }
+    final label = Text('${date.day}');
     final predictedBleed = forecastCell?.predictedBleed ?? false;
     if (predictedBleed) {
       return _HatchedCircle(
         key: ValueKey('predicted-$iso'),
         color: colors.predictedBorder,
         opacity: forecastBandOpacity(forecastCell!.tier),
+        borderOpacity: forecastBorderOpacity(forecastCell.tier),
         child: label,
       );
     }
@@ -1016,21 +1237,52 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// channel (1 dot for spotting climbing to 4 for heavy) so the same
   /// distinction survives for an operator who can't rely on hue alone.
   /// Spotting additionally renders as a ring plus a small centre dot,
-  /// never a full fill, per the issue's own proposed design.
+  /// never a full fill, per the issue's own proposed design. Issue #312
+  /// review of #191: [isToday] now draws the same outer ring the plain
+  /// (no-bleed) today cell and the legend's "Today" swatch already use —
+  /// previously a bleed day dropped it entirely, the ring the legend
+  /// advertises never actually showing on a day that was both logged and
+  /// today.
   Widget _flowCircle(
-    String iso,
+    LocalDate date,
     FlowLevel level,
-    Widget dayLabel,
     ThemeData theme,
-    LunarLogColors colors,
-  ) {
+    LunarLogColors colors, {
+    required bool isToday,
+  }) {
+    final iso = date.iso;
     final tone = _flowTone(level, colors);
     final isSpotting = level == FlowLevel.spotting;
     final textColor = isSpotting ? theme.colorScheme.onSurface : tone.onFill;
-    return Container(
+    // Issue #312 review: `textColor` (onSurface) sits directly over the
+    // 8px spotting centre dot, and in dark mode the two can land close
+    // enough in luminance that the digit is unreadable where its glyph
+    // crosses the dot — `flowSpotting` is only solved against
+    // `surfaceContainerLow`, not against `onSurface` text on top of it. A
+    // thin `surface`-coloured halo behind the numeral keeps it legible
+    // regardless of what colour happens to sit underneath.
+    final numeral = isSpotting
+        ? _haloedDayNumber(
+            '${date.day}',
+            theme.textTheme.bodyMedium,
+            textColor,
+            theme.colorScheme.surface,
+          )
+        : DefaultTextStyle.merge(
+            style: TextStyle(color: textColor),
+            child: Text('${date.day}'),
+          );
+    // Issue #312 (BLOCKING — today-ring overflow): the ring must stay
+    // within the same 34x34 outer box the plain (no-bleed) today cell
+    // already uses (`_dayCircle`) — the previous 38x38 wrapper made a
+    // bleed-logged today cell 54px tall against a 375pt phone's ~52.4px
+    // cell height. The fill circle shrinks to 30x30 so the ring itself can
+    // draw on an unchanged 34x34 box below without growing the cell.
+    final circleSize = isToday ? 30.0 : 34.0;
+    final circle = Container(
       key: ValueKey('bleed-$iso'),
-      width: 34,
-      height: 34,
+      width: circleSize,
+      height: circleSize,
       decoration: isSpotting
           ? BoxDecoration(
               shape: BoxShape.circle,
@@ -1047,10 +1299,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
               height: 8,
               decoration: BoxDecoration(shape: BoxShape.circle, color: tone.fill),
             ),
-          DefaultTextStyle.merge(
-            style: TextStyle(color: textColor),
-            child: dayLabel,
-          ),
+          numeral,
           Positioned(
             bottom: 3,
             child: Row(
@@ -1073,6 +1322,18 @@ class _MonthCalendarState extends State<MonthCalendar> {
           ),
         ],
       ),
+    );
+    if (!isToday) return circle;
+    return Container(
+      key: ValueKey('today-ring-$iso'),
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: theme.colorScheme.primary, width: 1.5),
+      ),
+      child: circle,
     );
   }
 
@@ -1173,7 +1434,8 @@ class _HatchedCircle extends StatelessWidget {
     required this.opacity,
     required this.child,
     this.diameter = 34,
-  });
+    double? borderOpacity,
+  }) : borderOpacity = borderOpacity ?? opacity;
 
   final Color color;
   final double opacity;
@@ -1183,10 +1445,18 @@ class _HatchedCircle extends StatelessWidget {
   /// (issue #191) passes a smaller value for the same hatch pattern.
   final double diameter;
 
+  /// The ring's own alpha, independent of [opacity] (issue #312, review of
+  /// #191 KTD4): only the outer stroke needs [forecastBorderOpacity]'s
+  /// floor to stay legible at low confidence tiers; the hatch fill lines
+  /// keep the full tier-weighted [opacity]. Defaults to [opacity] (the
+  /// legend swatch's constant `opacity: 1` call site is unaffected either
+  /// way).
+  final double borderOpacity;
+
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _HatchPainter(color: color, opacity: opacity),
+      painter: _HatchPainter(color: color, opacity: opacity, borderOpacity: borderOpacity),
       child: SizedBox(
         width: diameter,
         height: diameter,
@@ -1197,20 +1467,25 @@ class _HatchedCircle extends StatelessWidget {
 }
 
 class _HatchPainter extends CustomPainter {
-  const _HatchPainter({required this.color, required this.opacity});
+  const _HatchPainter({
+    required this.color,
+    required this.opacity,
+    required this.borderOpacity,
+  });
 
   final Color color;
   final double opacity;
+  final double borderOpacity;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final tinted = color.withValues(alpha: opacity);
+    final hatchTint = color.withValues(alpha: opacity);
     final ring = Paint()
-      ..color = tinted
+      ..color = color.withValues(alpha: borderOpacity)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
     final line = Paint()
-      ..color = tinted
+      ..color = hatchTint
       ..strokeWidth = 1.5;
     final radius = size.shortestSide / 2;
     canvas.drawCircle(size.center(Offset.zero), radius, ring);
@@ -1225,7 +1500,9 @@ class _HatchPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_HatchPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.opacity != opacity;
+      oldDelegate.color != color ||
+      oldDelegate.opacity != opacity ||
+      oldDelegate.borderOpacity != borderOpacity;
 }
 
 /// The read-only explainer for a tapped future cell (KTD8): what is
