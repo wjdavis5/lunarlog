@@ -21,6 +21,7 @@ import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
+import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -31,6 +32,7 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
 import 'package:lunarlog/ui/sharing/sharing_overview_controller.dart';
@@ -97,6 +99,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         title: const Text('Profiles'),
         actions: [
           if (hasSync) SyncStatusGlyph(onPressed: openSettings),
+          const SharedWithMeAction(),
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings),
@@ -250,6 +253,8 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     if (action == 'caregivers') {
       // Returning from Manage Guardians may have cancelled an invitation:
       // refresh outside badges so the change surfaces without a restart.
+      // The shared push site carries the #151 prediction-connection wiring
+      // too — this must stay a single push of the screen.
       openManageGuardians(context, profile)
           ?.then((_) => _overview?.refreshBadges());
     } else if (action == 'rename') {
@@ -290,6 +295,34 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         lifecycleMode: result.lifecycleMode,
         birthControlMethod:
             birthControlStoredValue(result.birthControlChoice, l10n),
+      ),
+    );
+  }
+}
+
+/// Issue #151: the app-bar entry point for prediction-only connections
+/// shared WITH this account. Present only when a
+/// [PredictionConnectionService] is configured - an unconfigured build
+/// keeps the app bar exactly as before (R26's null-gating discipline).
+class SharedWithMeAction extends StatelessWidget {
+  const SharedWithMeAction({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final service = Provider.of<PredictionConnectionService?>(
+        context, listen: false);
+    if (service == null) return const SizedBox.shrink();
+    return IconButton(
+      key: const ValueKey('shared-with-me'),
+      tooltip: 'Shared with me',
+      icon: const Icon(Icons.calendar_month),
+      onPressed: () => Navigator.of(context).push(
+        buildNamedRoute<void>(
+          name: kRoutePredictionConnectionsScreen,
+          builder: (_) => PredictionConnectionsScreen(
+            service: service,
+          ),
+        ),
       ),
     );
   }

@@ -120,6 +120,21 @@ const String kRouteNotificationPreferencesScreen =
 /// screen's app bar.
 const String kRouteCareNotesScreen = 'CareNotesScreen';
 
+/// `lib/ui/sharing/prediction_connections_screen.dart` (issue #151) -- the
+/// recipient's list of prediction-only connections shared with them, and
+/// the manual-code entry point.
+const String kRoutePredictionConnectionsScreen = 'PredictionConnectionsScreen';
+
+/// `lib/ui/sharing/prediction_connection_calendar_screen.dart` (issue
+/// #151) -- the recipient's derived-phase-only calendar. Deliberately no
+/// day-sheet route exists anywhere downstream of it: the projection never
+/// carries day-level content to navigate to.
+const String kRoutePredictionCalendarScreen = 'PredictionCalendarScreen';
+
+/// `lib/ui/sharing/accept_prediction_connection_sheet.dart` (issue #151) --
+/// the kind=prediction counterpart of AcceptInviteSheet.
+const String kRouteAcceptPredictionConnectionSheet =
+    'AcceptPredictionConnectionSheet';
 /// `lib/ui/settings/reminder_settings_screen.dart` (Issue #136) — the
 /// per-profile local reminder configuration, pushed from Settings.
 const String kRouteReminderSettingsScreen = 'ReminderSettingsScreen';
@@ -153,5 +168,8 @@ const Set<String> kSentryRouteNames = {
   kRouteTransferOwnershipScreen,
   kRouteNotificationPreferencesScreen,
   kRouteCareNotesScreen,
+  kRoutePredictionConnectionsScreen,
+  kRoutePredictionCalendarScreen,
+  kRouteAcceptPredictionConnectionSheet,
   kRouteReminderSettingsScreen,
 };
