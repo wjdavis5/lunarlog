@@ -341,6 +341,10 @@
   "@daySheetUnrecognised": {
     "description": "Heading above inert chips for tags this build does not recognise."
   },
+  "daySheetUnverifiedPin": "Unverified — pin before shipping",
+  "@daySheetUnverifiedPin": {
+    "description": "Caption under a taxonomy category whose option set is not yet attested (issue #249): the category exists but ships no options until a real Clue export pins them."
+  },
   "daySheetNoEntry": "No entry for this day.",
   "@daySheetNoEntry": {
     "description": "Read-only day sheet body when the day has no entry."

@@ -916,27 +916,35 @@ class _DaySheetState extends State<DaySheet> {
                 _pmsChip(l10n),
                 for (final category in _copy.categoriesInOrder) ...[
                   _sectionHeading(theme, _copy.categoryLabel(category)),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      for (final tag in kTagTaxonomy)
-                        if (tag.category == category)
-                          groupedChipSemantics(
-                            group: _copy.categoryLabel(category),
-                            label: tag.display,
-                            selected: _tags.contains(tag.code),
-                            onTap: _busy ? null : () => _toggleTag(tag.code),
-                            child: FilterChip(
-                              label: Text(tag.display),
+                  // Issue #249: a category whose Clue option set is not
+                  // yet attested (`kUnverifiedTagCategories`) carries no
+                  // taxonomy codes, so where its chips would go the sheet
+                  // renders the "unverified — pin before shipping" caption
+                  // instead of inventing options.
+                  if (kUnverifiedTagCategories.contains(category))
+                    _unverifiedCategoryNote(theme)
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (final tag in kTagTaxonomy)
+                          if (tag.category == category)
+                            groupedChipSemantics(
+                              group: _copy.categoryLabel(category),
+                              label: tag.display,
                               selected: _tags.contains(tag.code),
-                              onSelected: _busy
-                                  ? null
-                                  : (selected) => _toggleTag(tag.code),
+                              onTap: _busy ? null : () => _toggleTag(tag.code),
+                              child: FilterChip(
+                                label: Text(tag.display),
+                                selected: _tags.contains(tag.code),
+                                onSelected: _busy
+                                    ? null
+                                    : (selected) => _toggleTag(tag.code),
+                              ),
                             ),
-                          ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
                 if (_unrecognisedTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
@@ -1074,6 +1082,21 @@ class _DaySheetState extends State<DaySheet> {
       ],
     ),
   ];
+
+  /// Issue #249: the caption an option-set-unverified category
+  /// (`kUnverifiedTagCategories`) renders where its chips would go. The
+  /// category is real and its heading is surfaced (the taxonomy and picker
+  /// framework exist), but no code ships until a real Clue export pins the
+  /// option set — a placeholder chip would be an invented health assertion.
+  Widget _unverifiedCategoryNote(ThemeData theme) => Padding(
+    padding: const EdgeInsets.only(top: 2, bottom: 4),
+    child: Text(
+      AppLocalizations.of(context).daySheetUnverifiedPin,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 
   /// R13 copy: when the caller's own accepted role is the reason this sheet
   /// is read-only (not an archived profile - the two reasons are additive,

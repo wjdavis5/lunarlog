@@ -550,6 +550,12 @@ abstract class AppLocalizations {
   /// **'Unrecognised'**
   String get daySheetUnrecognised;
 
+  /// Caption under a taxonomy category whose option set is not yet attested (issue #249): the category exists but ships no options until a real Clue export pins them.
+  ///
+  /// In en, this message translates to:
+  /// **'Unverified — pin before shipping'**
+  String get daySheetUnverifiedPin;
+
   /// Read-only day sheet body when the day has no entry.
   ///
   /// In en, this message translates to:
