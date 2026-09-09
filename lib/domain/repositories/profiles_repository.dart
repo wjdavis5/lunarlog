@@ -3,6 +3,7 @@
 /// drift-backed implementations live in `lib/data/repositories/`.
 library;
 
+import '../models/local_date.dart';
 import '../models/profile.dart';
 import '../models/profile_mode.dart';
 import '../models/profile_relationship.dart';
@@ -13,7 +14,12 @@ abstract interface class ProfilesRepository {
   /// (Issue #4 R1, R2, R3); neither is validated beyond the closed set
   /// [ProfileRelationship] already enforces. [mode] (Issue #131) is the
   /// profile's care mode — presentation only, defaulting to
-  /// [ProfileMode.standard].
+  /// [ProfileMode.standard]. The three cycle facts (Issue #218) are the
+  /// onboarding-supplied answers stored on the profile and editable later
+  /// through [update]; all individually optional (skipped questions are
+  /// null), and never validated here — `CycleFacts.canSeed` in the
+  /// prediction domain is the gate that decides which values can seed a
+  /// provisional estimate.
   Future<Profile> create({
     required String displayName,
     required bool isMinor,
@@ -21,6 +27,9 @@ abstract interface class ProfilesRepository {
     ProfileMode mode,
     int? birthYear,
     ProfileRelationship? relationship,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
   });
 
   /// Persists edits to an existing profile (matched by id). Throws

@@ -217,6 +217,15 @@ class _StubSharingService implements SharingService {
   Future<InviteCancellation> cancelInvite(String invitationId) async {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  }) async {
+    throw UnimplementedError();
+  }
 }
 
 void main() {

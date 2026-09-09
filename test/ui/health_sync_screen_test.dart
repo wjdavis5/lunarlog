@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -33,6 +34,9 @@ class FakeProfilesRepository implements ProfilesRepository {
     ProfileMode mode = ProfileMode.standard,
     int? birthYear,
     ProfileRelationship? relationship,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
   }) =>
       throw UnimplementedError();
 
@@ -73,6 +77,9 @@ class ThrowingProfilesRepository implements ProfilesRepository {
     ProfileMode mode = ProfileMode.standard,
     int? birthYear,
     ProfileRelationship? relationship,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
   }) =>
       throw UnimplementedError();
 

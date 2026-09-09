@@ -2,6 +2,7 @@
 library;
 
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -24,6 +25,9 @@ class DriftProfilesRepository implements ProfilesRepository {
     ProfileMode mode = ProfileMode.standard,
     int? birthYear,
     ProfileRelationship? relationship,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
   }) =>
       _storage
           .upsertProfile(
@@ -33,6 +37,9 @@ class DriftProfilesRepository implements ProfilesRepository {
             sortOrder: sortOrder,
             birthYear: birthYear,
             relationship: relationship?.toDb(),
+            lastPeriodStart: lastPeriodStart?.iso,
+            typicalCycleLengthDays: typicalCycleLengthDays,
+            typicalPeriodLengthDays: typicalPeriodLengthDays,
           )
           .then(profileToDomain);
 
@@ -51,6 +58,9 @@ class DriftProfilesRepository implements ProfilesRepository {
       archivedAt: profile.archivedAt,
       birthYear: profile.birthYear,
       relationship: profile.relationship?.toDb(),
+      lastPeriodStart: profile.lastPeriodStart?.iso,
+      typicalCycleLengthDays: profile.typicalCycleLengthDays,
+      typicalPeriodLengthDays: profile.typicalPeriodLengthDays,
     ));
   }
 
@@ -86,6 +96,9 @@ class DriftProfilesRepository implements ProfilesRepository {
       archivedAt: archived ? _now() : null,
       birthYear: row.birthYear,
       relationship: row.relationship,
+      lastPeriodStart: row.lastPeriodStart,
+      typicalCycleLengthDays: row.typicalCycleLengthDays,
+      typicalPeriodLengthDays: row.typicalPeriodLengthDays,
     );
   }
 

@@ -198,6 +198,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         CycleConfidence.high => colors.confidenceHigh,
         CycleConfidence.learning => colors.confidenceLearning,
         CycleConfidence.irregular => colors.confidenceIrregular,
+        CycleConfidence.provisional => colors.confidenceProvisional,
       };
 
   Color _fallbackColorFor(ThemeData theme, CycleConfidence tier) =>
@@ -205,6 +206,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         CycleConfidence.high => theme.colorScheme.primary,
         CycleConfidence.learning => theme.colorScheme.tertiary,
         CycleConfidence.irregular => theme.colorScheme.error,
+        CycleConfidence.provisional => theme.colorScheme.secondary,
       };
 
   Widget _statsRow(BuildContext context, CycleHistoryView view) {

@@ -393,4 +393,95 @@ void main() {
       );
     });
   });
+
+  group('updateGuardianRole', () {
+    test('calls update_guardian_role RPC with the role db value and requests sync',
+        () async {
+      final client = makeClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(req.url.path, '/rest/v1/rpc/update_guardian_role');
+        expect(body['p_profile_id'], '01JABCDEF01234567890123456');
+        expect(body['p_target_user_id'], 'user-uuid-123');
+        expect(body['p_new_role'], 'caregiver');
+
+        return http.Response(
+          jsonEncode({
+            'profile_id': '01JABCDEF01234567890123456',
+            'role': 'caregiver',
+            'updated': true,
+          }),
+          200,
+        );
+      });
+
+      final service = SupabaseSharingService(
+        client: client,
+        syncEngine: syncEngine,
+      );
+
+      await service.updateGuardianRole(
+        profileId: '01JABCDEF01234567890123456',
+        targetUserId: 'user-uuid-123',
+        newRole: GuardianRole.caregiver,
+      );
+
+      // The changed row re-pulls on the next cycle, so the call must wake
+      // the sync engine - this is what delivers the role to the target.
+      expect(syncEngine.syncRequestCount, 1);
+    });
+
+    test('maps insufficient_privilege to unauthorized and no_data_found to notFound',
+        () async {
+      final cases = <String, Type>{
+        'caller lacks permission to change this guardian\'s role':
+            SharingUnauthorizedFailure,
+        'cannot change your own role': SharingUnauthorizedFailure,
+        'primary_guardian cannot be granted through update_guardian_role':
+            SharingUnauthorizedFailure,
+      };
+      for (final entry in cases.entries) {
+        final client = makeClient((req) async {
+          return http.Response(
+            jsonEncode({'message': entry.key, 'code': '42501'}),
+            400,
+          );
+        });
+        final service = SupabaseSharingService(
+          client: client,
+          syncEngine: syncEngine,
+        );
+        await expectLater(
+          service.updateGuardianRole(
+            profileId: 'p1',
+            targetUserId: 'u1',
+            newRole: GuardianRole.viewer,
+          ),
+          throwsA(isA<SharingUnauthorizedFailure>()),
+          reason: '"${entry.key}" must map to unauthorized',
+        );
+      }
+
+      final notFoundClient = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message': 'target is not an active guardian of this profile',
+            'code': 'P0002',
+          }),
+          400,
+        );
+      });
+      final notFoundService = SupabaseSharingService(
+        client: notFoundClient,
+        syncEngine: syncEngine,
+      );
+      await expectLater(
+        notFoundService.updateGuardianRole(
+          profileId: 'p1',
+          targetUserId: 'u1',
+          newRole: GuardianRole.viewer,
+        ),
+        throwsA(isA<SharingNotFoundFailure>()),
+      );
+    });
+  });
 }

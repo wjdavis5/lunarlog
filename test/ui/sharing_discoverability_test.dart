@@ -79,6 +79,13 @@ class FakeSharing126 implements SharingService {
     required String profileId,
     required String targetUserId,
   }) async {}
+
+  @override
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  }) async {}
 }
 
 PendingInvite _invite(

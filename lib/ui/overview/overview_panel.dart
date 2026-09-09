@@ -62,8 +62,9 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
-import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/tiers.dart';
+import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
@@ -457,10 +458,15 @@ class _OverviewPanelState extends State<OverviewPanel> {
             // `irregular` care mode — which already replaces the late
             // banner with its own quiet, non-numeric framing — can silence
             // this caption rather than showing it twice over.
+            // Issue #218: the label/summary route through AppLocalizations
+            // (via the shared tier-vocabulary mapper) so the new
+            // `provisional` tier renders localized copy, not a hardcoded
+            // literal.
             if (_copy.showsTierCaption &&
                 prediction.tier != CycleConfidence.high) ...[
               Text(
-                '${prediction.tier.label} — ${prediction.tier.summary}',
+                '${tierLabel(AppLocalizations.of(context), prediction.tier)}'
+                ' — ${tierSummary(AppLocalizations.of(context), prediction.tier)}',
                 key: const ValueKey('overview-tier-caption'),
                 style: theme.textTheme.bodySmall,
               ),

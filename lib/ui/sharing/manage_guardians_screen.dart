@@ -526,6 +526,79 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     );
   }
 
+  /// Role-change options for [guardian]'s row (Issue #127): the assignable
+  /// roles [callerRole] may move them to. Empty means no role control is
+  /// shown - the server re-checks the same ladder, so this only decides
+  /// what the UI offers.
+  List<GuardianRole> _allowedNewRoles(
+    ProfileGuardian guardian,
+    GuardianRole? callerRole,
+  ) =>
+      allowedNewRoles(
+        callerRole: callerRole,
+        target: guardian,
+        currentUserId: widget.currentUserId,
+      );
+
+  String _roleChangeErrorMessage(Object error) {
+    if (error is SharingUnauthorizedFailure) {
+      return 'You do not have permission for this action.';
+    }
+    return 'Failed to update role. Check connection.';
+  }
+
+  Future<void> _changeRole(
+    ProfileGuardian guardian,
+    GuardianRole newRole,
+  ) async {
+    final name = guardian.displayName?.isNotEmpty == true
+        ? guardian.displayName!
+        : guardian.role.label;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Change role to ${newRole.label}?'),
+        content: Text(
+          '$name currently has ${guardian.role.label} access. '
+          '${roleChangeConsequence(guardian.role, newRole)} '
+          'No new invitation is needed — the new role applies on their '
+          'next sync.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Change role'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await widget.sharingService.updateGuardianRole(
+        profileId: widget.profile.id,
+        targetUserId: guardian.userId,
+        newRole: newRole,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Role updated to ${newRole.label}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_roleChangeErrorMessage(e))),
+        );
+      }
+    }
+  }
+
   Widget _guardianTile(
     BuildContext context,
     ProfileGuardian guardian,
@@ -548,7 +621,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               : theme.colorScheme.onSurfaceVariant,
         ),
       ),
-      title: Row(
+      // #138 (AC4): a Wrap, not a Row — the "(you)" suffix and the name are
+      // one announcement, and at 200% text scale they flow to a second
+      // line instead of overflowing the tile.
+      title: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 6,
         children: [
           Text(
             guardian.displayName?.isNotEmpty == true
@@ -556,20 +634,53 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                 : guardian.role.label,
             style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
           ),
-          if (isMe) ...[
-            const SizedBox(width: 6),
+          if (isMe)
             Text('(you)', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
-          ],
         ],
       ),
       subtitle: Text(guardian.role.label),
-      trailing: _canRevoke(guardian, callerRole, activeGuardians)
-          ? IconButton(
-              icon: const Icon(Icons.remove_circle_outline),
-              tooltip: isMe ? 'Leave profile' : 'Remove caregiver',
-              onPressed: () => _revoke(guardian),
-            )
-          : null,
+      trailing: _guardianTrailing(context, guardian, callerRole, activeGuardians),
+    );
+  }
+
+  /// The trailing controls for a guardian row: the role-change menu (Issue
+  /// #127) when the caller may move this guardian to another role, plus the
+  /// existing revocation control. Either may be absent independently.
+  Widget? _guardianTrailing(
+    BuildContext context,
+    ProfileGuardian guardian,
+    GuardianRole? callerRole,
+    List<ProfileGuardian> activeGuardians,
+  ) {
+    final newRoles = _allowedNewRoles(guardian, callerRole);
+    final canRevoke = _canRevoke(guardian, callerRole, activeGuardians);
+    if (newRoles.isEmpty && !canRevoke) return null;
+    final isMe =
+        widget.currentUserId != null && guardian.userId == widget.currentUserId;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (newRoles.isNotEmpty)
+          PopupMenuButton<GuardianRole>(
+            key: ValueKey('change-role-${guardian.userId}'),
+            tooltip: 'Change role',
+            icon: const Icon(Icons.manage_accounts_outlined),
+            onSelected: (role) => _changeRole(guardian, role),
+            itemBuilder: (ctx) => [
+              for (final role in newRoles)
+                PopupMenuItem<GuardianRole>(
+                  value: role,
+                  child: Text(role.label),
+                ),
+            ],
+          ),
+        if (canRevoke)
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            tooltip: isMe ? 'Leave profile' : 'Remove caregiver',
+            onPressed: () => _revoke(guardian),
+          ),
+      ],
     );
   }
 }

@@ -156,6 +156,10 @@ double forecastBandOpacity(CycleConfidence tier) => switch (tier) {
   CycleConfidence.high => 0.9,
   CycleConfidence.learning => 0.6,
   CycleConfidence.irregular => 0.35,
+  // Issue #218: an onboarding-seeded forecast reads weaker than `learning`
+  // (which at least has real cycles behind it) but stronger than the
+  // deliberately faint `irregular`.
+  CycleConfidence.provisional => 0.5,
 };
 
 /// Floor under [forecastBandOpacity] for a predicted band's *border* stroke
@@ -186,6 +190,59 @@ List<Color> symptomLayerPalette(Brightness brightness) =>
 /// distinction instead (KTD3).
 double futureCellOpacity(bool isFuture, bool hasForecastContent) =>
     isFuture && !hasForecastContent ? 0.35 : 1;
+
+/// The plain-future-day dim weight [#138, B-23]: below the value a day
+/// cell's number text is rendered with `onSurface` at this alpha rather
+/// than under an [Opacity] layer — an [Opacity] dims *every* child
+/// including the today ring and any markers, and 0.35 over the whole cell
+/// lands under usable contrast. Applied to the day-number text only.
+const double kFutureDayTextAlpha = 0.38;
+
+/// [#138, B-23] The day-cell geometry for one grid width and text scale:
+/// the number circle grows from the scaled 20px baseline (never below its
+/// historic 34px), the markers row grows from a scaled 12px baseline
+/// (never below its historic 14px), and the cell's row height keeps at
+/// least a 48dp touch target. Pure — computed once per month page from the
+/// page's own [LayoutBuilder] constraints, directly unit-testable.
+class DayCellMetrics {
+  const DayCellMetrics({
+    required this.circleSize,
+    required this.markersHeight,
+    required this.aspectRatio,
+  });
+
+  /// The day-number circle's outer diameter in logical pixels.
+  final double circleSize;
+
+  /// The markers row's fixed height under a day's number.
+  final double markersHeight;
+
+  /// `GridView.count`'s `childAspectRatio` (`width / height`) that yields
+  /// the intended row height for a 7-column grid over [gridWidth].
+  final double aspectRatio;
+}
+
+/// Computes [DayCellMetrics] for a 7-column month grid whose content width
+/// is [gridWidth] (the page width; the grid's own horizontal padding of 4
+/// each side is subtracted here). The 48dp minimum matches Material's
+/// [kMinInteractiveDimension]; the `max(cellWidth, ...)` half keeps the
+/// historic square cells at the default text scale, so 1.0x rendering is
+/// pixel-identical to before this pass and only grows from there.
+DayCellMetrics dayCellMetricsFor(double gridWidth, TextScaler textScaler) {
+  final cellWidth = (gridWidth - 8) / 7;
+  final circleSize = math.min(
+    math.max(34.0, textScaler.scale(20)),
+    cellWidth,
+  );
+  final markersHeight = math.max(14.0, textScaler.scale(12));
+  final contentHeight = circleSize + 2 + markersHeight;
+  final cellHeight = math.max(math.max(cellWidth, 48), contentHeight);
+  return DayCellMetrics(
+    circleSize: circleSize,
+    markersHeight: markersHeight,
+    aspectRatio: cellWidth / cellHeight,
+  );
+}
 
 /// A logged bleed [level]'s fill/on-fill pair from the #176 `flow*` ramp
 /// (issue #191 B-2). `spotting`'s `fill` doubles as its ring/centre-dot
@@ -268,63 +325,105 @@ Color crampsBadgeColor(Brightness brightness) => brightness == Brightness.light
     ? const Color(0xFF9A6A00)
     : const Color(0xFFFFCC80);
 
-/// The semantic (screen-reader) label for one day cell (#133 brief: the
-/// predicted/logged distinction must be semantic, not just visual). Public
-/// for direct testing; the calendar wraps every cell's contents with it.
+/// The semantic (screen-reader) label for one day cell (#133 seeded the
+/// predicted/logged distinction; #138 is the full pass — date with
+/// weekday, flow state, symptom presence, and loggability, per the issue's
+/// own cell-label spec). Public for direct testing; the calendar wraps
+/// every cell's contents with it.
 ///
-/// Issue #160: [monthNames] is the locale-derived full-month-name list the
-/// widget passes in (`dates.monthNames(locale: dates.calendarLocale(...))`);
-/// it defaults to the `en` list so this pure, context-free helper (and its
-/// direct tests) keep working without a widget tree.
+/// Issue #160: [monthNames]/[weekdayNames] are the locale-derived name
+/// lists the widget passes in (`dates.monthNames`/`dates.fullWeekdayNames`
+/// over `dates.calendarLocale(...)`); both default to the `en` lists so
+/// this pure, context-free helper (and its direct tests) keep working
+/// without a widget tree. Issue #138: the fragments themselves come from
+/// [AppLocalizations] (#340's rule — no new hardcoded literals), so the
+/// same helper stays localizable.
+///
+/// [readOnly] appends the read-only fragment to past cells when the
+/// caller's effective role makes the day sheet view-only (a future cell
+/// already carries the not-loggable fragment, so the two never stack).
+/// [fertileWindowLabel] is the care mode's own phrase
+/// ([CareModeCopy.fertileWindowLabel]) — the care-mode gate
+/// ([_MonthCalendarState._cellForMode]) has already stripped
+/// [ForecastDayCell.fertileWindow] entirely when the mode hides it, so a
+/// null here only silences an already-unreachable fragment.
 String dayCellSemanticLabel({
   required LocalDate date,
   required DayEntry? entry,
   required LocalDate today,
   required ForecastDayCell? cell,
+  required AppLocalizations l10n,
   List<String>? monthNames,
+  List<String>? weekdayNames,
+  bool readOnly = false,
+  String? fertileWindowLabel,
 }) {
-  final names = monthNames ?? dates.monthNames();
-  if (!date.isAfter(today)) return _loggedDaySemanticLabel(date, entry, names);
-  final safeCell = cell;
-  return safeCell == null
-      ? '${_dateLabel(date, names)}, future date, not yet loggable'
-      : _predictedDaySemanticLabel(date, safeCell, names);
-}
-
-String _dateLabel(LocalDate date, List<String> monthNames) =>
-    '${monthNames[date.month - 1]} ${date.day}';
-
-String _loggedDaySemanticLabel(
-  LocalDate date,
-  DayEntry? entry,
-  List<String> monthNames,
-) {
-  final label = _dateLabel(date, monthNames);
-  if (entry == null) return '$label, not logged';
-  if (isBleed(entry.flow)) return '$label, logged period day';
-  if (entry.tags.isNotEmpty || entry.note != null) {
-    return '$label, logged symptoms';
+  final months = monthNames ?? dates.monthNames();
+  final weekdays = weekdayNames ?? dates.fullWeekdayNames();
+  // `DateTime.weekday` is Monday=1..Sunday=7; the name lists are
+  // Sunday-first (see [dates.fullWeekdayNames]), so `% 7` indexes them.
+  final weekdayIndex = DateTime(date.year, date.month, date.day).weekday % 7;
+  final parts = <String>[
+    l10n.calendarCellDateLabel(
+      weekdays[weekdayIndex],
+      months[date.month - 1],
+      date.day,
+    ),
+  ];
+  if (date.isAfter(today)) {
+    final safeCell = cell;
+    if (safeCell != null) {
+      parts.addAll(_predictedDayParts(safeCell, l10n, fertileWindowLabel));
+    }
+    parts.add(l10n.calendarCellFuture);
+    return parts.join(', ');
   }
-  return '$label, logged';
+  parts.addAll(_loggedDayParts(entry, l10n));
+  if (date == today) parts.add(l10n.calendarCellToday);
+  if (readOnly) parts.add(l10n.calendarCellReadOnly);
+  return parts.join(', ');
 }
 
-String _predictedDaySemanticLabel(
-  LocalDate date,
+/// The logged-day fragments of [dayCellSemanticLabel] (#138): a bleed day
+/// names its level plus symptom presence; a symptom-only day says so; a
+/// bare logged day still answers "was anything logged?" and names the
+/// absence of symptoms, so symptom presence is announced for every logged
+/// cell, not only the ones with tags.
+List<String> _loggedDayParts(DayEntry? entry, AppLocalizations l10n) {
+  if (entry == null) return [l10n.calendarCellNotLogged];
+  final hasSymptoms = entry.tags.isNotEmpty || entry.note != null;
+  if (isBleed(entry.flow)) {
+    return [
+      l10n.calendarCellFlowState(localizedFlowLabel(entry.flow, l10n)),
+      hasSymptoms ? l10n.calendarCellSymptomsLogged : l10n.calendarCellNoSymptoms,
+    ];
+  }
+  if (hasSymptoms) return [l10n.calendarCellLoggedSymptoms];
+  return [l10n.calendarCellLogged, l10n.calendarCellNoSymptoms];
+}
+
+/// The predicted-day fragments of [dayCellSemanticLabel] — every phrase
+/// deliberately contains "predicted"/"estimated" so no forecast state can
+/// ever sound like a logged one to a screen reader (#133's seam, #138's
+/// verification).
+List<String> _predictedDayParts(
   ForecastDayCell cell,
-  List<String> monthNames,
+  AppLocalizations l10n,
+  String? fertileWindowLabel,
 ) {
   final parts = <String>[
-    if (cell.predictedBleed)
-      'predicted period day'
-          '${cell.cycleDayNumber == null ? '' : ', cycle day ${cell.cycleDayNumber}'}',
+    if (cell.predictedBleed) l10n.calendarCellPredictedPeriod,
+    if (cell.predictedBleed && cell.cycleDayNumber != null)
+      l10n.calendarCellCycleDay(cell.cycleDayNumber!),
     if (!cell.predictedBleed && cell.cycleDayNumber != null)
-      'cycle day ${cell.cycleDayNumber} of the first predicted cycle',
-    if (cell.pmsBadge) 'predicted premenstrual window',
-    if (cell.crampsBadge) 'predicted cramps window',
-    if (cell.fertileWindow) 'estimated fertile window',
+      l10n.calendarCellCycleDayFirstCycle(cell.cycleDayNumber!),
+    if (cell.pmsBadge) l10n.calendarCellPmsWindow,
+    if (cell.crampsBadge) l10n.calendarCellCrampsWindow,
+    if (cell.fertileWindow && fertileWindowLabel != null)
+      fertileWindowLabel.toLowerCase(),
   ];
-  if (parts.isEmpty) parts.add('no prediction for this date');
-  return '${_dateLabel(date, monthNames)}, ${parts.join(', ')}';
+  if (parts.isEmpty) parts.add(l10n.calendarCellNoPrediction);
+  return parts;
 }
 
 /// Whether [cell] still carries something worth rendering as a forecast
@@ -948,6 +1047,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         _pageIndexFor(today.year, today.month) + kForwardMonthLimit;
     final l10n = AppLocalizations.of(context);
     final locale = dates.calendarLocale(context);
+    final fullWeekdays = dates.fullWeekdayNames(locale: locale);
 
     return Column(
       children: [
@@ -994,11 +1094,23 @@ class _MonthCalendarState extends State<MonthCalendar> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
             children: [
-              for (final label
-                  in weekdayHeaderLabels(locale: locale))
+              // #138 (B-23): the narrow initial stays the visual child, but
+              // each column carries the full day name as its Semantics
+              // label — two "S" and two "T" initials per week are ambiguous
+              // single characters to a screen reader, "Sunday"/"Saturday"
+              // and "Tuesday"/"Thursday" are not.
+              for (var i = 0; i < 7; i++)
                 Expanded(
                   child: Center(
-                    child: Text(label, style: theme.textTheme.labelSmall),
+                    child: Semantics(
+                      container: true,
+                      label: fullWeekdays[(kFirstDayOfWeek + i) % 7],
+                      excludeSemantics: true,
+                      child: Text(
+                        weekdayHeaderLabels(locale: locale)[i],
+                        style: theme.textTheme.labelSmall,
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -1013,58 +1125,76 @@ class _MonthCalendarState extends State<MonthCalendar> {
             itemCount: maxPageIndex + 1,
             itemBuilder: (context, pageIndex) {
               final (year, month) = _monthForPageIndex(pageIndex);
-              return SingleChildScrollView(
-                child: Column(
-                  children: [
-                    // Issue #187 (B-8): a month with zero entries otherwise
-                    // renders as a silent grid of bare day numbers with no
-                    // guidance. The grid itself stays fully tappable (its
-                    // cell/forecast rendering is #133/#191's, untouched
-                    // here) — this is an explanatory banner above it, not a
-                    // replacement, so logging any day in the empty month
-                    // still works exactly as it did before that issue.
-                    //
-                    // Issue #312 review: keyed off *this page's* `year`/
-                    // `month` (the page actually being built) rather than
-                    // `_displayed*` — `_displayed*` only updates once
-                    // `onPageChanged` settles, so reading it here made the
-                    // banner appear/disappear a beat after the swipe
-                    // landed and shifted the grid under the operator's
-                    // thumb.
-                    if (!_monthHasEntries(entries, year: year, month: month))
-                      EmptyState(
-                        // Issue #312 review: unique per page (previously a
-                        // single constant key shared by every page in the
-                        // PageView) — a `find.byKey` lookup on the shared
-                        // key was ambiguous once more than one page's
-                        // empty-state banner existed in the tree at once
-                        // (e.g. mid-swipe, both the outgoing and incoming
-                        // page built).
-                        key: ValueKey('calendar-month-empty-$year-$month'),
-                        title: l10n.calendarNoEntriesTitle,
-                        body: l10n.calendarNoEntriesBody,
-                      ),
-                    GridView.count(
-                      key: ValueKey('calendar-grid-$year-$month'),
-                      crossAxisCount: 7,
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      physics: const NeverScrollableScrollPhysics(),
-                      children: _cells(
-                        year: year,
-                        month: month,
-                        byIso: byIso,
-                        forecastByIso: forecastByIso,
-                        cycles: cycles,
-                        today: today,
-                        theme: theme,
-                        colors: colors,
-                        layerList: layerList,
-                        palette: palette,
-                      ),
+              // #138: the cell geometry derives from this page's own width
+              // and the ambient text scale, so the number circle and the
+              // cell row both grow with large text instead of clipping, and
+              // every cell keeps a 48dp-tall touch target.
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final metrics = dayCellMetricsFor(
+                    constraints.maxWidth,
+                    MediaQuery.textScalerOf(context),
+                  );
+                  return SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        // Issue #187 (B-8): a month with zero entries otherwise
+                        // renders as a silent grid of bare day numbers with no
+                        // guidance. The grid itself stays fully tappable (its
+                        // cell/forecast rendering is #133/#191's, untouched
+                        // here) — this is an explanatory banner above it, not a
+                        // replacement, so logging any day in the empty month
+                        // still works exactly as it did before that issue.
+                        //
+                        // Issue #312 review: keyed off *this page's* `year`/
+                        // `month` (the page actually being built) rather than
+                        // `_displayed*` — `_displayed*` only updates once
+                        // `onPageChanged` settles, so reading it here made the
+                        // banner appear/disappear a beat after the swipe
+                        // landed and shifted the grid under the operator's
+                        // thumb.
+                        if (!_monthHasEntries(entries, year: year, month: month))
+                          EmptyState(
+                            // Issue #312 review: unique per page (previously a
+                            // single constant key shared by every page in the
+                            // PageView) — a `find.byKey` lookup on the shared
+                            // key was ambiguous once more than one page's
+                            // empty-state banner existed in the tree at once
+                            // (e.g. mid-swipe, both the outgoing and incoming
+                            // page built).
+                            key: ValueKey('calendar-month-empty-$year-$month'),
+                            title: l10n.calendarNoEntriesTitle,
+                            body: l10n.calendarNoEntriesBody,
+                          ),
+                        GridView.count(
+                          key: ValueKey('calendar-grid-$year-$month'),
+                          crossAxisCount: 7,
+                          // #138: derived (see [dayCellMetricsFor]) rather
+                          // than the historic implicit 1.0, so rows grow to
+                          // fit the scaled circle/markers — identical to the
+                          // old square cells at the default text scale.
+                          childAspectRatio: metrics.aspectRatio,
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          physics: const NeverScrollableScrollPhysics(),
+                          children: _cells(
+                            year: year,
+                            month: month,
+                            byIso: byIso,
+                            forecastByIso: forecastByIso,
+                            cycles: cycles,
+                            today: today,
+                            theme: theme,
+                            colors: colors,
+                            layerList: layerList,
+                            palette: palette,
+                            metrics: metrics,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               );
             },
           ),
@@ -1136,7 +1266,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       _LegendEntry('heavy', colors.flowHeavy, l10n.calendarLegendHeavy),
       // Issue #247: superHeavy shares heavy's ramp token, so the dot count in
       // the label is the only distinguishing signal (mirrors _flowLevelMarkCount).
-      _LegendEntry('superheavy', colors.flowHeavy, 'Super heavy flow (5 marks)'),
+      _LegendEntry('superheavy', colors.flowHeavy, l10n.calendarLegendSuperHeavy),
       _LegendEntry('symptom', colors.symptomDot, l10n.calendarLegendSymptom),
       _LegendEntry('today', theme.colorScheme.primary, l10n.calendarLegendToday, style: _LegendSwatchStyle.ring),
       _LegendEntry('predicted', colors.predictedBorder, l10n.calendarLegendPredicted, style: _LegendSwatchStyle.hatched),
@@ -1182,10 +1312,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
         // [_layersHeader] summary row already shows when no layer is
         // selected (issue #312 review) — a shared label would collide
         // with every `find.text` lookup in a widget test that opens with
-        // the default (unselected) layer set.
-        Text(
-          AppLocalizations.of(context).calendarLegendLayerDots,
-          style: theme.textTheme.labelSmall,
+        // the default (unselected) layer set. #138: Flexible for the same
+        // wrap-don't-overflow reason as [_legendChip].
+        Flexible(
+          child: Text(
+            AppLocalizations.of(context).calendarLegendLayerDots,
+            style: theme.textTheme.labelSmall,
+          ),
         ),
       ],
     );
@@ -1195,10 +1328,18 @@ class _MonthCalendarState extends State<MonthCalendar> {
     return Row(
       key: ValueKey('legend-${entry.code}'),
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _legendSwatch(entry),
         const SizedBox(width: 4),
-        Text(entry.label, style: theme.textTheme.labelSmall),
+        // #138 (AC4): the label wraps inside the legend's Wrap rather
+        // than overflowing its row — the legend only collapses by default
+        // at kLegendCollapseTextScale and above, so 1.5x keeps it expanded
+        // and its longest entries ("Super heavy flow (5 marks)") no
+        // longer overflow a phone-class width.
+        Flexible(
+          child: Text(entry.label, style: theme.textTheme.labelSmall),
+        ),
       ],
     );
   }
@@ -1345,6 +1486,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     required LunarLogColors colors,
     required List<String> layerList,
     required List<Color> palette,
+    required DayCellMetrics metrics,
   }) {
     final firstOfMonth = LocalDate(year, month, 1);
     final firstOfNext = month == 12
@@ -1355,8 +1497,16 @@ class _MonthCalendarState extends State<MonthCalendar> {
     // seam (today Sunday), no longer `weekday % 7` arithmetic.
     final leadingBlanks = leadingBlanksFor(year, month);
     return [
+      // #138 (B-23): the blanks before day 1 are layout filler with no
+      // meaning — explicitly excluded so no screen reader step lands on
+      // them. Keyed per month for direct widget-test lookup (a plain
+      // `ExcludeSemantics` count also matches the `Icon`s inside, since
+      // every Material `Icon` wraps itself in one).
       for (var blank = 0; blank < leadingBlanks; blank++)
-        const SizedBox.shrink(),
+        ExcludeSemantics(
+          key: ValueKey('calendar-leading-blank-$year-$month-$blank'),
+          child: const SizedBox.shrink(),
+        ),
       for (var day = 1; day <= daysInMonth; day++)
         _dayCell(
           firstOfMonth.addDays(day - 1),
@@ -1368,6 +1518,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           colors: colors,
           layerList: layerList,
           palette: palette,
+          metrics: metrics,
         ),
     ];
   }
@@ -1382,10 +1533,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
     required LunarLogColors colors,
     required List<String> layerList,
     required List<Color> palette,
+    required DayCellMetrics metrics,
   }) {
     final iso = date.iso;
     final entry = byIso[iso];
     final isFuture = date.isAfter(today);
+    final isToday = date == today;
     // KTD3: a logged day always renders as logged — forecast markers only
     // ever pair a future date that has no entry. `_cellForMode` (issue
     // #143) strips the fertile-window flag when the care mode hides it.
@@ -1394,54 +1547,107 @@ class _MonthCalendarState extends State<MonthCalendar> {
     );
     final bleedLevel = entry != null && isBleed(entry.flow) ? entry.flow : null;
     final selectable = !isFuture && (!_effectiveReadOnly || entry != null);
-    return InkWell(
-      key: ValueKey('day-cell-$iso'),
-      onTap: _cellTapHandler(
-        selectable: selectable,
-        isFuture: isFuture,
+    final tapHandler = _cellTapHandler(
+      selectable: selectable,
+      isFuture: isFuture,
+      date: date,
+      entry: entry,
+      forecastCell: forecastCell,
+      cycles: cycles,
+    );
+    // #138: the semantics node wraps the InkWell (not the other way
+    // around) so every cell is its own focus stop carrying its label,
+    // button, and selected flags — an inert cell (read-only, no entry)
+    // has no InkWell tap semantics for a label to merge into, which
+    // previously let its label dissolve up into the grid's scroll node.
+    // The wrapper carries the same tap handler as the visible InkWell,
+    // so screen-reader activation and finger taps run one code path.
+    return Semantics(
+      // #138 (B-23): only a cell that actually opens something is a
+      // button, and today carries the selected flag on top of its
+      // label's own "today" fragment.
+      button: tapHandler != null,
+      selected: isToday,
+      label: dayCellSemanticLabel(
         date: date,
         entry: entry,
-        forecastCell: forecastCell,
-        cycles: cycles,
+        today: today,
+        cell: forecastCell,
+        l10n: AppLocalizations.of(context),
+        monthNames: dates.monthNames(locale: dates.calendarLocale(context)),
+        weekdayNames: dates.fullWeekdayNames(
+          locale: dates.calendarLocale(context),
+        ),
+        readOnly: _effectiveReadOnly,
+        fertileWindowLabel: _copy.fertileWindowLabel,
       ),
-      child: Semantics(
-        label: dayCellSemanticLabel(
-          date: date,
+      onTap: tapHandler,
+      excludeSemantics: true,
+      child: InkWell(
+        key: ValueKey('day-cell-$iso'),
+        onTap: tapHandler,
+        child: _cellColumn(
+          date,
           entry: entry,
-          today: today,
-          cell: forecastCell,
-          monthNames:
-              dates.monthNames(locale: dates.calendarLocale(context)),
-        ),
-        excludeSemantics: true,
-        child: Opacity(
-          opacity: futureCellOpacity(isFuture, forecastCell != null),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _dayCircle(
-                date,
-                bleedLevel: bleedLevel,
-                forecastCell: forecastCell,
-                isToday: date == today,
-                theme: theme,
-                colors: colors,
-              ),
-              const SizedBox(height: 2),
-              SizedBox(
-                height: 14,
-                child: isFuture
-                    ? _futureMarkers(forecastCell, theme, iso)
-                    : _loggedMarkers(
-                        entry,
-                        layerList: layerList,
-                        palette: palette,
-                      ),
-              ),
-            ],
-          ),
+          bleedLevel: bleedLevel,
+          forecastCell: forecastCell,
+          isFuture: isFuture,
+          isToday: isToday,
+          theme: theme,
+          colors: colors,
+          layerList: layerList,
+          palette: palette,
+          metrics: metrics,
         ),
       ),
+    );
+  }
+
+  /// The cell's visual column, split out of [_dayCell] so that method stays
+  /// under the quality gate's per-method CRAP cap. #138: the old
+  /// `Opacity(futureCellOpacity(...))` layer is gone — the same decision
+  /// now drives a text-colour dim on the plain-future day's number only
+  /// (`_dayCircle`'s `dimmed`), which does not drag the today ring or any
+  /// marker below usable contrast the way a whole-cell 0.35 [Opacity] did.
+  Widget _cellColumn(
+    LocalDate date, {
+    required DayEntry? entry,
+    required FlowLevel? bleedLevel,
+    required ForecastDayCell? forecastCell,
+    required bool isFuture,
+    required bool isToday,
+    required ThemeData theme,
+    required LunarLogColors colors,
+    required List<String> layerList,
+    required List<Color> palette,
+    required DayCellMetrics metrics,
+  }) {
+    final dimmed = futureCellOpacity(isFuture, forecastCell != null) < 1;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _dayCircle(
+          date,
+          bleedLevel: bleedLevel,
+          forecastCell: forecastCell,
+          isToday: isToday,
+          theme: theme,
+          colors: colors,
+          metrics: metrics,
+          dimmed: dimmed,
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          height: metrics.markersHeight,
+          child: isFuture
+              ? _futureMarkers(forecastCell, theme, date.iso)
+              : _loggedMarkers(
+                  entry,
+                  layerList: layerList,
+                  palette: palette,
+                ),
+        ),
+      ],
     );
   }
 
@@ -1470,6 +1676,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// issue #143, a deliberately different pattern from the predicted
   /// band's hatch so the two estimates stay distinguishable without
   /// colour), otherwise a thin primary ring when the cell is today.
+  /// [#138] The circle's diameter comes from [DayCellMetrics.circleSize]
+  /// (text-scale-aware, floored at the historic 34px) rather than a fixed
+  /// 34, so a 200%-scaled day number no longer clips inside it; and a
+  /// plain future day's number carries the [#138] dim text colour instead
+  /// of sitting under a whole-cell [Opacity].
   Widget _dayCircle(
     LocalDate date, {
     required FlowLevel? bleedLevel,
@@ -1477,13 +1688,31 @@ class _MonthCalendarState extends State<MonthCalendar> {
     required bool isToday,
     required ThemeData theme,
     required LunarLogColors colors,
+    required DayCellMetrics metrics,
+    required bool dimmed,
   }) {
     final iso = date.iso;
     final level = bleedLevel;
     if (level != null) {
-      return _flowCircle(date, level, theme, colors, isToday: isToday);
+      return _flowCircle(
+        date,
+        level,
+        theme,
+        colors,
+        isToday: isToday,
+        circleSize: metrics.circleSize,
+      );
     }
-    final label = Text('${date.day}');
+    final label = Text(
+      '${date.day}',
+      style: dimmed
+          ? TextStyle(
+              color: theme.colorScheme.onSurface.withValues(
+                alpha: kFutureDayTextAlpha,
+              ),
+            )
+          : null,
+    );
     final predictedBleed = forecastCell?.predictedBleed ?? false;
     if (predictedBleed) {
       return _HatchedCircle(
@@ -1491,6 +1720,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         color: colors.predictedBorder,
         opacity: forecastBandOpacity(forecastCell!.tier),
         borderOpacity: forecastBorderOpacity(forecastCell.tier),
+        diameter: metrics.circleSize,
         child: label,
       );
     }
@@ -1507,12 +1737,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
         bandColor: colors.fertileBand,
         opacity: forecastBandOpacity(fertileTier),
         borderOpacity: forecastBorderOpacity(fertileTier),
+        diameter: metrics.circleSize,
         child: label,
       );
     }
     return Container(
-      width: 34,
-      height: 34,
+      width: metrics.circleSize,
+      height: metrics.circleSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: isToday
@@ -1542,6 +1773,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     ThemeData theme,
     LunarLogColors colors, {
     required bool isToday,
+    required double circleSize,
   }) {
     final iso = date.iso;
     final tone = _flowTone(level, colors);
@@ -1571,16 +1803,17 @@ class _MonthCalendarState extends State<MonthCalendar> {
             child: Text('${date.day}'),
           );
     // Issue #312 (BLOCKING — today-ring overflow): the ring must stay
-    // within the same 34x34 outer box the plain (no-bleed) today cell
-    // already uses (`_dayCircle`) — the previous 38x38 wrapper made a
-    // bleed-logged today cell 54px tall against a 375pt phone's ~52.4px
-    // cell height. The fill circle shrinks to 30x30 so the ring itself can
-    // draw on an unchanged 34x34 box below without growing the cell.
-    final circleSize = isToday ? 30.0 : 34.0;
+    // within the same outer box the plain (no-bleed) today cell already
+    // uses (`_dayCircle`) — the fill circle shrinks by 4px so the ring
+    // itself can draw on an unchanged outer box below without growing the
+    // cell. #138: both sizes now derive from the text-scale-aware
+    // [circleSize] instead of the fixed 34/30 pair, preserving the same
+    // 4px inset at every scale.
+    final innerSize = isToday ? circleSize - 4 : circleSize;
     final circle = Container(
       key: ValueKey('bleed-$iso'),
-      width: circleSize,
-      height: circleSize,
+      width: innerSize,
+      height: innerSize,
       decoration: isSpotting
           ? BoxDecoration(
               shape: BoxShape.circle,
@@ -1624,8 +1857,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
     if (!isToday) return circle;
     return Container(
       key: ValueKey('today-ring-$iso'),
-      width: 34,
-      height: 34,
+      width: circleSize,
+      height: circleSize,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,

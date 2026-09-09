@@ -15,8 +15,12 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -229,13 +233,15 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     final controller = context.read<ProfileController>();
     final result = await showProfileEditDialog(context);
     if (result == null) return;
-    await controller.createProfile(
+    final profile = await controller.createProfile(
       displayName: result.displayName,
       isMinor: result.isMinor,
       mode: result.mode,
       birthYear: result.birthYear,
       relationship: result.relationship,
     );
+    if (!context.mounted) return;
+    await _recordCycleAnswers(context, profile.id, result);
   }
 
   Future<void> _onRowAction(
@@ -257,10 +263,34 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         birthYear: result.birthYear,
         relationship: result.relationship,
       );
+      if (!context.mounted) return;
+      await _recordCycleAnswers(context, profile.id, result);
     } else if (action == 'archive') {
       if (await confirmArchiveProfile(context, profile)) {
         await controller.archiveProfile(profile.id);
       }
     }
+  }
+
+  /// Persists the two #216 onboarding answers that are editable from the
+  /// profile edit dialog (life-stage mode and birth-control method)
+  /// through the same recorder seam the first-run flow uses — no-op on a
+  /// tree with no storage wired or when nothing changed.
+  Future<void> _recordCycleAnswers(
+    BuildContext context,
+    String profileId,
+    ProfileEditResult result,
+  ) async {
+    final storage = Provider.of<LunarLogStorage?>(context, listen: false);
+    if (storage == null) return;
+    final l10n = AppLocalizations.of(context);
+    await DriftOnboardingCycleAnswersRecorder(storage).record(
+      profileId,
+      OnboardingCycleAnswers(
+        lifecycleMode: result.lifecycleMode,
+        birthControlMethod:
+            birthControlStoredValue(result.birthControlChoice, l10n),
+      ),
+    );
   }
 }

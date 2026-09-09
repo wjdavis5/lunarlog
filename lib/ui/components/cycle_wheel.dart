@@ -25,6 +25,7 @@ library;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 
 import '../theme/lunarlog_colors.dart';
 
@@ -71,17 +72,19 @@ List<double> predictedBandDashes(double sweep, double dashLen, double gapLen) {
 
 /// Screen-reader label for the whole wheel (R13: date-based vocabulary
 /// only). Public so it is directly unit-testable without a `Semantics`
-/// pump.
+/// pump. #138: the phrases come from [AppLocalizations] (#340's rule),
+/// same strings the centre label renders for `en`.
 String cycleWheelSemanticsLabel({
   required int cycleDay,
   required bool duringEpisode,
   required int cycleLengthDays,
   required int periodLengthDays,
+  required AppLocalizations l10n,
 }) {
-  final phase =
-      duringEpisode ? 'Period, day $cycleDay' : 'Cycle day $cycleDay';
-  return '$phase of about $cycleLengthDays days. Period usually runs about '
-      '$periodLengthDays days.';
+  final phase = duringEpisode
+      ? l10n.cycleWheelPhasePeriodDay(cycleDay)
+      : l10n.cycleWheelCenterCycleDay(cycleDay);
+  return l10n.cycleWheelSemanticsBody(phase, cycleLengthDays, periodLengthDays);
 }
 
 class CycleWheel extends StatelessWidget {
@@ -110,19 +113,22 @@ class CycleWheel extends StatelessWidget {
 
   final double diameter;
 
-  String get _centerLabel =>
-      duringEpisode ? 'Period · day $cycleDay' : 'Cycle day $cycleDay';
+  String _centerLabel(AppLocalizations l10n) => duringEpisode
+      ? l10n.cycleWheelCenterPeriodDay(cycleDay)
+      : l10n.cycleWheelCenterCycleDay(cycleDay);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.extension<LunarLogColors>();
+    final l10n = AppLocalizations.of(context);
     return Semantics(
       label: cycleWheelSemanticsLabel(
         cycleDay: cycleDay,
         duringEpisode: duringEpisode,
         cycleLengthDays: cycleLengthDays,
         periodLengthDays: periodLengthDays,
+        l10n: l10n,
       ),
       // The centre label `Text` below is purely visual duplication of this
       // node's own label -- without this, a screen reader would announce
@@ -147,7 +153,7 @@ class CycleWheel extends StatelessWidget {
           ),
           child: Center(
             child: Text(
-              _centerLabel,
+              _centerLabel(l10n),
               key: const ValueKey('cycle-wheel-center-label'),
               style: theme.textTheme.titleLarge,
               textAlign: TextAlign.center,

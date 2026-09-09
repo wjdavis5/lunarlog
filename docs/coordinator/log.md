@@ -15,3 +15,4 @@
 2026-09-09T13:24:56Z wave complete: PR #341 (#198 — incl. #335 flow-model integration by re-dispatched coder + Swift/event-gap fixes), PR #344 (#188 — salvage+complete, ci.yml drift-dump v9 bump by coordinator), PR #345 (#173 — health adapter, Swift nil-read fix by coordinator). All issues closed. Next wave picking.
 2026-09-09T13:26:16Z dispatched wave 5: #138 a11y pass, #197 calendar perf, #216 onboarding. Note: #143 closed by external session (unblocks #218 next wave).
 2026-09-09T13:33:13Z #197 dispatch superseded — already shipped externally as PR #339 (issue closed; coder correctly verified-and-abstained; worktree removed). Lesson: verify issue OPEN at dispatch time. Refilled slot with #218 (provisional tier, domain/data side).
+2026-09-09T14:49:39Z merged PR #349 (#216 onboarding) and PR #351 (#138 a11y). Filed+fixed #352 (actionlint linux-binary-on-mac-runner infra failure; arch-aware download landed via #349's branch). In flight: #218.
