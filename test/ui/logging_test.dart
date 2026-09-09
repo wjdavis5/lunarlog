@@ -47,6 +47,15 @@ import '../support/fake_sync_engine.dart';
 /// Fixed "today" so month defaults and future locks are deterministic.
 final LocalDate kToday = LocalDate(2026, 8, 30);
 
+/// The `EmptyState` key for one page's empty-month banner (issue #312
+/// review: the key is now unique per page — `calendar-month-empty-$year-
+/// $month` — rather than one constant shared by every page in the
+/// `PageView`). Matches the currently-settled page (`kToday`'s month by
+/// default) so callers do not have to spell out the interpolation
+/// themselves.
+Key emptyStateKeyFor({int year = 2026, int month = 8}) =>
+    ValueKey('calendar-month-empty-$year-$month');
+
 class Harness {
   Harness(
     this.db,
@@ -297,7 +306,7 @@ void main() {
         '(issue #187)', (tester) async {
       final h = await pumpLogging(tester);
 
-      expect(find.byKey(const ValueKey('calendar-month-empty')), findsOneWidget);
+      expect(find.byKey(emptyStateKeyFor()), findsOneWidget);
       expect(find.text('No entries this month'), findsOneWidget);
       expect(find.text('Tap a day to log it'), findsOneWidget);
 
@@ -312,7 +321,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const ValueKey('calendar-month-empty')),
+        find.byKey(emptyStateKeyFor()),
         findsNothing,
         reason: 'the displayed month now has an entry',
       );
@@ -334,7 +343,7 @@ void main() {
 
       // August 2026 (today's month) has the seeded entry -- no banner.
       expect(
-        find.byKey(const ValueKey('calendar-month-empty')),
+        find.byKey(emptyStateKeyFor()),
         findsNothing,
         reason: 'the displayed month has an entry',
       );
@@ -343,7 +352,7 @@ void main() {
       await showMonth(tester, 2026, 6);
 
       expect(
-        find.byKey(const ValueKey('calendar-month-empty')),
+        find.byKey(emptyStateKeyFor(year: 2026, month: 6)),
         findsOneWidget,
         reason: 'June 2026 has no entries even though August does',
       );
