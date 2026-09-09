@@ -1944,6 +1944,15 @@ void main() {
         'two-choice dialog; Sync now requests a cycle; discard resets', (
       tester,
     ) async {
+      // Issue #157 review fix (mirrors #325): the settings list grew a row
+      // (`ClinicalExportTile`, "Your data" section) tall enough to push the
+      // sign-out tiles below the default 800x600 test viewport, so `tap()`
+      // misses them without a taller surface.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final h = AccountHarness(tester);
       await h.pump(
         seed: (db) async {
@@ -1987,6 +1996,15 @@ void main() {
 
     testWidgets('zero dirty rows: single confirm naming the consequence, '
         'reset, first-run, signOutCalls == [local]', (tester) async {
+      // Issue #157 review fix (mirrors #325): the settings list grew a row
+      // (`ClinicalExportTile`, "Your data" section) tall enough to push the
+      // sign-out tiles below the default 800x600 test viewport, so `tap()`
+      // misses them without a taller surface.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final h = AccountHarness(tester);
       await h.pump(seed: AccountHarness.seedOneProfile);
       h.signIn();
@@ -2013,11 +2031,11 @@ void main() {
 
     testWidgets('Sign out everywhere states the expiry caveat, calls '
         'signOut(global), then resets', (tester) async {
-      // Issue #140 added a new "Import from file" tile above the Account
-      // section, pushing "Sign out everywhere" below the default 800x600
-      // test viewport — same taller-surface fix used elsewhere in this
-      // suite for a long Settings/scroll list (e.g. overview_test.dart).
-      tester.view.physicalSize = const Size(800, 1400);
+      // Issue #157 review fix (mirrors #325): the settings list grew a row
+      // (`ClinicalExportTile`, "Your data" section) tall enough to push
+      // "Sign out everywhere" below the default 800x600 test viewport, so
+      // `tap()` misses it without a taller surface.
+      tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -2050,8 +2068,9 @@ void main() {
 
     testWidgets('Sign out everywhere when global sign out fails still runs '
         'reset and shows snackbar', (tester) async {
-      // See the sibling test above for why this is needed (Issue #140).
-      tester.view.physicalSize = const Size(800, 1400);
+      // Issue #157 review fix (mirrors #325) — see the taller-viewport
+      // note on the previous test.
+      tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);

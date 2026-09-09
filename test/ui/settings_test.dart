@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -37,7 +38,15 @@ class _FakeProfilesRepository implements ProfilesRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Issue #157 review fix: `SettingsScreen`'s "Your data placement" tests
+/// now also render `ClinicalExportTile`, whose `initState` calls
+/// `listForProfile` (to decide whether the tile is enabled) — this fake
+/// must answer that call rather than fall through to `noSuchMethod`, same
+/// as `test/ui/your_data_section_test.dart`'s own `FakeDayEntriesRepository`.
 class _FakeDayEntriesRepository implements DayEntriesRepository {
+  @override
+  Future<List<DayEntry>> listForProfile(String profileId) async => const [];
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
