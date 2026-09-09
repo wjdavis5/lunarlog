@@ -46,20 +46,35 @@
 ///     that is exactly the case [HealthSyncCheck.notOwner] exists to
 ///     catch.
 ///  3. **Minor gate**: a profile counts as a minor when either
-///     [Profile.isMinor] is set, or it is not set but the profile is under
-///     18 by [Profile.birthYear] — unticking "Minor" in the profile dialog
+///     [Profile.isMinor] is set, or it is not set but the profile is at
+///     most 18 by coarse-year arithmetic against [Profile.birthYear]
+///     (`<= 18`, the fail-closed direction — issue #296; someone born late
+///     in year Y is still 17 for most of year Y+18 and a year-only check
+///     cannot see the birthday) — unticking "Minor" in the profile dialog
 ///     must never by itself clear this deny. A minor profile is refused
-///     unless [Profile.transferredAt] is non-null *and* the signed-in
-///     account is the profile's resolved owner (ownership actually
-///     transferred to the minor's own account via issue #4's existing
-///     transfer flow — never a device-local override), *and*
+///     unless the last ownership transfer targeted the signed-in account
+///     *itself* — [Profile.transferredAt] non-null *and*
+///     [Profile.transferredToUserId] (issue #296's server-stamped
+///     "transferred to whom" signal, written only by
+///     `accept_ownership_transfer`) equal to the signed-in user id *and*
+///     the signed-in account is the profile's resolved owner (never a
+///     device-local override) — *and*
 ///     `AppConfig.healthSyncMinorBindingAllowed` (`lib/config.dart`) is
-///     `true`. That flag is a single hardcoded constant, not a parameter
+///     `true`. A missing target (a pre-#296 row, or a row from a server
+///     that has not applied the #296 migration) fails closed. That flag is
+///     a single hardcoded constant, not a parameter
 ///     either entry point accepts, precisely so no future call site can
 ///     invent its own per-call bypass — the same mistake condition 1's
 ///     fix above closes. It is `false` in every build today, so this path
 ///     is categorically closed regardless of transfer state until a
-///     platform adapter exists to exercise it.
+///     platform adapter exists to exercise it. One honest limit, recorded
+///     for #295: the transferred-to signal proves the last transfer was
+///     addressed to the signed-in account; the data model has no
+///     profile-subject-to-account link, so "the minor's own account"
+///     versus "another adult account the parent handed the link to" is
+///     still not distinguishable client-side — which is exactly why the
+///     flag above stays `false` until #295 (and #188's server-side
+///     consent) land.
 ///
 /// Server-side enforcement of the same consent (a `profiles`-table column
 /// gating writes at the database layer, so a compromised or modified
@@ -88,13 +103,16 @@ enum HealthSyncCheck {
   /// A profile is bound to this device, but not the one being checked.
   profileNotBound,
 
-  /// The profile counts as a minor (flagged, or under 18 by birth year)
-  /// and at least one of: ownership has never transferred to the minor's
-  /// own account ([Profile.transferredAt] is null), the signed-in account
-  /// is not that owner, or `AppConfig.healthSyncMinorBindingAllowed` is
-  /// off. Binding a minor requires all three — issue #4's transfer flow,
-  /// then the minor's own signed-in account, then the feature itself
-  /// enabled — never a device-local override.
+  /// The profile counts as a minor (flagged, or at most 18 by the coarse
+  /// birth-year check) and at least one of: ownership has never
+  /// transferred ([Profile.transferredAt] is null), the last transfer did
+  /// not target the signed-in account ([Profile.transferredToUserId] is
+  /// null or names another account — issue #296), the signed-in account is
+  /// not the profile's resolved owner, or
+  /// `AppConfig.healthSyncMinorBindingAllowed` is off. Binding a minor
+  /// requires all of them — issue #4's transfer flow addressed to this
+  /// account, then that account signed in and resolving as the owner, then
+  /// the feature itself enabled — never a device-local override.
   minorRequiresOwnershipTransfer,
 
   /// The signed-in account does not hold an accepted `primary_guardian`
