@@ -19,11 +19,12 @@
 ///   * fertile days / ovulation days — `fertile_window.dart`'s
 ///     calendar-method back-calculation applied to every forecast cycle,
 ///     exactly as the sharer's own forward calendar renders them;
-///   * PMS days — the fixed `kPmsLeadDays` window before the live
-///     estimate, mirroring `forecast.dart`'s live-estimate-only PMS badge.
-///     Issue #220 ("PMS as a predicted phase") may replace this source
-///     with a first-class engine phase; the projection shape does not
-///     change when it does.
+///   * PMS days — `ActivePrediction.pms`'s first-class #220 phase band
+///     (empty when the estimate carries no PMS phase), the exact span the
+///     sharer's own overview renders. (Fixed on 2026-09-07: #151 had
+///     shipped against `forecast.dart`'s retired fixed `kPmsLeadDays`
+///     window, which #220 had already deleted — the compile break this
+///     fix resolves, discovered by #178's analyze gate.)
 ///
 /// Pure Dart: no Flutter and no Supabase types cross this boundary.
 library;
@@ -31,16 +32,6 @@ library;
 import '../models/local_date.dart';
 import '../prediction/fertile_window.dart';
 import '../prediction/prediction.dart';
-
-/// The fixed PMS lead window (days before the estimated next start) this
-/// projection shares. Restored locally after PR #369 deleted forecast.dart's
-/// `kPmsLeadDays` while this file still imported it, leaving `main`'s
-/// analyzer red — the exact breakage this file's doc comment anticipated.
-/// Issue #220 made the *calendar's* PMS badge data-driven; replacing this
-/// fixed window with the first-class engine phase is that same follow-up.
-/// Until it lands, the projection keeps the exact -7..-1 span its own test
-/// pins, and the shared shape never changes.
-const int _kPmsLeadDays = 7;
 
 /// Server-side bound, mirrored in the migration's payload trigger: each
 /// date array holds at most 100 entries (a 12-cycle forecast of the
@@ -218,11 +209,19 @@ PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
     }
   }
 
-  // PMS: the fixed lead window before the live estimate only — the same
-  // span forecast.dart's live-estimate PMS badge covers (issue #220 may
-  // replace this with a first-class phase; see the library doc).
+  // PMS: the first-class #220 phase band (`ActivePrediction.pms`) — the
+  // exact span the sharer's own overview renders. Empty when the estimate
+  // carries no PMS phase (below the logged-interval minimum, or the
+  // seeded/provisional path, which never invents PMS history). The
+  // projection's own library doc anticipated this source switch when
+  // #220 landed; the old fixed `kPmsLeadDays` window is gone.
+  final pms = prediction.pms;
   final pmsDays = <LocalDate>{
-    for (var i = _kPmsLeadDays; i >= 1; i--) prediction.estimatedNextStart.addDays(-i),
+    if (pms != null)
+      for (var d = pms.predictedStart;
+          d.difference(pms.predictedEnd) <= 0;
+          d = d.addDays(1))
+        d,
   };
 
   return PredictionProjection(

@@ -17,6 +17,14 @@
 /// the pre-#136 defaults from its care-mode [ReminderPreset] — the plan is
 /// byte-identical to what the two hardcoded kinds produced.
 ///
+/// Issue #178 completes the Clue "Your Cycle" catalogue on the same
+/// per-type model: `periodStartingSoon` (the same estimate anchor at a
+/// longer lead than the due reminder), `fertileWindowSoon` (anchored to
+/// the next still-ahead fertile window from #143's estimation), and
+/// `cycleStatisticChange` (event-driven — plans only on the date the
+/// coordinator observed a meaningful displayed-statistic change, see
+/// `lib/domain/notifications/statistic_change.dart`). All three ship off.
+///
 /// Transition-driven, not pre-computed (Issue #136): the coordinator
 /// replans on every prediction emission (becoming active, becoming late,
 /// any estimate shift — however small) and every app resume, and every
@@ -32,6 +40,7 @@ import 'package:lunarlog/domain/notifications/notification_preferences.dart'
     show QuietHours;
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
+import 'package:lunarlog/domain/prediction/fertile_window.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 export 'package:lunarlog/domain/notifications/reminder_config.dart'
@@ -57,16 +66,23 @@ const int kMaxPendingReminders = 60;
 const String kReminderTitle = 'A reminder from Lunarlog';
 const String kReminderBody = 'Open Lunarlog to see what it is about.';
 
-/// Eviction priority under the [kMaxPendingReminders] cap (Issue #136):
-/// lower is kept longer. The documented eviction order is late over
-/// upcoming over PMS-watch over log-nudge — the daily nudge, the most
-/// reproducible of the four, is the first thing dropped when the cap
-/// binds.
+/// Eviction priority under the [kMaxPendingReminders] cap (Issue #136,
+/// widened by Issue #178): lower is kept longer. The documented eviction
+/// order is late over upcoming over period-starting-soon over PMS-watch
+/// over fertile-window-soon over statistic-change over log-nudge — the
+/// daily nudge, the most reproducible of the seven, is still the first
+/// thing dropped when the cap binds, and the event-driven statistic-change
+/// nudge ranks below the date-anchored kinds because its signal can be
+/// re-observed (a later replan over the same change) while a past date
+/// anchor cannot.
 int evictionPriority(ReminderKind kind) => switch (kind) {
       ReminderKind.late => 0,
       ReminderKind.upcoming => 1,
-      ReminderKind.pms => 2,
-      ReminderKind.log => 3,
+      ReminderKind.periodStartingSoon => 2,
+      ReminderKind.pms => 3,
+      ReminderKind.fertileWindowSoon => 4,
+      ReminderKind.cycleStatisticChange => 5,
+      ReminderKind.log => 6,
     };
 
 /// A deterministic 31-bit notification id derived from the reminder's
@@ -129,9 +145,10 @@ class PlannedReminder {
 /// present, its stored [ReminderConfig] (Issue #136, R10/R11).
 ///
 /// Profiles without a live estimate ([NotEnoughHistory]) produce nothing —
-/// no partial signals — except the prediction-independent daily log nudge,
+/// no partial signals — except the prediction-independent types (the daily
+/// log nudge and, Issue #178, the event-driven statistic-change nudge),
 /// which a profile with *no* estimate still gets when its config enables
-/// it (a nudge is most valuable exactly when history is thin). Issue
+/// them (a nudge is most valuable exactly when history is thin). Issue
 /// #221/A2-12 folded the old "paused past sixty days" dead end into
 /// [ActivePrediction] itself (flagged
 /// [ActivePrediction.unusuallyLongCycle]), so that state now plans
@@ -144,21 +161,30 @@ class PlannedReminder {
 /// [lateSnoozes] entry is on or after [today] (the "Not yet" action's
 /// three-day snooze) contributes no late reminders.
 ///
+/// [statisticChangeSignals] (Issue #178) carries, per profile, the date a
+/// meaningful displayed-statistic change was observed by the coordinator
+/// (`lib/domain/notifications/statistic_change.dart`). The
+/// `cycleStatisticChange` kind plans a single reminder on that date when
+/// enabled; a signal dated before [today] is stale and plans nothing.
+///
 /// Same-day duplicates coalesce per profile: after quiet-hours shifting,
 /// at most one reminder per profile per fire date survives, the winner
-/// decided by the eviction priority (late over upcoming over PMS-watch
-/// over log-nudge). The result is sorted by fire date and capped at
-/// [kMaxPendingReminders], evicting in the same priority order.
+/// decided by the eviction priority (late over upcoming over
+/// period-starting-soon over PMS-watch over fertile-window-soon over
+/// statistic-change over log-nudge). The result is sorted by fire date and
+/// capped at [kMaxPendingReminders], evicting in the same priority order.
 List<PlannedReminder> planReminders({
   required LocalDate today,
   required Map<String, ActivePrediction> predictions,
   Map<String, ReminderPreset> presets = const {},
   Map<String, ReminderConfig> configs = const {},
   Map<String, LocalDate> lateSnoozes = const {},
+  Map<String, LocalDate> statisticChangeSignals = const {},
 }) {
   final planned = <PlannedReminder>[];
-  // The log nudge plans even without a prediction (its config entry can
-  // name a profile the prediction stream has nothing for yet).
+  // The prediction-independent types plan even without a prediction (a
+  // config entry can name a profile the prediction stream has nothing for
+  // yet).
   final ids = {...predictions.keys, ...configs.keys};
   for (final id in ids) {
     final preset = presets[id] ?? ReminderPreset.all;
@@ -169,19 +195,22 @@ List<PlannedReminder> planReminders({
       prediction: predictions[id],
       config: config,
       snoozeUntil: lateSnoozes[id],
+      statisticSignal: statisticChangeSignals[id],
     ));
   }
   return _coalesceAndCap(planned);
 }
 
-/// One profile's plan: the prediction-independent types (log nudge), then
-/// — when a live prediction exists — the estimate-relative types.
+/// One profile's plan: the prediction-independent types (log nudge,
+/// statistic-change signal), then — when a live prediction exists — the
+/// estimate-relative types.
 List<PlannedReminder> _planProfile({
   required String profileId,
   required LocalDate today,
   required ActivePrediction? prediction,
   required ReminderConfig config,
   required LocalDate? snoozeUntil,
+  required LocalDate? statisticSignal,
 }) {
   final planned = <PlannedReminder>[];
   if (config.log.enabled) {
@@ -195,6 +224,20 @@ List<PlannedReminder> _planProfile({
       ));
     }
   }
+  // Issue #178: the statistic-change reminder is event-driven — it plans
+  // only on the date the coordinator observed a meaningful change, never
+  // as a forward window. A stale (past) signal plans nothing.
+  if (config.cycleStatisticChange.enabled &&
+      statisticSignal != null &&
+      !statisticSignal.isBefore(today)) {
+    planned.add(_planOne(
+      profileId,
+      ReminderKind.cycleStatisticChange,
+      statisticSignal,
+      config.cycleStatisticChange.timeOfDayMinutes,
+      config.quietHours,
+    ));
+  }
   if (prediction == null) return planned;
   final snoozed = snoozeUntil != null && snoozeUntil.compareTo(today) >= 0;
   planned.addAll(_planEstimateRelative(
@@ -207,9 +250,10 @@ List<PlannedReminder> _planProfile({
   return planned;
 }
 
-/// The prediction-anchored types: period-due and PMS-watch fire only when
-/// their configured moment is still in the future; the late window
-/// pre-arms a bounded daily run starting today.
+/// The prediction-anchored types: period-due, period-starting-soon,
+/// PMS-watch, and fertile-window-soon fire only when their configured
+/// moment is still in the future; the late window pre-arms a bounded daily
+/// run starting today.
 List<PlannedReminder> _planEstimateRelative({
   required String profileId,
   required LocalDate today,
@@ -217,30 +261,18 @@ List<PlannedReminder> _planEstimateRelative({
   required ReminderConfig config,
   required bool snoozed,
 }) {
-  final planned = <PlannedReminder>[];
-  final estimate = prediction.estimatedNextStart;
-  final upcomingOn =
-      estimate.addDays(-config.upcoming.effectiveLeadDays(kUpcomingDefaultLeadDays));
-  if (config.upcoming.enabled && upcomingOn.compareTo(today) > 0) {
-    planned.add(_planOne(
-      profileId,
-      ReminderKind.upcoming,
-      upcomingOn,
-      config.upcoming.timeOfDayMinutes,
-      config.quietHours,
-    ));
-  }
-  final pmsOn =
-      estimate.addDays(-config.pms.effectiveLeadDays(kPmsDefaultLeadDays));
-  if (config.pms.enabled && pmsOn.compareTo(today) > 0) {
-    planned.add(_planOne(
-      profileId,
-      ReminderKind.pms,
-      pmsOn,
-      config.pms.timeOfDayMinutes,
-      config.quietHours,
-    ));
-  }
+  final planned = _planEstimateAnchored(
+    profileId: profileId,
+    today: today,
+    prediction: prediction,
+    config: config,
+  );
+  planned.addAll(_planFertileWindowSoon(
+    profileId: profileId,
+    today: today,
+    prediction: prediction,
+    config: config,
+  ));
   if (config.late.enabled && prediction.isLate && !snoozed) {
     for (var i = 0; i < kLatePreArmDays; i++) {
       planned.add(_planOne(
@@ -253,6 +285,91 @@ List<PlannedReminder> _planEstimateRelative({
     }
   }
   return planned;
+}
+
+/// The estimate-anchored kinds (Issue #136's upcoming and PMS-watch plus
+/// Issue #178's period-starting-soon): each fires at
+/// `estimatedNextStart − leadDays` when enabled and still ahead of
+/// [today]. Period-starting-soon anchors on the same estimate at its own,
+/// longer lead — a separate reminder, not a second lead time of the due
+/// one (Clue ships the two as independently configurable reminders).
+List<PlannedReminder> _planEstimateAnchored({
+  required String profileId,
+  required LocalDate today,
+  required ActivePrediction prediction,
+  required ReminderConfig config,
+}) {
+  final planned = <PlannedReminder>[];
+  final estimate = prediction.estimatedNextStart;
+  final anchored = <(ReminderKind, ReminderTypeConfig, int)>[
+    (
+      ReminderKind.upcoming,
+      config.upcoming,
+      config.upcoming.effectiveLeadDays(kUpcomingDefaultLeadDays)
+    ),
+    (
+      ReminderKind.periodStartingSoon,
+      config.periodStartingSoon,
+      config.periodStartingSoon
+          .effectiveLeadDays(kPeriodStartingSoonDefaultLeadDays)
+    ),
+    (
+      ReminderKind.pms,
+      config.pms,
+      config.pms.effectiveLeadDays(kPmsDefaultLeadDays)
+    ),
+  ];
+  for (final (kind, typeConfig, leadDays) in anchored) {
+    final fireOn = estimate.addDays(-leadDays);
+    if (typeConfig.enabled && fireOn.compareTo(today) > 0) {
+      planned.add(_planOne(
+        profileId,
+        kind,
+        fireOn,
+        typeConfig.timeOfDayMinutes,
+        config.quietHours,
+      ));
+    }
+  }
+  return planned;
+}
+
+/// Issue #178 (Clue item 4): anchored to the next *still-ahead* fertile
+/// window, derived by #143's own `fertileWindowFor` over the forecast —
+/// never a second window formula here. The first forecast cycle whose
+/// soon-moment is future wins; a window already started (or wholly past,
+/// like `estimateFertileWindow`'s next-cycle window by mid-cycle) plans
+/// nothing. No window ahead of the lead ⇒ no reminder: the kind cannot
+/// fire against absent data.
+List<PlannedReminder> _planFertileWindowSoon({
+  required String profileId,
+  required LocalDate today,
+  required ActivePrediction prediction,
+  required ReminderConfig config,
+}) {
+  final typeConfig = config.fertileWindowSoon;
+  if (!typeConfig.enabled) return const [];
+  final fertileLead =
+      typeConfig.effectiveLeadDays(kFertileWindowSoonDefaultLeadDays);
+  for (final cycle in prediction.forecast) {
+    final window = fertileWindowFor(
+      start: cycle.start,
+      tier: cycle.tier,
+    );
+    final fireOn = window.windowStart.addDays(-fertileLead);
+    if (fireOn.compareTo(today) > 0) {
+      return [
+        _planOne(
+          profileId,
+          ReminderKind.fertileWindowSoon,
+          fireOn,
+          typeConfig.timeOfDayMinutes,
+          config.quietHours,
+        ),
+      ];
+    }
+  }
+  return const [];
 }
 
 /// Builds one reminder with its quiet-hours shift applied (R10): a fire

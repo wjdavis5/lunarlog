@@ -37,6 +37,20 @@ const int kUpcomingDefaultLeadDays = 2;
 /// give earlier notice than the due reminder, not to duplicate it.
 const int kPmsDefaultLeadDays = 4;
 
+/// Days before the estimate the period-starting-soon reminder (Issue #178,
+/// Clue catalogue item 1) fires by default. Deliberately *longer* than the
+/// period-due lead: Clue ships "Period starting soon" and "Period due" as
+/// two separate, independently configurable reminders, not one reminder
+/// with two lead times, and the "soon" one exists to give the earlier
+/// heads-up.
+const int kPeriodStartingSoonDefaultLeadDays = 4;
+
+/// Days before the predicted fertile window's start the fertile-window-soon
+/// reminder (Issue #178, Clue catalogue item 4) fires by default. Anchored
+/// to the window itself (via #143's estimation), not to the period
+/// estimate, so its default lead is the smaller due-style heads-up.
+const int kFertileWindowSoonDefaultLeadDays = 2;
+
 /// The default fire time-of-day for every reminder type, in minutes since
 /// local midnight: 09:00 — the pre-#136 hardcoded hour
 /// (`notification_scheduler.dart`'s `hour = 9`), now adjustable per type.
@@ -96,12 +110,34 @@ class ReminderTypeConfig {
     timeOfDayMinutes: kDefaultReminderTimeMinutes,
   );
 
+  /// Issue #178's kinds all ship **off**: they are opt-ins, not part of any
+  /// pre-#178 behavior, and a profile that never opens the reminder
+  /// settings must keep planning exactly what it always planned.
+  static const ReminderTypeConfig periodStartingSoon = ReminderTypeConfig(
+    enabled: false,
+    leadDays: kPeriodStartingSoonDefaultLeadDays,
+    timeOfDayMinutes: kDefaultReminderTimeMinutes,
+  );
+  static const ReminderTypeConfig fertileWindowSoon = ReminderTypeConfig(
+    enabled: false,
+    leadDays: kFertileWindowSoonDefaultLeadDays,
+    timeOfDayMinutes: kDefaultReminderTimeMinutes,
+  );
+  static const ReminderTypeConfig cycleStatisticChange = ReminderTypeConfig(
+    enabled: false,
+    // Event-driven: fires on the day a meaningful statistic change is
+    // observed, so there is no estimate anchor and no lead days.
+    timeOfDayMinutes: kDefaultReminderTimeMinutes,
+  );
+
   final bool enabled;
 
-  /// Days before the predicted start this reminder fires. Only the
-  /// estimate-relative types (upcoming, PMS-watch) carry one; the late
-  /// window and the daily log nudge have no estimate anchor, so this is
-  /// null (and ignored) for them.
+  /// Days before their anchor this reminder fires. Only the
+  /// estimate-relative types (upcoming, PMS-watch, period-starting-soon)
+  /// and the fertile-window-anchored type (fertile-window-soon) carry one;
+  /// the late window, the daily log nudge, and the event-driven
+  /// statistic-change kind have no forward anchor, so this is null (and
+  /// ignored) for them.
   final int? leadDays;
 
   /// Fire time-of-day, minutes since local midnight (0-1439).
@@ -167,13 +203,17 @@ class ReminderTypeConfig {
       'timeOfDayMinutes: $timeOfDayMinutes)';
 }
 
-/// One profile's full local reminder configuration (Issue #136): the four
-/// reminder types plus an optional daily quiet-hours window.
+/// One profile's full local reminder configuration (Issue #136, widened by
+/// Issue #178): the reminder types plus an optional daily quiet-hours
+/// window.
 class ReminderConfig {
   const ReminderConfig({
     this.upcoming = ReminderTypeConfig.upcoming,
+    this.periodStartingSoon = ReminderTypeConfig.periodStartingSoon,
     this.pms = ReminderTypeConfig.pms,
+    this.fertileWindowSoon = ReminderTypeConfig.fertileWindowSoon,
     this.late = ReminderTypeConfig.late,
+    this.cycleStatisticChange = ReminderTypeConfig.cycleStatisticChange,
     this.log = ReminderTypeConfig.log,
     this.quietHours,
   });
@@ -185,8 +225,20 @@ class ReminderConfig {
   static const ReminderConfig standard = ReminderConfig();
 
   final ReminderTypeConfig upcoming;
+
+  /// Issue #178 (Clue catalogue item 1): the longer-lead sibling of
+  /// [upcoming].
+  final ReminderTypeConfig periodStartingSoon;
   final ReminderTypeConfig pms;
+
+  /// Issue #178 (Clue catalogue item 4): anchored to the predicted fertile
+  /// window (#143), not to the period estimate.
+  final ReminderTypeConfig fertileWindowSoon;
   final ReminderTypeConfig late;
+
+  /// Issue #178 (Clue catalogue item 5): fires on the day a meaningful
+  /// displayed-statistic change is observed — no forward anchor.
+  final ReminderTypeConfig cycleStatisticChange;
   final ReminderTypeConfig log;
 
   /// Local quiet hours: a fire that would land inside the window shifts to
@@ -217,16 +269,22 @@ class ReminderConfig {
 
   ReminderConfig copyWith({
     ReminderTypeConfig? upcoming,
+    ReminderTypeConfig? periodStartingSoon,
     ReminderTypeConfig? pms,
+    ReminderTypeConfig? fertileWindowSoon,
     ReminderTypeConfig? late,
+    ReminderTypeConfig? cycleStatisticChange,
     ReminderTypeConfig? log,
     QuietHours? quietHours,
     bool clearQuietHours = false,
   }) =>
       ReminderConfig(
         upcoming: upcoming ?? this.upcoming,
+        periodStartingSoon: periodStartingSoon ?? this.periodStartingSoon,
         pms: pms ?? this.pms,
+        fertileWindowSoon: fertileWindowSoon ?? this.fertileWindowSoon,
         late: late ?? this.late,
+        cycleStatisticChange: cycleStatisticChange ?? this.cycleStatisticChange,
         log: log ?? this.log,
         quietHours: clearQuietHours ? null : (quietHours ?? this.quietHours),
       );
@@ -235,23 +293,32 @@ class ReminderConfig {
   /// adding a kind without a config mapping is a compile error.
   ReminderTypeConfig typeConfig(ReminderKind kind) => switch (kind) {
         ReminderKind.upcoming => upcoming,
+        ReminderKind.periodStartingSoon => periodStartingSoon,
         ReminderKind.pms => pms,
+        ReminderKind.fertileWindowSoon => fertileWindowSoon,
         ReminderKind.late => late,
+        ReminderKind.cycleStatisticChange => cycleStatisticChange,
         ReminderKind.log => log,
       };
 
   ReminderConfig withTypeConfig(ReminderKind kind, ReminderTypeConfig c) =>
       switch (kind) {
         ReminderKind.upcoming => copyWith(upcoming: c),
+        ReminderKind.periodStartingSoon => copyWith(periodStartingSoon: c),
         ReminderKind.pms => copyWith(pms: c),
+        ReminderKind.fertileWindowSoon => copyWith(fertileWindowSoon: c),
         ReminderKind.late => copyWith(late: c),
+        ReminderKind.cycleStatisticChange => copyWith(cycleStatisticChange: c),
         ReminderKind.log => copyWith(log: c),
       };
 
   Map<String, Object?> toJson() => {
         'upcoming': upcoming.toJson(),
+        'periodStartingSoon': periodStartingSoon.toJson(),
         'pms': pms.toJson(),
+        'fertileWindowSoon': fertileWindowSoon.toJson(),
         'late': late.toJson(),
+        'cycleStatisticChange': cycleStatisticChange.toJson(),
         'log': log.toJson(),
         if (quietHours != null) ...{
           'quietStart': quietHours!.startMinutes,
@@ -261,7 +328,10 @@ class ReminderConfig {
 
   /// Tolerant decode from [ReminderTypeConfig.fromJson]'s fallbacks: any
   /// malformed field degrades to that type's stock default rather than
-  /// throwing or silently disabling reminders.
+  /// throwing or silently disabling reminders. A stored document written
+  /// before Issue #178 has no keys for the new kinds at all — they decode
+  /// to their off-by-default stock configs, which is exactly what that
+  /// profile was doing.
   static ReminderConfig fromJson(Map<String, Object?> json) {
     Map<String, Object?> section(String key, ReminderTypeConfig defaults) =>
         json[key] is Map<String, Object?>
@@ -273,10 +343,20 @@ class ReminderConfig {
       upcoming: ReminderTypeConfig.fromJson(
           section('upcoming', ReminderTypeConfig.upcoming),
           ReminderTypeConfig.upcoming),
+      periodStartingSoon: ReminderTypeConfig.fromJson(
+          section('periodStartingSoon', ReminderTypeConfig.periodStartingSoon),
+          ReminderTypeConfig.periodStartingSoon),
       pms: ReminderTypeConfig.fromJson(
           section('pms', ReminderTypeConfig.pms), ReminderTypeConfig.pms),
+      fertileWindowSoon: ReminderTypeConfig.fromJson(
+          section('fertileWindowSoon', ReminderTypeConfig.fertileWindowSoon),
+          ReminderTypeConfig.fertileWindowSoon),
       late: ReminderTypeConfig.fromJson(
           section('late', ReminderTypeConfig.late), ReminderTypeConfig.late),
+      cycleStatisticChange: ReminderTypeConfig.fromJson(
+          section(
+              'cycleStatisticChange', ReminderTypeConfig.cycleStatisticChange),
+          ReminderTypeConfig.cycleStatisticChange),
       log: ReminderTypeConfig.fromJson(
           section('log', ReminderTypeConfig.log), ReminderTypeConfig.log),
       quietHours: quietStart is int && quietEnd is int
@@ -289,29 +369,51 @@ class ReminderConfig {
   bool operator ==(Object other) =>
       other is ReminderConfig &&
       other.upcoming == upcoming &&
+      other.periodStartingSoon == periodStartingSoon &&
       other.pms == pms &&
+      other.fertileWindowSoon == fertileWindowSoon &&
       other.late == late &&
+      other.cycleStatisticChange == cycleStatisticChange &&
       other.log == log &&
       other.quietHours == quietHours;
 
   @override
-  int get hashCode => Object.hash(upcoming, pms, late, log, quietHours);
+  int get hashCode => Object.hash(upcoming, periodStartingSoon, pms,
+      fertileWindowSoon, late, cycleStatisticChange, log, quietHours);
 
   @override
   String toString() =>
-      'ReminderConfig(upcoming: $upcoming, pms: $pms, late: $late, '
-      'log: $log, quietHours: $quietHours)';
+      'ReminderConfig(upcoming: $upcoming, periodStartingSoon: '
+      '$periodStartingSoon, pms: $pms, fertileWindowSoon: $fertileWindowSoon, '
+      'late: $late, cycleStatisticChange: $cycleStatisticChange, log: $log, '
+      'quietHours: $quietHours)';
 }
 
-/// The reminder kinds (Issue #136), canonical here so both the
-/// configuration and the planner (`scheduling.dart`, which re-exports this
-/// name for its existing callers) share one closed set:
+/// The reminder kinds (Issue #136; Issue #178 adds the rest of the Clue
+/// "Your Cycle" catalogue), canonical here so both the configuration and
+/// the planner (`scheduling.dart`, which re-exports this name for its
+/// existing callers) share one closed set:
 ///
 /// * [upcoming] — the period-due reminder, estimate − leadDays.
+/// * [periodStartingSoon] — the longer-lead sibling of [upcoming]
+///   (Issue #178), estimate − (longer) leadDays.
 /// * [pms] — the PMS-watch reminder, estimate − (longer) leadDays.
+/// * [fertileWindowSoon] — anchored to the predicted fertile window's start
+///   (#143 estimation), window start − leadDays (Issue #178).
 /// * [late] — the pre-armed daily window once the cycle runs late.
+/// * [cycleStatisticChange] — fires the day a meaningful displayed
+///   statistic change is observed; event-driven, no forward anchor
+///   (Issue #178).
 /// * [log] — the daily log nudge, prediction-independent.
-enum ReminderKind { upcoming, pms, late, log }
+enum ReminderKind {
+  upcoming,
+  periodStartingSoon,
+  pms,
+  fertileWindowSoon,
+  late,
+  cycleStatisticChange,
+  log,
+}
 
 /// Encodes a [ReminderConfig] map as the JSON string the settings store
 /// keeps — the same document shape [decodeReminderConfigs] parses.
