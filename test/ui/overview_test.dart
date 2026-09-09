@@ -67,7 +67,11 @@ final List<LocalDate> kNotEnoughStarts = [
   LocalDate(2026, 7, 29),
 ];
 
-/// Four 30-day episodes ending 2026-06-26: open cycle 65 days > 60 → paused.
+/// Four 30-day episodes ending 2026-06-26: open cycle 65 days > 60 →
+/// unusually long (issue #221/A2-12: no more dead-end pause). Original
+/// estimate Jul 26, 35 days late by Aug 30 → rolled forward twice (30-day
+/// mean) to Sep 24 (still within kAverageWindowCycles(6), so the spread is
+/// exactly 0 — the estimate stays a single date, not a range).
 final List<LocalDate> kPausedStarts = [
   LocalDate(2026, 3, 28),
   LocalDate(2026, 4, 27),
@@ -75,8 +79,10 @@ final List<LocalDate> kPausedStarts = [
   LocalDate(2026, 6, 26),
 ];
 
-/// Five 28-day episodes ending 2026-07-05: estimate 2026-08-02, today is 28
-/// days past → more than the 2-day grace → late.
+/// Five 28-day episodes ending 2026-07-05: original estimate 2026-08-02,
+/// 28 days past it by kToday (2026-08-30) → more than the 2-day grace →
+/// late. Issue #221: the estimate itself rolls forward one 28-day mean
+/// cycle to land exactly on kToday (2026-08-30).
 final List<LocalDate> kLateStarts = [
   LocalDate(2026, 3, 15),
   LocalDate(2026, 4, 12),
@@ -325,27 +331,93 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets('paused state (>60-day open cycle) shows awaiting next '
-        'period and no estimate', (tester) async {
+    testWidgets('unusually-long-cycle state (>60-day open cycle) keeps a '
+        'live rolled estimate and the "unusually long" prompt — issue '
+        '#221/A2-12: no more dead-end pause', (tester) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kPausedStarts),
       );
 
-      expect(find.text('Awaiting next period'), findsOneWidget);
-      expect(find.text('Predictions are paused until the next period is '
-          'logged.'), findsOneWidget);
-      expect(find.textContaining('days until next period'), findsNothing);
-      expect(find.textContaining('Next period estimate'), findsNothing);
-      // Issue #132 (AC7): the paused state still resolves through the
-      // resolver — "log it" is right there.
+      // The old dead-end card is gone: this is the same active-estimate
+      // card every other state renders, just at irregular confidence with
+      // a rolled-forward estimate and the extra prompt below.
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
+      expect(find.text('Awaiting next period'), findsNothing);
+      expect(find.textContaining('Predictions are paused'), findsNothing);
+      expect(find.text('Cycle day 66'), findsOneWidget);
+      expect(find.text('Next period estimate: September 24, 2026'),
+          findsOneWidget,
+          reason: 'rolled forward twice (30-day mean) from the original '
+              'Jul 26 estimate');
+      expect(
+        find.text('Irregular — Cycles vary a lot — treat estimates as '
+            'rough guides.'),
+        findsOneWidget,
+        reason: 'issue #221/A2-12 forces the irregular tier past 60 open '
+            'days',
+      );
+      // Issue #132 (AC7): still resolves through the resolver — "log it"
+      // is right there — and now also the dedicated long-cycle prompt.
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+      expect(find.text('35 days late'), findsOneWidget);
       expect(find.text('Log it'), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
+      expect(find.text('This cycle is unusually long'), findsOneWidget);
+      expect(find.text('Exclude this cycle'), findsOneWidget);
+      expect(find.text('Turn off predictions (coming soon)'), findsOneWidget);
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const ValueKey('long-cycle-predictions-off')),
+            )
+            .onPressed,
+        isNull,
+        reason: 'issue #225 is not built yet -- the button is an honestly '
+            'disabled placeholder, not a live one that only shows a '
+            'snackbar',
+      );
       expect(find.text(kDisclaimer), findsWidgets,
-          reason: 'the awaiting card, resolver, and history stats each '
+          reason: 'the estimate card, resolver, and history stats each '
               'carry it');
-      expectNoFertilityVocabulary(tester, 'paused awaiting next period');
+      expectNoFertilityVocabulary(tester, 'unusually long cycle');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the long-cycle prompt\'s "Exclude this cycle" feeds the '
+        'same exclusion list as the resolver\'s "Skip this cycle", and '
+        'confirms once the write completes; "Turn off predictions" is '
+        'disabled (issue #225 not yet built)', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kPausedStarts),
+      );
+
+      // The not-yet-built #225 action never even shows a snackbar now --
+      // it is a disabled button, so tapping it (were that possible) is not
+      // exercised here; the disabled state itself is pinned above.
+
+      await tester.tap(find.byKey(const ValueKey('long-cycle-exclude')));
+      await tester.pump();
+      expect(
+        find.text('This cycle is excluded from future averages.'),
+        findsOneWidget,
+        reason: 'the prompt keeps showing (the cycle is still open), so a '
+            'brief confirmation is the only visible sign the tap did '
+            'anything',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        parseOmittedCycles(
+          await h._settings.get(omittedCyclesSettingKey(h.profile.id)),
+        ),
+        contains(LocalDate(2026, 6, 26)),
+        reason: 'exclude feeds the same exclusion list as manual omit / '
+            'the resolver\'s skip',
+      );
       await disposeOverview(tester, h);
     });
 
@@ -359,13 +431,17 @@ void main() {
       );
 
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
-      expect(find.text('Period is late'), findsOneWidget);
+      expect(find.text('28 days late'), findsOneWidget);
       expect(find.text('Log it'), findsOneWidget);
       expect(find.text('Skip this cycle'), findsOneWidget);
       expect(find.text('Remind me in 3 days'), findsOneWidget);
       expect(find.textContaining('days until next period'), findsNothing);
-      expect(find.text('Next period estimate: August 2, 2026'), findsOneWidget,
-          reason: 'the estimate itself stays visible with its disclaimer');
+      expect(find.text('Next period estimate: August 30, 2026'), findsOneWidget,
+          reason: 'the estimate itself rolled forward one 28-day mean '
+              'cycle (issue #221) and stays visible with its disclaimer');
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsNothing,
+          reason: 'only 56 days open — not past kMaxOpenCycleDays');
       expect(find.text(kDisclaimer), findsWidgets,
           reason: 'the estimate card and the resolver each carry it');
       expectNoFertilityVocabulary(tester, 'late');
@@ -669,15 +745,22 @@ void main() {
       );
       await disposeOverview(tester, notEnough);
 
-      final paused = await pumpOverview(
+      // Issue #221/A2-12: an open cycle past sixty days is no longer its
+      // own dead-end "awaiting" card — it renders the same active-estimate
+      // card every other state does, with the mode-agnostic "unusually
+      // long" prompt alongside it.
+      final longCycle = await pumpOverview(
         tester,
         mode: ProfileMode.teen,
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kPausedStarts),
       );
-      expect(find.text('Waiting for your next period'), findsOneWidget);
+      expect(find.text('Waiting for your next period'), findsNothing);
       expect(find.textContaining('Predictions are paused'), findsNothing);
-      await disposeOverview(tester, paused);
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
+      await disposeOverview(tester, longCycle);
     });
 
     testWidgets('teen mode keeps the standard resolver when late (teen is '
@@ -691,31 +774,33 @@ void main() {
       );
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget,
           reason: 'only irregular silences the resolver');
-      expect(find.text('Your next period is estimated around: August 2, 2026'),
-          findsOneWidget);
+      expect(
+        find.text('Your next period is estimated around: August 30, 2026'),
+        findsOneWidget,
+        reason: 'issue #221: rolled forward one 28-day mean cycle',
+      );
       await disposeOverview(tester, h);
     });
 
-    testWidgets('caregiver mode rewords the awaiting copy', (tester) async {
+    testWidgets('caregiver mode still shows the unusually-long-cycle prompt '
+        '(mode-agnostic) alongside its own copy', (tester) async {
       final h = await pumpOverview(
         tester,
         mode: ProfileMode.caregiver,
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kPausedStarts),
       );
-      expect(find.text('Awaiting next period'), findsOneWidget);
-      expect(
-        find.textContaining('until a period is logged for this profile'),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
       expect(
         find.descendant(
-          of: find.byKey(const ValueKey('overview-awaiting')),
+          of: find.byKey(const ValueKey('overview-active')),
           matching: find.text(kDisclaimer),
         ),
         findsWidgets,
-        reason: 'the awaiting card carries it, and the resolver the paused '
-            'state still shows carries its own copy',
+        reason: 'the estimate card carries it, and the resolver the '
+            'unusually-long state still shows carries its own copy',
       );
       await disposeOverview(tester, h);
     });
@@ -735,8 +820,9 @@ void main() {
           findsOneWidget);
       expect(find.textContaining('variation like this is common'),
           findsOneWidget);
-      expect(find.text('Next period may start around: August 2, 2026'),
-          findsOneWidget);
+      expect(find.text('Next period may start around: August 30, 2026'),
+          findsOneWidget,
+          reason: 'issue #221: rolled forward one 28-day mean cycle');
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('overview-active')),
@@ -756,8 +842,9 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets('irregular mode silences the resolver in the paused state '
-        'too, keeping the disclaimer', (tester) async {
+    testWidgets('irregular mode silences the resolver in the '
+        'unusually-long-cycle state too, keeping the disclaimer and the '
+        'mode-agnostic long-cycle prompt', (tester) async {
       final h = await pumpOverview(
         tester,
         mode: ProfileMode.irregular,
@@ -767,9 +854,14 @@ void main() {
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
       expect(find.byKey(const ValueKey('overview-irregular-overdue')),
           findsOneWidget);
+      // Issue #221/A2-12: the "unusually long" prompt is not the late
+      // banner — it still renders even though irregular mode silences
+      // that banner.
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
       expect(
         find.descendant(
-          of: find.byKey(const ValueKey('overview-awaiting')),
+          of: find.byKey(const ValueKey('overview-active')),
           matching: find.text(kDisclaimer),
         ),
         findsOneWidget,

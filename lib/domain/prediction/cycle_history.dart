@@ -287,9 +287,12 @@ CycleHistoryView deriveCycleHistory({
 
   // Issue #213: one confidence derivation. The same computePrediction the
   // overview panel's estimate uses decides the tier here too — anything
-  // short of an active estimate (not enough history yet, or paused on a
-  // long open cycle) reads as `learning`, the same honest "no reliable
-  // estimate yet" the overview shows in those states.
+  // short of an active estimate (not enough history yet) reads as
+  // `learning`, the same honest "no reliable estimate yet" the overview
+  // shows in that state. A long open cycle is no longer one of those
+  // short-of-an-estimate cases (issue #221): computePrediction keeps
+  // producing an ActivePrediction and forces its tier to `irregular`
+  // instead, which flows straight through as `prediction.tier` below.
   final prediction = computePrediction(
     episodes: sorted,
     today: today,

@@ -379,6 +379,34 @@ void main() {
       expect(view.confidence, (prediction as ActivePrediction).tier);
       expect(view.confidence, CycleConfidence.high);
     });
+
+    test('a long open cycle (issue #221) reads irregular, not learning -- '
+        'computePrediction keeps producing an ActivePrediction with its tier '
+        'forced, it does not fall back to NotEnoughHistory', () {
+      // Same steady starts/today as prediction_test.dart's "open cycle '
+      // beyond 60 days" case: three 29-day cycles, then an open cycle of
+      // 78 days (well past kMaxOpenCycleDays).
+      final starts = [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 3, 29)];
+      final today = d(2026, 6, 15);
+
+      final prediction = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: today,
+      );
+      final view = deriveCycleHistory(
+        episodes: episodesFromStarts(starts),
+        today: today,
+      );
+
+      expect(prediction, isA<ActivePrediction>());
+      expect((prediction as ActivePrediction).unusuallyLongCycle, isTrue);
+      expect(view.confidence, CycleConfidence.irregular,
+          reason: 'the stale comment this test pins against once claimed a '
+              'long open cycle falls back to learning ("paused"); it no '
+              'longer does -- it stays an ActivePrediction forced to '
+              'irregular');
+      expect(view.confidence, prediction.tier);
+    });
   });
 
   group('omission-list codec (KTD2)', () {

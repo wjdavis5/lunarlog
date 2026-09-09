@@ -93,8 +93,7 @@ class ReminderWindowPublisher {
   void _onPrediction(String profileId, CyclePrediction prediction) {
     if (_disposed) return;
     if (prediction is! ActivePrediction) {
-      // NotEnoughHistory / PausedAwaitingNextPeriod: nothing to publish for
-      // this profile right now.
+      // NotEnoughHistory: nothing to publish for this profile right now.
       _debounceTimers.remove(profileId)?.cancel();
       _pending.remove(profileId);
       return;
@@ -111,9 +110,23 @@ class ReminderWindowPublisher {
     if (prediction == null) return;
     if (!_isSignedIn()) return;
     try {
+      // #221 follow-up (review fix): publish the UN-ROLLED
+      // originalEstimatedNextStart, not the (possibly rolled-forward)
+      // estimatedNextStart. scan_missed_entry_reminders() (see
+      // supabase/migrations/20260906230000_reminder_windows_and_cron.sql)
+      // only enqueues when `estimated_next_start <= current_date` and dedupes
+      // on `last_enqueued_for`; a late cycle's estimatedNextStart is rolled
+      // forward in whole mean-cycle-length steps (prediction.dart's
+      // _rollLateEstimate) to stay near-term for display, which means it is
+      // typically *in the future* server-side even while the guardian has
+      // gone unheard-from for a while. Publishing that rolled date would
+      // silence the missed-entry scan for as long as ~ (mean cycle length -
+      // grace) out of every mean-cycle-length days -- roughly 25 of every 28
+      // for a typical cycle. originalEstimatedNextStart never rolls, so once
+      // it is in the past the gate stays open every day after.
       await _upsert(
         profileId,
-        prediction.estimatedNextStart.iso,
+        prediction.originalEstimatedNextStart.iso,
         prediction.duringEpisode,
       );
     } catch (_) {

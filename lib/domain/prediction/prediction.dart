@@ -22,6 +22,19 @@
 /// and an N-cycle [ActivePrediction.forecast] with per-cycle degrading
 /// confidence. `estimatedNextStart` stays as `forecast.first.start` for
 /// existing call sites.
+///
+/// Issue #221 (A2-11/A2-12) replaces two dead ends with a "never go
+/// silent" posture: (1) [ActivePrediction.daysLate] reports how late a
+/// period is as a count, not a blanket string, and once that count passes
+/// [kLateGraceDays] `estimatedNextStart` itself rolls forward in whole
+/// mean-cycle-length steps (see `_rollLateEstimate`) rather than freezing —
+/// [ActivePrediction.originalEstimatedNextStart] keeps the un-rolled date
+/// so the day count can keep growing regardless; (2) the old
+/// `PausedAwaitingNextPeriod` dead end past [kMaxOpenCycleDays] is gone —
+/// that case now stays an [ActivePrediction] (forced to
+/// [CycleConfidence.irregular], flagged [ActivePrediction.unusuallyLongCycle])
+/// with the same rolled estimate, so reminder planning (which only ever
+/// sees [ActivePrediction]s) keeps a nudge alive instead of going quiet.
 library;
 
 import 'dart:math' show sqrt;
@@ -62,8 +75,12 @@ const int kPredictionWindowCycles = 12;
 /// display purposes (was 3; Clue-matched to 6, synthesis.md #6).
 const int kAverageWindowCycles = 6;
 
-/// An open cycle longer than this pauses prediction ("awaiting next
-/// period") instead of extrapolating.
+/// An open cycle longer than this is "unusually long" (issue #221/A2-12):
+/// [ActivePrediction.unusuallyLongCycle] flags it and [ActivePrediction.tier]
+/// is forced to [CycleConfidence.irregular]. Before issue #221 this
+/// threshold instead returned the dead-end `PausedAwaitingNextPeriod`
+/// state — no date, no reminders; predictions never go silent now, they
+/// just get less confident.
 const int kMaxOpenCycleDays = 60;
 
 /// Fallback bleed length used only when the period-length window carries
@@ -241,28 +258,6 @@ class NotEnoughHistory extends CyclePrediction {
       'status: $statusLabel)';
 }
 
-/// The open cycle has run past [kMaxOpenCycleDays]: prediction is paused
-/// until the next period is recorded. No extrapolation is attempted.
-class PausedAwaitingNextPeriod extends CyclePrediction {
-  const PausedAwaitingNextPeriod({
-    required this.today,
-    required this.lastEpisodeStart,
-  });
-
-  final LocalDate today;
-  final LocalDate lastEpisodeStart;
-
-  int get daysSinceLastEpisodeStart => today.difference(lastEpisodeStart);
-
-  String get statusLabel => 'awaiting next period';
-
-  @override
-  String toString() => 'PausedAwaitingNextPeriod('
-      'lastEpisodeStart: ${lastEpisodeStart.iso}, '
-      'daysSinceLastEpisodeStart: $daysSinceLastEpisodeStart, '
-      'status: $statusLabel)';
-}
-
 /// A live estimate: last episode start + mean of the most recent usable
 /// (valid per the 15–60 window, not omitted, recency-bounded) cycle
 /// lengths, rounded to a whole day. A skipped open cycle advances the
@@ -272,6 +267,7 @@ class ActivePrediction extends CyclePrediction {
     required this.today,
     required this.lastEpisodeStart,
     required this.estimatedNextStart,
+    required this.originalEstimatedNextStart,
     required this.averagedCycleLengths,
     required this.meanCycleLengthDays,
     required this.cycleDay,
@@ -282,14 +278,29 @@ class ActivePrediction extends CyclePrediction {
     this.spreadDays = 0,
     this.tier = CycleConfidence.learning,
     this.forecast = const [],
+    this.unusuallyLongCycle = false,
   });
 
   final LocalDate today;
   final LocalDate lastEpisodeStart;
 
-  /// Estimated start date of the next episode. Kept for existing call
-  /// sites; equal to `forecast.first.start`.
+  /// Estimated start date of the next episode — the "live" date calendar
+  /// and reminder consumers should track (issue #221/A2-11). Equal to
+  /// [originalEstimatedNextStart] until [daysLate] first goes non-null;
+  /// from then on it is rolled forward in whole mean-cycle-length steps
+  /// (`_rollLateEstimate`) until it sits within [kLateGraceDays] of today,
+  /// so consumers are never handed a date arbitrarily far in the past.
+  /// Equal to `forecast.first.start`.
   final LocalDate estimatedNextStart;
+
+  /// The un-rolled next-cycle estimate: last episode start + mean cycle
+  /// length (+ the skip advance, issue #132/R6) — what [estimatedNextStart]
+  /// used to be, before issue #221's forward-roll could ever move it.
+  /// [daysLate] is always measured against this, never against the
+  /// possibly-rolled [estimatedNextStart]: otherwise the day count would
+  /// reset every time the estimate rolls forward instead of growing for as
+  /// long as the cycle stays open.
+  final LocalDate originalEstimatedNextStart;
 
   /// The valid, usable cycle lengths the estimate was computed from (up to
   /// [kPredictionWindowCycles] most recent, within [kRecencyWindowCycles],
@@ -336,22 +347,60 @@ class ActivePrediction extends CyclePrediction {
   /// `forecast.first.start == estimatedNextStart`.
   final List<PredictedCycle> forecast;
 
+  /// True once the open cycle (today − [lastEpisodeStart]) exceeds
+  /// [kMaxOpenCycleDays] (issue #221/A2-12). Before this issue this
+  /// threshold returned the dead-end `PausedAwaitingNextPeriod` state
+  /// instead — no date, no reminders. Now it stays an [ActivePrediction]
+  /// (forced to [CycleConfidence.irregular], per #213) with
+  /// [estimatedNextStart] rolled forward the same way any other late
+  /// estimate is; this flag is the seam the UI uses to show the "this
+  /// cycle is unusually long" prompt (exclude this cycle / turn off
+  /// predictions) alongside it.
+  final bool unusuallyLongCycle;
+
   /// Whole civil days from today to [estimatedNextStart] (negative when
-  /// past).
+  /// past). Once late, [estimatedNextStart] is the rolled date, so this
+  /// answers "how far to the live estimate", not "how late" — use
+  /// [daysLate] for that.
   int get daysUntilNextStart => estimatedNextStart.difference(today);
 
-  /// True when today is more than [kLateGraceDays] days past the estimate
-  /// and no new episode has started (a started episode would have shifted
-  /// [lastEpisodeStart] and recomputed everything).
-  bool get isLate => daysUntilNextStart < -kLateGraceDays;
+  /// Whole civil days [today] is past [originalEstimatedNextStart] — the
+  /// raw, un-rolled "N days late" count (issue #221/A2-11). Non-null once
+  /// that count exceeds [kLateGraceDays]. Independent of the roll: the
+  /// count keeps growing for as long as no new episode is logged, even
+  /// once the rolled [estimatedNextStart] has itself caught back up to (or
+  /// past) today.
+  int? get daysLate {
+    final daysPast = today.difference(originalEstimatedNextStart);
+    return daysPast > kLateGraceDays ? daysPast : null;
+  }
+
+  /// True once [daysLate] is non-null — kept as its own boolean for
+  /// callers that only need the gate, not the count (a started episode
+  /// would have shifted [lastEpisodeStart] and recomputed everything, so
+  /// this can never be stuck true past a new log).
+  bool get isLate => daysLate != null;
+
+  /// Whole civil days since [lastEpisodeStart] (today's cycle day minus
+  /// one) — named to mirror the pre-#221 `PausedAwaitingNextPeriod` field
+  /// of the same name that [unusuallyLongCycle] replaces.
+  int get daysSinceLastEpisodeStart => cycleDay - 1;
 
   /// Date-based phase wording only (R13): "period" during an episode,
   /// otherwise the cycle day.
   String get phaseLabel => duringEpisode ? 'period' : 'cycle day $cycleDay';
 
+  /// Issue #221/A2-11: names the day count once past due, rather than a
+  /// blanket "period is late" string. Measured against
+  /// [originalEstimatedNextStart] (so it grows from day one, ahead of
+  /// [kLateGraceDays] gating the late-resolver banner elsewhere) rather
+  /// than the possibly-rolled [estimatedNextStart].
   String get untilNextPeriodLabel {
+    final daysPastDue = today.difference(originalEstimatedNextStart);
+    if (daysPastDue > 0) {
+      return '$daysPastDue day${daysPastDue == 1 ? '' : 's'} late';
+    }
     final days = daysUntilNextStart;
-    if (days < 0) return 'period is late';
     return '≈$days day${days == 1 ? '' : 's'} until next period';
   }
 
@@ -384,13 +433,15 @@ class ActivePrediction extends CyclePrediction {
 ///    *usable* cycles (valid per the 15–60 window and not omitted, within
 ///    [kRecencyWindowCycles] of the raw chronological list — issue #213) →
 ///    [NotEnoughHistory].
-/// 2. Open cycle (today − last episode start) beyond [kMaxOpenCycleDays]
-///    → [PausedAwaitingNextPeriod] (no extrapolation — a skip does not
-///    lift this pause; the resolver's "log it" is the way through, R6).
-/// 3. Otherwise → [ActivePrediction]; late is reported within it rather
+/// 2. Otherwise → [ActivePrediction]; late is reported within it rather
 ///    than being a separate state. When the open cycle's start is in
 ///    [omittedCycleStarts] (a skip), the estimate advances
 ///    [kSkipAdvanceCycles] averaged cycles beyond the last episode start.
+///    Once the open cycle (today − last episode start) passes
+///    [kMaxOpenCycleDays] (issue #221/A2-12), [ActivePrediction
+///    .unusuallyLongCycle] is set and [ActivePrediction.tier] is forced to
+///    [CycleConfidence.irregular] — a skip does not lift this flag; "log
+///    it" (R6) is still the only way an open cycle actually closes.
 CyclePrediction computePrediction({
   required List<Episode> episodes,
   required LocalDate today,
@@ -415,29 +466,41 @@ CyclePrediction computePrediction({
 
   final lastStart = starts.last;
   final openDays = today.difference(lastStart);
-  if (openDays > kMaxOpenCycleDays) {
-    return PausedAwaitingNextPeriod(today: today, lastEpisodeStart: lastStart);
-  }
+  final unusuallyLongCycle = openDays > kMaxOpenCycleDays;
 
   final estimate = _cycleLengthEstimate(
     usableLengths: windows.usableLengths,
     lastStart: lastStart,
     omittedCycleStarts: omittedCycleStarts,
   );
+  final rolledStart = _rollLateEstimate(
+    original: estimate.firstEstimateStart,
+    today: today,
+    stepDays: estimate.meanDays,
+  );
   final spreadAndTier = _spreadAndTier(
     usableLengths: windows.usableLengths,
     recentLengths: windows.recentLengths,
   );
+  // #221 follow-up (review fix): derive the forced tier once and pass it
+  // into _buildForecast too — otherwise the forecast built its per-cycle
+  // tiers by stepping down from the un-forced spreadAndTier.tier, while
+  // ActivePrediction.tier (forecast.first's tier, by the invariant above)
+  // was separately forced to irregular for unusuallyLongCycle. Two
+  // derivations of the same "first cycle" tier could disagree; there must
+  // be exactly one (#299 invariant).
+  final tier =
+      unusuallyLongCycle ? CycleConfidence.irregular : spreadAndTier.tier;
   final periodLength = _meanPeriodLength(
     sorted: sorted,
     omittedCycleStarts: omittedCycleStarts,
     meanCycleDays: estimate.meanDays,
   );
   final forecast = _buildForecast(
-    firstStart: estimate.firstEstimateStart,
+    firstStart: rolledStart,
     meanCycleDays: estimate.meanDays,
     periodLengthDays: periodLength.periodLengthDays,
-    baseTier: spreadAndTier.tier,
+    baseTier: tier,
     baseSpreadDays: spreadAndTier.spreadDays,
   );
 
@@ -445,6 +508,7 @@ CyclePrediction computePrediction({
     today: today,
     lastEpisodeStart: lastStart,
     estimatedNextStart: forecast.first.start,
+    originalEstimatedNextStart: estimate.firstEstimateStart,
     averagedCycleLengths: List.unmodifiable(windows.usableLengths),
     meanCycleLengthDays: estimate.mean,
     cycleDay: today.difference(lastStart) + 1,
@@ -453,9 +517,33 @@ CyclePrediction computePrediction({
     validCycleCount: windows.validLengths.length,
     meanPeriodLengthDays: periodLength.meanPeriodLengthDays,
     spreadDays: spreadAndTier.spreadDays,
-    tier: spreadAndTier.tier,
+    tier: tier,
     forecast: forecast,
+    unusuallyLongCycle: unusuallyLongCycle,
   );
+}
+
+/// Rolls [original] forward in whole [stepDays] increments until [today] is
+/// no more than [kLateGraceDays] days past it (issue #221/A2-11): once a
+/// cycle is late, `estimatedNextStart` keeps stepping forward by a full
+/// mean cycle length at a time rather than freezing at [original], so
+/// calendar and reminder consumers always see a live, near-term date
+/// instead of one arbitrarily far in the past. [original] itself is kept
+/// separately (`originalEstimatedNextStart`) so `daysLate` can go on
+/// counting the true distance the whole time this rolls. A non-positive
+/// [stepDays] (an unreachable, defensive-only mean of zero) returns
+/// [original] unrolled rather than looping forever.
+LocalDate _rollLateEstimate({
+  required LocalDate original,
+  required LocalDate today,
+  required int stepDays,
+}) {
+  if (stepDays <= 0) return original;
+  var estimate = original;
+  while (today.difference(estimate) > kLateGraceDays) {
+    estimate = estimate.addDays(stepDays);
+  }
+  return estimate;
 }
 
 /// Holds the three windows [computePrediction] derives from the raw

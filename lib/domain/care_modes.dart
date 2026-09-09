@@ -27,8 +27,6 @@ class CareModeCopy {
   const CareModeCopy({
     required this.notEnoughTitle,
     required this.notEnoughBody,
-    required this.awaitingTitle,
-    required this.awaitingBody,
     required this.nextEstimateLabel,
     required this.overdueStatusLabel,
     required this.silencesLateBanner,
@@ -42,12 +40,6 @@ class CareModeCopy {
 
   /// Body of the insufficient-history card.
   final String notEnoughBody;
-
-  /// Heading of the paused/awaiting card.
-  final String awaitingTitle;
-
-  /// Body of the paused/awaiting card.
-  final String awaitingBody;
 
   /// Label introducing the next-period estimate line (the formatted date
   /// follows it). Honesty is kept in every variant: each names the date an
@@ -96,8 +88,6 @@ const Map<TagCategory, String> _standardCategoryLabels = {
 const CareModeCopy _standard = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
   notEnoughBody: 'Keep logging — estimates appear once a few cycles are recorded.',
-  awaitingTitle: 'Awaiting next period',
-  awaitingBody: 'Predictions are paused until the next period is logged.',
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
@@ -110,9 +100,6 @@ const CareModeCopy _teen = CareModeCopy(
   notEnoughTitle: 'Your record is just getting started',
   notEnoughBody: 'Every entry builds the picture of your cycle. Estimates '
       'appear once a few cycles are recorded.',
-  awaitingTitle: 'Waiting for your next period',
-  awaitingBody: 'Predictions pause until your next period is logged — '
-      'logging it restarts them.',
   nextEstimateLabel: 'Your next period is estimated around:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
@@ -137,9 +124,6 @@ const CareModeCopy _caregiver = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
   notEnoughBody: 'Estimates appear once a few cycles are recorded — regular '
       'logging helps.',
-  awaitingTitle: 'Awaiting next period',
-  awaitingBody: 'Predictions are paused until a period is logged for this '
-      'profile.',
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
@@ -152,8 +136,6 @@ const CareModeCopy _irregular = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
   notEnoughBody: 'Keep logging — estimates appear once a few cycles are '
       'recorded, and yours may stay ranges rather than dates.',
-  awaitingTitle: 'Awaiting next period',
-  awaitingBody: 'Predictions are paused until the next period is logged.',
   nextEstimateLabel: 'Next period may start around:',
   overdueStatusLabel: 'No new period logged yet — with irregular cycles, '
       'variation like this is common and expected.',

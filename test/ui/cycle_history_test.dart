@@ -109,7 +109,9 @@ final List<LocalDate> kSkipStarts = [
   LocalDate(2026, 6, 27),
 ];
 
-/// Four 30-day cycles ending 2026-06-26: open cycle 65 days -> paused.
+/// Four 30-day cycles ending 2026-06-26: open cycle 65 days -> unusually
+/// long (issue #221/A2-12: rolled forward, not paused). Original estimate
+/// Jul 26, 35 days late by aug30 -> rolled forward twice to Sep 24.
 final List<LocalDate> kPausedStarts = [
   LocalDate(2026, 3, 28),
   LocalDate(2026, 4, 27),
@@ -300,10 +302,12 @@ void main() {
       // Issue #213: only 4 usable cycles feed a 6-cycle average window
       // that is not yet full, so this reads `learning` (item 5), not
       // `high` — and lengths [28, 28, 20, 28] have a real, non-degenerate
-      // spread (population std-dev ≈3.46, rounds to 3), so the estimate
-      // renders as a range (June 18 ± 3) rather than one exact date.
+      // spread (population std-dev ≈3.46, rounds to 3). Issue #221: the
+      // original June 18 estimate is 3 days past due (more than the
+      // 2-day grace), so it rolls forward one 26-day mean cycle to
+      // July 14 before the range (± 3) is taken.
       expect(
-        find.text('Next period estimate: June 15, 2026 – June 21, 2026'),
+        find.text('Next period estimate: July 11, 2026 – July 17, 2026'),
         findsOneWidget,
       );
       expect(
@@ -341,10 +345,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('Next period estimate: June 15, 2026 – June 21, 2026'),
+        find.text('Next period estimate: July 11, 2026 – July 17, 2026'),
         findsOneWidget,
-        reason: 'reversible: including it restores the old (ranged) '
-            'estimate',
+        reason: 'reversible: including it restores the old (ranged, '
+            'rolled-forward) estimate',
       );
       await disposeHistory(tester, h);
     });
@@ -437,7 +441,10 @@ void main() {
         starts: kSkipStarts,
       );
 
-      expect(find.text('Next period estimate: July 27, 2026'), findsOneWidget);
+      // Issue #221: 15 days past the original July 27 estimate (more than
+      // the 2-day grace) rolls it forward one 30-day mean cycle to
+      // August 26 before the skip ever happens.
+      expect(find.text('Next period estimate: August 26, 2026'), findsOneWidget);
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('resolver-skip')));
@@ -446,7 +453,9 @@ void main() {
       expect(
         find.text('Next period estimate: August 26, 2026'),
         findsOneWidget,
-        reason: 'the skip advances the estimate one averaged cycle',
+        reason: 'the skip advances the un-rolled estimate one averaged '
+            'cycle (Jul 27 + 30) to the same date the late roll had '
+            'already reached',
       );
       expect(
         find.byKey(const ValueKey('late-resolver')),
@@ -469,10 +478,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('history-undo-skip')));
       await tester.pumpAndSettle();
       expect(
-        find.text('Next period estimate: July 27, 2026'),
+        find.text('Next period estimate: August 26, 2026'),
         findsOneWidget,
-        reason: 'undoing the skip restores the late window',
+        reason: 'undoing the skip restores the late window (and, issue '
+            '#221, the same rolled-forward estimate as before the skip)',
       );
+      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
       await disposeHistory(tester, h);
     });
 
@@ -524,20 +535,24 @@ void main() {
     });
   });
 
-  group('AC7: paused state resolves through log it', () {
-    testWidgets('an open cycle over sixty days shows the resolver with the '
-        'log-it action', (tester) async {
+  group('AC7: unusually-long-cycle state resolves through log it', () {
+    testWidgets('an open cycle over sixty days still shows the resolver '
+        'with the log-it action (issue #221/A2-12: no more dead-end '
+        'pause)', (tester) async {
       final h = await pumpHistory(tester, today: aug30, starts: kPausedStarts);
 
-      expect(find.text('Awaiting next period'), findsOneWidget);
+      expect(find.text('Awaiting next period'), findsNothing);
+      expect(find.text('35 days late'), findsOneWidget);
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('resolver-log')));
       await tester.pumpAndSettle();
       expect(
         find.byType(DaySheet),
         findsOneWidget,
-        reason: 'the way through the paused state is logging',
+        reason: 'the way through the unusually-long-cycle state is logging',
       );
       await disposeHistory(tester, h);
     });
@@ -562,9 +577,10 @@ void main() {
       expect(find.text('Skip this cycle'), findsNothing);
       expect(find.text('Remind me in 3 days'), findsNothing);
       expect(
-        find.text('Period is late'),
+        find.text('15 days late'),
         findsOneWidget,
-        reason: 'the informational line remains',
+        reason: 'the informational line remains, now with the day count '
+            '(issue #221/A2-11)',
       );
       await disposeHistory(tester, h);
     });

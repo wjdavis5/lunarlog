@@ -18,6 +18,7 @@ ActivePrediction _prediction({
     today: today,
     lastEpisodeStart: lastStart,
     estimatedNextStart: estimatedNextStart,
+    originalEstimatedNextStart: estimatedNextStart,
     averagedCycleLengths: const [28],
     meanCycleLengthDays: 28,
     cycleDay: cycleDay,
@@ -124,6 +125,43 @@ void main() {
     final dates = plan.map((r) => r.fireOn).toList();
     final sorted = [...dates]..sort();
     expect(dates, sorted);
+  });
+
+  test('AC5 (issue #221): an unusually-long-cycle profile with a rolled '
+      'estimate still gets reminders planned -- the old paused dead end '
+      'never went silent, and neither does this', () {
+    // A 79-day open cycle (past kMaxOpenCycleDays): the raw estimate is 49
+    // days overdue, rolled forward to 6 days out for display -- exactly
+    // the shape computePrediction produces once a cycle runs unusually
+    // long (prediction_test.dart's own "open cycle beyond 60 days" case).
+    final lastEpisodeStart = today.addDays(-78);
+    final originalEstimate = today.addDays(-49);
+    final rolledEstimate = today.addDays(6);
+    final prediction = ActivePrediction(
+      today: today,
+      lastEpisodeStart: lastEpisodeStart,
+      estimatedNextStart: rolledEstimate,
+      originalEstimatedNextStart: originalEstimate,
+      averagedCycleLengths: const [29, 29, 29],
+      meanCycleLengthDays: 29,
+      cycleDay: today.difference(lastEpisodeStart) + 1,
+      duringEpisode: false,
+      completedCycleCount: 4,
+      validCycleCount: 4,
+      tier: CycleConfidence.irregular,
+      unusuallyLongCycle: true,
+    );
+
+    final plan = planReminders(
+      today: today,
+      predictions: {'p1': prediction},
+    );
+
+    expect(plan, isNotEmpty,
+        reason: 'an unusually-long-cycle prediction must still plan '
+            'reminders, not go silent the way the old paused state did');
+    expect(plan.every((r) => r.fireOn.difference(today) >= 0), isTrue,
+        reason: 'no planned reminder is dated in the past');
   });
 
   group('care-mode presets (Issue #131, R12)', () {

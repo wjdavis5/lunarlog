@@ -225,6 +225,7 @@ void main() {
         today: _d(2026, 8, 30),
         lastEpisodeStart: _d(2026, 8, 5),
         estimatedNextStart: _d(2026, 9, 4),
+        originalEstimatedNextStart: _d(2026, 9, 4),
         averagedCycleLengths: const [30, 30, 30],
         meanCycleLengthDays: 0,
         cycleDay: 26,

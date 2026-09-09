@@ -58,8 +58,11 @@ class PlannedReminder {
 /// Plans reminders from the active profiles' [ActivePrediction]s, filtered
 /// by each profile's care-mode [ReminderPreset] (Issue #131, R12).
 ///
-/// Profiles without a live estimate ([NotEnoughHistory],
-/// [PausedAwaitingNextPeriod]) produce nothing — no partial signals. A
+/// Profiles without a live estimate ([NotEnoughHistory]) produce nothing —
+/// no partial signals. Issue #221/A2-12 folded the old "paused past sixty
+/// days" dead end into [ActivePrediction] itself (flagged
+/// [ActivePrediction.unusuallyLongCycle]), so that state now plans
+/// reminders exactly like any other active estimate — never go silent. A
 /// profile with no entry in [presets] gets [ReminderPreset.all], so callers
 /// that carry no mode information (and the pre-#131 tests) keep the exact
 /// plan they always produced. The result is sorted by fire date and capped

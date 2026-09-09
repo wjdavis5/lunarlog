@@ -15,6 +15,12 @@
 /// empty/insufficient-history copy. `irregular` additionally silences the
 /// late resolver, replacing it with a quiet status line; the disclaimer
 /// stays next to every estimate in every mode, without exception.
+///
+/// Issue #221/A2-11/A2-12: the old dead-end "predictions paused" card is
+/// gone — an open cycle past sixty days stays an active, rolled-forward
+/// estimate (at `irregular` confidence) with its own "this cycle is
+/// unusually long" prompt instead, so this panel never renders a state
+/// with no date and no way forward.
 library;
 
 import 'dart:async';
@@ -109,6 +115,10 @@ class OverviewPanel extends StatefulWidget {
 class _OverviewPanelState extends State<OverviewPanel> {
   late CyclePredictionService _service;
   late Stream<CyclePrediction> _predictions;
+  // Captured once (matches _resolverFor/cycle_history_section.dart's
+  // pattern) rather than re-reading context.read inside a button callback.
+  late final CycleExclusionList _exclusions = context
+      .read<CycleExclusionList>();
   StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
   AuthController? _auth;
   String? _currentUserId;
@@ -223,7 +233,6 @@ class _OverviewPanelState extends State<OverviewPanel> {
           children: [
             switch (prediction) {
               ActivePrediction() => _activeCard(context, prediction),
-              PausedAwaitingNextPeriod() => _awaitingCard(context, prediction),
               NotEnoughHistory() => _notEnoughCard(context),
             },
             CycleHistorySection(
@@ -239,10 +248,10 @@ class _OverviewPanelState extends State<OverviewPanel> {
     );
   }
 
-  Widget _resolverFor(CyclePrediction prediction) => LateResolver(
+  Widget _resolverFor(ActivePrediction prediction) => LateResolver(
     profileId: widget.profileId,
     prediction: prediction,
-    exclusions: context.read<CycleExclusionList>(),
+    exclusions: _exclusions,
     settings: context.read<SettingsStore>(),
     onLogIt: _logItToday,
     todayProvider: widget.todayProvider,
@@ -251,10 +260,12 @@ class _OverviewPanelState extends State<OverviewPanel> {
 
   /// Issue #131: `irregular` silences the late resolver — the error-styled
   /// banner with log-it/skip/remind actions never renders in that mode.
-  /// The quiet status line that replaces it (in both the active-late and
-  /// paused-awaiting states) carries the disclaimer underneath, exactly as
-  /// the banner did.
-  Widget _lateSectionFor(CyclePrediction prediction, ThemeData theme) {
+  /// The quiet status line that replaces it carries the disclaimer
+  /// underneath, exactly as the banner did. Issue #221/A2-12: this is also
+  /// what renders for an unusually-long-open cycle now (folded into
+  /// [ActivePrediction] — there is no separate paused state to gate here
+  /// any more).
+  Widget _lateSectionFor(ActivePrediction prediction, ThemeData theme) {
     if (_copy.silencesLateBanner) {
       return Padding(
         key: const ValueKey('overview-irregular-overdue'),
@@ -316,7 +327,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               ),
             ],
             const SizedBox(height: 4),
-            if (prediction.isLate)
+            if (prediction.isLate || prediction.unusuallyLongCycle)
               _lateSectionFor(prediction, theme)
             else
               Text(
@@ -324,6 +335,10 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 key: const ValueKey('overview-days-until'),
                 style: theme.textTheme.bodyLarge,
               ),
+            if (prediction.unusuallyLongCycle) ...[
+              const SizedBox(height: 8),
+              _longCycleSection(context, prediction, theme),
+            ],
             const SizedBox(height: 12),
             Text(
               kEstimateDisclaimer,
@@ -336,37 +351,98 @@ class _OverviewPanelState extends State<OverviewPanel> {
     );
   }
 
-  Widget _awaitingCard(
+  /// The long-cycle prompt's "Exclude this cycle" action. Persisting the
+  /// omission is fire-and-forget from the UI's point of view (same as the
+  /// history list's own omit toggle), but unlike that toggle this button
+  /// has no other visible state change once pressed — the prompt itself
+  /// keeps showing (the cycle is still open) so without this confirmation
+  /// the button would read as dead. A brief snackbar echoes that the write
+  /// completed instead of adding persistent state to this already-shared
+  /// widget state.
+  Future<void> _excludeLongCycle(
     BuildContext context,
-    PausedAwaitingNextPeriod prediction,
+    ActivePrediction prediction,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await _exclusions.omit(widget.profileId, prediction.lastEpisodeStart);
+    if (!mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('This cycle is excluded from future averages.'),
+      ),
+    );
+  }
+
+  /// Issue #221/A2-12: replaces the old dead-end "predictions paused" card.
+  /// Rendered whenever [ActivePrediction.unusuallyLongCycle] is set,
+  /// regardless of care mode or [ActivePrediction.isLate] (an unusually
+  /// long mean cycle length can push the open cycle past
+  /// [kMaxOpenCycleDays] before the grace window on the estimate itself has
+  /// elapsed) — a low-confidence rolled estimate is still shown above, and
+  /// this offers the two ways out the issue names: exclude the cycle from
+  /// future averages (issue #132's existing exclusion list — the same
+  /// action as the late resolver's "Skip this cycle"), or turn predictions
+  /// off for the profile entirely (issue #225, not yet built — the button
+  /// stands in as a discoverable placeholder rather than silently omitting
+  /// the option).
+  Widget _longCycleSection(
+    BuildContext context,
+    ActivePrediction prediction,
+    ThemeData theme,
   ) {
-    final theme = Theme.of(context);
-    return Card(
-      key: const ValueKey('overview-awaiting'),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_copy.awaitingTitle, style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              _copy.awaitingBody,
-              key: const ValueKey('overview-awaiting-body'),
-              style: theme.textTheme.bodyMedium,
+    return Container(
+      key: const ValueKey('overview-long-cycle-prompt'),
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This cycle is unusually long',
+            key: const ValueKey('overview-long-cycle-title'),
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.onSecondaryContainer,
             ),
-            // An open cycle past sixty days is the overdue case too — it
-            // still resolves through "log it" (issue #132 AC), except in
-            // `irregular`, where the banner is silenced (#131).
-            _lateSectionFor(prediction, theme),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'It has run well past a typical cycle for this profile. You can '
+            'exclude it from future averages, or turn off predictions if '
+            'long cycles are common for this profile.',
+            key: const ValueKey('overview-long-cycle-body'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSecondaryContainer,
+            ),
+          ),
+          if (!_effectiveReadOnly) ...[
             const SizedBox(height: 8),
-            Text(
-              kEstimateDisclaimer,
-              key: const ValueKey('overview-awaiting-disclaimer'),
-              style: theme.textTheme.bodySmall,
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                OutlinedButton(
+                  key: const ValueKey('long-cycle-exclude'),
+                  onPressed: () => _excludeLongCycle(context, prediction),
+                  child: const Text('Exclude this cycle'),
+                ),
+                // TODO(#225): wire this up once profile-level "turn
+                // predictions off" exists. Until then it stays a disabled,
+                // honestly-labeled button rather than a live one that only
+                // ever shows a "coming soon" snackbar — a button that always
+                // just defers reads as broken, not as a placeholder.
+                const OutlinedButton(
+                  key: ValueKey('long-cycle-predictions-off'),
+                  onPressed: null,
+                  child: Text('Turn off predictions (coming soon)'),
+                ),
+              ],
             ),
           ],
-        ),
+        ],
       ),
     );
   }

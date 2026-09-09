@@ -19,8 +19,6 @@ void main() {
         final copy = careModeCopyFor(mode);
         expect(copy.notEnoughTitle, isNotEmpty, reason: '$mode title');
         expect(copy.notEnoughBody, isNotEmpty, reason: '$mode body');
-        expect(copy.awaitingTitle, isNotEmpty, reason: '$mode awaiting');
-        expect(copy.awaitingBody, isNotEmpty, reason: '$mode awaiting body');
         expect(copy.nextEstimateLabel, isNotEmpty, reason: '$mode estimate');
         for (final category in TagCategory.values) {
           expect(copy.categoryLabel(category), isNotEmpty,
@@ -72,10 +70,8 @@ void main() {
       final standard = careModeCopyFor(ProfileMode.standard);
       expect(careModeCopyFor(ProfileMode.teen).notEnoughTitle,
           isNot(standard.notEnoughTitle));
-      expect(careModeCopyFor(ProfileMode.teen).awaitingBody,
-          isNot(standard.awaitingBody));
-      expect(careModeCopyFor(ProfileMode.caregiver).awaitingBody,
-          isNot(standard.awaitingBody));
+      expect(careModeCopyFor(ProfileMode.teen).notEnoughBody,
+          isNot(standard.notEnoughBody));
     });
 
     test('teen day-sheet headings differ from standard for at least the '

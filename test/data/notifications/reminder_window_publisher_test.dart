@@ -23,11 +23,14 @@ ActivePrediction _active(
   LocalDate today, {
   bool duringEpisode = false,
   LocalDate? estimatedNextStart,
+  LocalDate? originalEstimatedNextStart,
 }) =>
     ActivePrediction(
       today: today,
       lastEpisodeStart: today.addDays(-34),
       estimatedNextStart: estimatedNextStart ?? today.addDays(-6),
+      originalEstimatedNextStart:
+          originalEstimatedNextStart ?? estimatedNextStart ?? today.addDays(-6),
       averagedCycleLengths: const [28],
       meanCycleLengthDays: 28,
       cycleDay: 35,
@@ -320,5 +323,53 @@ void main() {
     for (final c in predictions.values) {
       await c.close();
     }
+  });
+
+  test(
+      '#221 follow-up (review fix): a late, rolled prediction publishes the '
+      'ORIGINAL (un-rolled) estimatedNextStart, not the rolled one -- the '
+      'server missed-entry scan gates on estimated_next_start <= current_date '
+      'and a future, rolled date would silence it', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final calls = <_UpsertCall>[];
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = ReminderWindowPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      upsert: (profileId, iso, episodeOpen) async {
+        calls.add(_UpsertCall(profileId, iso, episodeOpen));
+      },
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1')]);
+    // A rolled-forward prediction: the original estimate was well in the
+    // past (late), but the rolled estimatedNextStart has been stepped
+    // forward into the future for display.
+    predictions['p1']!.add(_active(
+      today,
+      estimatedNextStart: today.addDays(5),
+      originalEstimatedNextStart: today.addDays(-23),
+    ));
+    await pumpEventQueue();
+
+    expect(calls, hasLength(1));
+    expect(calls.single.estimatedNextStartIso, today.addDays(-23).iso,
+        reason: 'must publish the original, un-rolled date so the server '
+            'gate (estimated_next_start <= current_date) stays open, not '
+            'the rolled, future-dated one');
   });
 }
