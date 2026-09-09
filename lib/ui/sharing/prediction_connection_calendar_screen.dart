@@ -9,7 +9,11 @@
 /// Data is fetched on demand from the projection RPC
 /// ([PredictionConnectionService.fetchProjection]); a null result after a
 /// revocation renders the "connection ended" state — revocation takes
-/// effect on the recipient's next fetch with no residual view.
+/// effect on the recipient's next fetch with no residual view. Issue #373:
+/// a null result while this account still holds the connection (the
+/// sharer's device has not published its first snapshot yet) renders a
+/// distinct "waiting for the first update" state instead, so a
+/// just-redeemed code never reads as a dead connection.
 library;
 
 import 'package:flutter/material.dart';
@@ -36,22 +40,56 @@ class PredictionConnectionCalendarScreen extends StatefulWidget {
       _PredictionConnectionCalendarScreenState();
 }
 
+/// What one load of the screen resolved to (issue #373). The projection RPC
+/// alone cannot tell "live connection, nothing published yet" from
+/// "revoked or never existed" — both are null by design — so a null
+/// projection is followed by one look at the recipient's own connection
+/// list to pick between the waiting and the ended states.
+enum _ConnectionStatus { projected, waitingForFirstUpdate, ended }
+
+class _ProjectionLoad {
+  const _ProjectionLoad._(this.status, this.projection);
+
+  const _ProjectionLoad.projected(PredictionProjection projection)
+      : this._(_ConnectionStatus.projected, projection);
+  const _ProjectionLoad.waiting()
+      : this._(_ConnectionStatus.waitingForFirstUpdate, null);
+  const _ProjectionLoad.ended() : this._(_ConnectionStatus.ended, null);
+
+  final _ConnectionStatus status;
+  final PredictionProjection? projection;
+}
+
 class _PredictionConnectionCalendarScreenState
     extends State<PredictionConnectionCalendarScreen> {
-  late Future<PredictionProjection?> _projectionFuture;
+  late Future<_ProjectionLoad> _loadFuture;
   late LocalDate _month;
 
   @override
   void initState() {
     super.initState();
     _month = LocalDate.today();
-    _projectionFuture = widget.service.fetchProjection(profileId: widget.profileId);
+    _loadFuture = _load();
+  }
+
+  Future<_ProjectionLoad> _load() async {
+    final projection =
+        await widget.service.fetchProjection(profileId: widget.profileId);
+    if (projection != null) return _ProjectionLoad.projected(projection);
+    // Issue #373: a recipient who just redeemed a code lands here before
+    // the sharer's device has published anything. Only when this account
+    // no longer holds a live connection to the profile is it "ended".
+    final incoming = await widget.service.listIncomingConnections();
+    final stillConnected =
+        incoming.any((c) => c.profileId == widget.profileId);
+    return stillConnected
+        ? const _ProjectionLoad.waiting()
+        : const _ProjectionLoad.ended();
   }
 
   void _reload() {
     setState(() {
-      _projectionFuture =
-          widget.service.fetchProjection(profileId: widget.profileId);
+      _loadFuture = _load();
     });
   }
 
@@ -74,8 +112,8 @@ class _PredictionConnectionCalendarScreenState
           onPressed: _reload,
         ),
       ]),
-      body: FutureBuilder<PredictionProjection?>(
-        future: _projectionFuture,
+      body: FutureBuilder<_ProjectionLoad>(
+        future: _loadFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -96,33 +134,30 @@ class _PredictionConnectionCalendarScreenState
             );
           }
 
-          final projection = snapshot.data;
-          if (projection == null) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.link_off,
-                        size: 48, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(height: 12),
-                    Text('Connection ended',
-                        style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'This prediction connection is no longer active.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-            );
+          final load = snapshot.data!;
+          switch (load.status) {
+            case _ConnectionStatus.waitingForFirstUpdate:
+              return _EmptyState(
+                key: const ValueKey('prediction-calendar-waiting'),
+                icon: Icons.hourglass_top,
+                title: 'Waiting for the first update',
+                body: "You're connected, but ${widget.profileName}'s app "
+                    "hasn't shared its first predictions yet. They appear "
+                    'here automatically once it does - tap refresh to check '
+                    'again.',
+              );
+            case _ConnectionStatus.ended:
+              return _EmptyState(
+                key: const ValueKey('prediction-calendar-ended'),
+                icon: Icons.link_off,
+                title: 'Connection ended',
+                body: 'This prediction connection is no longer active.',
+              );
+            case _ConnectionStatus.projected:
+              break;
           }
 
-          final phases = projection.phasesByDate();
+          final phases = load.projection!.phasesByDate();
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -157,6 +192,45 @@ class _PredictionConnectionCalendarScreenState
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// The shared shape of the two no-calendar states (waiting / ended).
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 48, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(height: 12),
+            Text(title, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
       ),
     );
   }

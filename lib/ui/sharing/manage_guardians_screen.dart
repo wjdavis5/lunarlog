@@ -14,6 +14,8 @@
 /// stream (KTD3) - there is no local table behind pending invitations.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/repositories/activity_feed_repository.dart';
@@ -81,9 +83,16 @@ class ManageGuardiansScreen extends StatefulWidget {
 
   /// Issue #151: called after a prediction connection is created or
   /// revoked so the shell can (re)publish the projection snapshot right
-  /// away - a freshly created connection gets data on the recipient's
-  /// first fetch without waiting for the sharer's next prediction change.
+  /// away. Issue #373: also called the moment a pending invite is seen to
+  /// have been redeemed (this screen polls the connection while it is
+  /// pending) - that is the transition at which a snapshot first becomes
+  /// publishable, since the server only accepts one for an ACTIVE
+  /// connection; at arming time there is nothing to publish to yet.
   final void Function(String profileId)? onPredictionConnectionChanged;
+
+  /// Issue #373: how often the screen re-reads a still-pending connection
+  /// to catch its redemption. Injectable so tests drive it in fake time.
+  static const Duration pendingPollInterval = Duration(seconds: 15);
 
   @override
   State<ManageGuardiansScreen> createState() => _ManageGuardiansScreenState();
@@ -105,11 +114,23 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   ActivePredictionConnection? _predictionConnection;
   bool _predictionConnectionLoaded = false;
 
+  /// Issue #373: live only while [_predictionConnection] is pending; each
+  /// tick re-reads the row so the pending -> active transition is caught
+  /// (and published) while the sharer is on this screen showing the code.
+  Timer? _pendingPoll;
+
   @override
   void initState() {
     super.initState();
     _loadPendingInvites();
     _loadPredictionConnection();
+  }
+
+  @override
+  void dispose() {
+    _pendingPoll?.cancel();
+    _pendingPoll = null;
+    super.dispose();
   }
 
   Future<void> _loadPredictionConnection() async {
@@ -120,16 +141,38 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         profileId: widget.profile.id,
       );
       if (!mounted) return;
+      final previous = _predictionConnection;
       setState(() {
         _predictionConnection = connection;
         _predictionConnectionLoaded = true;
       });
+      _syncPendingPoll();
+      // Issue #373: the code was just redeemed - publish now, from this
+      // (the sharer's) side, so the recipient's first fetch has data.
+      if (previous?.pending == true && connection?.pending == false) {
+        widget.onPredictionConnectionChanged?.call(widget.profile.id);
+      }
     } on PredictionConnectionFailure {
       if (!mounted) return;
       setState(() => _predictionConnectionLoaded = true);
     } catch (_) {
       if (!mounted) return;
       setState(() => _predictionConnectionLoaded = true);
+    }
+  }
+
+  /// Starts the pending poll when the loaded connection is pending and
+  /// stops it otherwise (redeemed, revoked, or gone) - one timer at most.
+  void _syncPendingPoll() {
+    final pending = _predictionConnection?.pending == true;
+    if (pending && _pendingPoll == null) {
+      _pendingPoll = Timer.periodic(
+        ManageGuardiansScreen.pendingPollInterval,
+        (_) => _loadPredictionConnection(),
+      );
+    } else if (!pending) {
+      _pendingPoll?.cancel();
+      _pendingPoll = null;
     }
   }
 
@@ -670,7 +713,20 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
-        if (!_predictionConnectionLoaded)
+        // Issue #373: PRIVACY.md - minor profiles are never shared. The
+        // server refuses the create RPC too; this only keeps the
+        // affordance off a screen where it could never succeed.
+        if (widget.profile.isMinor)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Text(
+              "Prediction sharing is not available for a minor's profile.",
+              key: const ValueKey('share-predictions-minor'),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          )
+        else if (!_predictionConnectionLoaded)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Center(
