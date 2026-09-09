@@ -74,6 +74,8 @@ void main() {
       expect(l10n.calendarLegendLight, 'Light flow');
       expect(l10n.calendarLegendMedium, 'Medium flow');
       expect(l10n.calendarLegendHeavy, 'Heavy flow');
+      // #138: the legend's one remaining inline literal, moved verbatim.
+      expect(l10n.calendarLegendSuperHeavy, 'Super heavy flow (5 marks)');
       expect(l10n.calendarLegendSymptom, 'Symptom day');
       expect(l10n.calendarLegendToday, 'Today');
       expect(l10n.calendarLegendPredicted, 'Predicted day');
@@ -146,6 +148,11 @@ void main() {
       expect(l10n.flowLevelLight, 'Light');
       expect(l10n.flowLevelMedium, 'Medium');
       expect(l10n.flowLevelHeavy, 'Heavy');
+      // #138: the two inline `en` fallbacks issue #247 left behind, moved
+      // into ARB verbatim (and the day-cell labels read flow levels
+      // through them).
+      expect(l10n.flowLevelNotBleeding, 'Not bleeding');
+      expect(l10n.flowLevelSuperHeavy, 'Super heavy');
       expect(l10n.daySheetDeleteTitle, 'Delete this entry?');
       expect(
         l10n.daySheetDeleteBody('2026-09-07'),
@@ -169,6 +176,17 @@ void main() {
     testWidgets('overview panel', (tester) async {
       final l10n = await pumpL10n(tester);
       expect(l10n.overviewSeeHistory, 'See cycle history');
+      // #138: the cycle wheel's centre labels and screen-reader phrases,
+      // moved into ARB verbatim (visible centre label, phase, and full
+      // body keep their historical spellings — the period-day centre
+      // label keeps its middle dot, the spoken phase its comma).
+      expect(l10n.cycleWheelCenterCycleDay(14), 'Cycle day 14');
+      expect(l10n.cycleWheelCenterPeriodDay(2), 'Period · day 2');
+      expect(l10n.cycleWheelPhasePeriodDay(2), 'Period, day 2');
+      expect(
+        l10n.cycleWheelSemanticsBody('Cycle day 14', 30, 4),
+        'Cycle day 14 of about 30 days. Period usually runs about 4 days.',
+      );
       expect(
         l10n.overviewLoggedSnackbar,
         'Recorded a medium-flow period start for today.',

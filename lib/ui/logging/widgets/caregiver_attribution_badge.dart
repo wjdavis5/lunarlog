@@ -87,31 +87,42 @@ class CaregiverAttributionBadge extends StatelessWidget {
     // to "logged by <guardian>" — the import source is the whole story.
     final text = isImported ? _sourceLabel(source) : _attributionText();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.people_outline,
-            size: 14,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              text,
-              style: theme.textTheme.bodySmall?.copyWith(
+    return Semantics(
+      // #138: the badge is one announcement ("Logged by Dad"), not a
+      // decorative icon followed by stray text — container keeps it a
+      // single focus stop, and the icon inside is explicitly decorative.
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ExcludeSemantics(
+              child: Icon(
+                Icons.people_outline,
+                size: 14,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            Flexible(
+              // #138 (AC4): no ellipsis — at 200% text scale the badge
+              // wraps inside the heading's Wrap instead of truncating who
+              // logged the entry, which is the one fact this badge exists
+              // to carry.
+              child: Text(
+                text,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

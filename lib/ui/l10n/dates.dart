@@ -131,6 +131,20 @@ List<String> narrowWeekdayInitials({String locale = kFallbackLocale}) {
   );
 }
 
+/// Full weekday names ("Sunday".."Saturday"), locale-derived. Issue #138:
+/// the calendar's weekday header keeps the narrow initial as its visual
+/// child but carries the matching entry of this list as its Semantics
+/// label, so a screen reader hears "Sunday" instead of an ambiguous
+/// single letter (two "S" and two "T" initials per week). Sunday-first,
+/// same order contract as [narrowWeekdayInitials] — index with
+/// `dateTime.weekday % 7` or reorder for a non-Sunday week start.
+List<String> fullWeekdayNames({String locale = kFallbackLocale}) {
+  _ensureDateSymbols();
+  return List<String>.unmodifiable(
+    DateFormat('EEEE', locale).dateSymbols.WEEKDAYS,
+  );
+}
+
 /// The calendar's ambient locale identifier from the widget tree, for
 /// widgets that format dates outside a `build` method that already resolved
 /// it. Falls back to [kFallbackLocale] under a bare `MaterialApp` (widget

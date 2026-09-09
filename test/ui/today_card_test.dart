@@ -12,13 +12,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
     show CycleConfidence;
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/cycle_wheel.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 
+/// #138: the wheel's labels now resolve through [AppLocalizations], so the
+/// pump registers the delegates and the pure label tests use the generated
+/// `en` lookup directly.
+final AppLocalizations kL10n = lookupAppLocalizations(const Locale('en'));
+
 Future<void> _pump(WidgetTester tester, Widget child) async {
   await tester.pumpWidget(MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     theme: AppTheme.lightTheme,
     home: Scaffold(body: Center(child: child)),
   ));
@@ -93,6 +101,7 @@ void main() {
           duringEpisode: false,
           cycleLengthDays: 30,
           periodLengthDays: 4,
+          l10n: kL10n,
         ),
         'Cycle day 14 of about 30 days. Period usually runs about 4 days.',
       );
@@ -105,6 +114,7 @@ void main() {
           duringEpisode: true,
           cycleLengthDays: 28,
           periodLengthDays: 5,
+          l10n: kL10n,
         ),
         'Period, day 2 of about 28 days. Period usually runs about 5 days.',
       );
@@ -116,6 +126,7 @@ void main() {
         duringEpisode: false,
         cycleLengthDays: 30,
         periodLengthDays: 4,
+        l10n: kL10n,
       );
       for (final stem in ['fertil', 'ovul', 'conceiv', 'luteal']) {
         expect(label.toLowerCase().contains(stem), isFalse);

@@ -74,6 +74,52 @@ void main() {
     expect(find.text('Logged by Dad'), findsOneWidget);
   });
 
+  testWidgets('#138: the badge is one semantic node announcing who logged '
+      'the entry, with the decorative icon excluded and no ellipsis to '
+      'truncate the name at large text scales', (tester) async {
+    final handle = tester.ensureSemantics();
+    tester.view.physicalSize = const Size(200, 300);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2.0)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: Center(
+            child: CaregiverAttributionBadge(
+              loggedByUserId: 'user-dad',
+              currentUserId: 'user-mom',
+              guardians: [guardianDad, guardianMom],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final node = tester.getSemantics(find.byType(CaregiverAttributionBadge));
+    expect(node.label, 'Logged by Dad',
+        reason: 'the badge announces its attribution as a single focus stop, '
+            'not decorative icon plus stray text');
+    expect(
+      node.childrenCount,
+      0,
+      reason: 'the icon and the text merge into the one container node — '
+          'nothing of the badge is a second focus stop',
+    );
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.overflow, isNot(TextOverflow.ellipsis),
+        reason: '#138 AC4: the name wraps at 200% instead of truncating');
+    expect(tester.takeException(), isNull,
+        reason: 'no layout overflow at 200% text scale');
+    handle.dispose();
+  });
+
   testWidgets('renders both logged by and modified by when different users modified', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
