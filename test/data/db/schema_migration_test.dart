@@ -3,7 +3,7 @@
 /// Where `db_test.dart`'s `migrationStepHook`-based `migrations` group
 /// proves that each upgrade step runs in the right order and rolls back
 /// transactionally on failure, this file proves the *result*: that walking
-/// every historical `onUpgradeSteps` path (v1→v4, v2→v4, v3→v4) via drift's
+/// every historical `onUpgradeSteps` path (v1→v5, v2→v5, v3→v5, v4→v5) via drift's
 /// `SchemaVerifier` lands on a live schema that is structurally identical to
 /// a schema dumped straight from the current `lib/data/db/db.dart` — not
 /// just that the migration ran without throwing. Neither file supersedes
@@ -47,15 +47,15 @@ import 'generated_migrations/schema.dart';
 
 /// The current schema version, kept in lockstep with
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
-/// dump. A mismatch here is caught by the `schema version is 4` assertion
+/// dump. A mismatch here is caught by the `schema version is 5` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 4;
+const int _kCurrentSchemaVersion = 5;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -75,7 +75,7 @@ void main() {
 
       // Throws SchemaMismatch if the live schema after onUpgradeSteps
       // differs from a database built fresh from
-      // drift_schemas/drift_schema_v4.json — table/column/type/constraint
+      // drift_schemas/drift_schema_v5.json — table/column/type/constraint
       // additions, removals or changes alike.
       await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
     });
