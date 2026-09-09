@@ -115,6 +115,11 @@ const String kRouteTransferOwnershipScreen = 'TransferOwnershipScreen';
 const String kRouteNotificationPreferencesScreen =
     'NotificationPreferencesScreen';
 
+/// `lib/ui/care/care_notes_screen.dart` (Issue #128) — the profile's
+/// shared care notes and visit-prep checklist, pushed from the profile
+/// screen's app bar.
+const String kRouteCareNotesScreen = 'CareNotesScreen';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -143,4 +148,5 @@ const Set<String> kSentryRouteNames = {
   kRouteClaimProfileSheet,
   kRouteTransferOwnershipScreen,
   kRouteNotificationPreferencesScreen,
+  kRouteCareNotesScreen,
 };

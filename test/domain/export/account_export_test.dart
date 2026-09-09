@@ -6,12 +6,14 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
+import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/models/visit_prep_item.dart';
 
 import '../../support/fake_account_export_remote_source.dart';
 
@@ -333,11 +335,12 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 5,
+      expect(kAccountExportSchemaVersion, 6,
           reason: 'profiles[].mode was v2''s shape change; the constant has '
-              'since moved to v5 for profiles[].observations (Issue #240), '
-              'dayEntries[].source/sourceId/importId (Issue #159), and the '
-              'super_heavy/not_bleeding flow wire values (Issue #247)');
+              'since moved to v6 for profiles[].observations (Issue #240), '
+              'dayEntries[].source/sourceId/importId (Issue #159), the '
+              'super_heavy/not_bleeding flow wire values (Issue #247), and '
+              'profiles[].careNotes/visitPrepItems (Issue #128)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
@@ -490,8 +493,10 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 5,
-          reason: 'adding profiles[].observations is a shape change');
+      expect(kAccountExportSchemaVersion, 6,
+          reason: 'adding profiles[].observations is a shape change; the '
+              'constant has since moved to v6 for profiles[].careNotes/'
+              'visitPrepItems (Issue #128)');
       final profiles = doc['profiles'] as List;
       final p1 = profiles[0] as Map;
       final p2 = profiles[1] as Map;
@@ -602,6 +607,97 @@ void main() {
       final profile = (doc['profiles'] as List).single as Map;
       final observation = (profile['observations'] as List).single as Map;
       expect(observation['importId'], 'job-1');
+    });
+  });
+
+  group('shared care content (Issue #128, kAccountExportSchemaVersion v6)',
+      () {
+    test('a profile exports its care notes with bodies and no attribution ids',
+        () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        careNotesByProfile: {
+          'p-1': [
+            CareNote(
+              id: 'n1',
+              profileId: 'p-1',
+              body: 'Prefers the blue inhaler.',
+              updatedAt: DateTime.utc(2026, 9, 1),
+              loggedByUserId: 'user-mom',
+              lastModifiedByUserId: 'user-dad',
+            ),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final notes = profile['careNotes'] as List;
+      expect(notes, hasLength(1));
+      final note = notes.single as Map;
+      expect(note['id'], 'n1');
+      expect(note['body'], 'Prefers the blue inhaler.');
+      expect(note.containsKey('loggedByUserId'), isFalse,
+          reason: 'R9: guardian attribution ids stay out of the export');
+      expect(note.containsKey('lastModifiedByUserId'), isFalse);
+    });
+
+    test('a profile exports its visit-prep list with check state but no '
+        'checked-by user id', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        visitPrepByProfile: {
+          'p-1': [
+            VisitPrepItem(
+              id: 'i1',
+              profileId: 'p-1',
+              body: 'Ask about iron levels.',
+              isChecked: true,
+              checkedByUserId: 'user-dad',
+              checkedAt: DateTime.utc(2026, 9, 2),
+              updatedAt: DateTime.utc(2026, 9, 2),
+            ),
+            VisitPrepItem(
+              id: 'i2',
+              profileId: 'p-1',
+              body: 'Bring the growth chart.',
+              updatedAt: DateTime.utc(2026, 9, 1),
+            ),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final items = profile['visitPrepItems'] as List;
+      expect(items, hasLength(2));
+      final first = items[0] as Map;
+      expect(first['id'], 'i1');
+      expect(first['body'], 'Ask about iron levels.');
+      expect(first['isChecked'], isTrue);
+      expect(first['checkedAt'], '2026-09-02T00:00:00.000Z');
+      expect(first.containsKey('checkedByUserId'), isFalse,
+          reason: 'R9: an auth identifier is not family data');
+      final second = items[1] as Map;
+      expect(second['isChecked'], isFalse);
+      expect(second['checkedAt'], isNull);
+    });
+
+    test('a profile with no care content still gets both keys, empty', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      expect(profile['careNotes'], isEmpty);
+      expect(profile['visitPrepItems'], isEmpty);
     });
   });
 }

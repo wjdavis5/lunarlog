@@ -16,6 +16,7 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
+import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
@@ -30,6 +31,7 @@ import 'package:lunarlog/domain/notifications/notification_preferences_service.d
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
@@ -188,6 +190,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
   late final ProfilesRepository _profiles;
   late final DayEntriesRepository _dayEntries;
   late final ObservationsRepository _observations;
+  late final CareContentRepository _careContent;
   late final SettingsStore _settings;
   late final CyclePredictionService _prediction;
   late final CycleHistoryService _cycleHistory;
@@ -238,6 +241,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _profiles = DriftProfilesRepository(storage);
     _dayEntries = DriftDayEntriesRepository(storage);
     _observations = DriftObservationsRepository(storage);
+    _careContent = DriftCareContentRepository(storage);
     _settings = DriftSettingsStore(storage);
     // Issue #132: the device-local omission list joins both streams, so
     // estimates and history re-derive (and reminders replan) whenever the
@@ -622,6 +626,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),
+        Provider<CareContentRepository>.value(value: _careContent),
         Provider<SettingsStore>.value(value: _settings),
         // Issue #218: the onboarding persistence seam for the
         // birth-control-method and goal/mode answers (#216's form calls
