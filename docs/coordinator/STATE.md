@@ -3,7 +3,7 @@
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
-| 160 | feat/160-l10n-scaffold | ../lunarlog-wt/160-l10n-scaffold | 2026-09-09T09:15Z | — | coding |
+| 173 | feat/173-health-adapter | ../lunarlog-wt/173-health-adapter | 2026-09-09T10:10Z | — | coding |
 | 198 | fix/198-day-sheet-ergonomics | ../lunarlog-wt/198-day-sheet-ergonomics | 2026-09-09T09:15Z | — | coding |
 | 188 | feat/188-modes-storage | ../lunarlog-wt/188-modes-storage | 2026-09-09T09:15Z | — | coding |
 | 242 | fix/242-ownership-token-hash-unreadable | ../lunarlog-wt/242-ownership-token-hash-unreadable | 2026-09-09T00:05Z | — | coding |
@@ -24,6 +24,7 @@
 | 133 | 276 | 2026-09-09T00:35Z |
 | 131 | 277 | 2026-09-09T01:20Z |
 | 124 | 278 | 2026-09-09T00:35Z |
+| 160 | 340 | 2026-09-09T10:05Z |
 
 ## Externally in-flight (ANOTHER orchestrator session's set — do NOT review/merge from this session to avoid racing its loop)
 PRs #335 (#247), #329 (#321), #327 (#167), #325 (#140), #336 (docs). Issues labeled in-progress not ours: #143 #152 #157.
