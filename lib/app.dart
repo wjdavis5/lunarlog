@@ -12,12 +12,17 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
@@ -41,6 +46,7 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
@@ -53,6 +59,8 @@ import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/settings/settings_screen.dart'
+    show confirmedHealthSyncUserId;
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -238,6 +246,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
   ReminderConfigService? _reminderConfigService;
   ReminderWindowPublisher? _reminderWindowPublisher;
   PredictionProjectionPublisher? _predictionProjectionPublisher;
+  HealthFlowWriteCoordinator? _healthFlowCoordinator;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
@@ -285,6 +294,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
       NotificationAvailability.available,
     );
     _initAuthController();
+    _initHealthFlowWriter();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
     // U8/R9: invite deep links. The cold-start code is latched here; live
@@ -405,6 +415,47 @@ class _LunarLogAppState extends State<LunarLogApp> {
     );
     _predictionProjectionPublisher = publisher;
     publisher.start();
+  }
+
+  /// Issue #193: the one-way, opt-in, forward-only menstrual-flow write
+  /// path. Starts iOS-only — `AppConfig.hasHealthSync` gates the feature
+  /// overall, and the Health Connect half's device checklist is #202's,
+  /// so Android stays with no write coordinator (and no Settings tile)
+  /// rather than binding a profile nothing syncs. Widget-test harnesses
+  /// and web (the other `UnsupportedHealthPlatform` surfaces) never
+  /// construct it either. Same zero-conditional gating posture as the
+  /// publishers above.
+  void _initHealthFlowWriter() {
+    if (!AppConfig.hasHealthSync) return;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    final binding = HealthSyncBinding(_settings);
+    final platform = createHealthPlatform(
+      defaultTargetPlatform,
+      binding: binding,
+      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+    );
+    final service = HealthFlowWriteService(
+      platform: platform,
+      binding: binding,
+      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+      profiles: _profiles,
+      dayEntries: _dayEntries,
+      observations: _observations,
+      settings: _settings,
+      guardiansForProfile:
+          ProfileGuardiansRepository(widget.db.storage).getForProfile,
+      // The Settings picker's own tested resolver (issue #153): null
+      // unless a session is actually signed in — the same guard fact both
+      // call sites must agree on.
+      signedInUserId: () => confirmedHealthSyncUserId(_authController),
+    );
+    final coordinator = HealthFlowWriteCoordinator(
+      binding: binding,
+      dayEntries: _dayEntries,
+      service: service,
+    );
+    _healthFlowCoordinator = coordinator;
+    coordinator.start();
   }
 
   bool _isSignedIn() => _authController?.signedIn ?? false;
@@ -697,10 +748,14 @@ class _LunarLogAppState extends State<LunarLogApp> {
     final projectionPublisherTeardown =
         _predictionProjectionPublisher?.dispose() ?? Future<void>.value();
     _reminderWindowPublisher = null;
+    final healthFlowTeardown =
+        _healthFlowCoordinator?.dispose() ?? Future<void>.value();
+    _healthFlowCoordinator = null;
     final teardown = Future.wait([
       coordinatorTeardown,
       publisherTeardown,
       projectionPublisherTeardown,
+      healthFlowTeardown,
     ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {

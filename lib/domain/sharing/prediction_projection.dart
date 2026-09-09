@@ -19,18 +19,20 @@
 ///   * fertile days / ovulation days — `fertile_window.dart`'s
 ///     calendar-method back-calculation applied to every forecast cycle,
 ///     exactly as the sharer's own forward calendar renders them;
-///   * PMS days — `ActivePrediction.pms`'s first-class #220 phase band
-///     (empty when the estimate carries no PMS phase), the exact span the
-///     sharer's own overview renders. (Fixed on 2026-09-07: #151 had
-///     shipped against `forecast.dart`'s retired fixed `kPmsLeadDays`
-///     window, which #220 had already deleted — the compile break this
-///     fix resolves, discovered by #178's analyze gate.)
+///   * PMS days — the engine's own data-driven PMS band
+///     (`ActivePrediction.pms`'s `predictedStart`..`predictedEnd`, issue
+///     #220), the same span the sharer's calendar renders; empty when the
+///     engine has no PMS estimate (fewer usable intervals than the
+///     prediction gate requires), so nothing derived is shared. (This
+///     replaced the pre-#220 fixed lead window, exactly as this doc
+///     always anticipated; the projection shape did not change.)
 ///
 /// Pure Dart: no Flutter and no Supabase types cross this boundary.
 library;
 
 import '../models/local_date.dart';
 import '../prediction/fertile_window.dart';
+import '../prediction/pms.dart';
 import '../prediction/prediction.dart';
 
 /// Server-side bound, mirrored in the migration's payload trigger: each
@@ -172,34 +174,51 @@ bool _sameDays(List<LocalDate> a, List<LocalDate> b) {
 
 /// Builds the projection the sharer's device publishes, from the same
 /// [ActivePrediction] the sharer's own calendar renders (see the library
-/// doc for the per-field derivation).
+/// doc for the per-field derivation). Decomposed into one private helper
+/// per phase so each stays under the quality gate's CRAP ceiling.
 PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
-  final today = prediction.today;
+  final fertile = _fertileAndOvulationDays(prediction.forecast);
+  return PredictionProjection(
+    generatedAt: prediction.today,
+    periodDays: _cappedSorted(_periodDays(prediction)),
+    fertileDays: _cappedSorted(fertile.fertile),
+    ovulationDays: _cappedSorted(fertile.ovulation),
+    pmsDays: _cappedSorted(_pmsBand(prediction.pms)),
+  );
+}
 
-  final periodDays = <LocalDate>{};
-  // Current open episode, days so far (a logged start is derived episode
-  // data — never a raw entry row).
+/// The current open episode's days so far plus every forecast cycle's
+/// predicted bleed band (strictly after today — KTD3's forward-only rule,
+/// matching forecast.dart's own rendering).
+Set<LocalDate> _periodDays(ActivePrediction prediction) {
+  final today = prediction.today;
+  final days = <LocalDate>{};
   if (prediction.duringEpisode) {
     var d = prediction.lastEpisodeStart;
-    while (d.difference(today) <= 0 && periodDays.length < kProjectionMaxDatesPerField) {
-      periodDays.add(d);
+    while (d.difference(today) <= 0 && days.length < kProjectionMaxDatesPerField) {
+      days.add(d);
       d = d.addDays(1);
     }
   }
-  // Forecast bleed bands, strictly after today (KTD3's forward-only rule,
-  // matching forecast.dart's own rendering).
   for (final cycle in prediction.forecast) {
     for (var i = 0; i < cycle.estimatedPeriodLengthDays; i++) {
       final date = cycle.start.addDays(i);
       if (!date.isAfter(today)) continue;
-      if (periodDays.length >= kProjectionMaxDatesPerField) break;
-      periodDays.add(date);
+      if (days.length >= kProjectionMaxDatesPerField) break;
+      days.add(date);
     }
   }
+  return days;
+}
 
+/// The fertile-window back-calculation of every forecast cycle
+/// (`fertile_window.dart`, exactly as the sharer's own forward calendar
+/// renders them).
+({Set<LocalDate> fertile, Set<LocalDate> ovulation}) _fertileAndOvulationDays(
+    List<PredictedCycle> forecast) {
   final fertileDays = <LocalDate>{};
   final ovulationDays = <LocalDate>{};
-  for (final cycle in prediction.forecast) {
+  for (final cycle in forecast) {
     final window = fertileWindowFor(start: cycle.start, tier: cycle.tier);
     ovulationDays.add(window.estimatedOvulation);
     var d = window.windowStart;
@@ -208,29 +227,23 @@ PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
       d = d.addDays(1);
     }
   }
+  return (fertile: fertileDays, ovulation: ovulationDays);
+}
 
-  // PMS: the first-class #220 phase band (`ActivePrediction.pms`) — the
-  // exact span the sharer's own overview renders. Empty when the estimate
-  // carries no PMS phase (below the logged-interval minimum, or the
-  // seeded/provisional path, which never invents PMS history). The
-  // projection's own library doc anticipated this source switch when
-  // #220 landed; the old fixed `kPmsLeadDays` window is gone.
-  final pms = prediction.pms;
-  final pmsDays = <LocalDate>{
-    if (pms != null)
-      for (var d = pms.predictedStart;
-          d.difference(pms.predictedEnd) <= 0;
-          d = d.addDays(1))
-        d,
-  };
-
-  return PredictionProjection(
-    generatedAt: today,
-    periodDays: _cappedSorted(periodDays),
-    fertileDays: _cappedSorted(fertileDays),
-    ovulationDays: _cappedSorted(ovulationDays),
-    pmsDays: _cappedSorted(pmsDays),
-  );
+/// The engine's own data-driven band (issue #220) — the same span the
+/// sharer's calendar renders, and empty when the engine has no PMS
+/// estimate at all, so a projection never invents a window the engine
+/// does not stand behind.
+Set<LocalDate> _pmsBand(PmsEstimate? pms) {
+  final days = <LocalDate>{};
+  if (pms == null) return days;
+  var d = pms.predictedStart;
+  while (d.difference(pms.predictedEnd) <= 0 &&
+      days.length < kProjectionMaxDatesPerField) {
+    days.add(d);
+    d = d.addDays(1);
+  }
+  return days;
 }
 
 List<LocalDate> _cappedSorted(Set<LocalDate> days) {

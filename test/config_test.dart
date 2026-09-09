@@ -322,9 +322,10 @@ void main() {
       expect(AppConfig.fcmIosApiKey, isEmpty);
       expect(AppConfig.fcmIosAppId, isEmpty);
       expect(AppConfig.hasPush, isFalse);
-      // Issue #153: no HealthKit/Health Connect adapter exists yet — this
-      // stays false until the PR that adds the first one flips it.
-      expect(AppConfig.hasHealthSync, isFalse);
+      // Issue #193 flipped this when the one-way, opt-in, forward-only
+      // menstrual-flow write path landed (iOS only via that path's own
+      // platform gates).
+      expect(AppConfig.hasHealthSync, isTrue);
     });
 
     test('hasSupabase agrees with the pure function for this platform', () {

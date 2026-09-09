@@ -12,7 +12,8 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/storage.dart';
@@ -76,12 +77,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final hasFeedback = Provider.of<FeedbackService?>(context) != null && signedIn;
     // Issue #153: dormant until a HealthKit/Health Connect adapter exists
     // (AppConfig.hasHealthSync) and never on web — see that flag's doc
-    // comment. Also needs the storage/profiles wiring a fully unconfigured
-    // build (e.g. tests with no LunarLogStorage provided) may not have.
+    // comment. Since #193 the write flow behind it is real, but only on
+    // iOS: the Health Connect half's device checklist is #202's, so the
+    // tile stays hidden on Android rather than binding a profile nothing
+    // syncs yet. Also needs the storage/profiles wiring a fully
+    // unconfigured build (e.g. tests with no LunarLogStorage provided)
+    // may not have.
     final storage = Provider.of<LunarLogStorage?>(context);
     final profilesRepository = Provider.of<ProfilesRepository?>(context);
     final hasHealthSync = AppConfig.hasHealthSync &&
         !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
         storage != null &&
         profilesRepository != null;
     return Scaffold(

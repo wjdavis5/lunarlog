@@ -249,6 +249,34 @@ void main() {
     expect(find.byKey(const ValueKey('health-sync-unbind-tile')), findsNothing);
   });
 
+  testWidgets('documents the one-way, forward-only write surface and the '
+      'flow collapse (issue #193, mirroring Clue\'s own disclosure)',
+      (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(tester, binding: binding);
+
+    expect(
+      find.textContaining('nothing is ever read back'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Only days logged after sync is turned on'),
+      findsOneWidget,
+    );
+    // The one lossy mapping in the #193 table: superHeavy -> Apple's
+    // `heavy`, plus the A3-4 spotting rule, spelled out.
+    expect(
+      find.textContaining('Super heavy days are written to the Health app '
+          'as Heavy'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('spotting between periods is written as '
+          'intermenstrual bleeding'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('tapping an eligible profile opens a confirm dialog naming '
       'what binding means; confirming binds it', (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());

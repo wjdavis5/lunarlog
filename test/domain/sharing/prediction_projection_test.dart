@@ -7,12 +7,12 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
-import 'package:lunarlog/domain/prediction/pms.dart' show PmsEstimate;
+import 'package:lunarlog/domain/prediction/pms.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 
-ActivePrediction _prediction(LocalDate today) {
+ActivePrediction _prediction(LocalDate today, {PmsEstimate? pms}) {
   // 28-day cycles, 4-day bleed, next start 10 days out; today is mid-luteal
   // and not bleeding.
   const cycle = 28;
@@ -43,42 +43,12 @@ ActivePrediction _prediction(LocalDate today) {
     spreadDays: 2,
     tier: CycleConfidence.high,
     forecast: forecast,
+    pms: pms,
   );
 }
 
 void main() {
   final today = LocalDate(2026, 9, 7);
-
-  /// The default prediction carrying a #220 PMS band: onset 3 days before
-  /// the next estimated start, 2 days long (nextStart−3 .. nextStart−2).
-  ActivePrediction predictionWithPms(LocalDate today) {
-    final base = _prediction(today);
-    final nextStart = base.estimatedNextStart;
-    return ActivePrediction(
-      today: base.today,
-      lastEpisodeStart: base.lastEpisodeStart,
-      estimatedNextStart: base.estimatedNextStart,
-      originalEstimatedNextStart: base.originalEstimatedNextStart,
-      averagedCycleLengths: base.averagedCycleLengths,
-      meanCycleLengthDays: base.meanCycleLengthDays,
-      cycleDay: base.cycleDay,
-      duringEpisode: base.duringEpisode,
-      completedCycleCount: base.completedCycleCount,
-      validCycleCount: base.validCycleCount,
-      meanPeriodLengthDays: base.meanPeriodLengthDays,
-      spreadDays: base.spreadDays,
-      tier: base.tier,
-      forecast: base.forecast,
-      pms: PmsEstimate(
-        meanOnsetDaysBeforeNextPeriod: 3,
-        meanLengthDays: 2,
-        usableIntervalCount: 4,
-        tier: CycleConfidence.high,
-        predictedStart: nextStart.addDays(-3),
-        predictedEnd: nextStart.addDays(-2),
-      ),
-    );
-  }
 
   test('period days cover the forecast bleed bands, strictly after today',
       () {
@@ -136,18 +106,31 @@ void main() {
     expect(projection.fertileDays, isNot(contains(ovulation.addDays(2))));
   });
 
-  test('PMS days are the estimate\'s own #220 phase band; none without one',
-      () {
-    // No PmsEstimate on the prediction (below the logged-interval
-    // minimum): the projection shares no PMS days at all.
-    expect(buildPredictionProjection(_prediction(today)).pmsDays, isEmpty);
+  test('PMS days are the engine data-driven band; none without an '
+      'estimate (issue #220)', () {
+    // The base fixture carries no PmsEstimate: nothing PMS is shared.
+    final withoutPms = buildPredictionProjection(_prediction(today));
+    expect(withoutPms.pmsDays, isEmpty);
 
-    // With a band: the projection carries exactly that span, sorted.
+    // With an estimate, exactly its inclusive band is shared.
     final nextStart = today.addDays(10);
-    final projection = buildPredictionProjection(predictionWithPms(today));
-    expect(projection.pmsDays,
-        [nextStart.addDays(-3), nextStart.addDays(-2)]);
-    expect(projection.pmsDays, isNot(contains(nextStart)));
+    final withBand = buildPredictionProjection(
+      _prediction(
+        today,
+        pms: PmsEstimate(
+          meanOnsetDaysBeforeNextPeriod: 3,
+          meanLengthDays: 2,
+          usableIntervalCount: 6,
+          tier: CycleConfidence.high,
+          predictedStart: nextStart.addDays(-3),
+          predictedEnd: nextStart.addDays(-2),
+        ),
+      ),
+    );
+    expect(withBand.pmsDays, contains(nextStart.addDays(-3)));
+    expect(withBand.pmsDays, contains(nextStart.addDays(-2)));
+    expect(withBand.pmsDays, isNot(contains(nextStart.addDays(-1))));
+    expect(withBand.pmsDays, isNot(contains(nextStart)));
   });
 
   test('toJson carries exactly the server allowlisted keys with ISO dates',
@@ -193,13 +176,30 @@ void main() {
     expect(phases[nextStart], {PredictionPhase.period});
     final ovulation = nextStart.addDays(-14);
     expect(phases[ovulation], containsAll([PredictionPhase.fertile, PredictionPhase.ovulation]));
-    expect(phases[nextStart.addDays(-7)], isNull,
-        reason: 'the default prediction carries no PmsEstimate (#220), so '
-            'no PMS phase exists to share');
-    // With a PMS band, its dates carry the pms phase.
-    final withPms = buildPredictionProjection(predictionWithPms(today));
-    expect(withPms.phasesByDate()[nextStart.addDays(-3)],
-        {PredictionPhase.pms});
+    // The base fixture has no PMS estimate, so no date carries a pms mark.
+    expect(
+      phases.values.every((p) => !p.contains(PredictionPhase.pms)),
+      isTrue,
+    );
+
+    // With a band, its days carry the pms mark.
+    final withBand = buildPredictionProjection(
+      _prediction(
+        today,
+        pms: PmsEstimate(
+          meanOnsetDaysBeforeNextPeriod: 3,
+          meanLengthDays: 2,
+          usableIntervalCount: 6,
+          tier: CycleConfidence.high,
+          predictedStart: nextStart.addDays(-2),
+          predictedEnd: nextStart.addDays(-1),
+        ),
+      ),
+    );
+    expect(
+      withBand.phasesByDate()[nextStart.addDays(-2)],
+      {PredictionPhase.pms},
+    );
   });
 
   test('a generated invite deep link carries kind=prediction', () {
