@@ -4,7 +4,7 @@
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
 | 173 | feat/173-health-adapter | ../lunarlog-wt/173-health-adapter | 2026-09-09T10:10Z | — | coding |
-| 198 | fix/198-day-sheet-ergonomics | ../lunarlog-wt/198-day-sheet-ergonomics | 2026-09-09T09:15Z | — | coding |
+| 198 | fix/198-day-sheet-ergonomics | ../lunarlog-wt/198-day-sheet-ergonomics | 2026-09-09T09:15Z | 341 | integration: merging #335 flow-model semantics into autosave path (coder re-dispatched) |
 | 188 | feat/188-modes-storage | ../lunarlog-wt/188-modes-storage | 2026-09-09T09:15Z | — | coding |
 | 242 | fix/242-ownership-token-hash-unreadable | ../lunarlog-wt/242-ownership-token-hash-unreadable | 2026-09-09T00:05Z | — | coding |
 | 125 | feat/125-alert-digest | ../lunarlog-wt/125-alert-digest | 2026-09-08T23:10Z | — | coding |
