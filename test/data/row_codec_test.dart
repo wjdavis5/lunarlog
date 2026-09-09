@@ -48,13 +48,14 @@ void main() {
     List<String> tags = const ['cramps', 'headache'],
     String? note = 'a note',
     DateTime? deletedAt,
+    FlowLevel flow = FlowLevel.medium,
   }) =>
       DayEntry(
         id: entryId,
         profileId: profileId,
         localDate: '2026-09-01',
         tz: 'America/New_York',
-        flow: FlowLevel.medium,
+        flow: flow,
         tags: tags,
         note: note,
         updatedAt: micro,
@@ -357,6 +358,24 @@ void main() {
       expect(decoded.isTombstone, isTrue);
       expect(decoded.deletedAt, later);
       expect(decoded.updatedAt, micro);
+    });
+
+    test(
+        'issue #224: encode sends "none" for a tombstoned row\'s flow, with '
+        'no special-casing — it is a plain field encode, downstream of '
+        'softDeleteDayEntry already having cleared the row to '
+        'FlowLevel.none', () {
+      final row = makeEntry(
+        tags: const [],
+        note: null,
+        deletedAt: later,
+        flow: FlowLevel.none,
+      );
+      final json = encodeDayEntry(row);
+      expect(json['flow'], 'none');
+      final decoded = decodeDayEntry(json);
+      expect(decoded.isTombstone, isTrue);
+      expect(decoded.flow, FlowLevel.none);
     });
 
     test('decode ignores created_at and user_id', () {
