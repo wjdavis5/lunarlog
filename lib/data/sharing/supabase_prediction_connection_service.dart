@@ -283,6 +283,8 @@ class SupabasePredictionConnectionService
         PredictionConnectionFailure.alreadyConnected(),
     'cannot share and view':
         PredictionConnectionFailure.oneDirectional(),
+    // Issue #373: the server's is_minor gate (create AND accept).
+    "for a minor's profile": PredictionConnectionFailure.minorProfile(),
     'token_hash': PredictionConnectionFailure.invalidToken(),
   };
 

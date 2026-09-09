@@ -1,7 +1,17 @@
 /// Issue #151 UI coverage: the recipient's phase-only calendar (renders
 /// the projection's phases and has NO day-tap navigation into any day
 /// sheet), the "Shared with me" list screen, the sharer's section in
-/// Manage Guardians, and the kind=prediction accept sheet.
+/// Manage Guardians, and the kind=prediction accept sheet. Issue #373
+/// adds: the calendar's "waiting for the first update" state, the
+/// Manage Guardians pending-poll publish-at-redemption hook and the
+/// minor-profile gate, and the app shell starting the projection
+/// publisher without any push wiring (and re-publishing on resume).
+///
+/// Teardown note (issue #373): a non-null `predictionConnectionService`
+/// now starts the real publisher inside the app shell, which holds a
+/// stream subscription - the app-shell tests unmount with
+/// `pumpAndSettle()`, never a fixed short pump, so its cancellation
+/// drains before the binding's no-pending-work check.
 library;
 
 
@@ -13,6 +23,7 @@ import 'package:lunarlog/data/db/db.dart' hide Profile, DayEntry;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -25,6 +36,7 @@ import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/share_predictions_dialog.dart';
+import 'package:provider/provider.dart';
 
 import '../../support/fake_auth_service.dart';
 
@@ -104,6 +116,28 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
   Future<void> revokeConnection({required String connectionId}) async {
     lastRevokedConnectionId = connectionId;
     revoked.add(connectionId);
+  }
+
+  // Issue #373: the app shell now starts the real publisher whenever this
+  // service is supplied, so every method of the interface must be
+  // stubbed - an unstubbed one would throw UnimplementedError inside the
+  // widget tree and hang pumpAndSettle.
+  Set<String> connectedProfileIds = const {};
+  int outgoingQueries = 0;
+  final List<String> publishedFor = [];
+
+  @override
+  Future<Set<String>> outgoingConnectedProfileIds() async {
+    outgoingQueries++;
+    return connectedProfileIds;
+  }
+
+  @override
+  Future<void> publishProjection({
+    required String profileId,
+    required PredictionProjection projection,
+  }) async {
+    publishedFor.add(profileId);
   }
 
   @override
@@ -188,6 +222,63 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
+      expect(find.text('Connection ended'), findsOneWidget);
+      expect(find.byKey(const ValueKey('prediction-calendar-ended')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('prediction-calendar-waiting')),
+          findsNothing);
+    });
+
+    testWidgets('issue #373: a null projection while this account still '
+        'holds the connection renders the waiting state, not "ended", and '
+        'refresh re-reads it', (tester) async {
+      final service = _FakePredictionConnectionService(
+        projection: null,
+        connections: [
+          IncomingPredictionConnection(
+            connectionId: 'conn-1',
+            profileId: 'p1',
+            acceptedAt: DateTime.utc(2026, 9, 9),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: PredictionConnectionCalendarScreen(
+          profileId: 'p1',
+          profileName: 'Riley',
+          service: service,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('prediction-calendar-waiting')),
+          findsOneWidget);
+      expect(find.text('Waiting for the first update'), findsOneWidget);
+      expect(find.textContaining("Riley's app"), findsOneWidget);
+      expect(find.text('Connection ended'), findsNothing);
+      expect(find.text('Period'), findsNothing,
+          reason: 'no calendar until a snapshot exists');
+
+      // The sharer publishes; a refresh swaps in the calendar.
+      service.projection = _projection(LocalDate.today());
+      await tester.tap(find.byKey(const ValueKey('prediction-refresh')));
+      await tester.pumpAndSettle();
+      expect(find.text('Period'), findsOneWidget);
+      expect(find.byKey(const ValueKey('prediction-calendar-waiting')),
+          findsNothing);
+
+      // A connection listed for a DIFFERENT profile does not count.
+      service.projection = null;
+      service.connections = [
+        IncomingPredictionConnection(
+          connectionId: 'conn-2',
+          profileId: 'someone-else',
+          acceptedAt: DateTime.utc(2026, 9, 9),
+        ),
+      ];
+      await tester.tap(find.byKey(const ValueKey('prediction-refresh')));
+      await tester.pumpAndSettle();
       expect(find.text('Connection ended'), findsOneWidget);
     });
 
@@ -459,8 +550,10 @@ void main() {
       db = LunarLogDatabase(NativeDatabase.memory());
       storage = LunarLogStorage(db);
       connectionService = _FakePredictionConnectionService();
+      // Issue #373: an adult - a minor's profile can no longer be shared
+      // at all (its own case below), so the happy paths need an adult.
       testProfile = profileToDomain(
-          await storage.upsertProfile(displayName: 'Riley', isMinor: true));
+          await storage.upsertProfile(displayName: 'Riley', isMinor: false));
     });
 
     tearDown(() async {
@@ -476,7 +569,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    Future<void> pumpScreen(WidgetTester tester) async {
+    Future<void> pumpScreen(
+      WidgetTester tester, {
+      Profile? profile,
+      void Function(String profileId)? onPredictionConnectionChanged,
+    }) async {
       // Seed the caller's primary-guardian row so the section's role gate
       // resolves (mom = primary_guardian), the same fixture
       // sharing_flow_test.dart uses.
@@ -484,11 +581,12 @@ void main() {
 
       await tester.pumpWidget(MaterialApp(
         home: ManageGuardiansScreen(
-          profile: testProfile,
+          profile: profile ?? testProfile,
           guardiansRepository: ProfileGuardiansRepository(storage),
           sharingService: _NoInvitesSharingService(),
           currentUserId: 'user-mom',
           predictionConnectionService: connectionService,
+          onPredictionConnectionChanged: onPredictionConnectionChanged,
         ),
       ));
       await tester.pumpAndSettle();
@@ -501,6 +599,92 @@ void main() {
 
       expect(find.text('Predictions-only sharing'), findsOneWidget);
       expect(find.byKey(const ValueKey('share-predictions')), findsOneWidget);
+      expect(find.byKey(const ValueKey('share-predictions-minor')),
+          findsNothing);
+
+      await unmount(tester);
+    });
+
+    testWidgets("issue #373: a minor's profile gets no share affordance, "
+        'only the explanation, even for the primary guardian',
+        (tester) async {
+      final minor = profileToDomain(
+          await storage.upsertProfile(displayName: 'Kid', isMinor: true));
+      // The guardian row keys off testProfile's id; seed one for the minor
+      // too so the role gate resolves the same way.
+      await storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-minor-user-mom',
+          profileId: minor.id,
+          userId: 'user-mom',
+          role: 'primary_guardian',
+          status: 'accepted',
+          displayName: null,
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+          serverVersion: 1,
+        ),
+      ]);
+      await pumpScreen(tester, profile: minor);
+
+      expect(find.text('Predictions-only sharing'), findsOneWidget);
+      expect(find.byKey(const ValueKey('share-predictions-minor')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('share-predictions')), findsNothing);
+      expect(find.byKey(const ValueKey('prediction-connection-tile')),
+          findsNothing);
+
+      await unmount(tester);
+    });
+
+    testWidgets('issue #373: a pending invite is polled, and its redemption '
+        'fires the publish hook exactly once, then stops polling',
+        (tester) async {
+      final pendingRow = ActivePredictionConnection(
+        connectionId: 'conn-1',
+        profileId: testProfile.id,
+        pending: true,
+        recipientLabel: 'Partner',
+        createdAt: DateTime.utc(2026, 9, 1),
+        expiresAt: DateTime.utc(2026, 9, 8),
+      );
+      connectionService.getActiveConnectionResult = pendingRow;
+      final published = <String>[];
+      await pumpScreen(tester,
+          onPredictionConnectionChanged: published.add);
+
+      expect(find.text('pending'), findsOneWidget);
+      expect(published, isEmpty, reason: 'nothing to publish while pending');
+
+      // Still pending on the first tick: no hook, still polling.
+      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+      await tester.pumpAndSettle();
+      expect(published, isEmpty);
+
+      // The recipient redeems between ticks.
+      connectionService.getActiveConnectionResult = ActivePredictionConnection(
+        connectionId: 'conn-1',
+        profileId: testProfile.id,
+        pending: false,
+        recipientLabel: 'Partner',
+        createdAt: DateTime.utc(2026, 9, 1),
+        expiresAt: DateTime.utc(2026, 9, 8),
+      );
+      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+      await tester.pumpAndSettle();
+
+      expect(published, [testProfile.id],
+          reason: 'the pending -> active transition publishes, from the '
+              'sharer side');
+      expect(find.text('pending'), findsNothing);
+      expect(find.text('Phases-only calendar • not a guardian'),
+          findsOneWidget);
+
+      // Polling stopped: further intervals neither re-read nor re-publish.
+      await tester.pump(ManageGuardiansScreen.pendingPollInterval * 3);
+      await tester.pumpAndSettle();
+      expect(published, [testProfile.id]);
 
       await unmount(tester);
     });
@@ -577,14 +761,23 @@ void main() {
 
   group('kind=prediction deep links through the app shell (issue #151)', () {
     late LunarLogDatabase db;
+    late _FakePredictionConnectionService service;
 
     setUp(() {
       db = LunarLogDatabase(NativeDatabase.memory());
+      service = _FakePredictionConnectionService();
     });
 
     tearDown(() async {
       await db.close();
     });
+
+    // Issue #373: the real publisher runs under this tree now; settle
+    // fully so its subscription cancellation drains (see the header).
+    Future<void> unmountApp(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
 
     Future<void> pumpApp(
       WidgetTester tester,
@@ -596,13 +789,78 @@ void main() {
       await tester.pumpWidget(LunarLogApp(
         db: db,
         authService: auth,
-        predictionConnectionService:
-            withService ? _FakePredictionConnectionService() : null,
+        predictionConnectionService: withService ? service : null,
         initialInviteCode: initialInviteCode,
         initialInviteKind: initialInviteKind,
       ));
       await tester.pumpAndSettle();
     }
+
+    testWidgets('issue #373: the projection publisher starts (and is '
+        'provided) whenever the service is, with no push wiring at all',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+
+      // No notificationPreferencesService / reminderWindowUpsert - the
+      // exact shape of a web or no-push build (and of `flutter test`,
+      // where AppConfig.hasPush is compile-time false).
+      await pumpApp(tester, auth);
+
+      final ctx = tester.element(find.byType(MaterialApp));
+      expect(
+        Provider.of<PredictionProjectionPublisher?>(ctx, listen: false),
+        isNotNull,
+        reason: 'the publisher must not hide behind the push gate',
+      );
+      await unmountApp(tester);
+    });
+
+    testWidgets('issue #373: without a service no publisher is provided',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+
+      await pumpApp(tester, auth, withService: false);
+
+      final ctx = tester.element(find.byType(MaterialApp));
+      expect(
+        Provider.of<PredictionProjectionPublisher?>(ctx, listen: false),
+        isNull,
+      );
+      await unmountApp(tester);
+    });
+
+    testWidgets('issue #373: resuming the app re-publishes every connected '
+        'profile from the sharer side (signed in only)', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+
+      await pumpApp(tester, auth);
+      expect(service.outgoingQueries, 0);
+
+      // Signed out: resume does nothing.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(service.outgoingQueries, 0);
+
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-mom'));
+      await tester.pumpAndSettle();
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pumpAndSettle();
+      expect(service.outgoingQueries, 0, reason: 'only resume triggers it');
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(service.outgoingQueries, 1,
+          reason: 'one narrow select on resume');
+      expect(service.publishedFor, isEmpty,
+          reason: 'no connected profile here, so nothing uploaded');
+
+      await unmountApp(tester);
+    });
 
     testWidgets('a cold-start prediction code presents its own sheet after '
         'sign-in', (tester) async {
@@ -620,8 +878,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Connect to cycle predictions'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
+      await unmountApp(tester);
     });
 
     testWidgets('without a PredictionConnectionService the code is ignored',
@@ -637,8 +894,7 @@ void main() {
           withService: false);
 
       expect(find.text('Connect to cycle predictions'), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
+      await unmountApp(tester);
     });
   });
 }

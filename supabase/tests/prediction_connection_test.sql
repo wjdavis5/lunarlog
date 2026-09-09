@@ -2,7 +2,9 @@
 -- schema shape (RLS, policies, column-scoped grants, the one-connection
 -- cap index, both triggers), the create/accept/revoke RPC lifecycle
 -- (primary-guardian-only arming, Pregnancy-mode refusal at create AND
--- accept, stale-code refusal, guardian-reciprocal refusal, the
+-- accept, the issue #373 minor-profile refusal at create AND accept
+-- (section 6b - the fixture profiles are adults so the rest of the suite
+-- still exercises the happy paths), stale-code refusal, guardian-reciprocal refusal, the
 -- one-directional pair rule, the one-active-connection cap, terminal
 -- idempotency), the projection boundary (derived-only payload validation,
 -- recipient read path, guardian preview, enumeration-safe null), the
@@ -14,7 +16,7 @@
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(97);
+select plan(102);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -61,9 +63,12 @@ as $$ select count(*) from public.prediction_projections $$;
 -- accepted primary_guardian. Profile P2 = stranger's own. One day entry on
 -- P1: the raw row the recipient must never see.
 -- ---------------------------------------------------------------------------
+-- Both fixture profiles are ADULTS (issue #373): a minor's profile can no
+-- longer be shared at all, so a minor fixture would refuse every create
+-- below. Section 6b flips the flag on and off to prove that gate.
 select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
-values (tests.ulid(901), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+values (tests.ulid(901), 'Riley', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select public.create_guardian_invitation(
   tests.ulid(901), 'co_parent', 'Dad', pg_temp.token(101), 48);
@@ -81,7 +86,7 @@ select public.accept_guardian_invitation(pg_temp.token(103), 'Doctor');
 
 select tests.authenticate_as('stranger');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
-values (tests.ulid(902), 'Other Kid', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+values (tests.ulid(902), 'Other Adult', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select tests.authenticate_as('mom');
 insert into public.day_entries
@@ -510,6 +515,60 @@ select is(
       where profile_id = tests.ulid(901)
         and recipient_user_id = tests.get_supabase_uid('stranger'))),
   true, 'revocation is idempotent on an already-revoked connection');
+
+-- ---------------------------------------------------------------------------
+-- 6b. Minor profiles (issue #373): refused at create AND at accept --
+--     PRIVACY.md section 5's "minor profiles are never shared". The flag
+--     is flipped in owner context, the way section 7 flips the life-stage
+--     mode, because is_minor is client-writable (sync_push, direct column
+--     grant) and so can change between arming a code and its redemption.
+--     P1 has no live connection on entry and none on exit.
+-- ---------------------------------------------------------------------------
+select tests.clear_authentication();
+update public.profiles set is_minor = true where id = tests.ulid(901);
+
+select tests.authenticate_as('mom');
+select throws_ok(
+  format($$select public.create_prediction_connection(%L, %L, null, 72)$$,
+    tests.ulid(901), pg_temp.token(291)),
+  '55000', 'prediction-only sharing is unavailable for a minor''s profile',
+  'creating is refused for a minor''s profile');
+
+select tests.clear_authentication();
+update public.profiles set is_minor = false where id = tests.ulid(901);
+select tests.authenticate_as('mom');
+select ok(
+  public.create_prediction_connection(tests.ulid(901), pg_temp.token(291), 'Partner', 72)
+    is not null,
+  'clearing the minor flag re-opens creation');
+
+-- The flag can change between arming and redemption: accept re-checks.
+select tests.clear_authentication();
+update public.profiles set is_minor = true where id = tests.ulid(901);
+select tests.authenticate_as('stranger');
+select throws_ok(
+  format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(291)),
+  '55000', 'prediction-only sharing is unavailable for a minor''s profile',
+  'accepting is refused once the profile is marked a minor');
+
+select tests.clear_authentication();
+update public.profiles set is_minor = false where id = tests.ulid(901);
+select tests.authenticate_as('stranger');
+insert into r select 'accept_minor_lifted', public.accept_prediction_connection(pg_temp.token(291));
+select is(
+  (select v ->> 'profile_id' from r where name = 'accept_minor_lifted'),
+  tests.ulid(901),
+  'the same, not-yet-consumed code redeems once the minor flag is cleared');
+
+-- Reset: leave P1 with no live connection, as section 7 expects.
+select tests.authenticate_as('mom');
+select is(
+  public.revoke_prediction_connection(
+    (select id from public.prediction_connections
+      where profile_id = tests.ulid(901)
+        and recipient_user_id = tests.get_supabase_uid('stranger')
+        and revoked_at is null)),
+  true, 'the section-6b connection is revoked to reset the fixture');
 
 -- ---------------------------------------------------------------------------
 -- 7. Pregnancy mode: refused at create AND at accept (life-stage mode,
