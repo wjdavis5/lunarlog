@@ -13,16 +13,18 @@ import 'package:meta/meta.dart';
 import 'remote_rows.dart';
 import 'row_codec.dart' show JsonRow;
 
-/// One `sync_push` call: profiles then day entries, each at most
-/// [maxRows] rows (the RPC raises `22023` beyond that). Rows are the
-/// codec's JSON objects, already validated.
+/// One `sync_push` call: profiles, day entries, then observations (Issue
+/// #240), each at most [maxRows] rows (the RPC raises `22023` beyond that).
+/// Rows are the codec's JSON objects, already validated.
 @immutable
 class PushBatch {
   PushBatch({
     List<JsonRow> profiles = const [],
     List<JsonRow> dayEntries = const [],
+    List<JsonRow> observations = const [],
   })  : profiles = List.unmodifiable(profiles),
-        dayEntries = List.unmodifiable(dayEntries) {
+        dayEntries = List.unmodifiable(dayEntries),
+        observations = List.unmodifiable(observations) {
     if (profiles.length > maxRows) {
       throw ArgumentError.value(profiles.length, 'profiles',
           'a push batch carries at most $maxRows profiles');
@@ -30,6 +32,10 @@ class PushBatch {
     if (dayEntries.length > maxRows) {
       throw ArgumentError.value(dayEntries.length, 'dayEntries',
           'a push batch carries at most $maxRows day entries');
+    }
+    if (observations.length > maxRows) {
+      throw ArgumentError.value(observations.length, 'observations',
+          'a push batch carries at most $maxRows observations');
     }
   }
 
@@ -39,13 +45,18 @@ class PushBatch {
   final List<JsonRow> profiles;
   final List<JsonRow> dayEntries;
 
-  int get rowCount => profiles.length + dayEntries.length;
+  /// Issue #240: `sync_push`'s third parameter.
+  final List<JsonRow> observations;
+
+  int get rowCount =>
+      profiles.length + dayEntries.length + observations.length;
 
   bool get isEmpty => rowCount == 0;
 
   @override
   String toString() =>
-      'PushBatch(profiles: ${profiles.length}, dayEntries: ${dayEntries.length})';
+      'PushBatch(profiles: ${profiles.length}, dayEntries: ${dayEntries.length}, '
+      'observations: ${observations.length})';
 }
 
 /// What `sync_push` answered (KTD3).

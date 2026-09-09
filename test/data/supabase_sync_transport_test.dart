@@ -50,6 +50,32 @@ Map<String, Object?> entryJson({int version = 2, String flow = 'light'}) => {
       'server_version': version,
     };
 
+const observationId = '01J0000000000000000000000C';
+
+/// Issue #240.
+Map<String, Object?> observationJson({int version = 3}) => {
+      'id': observationId,
+      'day_entry_id': entryId,
+      'profile_id': profileId,
+      'local_date': '2026-09-01',
+      'observed_at': null,
+      'tz': 'UTC',
+      'category': 'pain',
+      'code': 'migraine',
+      'value_num': null,
+      'value_text': null,
+      'unit': null,
+      'intensity': 3,
+      'excluded': false,
+      'source': 'manual',
+      'source_id': null,
+      'raw': null,
+      'created_at': '2026-09-01T10:00:00+00:00',
+      'updated_at': '2026-09-01T10:00:00.5+00:00',
+      'deleted_at': null,
+      'server_version': version,
+    };
+
 http.Response json(Object body, {int status = 200}) => http.Response(
       jsonEncode(body),
       status,
@@ -131,6 +157,7 @@ void main() {
         'p_day_entries': [
           {'id': entryId, 'profile_id': profileId}
         ],
+        'p_observations': [],
       });
 
       expect(result.resolved, hasLength(2));
@@ -147,6 +174,48 @@ void main() {
       expect(result.serverNow.isUtc, isTrue);
     });
 
+    test('observations round-trip through p_observations (Issue #240)',
+        () async {
+      client = makeClient((_) async => json({
+            'resolved': [
+              {...observationJson(version: 12), 'table': 'observations'},
+            ],
+            'rejected': [],
+            'server_now': '2026-09-02T12:00:00+00:00',
+          }));
+      final transport = SupabaseSyncTransport(client!);
+      final batch = PushBatch(
+        observations: [
+          {
+            'id': observationId,
+            'day_entry_id': entryId,
+            'profile_id': profileId,
+            'local_date': '2026-09-01',
+            'category': 'pain',
+            'code': 'migraine',
+            'updated_at': 'x',
+          }
+        ],
+      );
+
+      final result = await transport.push(batch);
+
+      final body = jsonDecode(requests.single.body) as Map<String, dynamic>;
+      expect(body['p_observations'], hasLength(1));
+      expect((body['p_observations'] as List).single, {
+        'id': observationId,
+        'day_entry_id': entryId,
+        'profile_id': profileId,
+        'local_date': '2026-09-01',
+        'category': 'pain',
+        'code': 'migraine',
+        'updated_at': 'x',
+      });
+      final o = result.resolved.single as RemoteObservationRow;
+      expect(o.id, observationId);
+      expect(o.serverVersion, 12);
+    });
+
     test('an empty batch is still a valid round-trip', () async {
       client = makeClient((_) async => json({
             'resolved': [],
@@ -157,7 +226,7 @@ void main() {
       expect(result.resolved, isEmpty);
       expect(result.rejectedIds, isEmpty);
       expect(jsonDecode(requests.single.body),
-          {'p_profiles': [], 'p_day_entries': []});
+          {'p_profiles': [], 'p_day_entries': [], 'p_observations': []});
     });
 
     test('sends at most 500 rows per array', () async {
@@ -281,6 +350,25 @@ void main() {
       expect(row.role, 'co_parent');
       expect(row.displayName, 'Dad');
       expect(row.serverVersion, 5);
+    });
+
+    test('observations use the observations table (Issue #240)', () async {
+      client = makeClient((_) async => json([observationJson(version: 11)]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.observations,
+        afterVersion: 0,
+        limit: 100,
+      );
+      final request = requests.single;
+      expect(request.url.path, '/rest/v1/observations');
+      expect(request.url.queryParameters['server_version'], 'gt.0');
+      final row = rows.single as RemoteObservationRow;
+      expect(row.id, observationId);
+      expect(row.dayEntryId, entryId);
+      expect(row.category, 'pain');
+      expect(row.code, 'migraine');
+      expect(row.intensity, 3);
+      expect(row.serverVersion, 11);
     });
 
     test('an empty page decodes to an empty list', () async {

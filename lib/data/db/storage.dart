@@ -24,6 +24,12 @@
 /// * At most one *live* day entry per (profile, date): local writes update
 ///   the live row in place, remote applies run the same-date rule and
 ///   tombstone the loser with the winner's timestamp.
+/// * Observations (Issue #240) are keyed by id alone, like profiles — there
+///   is no same-date uniqueness to resolve: multiple live rows per
+///   (profile, date, category) are the whole point of this child table.
+///   Their tombstone clears every payload column except `category`/
+///   `local_date`/`tz` (see `supabase/migrations/20260908160000_observations.sql`
+///   for why `category` is the one exception).
 /// * UI reads filter tombstones; full-fidelity reads (tombstones included)
 ///   exist for sync.
 library;
@@ -42,7 +48,13 @@ import 'ulid.dart';
 export 'package:lunarlog/domain/sync/local_row_counts.dart' show LocalRowCounts;
 
 export '../sync/remote_rows.dart'
-    show RemoteDayEntryRow, RemoteProfileRow, RemoteRow, RetryableSyncApplyError, SyncTable;
+    show
+        RemoteDayEntryRow,
+        RemoteObservationRow,
+        RemoteProfileRow,
+        RemoteRow,
+        RetryableSyncApplyError,
+        SyncTable;
 
 /// Default ULID generator for new records (per-isolate monotonic).
 final UlidGenerator _ulid = UlidGenerator();
@@ -106,12 +118,57 @@ void _validateTags(List<String> tags) {
   }
 }
 
+/// Issue #240: mirrors the server's `observations` CHECK constraints
+/// (`supabase/migrations/20260908160000_observations.sql`). `category`/
+/// `code` are bounded but never validated against a closed set — see
+/// `lib/domain/models/observation.dart`'s doc comment.
+void _validateObservation({
+  required String category,
+  String? code,
+  String? valueText,
+  String? unit,
+  String? sourceId,
+  String? raw,
+  int? intensity,
+}) {
+  if (category.isEmpty || category.length > kMaxObservationCategoryLength) {
+    throw ArgumentError.value(category, 'category',
+        'must be 1-$kMaxObservationCategoryLength characters');
+  }
+  if (code != null && code.length > kMaxObservationCodeLength) {
+    throw ArgumentError.value(code.length, 'code',
+        'must be at most $kMaxObservationCodeLength characters');
+  }
+  if (valueText != null && valueText.length > kMaxObservationValueTextLength) {
+    throw ArgumentError.value(valueText.length, 'valueText',
+        'must be at most $kMaxObservationValueTextLength characters');
+  }
+  if (unit != null && unit.length > kMaxObservationUnitLength) {
+    throw ArgumentError.value(
+        unit.length, 'unit', 'must be at most $kMaxObservationUnitLength characters');
+  }
+  if (sourceId != null && sourceId.length > kMaxObservationSourceIdLength) {
+    throw ArgumentError.value(sourceId.length, 'sourceId',
+        'must be at most $kMaxObservationSourceIdLength characters');
+  }
+  if (raw != null && raw.length > kMaxObservationRawLength) {
+    throw ArgumentError.value(
+        raw.length, 'raw', 'must be at most $kMaxObservationRawLength characters');
+  }
+  if (intensity != null &&
+      (intensity < kMinObservationIntensity || intensity > kMaxObservationIntensity)) {
+    throw ArgumentError.value(intensity, 'intensity',
+        'must be between $kMinObservationIntensity and $kMaxObservationIntensity');
+  }
+}
+
 /// The `sync_state` row as read when none has been written yet.
 const SyncStateRow kDefaultSyncState = SyncStateRow(
   id: 1,
   deviceId: '',
   cursorProfiles: 0,
   cursorDayEntries: 0,
+  cursorObservations: 0,
 );
 
 class LunarLogStorage {
@@ -400,6 +457,168 @@ class LunarLogStorage {
     ).watch();
   }
 
+  // -------------------------------------------------------------- observations
+
+  /// Creates or updates an observation keyed by [id] (a fresh ULID is
+  /// generated when omitted); unlike [upsertDayEntry], identity is by [id]
+  /// alone — multiple live rows per (profileId, localDate, category) are
+  /// the whole point of this child table (Issue #240), so there is no
+  /// same-date uniqueness to resolve against the way day entries have.
+  /// Marks the row dirty and bumps `local_rev`. An update stamps
+  /// `updated_at` strictly after the stored value. Throws [ArgumentError]
+  /// for a [category]/[code]/[unit]/[sourceId]/[valueText]/[raw] over its
+  /// bound (see `lib/domain/limits.dart`) or an [intensity] outside 1-5.
+  Future<Observation> upsertObservation({
+    String? id,
+    required String dayEntryId,
+    required String profileId,
+    required String localDate,
+    DateTime? observedAt,
+    required String tz,
+    required String category,
+    String? code,
+    double? valueNum,
+    String? valueText,
+    String? unit,
+    int? intensity,
+    bool excluded = false,
+    String source = 'manual',
+    String? sourceId,
+    String? raw,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures, not sync
+    // throws, for callers awaiting the result.
+    _validateLocalDate(localDate);
+    _validateObservation(
+      category: category,
+      code: code,
+      valueText: valueText,
+      unit: unit,
+      sourceId: sourceId,
+      raw: raw,
+      intensity: intensity,
+    );
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      Observation? existing;
+      if (id != null) existing = await _observationOrNull(id);
+      if (existing == null) {
+        final rowId = id ?? _generator.next();
+        await db.into(db.observations).insert(ObservationsCompanion.insert(
+              id: rowId,
+              dayEntryId: dayEntryId,
+              profileId: profileId,
+              localDate: localDate,
+              observedAt: Value(observedAt),
+              tz: tz,
+              category: category,
+              code: Value(code),
+              valueNum: Value(valueNum),
+              valueText: Value(valueText),
+              unit: Value(unit),
+              intensity: Value(intensity),
+              excluded: Value(excluded),
+              source: Value(source),
+              sourceId: Value(sourceId),
+              raw: Value(raw),
+              updatedAt: now,
+              dirty: const Value(true),
+              localRev: const Value(1),
+            ));
+        return _observationById(rowId);
+      }
+      final rowId = existing.id;
+      await (db.update(db.observations)..where((t) => t.id.equals(rowId)))
+          .write(ObservationsCompanion(
+        dayEntryId: Value(dayEntryId),
+        profileId: Value(profileId),
+        localDate: Value(localDate),
+        observedAt: Value(observedAt),
+        tz: Value(tz),
+        category: Value(category),
+        code: Value(code),
+        valueNum: Value(valueNum),
+        valueText: Value(valueText),
+        unit: Value(unit),
+        intensity: Value(intensity),
+        excluded: Value(excluded),
+        source: Value(source),
+        sourceId: Value(sourceId),
+        raw: Value(raw),
+        updatedAt: Value(_afterStored(now, existing.updatedAt)),
+        deletedAt: const Value(null),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _observationById(rowId);
+    });
+  }
+
+  /// Tombstones the observation [id]: sets `deleted_at` (and bumps
+  /// `updated_at`), clears every payload column (`code`, `value_num`,
+  /// `value_text`, `unit`, `intensity`, `excluded` reset to false,
+  /// `source_id`, `raw`, `observed_at`) — `category`/`local_date`/`tz` are
+  /// kept, mirroring the server's `observations_tombstone_payload_check`
+  /// exactly (see that migration's header for why `category` is the one
+  /// exception). Marks the row dirty. Idempotent: re-deleting a tombstone
+  /// does nothing. No-op when [id] is not held locally.
+  Future<void> softDeleteObservation(String id) async {
+    await db.transaction(() async {
+      final existing = await _observationOrNull(id);
+      if (existing == null || existing.deletedAt != null) return;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.observations)..where((t) => t.id.equals(id))).write(
+        ObservationsCompanion(
+          observedAt: const Value(null),
+          code: const Value(null),
+          valueNum: const Value(null),
+          valueText: const Value(null),
+          unit: const Value(null),
+          intensity: const Value(null),
+          excluded: const Value(false),
+          sourceId: const Value(null),
+          raw: const Value(null),
+          updatedAt: Value(at),
+          deletedAt: Value(at),
+          dirty: const Value(true),
+          localRev: Value(existing.localRev + 1),
+        ),
+      );
+    });
+  }
+
+  /// Observations attached to [dayEntryId] — UI reads (default) filter
+  /// tombstones; `includeTombstones: true` gives full-fidelity reads.
+  Future<List<Observation>> getObservationsForDayEntry(
+    String dayEntryId, {
+    bool includeTombstones = false,
+  }) {
+    final query = db.select(db.observations)
+      ..where((t) {
+        var condition = t.dayEntryId.equals(dayEntryId);
+        if (!includeTombstones) condition = condition & t.deletedAt.isNull();
+        return condition;
+      })
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.get();
+  }
+
+  /// Stream variant of [getObservationsForDayEntry] for reactive UI.
+  Stream<List<Observation>> watchObservationsForDayEntry(
+    String dayEntryId, {
+    bool includeTombstones = false,
+  }) {
+    final query = db.select(db.observations)
+      ..where((t) {
+        var condition = t.dayEntryId.equals(dayEntryId);
+        if (!includeTombstones) condition = condition & t.deletedAt.isNull();
+        return condition;
+      })
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.watch();
+  }
+
   // ------------------------------------------------------------- app settings
 
   /// Device-local key-value state. Not part of the sync model (open design
@@ -470,6 +689,20 @@ class LunarLogStorage {
     return query.get();
   }
 
+  /// Observations with unpushed local changes, tombstones included, ordered
+  /// by id (Issue #240). Same keyset-paging contract as [readDirtyProfiles].
+  Future<List<Observation>> readDirtyObservations({int? limit, String? afterId}) {
+    final query = db.select(db.observations)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
   /// still equals [localRevAtPush] (the value read when the push was
   /// assembled). Returns whether the flag was cleared; `false` means a
@@ -492,23 +725,30 @@ class LunarLogStorage {
               ..where((t) =>
                   t.id.equals(id) & t.localRev.equals(localRevAtPush)))
             .write(const DayEntriesCompanion(dirty: Value(false)));
+      case SyncTable.observations:
+        changed = await (db.update(db.observations)
+              ..where((t) =>
+                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const ObservationsCompanion(dirty: Value(false)));
       case SyncTable.profileGuardians:
         changed = 0;
     }
     return changed > 0;
   }
 
-  /// Number of rows, live and tombstoned, in both synced tables that still
+  /// Number of rows, live and tombstoned, in every synced table that still
   /// need pushing.
   Future<int> dirtyCount() async {
     final p = await _count(db.profiles, db.profiles.id,
         db.profiles.dirty.equals(true));
     final d = await _count(db.dayEntries, db.dayEntries.id,
         db.dayEntries.dirty.equals(true));
-    return p + d;
+    final o = await _count(db.observations, db.observations.id,
+        db.observations.dirty.equals(true));
+    return p + d + o;
   }
 
-  /// Flags every row, live and tombstoned, in both synced tables for push
+  /// Flags every row, live and tombstoned, in every synced table for push
   /// (first sign-in upload, R14). Bumps `local_rev` like any local write.
   Future<void> markAllDirty() async {
     await db.transaction(() async {
@@ -520,11 +760,18 @@ class LunarLogStorage {
             dirty: const Constant(true),
             localRev: db.dayEntries.localRev + const Constant(1),
           ));
+      await db.update(db.observations).write(ObservationsCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.observations.localRev + const Constant(1),
+          ));
     });
   }
 
-  /// Row counts, live and tombstoned, of both synced tables — what the
-  /// upload-consent step shows before the first push (R14, AS4).
+  /// Row counts, live and tombstoned, of the two synced tables the upload-
+  /// consent screen shows (R14, AS4) — observations are deliberately not a
+  /// third field here (no UI surface for them yet; see [isEmpty], which
+  /// does account for them so a device holding only observations is never
+  /// silently treated as empty).
   Future<LocalRowCounts> countAllRows() async {
     final [p, d] = await Future.wait([
       _count(db.profiles, db.profiles.id),
@@ -533,11 +780,12 @@ class LunarLogStorage {
     return (profiles: p, dayEntries: d);
   }
 
-  /// True only when both synced tables hold no row of any kind — a
+  /// True only when every synced table holds no row of any kind — a
   /// tombstone-only database is not empty (it has deletions to push).
   Future<bool> isEmpty() async {
     final counts = await countAllRows();
-    return counts.profiles == 0 && counts.dayEntries == 0;
+    if (counts.profiles != 0 || counts.dayEntries != 0) return false;
+    return await _count(db.observations, db.observations.id) == 0;
   }
 
   // ---------------------------------------------------- sync: remote applies
@@ -560,6 +808,15 @@ class LunarLogStorage {
   /// when the entry's profile is not held locally yet.
   Future<bool> applyRemoteDayEntry(RemoteDayEntryRow remote) =>
       db.transaction(() => _applyDayEntry(remote, onlyExisting: false));
+
+  /// Applies a server copy of an observation keyed by id (Issue #240;
+  /// per-id rule as for profiles — there is no same-date resolver here,
+  /// unlike day entries: multiple live rows per (profile, date, category)
+  /// are the entire point of this child table, so no local uniqueness ever
+  /// competes). Throws [RetryableSyncApplyError] when the observation's day
+  /// entry is not held locally yet.
+  Future<bool> applyRemoteObservation(RemoteObservationRow remote) =>
+      db.transaction(() => _applyObservation(remote, onlyExisting: false));
 
   /// Applies one pull page: every row (all of [table]) and the table's new
   /// cursor in ONE transaction, so a crash can only re-fetch rows, never
@@ -592,6 +849,8 @@ class LunarLogStorage {
         await _applyDayEntry(row, onlyExisting: false);
       case RemoteProfileGuardianRow():
         await _applyProfileGuardian(row);
+      case RemoteObservationRow():
+        await _applyObservation(row, onlyExisting: false);
     }
   }
 
@@ -603,17 +862,21 @@ class LunarLogStorage {
           SyncStateCompanion(cursorProfiles: Value(newCursor)),
         SyncTable.dayEntries =>
           SyncStateCompanion(cursorDayEntries: Value(newCursor)),
+        SyncTable.observations =>
+          SyncStateCompanion(cursorObservations: Value(newCursor)),
         SyncTable.profileGuardians =>
           const SyncStateCompanion(),
       },
     );
   }
 
-  /// Applies one full-reconcile page (rows of one or both tables) in ONE
+  /// Applies one full-reconcile page (rows of one or more tables) in ONE
   /// transaction without touching any cursor (KTD2). Same per-row rules as
-  /// [applyRemoteProfile] / [applyRemoteDayEntry]; profiles first. A
-  /// throwing row rolls the page back — callers that need per-row
-  /// independence fall back to the single-row applies.
+  /// [applyRemoteProfile] / [applyRemoteDayEntry] / [applyRemoteObservation];
+  /// profiles, then day entries, then observations (Issue #240 — an
+  /// observation's day entry must already be applied for its referential
+  /// check to succeed). A throwing row rolls the page back — callers that
+  /// need per-row independence fall back to the single-row applies.
   Future<void> applyRemoteRows(List<RemoteRow> rows) async {
     await db.transaction(() async {
       for (final row in rows.whereType<RemoteProfileRow>()) {
@@ -625,14 +888,18 @@ class LunarLogStorage {
       for (final row in rows.whereType<RemoteDayEntryRow>()) {
         await _applyDayEntry(row, onlyExisting: false);
       }
+      for (final row in rows.whereType<RemoteObservationRow>()) {
+        await _applyObservation(row, onlyExisting: false);
+      }
     });
   }
 
   /// Applies the server's `resolved` copies returned by a push (rows the
   /// server tombstoned by resolution or declined as older): same rules as
-  /// [applyRemoteProfile] / [applyRemoteDayEntry], written with
-  /// `dirty = false`, profiles before day entries. Ids not held locally are
-  /// no-ops — a resolution never inserts. One transaction for the batch.
+  /// [applyRemoteProfile] / [applyRemoteDayEntry] / [applyRemoteObservation],
+  /// written with `dirty = false`, profiles before day entries before
+  /// observations. Ids not held locally are no-ops — a resolution never
+  /// inserts. One transaction for the batch.
   Future<void> applyResolved(List<RemoteRow> rows) async {
     await db.transaction(() async {
       for (final row in rows.whereType<RemoteProfileRow>()) {
@@ -640,6 +907,9 @@ class LunarLogStorage {
       }
       for (final row in rows.whereType<RemoteDayEntryRow>()) {
         await _applyDayEntry(row, onlyExisting: true);
+      }
+      for (final row in rows.whereType<RemoteObservationRow>()) {
+        await _applyObservation(row, onlyExisting: true);
       }
     });
   }
@@ -936,6 +1206,84 @@ class LunarLogStorage {
     }
   }
 
+  /// Issue #240: applies a server copy of an observation keyed by id — the
+  /// same per-id LWW rule [_applyProfile] uses, with no same-date resolver
+  /// (unlike [_applyDayEntry]): multiple live rows per (profile, date,
+  /// category) are the entire point of this child table, so no local
+  /// uniqueness constraint ever competes for one to win against.
+  Future<bool> _applyObservation(RemoteObservationRow remote,
+      {required bool onlyExisting}) async {
+    final local = await _observationOrNull(remote.id);
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return false;
+    }
+    // Referential integrity up front, mirroring [_ensureDayEntryProfileExists]:
+    // a typed, retryable failure rather than a raw constraint exception.
+    if (await _dayEntryOrNull(remote.dayEntryId) == null) {
+      throw RetryableSyncApplyError(
+          'observation ${remote.id} references a day entry not held locally');
+    }
+    final tombstone = remote.isTombstone;
+    final updatedAt = remote.updatedAt.toUtc();
+    final deletedAt = remote.deletedAt?.toUtc();
+    if (local == null) {
+      await db.into(db.observations).insert(ObservationsCompanion.insert(
+            id: remote.id,
+            dayEntryId: remote.dayEntryId,
+            profileId: remote.profileId,
+            localDate: remote.localDate,
+            observedAt: Value(tombstone ? null : remote.observedAt?.toUtc()),
+            tz: remote.tz,
+            category: remote.category,
+            code: Value(tombstone ? null : remote.code),
+            valueNum: Value(tombstone ? null : remote.valueNum),
+            valueText: Value(tombstone ? null : remote.valueText),
+            unit: Value(tombstone ? null : remote.unit),
+            intensity: Value(tombstone ? null : remote.intensity),
+            excluded: Value(tombstone ? false : remote.excluded),
+            source: Value(remote.source),
+            sourceId: Value(tombstone ? null : remote.sourceId),
+            raw: Value(tombstone ? null : remote.raw),
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            localRev: const Value(0),
+            loggedByUserId: Value(remote.loggedByUserId),
+            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+          ));
+      return true;
+    }
+    await (db.update(db.observations)..where((t) => t.id.equals(remote.id)))
+        .write(ObservationsCompanion(
+      dayEntryId: Value(remote.dayEntryId),
+      profileId: Value(remote.profileId),
+      localDate: Value(remote.localDate),
+      observedAt: Value(tombstone ? null : remote.observedAt?.toUtc()),
+      tz: Value(remote.tz),
+      category: Value(remote.category),
+      code: Value(tombstone ? null : remote.code),
+      valueNum: Value(tombstone ? null : remote.valueNum),
+      valueText: Value(tombstone ? null : remote.valueText),
+      unit: Value(tombstone ? null : remote.unit),
+      intensity: Value(tombstone ? null : remote.intensity),
+      excluded: Value(tombstone ? false : remote.excluded),
+      source: Value(remote.source),
+      sourceId: Value(tombstone ? null : remote.sourceId),
+      raw: Value(tombstone ? null : remote.raw),
+      updatedAt: Value(updatedAt),
+      deletedAt: Value(deletedAt),
+      dirty: const Value(false),
+      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
+      lastModifiedByUserId:
+          Value(remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
+    ));
+    return true;
+  }
+
   static bool _tagsEqual(List<String> a, List<String> b) {
     if (identical(a, b)) return true;
     final setA = a.toSet();
@@ -1185,6 +1533,16 @@ class LunarLogStorage {
   Future<Profile> _profileById(String id) async {
     final row = await _profileOrNull(id);
     if (row == null) throw StateError('profile disappeared: $id');
+    return row;
+  }
+
+  Future<Observation?> _observationOrNull(String id) =>
+      (db.select(db.observations)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  Future<Observation> _observationById(String id) async {
+    final row = await _observationOrNull(id);
+    if (row == null) throw StateError('observation disappeared: $id');
     return row;
   }
 }

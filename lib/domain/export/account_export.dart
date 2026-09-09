@@ -30,14 +30,23 @@
 /// "nothing to merge", so it degrades correctly either way.
 library;
 
+import 'dart:convert';
+
 import '../models/day_entry.dart';
+import '../models/observation.dart';
 import '../models/profile.dart';
 import 'account_export_remote_source.dart';
 
 /// Bumped whenever the exported document's shape changes in a way a reader
 /// (a future importer, or a person opening the file) must know about.
-/// v2 adds `profiles[].mode` (Issue #131).
-const int kAccountExportSchemaVersion = 2;
+/// v2 adds `profiles[].mode` (Issue #131). v3 adds
+/// `profiles[].observations` (Issue #240) — empty until a future issue
+/// wires a real observations read path through
+/// `lib/data/export/account_export_writer.dart` and its UI caller; this
+/// version bump documents the shape now so a reader of an old (v2) export
+/// knows the absence of the key means "not yet collected," not "this
+/// profile has none."
+const int kAccountExportSchemaVersion = 3;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -56,6 +65,7 @@ const String kAccountExportAppName = 'lunarlog';
 Map<String, Object?> buildAccountExport({
   required List<Profile> profiles,
   required Map<String, List<DayEntry>> entriesByProfile,
+  Map<String, List<Observation>> observationsByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -67,7 +77,11 @@ Map<String, Object?> buildAccountExport({
     'app': {'name': appName, 'version': appVersion},
     'profiles': [
       for (final profile in sortedProfiles)
-        _exportProfile(profile, entriesByProfile[profile.id] ?? const []),
+        _exportProfile(
+          profile,
+          entriesByProfile[profile.id] ?? const [],
+          observationsByProfile[profile.id] ?? const [],
+        ),
     ],
   };
 }
@@ -75,9 +89,12 @@ Map<String, Object?> buildAccountExport({
 Map<String, Object?> _exportProfile(
   Profile profile,
   List<DayEntry> entries,
+  List<Observation> observations,
 ) {
   final sortedEntries = [...entries]
     ..sort((a, b) => a.localDate.compareTo(b.localDate));
+  final sortedObservations = [...observations]
+    ..sort((a, b) => a.id.compareTo(b.id));
   return {
     'id': profile.id,
     'displayName': profile.displayName,
@@ -88,6 +105,13 @@ Map<String, Object?> _exportProfile(
     'createdAt': profile.createdAt.toUtc().toIso8601String(),
     'updatedAt': profile.updatedAt.toUtc().toIso8601String(),
     'dayEntries': [for (final entry in sortedEntries) _exportDayEntry(entry)],
+    // Issue #240. Empty (rather than the key being absent) until a future
+    // issue wires a real observations read into
+    // `lib/data/export/account_export_writer.dart` and its UI caller — see
+    // this file's `kAccountExportSchemaVersion` v3 doc comment.
+    'observations': [
+      for (final observation in sortedObservations) _exportObservation(observation),
+    ],
   };
 }
 
@@ -162,3 +186,21 @@ Future<Map<String, Object?>> buildMergedAccountExport({
     serverDocument: serverDocument,
   );
 }
+Map<String, Object?> _exportObservation(Observation o) => {
+      'id': o.id,
+      'dayEntryId': o.dayEntryId,
+      'localDate': o.localDate.iso,
+      'observedAt': o.observedAt?.toUtc().toIso8601String(),
+      'tz': o.tz,
+      'category': o.category,
+      'code': o.code,
+      'valueNum': o.valueNum,
+      'valueText': o.valueText,
+      'unit': o.unit,
+      'intensity': o.intensity,
+      'excluded': o.excluded,
+      'source': o.source.toDb(),
+      'sourceId': o.sourceId,
+      'raw': o.raw == null ? null : jsonDecode(o.raw!),
+      'updatedAt': o.updatedAt.toUtc().toIso8601String(),
+    };

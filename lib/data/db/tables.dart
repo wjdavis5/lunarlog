@@ -174,6 +174,93 @@ class ProfileGuardians extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// One logged option (Issue #240, the Clue tracking model's `observations`
+/// child table): a `day_entry_id`-scoped row per (category, code), with
+/// numeric/text value, unit, intensity, exclusion, and source provenance.
+/// Mirrors `public.observations` column-for-column; see
+/// `supabase/migrations/20260908160000_observations.sql` for the server
+/// shape and its RLS/grants. `category`/`code` are free text — never
+/// validated client-side against a closed set (issue #240 D-10 companion
+/// note: unlike `flow`, the ~200 option codes are stored, never rejected,
+/// so a newer client's or an importer's not-yet-locally-known code always
+/// round-trips).
+@DataClassName('Observation')
+class Observations extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  /// The day entry this observation is attached to; cascades with its
+  /// tombstone. Immutable once set (enforced server-side by `sync_push`).
+  TextColumn get dayEntryId =>
+      text().named('day_entry_id').references(DayEntries, #id)();
+
+  /// Denormalized for query and parity with the server's RLS predicates
+  /// (matches `day_entries.profile_id`).
+  TextColumn get profileId => text().named('profile_id').references(Profiles, #id)();
+
+  /// ISO calendar date `yyyy-MM-dd` in the profile's local zone.
+  TextColumn get localDate => text().named('local_date')();
+
+  /// Optional exact time-of-day; unused by the Clue importer (A1-40).
+  DateTimeColumn get observedAt => dateTime().named('observed_at').nullable()();
+
+  /// IANA time zone name the entry was logged in.
+  TextColumn get tz => text()();
+
+  /// e.g. `pain`, `energy`, `bbt`. Free text, never a closed set.
+  TextColumn get category => text()();
+
+  /// The selected option within [category] (e.g. `migraine`); nullable
+  /// only for a purely-numeric category. Free text, never a closed set.
+  TextColumn get code => text().nullable()();
+
+  RealColumn get valueNum => real().named('value_num').nullable()();
+
+  TextColumn get valueText => text().named('value_text').nullable()();
+
+  /// `celsius` / `fahrenheit` / `kg` / `lb`.
+  TextColumn get unit => text().nullable()();
+
+  /// 1-5; nullable for legacy/ungraded rows.
+  IntColumn get intensity => integer().nullable()();
+
+  /// BBT's per-point exclusion flag (A1-44).
+  BoolColumn get excluded => boolean().withDefault(const Constant(false))();
+
+  /// `manual` / `apple_health` / `health_connect` / `wearable` / `clue_import`.
+  TextColumn get source =>
+      text().withDefault(const Constant('manual'))();
+
+  /// Import/device provenance key, for idempotent re-import.
+  TextColumn get sourceId => text().named('source_id').nullable()();
+
+  /// Escape hatch for an unrecognised type/value shape (A1-45); the entire
+  /// original datapoint as JSON text.
+  TextColumn get raw => text().nullable()();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  /// Supabase auth user who created this observation (stamped by server).
+  TextColumn get loggedByUserId =>
+      text().named('logged_by_user_id').nullable()();
+
+  /// Supabase auth user who last edited this observation (stamped by server).
+  TextColumn get lastModifiedByUserId =>
+      text().named('last_modified_by_user_id').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('AppSetting')
 class AppSettings extends Table {
   TextColumn get key => text()();
@@ -212,6 +299,11 @@ class SyncState extends Table {
 
   IntColumn get cursorDayEntries =>
       integer().named('cursor_day_entries').withDefault(const Constant(0))();
+
+  /// Issue #240: the `observations` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorObservations =>
+      integer().named('cursor_observations').withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>
       dateTime().named('last_full_pull_at').nullable()();

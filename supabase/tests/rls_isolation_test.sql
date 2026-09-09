@@ -81,16 +81,23 @@ select throws_ok(
   '42501', null, 'B cannot reference A''s profile_id (RLS rejects non-guardian write)');
 
 -- ---------------------------------------------------------------------------
--- Reusing A's profile ULID is rejected by profiles_id_uq (globally unique profile ID)
+-- Reusing A's profile ULID is rejected by profiles_id_uq (globally unique
+-- profile ID). Issue #240 (20260908160000_observations.sql) added the same
+-- global-uniqueness constraint to day_entries.id (day_entries_id_uq) - a
+-- prerequisite for observations.day_entry_id to reference it - so reusing
+-- A's day-entry ULID is now rejected too, mirroring profiles_id_uq exactly;
+-- this used to `lives_ok` (day_entries.id was unique only per (id,
+-- user_id) until this migration).
 -- ---------------------------------------------------------------------------
 select throws_ok(
   $$insert into public.profiles (id, display_name, updated_at)
       values (tests.ulid(1), 'Bob two', now())$$,
   '23505', null, 'B cannot insert a profile whose id equals A''s profile ULID');
-select lives_ok(
+select throws_ok(
   $$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
       values (tests.ulid(2), tests.ulid(11), '2026-09-03', 'UTC', 'none', now())$$,
-  'B inserts a day entry whose id equals A''s ULID as an own row');
+  '23505', null,
+  'B cannot insert a day entry whose id equals A''s day-entry ULID (day_entries_id_uq, Issue #240)');
 
 -- ---------------------------------------------------------------------------
 -- Column-list UPDATE grant: user_id and server_version are not updatable
@@ -169,13 +176,17 @@ select cmp_ok((select v from sv where n = 3), '>', (select v from sv where n = 2
   'server_version increases on the second update');
 
 -- ---------------------------------------------------------------------------
--- From the owner's view (bypassrls): AE12 rows coexist under both users
+-- From the owner's view (bypassrls): A's original rows survive B's attempts
+-- untouched. AE12 originally proved a same-id day entry could coexist under
+-- two different users; that is no longer possible after Issue #240 added
+-- day_entries_id_uq (see the throws_ok above), so this now asserts the
+-- ULID is globally unique here too, mirroring profiles.
 -- ---------------------------------------------------------------------------
 select tests.clear_authentication();
 select is((select count(*) from public.profiles where id = tests.ulid(1)), 1::bigint,
   'profile ULID is globally unique across users');
-select is((select count(*) from public.day_entries where id = tests.ulid(2)), 2::bigint,
-  'the same day entry ULID exists once per user');
+select is((select count(*) from public.day_entries where id = tests.ulid(2)), 1::bigint,
+  'day entry ULID is globally unique across users too (day_entries_id_uq, Issue #240)');
 select is((select display_name from public.profiles
             where id = tests.ulid(1) and user_id = tests.get_supabase_uid('user_a')),
   'Alice', 'A''s profile is untouched by B''s writes');

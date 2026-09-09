@@ -47,15 +47,15 @@ import 'generated_migrations/schema.dart';
 
 /// The current schema version, kept in lockstep with
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
-/// dump. A mismatch here is caught by the `schema version is 5` assertion
+/// dump. A mismatch here is caught by the `schema version is 6` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 5;
+const int _kCurrentSchemaVersion = 6;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -102,6 +102,47 @@ void main() {
               'starts from a schema-dump fixture, which — unlike a real '
               'device\'s onCreate — never creates it, so onUpgradeSteps is '
               'the only thing that can');
+    });
+
+    test(
+        'upgrading from v$fromVersion creates the observations table '
+        '(Issue #240) with its column-family present', () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+      final table = await db
+          .customSelect(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'observations'",
+          )
+          .get();
+      expect(table, hasLength(1),
+          reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create '
+              'the observations table (Issue #240)');
+
+      final columns =
+          await db.customSelect("PRAGMA table_info('observations')").get();
+      final columnNames =
+          columns.map((row) => row.data['name'] as String).toSet();
+      expect(
+        columnNames,
+        containsAll([
+          'id',
+          'day_entry_id',
+          'profile_id',
+          'local_date',
+          'category',
+          'code',
+          'intensity',
+          'source',
+          'dirty',
+          'local_rev',
+        ]),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must land the '
+            'full observations column shape, not just an empty table',
+      );
     });
   }
 }

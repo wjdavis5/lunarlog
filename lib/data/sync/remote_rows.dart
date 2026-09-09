@@ -12,8 +12,8 @@ library;
 
 import '../db/tables.dart';
 
-/// The synced tables (per-table pull cursors, KTD2, Issue #8).
-enum SyncTable { profiles, dayEntries, profileGuardians }
+/// The synced tables (per-table pull cursors, KTD2, Issue #8, Issue #240).
+enum SyncTable { profiles, dayEntries, profileGuardians, observations }
 
 /// A server copy of a synced row.
 sealed class RemoteRow {
@@ -164,6 +164,75 @@ final class RemoteProfileGuardianRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.profileGuardians;
+}
+
+final class RemoteObservationRow extends RemoteRow {
+  const RemoteObservationRow({
+    required this.id,
+    required this.dayEntryId,
+    required this.profileId,
+    required this.localDate,
+    this.observedAt,
+    required this.tz,
+    required this.category,
+    this.code,
+    this.valueNum,
+    this.valueText,
+    this.unit,
+    this.intensity,
+    this.excluded = false,
+    this.source = 'manual',
+    this.sourceId,
+    this.raw,
+    required this.updatedAt,
+    required this.deletedAt,
+    this.serverVersion = 0,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
+  });
+
+  @override
+  final String id;
+  final String dayEntryId;
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd`.
+  final String localDate;
+  final DateTime? observedAt;
+  final String tz;
+
+  /// Free text — never validated against a closed set (Issue #240 D-10
+  /// companion note).
+  final String category;
+  final String? code;
+  final double? valueNum;
+  final String? valueText;
+  final String? unit;
+  final int? intensity;
+  final bool excluded;
+
+  /// Raw `source` string. Presentation/provenance only, never a security
+  /// field — `mappers.dart`-equivalent normalisation degrades an
+  /// unrecognised value to `manual` on the way to any domain type, matching
+  /// `mode`'s precedent.
+  final String source;
+  final String? sourceId;
+
+  /// The original datapoint's JSON, undecoded (escape hatch, A1-45).
+  final String? raw;
+
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt;
+  @override
+  final int serverVersion;
+
+  final String? loggedByUserId;
+  final String? lastModifiedByUserId;
+
+  @override
+  SyncTable get table => SyncTable.observations;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today

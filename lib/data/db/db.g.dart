@@ -2198,6 +2198,1249 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
   }
 }
 
+class $ObservationsTable extends Observations
+    with TableInfo<$ObservationsTable, Observation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ObservationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dayEntryIdMeta = const VerificationMeta(
+    'dayEntryId',
+  );
+  @override
+  late final GeneratedColumn<String> dayEntryId = GeneratedColumn<String>(
+    'day_entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES day_entries (id)',
+    ),
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _localDateMeta = const VerificationMeta(
+    'localDate',
+  );
+  @override
+  late final GeneratedColumn<String> localDate = GeneratedColumn<String>(
+    'local_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _observedAtMeta = const VerificationMeta(
+    'observedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> observedAt = GeneratedColumn<DateTime>(
+    'observed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tzMeta = const VerificationMeta('tz');
+  @override
+  late final GeneratedColumn<String> tz = GeneratedColumn<String>(
+    'tz',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _valueNumMeta = const VerificationMeta(
+    'valueNum',
+  );
+  @override
+  late final GeneratedColumn<double> valueNum = GeneratedColumn<double>(
+    'value_num',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _valueTextMeta = const VerificationMeta(
+    'valueText',
+  );
+  @override
+  late final GeneratedColumn<String> valueText = GeneratedColumn<String>(
+    'value_text',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+    'unit',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _intensityMeta = const VerificationMeta(
+    'intensity',
+  );
+  @override
+  late final GeneratedColumn<int> intensity = GeneratedColumn<int>(
+    'intensity',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _excludedMeta = const VerificationMeta(
+    'excluded',
+  );
+  @override
+  late final GeneratedColumn<bool> excluded = GeneratedColumn<bool>(
+    'excluded',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("excluded" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('manual'),
+  );
+  static const VerificationMeta _sourceIdMeta = const VerificationMeta(
+    'sourceId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceId = GeneratedColumn<String>(
+    'source_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rawMeta = const VerificationMeta('raw');
+  @override
+  late final GeneratedColumn<String> raw = GeneratedColumn<String>(
+    'raw',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _localRevMeta = const VerificationMeta(
+    'localRev',
+  );
+  @override
+  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
+    'local_rev',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _loggedByUserIdMeta = const VerificationMeta(
+    'loggedByUserId',
+  );
+  @override
+  late final GeneratedColumn<String> loggedByUserId = GeneratedColumn<String>(
+    'logged_by_user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastModifiedByUserIdMeta =
+      const VerificationMeta('lastModifiedByUserId');
+  @override
+  late final GeneratedColumn<String> lastModifiedByUserId =
+      GeneratedColumn<String>(
+        'last_modified_by_user_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    dayEntryId,
+    profileId,
+    localDate,
+    observedAt,
+    tz,
+    category,
+    code,
+    valueNum,
+    valueText,
+    unit,
+    intensity,
+    excluded,
+    source,
+    sourceId,
+    raw,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+    loggedByUserId,
+    lastModifiedByUserId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'observations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Observation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('day_entry_id')) {
+      context.handle(
+        _dayEntryIdMeta,
+        dayEntryId.isAcceptableOrUnknown(
+          data['day_entry_id']!,
+          _dayEntryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_dayEntryIdMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('local_date')) {
+      context.handle(
+        _localDateMeta,
+        localDate.isAcceptableOrUnknown(data['local_date']!, _localDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localDateMeta);
+    }
+    if (data.containsKey('observed_at')) {
+      context.handle(
+        _observedAtMeta,
+        observedAt.isAcceptableOrUnknown(data['observed_at']!, _observedAtMeta),
+      );
+    }
+    if (data.containsKey('tz')) {
+      context.handle(_tzMeta, tz.isAcceptableOrUnknown(data['tz']!, _tzMeta));
+    } else if (isInserting) {
+      context.missing(_tzMeta);
+    }
+    if (data.containsKey('category')) {
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    }
+    if (data.containsKey('value_num')) {
+      context.handle(
+        _valueNumMeta,
+        valueNum.isAcceptableOrUnknown(data['value_num']!, _valueNumMeta),
+      );
+    }
+    if (data.containsKey('value_text')) {
+      context.handle(
+        _valueTextMeta,
+        valueText.isAcceptableOrUnknown(data['value_text']!, _valueTextMeta),
+      );
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+        _unitMeta,
+        unit.isAcceptableOrUnknown(data['unit']!, _unitMeta),
+      );
+    }
+    if (data.containsKey('intensity')) {
+      context.handle(
+        _intensityMeta,
+        intensity.isAcceptableOrUnknown(data['intensity']!, _intensityMeta),
+      );
+    }
+    if (data.containsKey('excluded')) {
+      context.handle(
+        _excludedMeta,
+        excluded.isAcceptableOrUnknown(data['excluded']!, _excludedMeta),
+      );
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('source_id')) {
+      context.handle(
+        _sourceIdMeta,
+        sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    }
+    if (data.containsKey('raw')) {
+      context.handle(
+        _rawMeta,
+        raw.isAcceptableOrUnknown(data['raw']!, _rawMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('local_rev')) {
+      context.handle(
+        _localRevMeta,
+        localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
+      );
+    }
+    if (data.containsKey('logged_by_user_id')) {
+      context.handle(
+        _loggedByUserIdMeta,
+        loggedByUserId.isAcceptableOrUnknown(
+          data['logged_by_user_id']!,
+          _loggedByUserIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_modified_by_user_id')) {
+      context.handle(
+        _lastModifiedByUserIdMeta,
+        lastModifiedByUserId.isAcceptableOrUnknown(
+          data['last_modified_by_user_id']!,
+          _lastModifiedByUserIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Observation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Observation(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      dayEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}day_entry_id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      localDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_date'],
+      )!,
+      observedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}observed_at'],
+      ),
+      tz: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tz'],
+      )!,
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      ),
+      valueNum: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}value_num'],
+      ),
+      valueText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value_text'],
+      ),
+      unit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit'],
+      ),
+      intensity: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}intensity'],
+      ),
+      excluded: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}excluded'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      sourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_id'],
+      ),
+      raw: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}raw'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      localRev: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_rev'],
+      )!,
+      loggedByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}logged_by_user_id'],
+      ),
+      lastModifiedByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_modified_by_user_id'],
+      ),
+    );
+  }
+
+  @override
+  $ObservationsTable createAlias(String alias) {
+    return $ObservationsTable(attachedDatabase, alias);
+  }
+}
+
+class Observation extends DataClass implements Insertable<Observation> {
+  /// Client-generated ULID (stable across devices/sync).
+  final String id;
+
+  /// The day entry this observation is attached to; cascades with its
+  /// tombstone. Immutable once set (enforced server-side by `sync_push`).
+  final String dayEntryId;
+
+  /// Denormalized for query and parity with the server's RLS predicates
+  /// (matches `day_entries.profile_id`).
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd` in the profile's local zone.
+  final String localDate;
+
+  /// Optional exact time-of-day; unused by the Clue importer (A1-40).
+  final DateTime? observedAt;
+
+  /// IANA time zone name the entry was logged in.
+  final String tz;
+
+  /// e.g. `pain`, `energy`, `bbt`. Free text, never a closed set.
+  final String category;
+
+  /// The selected option within [category] (e.g. `migraine`); nullable
+  /// only for a purely-numeric category. Free text, never a closed set.
+  final String? code;
+  final double? valueNum;
+  final String? valueText;
+
+  /// `celsius` / `fahrenheit` / `kg` / `lb`.
+  final String? unit;
+
+  /// 1-5; nullable for legacy/ungraded rows.
+  final int? intensity;
+
+  /// BBT's per-point exclusion flag (A1-44).
+  final bool excluded;
+
+  /// `manual` / `apple_health` / `health_connect` / `wearable` / `clue_import`.
+  final String source;
+
+  /// Import/device provenance key, for idempotent re-import.
+  final String? sourceId;
+
+  /// Escape hatch for an unrecognised type/value shape (A1-45); the entire
+  /// original datapoint as JSON text.
+  final String? raw;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  /// See [Profiles.dirty].
+  final bool dirty;
+
+  /// See [Profiles.localRev].
+  final int localRev;
+
+  /// Supabase auth user who created this observation (stamped by server).
+  final String? loggedByUserId;
+
+  /// Supabase auth user who last edited this observation (stamped by server).
+  final String? lastModifiedByUserId;
+  const Observation({
+    required this.id,
+    required this.dayEntryId,
+    required this.profileId,
+    required this.localDate,
+    this.observedAt,
+    required this.tz,
+    required this.category,
+    this.code,
+    this.valueNum,
+    this.valueText,
+    this.unit,
+    this.intensity,
+    required this.excluded,
+    required this.source,
+    this.sourceId,
+    this.raw,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.dirty,
+    required this.localRev,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['day_entry_id'] = Variable<String>(dayEntryId);
+    map['profile_id'] = Variable<String>(profileId);
+    map['local_date'] = Variable<String>(localDate);
+    if (!nullToAbsent || observedAt != null) {
+      map['observed_at'] = Variable<DateTime>(observedAt);
+    }
+    map['tz'] = Variable<String>(tz);
+    map['category'] = Variable<String>(category);
+    if (!nullToAbsent || code != null) {
+      map['code'] = Variable<String>(code);
+    }
+    if (!nullToAbsent || valueNum != null) {
+      map['value_num'] = Variable<double>(valueNum);
+    }
+    if (!nullToAbsent || valueText != null) {
+      map['value_text'] = Variable<String>(valueText);
+    }
+    if (!nullToAbsent || unit != null) {
+      map['unit'] = Variable<String>(unit);
+    }
+    if (!nullToAbsent || intensity != null) {
+      map['intensity'] = Variable<int>(intensity);
+    }
+    map['excluded'] = Variable<bool>(excluded);
+    map['source'] = Variable<String>(source);
+    if (!nullToAbsent || sourceId != null) {
+      map['source_id'] = Variable<String>(sourceId);
+    }
+    if (!nullToAbsent || raw != null) {
+      map['raw'] = Variable<String>(raw);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['dirty'] = Variable<bool>(dirty);
+    map['local_rev'] = Variable<int>(localRev);
+    if (!nullToAbsent || loggedByUserId != null) {
+      map['logged_by_user_id'] = Variable<String>(loggedByUserId);
+    }
+    if (!nullToAbsent || lastModifiedByUserId != null) {
+      map['last_modified_by_user_id'] = Variable<String>(lastModifiedByUserId);
+    }
+    return map;
+  }
+
+  ObservationsCompanion toCompanion(bool nullToAbsent) {
+    return ObservationsCompanion(
+      id: Value(id),
+      dayEntryId: Value(dayEntryId),
+      profileId: Value(profileId),
+      localDate: Value(localDate),
+      observedAt: observedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(observedAt),
+      tz: Value(tz),
+      category: Value(category),
+      code: code == null && nullToAbsent ? const Value.absent() : Value(code),
+      valueNum: valueNum == null && nullToAbsent
+          ? const Value.absent()
+          : Value(valueNum),
+      valueText: valueText == null && nullToAbsent
+          ? const Value.absent()
+          : Value(valueText),
+      unit: unit == null && nullToAbsent ? const Value.absent() : Value(unit),
+      intensity: intensity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(intensity),
+      excluded: Value(excluded),
+      source: Value(source),
+      sourceId: sourceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceId),
+      raw: raw == null && nullToAbsent ? const Value.absent() : Value(raw),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      dirty: Value(dirty),
+      localRev: Value(localRev),
+      loggedByUserId: loggedByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(loggedByUserId),
+      lastModifiedByUserId: lastModifiedByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastModifiedByUserId),
+    );
+  }
+
+  factory Observation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Observation(
+      id: serializer.fromJson<String>(json['id']),
+      dayEntryId: serializer.fromJson<String>(json['dayEntryId']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      localDate: serializer.fromJson<String>(json['localDate']),
+      observedAt: serializer.fromJson<DateTime?>(json['observedAt']),
+      tz: serializer.fromJson<String>(json['tz']),
+      category: serializer.fromJson<String>(json['category']),
+      code: serializer.fromJson<String?>(json['code']),
+      valueNum: serializer.fromJson<double?>(json['valueNum']),
+      valueText: serializer.fromJson<String?>(json['valueText']),
+      unit: serializer.fromJson<String?>(json['unit']),
+      intensity: serializer.fromJson<int?>(json['intensity']),
+      excluded: serializer.fromJson<bool>(json['excluded']),
+      source: serializer.fromJson<String>(json['source']),
+      sourceId: serializer.fromJson<String?>(json['sourceId']),
+      raw: serializer.fromJson<String?>(json['raw']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      localRev: serializer.fromJson<int>(json['localRev']),
+      loggedByUserId: serializer.fromJson<String?>(json['loggedByUserId']),
+      lastModifiedByUserId: serializer.fromJson<String?>(
+        json['lastModifiedByUserId'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'dayEntryId': serializer.toJson<String>(dayEntryId),
+      'profileId': serializer.toJson<String>(profileId),
+      'localDate': serializer.toJson<String>(localDate),
+      'observedAt': serializer.toJson<DateTime?>(observedAt),
+      'tz': serializer.toJson<String>(tz),
+      'category': serializer.toJson<String>(category),
+      'code': serializer.toJson<String?>(code),
+      'valueNum': serializer.toJson<double?>(valueNum),
+      'valueText': serializer.toJson<String?>(valueText),
+      'unit': serializer.toJson<String?>(unit),
+      'intensity': serializer.toJson<int?>(intensity),
+      'excluded': serializer.toJson<bool>(excluded),
+      'source': serializer.toJson<String>(source),
+      'sourceId': serializer.toJson<String?>(sourceId),
+      'raw': serializer.toJson<String?>(raw),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'dirty': serializer.toJson<bool>(dirty),
+      'localRev': serializer.toJson<int>(localRev),
+      'loggedByUserId': serializer.toJson<String?>(loggedByUserId),
+      'lastModifiedByUserId': serializer.toJson<String?>(lastModifiedByUserId),
+    };
+  }
+
+  Observation copyWith({
+    String? id,
+    String? dayEntryId,
+    String? profileId,
+    String? localDate,
+    Value<DateTime?> observedAt = const Value.absent(),
+    String? tz,
+    String? category,
+    Value<String?> code = const Value.absent(),
+    Value<double?> valueNum = const Value.absent(),
+    Value<String?> valueText = const Value.absent(),
+    Value<String?> unit = const Value.absent(),
+    Value<int?> intensity = const Value.absent(),
+    bool? excluded,
+    String? source,
+    Value<String?> sourceId = const Value.absent(),
+    Value<String?> raw = const Value.absent(),
+    DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    bool? dirty,
+    int? localRev,
+    Value<String?> loggedByUserId = const Value.absent(),
+    Value<String?> lastModifiedByUserId = const Value.absent(),
+  }) => Observation(
+    id: id ?? this.id,
+    dayEntryId: dayEntryId ?? this.dayEntryId,
+    profileId: profileId ?? this.profileId,
+    localDate: localDate ?? this.localDate,
+    observedAt: observedAt.present ? observedAt.value : this.observedAt,
+    tz: tz ?? this.tz,
+    category: category ?? this.category,
+    code: code.present ? code.value : this.code,
+    valueNum: valueNum.present ? valueNum.value : this.valueNum,
+    valueText: valueText.present ? valueText.value : this.valueText,
+    unit: unit.present ? unit.value : this.unit,
+    intensity: intensity.present ? intensity.value : this.intensity,
+    excluded: excluded ?? this.excluded,
+    source: source ?? this.source,
+    sourceId: sourceId.present ? sourceId.value : this.sourceId,
+    raw: raw.present ? raw.value : this.raw,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    dirty: dirty ?? this.dirty,
+    localRev: localRev ?? this.localRev,
+    loggedByUserId: loggedByUserId.present
+        ? loggedByUserId.value
+        : this.loggedByUserId,
+    lastModifiedByUserId: lastModifiedByUserId.present
+        ? lastModifiedByUserId.value
+        : this.lastModifiedByUserId,
+  );
+  Observation copyWithCompanion(ObservationsCompanion data) {
+    return Observation(
+      id: data.id.present ? data.id.value : this.id,
+      dayEntryId: data.dayEntryId.present
+          ? data.dayEntryId.value
+          : this.dayEntryId,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      localDate: data.localDate.present ? data.localDate.value : this.localDate,
+      observedAt: data.observedAt.present
+          ? data.observedAt.value
+          : this.observedAt,
+      tz: data.tz.present ? data.tz.value : this.tz,
+      category: data.category.present ? data.category.value : this.category,
+      code: data.code.present ? data.code.value : this.code,
+      valueNum: data.valueNum.present ? data.valueNum.value : this.valueNum,
+      valueText: data.valueText.present ? data.valueText.value : this.valueText,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      intensity: data.intensity.present ? data.intensity.value : this.intensity,
+      excluded: data.excluded.present ? data.excluded.value : this.excluded,
+      source: data.source.present ? data.source.value : this.source,
+      sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      raw: data.raw.present ? data.raw.value : this.raw,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      localRev: data.localRev.present ? data.localRev.value : this.localRev,
+      loggedByUserId: data.loggedByUserId.present
+          ? data.loggedByUserId.value
+          : this.loggedByUserId,
+      lastModifiedByUserId: data.lastModifiedByUserId.present
+          ? data.lastModifiedByUserId.value
+          : this.lastModifiedByUserId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Observation(')
+          ..write('id: $id, ')
+          ..write('dayEntryId: $dayEntryId, ')
+          ..write('profileId: $profileId, ')
+          ..write('localDate: $localDate, ')
+          ..write('observedAt: $observedAt, ')
+          ..write('tz: $tz, ')
+          ..write('category: $category, ')
+          ..write('code: $code, ')
+          ..write('valueNum: $valueNum, ')
+          ..write('valueText: $valueText, ')
+          ..write('unit: $unit, ')
+          ..write('intensity: $intensity, ')
+          ..write('excluded: $excluded, ')
+          ..write('source: $source, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('raw: $raw, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('loggedByUserId: $loggedByUserId, ')
+          ..write('lastModifiedByUserId: $lastModifiedByUserId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    id,
+    dayEntryId,
+    profileId,
+    localDate,
+    observedAt,
+    tz,
+    category,
+    code,
+    valueNum,
+    valueText,
+    unit,
+    intensity,
+    excluded,
+    source,
+    sourceId,
+    raw,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+    loggedByUserId,
+    lastModifiedByUserId,
+  ]);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Observation &&
+          other.id == this.id &&
+          other.dayEntryId == this.dayEntryId &&
+          other.profileId == this.profileId &&
+          other.localDate == this.localDate &&
+          other.observedAt == this.observedAt &&
+          other.tz == this.tz &&
+          other.category == this.category &&
+          other.code == this.code &&
+          other.valueNum == this.valueNum &&
+          other.valueText == this.valueText &&
+          other.unit == this.unit &&
+          other.intensity == this.intensity &&
+          other.excluded == this.excluded &&
+          other.source == this.source &&
+          other.sourceId == this.sourceId &&
+          other.raw == this.raw &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.dirty == this.dirty &&
+          other.localRev == this.localRev &&
+          other.loggedByUserId == this.loggedByUserId &&
+          other.lastModifiedByUserId == this.lastModifiedByUserId);
+}
+
+class ObservationsCompanion extends UpdateCompanion<Observation> {
+  final Value<String> id;
+  final Value<String> dayEntryId;
+  final Value<String> profileId;
+  final Value<String> localDate;
+  final Value<DateTime?> observedAt;
+  final Value<String> tz;
+  final Value<String> category;
+  final Value<String?> code;
+  final Value<double?> valueNum;
+  final Value<String?> valueText;
+  final Value<String?> unit;
+  final Value<int?> intensity;
+  final Value<bool> excluded;
+  final Value<String> source;
+  final Value<String?> sourceId;
+  final Value<String?> raw;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<bool> dirty;
+  final Value<int> localRev;
+  final Value<String?> loggedByUserId;
+  final Value<String?> lastModifiedByUserId;
+  final Value<int> rowid;
+  const ObservationsCompanion({
+    this.id = const Value.absent(),
+    this.dayEntryId = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.localDate = const Value.absent(),
+    this.observedAt = const Value.absent(),
+    this.tz = const Value.absent(),
+    this.category = const Value.absent(),
+    this.code = const Value.absent(),
+    this.valueNum = const Value.absent(),
+    this.valueText = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.intensity = const Value.absent(),
+    this.excluded = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.raw = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.loggedByUserId = const Value.absent(),
+    this.lastModifiedByUserId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ObservationsCompanion.insert({
+    required String id,
+    required String dayEntryId,
+    required String profileId,
+    required String localDate,
+    this.observedAt = const Value.absent(),
+    required String tz,
+    required String category,
+    this.code = const Value.absent(),
+    this.valueNum = const Value.absent(),
+    this.valueText = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.intensity = const Value.absent(),
+    this.excluded = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.raw = const Value.absent(),
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.loggedByUserId = const Value.absent(),
+    this.lastModifiedByUserId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       dayEntryId = Value(dayEntryId),
+       profileId = Value(profileId),
+       localDate = Value(localDate),
+       tz = Value(tz),
+       category = Value(category),
+       updatedAt = Value(updatedAt);
+  static Insertable<Observation> custom({
+    Expression<String>? id,
+    Expression<String>? dayEntryId,
+    Expression<String>? profileId,
+    Expression<String>? localDate,
+    Expression<DateTime>? observedAt,
+    Expression<String>? tz,
+    Expression<String>? category,
+    Expression<String>? code,
+    Expression<double>? valueNum,
+    Expression<String>? valueText,
+    Expression<String>? unit,
+    Expression<int>? intensity,
+    Expression<bool>? excluded,
+    Expression<String>? source,
+    Expression<String>? sourceId,
+    Expression<String>? raw,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<bool>? dirty,
+    Expression<int>? localRev,
+    Expression<String>? loggedByUserId,
+    Expression<String>? lastModifiedByUserId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (dayEntryId != null) 'day_entry_id': dayEntryId,
+      if (profileId != null) 'profile_id': profileId,
+      if (localDate != null) 'local_date': localDate,
+      if (observedAt != null) 'observed_at': observedAt,
+      if (tz != null) 'tz': tz,
+      if (category != null) 'category': category,
+      if (code != null) 'code': code,
+      if (valueNum != null) 'value_num': valueNum,
+      if (valueText != null) 'value_text': valueText,
+      if (unit != null) 'unit': unit,
+      if (intensity != null) 'intensity': intensity,
+      if (excluded != null) 'excluded': excluded,
+      if (source != null) 'source': source,
+      if (sourceId != null) 'source_id': sourceId,
+      if (raw != null) 'raw': raw,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (dirty != null) 'dirty': dirty,
+      if (localRev != null) 'local_rev': localRev,
+      if (loggedByUserId != null) 'logged_by_user_id': loggedByUserId,
+      if (lastModifiedByUserId != null)
+        'last_modified_by_user_id': lastModifiedByUserId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ObservationsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? dayEntryId,
+    Value<String>? profileId,
+    Value<String>? localDate,
+    Value<DateTime?>? observedAt,
+    Value<String>? tz,
+    Value<String>? category,
+    Value<String?>? code,
+    Value<double?>? valueNum,
+    Value<String?>? valueText,
+    Value<String?>? unit,
+    Value<int?>? intensity,
+    Value<bool>? excluded,
+    Value<String>? source,
+    Value<String?>? sourceId,
+    Value<String?>? raw,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<bool>? dirty,
+    Value<int>? localRev,
+    Value<String?>? loggedByUserId,
+    Value<String?>? lastModifiedByUserId,
+    Value<int>? rowid,
+  }) {
+    return ObservationsCompanion(
+      id: id ?? this.id,
+      dayEntryId: dayEntryId ?? this.dayEntryId,
+      profileId: profileId ?? this.profileId,
+      localDate: localDate ?? this.localDate,
+      observedAt: observedAt ?? this.observedAt,
+      tz: tz ?? this.tz,
+      category: category ?? this.category,
+      code: code ?? this.code,
+      valueNum: valueNum ?? this.valueNum,
+      valueText: valueText ?? this.valueText,
+      unit: unit ?? this.unit,
+      intensity: intensity ?? this.intensity,
+      excluded: excluded ?? this.excluded,
+      source: source ?? this.source,
+      sourceId: sourceId ?? this.sourceId,
+      raw: raw ?? this.raw,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      dirty: dirty ?? this.dirty,
+      localRev: localRev ?? this.localRev,
+      loggedByUserId: loggedByUserId ?? this.loggedByUserId,
+      lastModifiedByUserId: lastModifiedByUserId ?? this.lastModifiedByUserId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (dayEntryId.present) {
+      map['day_entry_id'] = Variable<String>(dayEntryId.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (localDate.present) {
+      map['local_date'] = Variable<String>(localDate.value);
+    }
+    if (observedAt.present) {
+      map['observed_at'] = Variable<DateTime>(observedAt.value);
+    }
+    if (tz.present) {
+      map['tz'] = Variable<String>(tz.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (valueNum.present) {
+      map['value_num'] = Variable<double>(valueNum.value);
+    }
+    if (valueText.present) {
+      map['value_text'] = Variable<String>(valueText.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (intensity.present) {
+      map['intensity'] = Variable<int>(intensity.value);
+    }
+    if (excluded.present) {
+      map['excluded'] = Variable<bool>(excluded.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (sourceId.present) {
+      map['source_id'] = Variable<String>(sourceId.value);
+    }
+    if (raw.present) {
+      map['raw'] = Variable<String>(raw.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (localRev.present) {
+      map['local_rev'] = Variable<int>(localRev.value);
+    }
+    if (loggedByUserId.present) {
+      map['logged_by_user_id'] = Variable<String>(loggedByUserId.value);
+    }
+    if (lastModifiedByUserId.present) {
+      map['last_modified_by_user_id'] = Variable<String>(
+        lastModifiedByUserId.value,
+      );
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ObservationsCompanion(')
+          ..write('id: $id, ')
+          ..write('dayEntryId: $dayEntryId, ')
+          ..write('profileId: $profileId, ')
+          ..write('localDate: $localDate, ')
+          ..write('observedAt: $observedAt, ')
+          ..write('tz: $tz, ')
+          ..write('category: $category, ')
+          ..write('code: $code, ')
+          ..write('valueNum: $valueNum, ')
+          ..write('valueText: $valueText, ')
+          ..write('unit: $unit, ')
+          ..write('intensity: $intensity, ')
+          ..write('excluded: $excluded, ')
+          ..write('source: $source, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('raw: $raw, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('loggedByUserId: $loggedByUserId, ')
+          ..write('lastModifiedByUserId: $lastModifiedByUserId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AppSettingsTable extends AppSettings
     with TableInfo<$AppSettingsTable, AppSetting> {
   @override
@@ -2523,6 +3766,17 @@ class $SyncStateTable extends SyncState
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _cursorObservationsMeta =
+      const VerificationMeta('cursorObservations');
+  @override
+  late final GeneratedColumn<int> cursorObservations = GeneratedColumn<int>(
+    'cursor_observations',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -2574,6 +3828,7 @@ class $SyncStateTable extends SyncState
     deviceId,
     cursorProfiles,
     cursorDayEntries,
+    cursorObservations,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -2624,6 +3879,15 @@ class $SyncStateTable extends SyncState
         cursorDayEntries.isAcceptableOrUnknown(
           data['cursor_day_entries']!,
           _cursorDayEntriesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cursor_observations')) {
+      context.handle(
+        _cursorObservationsMeta,
+        cursorObservations.isAcceptableOrUnknown(
+          data['cursor_observations']!,
+          _cursorObservationsMeta,
         ),
       );
     }
@@ -2689,6 +3953,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_day_entries'],
       )!,
+      cursorObservations: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_observations'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -2729,6 +3997,10 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// Per-table pull cursors (`server_version` high-water marks, KTD2).
   final int cursorProfiles;
   final int cursorDayEntries;
+
+  /// Issue #240: the `observations` pull cursor, same shape as
+  /// [cursorDayEntries].
+  final int cursorObservations;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -2744,6 +4016,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.deviceId,
     required this.cursorProfiles,
     required this.cursorDayEntries,
+    required this.cursorObservations,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -2759,6 +4032,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     map['device_id'] = Variable<String>(deviceId);
     map['cursor_profiles'] = Variable<int>(cursorProfiles);
     map['cursor_day_entries'] = Variable<int>(cursorDayEntries);
+    map['cursor_observations'] = Variable<int>(cursorObservations);
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
     }
@@ -2783,6 +4057,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       deviceId: Value(deviceId),
       cursorProfiles: Value(cursorProfiles),
       cursorDayEntries: Value(cursorDayEntries),
+      cursorObservations: Value(cursorObservations),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -2809,6 +4084,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       deviceId: serializer.fromJson<String>(json['deviceId']),
       cursorProfiles: serializer.fromJson<int>(json['cursorProfiles']),
       cursorDayEntries: serializer.fromJson<int>(json['cursorDayEntries']),
+      cursorObservations: serializer.fromJson<int>(json['cursorObservations']),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -2826,6 +4102,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       'deviceId': serializer.toJson<String>(deviceId),
       'cursorProfiles': serializer.toJson<int>(cursorProfiles),
       'cursorDayEntries': serializer.toJson<int>(cursorDayEntries),
+      'cursorObservations': serializer.toJson<int>(cursorObservations),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -2839,6 +4116,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     String? deviceId,
     int? cursorProfiles,
     int? cursorDayEntries,
+    int? cursorObservations,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -2849,6 +4127,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     deviceId: deviceId ?? this.deviceId,
     cursorProfiles: cursorProfiles ?? this.cursorProfiles,
     cursorDayEntries: cursorDayEntries ?? this.cursorDayEntries,
+    cursorObservations: cursorObservations ?? this.cursorObservations,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -2871,6 +4150,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDayEntries: data.cursorDayEntries.present
           ? data.cursorDayEntries.value
           : this.cursorDayEntries,
+      cursorObservations: data.cursorObservations.present
+          ? data.cursorObservations.value
+          : this.cursorObservations,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -2892,6 +4174,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('deviceId: $deviceId, ')
           ..write('cursorProfiles: $cursorProfiles, ')
           ..write('cursorDayEntries: $cursorDayEntries, ')
+          ..write('cursorObservations: $cursorObservations, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -2907,6 +4190,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     deviceId,
     cursorProfiles,
     cursorDayEntries,
+    cursorObservations,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -2921,6 +4205,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.deviceId == this.deviceId &&
           other.cursorProfiles == this.cursorProfiles &&
           other.cursorDayEntries == this.cursorDayEntries &&
+          other.cursorObservations == this.cursorObservations &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -2933,6 +4218,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<String> deviceId;
   final Value<int> cursorProfiles;
   final Value<int> cursorDayEntries;
+  final Value<int> cursorObservations;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -2943,6 +4229,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.deviceId = const Value.absent(),
     this.cursorProfiles = const Value.absent(),
     this.cursorDayEntries = const Value.absent(),
+    this.cursorObservations = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -2954,6 +4241,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.deviceId = const Value.absent(),
     this.cursorProfiles = const Value.absent(),
     this.cursorDayEntries = const Value.absent(),
+    this.cursorObservations = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -2965,6 +4253,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<String>? deviceId,
     Expression<int>? cursorProfiles,
     Expression<int>? cursorDayEntries,
+    Expression<int>? cursorObservations,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -2976,6 +4265,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
       if (deviceId != null) 'device_id': deviceId,
       if (cursorProfiles != null) 'cursor_profiles': cursorProfiles,
       if (cursorDayEntries != null) 'cursor_day_entries': cursorDayEntries,
+      if (cursorObservations != null) 'cursor_observations': cursorObservations,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -2990,6 +4280,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<String>? deviceId,
     Value<int>? cursorProfiles,
     Value<int>? cursorDayEntries,
+    Value<int>? cursorObservations,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -3001,6 +4292,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
       deviceId: deviceId ?? this.deviceId,
       cursorProfiles: cursorProfiles ?? this.cursorProfiles,
       cursorDayEntries: cursorDayEntries ?? this.cursorDayEntries,
+      cursorObservations: cursorObservations ?? this.cursorObservations,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -3026,6 +4318,9 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     if (cursorDayEntries.present) {
       map['cursor_day_entries'] = Variable<int>(cursorDayEntries.value);
     }
+    if (cursorObservations.present) {
+      map['cursor_observations'] = Variable<int>(cursorObservations.value);
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -3049,6 +4344,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('deviceId: $deviceId, ')
           ..write('cursorProfiles: $cursorProfiles, ')
           ..write('cursorDayEntries: $cursorDayEntries, ')
+          ..write('cursorObservations: $cursorObservations, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -3066,6 +4362,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   late final $ProfileGuardiansTable profileGuardians = $ProfileGuardiansTable(
     this,
   );
+  late final $ObservationsTable observations = $ObservationsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   @override
@@ -3076,6 +4373,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     profiles,
     dayEntries,
     profileGuardians,
+    observations,
     appSettings,
     syncState,
   ];
@@ -3157,6 +4455,25 @@ final class $$ProfilesTableReferences
     final cache = $_typedResult.readTableOrNull(
       _profileGuardiansRefsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ObservationsTable, List<Observation>>
+  _observationsRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.observations,
+        aliasName: 'profiles__id__observations__profile_id',
+      );
+
+  $$ObservationsTableProcessedTableManager get observationsRefs {
+    final manager = $$ObservationsTableTableManager(
+      $_db,
+      $_db.observations,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_observationsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -3283,6 +4600,31 @@ class $$ProfilesTableFilterComposer
           }) => $$ProfileGuardiansTableFilterComposer(
             $db: $db,
             $table: $db.profileGuardians,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> observationsRefs(
+    Expression<bool> Function($$ObservationsTableFilterComposer f) f,
+  ) {
+    final $$ObservationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.observations,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ObservationsTableFilterComposer(
+            $db: $db,
+            $table: $db.observations,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3481,6 +4823,31 @@ class $$ProfilesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> observationsRefs<T extends Object>(
+    Expression<T> Function($$ObservationsTableAnnotationComposer a) f,
+  ) {
+    final $$ObservationsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.observations,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ObservationsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.observations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -3499,6 +4866,7 @@ class $$ProfilesTableTableManager
           PrefetchHooks Function({
             bool dayEntriesRefs,
             bool profileGuardiansRefs,
+            bool observationsRefs,
           })
         > {
   $$ProfilesTableTableManager(_$LunarLogDatabase db, $ProfilesTable table)
@@ -3589,12 +4957,17 @@ class $$ProfilesTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({dayEntriesRefs = false, profileGuardiansRefs = false}) {
+              ({
+                dayEntriesRefs = false,
+                profileGuardiansRefs = false,
+                observationsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (dayEntriesRefs) db.dayEntries,
                     if (profileGuardiansRefs) db.profileGuardians,
+                    if (observationsRefs) db.observations,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -3641,6 +5014,27 @@ class $$ProfilesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (observationsRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          Observation
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._observationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).observationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -3661,7 +5055,11 @@ typedef $$ProfilesTableProcessedTableManager =
       $$ProfilesTableUpdateCompanionBuilder,
       (Profile, $$ProfilesTableReferences),
       Profile,
-      PrefetchHooks Function({bool dayEntriesRefs, bool profileGuardiansRefs})
+      PrefetchHooks Function({
+        bool dayEntriesRefs,
+        bool profileGuardiansRefs,
+        bool observationsRefs,
+      })
     >;
 typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
   required String id,
@@ -3714,6 +5112,25 @@ final class $$DayEntriesTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$ObservationsTable, List<Observation>>
+  _observationsRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.observations,
+        aliasName: 'day_entries__id__observations__day_entry_id',
+      );
+
+  $$ObservationsTableProcessedTableManager get observationsRefs {
+    final manager = $$ObservationsTableTableManager(
+      $_db,
+      $_db.observations,
+    ).filter((f) => f.dayEntryId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_observationsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 }
@@ -3810,6 +5227,31 @@ class $$DayEntriesTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> observationsRefs(
+    Expression<bool> Function($$ObservationsTableFilterComposer f) f,
+  ) {
+    final $$ObservationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.observations,
+      getReferencedColumn: (t) => t.dayEntryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ObservationsTableFilterComposer(
+            $db: $db,
+            $table: $db.observations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -3977,6 +5419,31 @@ class $$DayEntriesTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> observationsRefs<T extends Object>(
+    Expression<T> Function($$ObservationsTableAnnotationComposer a) f,
+  ) {
+    final $$ObservationsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.observations,
+      getReferencedColumn: (t) => t.dayEntryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ObservationsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.observations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$DayEntriesTableTableManager
@@ -3992,7 +5459,7 @@ class $$DayEntriesTableTableManager
           $$DayEntriesTableUpdateCompanionBuilder,
           (DayEntry, $$DayEntriesTableReferences),
           DayEntry,
-          PrefetchHooks Function({bool profileId})
+          PrefetchHooks Function({bool profileId, bool observationsRefs})
         > {
   $$DayEntriesTableTableManager(_$LunarLogDatabase db, $DayEntriesTable table)
     : super(
@@ -4077,45 +5544,70 @@ class $$DayEntriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({profileId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (profileId) {
-                      state = state.withJoin(
-                        currentTable: table,
-                        currentColumn: table.profileId,
-                        referencedTable: $$DayEntriesTableReferences
-                            ._profileIdTable(db),
-                        referencedColumn: $$DayEntriesTableReferences
-                            ._profileIdTable(db)
-                            .id,
-                      ) as T;
-                    }
+          prefetchHooksCallback:
+              ({profileId = false, observationsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (observationsRefs) db.observations,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (profileId) {
+                          state = state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.profileId,
+                            referencedTable: $$DayEntriesTableReferences
+                                ._profileIdTable(db),
+                            referencedColumn: $$DayEntriesTableReferences
+                                ._profileIdTable(db)
+                                .id,
+                          ) as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (observationsRefs)
+                        await $_getPrefetchedData<
+                          DayEntry,
+                          $DayEntriesTable,
+                          Observation
+                        >(
+                          currentTable: table,
+                          referencedTable: $$DayEntriesTableReferences
+                              ._observationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$DayEntriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).observationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.dayEntryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -4132,7 +5624,7 @@ typedef $$DayEntriesTableProcessedTableManager =
       $$DayEntriesTableUpdateCompanionBuilder,
       (DayEntry, $$DayEntriesTableReferences),
       DayEntry,
-      PrefetchHooks Function({bool profileId})
+      PrefetchHooks Function({bool profileId, bool observationsRefs})
     >;
 typedef $$ProfileGuardiansTableCreateCompanionBuilder =
     ProfileGuardiansCompanion Function({
@@ -4540,6 +6032,737 @@ typedef $$ProfileGuardiansTableProcessedTableManager =
       ProfileGuardianData,
       PrefetchHooks Function({bool profileId})
     >;
+typedef $$ObservationsTableCreateCompanionBuilder =
+    ObservationsCompanion Function({
+      required String id,
+      required String dayEntryId,
+      required String profileId,
+      required String localDate,
+      Value<DateTime?> observedAt,
+      required String tz,
+      required String category,
+      Value<String?> code,
+      Value<double?> valueNum,
+      Value<String?> valueText,
+      Value<String?> unit,
+      Value<int?> intensity,
+      Value<bool> excluded,
+      Value<String> source,
+      Value<String?> sourceId,
+      Value<String?> raw,
+      required DateTime updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<String?> loggedByUserId,
+      Value<String?> lastModifiedByUserId,
+      Value<int> rowid,
+    });
+typedef $$ObservationsTableUpdateCompanionBuilder =
+    ObservationsCompanion Function({
+      Value<String> id,
+      Value<String> dayEntryId,
+      Value<String> profileId,
+      Value<String> localDate,
+      Value<DateTime?> observedAt,
+      Value<String> tz,
+      Value<String> category,
+      Value<String?> code,
+      Value<double?> valueNum,
+      Value<String?> valueText,
+      Value<String?> unit,
+      Value<int?> intensity,
+      Value<bool> excluded,
+      Value<String> source,
+      Value<String?> sourceId,
+      Value<String?> raw,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<String?> loggedByUserId,
+      Value<String?> lastModifiedByUserId,
+      Value<int> rowid,
+    });
+
+final class $$ObservationsTableReferences
+    extends
+        BaseReferences<_$LunarLogDatabase, $ObservationsTable, Observation> {
+  $$ObservationsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $DayEntriesTable _dayEntryIdTable(_$LunarLogDatabase db) =>
+      db.dayEntries.createAlias('observations__day_entry_id__day_entries__id');
+
+  $$DayEntriesTableProcessedTableManager get dayEntryId {
+    final $_column = $_itemColumn<String>('day_entry_id')!;
+
+    final manager = $$DayEntriesTableTableManager(
+      $_db,
+      $_db.dayEntries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_dayEntryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) =>
+      db.profiles.createAlias('observations__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ObservationsTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $ObservationsTable> {
+  $$ObservationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get observedAt => $composableBuilder(
+    column: $table.observedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tz => $composableBuilder(
+    column: $table.tz,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get valueNum => $composableBuilder(
+    column: $table.valueNum,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get valueText => $composableBuilder(
+    column: $table.valueText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get intensity => $composableBuilder(
+    column: $table.intensity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get excluded => $composableBuilder(
+    column: $table.excluded,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get raw => $composableBuilder(
+    column: $table.raw,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$DayEntriesTableFilterComposer get dayEntryId {
+    final $$DayEntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.dayEntryId,
+      referencedTable: $db.dayEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayEntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.dayEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ObservationsTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $ObservationsTable> {
+  $$ObservationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get observedAt => $composableBuilder(
+    column: $table.observedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tz => $composableBuilder(
+    column: $table.tz,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get valueNum => $composableBuilder(
+    column: $table.valueNum,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get valueText => $composableBuilder(
+    column: $table.valueText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get intensity => $composableBuilder(
+    column: $table.intensity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get excluded => $composableBuilder(
+    column: $table.excluded,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get raw => $composableBuilder(
+    column: $table.raw,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$DayEntriesTableOrderingComposer get dayEntryId {
+    final $$DayEntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.dayEntryId,
+      referencedTable: $db.dayEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayEntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.dayEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ObservationsTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $ObservationsTable> {
+  $$ObservationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get localDate =>
+      $composableBuilder(column: $table.localDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get observedAt => $composableBuilder(
+    column: $table.observedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get tz =>
+      $composableBuilder(column: $table.tz, builder: (column) => column);
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<double> get valueNum =>
+      $composableBuilder(column: $table.valueNum, builder: (column) => column);
+
+  GeneratedColumn<String> get valueText =>
+      $composableBuilder(column: $table.valueText, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<int> get intensity =>
+      $composableBuilder(column: $table.intensity, builder: (column) => column);
+
+  GeneratedColumn<bool> get excluded =>
+      $composableBuilder(column: $table.excluded, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceId =>
+      $composableBuilder(column: $table.sourceId, builder: (column) => column);
+
+  GeneratedColumn<String> get raw =>
+      $composableBuilder(column: $table.raw, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<int> get localRev =>
+      $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  GeneratedColumn<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => column,
+  );
+
+  $$DayEntriesTableAnnotationComposer get dayEntryId {
+    final $$DayEntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.dayEntryId,
+      referencedTable: $db.dayEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayEntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.dayEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ObservationsTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $ObservationsTable,
+          Observation,
+          $$ObservationsTableFilterComposer,
+          $$ObservationsTableOrderingComposer,
+          $$ObservationsTableAnnotationComposer,
+          $$ObservationsTableCreateCompanionBuilder,
+          $$ObservationsTableUpdateCompanionBuilder,
+          (Observation, $$ObservationsTableReferences),
+          Observation,
+          PrefetchHooks Function({bool dayEntryId, bool profileId})
+        > {
+  $$ObservationsTableTableManager(
+    _$LunarLogDatabase db,
+    $ObservationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ObservationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ObservationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ObservationsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> dayEntryId = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> localDate = const Value.absent(),
+                Value<DateTime?> observedAt = const Value.absent(),
+                Value<String> tz = const Value.absent(),
+                Value<String> category = const Value.absent(),
+                Value<String?> code = const Value.absent(),
+                Value<double?> valueNum = const Value.absent(),
+                Value<String?> valueText = const Value.absent(),
+                Value<String?> unit = const Value.absent(),
+                Value<int?> intensity = const Value.absent(),
+                Value<bool> excluded = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sourceId = const Value.absent(),
+                Value<String?> raw = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<String?> loggedByUserId = const Value.absent(),
+                Value<String?> lastModifiedByUserId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ObservationsCompanion(
+                id: id,
+                dayEntryId: dayEntryId,
+                profileId: profileId,
+                localDate: localDate,
+                observedAt: observedAt,
+                tz: tz,
+                category: category,
+                code: code,
+                valueNum: valueNum,
+                valueText: valueText,
+                unit: unit,
+                intensity: intensity,
+                excluded: excluded,
+                source: source,
+                sourceId: sourceId,
+                raw: raw,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                loggedByUserId: loggedByUserId,
+                lastModifiedByUserId: lastModifiedByUserId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String dayEntryId,
+                required String profileId,
+                required String localDate,
+                Value<DateTime?> observedAt = const Value.absent(),
+                required String tz,
+                required String category,
+                Value<String?> code = const Value.absent(),
+                Value<double?> valueNum = const Value.absent(),
+                Value<String?> valueText = const Value.absent(),
+                Value<String?> unit = const Value.absent(),
+                Value<int?> intensity = const Value.absent(),
+                Value<bool> excluded = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sourceId = const Value.absent(),
+                Value<String?> raw = const Value.absent(),
+                required DateTime updatedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<String?> loggedByUserId = const Value.absent(),
+                Value<String?> lastModifiedByUserId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ObservationsCompanion.insert(
+                id: id,
+                dayEntryId: dayEntryId,
+                profileId: profileId,
+                localDate: localDate,
+                observedAt: observedAt,
+                tz: tz,
+                category: category,
+                code: code,
+                valueNum: valueNum,
+                valueText: valueText,
+                unit: unit,
+                intensity: intensity,
+                excluded: excluded,
+                source: source,
+                sourceId: sourceId,
+                raw: raw,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                loggedByUserId: loggedByUserId,
+                lastModifiedByUserId: lastModifiedByUserId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ObservationsTable, Observation>(table),
+                  $$ObservationsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({dayEntryId = false, profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (dayEntryId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.dayEntryId,
+                        referencedTable: $$ObservationsTableReferences
+                            ._dayEntryIdTable(db),
+                        referencedColumn: $$ObservationsTableReferences
+                            ._dayEntryIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$ObservationsTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$ObservationsTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ObservationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $ObservationsTable,
+      Observation,
+      $$ObservationsTableFilterComposer,
+      $$ObservationsTableOrderingComposer,
+      $$ObservationsTableAnnotationComposer,
+      $$ObservationsTableCreateCompanionBuilder,
+      $$ObservationsTableUpdateCompanionBuilder,
+      (Observation, $$ObservationsTableReferences),
+      Observation,
+      PrefetchHooks Function({bool dayEntryId, bool profileId})
+    >;
 typedef $$AppSettingsTableCreateCompanionBuilder =
     AppSettingsCompanion Function({
       required String key,
@@ -4717,6 +6940,7 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<String> deviceId,
   Value<int> cursorProfiles,
   Value<int> cursorDayEntries,
+  Value<int> cursorObservations,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -4728,6 +6952,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<String> deviceId,
   Value<int> cursorProfiles,
   Value<int> cursorDayEntries,
+  Value<int> cursorObservations,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -4765,6 +6990,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorDayEntries => $composableBuilder(
     column: $table.cursorDayEntries,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorObservations => $composableBuilder(
+    column: $table.cursorObservations,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4823,6 +7053,11 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorObservations => $composableBuilder(
+    column: $table.cursorObservations,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -4871,6 +7106,11 @@ class $$SyncStateTableAnnotationComposer
 
   GeneratedColumn<int> get cursorDayEntries => $composableBuilder(
     column: $table.cursorDayEntries,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cursorObservations => $composableBuilder(
+    column: $table.cursorObservations,
     builder: (column) => column,
   );
 
@@ -4929,6 +7169,7 @@ class $$SyncStateTableTableManager
                 Value<String> deviceId = const Value.absent(),
                 Value<int> cursorProfiles = const Value.absent(),
                 Value<int> cursorDayEntries = const Value.absent(),
+                Value<int> cursorObservations = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -4939,6 +7180,7 @@ class $$SyncStateTableTableManager
                 deviceId: deviceId,
                 cursorProfiles: cursorProfiles,
                 cursorDayEntries: cursorDayEntries,
+                cursorObservations: cursorObservations,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -4951,6 +7193,7 @@ class $$SyncStateTableTableManager
                 Value<String> deviceId = const Value.absent(),
                 Value<int> cursorProfiles = const Value.absent(),
                 Value<int> cursorDayEntries = const Value.absent(),
+                Value<int> cursorObservations = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -4961,6 +7204,7 @@ class $$SyncStateTableTableManager
                 deviceId: deviceId,
                 cursorProfiles: cursorProfiles,
                 cursorDayEntries: cursorDayEntries,
+                cursorObservations: cursorObservations,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -5010,6 +7254,8 @@ class $LunarLogDatabaseManager {
       $$DayEntriesTableTableManager(_db, _db.dayEntries);
   $$ProfileGuardiansTableTableManager get profileGuardians =>
       $$ProfileGuardiansTableTableManager(_db, _db.profileGuardians);
+  $$ObservationsTableTableManager get observations =>
+      $$ObservationsTableTableManager(_db, _db.observations);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$SyncStateTableTableManager get syncState =>

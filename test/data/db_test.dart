@@ -180,7 +180,7 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 5);
+  expect(await userVersion(db), 6);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
   expect(await columnsOf(db, 'day_entries'),
@@ -268,10 +268,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 5 and database opens with the expected tables',
+    test('schema version is 6 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 5);
-      expect(await userVersion(db), 5);
+      expect(db.schemaVersion, 6);
+      expect(await userVersion(db), 6);
 
       final tables = (await db
               .customSelect(
@@ -1265,7 +1265,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 5);
+      expect(await userVersion(second), 6);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1278,7 +1278,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 5);
+      expect(await userVersion(db), 6);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1323,7 +1323,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 5);
+      expect(await userVersion(db), 6);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1399,7 +1399,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 5);
+      expect(await userVersion(db), 6);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =
