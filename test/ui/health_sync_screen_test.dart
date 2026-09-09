@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -60,11 +61,81 @@ class FakeProfilesRepository implements ProfilesRepository {
   Stream<List<Profile>> watch() => Stream.value(profiles);
 }
 
-Profile _profile({required String id, required String name, bool isMinor = false}) =>
+/// A repository whose `list()` always throws — exercises `_load()`'s
+/// `catchError` handling (review fix): the loading spinner must resolve
+/// instead of spinning forever.
+class ThrowingProfilesRepository implements ProfilesRepository {
+  @override
+  Future<Profile> create({
+    required String displayName,
+    required bool isMinor,
+    int sortOrder = 0,
+    ProfileMode mode = ProfileMode.standard,
+    int? birthYear,
+    ProfileRelationship? relationship,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> delete(String id) => throw UnimplementedError();
+
+  @override
+  Future<Profile?> findById(String id) => throw UnimplementedError();
+
+  @override
+  Future<List<Profile>> list() async =>
+      throw StateError('boom: repository unavailable');
+
+  @override
+  Future<void> setArchived(String id, bool archived) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Profile> update(Profile profile) => throw UnimplementedError();
+
+  @override
+  Stream<List<Profile>> watch() => throw UnimplementedError();
+}
+
+/// A binding whose `canBind` always allows but whose `bind` always denies
+/// — simulates eligibility changing out from under the operator between
+/// this screen's last load and the confirm dialog closing (e.g. another
+/// device changed the binding or this profile's ownership mid-flow), so
+/// the "surface bind()'s deny reason" code path (review fix) can be
+/// exercised deterministically.
+class _AlwaysAllowThenDenyBinding extends HealthSyncBinding {
+  _AlwaysAllowThenDenyBinding(super.settings);
+
+  @override
+  HealthSyncCheck canBind({
+    required Profile profile,
+    required String? signedInUserId,
+    required String? ownerUserId,
+    required bool minorBindingAllowed,
+  }) =>
+      HealthSyncCheck.allowed;
+
+  @override
+  Future<HealthSyncCheck> bind({
+    required Profile profile,
+    required String? signedInUserId,
+    required String? ownerUserId,
+    required bool minorBindingAllowed,
+  }) async =>
+      HealthSyncCheck.notOwner;
+}
+
+Profile _profile({
+  required String id,
+  required String name,
+  bool isMinor = false,
+  DateTime? archivedAt,
+}) =>
     Profile(
       id: id,
       displayName: name,
       isMinor: isMinor,
+      archivedAt: archivedAt,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
     );
@@ -80,16 +151,24 @@ ProfileGuardian _owner(String profileId, String userId) => ProfileGuardian(
 
 void main() {
   // Fixture: 'eligible' owned by the signed-in user (u1), 'minor' also
-  // owned by u1 but is a minor, 'other' owned by a different account.
+  // owned by u1 but is a minor, 'other' owned by a different account,
+  // 'archived-profile' owned by u1 but archived (excluded from the
+  // picker entirely — review fix).
   final profiles = [
     _profile(id: 'eligible', name: 'Alice'),
     _profile(id: 'minor', name: 'Baby', isMinor: true),
     _profile(id: 'other', name: 'Charlie'),
+    _profile(
+      id: 'archived-profile',
+      name: 'Dana',
+      archivedAt: DateTime.utc(2026, 1, 2),
+    ),
   ];
   final guardiansByProfile = <String, List<ProfileGuardian>>{
     'eligible': [_owner('eligible', 'u1')],
     'minor': [_owner('minor', 'u1')],
     'other': [_owner('other', 'someone-else')],
+    'archived-profile': [_owner('archived-profile', 'u1')],
   };
 
   Future<List<ProfileGuardian>> guardiansForProfile(String profileId) async =>
@@ -99,11 +178,13 @@ void main() {
     WidgetTester tester, {
     required HealthSyncBinding binding,
     String? signedInUserId = 'u1',
+    ProfilesRepository? profilesRepository,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: HealthSyncScreen(
-          profilesRepository: FakeProfilesRepository(profiles),
+          profilesRepository:
+              profilesRepository ?? FakeProfilesRepository(profiles),
           guardiansForProfile: guardiansForProfile,
           binding: binding,
           signedInUserId: signedInUserId,
@@ -113,14 +194,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('lists every profile, showing a deny reason only for '
-      'ineligible ones', (tester) async {
+  testWidgets('lists every non-archived profile, showing a deny reason '
+      'only for ineligible ones, and excludes archived profiles entirely',
+      (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());
     await pumpScreen(tester, binding: binding);
 
     expect(find.byKey(const ValueKey('health-sync-profile-eligible')), findsOneWidget);
     expect(find.byKey(const ValueKey('health-sync-profile-minor')), findsOneWidget);
     expect(find.byKey(const ValueKey('health-sync-profile-other')), findsOneWidget);
+
+    // Archived profiles never appear in the picker (review fix).
+    expect(
+      find.byKey(const ValueKey('health-sync-profile-archived-profile')),
+      findsNothing,
+    );
 
     // The eligible profile shows no deny-reason subtitle.
     final eligibleTile = tester.widget<ListTile>(
@@ -131,7 +219,7 @@ void main() {
 
     // The minor profile explains the transfer requirement.
     expect(
-      find.textContaining('ownership must transfer'),
+      find.textContaining('after ownership transfer'),
       findsOneWidget,
     );
     final minorTile = tester.widget<ListTile>(
@@ -139,7 +227,8 @@ void main() {
     );
     expect(minorTile.enabled, isFalse);
 
-    // The non-owner profile explains the ownership requirement.
+    // The non-owner profile (a real, resolved different owner) explains
+    // the ownership requirement plainly.
     expect(
       find.textContaining("not this profile's owner"),
       findsOneWidget,
@@ -212,6 +301,29 @@ void main() {
     expect(await binding.boundProfileId(), isNull);
   });
 
+  testWidgets('confirming a bind that the binding then denies surfaces the '
+      'deny reason instead of discarding it (review fix)', (tester) async {
+    final binding = _AlwaysAllowThenDenyBinding(FakeSettingsStore());
+    await pumpScreen(tester, binding: binding);
+
+    await tester.tap(find.byKey(const ValueKey('health-sync-profile-eligible')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('health-sync-confirm-bind')));
+    await tester.pumpAndSettle();
+
+    expect(await binding.boundProfileId(), isNull);
+    expect(
+      find.textContaining("You are not this profile's owner"),
+      findsOneWidget,
+    );
+
+    // Let the SnackBar retire before the test ends, matching
+    // `test/ui/gate_test.dart`'s convention for avoiding a pending-timer
+    // failure.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('the unbind action clears the binding and hides itself',
       (tester) async {
     final settings = FakeSettingsStore();
@@ -220,6 +332,7 @@ void main() {
       profile: profiles.firstWhere((p) => p.id == 'eligible'),
       signedInUserId: 'u1',
       ownerUserId: 'u1',
+      minorBindingAllowed: false,
     );
 
     await pumpScreen(tester, binding: binding);
@@ -233,8 +346,10 @@ void main() {
     expect(find.byKey(const ValueKey('health-sync-unbind-tile')), findsNothing);
   });
 
-  testWidgets('a signed-out session denies every profile as notOwner',
-      (tester) async {
+  testWidgets('a signed-out session denies every non-minor profile with an '
+      'actionable "sign in and sync" prompt, not the plain not-owner '
+      'message (review fix — distinct copy for a never-synced local-only '
+      'user)', (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());
     await pumpScreen(tester, binding: binding, signedInUserId: null);
 
@@ -242,6 +357,43 @@ void main() {
       find.byKey(const ValueKey('health-sync-profile-eligible')),
     );
     expect(eligibleTile.enabled, isFalse);
-    expect(find.textContaining("not this profile's owner"), findsWidgets);
+    expect(
+      find.textContaining('Sign in and sync once'),
+      findsWidgets,
+    );
+    expect(find.textContaining("not this profile's owner"), findsNothing);
+  });
+
+  testWidgets('an unresolved owner (guardians not yet synced) gets the '
+      'same actionable "sign in and sync" prompt even while signed in',
+      (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HealthSyncScreen(
+          profilesRepository:
+              FakeProfilesRepository([_profile(id: 'unsynced', name: 'Eve')]),
+          guardiansForProfile: (_) async => const [],
+          binding: binding,
+          signedInUserId: 'u1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Sign in and sync once'), findsOneWidget);
+  });
+
+  testWidgets('a throwing repository resolves the spinner into an error '
+      'state instead of spinning forever (review fix)', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(
+      tester,
+      binding: binding,
+      profilesRepository: ThrowingProfilesRepository(),
+    );
+
+    expect(find.byKey(const ValueKey('health-sync-loading')), findsNothing);
+    expect(find.byKey(const ValueKey('health-sync-load-error')), findsOneWidget);
   });
 }

@@ -21,6 +21,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../config.dart';
 import '../../domain/health/health_sync_binding.dart';
 import '../../domain/health/health_sync_policy.dart';
 import '../../domain/models/profile.dart';
@@ -64,6 +65,7 @@ class HealthSyncScreen extends StatefulWidget {
 
 class _HealthSyncScreenState extends State<HealthSyncScreen> {
   bool _loading = true;
+  bool _loadFailed = false;
   String? _boundProfileId;
   List<Profile> _profiles = const [];
   Map<String, String?> _ownerUserIdByProfile = const {};
@@ -74,9 +76,29 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     unawaited(_load());
   }
 
-  Future<void> _load() async {
+  /// Loads the bound profile id, every non-archived profile, and each
+  /// one's resolved owner. A throwing repository (or guardian lookup)
+  /// used to leave [_loading] `true` forever, spinning indefinitely
+  /// (review fix) — `catchError` guarantees the spinner always resolves,
+  /// showing an error state instead.
+  Future<void> _load() => _doLoad().catchError((Object _) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _loadFailed = true;
+        });
+      });
+
+  Future<void> _doLoad() async {
     final bound = await widget.binding.boundProfileId();
-    final profiles = await widget.profilesRepository.list();
+    final allProfiles = await widget.profilesRepository.list();
+    // Archived profiles are excluded from the picker (review fix): an
+    // archived profile is no longer in active use and should not be
+    // offered as a bindable health-store profile.
+    final profiles = [
+      for (final profile in allProfiles)
+        if (profile.archivedAt == null) profile,
+    ];
     final owners = <String, String?>{};
     for (final profile in profiles) {
       final guardians = await widget.guardiansForProfile(profile.id);
@@ -88,27 +110,42 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       _profiles = profiles;
       _ownerUserIdByProfile = owners;
       _loading = false;
+      _loadFailed = false;
     });
   }
 
   /// Whether binding [profile] right now would be allowed — evaluated
-  /// against the *proposed* binding (`boundProfileId: profile.id`), so only
-  /// the minor and ownership checks can produce a deny here; matches what
-  /// [HealthSyncBinding.bind] itself checks.
-  HealthSyncCheck _eligibility(Profile profile) => canSyncProfile(
+  /// against the *proposed* binding, so only the minor and ownership
+  /// checks can produce a deny here; matches what [HealthSyncBinding.bind]
+  /// itself checks. `minorBindingAllowed` is always
+  /// `AppConfig.healthSyncMinorBindingAllowed` — the single source of
+  /// truth [HealthSyncBinding] documents, never a value this screen
+  /// invents itself.
+  HealthSyncCheck _eligibility(Profile profile) => widget.binding.canBind(
         profile: profile,
-        boundProfileId: profile.id,
         signedInUserId: widget.signedInUserId,
         ownerUserId: _ownerUserIdByProfile[profile.id],
+        minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
       );
 
-  String _denyReasonText(HealthSyncCheck check) => switch (check) {
-        HealthSyncCheck.minorRequiresTransfer =>
-          "This profile is a minor — ownership must transfer to the "
-              "minor's own account before health sync can bind here.",
-        HealthSyncCheck.notOwner =>
-          "You are not this profile's owner — only its accepted primary "
-              'guardian can bind health sync.',
+  /// [check]'s user-facing deny reason for [profile], or the empty string
+  /// for a non-deny result. [HealthSyncCheck.notOwner] reads differently
+  /// depending on *why* ownership didn't resolve (review fix): a
+  /// never-synced local-only user (no signed-in session yet, or this
+  /// profile's guardians haven't synced) gets an actionable "sign in and
+  /// sync" prompt, distinct from an actual non-owner being told they
+  /// simply aren't this profile's owner.
+  String _denyReasonText(Profile profile, HealthSyncCheck check) =>
+      switch (check) {
+        HealthSyncCheck.minorRequiresOwnershipTransfer =>
+          "Minor profiles can sync only from the minor's own account "
+              'after ownership transfer.',
+        HealthSyncCheck.notOwner => widget.signedInUserId == null ||
+                _ownerUserIdByProfile[profile.id] == null
+            ? 'Sign in and sync once so this device can confirm you own '
+                'this profile.'
+            : "You are not this profile's owner — only its accepted "
+                'primary guardian can bind health sync.',
         HealthSyncCheck.noBinding ||
         HealthSyncCheck.profileNotBound ||
         HealthSyncCheck.allowed =>
@@ -119,11 +156,30 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     if (!_eligibility(profile).isAllowed) return;
     final confirmed = await _confirmBind(profile);
     if (!confirmed || !mounted) return;
-    await widget.binding.bind(
+    final result = await widget.binding.bind(
       profile: profile,
       signedInUserId: widget.signedInUserId,
       ownerUserId: _ownerUserIdByProfile[profile.id],
+      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
     );
+    if (!mounted) return;
+    if (!result.isAllowed) {
+      // Surfaced rather than discarded (review fix): a deny here means
+      // eligibility changed out from under the operator between this
+      // screen's last load and the confirm dialog closing (e.g. the
+      // binding on this device, or this profile's ownership, changed on
+      // another device mid-flow).
+      final reason = _denyReasonText(profile, result);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            reason.isEmpty
+                ? "Couldn't sync ${profile.displayName} — try again."
+                : reason,
+          ),
+        ),
+      );
+    }
     await _load();
   }
 
@@ -169,6 +225,33 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         ),
       );
     }
+    if (_loadFailed) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Health app sync')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  key: ValueKey('health-sync-load-error'),
+                  "Couldn't load profiles for health sync.",
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () {
+                    setState(() => _loading = true);
+                    unawaited(_load());
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Health app sync')),
       body: ListView(
@@ -200,7 +283,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     return ListTile(
       key: ValueKey('health-sync-profile-${profile.id}'),
       title: Text(profile.displayName),
-      subtitle: check.isAllowed ? null : Text(_denyReasonText(check)),
+      subtitle:
+          check.isAllowed ? null : Text(_denyReasonText(profile, check)),
       trailing: isBound
           ? const Icon(Icons.check_circle, key: ValueKey('health-sync-bound-check'))
           : null,
