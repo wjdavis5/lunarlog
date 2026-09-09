@@ -3,6 +3,10 @@
 /// symptom-only markers, save-failure retention, archived read-only view,
 /// and caregiver attribution wiring (issue #79; R1-R7 of the attribution
 /// wiring plan).
+///
+/// Issue #198 ergonomics: autosave-on-change (debounced, flushed on
+/// dismissal), keyboard view-inset pinning, the failure-pending PopScope
+/// discard guard, and human-readable sheet dates.
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -241,6 +245,21 @@ Future<void> disposeLogging(WidgetTester tester, Harness h) async {
   await h.db.close();
 }
 
+/// Pumps past the day sheet's autosave debounce and settles, so a change
+/// made just before this call has been written by the time it returns
+/// (#198 - there is no Save button to tap anymore).
+Future<void> pumpAutosave(WidgetTester tester) async {
+  await tester.pump(kDaySheetAutosaveDelay);
+  await tester.pumpAndSettle();
+}
+
+/// Dismisses an open modal sheet via its barrier (the same path a user's
+/// scrim tap takes; consults the sheet's PopScope, unlike a drag).
+Future<void> dismissDaySheet(WidgetTester tester) async {
+  await tester.tapAt(const Offset(20, 20));
+  await tester.pumpAndSettle();
+}
+
 Future<void> showMonth(WidgetTester tester, int year, int month) async {
   final label = '${kMonthNames[month - 1]} $year';
   var guard = 0;
@@ -316,9 +335,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      // #198: the write is the autosave debounce - there is no Save button.
+      await pumpAutosave(tester);
 
       expect(
         find.byKey(emptyStateKeyFor()),
@@ -386,9 +404,20 @@ void main() {
         find.byKey(const ValueKey('note-field')),
         'rough day',
       );
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
 
+      // #198: autosave persists without closing the sheet, and the
+      // transient "Saved" micro-confirmation is visible - then expires.
+      expect(
+        find.byType(DaySheet),
+        findsOneWidget,
+        reason: 'the sheet never closes on save',
+      );
+      expect(find.byKey(const ValueKey('autosave-saved')), findsOneWidget);
+      await tester.pump(kDaySheetSavedIndicatorDuration);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('autosave-saved')), findsNothing);
+      await dismissDaySheet(tester);
       expect(find.byType(DaySheet), findsNothing);
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(saved!.flow, FlowLevel.medium);
@@ -438,9 +467,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-03-05')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
 
       final saved = await h.entries.find(h.profile.id, LocalDate(2026, 3, 5));
       expect(saved!.localDate, LocalDate(2026, 3, 5));
@@ -514,7 +541,7 @@ void main() {
         ),
       );
       expect(find.textContaining("Future dates"), findsOneWidget);
-      expect(find.byKey(const ValueKey('save-button')), findsNothing);
+      expect(find.byKey(const ValueKey('autosave-status')), findsNothing);
       expect(find.byType(ChoiceChip), findsNothing);
     });
 
@@ -526,18 +553,16 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Light'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
       final first = await h.entries.find(h.profile.id, kToday);
       expect(first!.flow, FlowLevel.light);
 
+      // #198: autosave no longer closes the sheet - dismiss it to reopen.
+      await dismissDaySheet(tester);
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
 
       final second = await h.entries.find(h.profile.id, kToday);
       expect(second!.flow, FlowLevel.heavy);
@@ -566,9 +591,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Light'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
 
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(saved!.tz, 'America/New_York');
@@ -603,11 +626,9 @@ void main() {
         await tester.tap(todayCell);
         await tester.pumpAndSettle();
 
-        // Change flow to heavy and save
+        // Change flow to heavy and let the autosave debounce write it.
         await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('save-button')));
-        await tester.pumpAndSettle();
+        await pumpAutosave(tester);
 
         final saved = await h.entries.find(h.profile.id, kToday);
         expect(saved!.flow, FlowLevel.heavy);
@@ -677,9 +698,7 @@ void main() {
       await tester.tap(find.text('Headache'));
       await tester.pump();
       await tester.tap(find.text('Cramps'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
 
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(saved!.tags, unorderedEquals(['cramps', 'headache']));
@@ -717,18 +736,23 @@ void main() {
         isTrue,
       );
 
-      // Pressing Save must succeed — no ArgumentError, no generic failure
-      // toast — and the unrecognised code must round-trip unchanged.
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(DaySheet), findsNothing,
-          reason: 'the sheet closes on a successful save, not a caught '
-              'ArgumentError');
+      // A change must autosave with no ArgumentError and no failure UI -
+      // and the unrecognised code must round-trip unchanged through the
+      // write.
+      await tester.tap(find.text('Headache'));
+      await pumpAutosave(tester);
+      expect(
+        find.byKey(const ValueKey('save-error')),
+        findsNothing,
+        reason: 'the write succeeds, not a caught ArgumentError',
+      );
+      await dismissDaySheet(tester);
+      expect(find.byType(DaySheet), findsNothing);
       final saved = await h.entries.find(h.profile.id, kToday);
-      expect(saved!.tags, unorderedEquals(['cramps', 'heavy_flow']),
+      expect(saved!.tags,
+          unorderedEquals(['cramps', 'heavy_flow', 'headache']),
           reason: 'the unrecognised code is preserved, not dropped or '
-              'rejected, by Save');
+              'rejected, by the autosave write');
       await disposeLogging(tester, h);
     });
 
@@ -773,13 +797,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
-      await tester.pump();
       await tester.enterText(
         find.byKey(const ValueKey('note-field')),
         'kept input',
       );
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      // #198: the debounced autosave write itself fails here.
+      await pumpAutosave(tester);
 
       expect(
         find.byType(DaySheet),
@@ -812,9 +835,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
 
       expect(find.byKey(const ValueKey('save-error')), findsOneWidget);
       expect(repo.saveCalls, 1);
@@ -909,11 +930,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(DaySheet), findsOneWidget);
-      expect(find.text('2026-03-01'), findsOneWidget);
+      expect(find.text('Sun 1 Mar 2026'), findsOneWidget,
+          reason: '#198: human-readable absolute date, not raw ISO');
       expect(find.text('Medium'), findsOneWidget);
       expect(find.text('Cramps'), findsOneWidget);
       expect(find.text('spotty'), findsOneWidget);
-      expect(find.byKey(const ValueKey('save-button')), findsNothing);
+      expect(find.byKey(const ValueKey('autosave-status')), findsNothing);
       expect(find.byTooltip('Delete entry'), findsNothing);
       expect(find.byType(ChoiceChip), findsNothing);
       expect(find.byType(FilterChip), findsNothing);
@@ -1619,7 +1641,7 @@ void main() {
         expect(find.byType(ChoiceChip), findsNothing);
         expect(find.byType(FilterChip), findsNothing);
         expect(find.byKey(const ValueKey('note-field')), findsNothing);
-        expect(find.byKey(const ValueKey('save-button')), findsNothing);
+        expect(find.byKey(const ValueKey('autosave-status')), findsNothing);
         expect(find.text(GuardianRole.viewer.readOnlyReason!), findsOneWidget);
         await disposeLogging(tester, h);
       },
@@ -1647,7 +1669,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget);
       await disposeLogging(tester, h);
     });
 
@@ -1675,7 +1697,7 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(
-            find.byKey(const ValueKey('save-button')),
+            find.byKey(const ValueKey('autosave-status')),
             findsOneWidget,
             reason: '$role must be writable',
           );
@@ -1728,7 +1750,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget);
       await disposeLogging(tester, h);
     });
 
@@ -1741,7 +1763,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
         await tester.pumpAndSettle();
 
-        expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+        expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget);
         await disposeLogging(tester, h);
       },
     );
@@ -1764,7 +1786,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget);
       await disposeLogging(tester, h);
     });
 
@@ -1799,7 +1821,7 @@ void main() {
 
         expect(find.byType(DaySheet), findsOneWidget);
         expect(
-          find.byKey(const ValueKey('save-button')),
+          find.byKey(const ValueKey('autosave-status')),
           findsOneWidget,
           reason: 'a non-accepted row is not a viewer - fails open (R15)',
         );
@@ -1918,7 +1940,7 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('save-button')), findsNothing,
+        expect(find.byKey(const ValueKey('autosave-status')), findsNothing,
             reason: 'viewer stays read-only in ${mode.name} mode');
         await disposeLogging(tester, h);
 
@@ -1927,81 +1949,93 @@ void main() {
         final editable = await pumpLogging(tester, mode: mode);
         await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('save-button')), findsOneWidget,
+        expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget,
             reason: 'operator stays editable in ${mode.name} mode');
         await disposeLogging(tester, editable);
       }
     });
   });
 
-  group('day sheet Save preserves import provenance (Issue #159 review '
+  group('day sheet writes preserve import provenance (Issue #159 review '
       'finding)', () {
-    // A bare `DayEntry(...)` in `_save()` defaults to manual/null/null —
-    // saving an imported day, even with no edits at all, must not silently
-    // reset it back to manual.
-    testWidgets('Save with no edits leaves a clue_import entry\'s source, '
-        'sourceId, and importId unchanged', (tester) async {
+    // A bare `DayEntry(...)` composed for a write defaults to
+    // manual/null/null — writing an imported day must not silently reset it
+    // back to manual.
+    testWidgets('opening and dismissing with no edits writes nothing, so a '
+        'clue_import entry\'s source, sourceId, and importId survive '
+        'unchanged', (tester) async {
       final h = await pumpLogging(
         tester,
         seed: (db, profileId) async {
-          await DriftDayEntriesRepository(db.storage).save(DayEntry(
-            id: '',
-            profileId: profileId,
-            localDate: kToday,
-            tz: 'America/Chicago',
-            flow: FlowLevel.medium,
-            updatedAt: DateTime.utc(2026, 1, 1),
-            source: DayEntrySource.clueImport,
-            sourceId: 'clue-source-1',
-            importId: 'import-job-1',
-          ));
+          await DriftDayEntriesRepository(db.storage).save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.medium,
+              updatedAt: DateTime.utc(2026, 1, 1),
+              source: DayEntrySource.clueImport,
+              sourceId: 'clue-source-1',
+              importId: 'import-job-1',
+            ),
+          );
         },
       );
 
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      // #198: no change, no autosave — dismissal alone writes nothing.
+      await dismissDaySheet(tester);
 
       final saved = await h.entries.find(h.profile.id, kToday);
-      expect(saved!.source, DayEntrySource.clueImport,
-          reason: 'a no-op Save must not reset an imported entry to manual');
+      expect(
+        saved!.source,
+        DayEntrySource.clueImport,
+        reason: 'a no-op visit must not reset an imported entry to manual',
+      );
       expect(saved.sourceId, 'clue-source-1');
       expect(saved.importId, 'import-job-1');
       await disposeLogging(tester, h);
     });
 
-    testWidgets('Save with a flow edit still leaves a clue_import entry\'s '
-        'provenance unchanged', (tester) async {
+    testWidgets('an autosave with a flow edit still leaves a clue_import '
+        'entry\'s provenance unchanged', (tester) async {
       final h = await pumpLogging(
         tester,
         seed: (db, profileId) async {
-          await DriftDayEntriesRepository(db.storage).save(DayEntry(
-            id: '',
-            profileId: profileId,
-            localDate: kToday,
-            tz: 'America/Chicago',
-            flow: FlowLevel.light,
-            updatedAt: DateTime.utc(2026, 1, 1),
-            source: DayEntrySource.clueImport,
-            sourceId: 'clue-source-2',
-            importId: 'import-job-2',
-          ));
+          await DriftDayEntriesRepository(db.storage).save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.light,
+              updatedAt: DateTime.utc(2026, 1, 1),
+              source: DayEntrySource.clueImport,
+              sourceId: 'clue-source-2',
+              importId: 'import-job-2',
+            ),
+          );
         },
       );
 
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+      await pumpAutosave(tester);
 
       final saved = await h.entries.find(h.profile.id, kToday);
-      expect(saved!.flow, FlowLevel.heavy,
-          reason: 'sanity check: the edit itself did apply');
-      expect(saved.source, DayEntrySource.clueImport,
-          reason: 'a genuine content edit must still preserve provenance');
+      expect(
+        saved!.flow,
+        FlowLevel.heavy,
+        reason: 'sanity check: the edit itself did apply',
+      );
+      expect(
+        saved.source,
+        DayEntrySource.clueImport,
+        reason: 'a genuine content edit must still preserve provenance',
+      );
       expect(saved.sourceId, 'clue-source-2');
       expect(saved.importId, 'import-job-2');
       await disposeLogging(tester, h);
@@ -2011,11 +2045,10 @@ void main() {
   group('offline-save confirmation (issue #182 AC8)', () {
     /// Pumps [DaySheet] as an actual `showModalBottomSheet` on top of a host
     /// page's own `Scaffold` -- the real shape every push site in the app
-    /// uses (`month_calendar.dart`/`overview_panel.dart`). Popping the sheet
-    /// (Save's own `Navigator.pop`) then reveals that host page underneath,
-    /// exactly like production, rather than popping the app's only route.
-    Future<(LunarLogDatabase, DriftDayEntriesRepository, String)>
-        pumpDaySheet(
+    /// uses (`month_calendar.dart`/`overview_panel.dart`). Dismissing the
+    /// sheet then reveals that host page underneath, exactly like
+    /// production, rather than popping the app's only route.
+    Future<(LunarLogDatabase, DriftDayEntriesRepository, String)> pumpDaySheet(
       WidgetTester tester, {
       SyncStatusController? sync,
       AuthController? auth,
@@ -2054,7 +2087,8 @@ void main() {
       final providers = <SingleChildWidget>[
         if (sync != null)
           ChangeNotifierProvider<SyncStatusController>.value(value: sync),
-        if (auth != null) ChangeNotifierProvider<AuthController>.value(value: auth),
+        if (auth != null)
+          ChangeNotifierProvider<AuthController>.value(value: auth),
       ];
       await tester.pumpWidget(
         providers.isEmpty
@@ -2067,198 +2101,438 @@ void main() {
       return (db, entries, profile.id);
     }
 
-    testWidgets(
-        'a network-error sync phase while signed in shows "Saved on this '
-        'device · will sync" after Save', (tester) async {
-      final auth = FakeAuthService(
-        initialState: AuthSessionState.signedIn,
-        user: const AuthUser(id: 'u1'),
-      );
-      final authController = AuthController(authService: auth);
-      final engine = FakeSyncEngine(
-        initial: const SyncSnapshot(
-          phase: SyncPhase.error,
-          lastError: SyncErrorKind.network,
-        ),
-      );
-      final sync = SyncStatusController(engine: engine);
-
-      final (db, _, _) =
-          await pumpDaySheet(tester, sync: sync, auth: authController);
-
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const ValueKey('offline-save-confirmation')),
-          findsOneWidget);
-      expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-      authController.dispose();
-      sync.dispose();
-      await auth.dispose();
-    });
+    /// Makes a change (a flow chip), lets the autosave debounce write it,
+    /// then dismisses the sheet -- the #198 flow these confirmations ride
+    /// on: the write is the debounced autosave and the SnackBar lands when
+    /// the sheet leaves (it would sit behind an open modal sheet's barrier
+    /// otherwise).
+    Future<void> logAutosaveAndDismiss(WidgetTester tester) async {
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Medium'));
+      await pumpAutosave(tester);
+      await dismissDaySheet(tester);
+    }
 
     testWidgets(
-        'sync paused (device gate locked / db closed) while signed in shows '
-        'the same confirmation', (tester) async {
-      final auth = FakeAuthService(
-        initialState: AuthSessionState.signedIn,
-        user: const AuthUser(id: 'u1'),
-      );
-      final authController = AuthController(authService: auth);
-      final engine =
-          FakeSyncEngine(initial: const SyncSnapshot(phase: SyncPhase.paused));
-      final sync = SyncStatusController(engine: engine);
+      'a network-error sync phase while signed in shows "Saved on this '
+      'device · will sync" once the autosaved sheet is dismissed',
+      (tester) async {
+        final auth = FakeAuthService(
+          initialState: AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1'),
+        );
+        final authController = AuthController(authService: auth);
+        final engine = FakeSyncEngine(
+          initial: const SyncSnapshot(
+            phase: SyncPhase.error,
+            lastError: SyncErrorKind.network,
+          ),
+        );
+        final sync = SyncStatusController(engine: engine);
 
-      final (db, _, _) =
-          await pumpDaySheet(tester, sync: sync, auth: authController);
+        final (db, _, _) = await pumpDaySheet(
+          tester,
+          sync: sync,
+          auth: authController,
+        );
 
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+        await logAutosaveAndDismiss(tester);
 
-      expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('offline-save-confirmation')),
+          findsOneWidget,
+        );
+        expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-      authController.dispose();
-      sync.dispose();
-      await auth.dispose();
-    });
-
-    testWidgets(
-        'an ordinary idle/up-to-date sync shows no confirmation -- only a '
-        'genuinely offline-looking state does', (tester) async {
-      final auth = FakeAuthService(
-        initialState: AuthSessionState.signedIn,
-        user: const AuthUser(id: 'u1'),
-      );
-      final authController = AuthController(authService: auth);
-      final engine = FakeSyncEngine();
-      final sync = SyncStatusController(engine: engine);
-
-      final (db, _, _) =
-          await pumpDaySheet(tester, sync: sync, auth: authController);
-
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const ValueKey('offline-save-confirmation')),
-          findsNothing);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-      authController.dispose();
-      sync.dispose();
-      await auth.dispose();
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+        authController.dispose();
+        sync.dispose();
+        await auth.dispose();
+      },
+    );
 
     testWidgets(
-        'no sync engine at all (local-only build): no confirmation, save '
-        'still succeeds', (tester) async {
-      final (db, entries, profileId) = await pumpDaySheet(tester);
+      'sync paused (device gate locked / db closed) while signed in shows '
+      'the same confirmation',
+      (tester) async {
+        final auth = FakeAuthService(
+          initialState: AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1'),
+        );
+        final authController = AuthController(authService: auth);
+        final engine = FakeSyncEngine(
+          initial: const SyncSnapshot(phase: SyncPhase.paused),
+        );
+        final sync = SyncStatusController(engine: engine);
 
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+        final (db, _, _) = await pumpDaySheet(
+          tester,
+          sync: sync,
+          auth: authController,
+        );
 
-      expect(find.byKey(const ValueKey('offline-save-confirmation')),
-          findsNothing);
-      final saved = await entries.find(profileId, kToday);
-      expect(saved, isNotNull, reason: 'the local save itself still happens');
+        await logAutosaveAndDismiss(tester);
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-    });
+        expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
 
-    testWidgets(
-        'a network-error sync phase while signed OUT shows no confirmation '
-        '(nothing configured to sync to)', (tester) async {
-      final auth = FakeAuthService();
-      final authController = AuthController(authService: auth);
-      final engine = FakeSyncEngine(
-        initial: const SyncSnapshot(
-          phase: SyncPhase.error,
-          lastError: SyncErrorKind.network,
-        ),
-      );
-      final sync = SyncStatusController(engine: engine);
-
-      final (db, _, _) =
-          await pumpDaySheet(tester, sync: sync, auth: authController);
-
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const ValueKey('offline-save-confirmation')),
-          findsNothing);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-      authController.dispose();
-      sync.dispose();
-      await auth.dispose();
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+        authController.dispose();
+        sync.dispose();
+        await auth.dispose();
+      },
+    );
 
     testWidgets(
-        'a sync-error phase while signed in shows no confirmation when the '
-        'error is not a network failure (issue #313: an auth error looks '
-        'nothing like "saved, will sync when reachable")', (tester) async {
-      final auth = FakeAuthService(
-        initialState: AuthSessionState.signedIn,
-        user: const AuthUser(id: 'u1'),
-      );
-      final authController = AuthController(authService: auth);
-      final engine = FakeSyncEngine(
-        initial: const SyncSnapshot(
-          phase: SyncPhase.error,
-          lastError: SyncErrorKind.auth,
-        ),
-      );
-      final sync = SyncStatusController(engine: engine);
+      'an ordinary idle/up-to-date sync shows no confirmation -- only a '
+      'genuinely offline-looking state does',
+      (tester) async {
+        final auth = FakeAuthService(
+          initialState: AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1'),
+        );
+        final authController = AuthController(authService: auth);
+        final engine = FakeSyncEngine();
+        final sync = SyncStatusController(engine: engine);
 
-      final (db, _, _) =
-          await pumpDaySheet(tester, sync: sync, auth: authController);
+        final (db, _, _) = await pumpDaySheet(
+          tester,
+          sync: sync,
+          auth: authController,
+        );
 
-      await tester.tap(find.byKey(const ValueKey('save-button')));
-      await tester.pumpAndSettle();
+        await logAutosaveAndDismiss(tester);
 
-      expect(find.byKey(const ValueKey('offline-save-confirmation')),
-          findsNothing);
-      expect(
-        shouldConfirmOfflineSave(
-          snapshot: const SyncSnapshot(
+        expect(
+          find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+        authController.dispose();
+        sync.dispose();
+        await auth.dispose();
+      },
+    );
+
+    testWidgets(
+      'no sync engine at all (local-only build): no confirmation, the '
+      'autosave still persists',
+      (tester) async {
+        final (db, entries, profileId) = await pumpDaySheet(tester);
+
+        await logAutosaveAndDismiss(tester);
+
+        expect(
+          find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing,
+        );
+        final saved = await entries.find(profileId, kToday);
+        expect(saved, isNotNull, reason: 'the local save itself still happens');
+        expect(saved!.flow, FlowLevel.medium);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      },
+    );
+
+    testWidgets(
+      'a network-error sync phase while signed OUT shows no confirmation '
+      '(nothing configured to sync to)',
+      (tester) async {
+        final auth = FakeAuthService();
+        final authController = AuthController(authService: auth);
+        final engine = FakeSyncEngine(
+          initial: const SyncSnapshot(
+            phase: SyncPhase.error,
+            lastError: SyncErrorKind.network,
+          ),
+        );
+        final sync = SyncStatusController(engine: engine);
+
+        final (db, _, _) = await pumpDaySheet(
+          tester,
+          sync: sync,
+          auth: authController,
+        );
+
+        await logAutosaveAndDismiss(tester);
+
+        expect(
+          find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+        authController.dispose();
+        sync.dispose();
+        await auth.dispose();
+      },
+    );
+
+    testWidgets(
+      'a sync-error phase while signed in shows no confirmation when the '
+      'error is not a network failure (issue #313: an auth error looks '
+      'nothing like "saved, will sync when reachable")',
+      (tester) async {
+        final auth = FakeAuthService(
+          initialState: AuthSessionState.signedIn,
+          user: const AuthUser(id: 'u1'),
+        );
+        final authController = AuthController(authService: auth);
+        final engine = FakeSyncEngine(
+          initial: const SyncSnapshot(
             phase: SyncPhase.error,
             lastError: SyncErrorKind.auth,
           ),
-          authState: AuthSessionState.signedIn,
-        ),
-        isFalse,
-        reason: 'an auth error is not "the device is offline"',
-      );
-      expect(
-        shouldConfirmOfflineSave(
-          snapshot: const SyncSnapshot(
-            phase: SyncPhase.error,
-            lastError: SyncErrorKind.other,
+        );
+        final sync = SyncStatusController(engine: engine);
+
+        final (db, _, _) = await pumpDaySheet(
+          tester,
+          sync: sync,
+          auth: authController,
+        );
+
+        await logAutosaveAndDismiss(tester);
+
+        expect(
+          find.byKey(const ValueKey('offline-save-confirmation')),
+          findsNothing,
+        );
+        expect(
+          shouldConfirmOfflineSave(
+            snapshot: const SyncSnapshot(
+              phase: SyncPhase.error,
+              lastError: SyncErrorKind.auth,
+            ),
+            authState: AuthSessionState.signedIn,
           ),
-          authState: AuthSessionState.signedIn,
-        ),
-        isFalse,
-        reason: 'neither is a malformed-payload/apply failure',
+          isFalse,
+          reason: 'an auth error is not "the device is offline"',
+        );
+        expect(
+          shouldConfirmOfflineSave(
+            snapshot: const SyncSnapshot(
+              phase: SyncPhase.error,
+              lastError: SyncErrorKind.other,
+            ),
+            authState: AuthSessionState.signedIn,
+          ),
+          isFalse,
+          reason: 'neither is a malformed-payload/apply failure',
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+        authController.dispose();
+        sync.dispose();
+        await auth.dispose();
+      },
+    );
+  });
+
+  group('day sheet ergonomics (issue #198)', () {
+    test('daySheetDateLabel renders Today/Yesterday/absolute (B-14)', () {
+      final today = LocalDate(2026, 8, 30);
+      expect(daySheetDateLabel(today, today), 'Today · Sun 30 Aug');
+      expect(daySheetDateLabel(today.addDays(-1), today), 'Yesterday');
+      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today), 'Thu 5 Mar 2026');
+      expect(
+        daySheetDateLabel(LocalDate(2024, 12, 31), today),
+        'Tue 31 Dec 2024',
+      );
+    });
+
+    testWidgets('keyboard inset: the note field and the pinned autosave area '
+        'stay above the keyboard (B-12)', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // A representative keyboard on the 800x1400 logical screen.
+      const keyboardHeight = 300.0;
+      tester.view.viewInsets = const FakeViewPadding(bottom: keyboardHeight);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('note-field')));
+      await tester.pumpAndSettle();
+
+      const screenBottom = 1400.0;
+      final statusBottom = tester
+          .getBottomLeft(find.byKey(const ValueKey('autosave-status')))
+          .dy;
+      expect(
+        statusBottom,
+        lessThanOrEqualTo(screenBottom - keyboardHeight),
+        reason: 'the pinned autosave area must sit above the keyboard',
+      );
+      final fieldBottom = tester
+          .getBottomLeft(find.byKey(const ValueKey('note-field')))
+          .dy;
+      expect(
+        fieldBottom,
+        lessThanOrEqualTo(screenBottom - keyboardHeight),
+        reason:
+            'the focused note field must be scrolled into view above the '
+            'keyboard (the sheet shrinks by the view inset)',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a note edit autosaves after the debounce, without closing '
+        'the sheet (B-13)', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('note-field')),
+        'note autosave',
+      );
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.note, 'note autosave');
+      expect(
+        find.byType(DaySheet),
+        findsOneWidget,
+        reason: 'the sheet never closes on save',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('dismissing while the debounce is still pending flushes the '
+        'change — no silent data loss on dismiss (B-13)', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await tester.pump();
+      // No debounce wait: dismiss immediately, then prove the write still
+      // happened.
+      await dismissDaySheet(tester);
+      expect(find.byType(DaySheet), findsNothing);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        saved!.flow,
+        FlowLevel.heavy,
+        reason: 'the pending change was flushed on dismissal',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a failed save refuses dismissal until the user explicitly '
+        'discards (B-13)', (tester) async {
+      final repo = ThrowingDayEntriesRepository();
+      final h = await pumpLogging(tester, entryRepositoryOverride: repo);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await pumpAutosave(tester);
+      expect(find.byKey(const ValueKey('save-error')), findsOneWidget);
+
+      // Barrier dismissal is blocked by the failure-pending PopScope and
+      // offers the explicit discard choice instead.
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(DaySheet),
+        findsOneWidget,
+        reason: 'unsaved-because-failed refuses dismissal',
+      );
+      expect(find.text('Discard unsaved changes?'), findsOneWidget);
+
+      // "Keep editing" returns to the sheet with the retry error still up.
+      await tester.tap(find.widgetWithText(TextButton, 'Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard unsaved changes?'), findsNothing);
+      expect(find.byKey(const ValueKey('save-error')), findsOneWidget);
+      expect(repo.saveCalls, 1);
+
+      // "Discard" closes without another write attempt.
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Discard'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DaySheet), findsNothing);
+      expect(repo.saveCalls, 1, reason: 'discarding must not retry the write');
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('the sheet title shows a human-readable date — Today, '
+        'Yesterday, and absolute (B-14)', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('day-sheet-date-title')),
+        findsOneWidget,
+      );
+      expect(find.text('Today · Sun 30 Aug'), findsOneWidget);
+      expect(
+        find.text('2026-08-30'),
+        findsNothing,
+        reason: 'never the raw ISO string',
+      );
+      await dismissDaySheet(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-29')));
+      await tester.pumpAndSettle();
+      expect(find.text('Yesterday'), findsOneWidget);
+      expect(find.text('2026-08-29'), findsNothing);
+      await dismissDaySheet(tester);
+
+      await showMonth(tester, 2026, 3);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-03-05')));
+      await tester.pumpAndSettle();
+      expect(find.text('Thu 5 Mar 2026'), findsOneWidget);
+      expect(find.text('2026-03-05'), findsNothing);
+      await dismissDaySheet(tester);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('the delete confirmation body names the human-readable date '
+        '(B-14)', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage)
+              .save(entryFor(profileId, kToday));
+        },
       );
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-      authController.dispose();
-      sync.dispose();
-      await auth.dispose();
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Delete entry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete this entry?'), findsOneWidget);
+      expect(
+        find.textContaining('The entry for Today · Sun 30 Aug'),
+        findsOneWidget,
+        reason: 'the confirmation body uses the same human-readable date',
+      );
+      expect(find.textContaining('2026-08-30'), findsNothing);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      await dismissDaySheet(tester);
+      await disposeLogging(tester, h);
     });
   });
 }
