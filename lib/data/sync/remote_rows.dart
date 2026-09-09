@@ -123,6 +123,7 @@ final class RemoteDayEntryRow extends RemoteRow {
     required this.flow,
     required this.tags,
     required this.note,
+    this.pms = false,
     required this.updatedAt,
     required this.deletedAt,
     this.serverVersion = 0,
@@ -143,6 +144,10 @@ final class RemoteDayEntryRow extends RemoteRow {
   final FlowLevel flow;
   final List<String> tags;
   final String? note;
+
+  /// Issue #220: the first-class PMS marker, decoded to `false` when the
+  /// key is absent (an old client's payload, or a pre-#220 server row).
+  final bool pms;
   @override
   final DateTime updatedAt;
   @override

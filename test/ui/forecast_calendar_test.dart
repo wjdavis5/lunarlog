@@ -134,6 +134,9 @@ Future<Harness> pumpForecast(
   required List<LocalDate> bleedStarts,
   int bleedDays = 4,
   Map<LocalDate, List<String>> tagDays = const {},
+  // Issue #220: days logged with the first-class PMS marker, feeding the
+  // predicted PMS band once kMinPmsIntervalsForPrediction intervals exist.
+  List<LocalDate> pmsDays = const [],
   Brightness brightness = Brightness.light,
   bool readOnly = false,
   ProfileMode mode = ProfileMode.standard,
@@ -176,6 +179,19 @@ Future<Harness> pumpForecast(
         tz: 'America/Chicago',
         flow: FlowLevel.none,
         tags: day.value,
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    );
+  }
+  for (final day in pmsDays) {
+    await entries.save(
+      DayEntry(
+        id: '',
+        profileId: profile.id,
+        localDate: day,
+        tz: 'America/Chicago',
+        flow: FlowLevel.none,
+        pms: true,
         updatedAt: DateTime.utc(2026, 1, 1),
       ),
     );
@@ -339,27 +355,46 @@ void main() {
       await disposeForecast(tester, h);
     });
 
-    testWidgets('fixed-offset badges appear around the estimate', (
-      tester,
-    ) async {
+    testWidgets('PMS badges follow the logged-history band; cramps keep '
+        'their fixed window (Issue #220)', (tester) async {
+      // PMS logged on the 3 days before each of Jun 6 / Jul 6 / Aug 5 -
+      // three usable intervals, the hard minimum. Averages: onset 3,
+      // length 3, so the band is Sep 1..Sep 3 before the Sep 4 estimate.
+      final pmsDays = [
+        for (final start in [
+          LocalDate(2026, 6, 6),
+          LocalDate(2026, 7, 6),
+          LocalDate(2026, 8, 5),
+        ])
+          for (var i = 1; i <= 3; i++) start.addDays(-i),
+      ];
       final h = await pumpForecast(
         tester,
         today: kToday,
         bleedStarts: kSteadyStarts,
+        pmsDays: pmsDays,
       );
+
+      // Issue #220: with the band live, the legend keys it; below the
+      // hard minimum it would be absent (see
+      // calendar_navigation_test.dart's legend test for the bare case).
+      expect(find.text('PMS window'), findsOneWidget);
 
       await showMonthForward(tester, 2026, 9);
       // Estimate Sep 4: PMS window Aug 28..Sep 3 (future half: Aug 31..Sep
       // 3 — Aug 31 renders on the current month, so check from September),
       // cramps window Sep 2..Sep 6.
-      expect(
-        find.byKey(const ValueKey('pms-badge-2026-09-03')),
-        findsOneWidget,
-      );
+      for (final day in ['2026-09-01', '2026-09-02', '2026-09-03']) {
+        expect(
+          find.byKey(ValueKey('pms-badge-$day')),
+          findsOneWidget,
+          reason: day,
+        );
+      }
       expect(
         find.byKey(const ValueKey('pms-badge-2026-09-04')),
         findsNothing,
-        reason: 'the PMS window ends the day before the estimate',
+        reason: 'the PMS band ends before the predicted period starts',
       );
       expect(
         find.byKey(const ValueKey('cramps-badge-2026-09-02')),
@@ -502,6 +537,17 @@ void main() {
         tester,
         today: kToday,
         bleedStarts: kSteadyStarts,
+        // Issue #220: enough logged PMS history for the band (and its
+        // explainer) to exist: the 3 days before each of the last three
+        // period starts - onset/length 3, band Sep 1..Sep 3.
+        pmsDays: [
+          for (final start in [
+            LocalDate(2026, 6, 6),
+            LocalDate(2026, 7, 6),
+            LocalDate(2026, 8, 5),
+          ])
+            for (var i = 1; i <= 3; i++) start.addDays(-i),
+        ],
       );
 
       // A predicted band day.

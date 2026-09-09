@@ -51,6 +51,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/pms.dart' show PmsEstimate;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -472,6 +473,17 @@ class _OverviewPanelState extends State<OverviewPanel> {
               ),
               const SizedBox(height: 4),
             ],
+            // Issue #220: the predicted PMS phase — only when the profile
+            // has the 3+ logged PMS intervals the hard minimum requires
+            // (below that `pms` is null and nothing renders, never a
+            // noisy partial band). The band carries the period estimate's
+            // own tier, and — R17, "the disclaimer stays next to every
+            // estimate in every mode, without exception" — its own
+            // disclaimer line.
+            if (prediction.pms != null) ...[
+              _pmsSection(context, prediction.pms!, theme),
+              const SizedBox(height: 8),
+            ],
             if (prediction.isLate || prediction.unusuallyLongCycle)
               _lateSectionFor(prediction, theme)
             else
@@ -487,6 +499,51 @@ class _OverviewPanelState extends State<OverviewPanel> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Issue #220: the predicted PMS phase line — band range, the 6-cycle
+  /// averages behind it, the shared tier vocabulary (the period estimate's
+  /// own tier, so no second confidence system), and the fixed
+  /// non-medical disclaimer. Rendered only when
+  /// `ActivePrediction.pms` is non-null.
+  Widget _pmsSection(BuildContext context, PmsEstimate pms, ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
+    String format(LocalDate date) => dates.formatMonthDayYear(
+          DateTime(date.year, date.month, date.day),
+          locale: dates.calendarLocale(context),
+        );
+    final range =
+        '${format(pms.predictedStart)} – ${format(pms.predictedEnd)}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          key: const ValueKey('overview-pms-band'),
+          l10n.overviewPmsBandLabel(range),
+          style: theme.textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          key: const ValueKey('overview-pms-averages'),
+          l10n.overviewPmsDaysBeforePeriod(
+            pms.meanOnsetDaysBeforeNextPeriod.round(),
+            pms.meanLengthDays.round(),
+          ),
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          key: const ValueKey('overview-pms-tier'),
+          tierLabel(l10n, pms.tier),
+          style: theme.textTheme.bodySmall,
+        ),
+        Text(
+          kEstimateDisclaimer,
+          key: const ValueKey('overview-pms-disclaimer'),
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
     );
   }
 

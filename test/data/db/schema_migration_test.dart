@@ -49,13 +49,13 @@ import 'generated_migrations/schema.dart';
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
 /// dump. A mismatch here is caught by the `schema version is 8` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 11;
+const int _kCurrentSchemaVersion = 12;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -318,6 +318,16 @@ void main() {
       final db = LunarLogDatabase(connection);
       addTearDown(db.close);
 
+      // Same fixture-vs-real-device gap as the four issue #197 indexes
+      // above: the two Issue #128 profile_id indexes are customStatement
+      // creations invisible to the dump fixture this harness starts from,
+      // and a fromVersion >= 11 upgrade correctly skips the v11 step that
+      // would recreate them. Seed what the real device already has so
+      // this test keeps proving the later steps preserve them.
+      if (fromVersion >= 11) {
+        await db.customStatement(kCareNotesProfileIndexSql);
+        await db.customStatement(kVisitPrepItemsProfileIndexSql);
+      }
       await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
       final tables = await db
           .customSelect(

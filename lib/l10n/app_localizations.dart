@@ -1065,6 +1065,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Other'**
   String get birthControlOther;
+
+  /// Day-sheet toggle for the first-class PMS marker (Issue #220) — deliberately not one of the taxonomy chips, mirroring Clue's own separation of the PMS phase from the individual symptoms that may co-occur with it.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS'**
+  String get daySheetPmsChip;
+
+  /// Accessibility group label for the day-sheet PMS toggle (Issue #220).
+  ///
+  /// In en, this message translates to:
+  /// **'PMS'**
+  String get daySheetPmsGroup;
+
+  /// Overview line naming the predicted PMS band (Issue #220); range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
+  ///
+  /// In en, this message translates to:
+  /// **'Predicted PMS: {range}'**
+  String overviewPmsBandLabel(String range);
+
+  /// Overview copy under the predicted PMS band stating the 6-cycle averages behind it (Issue #220).
+  ///
+  /// In en, this message translates to:
+  /// **'usually starts about {days} days before your period and lasts about {length} days'**
+  String overviewPmsDaysBeforePeriod(int days, int length);
 }
 
 class _AppLocalizationsDelegate

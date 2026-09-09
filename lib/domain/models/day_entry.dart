@@ -55,6 +55,7 @@ class DayEntry {
     required this.flow,
     this.tags = const [],
     this.note,
+    this.pms = false,
     required this.updatedAt,
     this.deletedAt,
     this.loggedByUserId,
@@ -79,6 +80,14 @@ class DayEntry {
   final List<String> tags;
 
   final String? note;
+
+  /// First-class PMS marker (Issue #220): this day was premenstrual.
+  /// Deliberately NOT a tag — a day can be PMS without also being tagged
+  /// for each symptom present (the issue's own separation, mirroring
+  /// Clue's). Default `false`; cleared on a tombstone like every other
+  /// payload column. Logged PMS days feed the 6-cycle PMS averages and
+  /// the predicted PMS band (`lib/domain/prediction/pms.dart`).
+  final bool pms;
 
   /// UTC instant of the last write (monotonic at the storage layer).
   final DateTime updatedAt;
@@ -117,6 +126,7 @@ class DayEntry {
     FlowLevel? flow,
     List<String>? tags,
     Object? note = _unset,
+    bool? pms,
     DateTime? updatedAt,
     Object? deletedAt = _unset,
     Object? loggedByUserId = _unset,
@@ -133,6 +143,7 @@ class DayEntry {
         flow: flow ?? this.flow,
         tags: tags ?? this.tags,
         note: _resolveNullable(note, this.note),
+        pms: pms ?? this.pms,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: _resolveNullable(deletedAt, this.deletedAt),
         loggedByUserId: _resolveNullable(loggedByUserId, this.loggedByUserId),
@@ -170,6 +181,7 @@ class DayEntry {
       other.flow == flow &&
       listEquals(other.tags, tags) &&
       other.note == note &&
+      other.pms == pms &&
       other.updatedAt == updatedAt &&
       other.deletedAt == deletedAt;
 
@@ -189,6 +201,7 @@ class DayEntry {
         flow,
         Object.hashAll(tags),
         note,
+        pms,
         updatedAt,
         deletedAt,
         loggedByUserId,
@@ -199,6 +212,7 @@ class DayEntry {
   @override
   String toString() =>
       'DayEntry($profileId ${localDate.iso} ${flow.name}'
+      '${pms ? ' pms' : ''}'
       '${note == null ? '' : ' note'}'
       '${deletedAt == null ? '' : ' [tombstoned]}'})';
 }

@@ -516,6 +516,7 @@ class LunarLogStorage {
     required FlowLevel flow,
     List<String> tags = const [],
     String? note,
+    bool pms = false,
     DateTime? updatedAt,
     String source = 'manual',
     String? sourceId,
@@ -540,6 +541,7 @@ class LunarLogStorage {
               flow: flow,
               tags: Value(tags),
               note: Value(note),
+              pms: Value(pms),
               updatedAt: now,
               dirty: const Value(true),
               localRev: const Value(1),
@@ -571,6 +573,7 @@ class LunarLogStorage {
           flow: Value(flow),
           tags: Value(tags),
           note: Value(note),
+          pms: Value(pms),
           updatedAt: Value(_afterStored(now, live.updatedAt)),
           deletedAt: const Value(null),
           dirty: const Value(true),
@@ -589,9 +592,9 @@ class LunarLogStorage {
   }
 
   /// Tombstones the live entry for (profileId, localDate), if any, clearing
-  /// its payload (`flow = none`, `note = null`, `tags = []`) and marking it
-  /// dirty. Does nothing when there is no live entry (idempotent; never
-  /// bumps `updated_at` without a change).
+  /// its payload (`flow = none`, `note = null`, `tags = []`, `pms = false`)
+  /// and marking it dirty. Does nothing when there is no live entry
+  /// (idempotent; never bumps `updated_at` without a change).
   Future<void> softDeleteDayEntry({
     required String profileId,
     required String localDate,
@@ -606,6 +609,10 @@ class LunarLogStorage {
           flow: const Value(FlowLevel.none),
           note: const Value(null),
           tags: const Value(<String>[]),
+          // Issue #220: pms is health content like flow/tags/note — a
+          // tombstone carries no payload (the server's
+          // day_entries_tombstone_pms_check is the structural backstop).
+          pms: const Value(false),
           updatedAt: Value(at),
           deletedAt: Value(at),
           dirty: const Value(true),
@@ -2068,6 +2075,7 @@ class LunarLogStorage {
             flow: _dayEntryFlow(tombstone, remote),
             tags: Value(_dayEntryTags(tombstone, tags)),
             note: Value(_dayEntryNote(tombstone, remote)),
+            pms: Value(_dayEntryPms(tombstone, remote)),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
             dirty: Value(dirty),
@@ -2090,6 +2098,7 @@ class LunarLogStorage {
       flow: Value(_dayEntryFlow(tombstone, remote)),
       tags: Value(_dayEntryTags(tombstone, tags)),
       note: Value(_dayEntryNote(tombstone, remote)),
+      pms: Value(_dayEntryPms(tombstone, remote)),
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),
       dirty: Value(dirty),
@@ -2778,6 +2787,12 @@ class LunarLogStorage {
   /// The `note` to write for a day entry row: cleared for a tombstone.
   String? _dayEntryNote(bool tombstone, RemoteDayEntryRow remote) =>
       tombstone ? null : remote.note;
+
+  /// Issue #220: the `pms` to write for a day entry row — cleared for a
+  /// tombstone like every other payload column (the server's
+  /// `day_entries_tombstone_pms_check` enforces the same shape server-side).
+  bool _dayEntryPms(bool tombstone, RemoteDayEntryRow remote) =>
+      tombstone ? false : remote.pms;
 
   Future<void> _ensureSyncStateRow() async {
     await db.into(db.syncState).insert(

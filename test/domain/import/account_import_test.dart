@@ -23,6 +23,7 @@ Map<String, Object?> _rawDayEntry(
   String flow = 'medium',
   List<String> tags = const [],
   String? note,
+  bool pms = false,
 }) =>
     {
       'id': id,
@@ -31,6 +32,7 @@ Map<String, Object?> _rawDayEntry(
       'flow': flow,
       'tags': tags,
       'note': note,
+      'pms': pms,
       'source': 'manual',
       'sourceId': null,
       'importId': null,
@@ -113,6 +115,7 @@ DayEntry _entry(
   FlowLevel flow = FlowLevel.light,
   List<String> tags = const [],
   String? note,
+  bool pms = false,
   DayEntrySource source = DayEntrySource.manual,
   String? sourceId,
 }) =>
@@ -124,6 +127,7 @@ DayEntry _entry(
       flow: flow,
       tags: tags,
       note: note,
+      pms: pms,
       source: source,
       sourceId: sourceId,
       updatedAt: DateTime.utc(2026, 1, 2),
@@ -828,6 +832,77 @@ void main() {
 
     test('no guardian rows and no currentUserId both fail open', () {
       expect(writeBlockReasonFor(profile: _profile(_p1)), isNull);
+    });
+  });
+
+  group('planImport — first-class PMS marker (Issue #220)', () {
+    test('an added entry carries the file\'s PMS marker verbatim', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05', pms: true),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingEntriesByProfileId: const {_p1: []},
+        writeBlockReason: _neverBlocked,
+      );
+
+      final entryPlan = plan.profiles.single.entries.single;
+      expect(entryPlan.outcome, DayEntryImportOutcome.add);
+      expect(entryPlan.pms, isTrue);
+    });
+
+    test('a merge ORs the marker: either side carrying it keeps it (the '
+        'boolean analogue of the tags union)', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05', pms: true),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final existing = _entry('local1', _p1, '2026-01-05', pms: false);
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingEntriesByProfileId: {
+          _p1: [existing],
+        },
+        writeBlockReason: _neverBlocked,
+      );
+      expect(plan.profiles.single.entries.single.pms, isTrue,
+          reason: 'file says PMS, device does not — the marker survives');
+
+      final document2 = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05', pms: false),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+      final existing2 = _entry('local2', _p1, '2026-01-05', pms: true);
+      final plan2 = planImport(
+        document: document2,
+        existingProfiles: [_profile(_p1)],
+        existingEntriesByProfileId: {
+          _p1: [existing2],
+        },
+        writeBlockReason: _neverBlocked,
+      );
+      expect(plan2.profiles.single.entries.single.pms, isTrue,
+          reason: 'device says PMS, file does not — the marker survives');
+    });
+
+    test('an old v6 file without the pms key imports as false', () {
+      final raw = _rawDayEntry(_e1, '2026-01-05')..remove('pms');
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [raw]),
+      ]))) as AccountImportParsed)
+          .document;
+      expect(document.profiles.single.dayEntries.single.pms, isFalse);
     });
   });
 

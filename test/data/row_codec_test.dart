@@ -53,6 +53,7 @@ void main() {
   DayEntry makeEntry({
     List<String> tags = const ['cramps', 'headache'],
     String? note = 'a note',
+    bool pms = false,
     DateTime? deletedAt,
     FlowLevel flow = FlowLevel.medium,
     String source = 'manual',
@@ -67,6 +68,7 @@ void main() {
         flow: flow,
         tags: tags,
         note: note,
+        pms: pms,
         updatedAt: micro,
         deletedAt: deletedAt,
         dirty: true,
@@ -380,6 +382,8 @@ void main() {
         'flow': 'medium',
         'tags': ['cramps', 'headache'],
         'note': 'a note',
+        // Issue #220.
+        'pms': false,
         // Issue #159.
         'source': 'manual',
         'source_id': null,
@@ -401,10 +405,23 @@ void main() {
       expect(decoded.flow, FlowLevel.medium);
       expect(decoded.tags, ['cramps', 'headache']);
       expect(decoded.note, 'a note');
+      expect(decoded.pms, false);
       expect(decoded.updatedAt, micro);
       expect(decoded.deletedAt, isNull);
       expect(decoded.serverVersion, 99);
       expect(decoded.table, SyncTable.dayEntries);
+    });
+
+    test('round-trips the PMS marker; an absent key decodes false '
+        '(Issue #220)', () {
+      final row = makeEntry(pms: true);
+      final json = encodeDayEntry(row);
+      expect(json['pms'], true);
+      expect(decodeDayEntry(json).pms, true);
+      // An old peer's or a pre-#220 server row's payload without the key
+      // decodes to false rather than failing the pull.
+      final stripped = {...json}..remove('pms');
+      expect(decodeDayEntry(stripped).pms, false);
     });
 
     test(
@@ -542,6 +559,7 @@ void main() {
         localDate: '1 Sep 2026',
         tz: 'UTC',
         flow: FlowLevel.none,
+        pms: false,
         tags: const [],
         updatedAt: micro,
         dirty: true,

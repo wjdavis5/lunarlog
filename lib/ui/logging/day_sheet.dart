@@ -236,6 +236,11 @@ class _DaySheetState extends State<DaySheet> {
   /// entry.
   bool _spotting = false;
 
+  /// Issue #220: the first-class PMS marker, tracked straight off the
+  /// loaded entry (like flow and tags — it rides `DayEntry.pms` itself,
+  /// not a child row).
+  bool _pms = false;
+
   /// Review fix (blocking): `true` once [_loadExistingSpotting] finds the
   /// day already had spotting on load — kept `true` even after the user
   /// unchecks the toggle, so [_resolveEffectiveFlow] can tell "spotting
@@ -287,6 +292,7 @@ class _DaySheetState extends State<DaySheet> {
     final existing = widget.existing;
     _flow = existing?.flow ?? FlowLevel.none;
     _tags = {...?existing?.tags};
+    _pms = existing?.pms ?? false;
     _unrecognisedTags = [
       for (final code in existing?.tags ?? const <String>[])
         if (!isValidTagCode(code)) code,
@@ -367,6 +373,8 @@ class _DaySheetState extends State<DaySheet> {
       flow: _resolveEffectiveFlow(),
       tags: _tags.toList(),
       note: note.isEmpty ? null : note,
+      // Issue #220: the first-class PMS marker rides the entry itself.
+      pms: _pms,
       updatedAt: DateTime.now().toUtc(),
       // Issue #159 review finding: a bare `DayEntry(...)` defaults to
       // manual/null/null, which would silently reset an imported entry's
@@ -781,6 +789,29 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
+  /// Issue #220: the first-class PMS toggle — its own chip *outside* the
+  /// flow row's group, mirroring the issue's (and Clue's) separation of
+  /// the PMS phase from both the flow levels and the taxonomy chips: a day
+  /// can be PMS without any flow at all, and without being tagged for
+  /// every symptom present. Rides the entry itself (`DayEntry.pms`), so
+  /// unlike spotting it needs no observation-row sync — marking it dirty
+  /// is the whole write.
+  Widget _pmsChip(AppLocalizations l10n) {
+    final group = l10n.daySheetPmsGroup;
+    return groupedChipSemantics(
+      group: group,
+      label: l10n.daySheetPmsChip,
+      selected: _pms,
+      onTap: _busy ? null : () => _togglePms(!_pms),
+      child: FilterChip(
+        key: const ValueKey('pms-chip'),
+        label: Text(l10n.daySheetPmsChip),
+        selected: _pms,
+        onSelected: _busy ? null : _togglePms,
+      ),
+    );
+  }
+
   /// Selects [level] as the day's flow — the single write path behind both
   /// the visible ChoiceChip's `onSelected` and the #138 semantics wrapper's
   /// accessibility tap.
@@ -796,6 +827,14 @@ class _DaySheetState extends State<DaySheet> {
   /// visible chip and its semantics tap.
   void _toggleSpotting(bool value) {
     setState(() => _spotting = value);
+    _markDirty();
+  }
+
+  /// Sets the first-class PMS toggle (issue #220) — shared by the visible
+  /// chip and its semantics tap. The marker rides the entry itself, so
+  /// this is exactly like any other content change: state, then dirty.
+  void _togglePms(bool value) {
+    setState(() => _pms = value);
     _markDirty();
   }
 
@@ -872,6 +911,9 @@ class _DaySheetState extends State<DaySheet> {
                 ),
                 _sectionHeading(theme, l10n.daySheetFlowLabel),
                 _flowChips(l10n),
+                // Issue #220: the first-class PMS toggle sits between the
+                // flow row and the taxonomy grid — it belongs to neither.
+                _pmsChip(l10n),
                 for (final category in _copy.categoriesInOrder) ...[
                   _sectionHeading(theme, _copy.categoryLabel(category)),
                   Wrap(
@@ -1103,6 +1145,14 @@ class _DaySheetState extends State<DaySheet> {
         const SizedBox(height: 12),
         Text(AppLocalizations.of(context).daySheetFlowLabel, style: theme.textTheme.labelMedium),
         Text(localizedFlowLabel(existing.flow, l10n), style: theme.textTheme.titleSmall),
+        // Issue #220: the read-only view names the PMS marker too, so a
+        // viewer (or a reviewing guardian) sees the phase even though the
+        // toggle itself is disabled here.
+        if (existing.pms) ...[
+          const SizedBox(height: 12),
+          Text(l10n.daySheetPmsGroup, style: theme.textTheme.labelMedium),
+          Text(l10n.daySheetPmsChip, style: theme.textTheme.titleSmall),
+        ],
         if (existing.tags.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(AppLocalizations.of(context).daySheetTagsLabel, style: theme.textTheme.labelMedium),

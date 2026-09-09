@@ -567,4 +567,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get birthControlOther => 'Other';
+
+  @override
+  String get daySheetPmsChip => 'PMS';
+
+  @override
+  String get daySheetPmsGroup => 'PMS';
+
+  @override
+  String overviewPmsBandLabel(String range) {
+    return 'Predicted PMS: $range';
+  }
+
+  @override
+  String overviewPmsDaysBeforePeriod(int days, int length) {
+    return 'usually starts about $days days before your period and lasts about $length days';
+  }
 }

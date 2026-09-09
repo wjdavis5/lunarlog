@@ -48,6 +48,7 @@ DayEntry _entry(
   DayEntrySource source = DayEntrySource.manual,
   String? sourceId,
   String? importId,
+  bool pms = false,
 }) =>
     DayEntry(
       id: id,
@@ -57,6 +58,7 @@ DayEntry _entry(
       flow: flow,
       tags: tags,
       note: note,
+      pms: pms,
       updatedAt: DateTime.utc(2026, 1, 2),
       loggedByUserId: loggedByUserId,
       lastModifiedByUserId: lastModifiedByUserId,
@@ -284,6 +286,29 @@ void main() {
     });
   });
 
+  group('first-class PMS marker (Issue #220, export v7)', () {
+    test('the dayEntries[].pms key round-trips, defaulting false', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [
+            _entry('e1', 'p-1', '2026-09-01'),
+            _entry('e2', 'p-1', '2026-09-02', pms: true),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      expect(kAccountExportSchemaVersion, 7);
+      final profile = (doc['profiles'] as List).single as Map;
+      final entries = (profile['dayEntries'] as List).map((e) => e as Map);
+      final byId = {for (final e in entries) e['id'] as String: e};
+      expect(byId['e1']!['pms'], false);
+      expect(byId['e2']!['pms'], true);
+    });
+  });
+
   group('round-tripping unusual content', () {
     test('a note containing quotes, newlines and non-ASCII round-trips '
         'through jsonEncode/jsonDecode unchanged', () {
@@ -335,12 +360,13 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 6,
+      expect(kAccountExportSchemaVersion, 7,
           reason: 'profiles[].mode was v2''s shape change; the constant has '
               'since moved to v6 for profiles[].observations (Issue #240), '
               'dayEntries[].source/sourceId/importId (Issue #159), the '
               'super_heavy/not_bleeding flow wire values (Issue #247), and '
-              'profiles[].careNotes/visitPrepItems (Issue #128)');
+              'profiles[].careNotes/visitPrepItems (Issue #128), and to v7 '
+              'for dayEntries[].pms (Issue #220)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
@@ -493,10 +519,11 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 6,
+      expect(kAccountExportSchemaVersion, 7,
           reason: 'adding profiles[].observations is a shape change; the '
               'constant has since moved to v6 for profiles[].careNotes/'
-              'visitPrepItems (Issue #128)');
+              'visitPrepItems (Issue #128), and to v7 for dayEntries[].pms '
+              '(Issue #220)');
       final profiles = doc['profiles'] as List;
       final p1 = profiles[0] as Map;
       final p2 = profiles[1] as Map;

@@ -147,6 +147,7 @@ class ImportedDayEntry {
     required this.flow,
     this.tags = const [],
     this.note,
+    this.pms = false,
     required this.updatedAt,
     required this.source,
     this.sourceId,
@@ -173,6 +174,11 @@ class ImportedDayEntry {
   final FlowLevel flow;
   final List<String> tags;
   final String? note;
+
+  /// Issue #220: the first-class PMS marker. `false` when the key is
+  /// absent (an older export's file), the same default the sync codec
+  /// decodes with.
+  final bool pms;
   final DateTime updatedAt;
 
   /// The raw `toDb()` provenance this entry will be planned with (Issue
@@ -612,6 +618,7 @@ ImportedDayEntry _parseDayEntry(Object? raw, {required String profileId}) {
     flow: _parseFlow(raw['flow'], context: context),
     tags: _parseTags(raw['tags'], context: context),
     note: note,
+    pms: raw['pms'] == true,
     updatedAt: updatedAt,
     source: provenance.source,
     sourceId: provenance.sourceId,
@@ -907,6 +914,7 @@ class DayEntryPlan {
     required this.flow,
     required this.tags,
     required this.note,
+    this.pms = false,
     required this.source,
     required this.sourceId,
     required this.importId,
@@ -920,6 +928,11 @@ class DayEntryPlan {
   final FlowLevel flow;
   final List<String> tags;
   final String? note;
+
+  /// Issue #220: the merged PMS marker — true when either the stored day
+  /// or the file's day carried it (the boolean analogue of the tags
+  /// union: neither side's fact may be lost).
+  final bool pms;
   final String source;
   final String? sourceId;
   final String? importId;
@@ -1183,6 +1196,7 @@ DayEntryPlan _planDayEntry(ImportedDayEntry imported, DayEntry? existing) {
       flow: imported.flow,
       tags: imported.tags,
       note: imported.note,
+      pms: imported.pms,
       source: imported.source,
       sourceId: imported.sourceId,
       importId: imported.importId,
@@ -1196,6 +1210,7 @@ DayEntryPlan _planDayEntry(ImportedDayEntry imported, DayEntry? existing) {
     flow: _higherFlow(existing.flow, imported.flow),
     tags: _mergeTags(existing.tags, imported.tags),
     note: _mergedNote(existing.note, imported.note),
+    pms: existing.pms || imported.pms,
     source: existing.source.toDb(),
     sourceId: existing.sourceId,
     importId: existing.importId,
