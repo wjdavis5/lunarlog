@@ -681,7 +681,10 @@ begin
       v_source_id := v_row ->> 'source_id';
       v_import_id := (v_row ->> 'import_id')::uuid;
       v_flow := coalesce(v_row ->> 'flow', 'none');
-      if v_flow not in ('none', 'spotting', 'light', 'medium', 'heavy') then
+      -- Issue #247 (flow model, carried over verbatim from
+      -- 20260908200000_flow_model.sql -- the sync_push definition this
+      -- file re-extends): super_heavy/not_bleeding are known levels.
+      if v_flow not in ('none', 'spotting', 'not_bleeding', 'light', 'medium', 'heavy', 'super_heavy') then
         raise exception 'flow is not a known level';
       end if;
       v_updated_at := (v_row ->> 'updated_at')::timestamptz;
@@ -1519,6 +1522,7 @@ declare
   v_reminder_windows_deleted bigint := 0;
   v_missed_entry_alert_state_deleted bigint := 0;
   v_feedback_tickets_deleted bigint := 0;
+  v_import_jobs_deleted bigint := 0;
 begin
   if v_uid is null then
     raise exception 'authentication required' using errcode = 'insufficient_privilege';
@@ -1641,15 +1645,27 @@ begin
    where user_id = v_uid;
   get diagnostics v_feedback_tickets_deleted = row_count;
 
+  -- Issue #167: the caller's own import jobs, on any profile (their own,
+  -- or one they merely guard) -- `created_by = v_uid`, mirroring
+  -- guardian_invitations' `invited_by = v_uid` predicate immediately
+  -- above. A job on a profile the caller owns is deleted here whenever the
+  -- caller is also who ran the import (the common case); it is also
+  -- caught by the profiles delete's own cascade below regardless of who
+  -- ran it, via import_jobs.profile_id's `on delete cascade`.
+  delete from public.import_jobs
+   where created_by = v_uid;
+  get diagnostics v_import_jobs_deleted = row_count;
+
   -- The caller's own profiles. Cascades any day_entries,
   -- guardian_invitations, and profile_guardians rows still tied to these
   -- specific profiles (e.g. a co-parent's membership, or an invitation
   -- someone else sent for it) - intended for an owner (R7). Also cascades
   -- any remaining notification_preferences/notification_outbox/
-  -- profile_reminder_windows rows scoped to these profiles (Issue #5) -
-  -- e.g. a co-guardian's own preference row for a profile the caller
-  -- owned, which is correct: once the profile itself is gone there is
-  -- nothing left to alert anyone about.
+  -- profile_reminder_windows/import_jobs rows scoped to these profiles
+  -- (Issue #5, Issue #167) - e.g. a co-guardian's own preference row for a
+  -- profile the caller owned, or an import job someone else ran on a
+  -- profile the caller owned, both correct: once the profile itself is
+  -- gone there is nothing left to alert anyone about or import into.
   delete from public.profiles
    where user_id = v_uid;
   get diagnostics v_profiles_deleted = row_count;
@@ -1673,7 +1689,8 @@ begin
     'notification_outbox', v_notification_outbox_deleted,
     'profile_reminder_windows', v_reminder_windows_deleted,
     'missed_entry_alert_state', v_missed_entry_alert_state_deleted,
-    'feedback_tickets', v_feedback_tickets_deleted
+    'feedback_tickets', v_feedback_tickets_deleted,
+    'import_jobs', v_import_jobs_deleted
   );
 end;
 $$;
@@ -1789,6 +1806,22 @@ begin
     alter publication supabase_realtime drop table public.observations;
   end if;
 
+  -- Issue #167: import_jobs joins this must-never-be-published list --
+  -- no health content, but a per-user tracking table with no reason to
+  -- reach the client any way other than an authenticated read.
+  if exists (
+    select 1
+      from pg_catalog.pg_publication_rel pr
+      join pg_catalog.pg_class pc on pc.oid = pr.prrelid
+      join pg_catalog.pg_namespace pn on pn.oid = pc.relnamespace
+      join pg_catalog.pg_publication pp on pp.oid = pr.prpubid
+     where pp.pubname = 'supabase_realtime'
+       and pn.nspname = 'public'
+       and pc.relname = 'import_jobs'
+  ) then
+    alter publication supabase_realtime drop table public.import_jobs;
+  end if;
+
   -- Issue #188: profile_modes and cycle_overrides join this
   -- must-never-be-published list -- a profile's reproductive-life-stage
   -- state and cycle corrections are exactly the category of sensitive
@@ -1820,11 +1853,11 @@ begin
   end if;
 
   -- If `supabase_realtime` was ever switched to FOR ALL TABLES (which would
-  -- silently republish day_entries/profiles/observations whole-row
-  -- regardless of the per-table checks above), that is a platform-level
-  -- misconfiguration this function cannot safely undo (it would also drop
-  -- unrelated tables this repo does not own). Fail loudly instead of
-  -- pretending the guard above was sufficient.
+  -- silently republish day_entries/profiles/observations/import_jobs
+  -- whole-row regardless of the per-table checks above), that is a
+  -- platform-level misconfiguration this function cannot safely undo (it
+  -- would also drop unrelated tables this repo does not own). Fail loudly
+  -- instead of pretending the guard above was sufficient.
   select puballtables into v_all_tables
     from pg_catalog.pg_publication
    where pubname = 'supabase_realtime';
@@ -1832,8 +1865,8 @@ begin
   if v_all_tables then
     raise exception
       'supabase_realtime is FOR ALL TABLES -- this publishes public.profiles, '
-      'public.day_entries, public.observations, public.profile_modes, and '
-      'public.cycle_overrides whole-row and must be '
+      'public.day_entries, public.observations, public.import_jobs, '
+      'public.profile_modes, and public.cycle_overrides whole-row and must be '
       'fixed manually before this migration can proceed (see the migration '
       'header comment)';
   end if;

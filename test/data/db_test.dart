@@ -172,7 +172,8 @@ void seedV4(sqlite3.Database raw) {
 /// `observations.import_id`). Seeds one profile (care mode `teen`, to pin
 /// #131's axis surviving untouched beside the new #188 tables), one
 /// imported day entry, one observation, and a bound `sync_state` row, then
-/// stamps `user_version = 7`, so the v7→v8 migration (Issue #188's
+/// stamps `user_version = 7`, so the v7→v9 migrations (main's v8
+/// indexes then Issue #188's
 /// profile_modes/cycle_overrides tables and their two cursors) is exercised
 /// against a real v7 file.
 void seedV7(sqlite3.Database raw) {
@@ -247,7 +248,7 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 8);
+  expect(await userVersion(db), 9);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
   expect(
@@ -1771,7 +1772,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 8);
+      expect(await userVersion(second), 9);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1784,7 +1785,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 8);
+      expect(await userVersion(db), 9);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1829,7 +1830,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 8);
+      expect(await userVersion(db), 9);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1854,7 +1855,7 @@ void main() {
       expect(edited.mode, 'irregular');
     });
 
-    test('a v7 fixture upgrades to v8 by adding profile_modes and '
+    test('a v7 fixture upgrades to v9 by adding profile_modes and '
         'cycle_overrides with their sync_state cursors, preserving every '
         'row (Issue #188)', () async {
       final raw = sqlite3.sqlite3.openInMemory();
@@ -1862,7 +1863,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 8);
+      expect(await userVersion(db), 9);
       expect(await columnsOf(db, 'profile_modes'),
           containsAll(['profile_id', 'mode', 'mode_started_on',
               'birth_control_method', 'birth_control_started_on',
@@ -1965,7 +1966,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 8);
+      expect(await userVersion(db), 9);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

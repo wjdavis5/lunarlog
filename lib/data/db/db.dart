@@ -254,26 +254,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profile_guardians.profile_id_index');
       });
     }
-    if (from < 9) {
-      await transaction(() async {
-        await m.createTable(profileModes);
-        await migrationStepHook?.call('profile_modes');
-        await m.createTable(cycleOverrides);
-        await migrationStepHook?.call('cycle_overrides');
-        // Same `sync_state` gotcha as `cursor_observations` (v6): the
-        // `from < 2` block's `m.createTable(syncState)` builds the table
-        // from the *current* `SyncState` class, which already declares both
-        // new cursor columns — so a device upgrading straight from v1 has
-        // them by the time it reaches here, and only a device that already
-        // had `sync_state` (from >= 2) needs the explicit addColumns.
-        if (from >= 2) {
-          await m.addColumn(syncState, syncState.cursorProfileModes);
-          await migrationStepHook?.call('sync_state.cursor_profile_modes');
-          await m.addColumn(syncState, syncState.cursorCycleOverrides);
-          await migrationStepHook?.call('sync_state.cursor_cycle_overrides');
-        }
-      });
-    }
+    // Issue #188's v9 step lives whole (its own `from < 9` check
+    // included) in [_upgradeToV9] so this method's branch count stays
+    // under the CRAP gate as versions accumulate.
+    await _upgradeToV9(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -285,6 +269,33 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // so this only ever does work in the previously-uncovered case.
     await customStatement(kLiveDayEntryIndexSql);
     await migrationStepHook?.call('day_entries.live_index');
+  }
+
+  /// The v9 upgrade step (Issue #188): the `profile_modes` and
+  /// `cycle_overrides` tables plus their two `sync_state` pull cursors.
+  /// Kept as its own method (the `from < 9` guard included) so
+  /// [onUpgradeSteps]'s branch count stays under the CRAP gate as
+  /// per-version blocks accumulate.
+  Future<void> _upgradeToV9(Migrator m, int from) async {
+    if (from >= 9) return;
+    await transaction(() async {
+      await m.createTable(profileModes);
+      await migrationStepHook?.call('profile_modes');
+      await m.createTable(cycleOverrides);
+      await migrationStepHook?.call('cycle_overrides');
+      // Same `sync_state` gotcha as `cursor_observations` (v6): the
+      // `from < 2` block's `m.createTable(syncState)` builds the table
+      // from the *current* `SyncState` class, which already declares both
+      // new cursor columns — so a device upgrading straight from v1 has
+      // them by the time it reaches here, and only a device that already
+      // had `sync_state` (from >= 2) needs the explicit addColumns.
+      if (from >= 2) {
+        await m.addColumn(syncState, syncState.cursorProfileModes);
+        await migrationStepHook?.call('sync_state.cursor_profile_modes');
+        await m.addColumn(syncState, syncState.cursorCycleOverrides);
+        await migrationStepHook?.call('sync_state.cursor_cycle_overrides');
+      }
+    });
   }
 
   /// Hard-deletes every row in every table, the `sync_state` row included —

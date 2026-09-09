@@ -41,7 +41,6 @@ import '../../domain/sync/sync_engine.dart';
 import '../db/db.dart';
 import '../db/storage.dart';
 import '../db/ulid.dart';
-import 'remote_rows.dart';
 import 'row_codec.dart';
 import 'sync_transport.dart';
 
@@ -1081,6 +1080,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// retryable apply failure the page is re-applied row by row so every
   /// other row still lands (the per-row semantics of the single-row
   /// applies). Returns whether any row was left for the next cycle.
+  /// The per-row fallback below is type-agnostic by construction:
+  /// [LunarLogStorage.applyRemoteRows] with a single-element list is
+  /// exactly each row type's single-row apply (one transaction, that one
+  /// row, same LWW/retryable semantics -- see its per-type dispatch), so
+  /// no switch is needed here and this method's branch count stays put
+  /// as synced tables are added (Issue #188 added two more row types).
   Future<bool> _applyReconcilePage(List<RemoteRow> page) async {
     try {
       await _storage.applyRemoteRows(page);
@@ -1091,20 +1096,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     var retry = false;
     for (final row in page) {
       try {
-        switch (row) {
-          case RemoteProfileRow():
-            await _storage.applyRemoteProfile(row);
-          case RemoteProfileGuardianRow():
-            await _storage.applyRemoteRows([row]);
-          case RemoteDayEntryRow():
-            await _storage.applyRemoteDayEntry(row);
-          case RemoteObservationRow():
-            await _storage.applyRemoteObservation(row);
-          case RemoteProfileModeRow():
-            await _storage.applyRemoteProfileMode(row);
-          case RemoteCycleOverrideRow():
-            await _storage.applyRemoteCycleOverride(row);
-        }
+        await _storage.applyRemoteRows([row]);
       } on RetryableSyncApplyError {
         retry = true;
       }

@@ -22,6 +22,33 @@ are never merged. Nothing in this plan touches `profiles.mode`; the
 migration header, `profile_modes`'s table comment, and
 `lib/domain/models/lifecycle_mode.dart`'s doc comment all state it.
 
+## Mode semantics (what each mode changes)
+
+The statement issue #188 asks for, so #192 (Pregnancy), #196
+(Perimenopause), #204 (Conceive), #233 (birth-control-aware predictions),
+and #260 (birth-control tracking) build against one shared definition.
+`LifecycleMode` (`lib/domain/models/lifecycle_mode.dart`) is the enum;
+these are the per-mode consequences this storage enables but does not
+yet implement (all of it is client-side computation over the same
+`day_entries`/`observations` history — a switch never rewrites history,
+and every switch triggers a full prediction recompute because the
+predictor re-derives from that history with no persisted state):
+
+| Mode | Prediction model | Tracking categories surfaced | Cycle View layout | Reminders |
+|---|---|---|---|---|
+| `tracking` (Period Tracking — the default; also what an absent row means) | Rolling-average cycle/period-length prediction over non-excluded, non-`cycle_overrides`-flagged history | Bleed flow, pain, moods, sleep, cervical fluid | Calendar + cycle-day ring + predicted next period/fertile window | Period-late, entry-missed (per existing notification settings) |
+| `conceive` | Same averages plus the calendar-method fertile-window/ovulation estimate (#143's confidence tiers), rendered as the primary signal | Basal temperature, cervical fluid, ovulation tests, intercourse | Fertile-window-forward calendar; cycle day de-emphasised | Fertile-window start, BBT-entry missed |
+| `pregnancy` | Prediction paused (no next-period forecast while `mode_started_on` is recent); weeks/days since LMP shown instead | Weeks of gestation, symptoms, appointments, kick counts (later) | Weeks-based timeline replaces cycle-day counting | Appointment and symptom-check reminders only; period-late suppressed |
+| `perimenopause` | Averages widened with cycle-variability bands (long/short-outlier tolerant); hot-flash/spotting correlation surfaced | Hot flashes, sleep disruption, spotting, mood | Variability-forward calendar; averages labelled as ranges | Entry-missed and symptom-trend reminders; period-late reframed as expected irregularity |
+| `postpartum` | Prediction paused until first postpartum bleed, then rebuilt from scratch ignoring pre-birth history (`cycle_overrides` marks the interval) | Bleed (lochia then spotting), feeding, sleep, mood | Day-count since birth; no predictions until bleeding regularises | Feeding/sleep reminders; no cycle predictions |
+
+`birth_control_method`/`birth_control_started_on`/
+`birth_control_stopped_on` (#233/#260's inputs) modulate the prediction
+model in whatever mode is active — e.g. hormonal methods suppress
+fertile-window estimation in `conceive`. `health_sync_consent` gates
+health-platform writes only; it is independent of guardian/cycle-sharing
+consent (D-29).
+
 ## What shipped
 
 ### Server — `supabase/migrations/20260909000000_profile_modes_and_cycle_overrides.sql`
