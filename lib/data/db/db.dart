@@ -58,6 +58,18 @@ const String kProfileGuardiansProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_profile_guardians_profile_id '
     'ON profile_guardians (profile_id)';
 
+/// Schema v10 (issue #128): index over `care_notes.profile_id` — every
+/// care-note read filters by it.
+const String kCareNotesProfileIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_care_notes_profile_id '
+    'ON care_notes (profile_id)';
+
+/// Schema v11 (issue #128): index over `visit_prep_items.profile_id` —
+/// every prep-item read filters by it.
+const String kVisitPrepItemsProfileIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_visit_prep_items_profile_id '
+    'ON visit_prep_items (profile_id)';
+
 @DriftDatabase(tables: [
   Profiles,
   DayEntries,
@@ -65,6 +77,8 @@ const String kProfileGuardiansProfileIndexSql =
   Observations,
   ProfileModes,
   CycleOverrides,
+  CareNotes,
+  VisitPrepItems,
   AppSettings,
   SyncState,
 ])
@@ -102,8 +116,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 10 — `last_period_start` + `typical_cycle_length_days` +
   ///   `typical_period_length_days` on `profiles` (Issue #218, onboarding
   ///   cycle facts seeding provisional predictions).
+  /// * 11 — `care_notes` + `visit_prep_items` tables (Issue #128, shared
+  ///   care notes and the visit-prep checklist) with their two pull
+  ///   cursors on `sync_state` and a `profile_id` index on each.
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -114,6 +131,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await customStatement(kDayEntriesDirtyIndexSql);
           await customStatement(kDayEntriesUpdatedAtIndexSql);
           await customStatement(kProfileGuardiansProfileIndexSql);
+          await customStatement(kCareNotesProfileIndexSql);
+          await customStatement(kVisitPrepItemsProfileIndexSql);
         },
         onUpgrade: (m, from, to) => onUpgradeSteps(m, from, to),
         beforeOpen: (details) async {
@@ -135,13 +154,16 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `observations.import_id`. Issue #197 adds
   /// `day_entries.profile_date_index`, `day_entries.dirty_index`,
   /// `day_entries.updated_at_index`, `profile_guardians.profile_id_index`.
-    /// Issue #188 adds `profile_modes`, `cycle_overrides`,
-    /// `sync_state.cursor_profile_modes`, `sync_state.cursor_cycle_overrides`.
-    /// Issue #218 adds `profiles.last_period_start`,
-    /// `profiles.typical_cycle_length_days`,
-    /// `profiles.typical_period_length_days`.
-    @visibleForTesting
-    Future<void> Function(String completedStep)? migrationStepHook;
+  /// Issue #188 adds `profile_modes`, `cycle_overrides`,
+  /// `sync_state.cursor_profile_modes`, `sync_state.cursor_cycle_overrides`.
+  /// Issue #218 adds `profiles.last_period_start`,
+  /// `profiles.typical_cycle_length_days`,
+  /// `profiles.typical_period_length_days`.
+  /// Issue #128 adds `care_notes`, `visit_prep_items`,
+  /// `sync_state.cursor_care_notes`, `sync_state.cursor_visit_prep_items`,
+  /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
+  @visibleForTesting
+  Future<void> Function(String completedStep)? migrationStepHook;
 
   /// Step-by-step migration steps, one `if (from < n)` block per version.
   ///
@@ -264,8 +286,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // included) in [_upgradeToV9] so this method's branch count stays
     // under the CRAP gate as versions accumulate.
     await _upgradeToV9(m, from);
-    // Issue #218's v10 step, same shape.
+    // Issue #218's v10 step and issue #128's v11 step, same shape.
     await _upgradeToV10(m, from);
+    await _upgradeToV11(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -296,8 +319,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// Kept as its own method (the `from < 9` guard included) so
   /// [onUpgradeSteps]'s branch count stays under the CRAP gate as
   /// per-version blocks accumulate.
-  Future<void> _upgradeToV9(Migrator m, int from) async {
-    if (from >= 9) return;
+  Future<void> _upgradeToV9(Migrator m, int from) async {    if (from >= 9) return;
     await transaction(() async {
       await m.createTable(profileModes);
       await migrationStepHook?.call('profile_modes');
@@ -335,6 +357,33 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
+  /// The v11 upgrade step (Issue #128): the `care_notes` and
+  /// `visit_prep_items` tables, their two `sync_state` pull cursors, and a
+  /// `profile_id` index on each new table. Same shape as [_upgradeToV9]
+  /// (including the `sync_state` gotcha: `m.createTable(syncState)` in the
+  /// `from < 2` block already declares the new cursor columns on the
+  /// *current* `SyncState` class, so only a device that already had
+  /// `sync_state` (from >= 2) needs the explicit addColumns).
+  Future<void> _upgradeToV11(Migrator m, int from) async {
+    if (from >= 11) return;
+    await transaction(() async {
+      await m.createTable(careNotes);
+      await migrationStepHook?.call('care_notes');
+      await m.createTable(visitPrepItems);
+      await migrationStepHook?.call('visit_prep_items');
+      if (from >= 2) {
+        await m.addColumn(syncState, syncState.cursorCareNotes);
+        await migrationStepHook?.call('sync_state.cursor_care_notes');
+        await m.addColumn(syncState, syncState.cursorVisitPrepItems);
+        await migrationStepHook?.call('sync_state.cursor_visit_prep_items');
+      }
+      await customStatement(kCareNotesProfileIndexSql);
+      await migrationStepHook?.call('care_notes.profile_id_index');
+      await customStatement(kVisitPrepItemsProfileIndexSql);
+      await migrationStepHook?.call('visit_prep_items.profile_id_index');
+    });
+  }
+
   /// Hard-deletes every row in every table, the `sync_state` row included —
   /// the web build's wipe-local-data action and the web half of device
   /// reset (KTD16). This is a wipe, not a sync-domain soft delete:
@@ -342,8 +391,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   Future<void> wipeAllData() async {
     await transaction(() async {
       // observations references day_entries(id) and profiles(id); the two
-      // Issue #188 tables reference profiles(id): all of them must be
-      // emptied before their parents or the FK fails the whole wipe.
+      // Issue #188 tables and the two Issue #128 tables reference
+      // profiles(id): all of them must be emptied before their parents or
+      // the FK fails the whole wipe.
+      await delete(visitPrepItems).go();
+      await delete(careNotes).go();
       await delete(cycleOverrides).go();
       await delete(profileModes).go();
       await delete(observations).go();

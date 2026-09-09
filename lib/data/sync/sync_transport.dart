@@ -14,8 +14,9 @@ import 'remote_rows.dart';
 import 'row_codec.dart' show JsonRow;
 
 /// One `sync_push` call: profiles, day entries, observations, then the two
-/// Issue #188 tables, each at most [maxRows] rows (the RPC raises `22023`
-/// beyond that). Rows are the codec's JSON objects, already validated.
+/// Issue #188 tables, then the two Issue #128 tables, each at most
+/// [maxRows] rows (the RPC raises `22023` beyond that). Rows are the
+/// codec's JSON objects, already validated.
 @immutable
 class PushBatch {
   PushBatch({
@@ -24,11 +25,15 @@ class PushBatch {
     List<JsonRow> observations = const [],
     List<JsonRow> profileModes = const [],
     List<JsonRow> cycleOverrides = const [],
+    List<JsonRow> careNotes = const [],
+    List<JsonRow> visitPrepItems = const [],
   })  : profiles = List.unmodifiable(profiles),
         dayEntries = List.unmodifiable(dayEntries),
         observations = List.unmodifiable(observations),
         profileModes = List.unmodifiable(profileModes),
-        cycleOverrides = List.unmodifiable(cycleOverrides) {
+        cycleOverrides = List.unmodifiable(cycleOverrides),
+        careNotes = List.unmodifiable(careNotes),
+        visitPrepItems = List.unmodifiable(visitPrepItems) {
     if (profiles.length > maxRows) {
       throw ArgumentError.value(profiles.length, 'profiles',
           'a push batch carries at most $maxRows profiles');
@@ -49,6 +54,14 @@ class PushBatch {
       throw ArgumentError.value(cycleOverrides.length, 'cycleOverrides',
           'a push batch carries at most $maxRows cycle overrides');
     }
+    if (careNotes.length > maxRows) {
+      throw ArgumentError.value(careNotes.length, 'careNotes',
+          'a push batch carries at most $maxRows care notes');
+    }
+    if (visitPrepItems.length > maxRows) {
+      throw ArgumentError.value(visitPrepItems.length, 'visitPrepItems',
+          'a push batch carries at most $maxRows visit prep items');
+    }
   }
 
   /// The RPC's per-array limit (KTD3).
@@ -66,12 +79,20 @@ class PushBatch {
   /// Issue #188: `sync_push`'s fifth parameter.
   final List<JsonRow> cycleOverrides;
 
+  /// Issue #128: `sync_push`'s sixth parameter.
+  final List<JsonRow> careNotes;
+
+  /// Issue #128: `sync_push`'s seventh parameter.
+  final List<JsonRow> visitPrepItems;
+
   int get rowCount =>
       profiles.length +
       dayEntries.length +
       observations.length +
       profileModes.length +
-      cycleOverrides.length;
+      cycleOverrides.length +
+      careNotes.length +
+      visitPrepItems.length;
 
   bool get isEmpty => rowCount == 0;
 
@@ -79,7 +100,8 @@ class PushBatch {
   String toString() =>
       'PushBatch(profiles: ${profiles.length}, dayEntries: ${dayEntries.length}, '
       'observations: ${observations.length}, profileModes: ${profileModes.length}, '
-      'cycleOverrides: ${cycleOverrides.length})';
+      'cycleOverrides: ${cycleOverrides.length}, careNotes: ${careNotes.length}, '
+      'visitPrepItems: ${visitPrepItems.length})';
 }
 
 /// What `sync_push` answered (KTD3).

@@ -5,6 +5,7 @@ library;
 
 import 'package:lunarlog/data/db/db.dart' as db;
 import 'package:lunarlog/data/db/tables.dart' as db;
+import 'package:lunarlog/domain/models/care_note.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
@@ -13,6 +14,7 @@ import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart' as domain;
 import 'package:lunarlog/domain/models/profile_relationship.dart' as domain;
+import 'package:lunarlog/domain/models/visit_prep_item.dart' as domain;
 
 domain.Profile profileToDomain(db.Profile row) => domain.Profile(
       id: row.id,
@@ -122,4 +124,34 @@ domain.ProfileGuardian profileGuardianToDomain(db.ProfileGuardianData row) =>
       invitedBy: row.invitedBy,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    );
+
+/// Issue #128: drift-row -> domain [domain.CareNote]. Mirrors
+/// [dayEntryToDomain]'s shape; used by [CareContentRepository] so account
+/// export (`kAccountExportSchemaVersion` v6) reads a real, per-profile
+/// care-notes list instead of always exporting an empty one.
+domain.CareNote careNoteToDomain(db.CareNoteData row) => domain.CareNote(
+      id: row.id,
+      profileId: row.profileId,
+      body: row.body,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+      loggedByUserId: row.loggedByUserId,
+      lastModifiedByUserId: row.lastModifiedByUserId,
+    );
+
+/// Issue #128: drift-row -> domain [domain.VisitPrepItem]. Mirrors
+/// [careNoteToDomain]'s shape, plus the check state.
+domain.VisitPrepItem visitPrepItemToDomain(db.VisitPrepItemData row) =>
+    domain.VisitPrepItem(
+      id: row.id,
+      profileId: row.profileId,
+      body: row.body,
+      isChecked: row.isChecked,
+      checkedByUserId: row.checkedByUserId,
+      checkedAt: row.checkedAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+      loggedByUserId: row.loggedByUserId,
+      lastModifiedByUserId: row.lastModifiedByUserId,
     );

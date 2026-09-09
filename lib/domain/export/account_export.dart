@@ -33,8 +33,10 @@ library;
 import 'dart:convert';
 
 import '../models/day_entry.dart';
+import '../models/care_note.dart';
 import '../models/observation.dart';
 import '../models/profile.dart';
+import '../models/visit_prep_item.dart';
 import 'account_export_remote_source.dart';
 
 /// Bumped whenever the exported document's shape changes in a way a reader
@@ -55,8 +57,11 @@ import 'account_export_remote_source.dart';
 /// `super_heavy` and `not_bleeding` (Issue #247): a reader written against
 /// v4 that treats an unrecognised flow string as a hard error must be
 /// updated before it can read a v5 file; `account_import.dart`'s
-/// `_parseFlow` already accepts both via `flowNameFromWire`.
-const int kAccountExportSchemaVersion = 5;
+/// `_parseFlow` already accepts both via `flowNameFromWire`. v6 adds
+/// `profiles[].careNotes` and `profiles[].visitPrepItems` (Issue #128): a
+/// reader of an old (v5) export still knows the absence of the key means
+/// "not yet collected," not "this profile has none" (the v3 precedent).
+const int kAccountExportSchemaVersion = 6;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -76,6 +81,8 @@ Map<String, Object?> buildAccountExport({
   required List<Profile> profiles,
   required Map<String, List<DayEntry>> entriesByProfile,
   Map<String, List<Observation>> observationsByProfile = const {},
+  Map<String, List<CareNote>> careNotesByProfile = const {},
+  Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -91,6 +98,8 @@ Map<String, Object?> buildAccountExport({
           profile,
           entriesByProfile[profile.id] ?? const [],
           observationsByProfile[profile.id] ?? const [],
+          careNotesByProfile[profile.id] ?? const [],
+          visitPrepByProfile[profile.id] ?? const [],
         ),
     ],
   };
@@ -100,10 +109,16 @@ Map<String, Object?> _exportProfile(
   Profile profile,
   List<DayEntry> entries,
   List<Observation> observations,
+  List<CareNote> careNotes,
+  List<VisitPrepItem> prepItems,
 ) {
   final sortedEntries = [...entries]
     ..sort((a, b) => a.localDate.compareTo(b.localDate));
   final sortedObservations = [...observations]
+    ..sort((a, b) => a.id.compareTo(b.id));
+  final sortedCareNotes = [...careNotes]
+    ..sort((a, b) => a.id.compareTo(b.id));
+  final sortedPrepItems = [...prepItems]
     ..sort((a, b) => a.id.compareTo(b.id));
   return {
     'id': profile.id,
@@ -119,6 +134,17 @@ Map<String, Object?> _exportProfile(
     // comment — this is a real per-profile read, not a placeholder.
     'observations': [
       for (final observation in sortedObservations) _exportObservation(observation),
+    ],
+    // Issue #128 (kAccountExportSchemaVersion v6): the profile's standing
+    // care notes and visit-prep checklist — the clinician-facing half of
+    // export carries the prep list. Guardian attribution ids
+    // (`logged_by`/`last_modified_by`, and `checked_by` — an auth
+    // identifier, not family data) stay out per this file's R9 rule above.
+    'careNotes': [
+      for (final note in sortedCareNotes) _exportCareNote(note),
+    ],
+    'visitPrepItems': [
+      for (final item in sortedPrepItems) _exportVisitPrepItem(item),
     ],
   };
 }
@@ -184,6 +210,8 @@ Future<Map<String, Object?>> buildMergedAccountExport({
   required List<Profile> profiles,
   required Map<String, List<DayEntry>> entriesByProfile,
   Map<String, List<Observation>> observationsByProfile = const {},
+  Map<String, List<CareNote>> careNotesByProfile = const {},
+  Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -193,6 +221,8 @@ Future<Map<String, Object?>> buildMergedAccountExport({
     profiles: profiles,
     entriesByProfile: entriesByProfile,
     observationsByProfile: observationsByProfile,
+    careNotesByProfile: careNotesByProfile,
+    visitPrepByProfile: visitPrepByProfile,
     exportedAt: exportedAt,
     appName: appName,
     appVersion: appVersion,
@@ -222,4 +252,23 @@ Map<String, Object?> _exportObservation(Observation o) => {
       'importId': o.importId,
       'raw': o.raw == null ? null : jsonDecode(o.raw!),
       'updatedAt': o.updatedAt.toUtc().toIso8601String(),
+    };
+
+/// Issue #128 (kAccountExportSchemaVersion v6): one standing care note.
+/// Attribution ids stay out per this file's R9 rule (see [_exportProfile]).
+Map<String, Object?> _exportCareNote(CareNote note) => {
+      'id': note.id,
+      'body': note.body,
+      'updatedAt': note.updatedAt.toUtc().toIso8601String(),
+    };
+
+/// Issue #128 (kAccountExportSchemaVersion v6): one visit-prep checklist
+/// item, including its check state — the clinician-facing export carries
+/// the prep list. `checkedByUserId` stays out per this file's R9 rule.
+Map<String, Object?> _exportVisitPrepItem(VisitPrepItem item) => {
+      'id': item.id,
+      'body': item.body,
+      'isChecked': item.isChecked,
+      'checkedAt': item.checkedAt?.toUtc().toIso8601String(),
+      'updatedAt': item.updatedAt.toUtc().toIso8601String(),
     };

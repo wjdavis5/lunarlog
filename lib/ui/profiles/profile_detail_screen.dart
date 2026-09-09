@@ -19,11 +19,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
@@ -110,6 +112,17 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
               readOnly: widget.readOnly,
               todayProvider: widget.todayProvider,
               timezoneProvider: widget.timezoneProvider,
+            ),
+          // Issue #128: the profile's shared care notes and visit-prep
+          // checklist, reachable from the profile itself. Same storage
+          // gating as the Activity feed button above.
+          if (storage != null)
+            CareNotesButton(
+              profile: widget.profile,
+              repository: DriftCareContentRepository(storage),
+              guardiansRepository:
+                  guardiansRepository ?? ProfileGuardiansRepository(storage),
+              readOnly: widget.readOnly,
             ),
           if (widget.readOnly)
             TextButton(

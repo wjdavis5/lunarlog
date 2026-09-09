@@ -38,6 +38,12 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 /// nonce names, and the profile claims (name parts, picture, hosted domain)
 /// that a sign-in flow could put in a breadcrumb.
 ///
+/// Shared care content (Issue #128): `body` (the free-text column on both
+/// `care_notes` and `visit_prep_items`), the table names in either spelling
+/// (`care_note(s)`, `visit_prep(_item(s))`, `prep_item(s)`), and the
+/// `sync_push` payload names that wrap whole rows (`p_care_notes`,
+/// `p_visit_prep_items`).
+///
 /// Bare words such as `name`, `token`, `user`, `sub`, and `session` are
 /// deliberately absent: [mentionsDenyListedKey] drops any message that
 /// mentions a listed key, and those words appear in ordinary Drift, gotrue,
@@ -46,6 +52,14 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 const List<String> sentryDenyListedKeys = [
   'note',
   'tags',
+  'body',
+  'care_note',
+  'care_notes',
+  'visit_prep',
+  'visit_prep_item',
+  'visit_prep_items',
+  'prep_item',
+  'prep_items',
   'display_name',
   'local_date',
   'email',
@@ -53,6 +67,8 @@ const List<String> sentryDenyListedKeys = [
   'old_record',
   'p_day_entries',
   'p_profiles',
+  'p_care_notes',
+  'p_visit_prep_items',
   'authorization',
   'apikey',
   // Identity payloads (#2 U6; KTD7).

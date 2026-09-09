@@ -178,7 +178,7 @@ void main() {
           LocalDate.fromIso('2026-01-05'));
     });
 
-    test('every accepted schema version (1-5) parses', () {
+    test('every accepted schema version (1-6) parses', () {
       for (var v = kAccountImportMinSchemaVersion;
           v <= kAccountImportMaxSchemaVersion;
           v++) {
@@ -204,6 +204,39 @@ void main() {
       expect(document.schemaVersion, 5);
       expect(document.profiles.single.dayEntries.single.flow,
           FlowLevel.superHeavy);
+    });
+
+    test('a v6 file carrying careNotes/visitPrepItems parses with those '
+        'keys ignored (Issue #128: restore stays additive over profiles, '
+        'day entries, and observations — shared care content is sync-owned, '
+        'never file-merged)', () {
+      final profile = _rawProfile(_p1, dayEntries: [
+        _rawDayEntry(_e1, '2026-01-05'),
+      ])
+        ..['careNotes'] = [
+          {
+            'id': '00000000000000000000000031',
+            'body': 'Prefers the blue inhaler.',
+            'updatedAt': '2026-01-02T00:00:00.000Z',
+          },
+        ]
+        ..['visitPrepItems'] = [
+          {
+            'id': '00000000000000000000000032',
+            'body': 'Ask about iron levels.',
+            'isChecked': true,
+            'checkedAt': '2026-01-02T00:00:00.000Z',
+            'updatedAt': '2026-01-02T00:00:00.000Z',
+          },
+        ];
+      final result = parseAccountImport(_bytes(_rawDocument(
+        schemaVersion: 6,
+        profiles: [profile],
+      )));
+      expect(result, isA<AccountImportParsed>());
+      final document = (result as AccountImportParsed).document;
+      expect(document.schemaVersion, 6);
+      expect(document.profiles.single.dayEntries, hasLength(1));
     });
 
     test('an explicit "none" flow value parses as FlowLevel.none', () {

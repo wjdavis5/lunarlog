@@ -72,8 +72,11 @@ import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -740,6 +743,7 @@ class _AccountSectionState extends State<AccountSection> {
     final profilesRepo = context.read<ProfilesRepository>();
     final entriesRepo = context.read<DayEntriesRepository>();
     final observationsRepo = context.read<ObservationsRepository>();
+    final careContentRepo = context.read<CareContentRepository>();
     // Issue #248: read before the first `await` below (not after -
     // `use_build_context_synchronously`); null for an unconfigured build
     // (no Supabase client) - the same "nothing to merge" degrade as a
@@ -749,17 +753,25 @@ class _AccountSectionState extends State<AccountSection> {
     final profiles = await profilesRepo.list();
     final entriesByProfile = <String, List<DayEntry>>{};
     final observationsByProfile = <String, List<Observation>>{};
+    final careNotesByProfile = <String, List<CareNote>>{};
+    final visitPrepByProfile = <String, List<VisitPrepItem>>{};
     for (final profile in profiles) {
       entriesByProfile[profile.id] =
           await entriesRepo.listForProfile(profile.id);
       observationsByProfile[profile.id] =
           await observationsRepo.listForProfile(profile.id);
+      careNotesByProfile[profile.id] =
+          await careContentRepo.listCareNotes(profile.id);
+      visitPrepByProfile[profile.id] =
+          await careContentRepo.listPrepItems(profile.id);
     }
     await (widget.exportAccount ??
         defaultExportAccountCollaborator(remoteSource))(
       profiles: profiles,
       entriesByProfile: entriesByProfile,
       observationsByProfile: observationsByProfile,
+      careNotesByProfile: careNotesByProfile,
+      visitPrepByProfile: visitPrepByProfile,
       appVersion: kAppVersionForExport,
     );
   }

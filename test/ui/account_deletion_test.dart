@@ -12,10 +12,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart' show DeviceResetCallback, GateController;
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -77,6 +80,67 @@ class FakeObservationsRepository implements ObservationsRepository {
 
   @override
   Future<void> delete(String id) async {}
+}
+
+class FakeCareContentRepository implements CareContentRepository {
+  Map<String, List<CareNote>> careNotesByProfile = const {};
+  Map<String, List<VisitPrepItem>> prepItemsByProfile = const {};
+
+  @override
+  Future<List<CareNote>> listCareNotes(String profileId) async =>
+      careNotesByProfile[profileId] ?? const [];
+
+  @override
+  Stream<List<CareNote>> watchCareNotes(String profileId) =>
+      Stream.value(careNotesByProfile[profileId] ?? const []);
+
+  @override
+  Future<CareNote> saveCareNote({
+    String? id,
+    required String profileId,
+    required String body,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteCareNote(String id) async {}
+
+  @override
+  Future<List<VisitPrepItem>> listPrepItems(String profileId) async =>
+      prepItemsByProfile[profileId] ?? const [];
+
+  @override
+  Stream<List<VisitPrepItem>> watchPrepItems(String profileId) =>
+      Stream.value(prepItemsByProfile[profileId] ?? const []);
+
+  @override
+  Future<VisitPrepItem> addPrepItem({
+    String? id,
+    required String profileId,
+    required String body,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<VisitPrepItem?> editPrepItem({
+    required String id,
+    required String body,
+  }) async =>
+      null;
+
+  @override
+  Future<VisitPrepItem?> setPrepItemChecked({
+    required String id,
+    required bool checked,
+    String? checkedByUserId,
+  }) async =>
+      null;
+
+  @override
+  Future<void> deletePrepItem(String id) async {}
+
+  @override
+  Future<int> clearCheckedPrepItems(String profileId) async => 0;
 }
 
 class FakeAccountDeletionService implements AccountDeletionService {
@@ -160,6 +224,8 @@ class DeletionHarness {
   final FakeProfilesRepository profilesRepository = FakeProfilesRepository();
   final FakeDayEntriesRepository dayEntriesRepository = FakeDayEntriesRepository();
   final FakeObservationsRepository observationsRepository = FakeObservationsRepository();
+  final FakeCareContentRepository careContentRepository =
+      FakeCareContentRepository();
 
   /// Toggled by [unmountSection] (#17 P1 fix regression coverage): lets a
   /// test unmount just [AccountSection] - the way navigating away from the
@@ -180,6 +246,7 @@ class DeletionHarness {
             Provider<ProfilesRepository>.value(value: profilesRepository),
             Provider<DayEntriesRepository>.value(value: dayEntriesRepository),
             Provider<ObservationsRepository>.value(value: observationsRepository),
+            Provider<CareContentRepository>.value(value: careContentRepository),
             if (deletion != null)
               Provider<AccountDeletionService>.value(value: deletion!),
             Provider<DeviceResetCallback>.value(
@@ -287,6 +354,8 @@ void main() {
           required profiles,
           required entriesByProfile,
           Map<String, List<Observation>>? observationsByProfile = const {},
+          Map<String, List<CareNote>>? careNotesByProfile = const {},
+          Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -321,6 +390,8 @@ void main() {
           required profiles,
           required entriesByProfile,
           Map<String, List<Observation>>? observationsByProfile = const {},
+          Map<String, List<CareNote>>? careNotesByProfile = const {},
+          Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -368,6 +439,8 @@ void main() {
           required profiles,
           required entriesByProfile,
           Map<String, List<Observation>>? observationsByProfile = const {},
+          Map<String, List<CareNote>>? careNotesByProfile = const {},
+          Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -398,6 +471,8 @@ void main() {
           required profiles,
           required entriesByProfile,
           Map<String, List<Observation>>? observationsByProfile = const {},
+          Map<String, List<CareNote>>? careNotesByProfile = const {},
+          Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           required appVersion,
         }) async {
           await exportHold.future;

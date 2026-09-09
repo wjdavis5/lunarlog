@@ -129,10 +129,14 @@ class _PushCursor {
   String? _observationCursor;
   String? _profileModeCursor;
   String? _cycleOverrideCursor;
+  String? _careNoteCursor;
+  String? _visitPrepItemCursor;
   bool entriesDone = false;
   bool observationsDone = false;
   bool profileModesDone = false;
   bool cycleOverridesDone = false;
+  bool careNotesDone = false;
+  bool visitPrepItemsDone = false;
 
   Future<List<Profile>> readProfilePage() async {
     final page = await _storage.readDirtyProfiles(
@@ -177,11 +181,34 @@ class _PushCursor {
     return page;
   }
 
+  /// Issue #128: same keyset-paging contract as [readEntryPage].
+  Future<List<CareNoteData>> readCareNotePage() async {
+    final page = await _storage.readDirtyCareNotes(
+        limit: batchSize, afterId: _careNoteCursor);
+    careNotesDone = page.length < batchSize;
+    if (page.isNotEmpty) _careNoteCursor = page.last.id;
+    return page;
+  }
+
+  /// Issue #128: same keyset-paging contract as [readEntryPage].
+  Future<List<VisitPrepItemData>> readVisitPrepItemPage() async {
+    final page = await _storage.readDirtyVisitPrepItems(
+        limit: batchSize, afterId: _visitPrepItemCursor);
+    visitPrepItemsDone = page.length < batchSize;
+    if (page.isNotEmpty) _visitPrepItemCursor = page.last.id;
+    return page;
+  }
+
   /// Whether every child table's keyset scan is exhausted (the `done` half
   /// of [_readPushRound]'s contract, split out so that method's branch
   /// count stays under the CRAP gate as tables are added).
   bool get allTablesDone =>
-      entriesDone && observationsDone && profileModesDone && cycleOverridesDone;
+      entriesDone &&
+      observationsDone &&
+      profileModesDone &&
+      cycleOverridesDone &&
+      careNotesDone &&
+      visitPrepItemsDone;
 }
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
@@ -295,8 +322,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     _authSub = _auth.states.listen((_) => requestSync());
     final db = _storage.db;
     _writeSub = db
-        .tableUpdates(TableUpdateQuery.onAllTables(
-            [db.profiles, db.dayEntries, db.observations, db.profileModes, db.cycleOverrides]))
+        .tableUpdates(TableUpdateQuery.onAllTables([
+          db.profiles,
+          db.dayEntries,
+          db.observations,
+          db.profileModes,
+          db.cycleOverrides,
+          db.careNotes,
+          db.visitPrepItems,
+        ]))
         .listen((_) => _onLocalWrite());
     _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
       _rejected.clear();
@@ -426,7 +460,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       return true;
     }
     final cycleOverrides = await _storage.readDirtyCycleOverrides();
-    return _pushable(cycleOverrides, (o) => o.id, (o) => o.localRev)
+    if (_pushable(cycleOverrides, (o) => o.id, (o) => o.localRev).isNotEmpty) {
+      return true;
+    }
+    final careNotes = await _storage.readDirtyCareNotes();
+    if (_pushable(careNotes, (n) => n.id, (n) => n.localRev).isNotEmpty) {
+      return true;
+    }
+    final visitPrepItems = await _storage.readDirtyVisitPrepItems();
+    return _pushable(visitPrepItems, (i) => i.id, (i) => i.localRev)
         .isNotEmpty;
   }
 
@@ -818,6 +860,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// cycle overrides once profile modes are. Split out of [_readPushRound]
   /// (and the `done` conjunction into [_PushCursor.allTablesDone]) so that
   /// method's branch count stays under the CRAP gate as tables are added.
+  /// Issue #128 extends the same chain via [_appendCareTableItems]: care
+  /// notes ride once cycle overrides are exhausted, visit-prep items once
+  /// care notes are.
   Future<void> _appendModeTableItems(
     List<_PushItem> batch,
     _PushCursor cursor,
@@ -840,6 +885,35 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
               encodeCycleOverride(row), profileId: row.profileId),
       ]);
     }
+    await _appendCareTableItems(batch, cursor);
+  }
+
+  /// Issue #128: the care_notes and visit_prep_items pages ride the same
+  /// chaining rule — care notes read once cycle overrides are exhausted,
+  /// visit-prep items once care notes are. Split out of
+  /// [_appendModeTableItems] so that method's branch count stays under the
+  /// CRAP gate as tables are added.
+  Future<void> _appendCareTableItems(
+    List<_PushItem> batch,
+    _PushCursor cursor,
+  ) async {
+    if (cursor.cycleOverridesDone && !cursor.careNotesDone) {
+      final careNotePage = await cursor.readCareNotePage();
+      batch.addAll([
+        for (final row
+            in _pushable(careNotePage, (n) => n.id, (n) => n.localRev))
+          _PushItem(SyncTable.careNotes, row.id, row.localRev,
+              encodeCareNote(row), profileId: row.profileId),
+      ]);
+    }
+    if (cursor.careNotesDone && !cursor.visitPrepItemsDone) {
+      final prepItemPage = await cursor.readVisitPrepItemPage();
+      batch.addAll([
+        for (final row in _pushable(prepItemPage, (i) => i.id, (i) => i.localRev))
+          _PushItem(SyncTable.visitPrepItems, row.id, row.localRev,
+              encodeVisitPrepItem(row), profileId: row.profileId),
+      ]);
+    }
   }
 
   /// One push batch's request/response handling, split out of [_push]
@@ -859,6 +933,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         observations: [for (final i in batch) if (i.table == SyncTable.observations) i.json],
         profileModes: [for (final i in batch) if (i.table == SyncTable.profileModes) i.json],
         cycleOverrides: [for (final i in batch) if (i.table == SyncTable.cycleOverrides) i.json],
+        careNotes: [for (final i in batch) if (i.table == SyncTable.careNotes) i.json],
+        visitPrepItems: [for (final i in batch) if (i.table == SyncTable.visitPrepItems) i.json],
       ));
     } on SyncTransportRejectedError catch (error) {
       // A transport without per-row results: the named rows are rejected,
@@ -955,10 +1031,14 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       // which references a profile, so both must already be applied for
       // applyRemoteObservation's referential check to succeed without a
       // retry. Issue #188: the two mode tables follow for the same reason
-      // (both reference a profile), after every content table.
+      // (both reference a profile), after every content table. Issue #128:
+      // care notes and visit-prep items follow last for the same reason
+      // (both reference only a profile).
       SyncTable.observations,
       SyncTable.profileModes,
       SyncTable.cycleOverrides,
+      SyncTable.careNotes,
+      SyncTable.visitPrepItems,
     ]) {
       if (await _pullTable(table, uid)) retry = true;
     }
@@ -1000,13 +1080,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// [_pullTable]'s persisted-cursor lookup (profileGuardians pages from 0
   /// every cycle — it has no cursor column, schema v3). Split out so
   /// [_pullTable]'s branch count stays under the CRAP gate as tables are
-  /// added (Issue #188 added two cases).
+  /// added (Issue #188 added two cases; Issue #128 two more).
   int _startingCursor(SyncTable table, SyncStateRow state) => switch (table) {
         SyncTable.profiles => state.cursorProfiles,
         SyncTable.dayEntries => state.cursorDayEntries,
         SyncTable.observations => state.cursorObservations,
         SyncTable.profileModes => state.cursorProfileModes,
         SyncTable.cycleOverrides => state.cursorCycleOverrides,
+        SyncTable.careNotes => state.cursorCareNotes,
+        SyncTable.visitPrepItems => state.cursorVisitPrepItems,
         SyncTable.profileGuardians => 0,
       };
 
@@ -1056,10 +1138,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.profileGuardians,
       SyncTable.dayEntries,
       // Issue #240: same ordering rationale as _pullIncremental; Issue
-      // #188's two mode tables follow (both reference only a profile).
+      // #188's two mode tables follow (both reference only a profile);
+      // Issue #128's two care tables follow last (same reason).
       SyncTable.observations,
       SyncTable.profileModes,
       SyncTable.cycleOverrides,
+      SyncTable.careNotes,
+      SyncTable.visitPrepItems,
     ]) {
       var after = 0;
       while (true) {
