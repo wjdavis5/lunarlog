@@ -36,6 +36,7 @@ import 'package:lunarlog/domain/symptoms/symptom_layers.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
     show kEstimateDisclaimer;
@@ -469,6 +470,18 @@ class _MonthCalendarState extends State<MonthCalendar> {
           ),
         ),
         if (!estimateActive) _keepLoggingStrip(theme, prediction),
+        // Issue #187 (B-8): a month with zero entries otherwise renders as
+        // a silent grid of bare day numbers with no guidance. The grid
+        // itself stays fully tappable (its cell/forecast rendering is
+        // #133/#191's, untouched here) — this is an explanatory banner
+        // above it, not a replacement, so logging any day in the empty
+        // month still works exactly as it did before this issue.
+        if (!_monthHasEntries(entries))
+          const EmptyState(
+            key: ValueKey('calendar-month-empty'),
+            title: 'No entries this month',
+            body: 'Tap a day to log it',
+          ),
         Expanded(
           child: SingleChildScrollView(
             child: GridView.count(
@@ -490,6 +503,16 @@ class _MonthCalendarState extends State<MonthCalendar> {
       ],
     );
   }
+
+  /// Whether any entry falls within the displayed month (issue #187) —
+  /// scoped to `_displayedYear`/`_displayedMonth`, not the whole [entries]
+  /// stream, so navigating to a quiet month shows the guidance banner even
+  /// when other months have logged data.
+  bool _monthHasEntries(List<DayEntry> entries) => entries.any(
+        (entry) =>
+            entry.localDate.year == _displayedYear &&
+            entry.localDate.month == _displayedMonth,
+      );
 
   /// The symptom-layers control (R2): a collapsed summary row (tap to
   /// expand) over the collapsible chip panel.

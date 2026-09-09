@@ -41,6 +41,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 
 class YourDataSection extends StatefulWidget {
@@ -148,10 +149,9 @@ class _YourDataSectionState extends State<YourDataSection> {
         if (exportError != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              exportError,
+            child: InlineError(
               key: const ValueKey('your-data-export-error'),
-              style: TextStyle(color: theme.colorScheme.error),
+              message: exportError,
             ),
           ),
         const Divider(),

@@ -29,6 +29,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -238,30 +239,79 @@ Future<void> showMonth(WidgetTester tester, int year, int month) async {
 }
 
 /// Repository whose save always fails (F2 failure-state path).
+/// Issue #187: [failDelete] and [seeded] let a test exercise the
+/// delete-failure path (`InlineError` on `delete-error`) the same way
+/// [failSave] (the default, unchanged) already exercises the save-failure
+/// one — a seeded entry is required so the sheet renders the Delete
+/// affordance at all (`DaySheet` only shows it for an existing entry).
 class ThrowingDayEntriesRepository implements DayEntriesRepository {
+  ThrowingDayEntriesRepository({this.failSave = true, this.failDelete = false});
+
+  final bool failSave;
+  final bool failDelete;
+  List<DayEntry> seeded = const [];
+  int deleteCalls = 0;
+
   @override
   Future<DayEntry> save(DayEntry entry) async {
-    throw Exception('simulated write failure');
+    if (failSave) throw Exception('simulated write failure');
+    return entry;
   }
 
   @override
-  Future<DayEntry?> find(String profileId, LocalDate localDate) async => null;
+  Future<DayEntry?> find(String profileId, LocalDate localDate) async {
+    for (final entry in seeded) {
+      if (entry.localDate == localDate) return entry;
+    }
+    return null;
+  }
 
   @override
-  Future<List<DayEntry>> listForProfile(String profileId) async => const [];
+  Future<List<DayEntry>> listForProfile(String profileId) async => seeded;
 
   @override
   Stream<List<DayEntry>> watchForProfile(String profileId) =>
-      Stream.value(const []);
+      Stream.value(seeded);
 
   @override
-  Future<void> delete(String profileId, LocalDate localDate) async {}
+  Future<void> delete(String profileId, LocalDate localDate) async {
+    deleteCalls++;
+    if (failDelete) throw Exception('simulated delete failure');
+  }
 }
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
   group('F2 day logging', () {
+    testWidgets(
+        'a month with no entries shows the EmptyState banner above the '
+        'still-tappable grid, and logging a day makes it disappear '
+        '(issue #187)', (tester) async {
+      final h = await pumpLogging(tester);
+
+      expect(find.byKey(const ValueKey('calendar-month-empty')), findsOneWidget);
+      expect(find.text('No entries this month'), findsOneWidget);
+      expect(find.text('Tap a day to log it'), findsOneWidget);
+
+      // The grid stays fully tappable (cell rendering is #133/#191's,
+      // untouched here) — logging today's cell still works exactly as it
+      // did before this issue.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('calendar-month-empty')),
+        findsNothing,
+        reason: 'the displayed month now has an entry',
+      );
+      await disposeLogging(tester, h);
+    });
+
     testWidgets('logging today (flow + 2 tags + note) persists via the '
         'repository and re-renders from the stream after reopening the sheet', (
       tester,
@@ -702,6 +752,57 @@ void main() {
             .selected,
         isTrue,
       );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'delete failure keeps the sheet open, shows the retry error as an '
+        'InlineError, and Retry re-attempts the delete (issue #187)',
+        (tester) async {
+      final repo = ThrowingDayEntriesRepository(
+        failSave: false,
+        failDelete: true,
+      );
+      final h = await pumpLogging(
+        tester,
+        entryRepositoryOverride: repo,
+        seed: (db, profileId) async {
+          repo.seeded = [entryFor(profileId, kToday, flow: FlowLevel.heavy)];
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Delete entry'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(DaySheet),
+        findsOneWidget,
+        reason: 'never auto-dismiss on failure',
+      );
+      expect(find.byKey(const ValueKey('delete-error')), findsOneWidget);
+      expect(
+        tester.widget(find.byKey(const ValueKey('delete-error'))),
+        isA<InlineError>(),
+      );
+      expect(find.text("Couldn't delete — try again"), findsOneWidget);
+      expect(repo.deleteCalls, 1);
+
+      // Retry re-runs the delete flow (confirm dialog, then the call).
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('delete-error')),
+          matching: find.widgetWithText(TextButton, 'Retry'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+      expect(repo.deleteCalls, 2);
+
       await disposeLogging(tester, h);
     });
 

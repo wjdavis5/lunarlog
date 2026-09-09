@@ -17,6 +17,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
@@ -63,55 +64,66 @@ class ProfilePickerScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
-        children: [
-          for (final profile in active)
-            ListTile(
-              title: Text(profile.displayName),
-              subtitle: Text('Created ${formatCreatedDate(profile.createdAt)}'),
-              onTap: () => controller.selectProfile(profile.id),
-              trailing: PopupMenuButton<String>(
-                tooltip: 'Profile actions',
-                onSelected: (action) =>
-                    _onRowAction(context, profile, action),
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
-                  PopupMenuItem(value: 'rename', child: Text('Rename')),
-                  PopupMenuItem(value: 'archive', child: Text('Archive')),
-                ],
-              ),
-            ),
-          if (archived.isNotEmpty)
-            ExpansionTile(
-              key: const Key('archived-section'),
-              title: Text('Archived (${archived.length})'),
+      body: active.isEmpty && archived.isEmpty
+          ? EmptyState(
+              key: const ValueKey('profile-picker-empty'),
+              title: 'No profiles yet',
+              body: 'Add a profile to start tracking.',
+              primaryActionLabel: 'Add profile',
+              onPrimaryAction: () => _addProfile(context),
+            )
+          : ListView(
               children: [
-                for (final profile in archived)
+                for (final profile in active)
                   ListTile(
                     title: Text(profile.displayName),
-                    subtitle:
-                        Text('Created ${formatCreatedDate(profile.createdAt)}'),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        settings:
-                            const RouteSettings(name: kRouteProfileDetailScreen),
-                        builder: (_) => ProfileDetailScreen(
-                          profile: profile,
-                          readOnly: true,
+                    subtitle: Text(
+                        'Created ${formatCreatedDate(profile.createdAt)}'),
+                    onTap: () => controller.selectProfile(profile.id),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'Profile actions',
+                      onSelected: (action) =>
+                          _onRowAction(context, profile, action),
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                            value: 'caregivers', child: Text('Caregivers')),
+                        PopupMenuItem(value: 'rename', child: Text('Rename')),
+                        PopupMenuItem(
+                            value: 'archive', child: Text('Archive')),
+                      ],
+                    ),
+                  ),
+                if (archived.isNotEmpty)
+                  ExpansionTile(
+                    key: const Key('archived-section'),
+                    title: Text('Archived (${archived.length})'),
+                    children: [
+                      for (final profile in archived)
+                        ListTile(
+                          title: Text(profile.displayName),
+                          subtitle: Text(
+                              'Created ${formatCreatedDate(profile.createdAt)}'),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: kRouteProfileDetailScreen),
+                              builder: (_) => ProfileDetailScreen(
+                                profile: profile,
+                                readOnly: true,
+                              ),
+                            ),
+                          ),
+                          trailing: IconButton(
+                            tooltip: 'Unarchive',
+                            icon: const Icon(Icons.unarchive),
+                            onPressed: () =>
+                                controller.unarchiveProfile(profile.id),
+                          ),
                         ),
-                      ),
-                    ),
-                    trailing: IconButton(
-                      tooltip: 'Unarchive',
-                      icon: const Icon(Icons.unarchive),
-                      onPressed: () =>
-                          controller.unarchiveProfile(profile.id),
-                    ),
+                    ],
                   ),
               ],
             ),
-        ],
-      ),
     );
   }
 

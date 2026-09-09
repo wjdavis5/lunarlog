@@ -31,6 +31,7 @@ import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 
 String flowLabel(FlowLevel flow) {
@@ -328,19 +329,19 @@ class _DaySheetState extends State<DaySheet> {
           if (_saveFailed)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                "Couldn't save — try again",
+              child: InlineError(
                 key: const ValueKey('save-error'),
-                style: TextStyle(color: theme.colorScheme.error),
+                message: "Couldn't save — try again",
+                onRetry: _save,
               ),
             ),
           if (_deleteFailed)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                "Couldn't delete — try again",
+              child: InlineError(
                 key: const ValueKey('delete-error'),
-                style: TextStyle(color: theme.colorScheme.error),
+                message: "Couldn't delete — try again",
+                onRetry: _delete,
               ),
             ),
           Padding(

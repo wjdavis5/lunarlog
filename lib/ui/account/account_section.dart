@@ -82,6 +82,7 @@ import 'package:lunarlog/ui/account/export_account_collaborator.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
@@ -251,7 +252,7 @@ class _AccountSectionState extends State<AccountSection> {
           child: Text('Account', style: theme.textTheme.titleSmall),
         ),
         if (signedIn)
-          ..._buildSignedInIdentityTiles(auth, user, providers, theme)
+          ..._buildSignedInIdentityTiles(auth, user, providers)
         else
           _buildSignInTile(context, auth),
         const SyncStatusTile(),
@@ -277,7 +278,6 @@ class _AccountSectionState extends State<AccountSection> {
     AuthController auth,
     AuthUser? user,
     List<String> providers,
-    ThemeData theme,
   ) {
     final linkError = _linkError;
     return [
@@ -294,10 +294,9 @@ class _AccountSectionState extends State<AccountSection> {
       if (linkError != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(
-            linkError,
+          child: InlineError(
             key: const ValueKey('account-link-error'),
-            style: TextStyle(color: theme.colorScheme.error),
+            message: linkError,
           ),
         ),
       if (_isRemovable(AuthProviders.apple, providers))
@@ -429,10 +428,9 @@ class _AccountSectionState extends State<AccountSection> {
       if (_deleteError != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(
-            _deleteError!,
+          child: InlineError(
             key: const ValueKey('account-delete-error'),
-            style: TextStyle(color: theme.colorScheme.error),
+            message: _deleteError!,
           ),
         ),
     ];
