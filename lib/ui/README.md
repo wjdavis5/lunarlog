@@ -143,3 +143,30 @@ its route through one of these two so a route name lives in exactly one
 place (issue #313 closed out the last three hand-rolled `lib/ui/sharing/`
 pushes — the Activity Feed action and Manage Guardians' Transfer Ownership
 and Notifications actions).
+
+## Your data: export and import (issues #222, #140)
+
+`settings/your_data_section.dart`'s `YourDataSection` is Settings' "Your
+data" section: a thin, always-Provider-driven pair of tiles, reachable
+without a cloud account and independent of sign-in state. "Export my data"
+(#222) shows only once at least one profile exists — nothing to export
+before that — and calls `AccountExportWriter` through the injectable
+`ExportAccountCollaborator` seam. "Import from file" (#140) shows
+unconditionally (even with zero profiles — restoring a device that has none
+yet is the point) and just pushes `settings/import_screen.dart`'s
+`ImportScreen` via `kRouteImportScreen`; the screen owns the whole
+pick/parse/preview/confirm/apply flow itself. Both tiles share the same
+`showExport`/`showImport` "not web" default, independently overridable for
+tests.
+
+`ImportScreen` never touches Drift or `file_picker` directly in a test: file
+bytes come from an injectable `ImportFileReader` (default
+`lib/data/import/import_file_picker.dart`'s `pickImportFile`, excluded from
+the coverage gate the same way `AccountExportWriter` is), and planning/
+applying go through an injectable `AccountImportCoordinator`
+(`lib/data/import/account_importer.dart`) built from `Provider`-supplied
+repositories when the screen isn't given one directly. Parsing
+(`parseAccountImport`) and the preview summary (`previewImport`) are pure
+and synchronous once bytes are in hand — see
+`lib/domain/import/account_import.dart` for the merge policy those feed
+into.

@@ -41,6 +41,12 @@ dependencies:
   meta: ^1.18.3
   provider: ^6.1.2
   path_provider: ^2.1.5
+  # Issue #140: restore-from-file import's file picker. Pinned to an exact
+  # version (not `^12.2.0`) rather than the rest of this file's `^`
+  # convention, since it is a brand-new platform dependency this PR
+  # introduces — 12.2.0's own `environment: sdk:` is `>=3.10.0 <4.0.0`, inside
+  # this repo's `^3.13.2` constraint.
+  file_picker: 12.2.0
   flutter_local_notifications: ^22.3.0
   timezone: ^0.11.1
   supabase_flutter: ^2.17.2

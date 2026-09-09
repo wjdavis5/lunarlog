@@ -28,6 +28,10 @@ const String kRouteFeedbackScreen = 'FeedbackScreen';
 /// `lib/ui/settings/settings_screen.dart` (Support history).
 const String kRouteSupportHistoryScreen = 'SupportHistoryScreen';
 
+/// `lib/ui/settings/import_screen.dart` (Issue #140; "Import from file" in
+/// the "Your data" section).
+const String kRouteImportScreen = 'ImportScreen';
+
 /// `lib/ui/account/account_section.dart`.
 const String kRouteSignInScreen = 'SignInScreen';
 
@@ -119,6 +123,7 @@ const Set<String> kSentryRouteNames = {
   kRouteSettingsScreen,
   kRouteFeedbackScreen,
   kRouteSupportHistoryScreen,
+  kRouteImportScreen,
   kRouteSignInScreen,
   kRouteUploadConsentScreen,
   kRouteProfileDetailScreen,
