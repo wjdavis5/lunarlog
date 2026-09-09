@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
@@ -139,6 +140,7 @@ class Harness {
 Future<Harness> pumpOverview(
   WidgetTester tester, {
   NotificationAvailability availability = NotificationAvailability.available,
+  ProfileMode mode = ProfileMode.standard,
   Future<void> Function(DriftDayEntriesRepository entries, String profileId)?
       seed,
 }) async {
@@ -151,7 +153,8 @@ Future<Harness> pumpOverview(
   final profiles = DriftProfilesRepository(db.storage);
   final settings = DriftSettingsStore(db.storage);
   final entries = DriftDayEntriesRepository(db.storage);
-  final profile = await profiles.create(displayName: 'Alice', isMinor: false);
+  final profile = await profiles.create(
+      displayName: 'Alice', isMinor: false, mode: mode);
   if (seed != null) {
     await seed(entries, profile.id);
   }
@@ -446,6 +449,149 @@ void main() {
           reason: 'today is now day 1 of the new episode');
       expect(find.text('≈37 days until next period'), findsOneWidget,
           reason: 'mean of [28, 28, 56] rounds to 37 from 2026-08-30');
+      await disposeOverview(tester, h);
+    });
+  });
+
+  group('care modes (Issue #131, R12)', () {
+    testWidgets('the estimate disclaimer is present in every mode, without '
+        'exception', (tester) async {
+      for (final mode in ProfileMode.values) {
+        final h = await pumpOverview(
+          tester,
+          mode: mode,
+          seed: (entries, profileId) =>
+              seedEpisodes(entries, profileId, kActiveStarts),
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('overview-active')),
+            matching: find.text(kDisclaimer),
+          ),
+          findsOneWidget,
+          reason: 'mode ${mode.name} must carry the disclaimer (R17/#131)',
+        );
+        await disposeOverview(tester, h);
+      }
+    });
+
+    testWidgets('teen mode changes the overview vocabulary: not-enough and '
+        'awaiting copy differ, disclaimer stays', (tester) async {
+      final notEnough = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kNotEnoughStarts),
+      );
+      expect(find.text('Your record is just getting started'), findsOneWidget);
+      expect(find.text('Not enough history yet'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('overview-not-enough')),
+          matching: find.text(kDisclaimer),
+        ),
+        findsOneWidget,
+      );
+      await disposeOverview(tester, notEnough);
+
+      final paused = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kPausedStarts),
+      );
+      expect(find.text('Waiting for your next period'), findsOneWidget);
+      expect(find.textContaining('Predictions are paused'), findsNothing);
+      await disposeOverview(tester, paused);
+    });
+
+    testWidgets('teen mode keeps the standard resolver when late (teen is '
+        'not a reduced app, and honest late framing still applies)',
+        (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kLateStarts),
+      );
+      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget,
+          reason: 'only irregular silences the resolver');
+      expect(find.text('Your next period is estimated around: August 2, 2026'),
+          findsOneWidget);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('caregiver mode rewords the awaiting copy', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.caregiver,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kPausedStarts),
+      );
+      expect(find.text('Awaiting next period'), findsOneWidget);
+      expect(
+        find.textContaining('until a period is logged for this profile'),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('overview-awaiting')),
+          matching: find.text(kDisclaimer),
+        ),
+        findsWidgets,
+        reason: 'the awaiting card carries it, and the resolver the paused '
+            'state still shows carries its own copy',
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('irregular mode silences the late resolver and rewords the '
+        'overview status (roadmap U6 test scenario)', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.irregular,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kLateStarts),
+      );
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
+          reason: 'irregular silences the late banner (#131)');
+      expect(find.text('Log it'), findsNothing);
+      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
+          findsOneWidget);
+      expect(find.textContaining('variation like this is common'),
+          findsOneWidget);
+      expect(find.text('Next period may start around: August 2, 2026'),
+          findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('overview-active')),
+          matching: find.text(kDisclaimer),
+        ),
+        findsOneWidget,
+        reason: 'silencing the banner never silences the disclaimer',
+      );
+      expectNoFertilityVocabulary(tester, 'irregular late');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('irregular mode silences the resolver in the paused state '
+        'too, keeping the disclaimer', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.irregular,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kPausedStarts),
+      );
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
+      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
+          findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('overview-awaiting')),
+          matching: find.text(kDisclaimer),
+        ),
+        findsOneWidget,
+      );
       await disposeOverview(tester, h);
     });
   });

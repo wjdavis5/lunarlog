@@ -121,6 +121,7 @@ class ProfilePickerScreen extends StatelessWidget {
     await controller.createProfile(
       displayName: result.displayName,
       isMinor: result.isMinor,
+      mode: result.mode,
       birthYear: result.birthYear,
       relationship: result.relationship,
     );
@@ -160,6 +161,7 @@ class ProfilePickerScreen extends StatelessWidget {
         profile,
         displayName: result.displayName,
         isMinor: result.isMinor,
+        mode: result.mode,
         birthYear: result.birthYear,
         relationship: result.relationship,
       );

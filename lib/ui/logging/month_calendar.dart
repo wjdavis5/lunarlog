@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
@@ -146,6 +147,7 @@ class MonthCalendar extends StatefulWidget {
     super.key,
     required this.profileId,
     this.readOnly = false,
+    this.mode = ProfileMode.standard,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
     this.guardiansRepository,
@@ -153,6 +155,10 @@ class MonthCalendar extends StatefulWidget {
 
   final String profileId;
   final bool readOnly;
+
+  /// The profile's care mode (Issue #131): forwarded to [DaySheet] for its
+  /// category headings and surfacing order. Presentation only.
+  final ProfileMode mode;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -305,6 +311,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         date: date,
         existing: entry,
         today: widget.todayProvider(),
+        mode: widget.mode,
         readOnly: _effectiveReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,

@@ -150,10 +150,13 @@ class LunarLogStorage {
   /// `toDb()` string, not validated here (the domain enum's closed set and
   /// the server's check constraint are the enforcement points). Neither is
   /// device-local bookkeeping: both sync like any other profile column.
+  /// [mode] (Issue #131) is the raw `toDb()` care-mode string, same
+  /// treatment: presentation-only, synced like any other profile column.
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
     required bool isMinor,
+    String mode = 'standard',
     int sortOrder = 0,
     DateTime? archivedAt,
     DateTime? createdAt,
@@ -181,6 +184,7 @@ class LunarLogStorage {
               updatedAt: now,
               dirty: const Value(true),
               localRev: const Value(1),
+              mode: Value(mode),
               birthYear: Value(birthYear),
               relationship: Value(relationship),
             ));
@@ -197,6 +201,7 @@ class LunarLogStorage {
           deletedAt: const Value(null),
           dirty: const Value(true),
           localRev: Value(existing.localRev + 1),
+          mode: Value(mode),
           birthYear: Value(birthYear),
           relationship: Value(relationship),
         ),
@@ -661,6 +666,7 @@ class LunarLogStorage {
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
             localRev: const Value(0),
+            mode: Value(remote.mode),
             birthYear: Value(remote.birthYear),
             relationship: Value(remote.relationship),
             transferredAt: Value(remote.transferredAt?.toUtc()),
@@ -677,6 +683,7 @@ class LunarLogStorage {
         updatedAt: Value(updatedAt),
         deletedAt: Value(deletedAt),
         dirty: const Value(false),
+        mode: Value(remote.mode),
         birthYear: Value(remote.birthYear),
         relationship: Value(remote.relationship),
         transferredAt: Value(remote.transferredAt?.toUtc()),

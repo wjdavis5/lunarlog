@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -57,6 +58,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   bool _accountPending = false;
   bool _webAckPending = false;
   bool _isMinor = false;
+
+  /// Care mode for the profile being created (Issue #131): selectable at
+  /// creation, changeable later from the profile's edit dialog.
+  ProfileMode _mode = ProfileMode.standard;
 
   /// Set after a successful sign-in on the account step: the restoring
   /// step holds until the snapshot has passed through `restoring`.
@@ -178,6 +183,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     await controller.createProfile(
       displayName: _nameController.text,
       isMinor: _isMinor,
+      mode: _mode,
     );
   }
 
@@ -257,6 +263,38 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
                 title: const Text('This profile is for a minor'),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Care mode',
+                    key: const ValueKey('care-mode-label'),
+                    style: Theme.of(context).textTheme.bodySmall),
+              ),
+              DropdownButton<ProfileMode>(
+                key: const ValueKey('care-mode-dropdown'),
+                value: _mode,
+                isExpanded: true,
+                onChanged: (value) =>
+                    setState(() => _mode = value ?? ProfileMode.standard),
+                items: [
+                  for (final mode in ProfileMode.values)
+                    DropdownMenuItem<ProfileMode>(
+                      value: mode,
+                      child: Text(mode.label),
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _mode.hint,
+                  key: const ValueKey('care-mode-hint'),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.outline),
+                ),
               ),
               const SizedBox(height: 16),
               FilledButton(

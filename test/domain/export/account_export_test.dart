@@ -10,11 +10,13 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 
 Profile _profile(
   String id, {
   String displayName = 'Riley',
   bool isMinor = true,
+  ProfileMode mode = ProfileMode.standard,
   int sortOrder = 0,
   DateTime? archivedAt,
 }) =>
@@ -22,6 +24,7 @@ Profile _profile(
       id: id,
       displayName: displayName,
       isMinor: isMinor,
+      mode: mode,
       sortOrder: sortOrder,
       archivedAt: archivedAt,
       createdAt: DateTime.utc(2026, 1, 1),
@@ -253,6 +256,27 @@ void main() {
 
       expect(doc['exportedAt'], fixedExportedAt.toIso8601String());
       expect(doc['exportedAt'], endsWith('Z'));
+    });
+  });
+
+  group('care mode (Issue #131)', () {
+    test('each exported profile carries its mode, and the schema version '
+        'was bumped for the new key', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile('p-1'),
+          _profile('p-2', mode: ProfileMode.teen),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      expect(kAccountExportSchemaVersion, 2,
+          reason: 'adding profiles[].mode is a shape change');
+      final profiles = doc['profiles'] as List;
+      expect((profiles[0] as Map)['mode'], 'standard');
+      expect((profiles[1] as Map)['mode'], 'teen');
     });
   });
 }
