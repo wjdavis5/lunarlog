@@ -1,4 +1,4 @@
--- Migration: 20260908120000_revoke_anon_execute_guardian_feedback_functions.sql
+-- Migration: 20260908121000_revoke_anon_execute_guardian_feedback_functions.sql
 -- Issue #158 (P1): four SECURITY DEFINER functions were granted EXECUTE to
 -- authenticated in 20260904010000_multi_guardian_schema.sql (lines 394-395)
 -- and 20260906130000_feedback_tickets.sql (line 181) without the matching
