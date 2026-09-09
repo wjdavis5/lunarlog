@@ -109,6 +109,7 @@ class AccountImporter {
       flow: flowFromDomain(plan.flow),
       tags: plan.tags,
       note: plan.note,
+      pms: plan.pms,
       source: plan.source,
       sourceId: plan.sourceId,
       importId: plan.importId,

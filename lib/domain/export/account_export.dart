@@ -61,7 +61,10 @@ import 'account_export_remote_source.dart';
 /// `profiles[].careNotes` and `profiles[].visitPrepItems` (Issue #128): a
 /// reader of an old (v5) export still knows the absence of the key means
 /// "not yet collected," not "this profile has none" (the v3 precedent).
-const int kAccountExportSchemaVersion = 6;
+/// v7 adds `dayEntries[].pms` (Issue #220): the first-class PMS marker. A
+/// reader of an old (v6) export treats the key's absence as "false" (the
+/// marker simply did not exist yet), the same default the importer uses.
+const int kAccountExportSchemaVersion = 7;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -159,6 +162,8 @@ Map<String, Object?> _exportDayEntry(DayEntry entry) => {
       'flow': entry.flow.toDb(),
       'tags': entry.tags,
       'note': entry.note,
+      // Issue #220 (kAccountExportSchemaVersion v7).
+      'pms': entry.pms,
       // Issue #159 (kAccountExportSchemaVersion v4).
       'source': entry.source.toDb(),
       'sourceId': entry.sourceId,

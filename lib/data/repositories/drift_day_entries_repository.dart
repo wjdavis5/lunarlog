@@ -31,6 +31,7 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
       flow: flowFromDomain(entry.flow),
       tags: entry.tags,
       note: entry.note,
+      pms: entry.pms,
       // Issue #159: round-trips whatever provenance [entry] already
       // carries (defaults to manual/null/null for an ordinary UI edit).
       source: entry.source.toDb(),

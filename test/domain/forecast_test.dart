@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/fertile_window.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
+import 'package:lunarlog/domain/prediction/pms.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 /// Steady 30-day cycles with 4-day bleeds, the open cycle starting
@@ -341,22 +342,47 @@ void main() {
       expect(cell.cycleIndex, 1);
     });
 
-    test('PMS badges cover estimate − 7 … − 1; cramps − 2 … + 2', () {
+    test('PMS badges are data-driven: they cover the PmsEstimate band, '
+        'clamped to after today (Issue #220)', () {
       final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 1);
-      final cells = forecastDayCells(cycles: cycles, today: _d(2026, 8, 30));
-      final estimate = _d(2026, 9, 4);
-      // Today is Aug 30, so the window's Aug 28-30 days are clamped away
-      // (past stays factual); Aug 31 through Sep 3 carry the badge.
-      for (final day in [
-        _d(2026, 8, 31),
-        _d(2026, 9, 1),
-        _d(2026, 9, 2),
-        _d(2026, 9, 3),
-      ]) {
+      // Issue #220: the band comes from the 6-cycle averages
+      // (computePmsEstimate), not a fixed lead. Onset 5 / length 3 off the
+      // 2026-09-04 estimate puts the band on Aug 30 … Sep 1; today is
+      // Aug 30, so that first day is clamped away (past stays factual).
+      final pms = PmsEstimate(
+        meanOnsetDaysBeforeNextPeriod: 5,
+        meanLengthDays: 3,
+        usableIntervalCount: 4,
+        tier: CycleConfidence.high,
+        predictedStart: _d(2026, 8, 30),
+        predictedEnd: _d(2026, 9, 1),
+      );
+      final cells = forecastDayCells(
+        cycles: cycles,
+        today: _d(2026, 8, 30),
+        pms: pms,
+      );
+      for (final day in [_d(2026, 8, 31), _d(2026, 9, 1)]) {
         expect(cells[day.iso]!.pmsBadge, isTrue, reason: day.iso);
       }
       for (final day in [_d(2026, 8, 28), _d(2026, 8, 29), _d(2026, 8, 30)]) {
         expect(cells[day.iso], isNull, reason: '${day.iso} is not after today');
+      }
+      // Days outside the band carry no badge, even where the old fixed
+      // 7-day lead window used to reach (Sep 2–3).
+      for (final day in [_d(2026, 9, 2), _d(2026, 9, 3)]) {
+        expect(cells[day.iso]?.pmsBadge ?? false, isFalse, reason: day.iso);
+      }
+    });
+
+    test('below the PMS hard minimum (no PmsEstimate) no PMS badge renders '
+        'anywhere; cramps keep their fixed window', () {
+      final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 1);
+      final estimate = _d(2026, 9, 4);
+      final cells = forecastDayCells(cycles: cycles, today: _d(2026, 8, 30));
+      for (final cell in cells.values) {
+        expect(cell.pmsBadge, isFalse,
+            reason: 'Issue #220: no band without the logged-interval minimum');
       }
       for (var i = -2; i <= 2; i++) {
         expect(

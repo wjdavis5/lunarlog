@@ -1124,6 +1124,19 @@ class $DayEntriesTable extends DayEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pmsMeta = const VerificationMeta('pms');
+  @override
+  late final GeneratedColumn<bool> pms = GeneratedColumn<bool>(
+    'pms',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("pms" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -1234,6 +1247,7 @@ class $DayEntriesTable extends DayEntries
     flow,
     tags,
     note,
+    pms,
     updatedAt,
     deletedAt,
     dirty,
@@ -1286,6 +1300,12 @@ class $DayEntriesTable extends DayEntries
       context.handle(
         _noteMeta,
         note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('pms')) {
+      context.handle(
+        _pmsMeta,
+        pms.isAcceptableOrUnknown(data['pms']!, _pmsMeta),
       );
     }
     if (data.containsKey('updated_at')) {
@@ -1391,6 +1411,10 @@ class $DayEntriesTable extends DayEntries
         DriftSqlType.string,
         data['${effectivePrefix}note'],
       ),
+      pms: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}pms'],
+      )!,
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -1456,6 +1480,17 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
   /// JSON array of tag codes.
   final List<String> tags;
   final String? note;
+
+  /// First-class PMS marker (Issue #220): the day was premenstrual,
+  /// deliberately distinct from the tag taxonomy (a day can be PMS without
+  /// also being tagged for every symptom present). Cleared on a tombstone
+  /// like every other payload column (the server's
+  /// `day_entries_tombstone_pms_check` is the structural backstop); the
+  /// `sync_push` update path applies a `v_row ? 'pms'` containment guard so
+  /// an old client's payload that omits the key entirely never clears an
+  /// already-stored marker. Logged PMS days feed the 6-cycle PMS averages
+  /// and the predicted PMS band (`lib/domain/prediction/pms.dart`).
+  final bool pms;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
@@ -1494,6 +1529,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     required this.flow,
     required this.tags,
     this.note,
+    required this.pms,
     required this.updatedAt,
     this.deletedAt,
     required this.dirty,
@@ -1524,6 +1560,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
+    map['pms'] = Variable<bool>(pms);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
@@ -1555,6 +1592,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       flow: Value(flow),
       tags: Value(tags),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      pms: Value(pms),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1590,6 +1628,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       flow: serializer.fromJson<FlowLevel>(json['flow']),
       tags: serializer.fromJson<List<String>>(json['tags']),
       note: serializer.fromJson<String?>(json['note']),
+      pms: serializer.fromJson<bool>(json['pms']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       dirty: serializer.fromJson<bool>(json['dirty']),
@@ -1614,6 +1653,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       'flow': serializer.toJson<FlowLevel>(flow),
       'tags': serializer.toJson<List<String>>(tags),
       'note': serializer.toJson<String?>(note),
+      'pms': serializer.toJson<bool>(pms),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'dirty': serializer.toJson<bool>(dirty),
@@ -1634,6 +1674,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     FlowLevel? flow,
     List<String>? tags,
     Value<String?> note = const Value.absent(),
+    bool? pms,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
     bool? dirty,
@@ -1651,6 +1692,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     flow: flow ?? this.flow,
     tags: tags ?? this.tags,
     note: note.present ? note.value : this.note,
+    pms: pms ?? this.pms,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     dirty: dirty ?? this.dirty,
@@ -1674,6 +1716,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       flow: data.flow.present ? data.flow.value : this.flow,
       tags: data.tags.present ? data.tags.value : this.tags,
       note: data.note.present ? data.note.value : this.note,
+      pms: data.pms.present ? data.pms.value : this.pms,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       dirty: data.dirty.present ? data.dirty.value : this.dirty,
@@ -1700,6 +1743,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           ..write('flow: $flow, ')
           ..write('tags: $tags, ')
           ..write('note: $note, ')
+          ..write('pms: $pms, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
@@ -1722,6 +1766,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     flow,
     tags,
     note,
+    pms,
     updatedAt,
     deletedAt,
     dirty,
@@ -1743,6 +1788,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           other.flow == this.flow &&
           other.tags == this.tags &&
           other.note == this.note &&
+          other.pms == this.pms &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.dirty == this.dirty &&
@@ -1762,6 +1808,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
   final Value<FlowLevel> flow;
   final Value<List<String>> tags;
   final Value<String?> note;
+  final Value<bool> pms;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<bool> dirty;
@@ -1780,6 +1827,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.flow = const Value.absent(),
     this.tags = const Value.absent(),
     this.note = const Value.absent(),
+    this.pms = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
@@ -1799,6 +1847,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     required FlowLevel flow,
     this.tags = const Value.absent(),
     this.note = const Value.absent(),
+    this.pms = const Value.absent(),
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
@@ -1823,6 +1872,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Expression<String>? flow,
     Expression<String>? tags,
     Expression<String>? note,
+    Expression<bool>? pms,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<bool>? dirty,
@@ -1842,6 +1892,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       if (flow != null) 'flow': flow,
       if (tags != null) 'tags': tags,
       if (note != null) 'note': note,
+      if (pms != null) 'pms': pms,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (dirty != null) 'dirty': dirty,
@@ -1864,6 +1915,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Value<FlowLevel>? flow,
     Value<List<String>>? tags,
     Value<String?>? note,
+    Value<bool>? pms,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<bool>? dirty,
@@ -1883,6 +1935,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       flow: flow ?? this.flow,
       tags: tags ?? this.tags,
       note: note ?? this.note,
+      pms: pms ?? this.pms,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       dirty: dirty ?? this.dirty,
@@ -1923,6 +1976,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     }
     if (note.present) {
       map['note'] = Variable<String>(note.value);
+    }
+    if (pms.present) {
+      map['pms'] = Variable<bool>(pms.value);
     }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
@@ -1969,6 +2025,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
           ..write('flow: $flow, ')
           ..write('tags: $tags, ')
           ..write('note: $note, ')
+          ..write('pms: $pms, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
@@ -8830,6 +8887,7 @@ typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
   required FlowLevel flow,
   Value<List<String>> tags,
   Value<String?> note,
+  Value<bool> pms,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
@@ -8849,6 +8907,7 @@ typedef $$DayEntriesTableUpdateCompanionBuilder = DayEntriesCompanion Function({
   Value<FlowLevel> flow,
   Value<List<String>> tags,
   Value<String?> note,
+  Value<bool> pms,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
@@ -8940,6 +8999,11 @@ class $$DayEntriesTableFilterComposer
 
   ColumnFilters<String> get note => $composableBuilder(
     column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get pms => $composableBuilder(
+    column: $table.pms,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9076,6 +9140,11 @@ class $$DayEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get pms => $composableBuilder(
+    column: $table.pms,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -9171,6 +9240,9 @@ class $$DayEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<bool> get pms =>
+      $composableBuilder(column: $table.pms, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -9287,6 +9359,7 @@ class $$DayEntriesTableTableManager
                 Value<FlowLevel> flow = const Value.absent(),
                 Value<List<String>> tags = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<bool> pms = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
@@ -9305,6 +9378,7 @@ class $$DayEntriesTableTableManager
                 flow: flow,
                 tags: tags,
                 note: note,
+                pms: pms,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 dirty: dirty,
@@ -9325,6 +9399,7 @@ class $$DayEntriesTableTableManager
                 required FlowLevel flow,
                 Value<List<String>> tags = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<bool> pms = const Value.absent(),
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
@@ -9343,6 +9418,7 @@ class $$DayEntriesTableTableManager
                 flow: flow,
                 tags: tags,
                 note: note,
+                pms: pms,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 dirty: dirty,

@@ -119,8 +119,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 11 — `care_notes` + `visit_prep_items` tables (Issue #128, shared
   ///   care notes and the visit-prep checklist) with their two pull
   ///   cursors on `sync_state` and a `profile_id` index on each.
+  /// * 12 — `pms` on `day_entries` (Issue #220, the first-class PMS
+  ///   marker that feeds the 6-cycle PMS averages and the predicted PMS
+  ///   band).
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -162,6 +165,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// Issue #128 adds `care_notes`, `visit_prep_items`,
   /// `sync_state.cursor_care_notes`, `sync_state.cursor_visit_prep_items`,
   /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
+  /// Issue #220 adds `day_entries.pms`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -289,6 +293,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // Issue #218's v10 step and issue #128's v11 step, same shape.
     await _upgradeToV10(m, from);
     await _upgradeToV11(m, from);
+    // Issue #220's v12 step, same shape again.
+    await _upgradeToV12(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -381,6 +387,19 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await migrationStepHook?.call('care_notes.profile_id_index');
       await customStatement(kVisitPrepItemsProfileIndexSql);
       await migrationStepHook?.call('visit_prep_items.profile_id_index');
+    });
+  }
+
+  /// The v12 upgrade step (Issue #220): the first-class `pms` marker on
+  /// `day_entries`. `day_entries` has existed since v1 on every real
+  /// device, so the addColumn is always safe regardless of `from`; the
+  /// column's own default (`false`) back-fills every already-stored row,
+  /// exactly like the server migration's `add column ... default false`.
+  Future<void> _upgradeToV12(Migrator m, int from) async {
+    if (from >= 12) return;
+    await transaction(() async {
+      await m.addColumn(dayEntries, dayEntries.pms);
+      await migrationStepHook?.call('day_entries.pms');
     });
   }
 

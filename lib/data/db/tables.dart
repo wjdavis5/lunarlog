@@ -179,6 +179,17 @@ class DayEntries extends Table {
 
   TextColumn get note => text().nullable()();
 
+  /// First-class PMS marker (Issue #220): the day was premenstrual,
+  /// deliberately distinct from the tag taxonomy (a day can be PMS without
+  /// also being tagged for every symptom present). Cleared on a tombstone
+  /// like every other payload column (the server's
+  /// `day_entries_tombstone_pms_check` is the structural backstop); the
+  /// `sync_push` update path applies a `v_row ? 'pms'` containment guard so
+  /// an old client's payload that omits the key entirely never clears an
+  /// already-stored marker. Logged PMS days feed the 6-cycle PMS averages
+  /// and the predicted PMS band (`lib/domain/prediction/pms.dart`).
+  BoolColumn get pms => boolean().withDefault(const Constant(false))();
+
   DateTimeColumn get updatedAt => dateTime().named('updated_at')();
 
   DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();

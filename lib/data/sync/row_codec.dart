@@ -224,6 +224,10 @@ JsonRow encodeDayEntry(DayEntry row) {
     'flow': row.flow.toDb(),
     'tags': List<String>.of(row.tags),
     'note': row.note,
+    // Issue #220: the first-class PMS marker rides the payload like any
+    // other day-level field; the server's sync_push update path guards it
+    // with `v_row ? 'pms'`, so always emitting the key is safe.
+    'pms': row.pms,
     'source': row.source,
     'source_id': row.sourceId,
     'import_id': row.importId,
@@ -440,6 +444,10 @@ RemoteDayEntryRow decodeDayEntry(JsonRow json) {
     flow: r.flow('flow'),
     tags: r.tags('tags'),
     note: r.stringOrNull('note'),
+    // Issue #220: absent key (an old peer, a pre-#220 server row) decodes
+    // to `false` rather than failing the pull — the marker is optional
+    // day-level content, not an identity field.
+    pms: json['pms'] == null ? false : r.boolean('pms'),
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),
     serverVersion: r.integerOr('server_version', 0),

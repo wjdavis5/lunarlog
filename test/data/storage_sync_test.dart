@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry;
 
 class FixedClock {
   FixedClock(this.now);
@@ -111,6 +112,7 @@ void main() {
     FlowLevel flow = FlowLevel.medium,
     List<String> tags = const ['remote'],
     String? note = 'from remote',
+    bool pms = false,
     required DateTime updatedAt,
     DateTime? deletedAt,
   }) =>
@@ -122,6 +124,7 @@ void main() {
         flow: flow,
         tags: tags,
         note: note,
+        pms: pms,
         updatedAt: updatedAt,
         deletedAt: deletedAt,
       );
@@ -588,6 +591,50 @@ void main() {
         throwsA(isA<RetryableSyncApplyError>()),
       );
       expect(await storage.isEmpty(), isTrue);
+    });
+  });
+
+  group('first-class PMS marker (Issue #220)', () {
+    test('a remote PMS day applies with its marker; a remote tombstone '
+        'clears it; a local push carries the marker in the encoded payload',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final at = DateTime.utc(2026, 2, 1, 9);
+
+      // Remote apply: the marker lands.
+      expect(
+          await storage.applyRemoteDayEntry(remoteEntry('01JREMOTEPMS0000000000000X',
+              profileId: p.id, updatedAt: at, pms: true)),
+          isTrue);
+      var row = await entryById(p.id, '01JREMOTEPMS0000000000000X');
+      expect(row.pms, isTrue);
+
+      // Remote tombstone: the marker clears with the payload.
+      expect(
+          await storage.applyRemoteDayEntry(remoteEntry('01JREMOTEPMS0000000000000X',
+              profileId: p.id,
+              updatedAt: at.add(const Duration(minutes: 1)),
+              pms: true,
+              deletedAt: at.add(const Duration(minutes: 1)))),
+          isTrue);
+      row = await entryById(p.id, '01JREMOTEPMS0000000000000X');
+      expect(row.deletedAt, isNotNull);
+      expect(row.pms, isFalse);
+
+      // Local write: the marker is stored, marked dirty, and the dirty
+      // payload the engine pushes encodes pms.
+      final local = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-02-02',
+          tz: 'UTC',
+          flow: FlowLevel.none,
+          pms: true);
+      expect(local.pms, isTrue);
+      expect(local.dirty, isTrue);
+      final dirty = await storage.readDirtyDayEntries();
+      final json = encodeDayEntry(
+          dirty.firstWhere((e) => e.localDate == '2026-02-02'));
+      expect(json['pms'], true);
     });
   });
 

@@ -163,7 +163,6 @@ void main() {
         'Symptom day',
         'Today',
         'Predicted day',
-        'PMS window',
         'Cramps window',
         'Symptom layer dots',
       ]) {
@@ -173,6 +172,12 @@ void main() {
       // `notBleeding`, which is never a bleed marker) and the ramp has no
       // dedicated slot for it, so the legend no longer carries a
       // "Spotting flow" entry.
+      // Issue #220: this harness pumps no prediction service, so no band
+      // can exist here at all - the legend must not advertise the PMS
+      // swatch when the grid can never show the badge (the positive case
+      // lives in forecast_calendar_test.dart's band test, which runs the
+      // full provider stack).
+      expect(find.text('PMS window'), findsNothing);
       expect(find.text('Spotting flow'), findsNothing);
       await disposeCalendar(tester, h);
     });

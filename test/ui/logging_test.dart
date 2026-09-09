@@ -712,7 +712,8 @@ void main() {
 
       // Issue #247: the curated 17 tag chips plus the standalone spotting
       // toggle, which is also a FilterChip (see `_editableBody`).
-      expect(find.byType(FilterChip), findsNWidgets(18));
+      // Issue #220: plus the standalone first-class PMS toggle.
+      expect(find.byType(FilterChip), findsNWidgets(19));
       for (final header in ['Pain', 'Body', 'Mood', 'Other']) {
         expect(find.text(header), findsOneWidget);
       }
@@ -2159,9 +2160,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // All 17 curated chips render — nothing is removed by the mode —
-      // plus the standalone spotting toggle (Issue #247), also a
-      // FilterChip.
-      expect(find.byType(FilterChip), findsNWidgets(18));
+      // plus the standalone spotting toggle (Issue #247) and the
+      // standalone PMS toggle (Issue #220), also FilterChips.
+      expect(find.byType(FilterChip), findsNWidgets(19));
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget,
             reason: 'teen mode must not hide ${tag.display}');
@@ -2258,6 +2259,83 @@ void main() {
             reason: 'operator stays editable in ${mode.name} mode');
         await disposeLogging(tester, editable);
       }
+    });
+  });
+
+  group('first-class PMS toggle (Issue #220)', () {
+    testWidgets('toggling PMS on an otherwise-empty day autosaves the '
+        'marker, and reopening shows it selected', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DaySheet), findsOneWidget);
+
+      // A PMS-only day: no flow chip chosen at all.
+      await tester.tap(find.byKey(const ValueKey('pms-chip')));
+      await pumpAutosave(tester);
+      // Drain the transient saved-indicator timer before tearing down.
+      await tester.pump(kDaySheetSavedIndicatorDuration);
+      await tester.pumpAndSettle();
+      await dismissDaySheet(tester);
+      expect(find.byType(DaySheet), findsNothing);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved, isNotNull);
+      expect(saved!.pms, isTrue);
+      expect(saved.flow, FlowLevel.none,
+          reason: 'PMS rides the entry itself, never the flow level');
+      expect(saved.tags, isEmpty,
+          reason: 'the marker is deliberately not a taxonomy tag');
+
+      // Reopening the day loads the marker as selected.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilterChip>(find.byKey(const ValueKey('pms-chip')))
+            .selected,
+        isTrue,
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('untoggling PMS clears the marker on the next autosave',
+        (tester) async {
+      // Seeded before the tree pumps, so the calendar's first entries
+      // emission already carries the marker and the sheet opens with it
+      // as [DaySheet.existing].
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await db.storage.upsertDayEntry(
+            profileId: profileId,
+            localDate: kToday.iso,
+            tz: 'UTC',
+            flow: flowFromDomain(FlowLevel.none),
+            pms: true,
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilterChip>(find.byKey(const ValueKey('pms-chip')))
+            .selected,
+        isTrue,
+        reason: 'the toggle loads from the stored entry',
+      );
+      await tester.tap(find.byKey(const ValueKey('pms-chip')));
+      await pumpAutosave(tester);
+      await tester.pump(kDaySheetSavedIndicatorDuration);
+      await tester.pumpAndSettle();
+      await dismissDaySheet(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved!.pms, isFalse);
+      await disposeLogging(tester, h);
     });
   });
 

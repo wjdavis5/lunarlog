@@ -353,6 +353,78 @@ void main() {
       await disposeOverview(tester, h);
     });
 
+    testWidgets('predicted PMS band (Issue #220): renders range, averages, '
+        'tier, and disclaimer once three PMS intervals are logged; absent '
+        'below the hard minimum', (tester) async {
+      Future<void> seedPms(
+        DriftDayEntriesRepository entries,
+        String profileId,
+      ) async {
+        // The 3 days before each of Jun 6 / Jul 6 / Aug 5 - three usable
+        // PMS intervals (onset 3, length 3), the hard minimum. Band:
+        // Sep 1..Sep 3 before the Sep 4 estimate.
+        for (final start in [
+          LocalDate(2026, 6, 6),
+          LocalDate(2026, 7, 6),
+          LocalDate(2026, 8, 5),
+        ]) {
+          for (var i = 1; i <= 3; i++) {
+            await entries.save(DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: start.addDays(-i),
+              tz: 'America/Chicago',
+              flow: FlowLevel.none,
+              pms: true,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ));
+          }
+        }
+      }
+
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await seedPms(entries, profileId);
+        },
+      );
+
+      expect(find.byKey(const ValueKey('overview-pms-band')), findsOneWidget);
+      // The range joins with an en dash (see _pmsSection's formatter).
+      expect(find.textContaining('Predicted PMS: September 1, 2026'),
+          findsOneWidget);
+      expect(find.textContaining('September 3, 2026'), findsOneWidget);
+      expect(find.text('usually starts about 3 days before your period and '
+          'lasts about 3 days'), findsOneWidget);
+      // Same tier vocabulary as the period estimate - never a second one.
+      expect(find.byKey(const ValueKey('overview-pms-tier')), findsOneWidget);
+      // R17: the disclaimer sits next to this estimate too.
+      expect(
+          find.byKey(const ValueKey('overview-pms-disclaimer')), findsOneWidget);
+      expect(find.text(kEstimateDisclaimer), findsWidgets);
+      await disposeOverview(tester, h);
+
+      // Below the hard minimum: two logged intervals produce no PMS
+      // section at all (no band, no averages shown as confident).
+      final h2 = await pumpOverview(
+        tester,
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await seedPms(entries, profileId);
+          // Remove the third interval's days.
+          for (var i = 1; i <= 3; i++) {
+            await entries.delete(
+                profileId, LocalDate(2026, 6, 6).addDays(-i));
+          }
+        },
+      );
+      expect(find.byKey(const ValueKey('overview-pms-band')), findsNothing);
+      expect(find.byKey(const ValueKey('overview-pms-disclaimer')),
+          findsNothing);
+      await disposeOverview(tester, h2);
+    });
+
     testWidgets('every estimate block carries the R17 disclaimer',
         (tester) async {
       final h = await pumpOverview(

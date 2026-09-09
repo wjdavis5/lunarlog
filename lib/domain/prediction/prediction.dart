@@ -54,6 +54,7 @@ import 'dart:math' show sqrt;
 import '../episodes/episodes.dart';
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
+import 'pms.dart';
 
 /// A cycle length outside [kMinCycleDays, kMaxCycleDays] is excluded from
 /// the average but kept in history.
@@ -316,6 +317,7 @@ class ActivePrediction extends CyclePrediction {
     this.tier = CycleConfidence.learning,
     this.forecast = const [],
     this.unusuallyLongCycle = false,
+    this.pms,
   });
 
   final LocalDate today;
@@ -394,6 +396,16 @@ class ActivePrediction extends CyclePrediction {
   /// cycle is unusually long" prompt (exclude this cycle / turn off
   /// predictions) alongside it.
   final bool unusuallyLongCycle;
+
+  /// The predicted PMS phase (Issue #220): averages over the logged
+  /// first-class PMS marker plus the concrete band before
+  /// [estimatedNextStart], carrying this estimate's own [tier]. Null when
+  /// the profile has fewer than `kMinPmsIntervalsForPrediction` usable
+  /// logged PMS intervals — consumers render nothing at all in that case
+  /// (no band, no averages), never a noisy partial phase. Also null on the
+  /// seeded/provisional path: an onboarding answer never invents PMS
+  /// history the operator did not log.
+  final PmsEstimate? pms;
 
   /// Whole civil days from today to [estimatedNextStart] (negative when
   /// past). Once late, [estimatedNextStart] is the rolled date, so this
@@ -483,6 +495,7 @@ CyclePrediction computePrediction({
   required List<Episode> episodes,
   required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
+  Set<LocalDate> pmsDates = const {},
 }) {
   final sorted = [...episodes]..sort();
   if (sorted.isEmpty) {
@@ -540,6 +553,17 @@ CyclePrediction computePrediction({
     baseTier: tier,
     baseSpreadDays: spreadAndTier.spreadDays,
   );
+  // Issue #220: the PMS estimate derives from the same episodes and the
+  // logged PMS-marker dates, anchors before the same live first-cycle
+  // start the forecast above uses, and carries this estimate's own tier.
+  // Null (rendered as nothing anywhere) below the 3-interval hard
+  // minimum — `computePmsEstimate` owns that gate.
+  final pms = computePmsEstimate(
+    episodes: sorted,
+    pmsDates: pmsDates,
+    nextPredictedStart: forecast.first.start,
+    tier: tier,
+  );
 
   return ActivePrediction(
     today: today,
@@ -557,6 +581,7 @@ CyclePrediction computePrediction({
     tier: tier,
     forecast: forecast,
     unusuallyLongCycle: unusuallyLongCycle,
+    pms: pms,
   );
 }
 
@@ -994,6 +1019,8 @@ CyclePrediction seedProvisionalPrediction({
 }
 
 /// Convenience: derives episodes from raw entries first, then predicts.
+/// The entries' PMS markers (Issue #220) join the derivation in the same
+/// pass — the PMS estimate rides [ActivePrediction.pms].
 CyclePrediction computePredictionFromEntries({
   required Iterable<DayEntry> entries,
   required LocalDate today,
@@ -1003,4 +1030,5 @@ CyclePrediction computePredictionFromEntries({
       episodes: deriveEpisodes(bleedDatesOf(entries)),
       today: today,
       omittedCycleStarts: omittedCycleStarts,
+      pmsDates: pmsDatesOf(entries),
     );

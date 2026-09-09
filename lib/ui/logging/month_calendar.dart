@@ -585,6 +585,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// scale-based default; once touched, the explicit choice always wins.
   bool? _legendExpanded;
 
+  /// Issue #220: whether the current prediction carries a PMS band at all
+  /// (at least `kMinPmsIntervalsForPrediction` logged PMS intervals). Set
+  /// during [_calendar]'s build pass, read by [_legendEntries] further
+  /// down the same pass — the "PMS window" legend entry only renders while
+  /// the band it keys can actually appear on the grid.
+  bool _pmsBandActive = false;
+
   /// Swipe navigation (issue #191): one page per month, indexed by
   /// [_pageIndexFor]/[_monthForPageIndex] against a fixed epoch offset so
   /// page indices never go negative for any real calendar year.
@@ -1030,7 +1037,17 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final cycles = estimateActive
         ? deriveForecast(prediction: prediction, history: history, today: today)
         : const <ForecastCycle>[];
-    final forecastByIso = forecastDayCells(cycles: cycles, today: today);
+    // Issue #220: the PMS band is data-driven — the estimate's own
+    // 6-cycle averages anchored before the next predicted start, or null
+    // (no PMS badge anywhere) below the 3-logged-interval minimum.
+    final pmsEstimate = estimateActive ? prediction.pms : null;
+    // Latched for the legend strip further down this same build pass
+    // (field assignment, not setState — both read it in the same frame):
+    // the "PMS window" legend entry only renders while a band actually
+    // exists, mirroring the cells themselves.
+    _pmsBandActive = pmsEstimate != null;
+    final forecastByIso =
+        forecastDayCells(cycles: cycles, today: today, pms: pmsEstimate);
     // Review follow-up on issue #197: `entries` here is [_entries]'s
     // windowed list (±45 days around the displayed month), not the
     // profile's full history — the default layer selection now only
@@ -1272,7 +1289,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
       _LegendEntry('predicted', colors.predictedBorder, l10n.calendarLegendPredicted, style: _LegendSwatchStyle.hatched),
       if (_copy.showsFertileWindow)
         _LegendEntry('fertile', colors.fertileBorder, _copy.fertileWindowLegend, style: _LegendSwatchStyle.dashed),
-      _LegendEntry('pms', pmsBadgeColor(brightness), l10n.calendarLegendPms, style: _LegendSwatchStyle.icon, icon: Icons.spa),
+      // Issue #220: only while the prediction actually carries a PMS band
+      // (3+ logged PMS intervals) — below the hard minimum the grid never
+      // shows a PMS badge, so keying it here would advertise a swatch
+      // that can never appear.
+      if (_pmsBandActive)
+        _LegendEntry('pms', pmsBadgeColor(brightness), l10n.calendarLegendPms, style: _LegendSwatchStyle.icon, icon: Icons.spa),
       _LegendEntry('cramps', crampsBadgeColor(brightness), l10n.calendarLegendCramps, style: _LegendSwatchStyle.icon, icon: Icons.bolt),
     ];
     return Padding(

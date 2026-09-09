@@ -27,6 +27,7 @@ library;
 import '../models/local_date.dart';
 import 'cycle_history.dart';
 import 'fertile_window.dart';
+import 'pms.dart' show PmsEstimate;
 import 'prediction.dart' show ActivePrediction;
 
 /// The forward calendar navigates this many months past the current one
@@ -50,10 +51,15 @@ const int kForecastSpreadGrowthPerCycle = 1;
 /// only).
 const int kDefaultPredictedPeriodDays = 4;
 
-/// PMS badges cover estimate − [kPmsLeadDays] … estimate − 1 (roadmap
-/// KTD7), only while an estimate is active.
-const int kPmsLeadDays = 7;
-
+/// PMS badges (Issue #220) are data-driven, not fixed-offset: they cover
+/// the [PmsEstimate] band (`prediction.dart`'s 6-cycle onset/length
+/// averages, anchored before the next estimated period start) and only
+/// exist once at least `kMinPmsIntervalsForPrediction` PMS intervals have
+/// been logged — below that the calendar shows no PMS band at all rather
+/// than a noisy one. Before this issue they were a fixed
+/// `estimate − 7 … − 1` lead window with no logged history behind it;
+/// that constant (`kPmsLeadDays`) is gone.
+///
 /// Cramps badges cover estimate − [kCrampsLeadDays] … estimate +
 /// [kCrampsTrailDays] (roadmap KTD7), only while an estimate is active.
 const int kCrampsLeadDays = 2;
@@ -251,6 +257,12 @@ List<ForecastCycle> deriveForecast({
 /// factual); the widget additionally suppresses forecast rendering on any
 /// date that carries a logged entry.
 ///
+/// [pms] (Issue #220) is the profile's predicted PMS phase, or null when
+/// the profile is below the 3-logged-interval hard minimum — the PMS
+/// badge is only ever drawn inside a non-null estimate's band, so below
+/// the threshold no PMS badge exists anywhere (the issue's "no band
+/// rather than a noisy one").
+///
 /// Split into three helpers (issue #143 review, CI CRAP gate — this method
 /// alone scored complexity 12): [_markCycleDays] lays down each cycle's own
 /// band/numeral cells first, [_markLiveEstimateBadges] adds the PMS/cramps
@@ -260,13 +272,14 @@ List<ForecastCycle> deriveForecast({
 Map<String, ForecastDayCell> forecastDayCells({
   required List<ForecastCycle> cycles,
   required LocalDate today,
+  PmsEstimate? pms,
 }) {
   final cells = <String, ForecastDayCell>{};
   for (final cycle in cycles) {
     _markCycleDays(cells, cycle, today);
   }
   if (cycles.isEmpty) return cells;
-  _markLiveEstimateBadges(cells, cycles.first, today);
+  _markLiveEstimateBadges(cells, cycles.first, today, pms: pms);
   _markFertileWindows(cells, cycles, today);
   return cells;
 }
@@ -299,26 +312,35 @@ void _markCycleDays(
   }
 }
 
-/// The fixed-offset PMS/cramps badges (roadmap KTD7), only ever shown off
-/// the live (next) [estimateCycle] — unlike the fertile window below, they
-/// never repeat for later forecast cycles.
+/// The live-estimate badges (roadmap KTD7, Issue #220): cramps keep their
+/// fixed offset window off the live (next) [estimateCycle]; PMS is drawn
+/// only from a non-null [pms] estimate's own band — the 6-cycle onset/
+/// length averages anchored before this cycle's start — and never from a
+/// fixed lead. Both never repeat for later forecast cycles (unlike the
+/// fertile windows below).
 void _markLiveEstimateBadges(
   Map<String, ForecastDayCell> cells,
   ForecastCycle estimateCycle,
-  LocalDate today,
-) {
+  LocalDate today, {
+  PmsEstimate? pms,
+}) {
   final estimate = estimateCycle.start;
   final tier = estimateCycle.tier;
-  for (var i = kPmsLeadDays; i >= 1; i--) {
-    _markBadge(
-      cells,
-      estimate.addDays(-i),
-      today,
-      pms: true,
-      cramps: false,
-      tier: tier,
-      cycleIndex: 0,
-    );
+  final pmsEstimate = pms;
+  if (pmsEstimate != null) {
+    var date = pmsEstimate.predictedStart;
+    while (!date.isAfter(pmsEstimate.predictedEnd)) {
+      _markBadge(
+        cells,
+        date,
+        today,
+        pms: true,
+        cramps: false,
+        tier: tier,
+        cycleIndex: 0,
+      );
+      date = date.addDays(1);
+    }
   }
   for (var i = -kCrampsLeadDays; i <= kCrampsTrailDays; i++) {
     _markBadge(
