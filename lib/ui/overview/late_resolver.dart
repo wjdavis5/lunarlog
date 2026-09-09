@@ -3,7 +3,8 @@
 ///
 /// * **Log it** opens the day sheet for today (the panel passes the
 ///   callback; logging shifts the anchor and the whole prediction
-///   recomputes — this is also the way through the paused state, AC7).
+///   recomputes — this is also the way through the unusually-long-cycle
+///   state, issue #221/A2-12's replacement for the old dead-end pause).
 /// * **Skip this cycle** appends the open cycle's start to the device-local
 ///   omission list: the estimate advances one averaged cycle now, and the
 ///   skipped cycle's eventual length is excluded from the average.
@@ -41,9 +42,10 @@ class LateResolver extends StatefulWidget {
   final String profileId;
 
   /// The state that triggered the resolver: an [ActivePrediction] that is
-  /// late, or a [PausedAwaitingNextPeriod] (an open cycle past sixty days
-  /// still resolves through "log it" — issue AC).
-  final CyclePrediction prediction;
+  /// either [ActivePrediction.isLate] or [ActivePrediction.unusuallyLongCycle]
+  /// (an open cycle past sixty days still resolves through "log it" —
+  /// issue #132 AC / #221 A2-12).
+  final ActivePrediction prediction;
 
   final CycleExclusionList exclusions;
   final SettingsStore settings;
@@ -60,14 +62,8 @@ class LateResolver extends StatefulWidget {
 
 class _LateResolverState extends State<LateResolver> {
   /// The open cycle's start — the key "skip this cycle" appends to the
-  /// omission list. Only the two open-cycle states reach this widget.
-  LocalDate get _openCycleStart => switch (widget.prediction) {
-    ActivePrediction(:final lastEpisodeStart) => lastEpisodeStart,
-    PausedAwaitingNextPeriod(:final lastEpisodeStart) => lastEpisodeStart,
-    NotEnoughHistory() => throw StateError(
-      'LateResolver shown without an open cycle',
-    ),
-  };
+  /// omission list.
+  LocalDate get _openCycleStart => widget.prediction.lastEpisodeStart;
 
   @override
   Widget build(BuildContext context) {
@@ -116,13 +112,24 @@ class _LateResolverState extends State<LateResolver> {
     );
   }
 
+  /// Issue #221/A2-11: names the day count once it exists rather than the
+  /// old blanket "Period is late" — falls back to the pre-#221
+  /// [ActivePrediction.daysSinceLastEpisodeStart] wording for the rare edge
+  /// case where [ActivePrediction.unusuallyLongCycle] is set but
+  /// [ActivePrediction.daysLate] has not yet crossed [kLateGraceDays] (an
+  /// unusually long mean cycle length pushed the due date out far enough
+  /// that sixty open days alone has not yet cleared the grace window).
+  String get _lateLine {
+    final daysLate = widget.prediction.daysLate;
+    if (daysLate != null) {
+      return '$daysLate day${daysLate == 1 ? '' : 's'} late';
+    }
+    return 'No period logged for '
+        '${widget.prediction.daysSinceLastEpisodeStart} days';
+  }
+
   Widget _resolverCard(BuildContext context, ThemeData theme, bool wasSnoozed) {
-    final lateLine = switch (widget.prediction) {
-      ActivePrediction() => 'Period is late',
-      PausedAwaitingNextPeriod(:final daysSinceLastEpisodeStart) =>
-        'No period logged for $daysSinceLastEpisodeStart days',
-      _ => 'Period is overdue',
-    };
+    final lateLine = _lateLine;
     return Container(
       key: const ValueKey('late-resolver'),
       margin: const EdgeInsets.only(top: 12),

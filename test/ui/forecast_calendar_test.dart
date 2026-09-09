@@ -52,7 +52,8 @@ final List<LocalDate> kThinStarts = [
   LocalDate(2026, 7, 29),
 ];
 
-/// Four 30-day cycles ending 2026-06-26: open cycle 65 days → paused.
+/// Four 30-day cycles ending 2026-06-26: open cycle 65 days → unusually
+/// long (issue #221/A2-12: rolled forward, not paused).
 final List<LocalDate> kPausedStarts = [
   LocalDate(2026, 3, 28),
   LocalDate(2026, 4, 27),
@@ -597,17 +598,18 @@ void main() {
       await disposeForecast(tester, h);
     });
 
-    testWidgets('a paused prediction shows the paused strip wording', (
-      tester,
-    ) async {
+    testWidgets('a formerly-paused (>60-day open) profile shows bands, not '
+        'the keep-logging strip — issue #221/A2-12: predictions never go '
+        'silent', (tester) async {
       final h = await pumpForecast(
         tester,
         today: kToday,
         bleedStarts: kPausedStarts,
       );
 
-      expect(find.byKey(const ValueKey('keep-logging-strip')), findsOneWidget);
-      expect(find.textContaining('Predictions are paused'), findsOneWidget);
+      expect(find.byKey(const ValueKey('keep-logging-strip')), findsNothing,
+          reason: 'a long open cycle now rolls the estimate forward '
+              'instead of pausing predictions');
       await disposeForecast(tester, h);
     });
   });

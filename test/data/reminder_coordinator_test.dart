@@ -39,6 +39,7 @@ ActivePrediction _late(LocalDate today) => ActivePrediction(
       today: today,
       lastEpisodeStart: today.addDays(-34),
       estimatedNextStart: today.addDays(-6),
+      originalEstimatedNextStart: today.addDays(-6),
       averagedCycleLengths: const [28],
       meanCycleLengthDays: 28,
       cycleDay: 35,

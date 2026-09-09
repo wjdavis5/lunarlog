@@ -204,52 +204,114 @@ void main() {
     });
   });
 
-  group('paused and late states', () {
+  group('unusually-long cycles and late states (issue #221/A2-11/A2-12)', () {
     final starts = [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 3, 29)];
 
-    test('open cycle beyond 60 days -> paused awaiting next period, no extrapolation',
-        () {
+    test('open cycle beyond 60 days stays an active, rolled-forward estimate '
+        '— no more dead-end pause', () {
       final result =
           computePrediction(episodes: episodesFromStarts(starts), today: d(2026, 6, 15));
-      expect(result, isA<PausedAwaitingNextPeriod>());
-      final paused = result as PausedAwaitingNextPeriod;
-      expect(paused.lastEpisodeStart, d(2026, 3, 29));
-      expect(paused.daysSinceLastEpisodeStart, 78);
-      expect(paused.statusLabel, 'awaiting next period');
+      expect(result, isA<ActivePrediction>());
+      final p = result as ActivePrediction;
+      expect(p.lastEpisodeStart, d(2026, 3, 29));
+      expect(p.daysSinceLastEpisodeStart, 78);
+      expect(p.unusuallyLongCycle, isTrue);
+      expect(p.tier, CycleConfidence.irregular,
+          reason: 'issue #213 tier, forced once unusually long');
+      expect(p.forecast.first.tier, CycleConfidence.irregular,
+          reason: 'one confidence derivation (#299 invariant): the forecast '
+              'must be built from the same forced tier as ActivePrediction.tier, '
+              'not the un-forced spreadAndTier.tier');
+      expect(p.originalEstimatedNextStart, d(2026, 4, 27));
+      expect(p.daysLate, 49);
+      expect(p.estimatedNextStart, d(2026, 6, 24),
+          reason: 'rolled forward twice (29-day mean) from the original '
+              'estimate until it sits within the grace window of today');
     });
 
-    test('open cycle of exactly 60 days is not paused yet', () {
+    test('open cycle of exactly 60 days is not unusually long yet', () {
       final result =
           computePrediction(episodes: episodesFromStarts(starts), today: d(2026, 5, 28));
       expect(result, isA<ActivePrediction>());
-      expect((result as ActivePrediction).cycleDay, 61);
+      final p = result as ActivePrediction;
+      expect(p.cycleDay, 61);
+      expect(p.unusuallyLongCycle, isFalse);
     });
 
-    test('open cycle of 61 days is paused', () {
+    test('open cycle of 61 days sets unusuallyLongCycle (the old 60-day '
+        'pause threshold)', () {
       final result =
           computePrediction(episodes: episodesFromStarts(starts), today: d(2026, 5, 29));
-      expect(result, isA<PausedAwaitingNextPeriod>());
+      expect(result, isA<ActivePrediction>());
+      expect((result as ActivePrediction).unusuallyLongCycle, isTrue);
     });
 
-    test('late when today is more than 2 days past the estimate', () {
+    test('late when today is more than 2 days past the estimate: the '
+        'estimate rolls forward, but daysLate is measured against the '
+        'original', () {
       // Lengths 28, 28, 28 -> estimate Apr 23.
       final late = computePrediction(
         episodes: episodesFromStarts(
             [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 26), d(2026, 3, 26)]),
         today: d(2026, 4, 26),
       ) as ActivePrediction;
-      expect(late.estimatedNextStart, d(2026, 4, 23));
-      expect(late.daysUntilNextStart, -3);
+      expect(late.originalEstimatedNextStart, d(2026, 4, 23));
+      expect(late.daysLate, 3);
       expect(late.isLate, isTrue);
+      expect(late.estimatedNextStart, d(2026, 5, 21),
+          reason: 'rolled forward one 28-day mean cycle once past grace');
+      expect(late.daysUntilNextStart, 25);
 
       final boundary = computePrediction(
         episodes: episodesFromStarts(
             [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 26), d(2026, 3, 26)]),
         today: d(2026, 4, 25),
       ) as ActivePrediction;
+      expect(boundary.estimatedNextStart, d(2026, 4, 23),
+          reason: 'not late yet, so the estimate has not rolled');
       expect(boundary.daysUntilNextStart, -2);
       expect(boundary.isLate, isFalse,
           reason: 'estimate + 2 days is not late yet');
+    });
+  });
+
+  group('issue #221: days-late count and forward roll', () {
+    // 28-day cycles; estimate Apr 23.
+    final starts = [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 26), d(2026, 3, 26)];
+
+    ActivePrediction predictOn(LocalDate today) => computePrediction(
+          episodes: episodesFromStarts(starts),
+          today: today,
+        ) as ActivePrediction;
+
+    test('untilNextPeriodLabel counts days late across the grace boundary',
+        () {
+      expect(predictOn(d(2026, 4, 23)).untilNextPeriodLabel,
+          '≈0 days until next period');
+      expect(predictOn(d(2026, 4, 24)).untilNextPeriodLabel, '1 day late');
+      expect(predictOn(d(2026, 4, 25)).untilNextPeriodLabel, '2 days late');
+      expect(predictOn(d(2026, 4, 26)).untilNextPeriodLabel, '3 days late');
+
+      expect(predictOn(d(2026, 4, 24)).isLate, isFalse,
+          reason: '1 day late is still inside the grace window');
+      expect(predictOn(d(2026, 4, 25)).isLate, isFalse,
+          reason: 'exactly the grace window is not late yet');
+      expect(predictOn(d(2026, 4, 26)).isLate, isTrue);
+    });
+
+    test('the estimate rolls forward by the mean cycle length once late, '
+        'and keeps rolling the longer the cycle stays open', () {
+      final onceLate = predictOn(d(2026, 4, 26));
+      expect(onceLate.originalEstimatedNextStart, d(2026, 4, 23));
+      expect(onceLate.estimatedNextStart, d(2026, 5, 21));
+      expect(onceLate.daysLate, 3);
+
+      final stillOpen = predictOn(d(2026, 6, 1));
+      expect(stillOpen.originalEstimatedNextStart, d(2026, 4, 23));
+      expect(stillOpen.daysLate, 39);
+      expect(stillOpen.estimatedNextStart, d(2026, 6, 18),
+          reason: 'Apr 23 -> May 21 (still 11 days past) -> Jun 18 (now 17 '
+              'days ahead of today, within grace)');
     });
   });
 
@@ -340,8 +402,6 @@ void main() {
         switch (result) {
           case ActivePrediction(:final phaseLabel, :final untilNextPeriodLabel):
             outputs.addAll([phaseLabel, untilNextPeriodLabel]);
-          case PausedAwaitingNextPeriod(:final statusLabel):
-            outputs.add(statusLabel);
           case NotEnoughHistory(:final statusLabel):
             outputs.add(statusLabel);
         }
@@ -494,6 +554,10 @@ void main() {
         today: today,
       ) as ActivePrediction;
       expect(late.isLate, isTrue);
+      expect(late.originalEstimatedNextStart, d(2026, 5, 27));
+      expect(late.estimatedNextStart, d(2026, 6, 26),
+          reason: 'rolled forward one 30-day mean cycle once late (issue '
+              '#221)');
 
       final skipped = computePrediction(
         episodes: episodesFromStarts(starts),
@@ -502,8 +566,9 @@ void main() {
       ) as ActivePrediction;
       expect(
         skipped.estimatedNextStart,
-        late.estimatedNextStart.addDays(30),
-        reason: '30-day mean x kSkipAdvanceCycles(1) beyond the base estimate',
+        late.originalEstimatedNextStart.addDays(30),
+        reason: '30-day mean x kSkipAdvanceCycles(1) beyond the un-rolled '
+            'base estimate',
       );
       expect(skipped.isLate, isFalse,
           reason: 'the skip replans the late window (R6)');
@@ -527,9 +592,9 @@ void main() {
       expect(result.estimatedNextStart, d(2026, 6, 30));
     });
 
-    test('a skip does not lift the sixty-day pause', () {
-      // Open cycle at day 70: paused regardless of the skip — the way
-      // through remains "log it" (issue #132 AC).
+    test('a skip does not lift the sixty-day unusually-long flag', () {
+      // Open cycle at day 70: still unusually long regardless of the skip
+      // — the way through remains "log it" (issue #132 AC / #221 A2-12).
       final result = computePrediction(
         episodes: episodesFromStarts([
           d(2025, 12, 2),
@@ -540,7 +605,8 @@ void main() {
         today: d(2026, 5, 11),
         omittedCycleStarts: {d(2026, 3, 2)},
       );
-      expect(result, isA<PausedAwaitingNextPeriod>());
+      expect(result, isA<ActivePrediction>());
+      expect((result as ActivePrediction).unusuallyLongCycle, isTrue);
     });
   });
 

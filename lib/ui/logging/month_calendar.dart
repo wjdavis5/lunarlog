@@ -469,7 +469,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ],
           ),
         ),
-        if (!estimateActive) _keepLoggingStrip(theme, prediction),
+        if (!estimateActive) _keepLoggingStrip(theme),
         // Issue #187 (B-8): a month with zero entries otherwise renders as
         // a silent grid of bare day numbers with no guidance. The grid
         // itself stays fully tappable (its cell/forecast rendering is
@@ -568,12 +568,15 @@ class _MonthCalendarState extends State<MonthCalendar> {
   }
 
   /// KTD7: with no active estimate, quiet months carry the keep-logging
-  /// strip instead of empty bands.
-  Widget _keepLoggingStrip(ThemeData theme, CyclePrediction prediction) {
-    final message = prediction is PausedAwaitingNextPeriod
-        ? 'Predictions are paused — log the next period to resume forecasts.'
-        : 'Keep logging — predicted bands appear once a few cycles are '
-              'recorded.';
+  /// strip instead of empty bands. Issue #221/A2-12: a long-open cycle no
+  /// longer produces its own paused wording here — it stays an
+  /// [ActivePrediction] (rolled forward, irregular tier) and renders bands
+  /// like any other estimate, so the only caller left of this strip is
+  /// [NotEnoughHistory].
+  Widget _keepLoggingStrip(ThemeData theme) {
+    const message =
+        'Keep logging — predicted bands appear once a few cycles are '
+        'recorded.';
     return Padding(
       key: const ValueKey('keep-logging-strip'),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
