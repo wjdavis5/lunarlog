@@ -26,6 +26,11 @@
 ///   companion note: the ~200 option codes are stored, never rejected).
 ///   `observations.raw` is a JSON value on the wire but a JSON-text column
 ///   client-side, matching `tags`' `TagsConverter` precedent.
+/// * `profile_modes.mode` (Issue #188 — the life-stage axis, NOT #131's
+///   care mode) is normalised against the `LifecycleMode` closed set on
+///   decode exactly like `profiles.mode`: an absent or unrecognised value
+///   degrades to `tracking` rather than throwing. Its date fields stay
+///   `yyyy-MM-dd` strings, like `local_date`.
 /// * Failures are a typed [RowCodecError] naming the table and field and
 ///   the kind of problem — never the offending value, never the row.
 ///
@@ -37,6 +42,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 
@@ -100,12 +106,15 @@ final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 
 
 /// Remote table name for [table] (`profiles` / `day_entries` /
-/// `profile_guardians` / `observations`).
+/// `profile_guardians` / `observations` / `profile_modes` /
+/// `cycle_overrides`).
 String syncTableName(SyncTable table) => switch (table) {
       SyncTable.profiles => 'profiles',
       SyncTable.dayEntries => 'day_entries',
       SyncTable.profileGuardians => 'profile_guardians',
       SyncTable.observations => 'observations',
+      SyncTable.profileModes => 'profile_modes',
+      SyncTable.cycleOverrides => 'cycle_overrides',
     };
 
 /// Inverse of [syncTableName]; null for anything else.
@@ -114,6 +123,8 @@ SyncTable? syncTableFromName(String name) => switch (name) {
       'day_entries' => SyncTable.dayEntries,
       'profile_guardians' => SyncTable.profileGuardians,
       'observations' => SyncTable.observations,
+      'profile_modes' => SyncTable.profileModes,
+      'cycle_overrides' => SyncTable.cycleOverrides,
       _ => null,
     };
 
@@ -207,6 +218,54 @@ JsonRow encodeDayEntry(DayEntry row) {
     'import_id': row.importId,
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
+  };
+}
+
+/// The `p_cycle_overrides` element for [row] (Issue #188).
+JsonRow encodeCycleOverride(CycleOverrideData row) {
+  const table = SyncTable.cycleOverrides;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  if (!_isoDate.hasMatch(row.cycleStartDate)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidDate,
+        table: table, field: 'cycle_start_date');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'cycle_start_date': row.cycleStartDate,
+    'excluded_from_average': row.excludedFromAverage,
+    'manual_start': row.manualStart,
+    'note_id': row.noteId,
+    'updated_at': encodeTimestamp(row.updatedAt),
+    'deleted_at': _encodeNullable(row.deletedAt),
+  };
+}
+
+/// The `p_profile_modes` element for [row] (Issue #188). Emits every key
+/// this client knows; the server's update path applies its own `v_row ?
+/// 'key'` containment guards, so a full-key payload is always safe.
+JsonRow encodeProfileMode(ProfileModeData row) {
+  const table = SyncTable.profileModes;
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  return {
+    'profile_id': row.profileId,
+    'mode': row.mode,
+    'mode_started_on': row.modeStartedOn,
+    'birth_control_method': row.birthControlMethod,
+    'birth_control_started_on': row.birthControlStartedOn,
+    'birth_control_stopped_on': row.birthControlStoppedOn,
+    'health_sync_consent': row.healthSyncConsent,
+    'updated_at': encodeTimestamp(row.updatedAt),
   };
 }
 
@@ -387,12 +446,66 @@ RemoteObservationRow decodeObservation(JsonRow json) {
   );
 }
 
+/// Decodes a `profile_modes` row (Issue #188). `mode` is normalised
+/// against the [LifecycleMode] closed set (an absent or unrecognised value
+/// degrades to `tracking`, never throws a pull — the `profiles.mode`
+/// precedent). Dates stay `yyyy-MM-dd` strings, like `local_date`.
+RemoteProfileModeRow decodeProfileMode(JsonRow json) {
+  const table = SyncTable.profileModes;
+  final r = _Reader(json, table);
+  return RemoteProfileModeRow(
+    profileId: r.ulid('profile_id'),
+    mode: LifecycleMode.fromDb(r.stringOrNull('mode')).toDb(),
+    modeStartedOn: _decodeIsoDate(r.stringOrNull('mode_started_on'), r, 'mode_started_on'),
+    birthControlMethod: r.stringOrNull('birth_control_method'),
+    birthControlStartedOn:
+        _decodeIsoDate(r.stringOrNull('birth_control_started_on'), r, 'birth_control_started_on'),
+    birthControlStoppedOn:
+        _decodeIsoDate(r.stringOrNull('birth_control_stopped_on'), r, 'birth_control_stopped_on'),
+    healthSyncConsent:
+        json['health_sync_consent'] == null ? false : r.boolean('health_sync_consent'),
+    updatedAt: r.timestamp('updated_at'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
+/// Normalises an optional date field against the `yyyy-MM-dd` shape: null
+/// stays null, a well-formed value passes through, anything else is a typed
+/// codec failure attributed to [field] (never a silently-mangled date).
+String? _decodeIsoDate(String? raw, _Reader r, String field) {
+  if (raw == null) return null;
+  if (!_isoDate.hasMatch(raw)) {
+    r._fail(RowCodecErrorKind.invalidDate, field);
+  }
+  return raw;
+}
+
+/// Decodes a `cycle_overrides` row (Issue #188).
+RemoteCycleOverrideRow decodeCycleOverride(JsonRow json) {
+  const table = SyncTable.cycleOverrides;
+  final r = _Reader(json, table);
+  return RemoteCycleOverrideRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    cycleStartDate: r.isoDate('cycle_start_date'),
+    excludedFromAverage:
+        json['excluded_from_average'] == null ? false : r.boolean('excluded_from_average'),
+    manualStart: json['manual_start'] == null ? false : r.boolean('manual_start'),
+    noteId: r.stringOrNull('note_id'),
+    updatedAt: r.timestamp('updated_at'),
+    deletedAt: r.timestampOrNull('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
 /// Decodes a pull-page row of [table].
 RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
       SyncTable.profiles => decodeProfile(json),
       SyncTable.dayEntries => decodeDayEntry(json),
       SyncTable.profileGuardians => decodeProfileGuardian(json),
       SyncTable.observations => decodeObservation(json),
+      SyncTable.profileModes => decodeProfileMode(json),
+      SyncTable.cycleOverrides => decodeCycleOverride(json),
     };
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`

@@ -3656,6 +3656,1333 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
   }
 }
 
+class $ProfileModesTable extends ProfileModes
+    with TableInfo<$ProfileModesTable, ProfileModeData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProfileModesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _modeMeta = const VerificationMeta('mode');
+  @override
+  late final GeneratedColumn<String> mode = GeneratedColumn<String>(
+    'mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('tracking'),
+  );
+  static const VerificationMeta _modeStartedOnMeta = const VerificationMeta(
+    'modeStartedOn',
+  );
+  @override
+  late final GeneratedColumn<String> modeStartedOn = GeneratedColumn<String>(
+    'mode_started_on',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _birthControlMethodMeta =
+      const VerificationMeta('birthControlMethod');
+  @override
+  late final GeneratedColumn<String> birthControlMethod =
+      GeneratedColumn<String>(
+        'birth_control_method',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _birthControlStartedOnMeta =
+      const VerificationMeta('birthControlStartedOn');
+  @override
+  late final GeneratedColumn<String> birthControlStartedOn =
+      GeneratedColumn<String>(
+        'birth_control_started_on',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _birthControlStoppedOnMeta =
+      const VerificationMeta('birthControlStoppedOn');
+  @override
+  late final GeneratedColumn<String> birthControlStoppedOn =
+      GeneratedColumn<String>(
+        'birth_control_stopped_on',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _healthSyncConsentMeta = const VerificationMeta(
+    'healthSyncConsent',
+  );
+  @override
+  late final GeneratedColumn<bool> healthSyncConsent = GeneratedColumn<bool>(
+    'health_sync_consent',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("health_sync_consent" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _localRevMeta = const VerificationMeta(
+    'localRev',
+  );
+  @override
+  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
+    'local_rev',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    profileId,
+    mode,
+    modeStartedOn,
+    birthControlMethod,
+    birthControlStartedOn,
+    birthControlStoppedOn,
+    healthSyncConsent,
+    updatedAt,
+    dirty,
+    localRev,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'profile_modes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProfileModeData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('mode')) {
+      context.handle(
+        _modeMeta,
+        mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+      );
+    }
+    if (data.containsKey('mode_started_on')) {
+      context.handle(
+        _modeStartedOnMeta,
+        modeStartedOn.isAcceptableOrUnknown(
+          data['mode_started_on']!,
+          _modeStartedOnMeta,
+        ),
+      );
+    }
+    if (data.containsKey('birth_control_method')) {
+      context.handle(
+        _birthControlMethodMeta,
+        birthControlMethod.isAcceptableOrUnknown(
+          data['birth_control_method']!,
+          _birthControlMethodMeta,
+        ),
+      );
+    }
+    if (data.containsKey('birth_control_started_on')) {
+      context.handle(
+        _birthControlStartedOnMeta,
+        birthControlStartedOn.isAcceptableOrUnknown(
+          data['birth_control_started_on']!,
+          _birthControlStartedOnMeta,
+        ),
+      );
+    }
+    if (data.containsKey('birth_control_stopped_on')) {
+      context.handle(
+        _birthControlStoppedOnMeta,
+        birthControlStoppedOn.isAcceptableOrUnknown(
+          data['birth_control_stopped_on']!,
+          _birthControlStoppedOnMeta,
+        ),
+      );
+    }
+    if (data.containsKey('health_sync_consent')) {
+      context.handle(
+        _healthSyncConsentMeta,
+        healthSyncConsent.isAcceptableOrUnknown(
+          data['health_sync_consent']!,
+          _healthSyncConsentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('local_rev')) {
+      context.handle(
+        _localRevMeta,
+        localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {profileId};
+  @override
+  ProfileModeData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProfileModeData(
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      mode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode'],
+      )!,
+      modeStartedOn: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode_started_on'],
+      ),
+      birthControlMethod: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}birth_control_method'],
+      ),
+      birthControlStartedOn: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}birth_control_started_on'],
+      ),
+      birthControlStoppedOn: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}birth_control_stopped_on'],
+      ),
+      healthSyncConsent: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}health_sync_consent'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      localRev: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_rev'],
+      )!,
+    );
+  }
+
+  @override
+  $ProfileModesTable createAlias(String alias) {
+    return $ProfileModesTable(attachedDatabase, alias);
+  }
+}
+
+class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
+  /// The profile this row belongs to (also the primary key — exactly one
+  /// row per profile, enforced by the key itself).
+  final String profileId;
+
+  /// Raw `LifecycleMode` `toDb()` string
+  /// (`tracking`/`conceive`/`pregnancy`/`perimenopause`/`postpartum`), the
+  /// server's `profile_modes_mode_check` set. Not validated here (the
+  /// domain enum and the server CHECK are the enforcement points); an
+  /// unrecognised value decodes to `tracking` on pull (see `row_codec.dart`).
+  final String mode;
+
+  /// ISO calendar date `yyyy-MM-dd` the current mode took effect, or null.
+  final String? modeStartedOn;
+
+  /// Current birth-control method (free text, #260 owns the vocabulary) or
+  /// null when none is recorded.
+  final String? birthControlMethod;
+  final String? birthControlStartedOn;
+  final String? birthControlStoppedOn;
+
+  /// D-29: per-profile opt-in for health-platform writes — a distinct
+  /// consent from cycle sharing/guardian consent, recorded server-side.
+  final bool healthSyncConsent;
+  final DateTime updatedAt;
+
+  /// See [Profiles.dirty]. (No `deleted_at` — this table has no tombstone.)
+  final bool dirty;
+
+  /// See [Profiles.localRev].
+  final int localRev;
+  const ProfileModeData({
+    required this.profileId,
+    required this.mode,
+    this.modeStartedOn,
+    this.birthControlMethod,
+    this.birthControlStartedOn,
+    this.birthControlStoppedOn,
+    required this.healthSyncConsent,
+    required this.updatedAt,
+    required this.dirty,
+    required this.localRev,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['profile_id'] = Variable<String>(profileId);
+    map['mode'] = Variable<String>(mode);
+    if (!nullToAbsent || modeStartedOn != null) {
+      map['mode_started_on'] = Variable<String>(modeStartedOn);
+    }
+    if (!nullToAbsent || birthControlMethod != null) {
+      map['birth_control_method'] = Variable<String>(birthControlMethod);
+    }
+    if (!nullToAbsent || birthControlStartedOn != null) {
+      map['birth_control_started_on'] = Variable<String>(birthControlStartedOn);
+    }
+    if (!nullToAbsent || birthControlStoppedOn != null) {
+      map['birth_control_stopped_on'] = Variable<String>(birthControlStoppedOn);
+    }
+    map['health_sync_consent'] = Variable<bool>(healthSyncConsent);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['dirty'] = Variable<bool>(dirty);
+    map['local_rev'] = Variable<int>(localRev);
+    return map;
+  }
+
+  ProfileModesCompanion toCompanion(bool nullToAbsent) {
+    return ProfileModesCompanion(
+      profileId: Value(profileId),
+      mode: Value(mode),
+      modeStartedOn: modeStartedOn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(modeStartedOn),
+      birthControlMethod: birthControlMethod == null && nullToAbsent
+          ? const Value.absent()
+          : Value(birthControlMethod),
+      birthControlStartedOn: birthControlStartedOn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(birthControlStartedOn),
+      birthControlStoppedOn: birthControlStoppedOn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(birthControlStoppedOn),
+      healthSyncConsent: Value(healthSyncConsent),
+      updatedAt: Value(updatedAt),
+      dirty: Value(dirty),
+      localRev: Value(localRev),
+    );
+  }
+
+  factory ProfileModeData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProfileModeData(
+      profileId: serializer.fromJson<String>(json['profileId']),
+      mode: serializer.fromJson<String>(json['mode']),
+      modeStartedOn: serializer.fromJson<String?>(json['modeStartedOn']),
+      birthControlMethod: serializer.fromJson<String?>(
+        json['birthControlMethod'],
+      ),
+      birthControlStartedOn: serializer.fromJson<String?>(
+        json['birthControlStartedOn'],
+      ),
+      birthControlStoppedOn: serializer.fromJson<String?>(
+        json['birthControlStoppedOn'],
+      ),
+      healthSyncConsent: serializer.fromJson<bool>(json['healthSyncConsent']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      localRev: serializer.fromJson<int>(json['localRev']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'profileId': serializer.toJson<String>(profileId),
+      'mode': serializer.toJson<String>(mode),
+      'modeStartedOn': serializer.toJson<String?>(modeStartedOn),
+      'birthControlMethod': serializer.toJson<String?>(birthControlMethod),
+      'birthControlStartedOn': serializer.toJson<String?>(
+        birthControlStartedOn,
+      ),
+      'birthControlStoppedOn': serializer.toJson<String?>(
+        birthControlStoppedOn,
+      ),
+      'healthSyncConsent': serializer.toJson<bool>(healthSyncConsent),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'dirty': serializer.toJson<bool>(dirty),
+      'localRev': serializer.toJson<int>(localRev),
+    };
+  }
+
+  ProfileModeData copyWith({
+    String? profileId,
+    String? mode,
+    Value<String?> modeStartedOn = const Value.absent(),
+    Value<String?> birthControlMethod = const Value.absent(),
+    Value<String?> birthControlStartedOn = const Value.absent(),
+    Value<String?> birthControlStoppedOn = const Value.absent(),
+    bool? healthSyncConsent,
+    DateTime? updatedAt,
+    bool? dirty,
+    int? localRev,
+  }) => ProfileModeData(
+    profileId: profileId ?? this.profileId,
+    mode: mode ?? this.mode,
+    modeStartedOn: modeStartedOn.present
+        ? modeStartedOn.value
+        : this.modeStartedOn,
+    birthControlMethod: birthControlMethod.present
+        ? birthControlMethod.value
+        : this.birthControlMethod,
+    birthControlStartedOn: birthControlStartedOn.present
+        ? birthControlStartedOn.value
+        : this.birthControlStartedOn,
+    birthControlStoppedOn: birthControlStoppedOn.present
+        ? birthControlStoppedOn.value
+        : this.birthControlStoppedOn,
+    healthSyncConsent: healthSyncConsent ?? this.healthSyncConsent,
+    updatedAt: updatedAt ?? this.updatedAt,
+    dirty: dirty ?? this.dirty,
+    localRev: localRev ?? this.localRev,
+  );
+  ProfileModeData copyWithCompanion(ProfileModesCompanion data) {
+    return ProfileModeData(
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      mode: data.mode.present ? data.mode.value : this.mode,
+      modeStartedOn: data.modeStartedOn.present
+          ? data.modeStartedOn.value
+          : this.modeStartedOn,
+      birthControlMethod: data.birthControlMethod.present
+          ? data.birthControlMethod.value
+          : this.birthControlMethod,
+      birthControlStartedOn: data.birthControlStartedOn.present
+          ? data.birthControlStartedOn.value
+          : this.birthControlStartedOn,
+      birthControlStoppedOn: data.birthControlStoppedOn.present
+          ? data.birthControlStoppedOn.value
+          : this.birthControlStoppedOn,
+      healthSyncConsent: data.healthSyncConsent.present
+          ? data.healthSyncConsent.value
+          : this.healthSyncConsent,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      localRev: data.localRev.present ? data.localRev.value : this.localRev,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileModeData(')
+          ..write('profileId: $profileId, ')
+          ..write('mode: $mode, ')
+          ..write('modeStartedOn: $modeStartedOn, ')
+          ..write('birthControlMethod: $birthControlMethod, ')
+          ..write('birthControlStartedOn: $birthControlStartedOn, ')
+          ..write('birthControlStoppedOn: $birthControlStoppedOn, ')
+          ..write('healthSyncConsent: $healthSyncConsent, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    profileId,
+    mode,
+    modeStartedOn,
+    birthControlMethod,
+    birthControlStartedOn,
+    birthControlStoppedOn,
+    healthSyncConsent,
+    updatedAt,
+    dirty,
+    localRev,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProfileModeData &&
+          other.profileId == this.profileId &&
+          other.mode == this.mode &&
+          other.modeStartedOn == this.modeStartedOn &&
+          other.birthControlMethod == this.birthControlMethod &&
+          other.birthControlStartedOn == this.birthControlStartedOn &&
+          other.birthControlStoppedOn == this.birthControlStoppedOn &&
+          other.healthSyncConsent == this.healthSyncConsent &&
+          other.updatedAt == this.updatedAt &&
+          other.dirty == this.dirty &&
+          other.localRev == this.localRev);
+}
+
+class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
+  final Value<String> profileId;
+  final Value<String> mode;
+  final Value<String?> modeStartedOn;
+  final Value<String?> birthControlMethod;
+  final Value<String?> birthControlStartedOn;
+  final Value<String?> birthControlStoppedOn;
+  final Value<bool> healthSyncConsent;
+  final Value<DateTime> updatedAt;
+  final Value<bool> dirty;
+  final Value<int> localRev;
+  final Value<int> rowid;
+  const ProfileModesCompanion({
+    this.profileId = const Value.absent(),
+    this.mode = const Value.absent(),
+    this.modeStartedOn = const Value.absent(),
+    this.birthControlMethod = const Value.absent(),
+    this.birthControlStartedOn = const Value.absent(),
+    this.birthControlStoppedOn = const Value.absent(),
+    this.healthSyncConsent = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProfileModesCompanion.insert({
+    required String profileId,
+    this.mode = const Value.absent(),
+    this.modeStartedOn = const Value.absent(),
+    this.birthControlMethod = const Value.absent(),
+    this.birthControlStartedOn = const Value.absent(),
+    this.birthControlStoppedOn = const Value.absent(),
+    this.healthSyncConsent = const Value.absent(),
+    required DateTime updatedAt,
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : profileId = Value(profileId),
+       updatedAt = Value(updatedAt);
+  static Insertable<ProfileModeData> custom({
+    Expression<String>? profileId,
+    Expression<String>? mode,
+    Expression<String>? modeStartedOn,
+    Expression<String>? birthControlMethod,
+    Expression<String>? birthControlStartedOn,
+    Expression<String>? birthControlStoppedOn,
+    Expression<bool>? healthSyncConsent,
+    Expression<DateTime>? updatedAt,
+    Expression<bool>? dirty,
+    Expression<int>? localRev,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (profileId != null) 'profile_id': profileId,
+      if (mode != null) 'mode': mode,
+      if (modeStartedOn != null) 'mode_started_on': modeStartedOn,
+      if (birthControlMethod != null)
+        'birth_control_method': birthControlMethod,
+      if (birthControlStartedOn != null)
+        'birth_control_started_on': birthControlStartedOn,
+      if (birthControlStoppedOn != null)
+        'birth_control_stopped_on': birthControlStoppedOn,
+      if (healthSyncConsent != null) 'health_sync_consent': healthSyncConsent,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (dirty != null) 'dirty': dirty,
+      if (localRev != null) 'local_rev': localRev,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProfileModesCompanion copyWith({
+    Value<String>? profileId,
+    Value<String>? mode,
+    Value<String?>? modeStartedOn,
+    Value<String?>? birthControlMethod,
+    Value<String?>? birthControlStartedOn,
+    Value<String?>? birthControlStoppedOn,
+    Value<bool>? healthSyncConsent,
+    Value<DateTime>? updatedAt,
+    Value<bool>? dirty,
+    Value<int>? localRev,
+    Value<int>? rowid,
+  }) {
+    return ProfileModesCompanion(
+      profileId: profileId ?? this.profileId,
+      mode: mode ?? this.mode,
+      modeStartedOn: modeStartedOn ?? this.modeStartedOn,
+      birthControlMethod: birthControlMethod ?? this.birthControlMethod,
+      birthControlStartedOn:
+          birthControlStartedOn ?? this.birthControlStartedOn,
+      birthControlStoppedOn:
+          birthControlStoppedOn ?? this.birthControlStoppedOn,
+      healthSyncConsent: healthSyncConsent ?? this.healthSyncConsent,
+      updatedAt: updatedAt ?? this.updatedAt,
+      dirty: dirty ?? this.dirty,
+      localRev: localRev ?? this.localRev,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (mode.present) {
+      map['mode'] = Variable<String>(mode.value);
+    }
+    if (modeStartedOn.present) {
+      map['mode_started_on'] = Variable<String>(modeStartedOn.value);
+    }
+    if (birthControlMethod.present) {
+      map['birth_control_method'] = Variable<String>(birthControlMethod.value);
+    }
+    if (birthControlStartedOn.present) {
+      map['birth_control_started_on'] = Variable<String>(
+        birthControlStartedOn.value,
+      );
+    }
+    if (birthControlStoppedOn.present) {
+      map['birth_control_stopped_on'] = Variable<String>(
+        birthControlStoppedOn.value,
+      );
+    }
+    if (healthSyncConsent.present) {
+      map['health_sync_consent'] = Variable<bool>(healthSyncConsent.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (localRev.present) {
+      map['local_rev'] = Variable<int>(localRev.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileModesCompanion(')
+          ..write('profileId: $profileId, ')
+          ..write('mode: $mode, ')
+          ..write('modeStartedOn: $modeStartedOn, ')
+          ..write('birthControlMethod: $birthControlMethod, ')
+          ..write('birthControlStartedOn: $birthControlStartedOn, ')
+          ..write('birthControlStoppedOn: $birthControlStoppedOn, ')
+          ..write('healthSyncConsent: $healthSyncConsent, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CycleOverridesTable extends CycleOverrides
+    with TableInfo<$CycleOverridesTable, CycleOverrideData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CycleOverridesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _cycleStartDateMeta = const VerificationMeta(
+    'cycleStartDate',
+  );
+  @override
+  late final GeneratedColumn<String> cycleStartDate = GeneratedColumn<String>(
+    'cycle_start_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _excludedFromAverageMeta =
+      const VerificationMeta('excludedFromAverage');
+  @override
+  late final GeneratedColumn<bool> excludedFromAverage = GeneratedColumn<bool>(
+    'excluded_from_average',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("excluded_from_average" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _manualStartMeta = const VerificationMeta(
+    'manualStart',
+  );
+  @override
+  late final GeneratedColumn<bool> manualStart = GeneratedColumn<bool>(
+    'manual_start',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("manual_start" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<String> noteId = GeneratedColumn<String>(
+    'note_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _localRevMeta = const VerificationMeta(
+    'localRev',
+  );
+  @override
+  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
+    'local_rev',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    profileId,
+    cycleStartDate,
+    excludedFromAverage,
+    manualStart,
+    noteId,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cycle_overrides';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CycleOverrideData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('cycle_start_date')) {
+      context.handle(
+        _cycleStartDateMeta,
+        cycleStartDate.isAcceptableOrUnknown(
+          data['cycle_start_date']!,
+          _cycleStartDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_cycleStartDateMeta);
+    }
+    if (data.containsKey('excluded_from_average')) {
+      context.handle(
+        _excludedFromAverageMeta,
+        excludedFromAverage.isAcceptableOrUnknown(
+          data['excluded_from_average']!,
+          _excludedFromAverageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('manual_start')) {
+      context.handle(
+        _manualStartMeta,
+        manualStart.isAcceptableOrUnknown(
+          data['manual_start']!,
+          _manualStartMeta,
+        ),
+      );
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('local_rev')) {
+      context.handle(
+        _localRevMeta,
+        localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id, profileId};
+  @override
+  CycleOverrideData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CycleOverrideData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      cycleStartDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cycle_start_date'],
+      )!,
+      excludedFromAverage: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}excluded_from_average'],
+      )!,
+      manualStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}manual_start'],
+      )!,
+      noteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note_id'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      localRev: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_rev'],
+      )!,
+    );
+  }
+
+  @override
+  $CycleOverridesTable createAlias(String alias) {
+    return $CycleOverridesTable(attachedDatabase, alias);
+  }
+}
+
+class CycleOverrideData extends DataClass
+    implements Insertable<CycleOverrideData> {
+  /// Client-generated ULID (stable across devices/sync).
+  final String id;
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd` of the manual boundary.
+  final String cycleStartDate;
+
+  /// True when this interval is left out of cycle-length averages (#132).
+  final bool excludedFromAverage;
+
+  /// True when the user started this cycle by hand.
+  final bool manualStart;
+
+  /// Placeholder id of a future notes-table row (#132); null when unset.
+  final String? noteId;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  /// See [Profiles.dirty].
+  final bool dirty;
+
+  /// See [Profiles.localRev].
+  final int localRev;
+  const CycleOverrideData({
+    required this.id,
+    required this.profileId,
+    required this.cycleStartDate,
+    required this.excludedFromAverage,
+    required this.manualStart,
+    this.noteId,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.dirty,
+    required this.localRev,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['cycle_start_date'] = Variable<String>(cycleStartDate);
+    map['excluded_from_average'] = Variable<bool>(excludedFromAverage);
+    map['manual_start'] = Variable<bool>(manualStart);
+    if (!nullToAbsent || noteId != null) {
+      map['note_id'] = Variable<String>(noteId);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['dirty'] = Variable<bool>(dirty);
+    map['local_rev'] = Variable<int>(localRev);
+    return map;
+  }
+
+  CycleOverridesCompanion toCompanion(bool nullToAbsent) {
+    return CycleOverridesCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      cycleStartDate: Value(cycleStartDate),
+      excludedFromAverage: Value(excludedFromAverage),
+      manualStart: Value(manualStart),
+      noteId: noteId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(noteId),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      dirty: Value(dirty),
+      localRev: Value(localRev),
+    );
+  }
+
+  factory CycleOverrideData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CycleOverrideData(
+      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      cycleStartDate: serializer.fromJson<String>(json['cycleStartDate']),
+      excludedFromAverage: serializer.fromJson<bool>(
+        json['excludedFromAverage'],
+      ),
+      manualStart: serializer.fromJson<bool>(json['manualStart']),
+      noteId: serializer.fromJson<String?>(json['noteId']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      localRev: serializer.fromJson<int>(json['localRev']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'cycleStartDate': serializer.toJson<String>(cycleStartDate),
+      'excludedFromAverage': serializer.toJson<bool>(excludedFromAverage),
+      'manualStart': serializer.toJson<bool>(manualStart),
+      'noteId': serializer.toJson<String?>(noteId),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'dirty': serializer.toJson<bool>(dirty),
+      'localRev': serializer.toJson<int>(localRev),
+    };
+  }
+
+  CycleOverrideData copyWith({
+    String? id,
+    String? profileId,
+    String? cycleStartDate,
+    bool? excludedFromAverage,
+    bool? manualStart,
+    Value<String?> noteId = const Value.absent(),
+    DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    bool? dirty,
+    int? localRev,
+  }) => CycleOverrideData(
+    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    cycleStartDate: cycleStartDate ?? this.cycleStartDate,
+    excludedFromAverage: excludedFromAverage ?? this.excludedFromAverage,
+    manualStart: manualStart ?? this.manualStart,
+    noteId: noteId.present ? noteId.value : this.noteId,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    dirty: dirty ?? this.dirty,
+    localRev: localRev ?? this.localRev,
+  );
+  CycleOverrideData copyWithCompanion(CycleOverridesCompanion data) {
+    return CycleOverrideData(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      cycleStartDate: data.cycleStartDate.present
+          ? data.cycleStartDate.value
+          : this.cycleStartDate,
+      excludedFromAverage: data.excludedFromAverage.present
+          ? data.excludedFromAverage.value
+          : this.excludedFromAverage,
+      manualStart: data.manualStart.present
+          ? data.manualStart.value
+          : this.manualStart,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      localRev: data.localRev.present ? data.localRev.value : this.localRev,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CycleOverrideData(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('cycleStartDate: $cycleStartDate, ')
+          ..write('excludedFromAverage: $excludedFromAverage, ')
+          ..write('manualStart: $manualStart, ')
+          ..write('noteId: $noteId, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    profileId,
+    cycleStartDate,
+    excludedFromAverage,
+    manualStart,
+    noteId,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CycleOverrideData &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.cycleStartDate == this.cycleStartDate &&
+          other.excludedFromAverage == this.excludedFromAverage &&
+          other.manualStart == this.manualStart &&
+          other.noteId == this.noteId &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.dirty == this.dirty &&
+          other.localRev == this.localRev);
+}
+
+class CycleOverridesCompanion extends UpdateCompanion<CycleOverrideData> {
+  final Value<String> id;
+  final Value<String> profileId;
+  final Value<String> cycleStartDate;
+  final Value<bool> excludedFromAverage;
+  final Value<bool> manualStart;
+  final Value<String?> noteId;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<bool> dirty;
+  final Value<int> localRev;
+  final Value<int> rowid;
+  const CycleOverridesCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.cycleStartDate = const Value.absent(),
+    this.excludedFromAverage = const Value.absent(),
+    this.manualStart = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CycleOverridesCompanion.insert({
+    required String id,
+    required String profileId,
+    required String cycleStartDate,
+    this.excludedFromAverage = const Value.absent(),
+    this.manualStart = const Value.absent(),
+    this.noteId = const Value.absent(),
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       profileId = Value(profileId),
+       cycleStartDate = Value(cycleStartDate),
+       updatedAt = Value(updatedAt);
+  static Insertable<CycleOverrideData> custom({
+    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<String>? cycleStartDate,
+    Expression<bool>? excludedFromAverage,
+    Expression<bool>? manualStart,
+    Expression<String>? noteId,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<bool>? dirty,
+    Expression<int>? localRev,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (cycleStartDate != null) 'cycle_start_date': cycleStartDate,
+      if (excludedFromAverage != null)
+        'excluded_from_average': excludedFromAverage,
+      if (manualStart != null) 'manual_start': manualStart,
+      if (noteId != null) 'note_id': noteId,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (dirty != null) 'dirty': dirty,
+      if (localRev != null) 'local_rev': localRev,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CycleOverridesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? profileId,
+    Value<String>? cycleStartDate,
+    Value<bool>? excludedFromAverage,
+    Value<bool>? manualStart,
+    Value<String?>? noteId,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<bool>? dirty,
+    Value<int>? localRev,
+    Value<int>? rowid,
+  }) {
+    return CycleOverridesCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      cycleStartDate: cycleStartDate ?? this.cycleStartDate,
+      excludedFromAverage: excludedFromAverage ?? this.excludedFromAverage,
+      manualStart: manualStart ?? this.manualStart,
+      noteId: noteId ?? this.noteId,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      dirty: dirty ?? this.dirty,
+      localRev: localRev ?? this.localRev,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (cycleStartDate.present) {
+      map['cycle_start_date'] = Variable<String>(cycleStartDate.value);
+    }
+    if (excludedFromAverage.present) {
+      map['excluded_from_average'] = Variable<bool>(excludedFromAverage.value);
+    }
+    if (manualStart.present) {
+      map['manual_start'] = Variable<bool>(manualStart.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<String>(noteId.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (localRev.present) {
+      map['local_rev'] = Variable<int>(localRev.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CycleOverridesCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('cycleStartDate: $cycleStartDate, ')
+          ..write('excludedFromAverage: $excludedFromAverage, ')
+          ..write('manualStart: $manualStart, ')
+          ..write('noteId: $noteId, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AppSettingsTable extends AppSettings
     with TableInfo<$AppSettingsTable, AppSetting> {
   @override
@@ -3992,6 +5319,28 @@ class $SyncStateTable extends SyncState
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _cursorProfileModesMeta =
+      const VerificationMeta('cursorProfileModes');
+  @override
+  late final GeneratedColumn<int> cursorProfileModes = GeneratedColumn<int>(
+    'cursor_profile_modes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _cursorCycleOverridesMeta =
+      const VerificationMeta('cursorCycleOverrides');
+  @override
+  late final GeneratedColumn<int> cursorCycleOverrides = GeneratedColumn<int>(
+    'cursor_cycle_overrides',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -4044,6 +5393,8 @@ class $SyncStateTable extends SyncState
     cursorProfiles,
     cursorDayEntries,
     cursorObservations,
+    cursorProfileModes,
+    cursorCycleOverrides,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -4103,6 +5454,24 @@ class $SyncStateTable extends SyncState
         cursorObservations.isAcceptableOrUnknown(
           data['cursor_observations']!,
           _cursorObservationsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cursor_profile_modes')) {
+      context.handle(
+        _cursorProfileModesMeta,
+        cursorProfileModes.isAcceptableOrUnknown(
+          data['cursor_profile_modes']!,
+          _cursorProfileModesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cursor_cycle_overrides')) {
+      context.handle(
+        _cursorCycleOverridesMeta,
+        cursorCycleOverrides.isAcceptableOrUnknown(
+          data['cursor_cycle_overrides']!,
+          _cursorCycleOverridesMeta,
         ),
       );
     }
@@ -4172,6 +5541,14 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_observations'],
       )!,
+      cursorProfileModes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_profile_modes'],
+      )!,
+      cursorCycleOverrides: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_cycle_overrides'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -4216,6 +5593,14 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// Issue #240: the `observations` pull cursor, same shape as
   /// [cursorDayEntries].
   final int cursorObservations;
+
+  /// Issue #188: the `profile_modes` pull cursor, same shape as
+  /// [cursorProfiles].
+  final int cursorProfileModes;
+
+  /// Issue #188: the `cycle_overrides` pull cursor, same shape as
+  /// [cursorDayEntries].
+  final int cursorCycleOverrides;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -4232,6 +5617,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.cursorProfiles,
     required this.cursorDayEntries,
     required this.cursorObservations,
+    required this.cursorProfileModes,
+    required this.cursorCycleOverrides,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -4248,6 +5635,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     map['cursor_profiles'] = Variable<int>(cursorProfiles);
     map['cursor_day_entries'] = Variable<int>(cursorDayEntries);
     map['cursor_observations'] = Variable<int>(cursorObservations);
+    map['cursor_profile_modes'] = Variable<int>(cursorProfileModes);
+    map['cursor_cycle_overrides'] = Variable<int>(cursorCycleOverrides);
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
     }
@@ -4273,6 +5662,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfiles: Value(cursorProfiles),
       cursorDayEntries: Value(cursorDayEntries),
       cursorObservations: Value(cursorObservations),
+      cursorProfileModes: Value(cursorProfileModes),
+      cursorCycleOverrides: Value(cursorCycleOverrides),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -4300,6 +5691,10 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfiles: serializer.fromJson<int>(json['cursorProfiles']),
       cursorDayEntries: serializer.fromJson<int>(json['cursorDayEntries']),
       cursorObservations: serializer.fromJson<int>(json['cursorObservations']),
+      cursorProfileModes: serializer.fromJson<int>(json['cursorProfileModes']),
+      cursorCycleOverrides: serializer.fromJson<int>(
+        json['cursorCycleOverrides'],
+      ),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -4318,6 +5713,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       'cursorProfiles': serializer.toJson<int>(cursorProfiles),
       'cursorDayEntries': serializer.toJson<int>(cursorDayEntries),
       'cursorObservations': serializer.toJson<int>(cursorObservations),
+      'cursorProfileModes': serializer.toJson<int>(cursorProfileModes),
+      'cursorCycleOverrides': serializer.toJson<int>(cursorCycleOverrides),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -4332,6 +5729,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     int? cursorProfiles,
     int? cursorDayEntries,
     int? cursorObservations,
+    int? cursorProfileModes,
+    int? cursorCycleOverrides,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -4343,6 +5742,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorProfiles: cursorProfiles ?? this.cursorProfiles,
     cursorDayEntries: cursorDayEntries ?? this.cursorDayEntries,
     cursorObservations: cursorObservations ?? this.cursorObservations,
+    cursorProfileModes: cursorProfileModes ?? this.cursorProfileModes,
+    cursorCycleOverrides: cursorCycleOverrides ?? this.cursorCycleOverrides,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -4368,6 +5769,12 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorObservations: data.cursorObservations.present
           ? data.cursorObservations.value
           : this.cursorObservations,
+      cursorProfileModes: data.cursorProfileModes.present
+          ? data.cursorProfileModes.value
+          : this.cursorProfileModes,
+      cursorCycleOverrides: data.cursorCycleOverrides.present
+          ? data.cursorCycleOverrides.value
+          : this.cursorCycleOverrides,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -4390,6 +5797,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('cursorProfiles: $cursorProfiles, ')
           ..write('cursorDayEntries: $cursorDayEntries, ')
           ..write('cursorObservations: $cursorObservations, ')
+          ..write('cursorProfileModes: $cursorProfileModes, ')
+          ..write('cursorCycleOverrides: $cursorCycleOverrides, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -4406,6 +5815,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorProfiles,
     cursorDayEntries,
     cursorObservations,
+    cursorProfileModes,
+    cursorCycleOverrides,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -4421,6 +5832,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.cursorProfiles == this.cursorProfiles &&
           other.cursorDayEntries == this.cursorDayEntries &&
           other.cursorObservations == this.cursorObservations &&
+          other.cursorProfileModes == this.cursorProfileModes &&
+          other.cursorCycleOverrides == this.cursorCycleOverrides &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -4434,6 +5847,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<int> cursorProfiles;
   final Value<int> cursorDayEntries;
   final Value<int> cursorObservations;
+  final Value<int> cursorProfileModes;
+  final Value<int> cursorCycleOverrides;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -4445,6 +5860,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorProfiles = const Value.absent(),
     this.cursorDayEntries = const Value.absent(),
     this.cursorObservations = const Value.absent(),
+    this.cursorProfileModes = const Value.absent(),
+    this.cursorCycleOverrides = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -4457,6 +5874,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorProfiles = const Value.absent(),
     this.cursorDayEntries = const Value.absent(),
     this.cursorObservations = const Value.absent(),
+    this.cursorProfileModes = const Value.absent(),
+    this.cursorCycleOverrides = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -4469,6 +5888,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<int>? cursorProfiles,
     Expression<int>? cursorDayEntries,
     Expression<int>? cursorObservations,
+    Expression<int>? cursorProfileModes,
+    Expression<int>? cursorCycleOverrides,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -4481,6 +5902,10 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
       if (cursorProfiles != null) 'cursor_profiles': cursorProfiles,
       if (cursorDayEntries != null) 'cursor_day_entries': cursorDayEntries,
       if (cursorObservations != null) 'cursor_observations': cursorObservations,
+      if (cursorProfileModes != null)
+        'cursor_profile_modes': cursorProfileModes,
+      if (cursorCycleOverrides != null)
+        'cursor_cycle_overrides': cursorCycleOverrides,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -4496,6 +5921,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<int>? cursorProfiles,
     Value<int>? cursorDayEntries,
     Value<int>? cursorObservations,
+    Value<int>? cursorProfileModes,
+    Value<int>? cursorCycleOverrides,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -4508,6 +5935,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
       cursorProfiles: cursorProfiles ?? this.cursorProfiles,
       cursorDayEntries: cursorDayEntries ?? this.cursorDayEntries,
       cursorObservations: cursorObservations ?? this.cursorObservations,
+      cursorProfileModes: cursorProfileModes ?? this.cursorProfileModes,
+      cursorCycleOverrides: cursorCycleOverrides ?? this.cursorCycleOverrides,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -4536,6 +5965,12 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     if (cursorObservations.present) {
       map['cursor_observations'] = Variable<int>(cursorObservations.value);
     }
+    if (cursorProfileModes.present) {
+      map['cursor_profile_modes'] = Variable<int>(cursorProfileModes.value);
+    }
+    if (cursorCycleOverrides.present) {
+      map['cursor_cycle_overrides'] = Variable<int>(cursorCycleOverrides.value);
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -4560,6 +5995,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('cursorProfiles: $cursorProfiles, ')
           ..write('cursorDayEntries: $cursorDayEntries, ')
           ..write('cursorObservations: $cursorObservations, ')
+          ..write('cursorProfileModes: $cursorProfileModes, ')
+          ..write('cursorCycleOverrides: $cursorCycleOverrides, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -4578,6 +6015,8 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     this,
   );
   late final $ObservationsTable observations = $ObservationsTable(this);
+  late final $ProfileModesTable profileModes = $ProfileModesTable(this);
+  late final $CycleOverridesTable cycleOverrides = $CycleOverridesTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   @override
@@ -4589,6 +6028,8 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     dayEntries,
     profileGuardians,
     observations,
+    profileModes,
+    cycleOverrides,
     appSettings,
     syncState,
   ];
@@ -4689,6 +6130,44 @@ final class $$ProfilesTableReferences
     ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_observationsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ProfileModesTable, List<ProfileModeData>>
+  _profileModesRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.profileModes,
+        aliasName: 'profiles__id__profile_modes__profile_id',
+      );
+
+  $$ProfileModesTableProcessedTableManager get profileModesRefs {
+    final manager = $$ProfileModesTableTableManager(
+      $_db,
+      $_db.profileModes,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_profileModesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$CycleOverridesTable, List<CycleOverrideData>>
+  _cycleOverridesRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.cycleOverrides,
+        aliasName: 'profiles__id__cycle_overrides__profile_id',
+      );
+
+  $$CycleOverridesTableProcessedTableManager get cycleOverridesRefs {
+    final manager = $$CycleOverridesTableTableManager(
+      $_db,
+      $_db.cycleOverrides,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_cycleOverridesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -4840,6 +6319,56 @@ class $$ProfilesTableFilterComposer
           }) => $$ObservationsTableFilterComposer(
             $db: $db,
             $table: $db.observations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> profileModesRefs(
+    Expression<bool> Function($$ProfileModesTableFilterComposer f) f,
+  ) {
+    final $$ProfileModesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.profileModes,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfileModesTableFilterComposer(
+            $db: $db,
+            $table: $db.profileModes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> cycleOverridesRefs(
+    Expression<bool> Function($$CycleOverridesTableFilterComposer f) f,
+  ) {
+    final $$CycleOverridesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cycleOverrides,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CycleOverridesTableFilterComposer(
+            $db: $db,
+            $table: $db.cycleOverrides,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -5063,6 +6592,56 @@ class $$ProfilesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> profileModesRefs<T extends Object>(
+    Expression<T> Function($$ProfileModesTableAnnotationComposer a) f,
+  ) {
+    final $$ProfileModesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.profileModes,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfileModesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profileModes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> cycleOverridesRefs<T extends Object>(
+    Expression<T> Function($$CycleOverridesTableAnnotationComposer a) f,
+  ) {
+    final $$CycleOverridesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cycleOverrides,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CycleOverridesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cycleOverrides,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -5082,6 +6661,8 @@ class $$ProfilesTableTableManager
             bool dayEntriesRefs,
             bool profileGuardiansRefs,
             bool observationsRefs,
+            bool profileModesRefs,
+            bool cycleOverridesRefs,
           })
         > {
   $$ProfilesTableTableManager(_$LunarLogDatabase db, $ProfilesTable table)
@@ -5176,6 +6757,8 @@ class $$ProfilesTableTableManager
                 dayEntriesRefs = false,
                 profileGuardiansRefs = false,
                 observationsRefs = false,
+                profileModesRefs = false,
+                cycleOverridesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -5183,6 +6766,8 @@ class $$ProfilesTableTableManager
                     if (dayEntriesRefs) db.dayEntries,
                     if (profileGuardiansRefs) db.profileGuardians,
                     if (observationsRefs) db.observations,
+                    if (profileModesRefs) db.profileModes,
+                    if (cycleOverridesRefs) db.cycleOverrides,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -5250,6 +6835,48 @@ class $$ProfilesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (profileModesRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          ProfileModeData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._profileModesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).profileModesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (cycleOverridesRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          CycleOverrideData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._cycleOverridesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).cycleOverridesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -5274,6 +6901,8 @@ typedef $$ProfilesTableProcessedTableManager =
         bool dayEntriesRefs,
         bool profileGuardiansRefs,
         bool observationsRefs,
+        bool profileModesRefs,
+        bool cycleOverridesRefs,
       })
     >;
 typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
@@ -7054,6 +8683,860 @@ typedef $$ObservationsTableProcessedTableManager =
       Observation,
       PrefetchHooks Function({bool dayEntryId, bool profileId})
     >;
+typedef $$ProfileModesTableCreateCompanionBuilder =
+    ProfileModesCompanion Function({
+      required String profileId,
+      Value<String> mode,
+      Value<String?> modeStartedOn,
+      Value<String?> birthControlMethod,
+      Value<String?> birthControlStartedOn,
+      Value<String?> birthControlStoppedOn,
+      Value<bool> healthSyncConsent,
+      required DateTime updatedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+typedef $$ProfileModesTableUpdateCompanionBuilder =
+    ProfileModesCompanion Function({
+      Value<String> profileId,
+      Value<String> mode,
+      Value<String?> modeStartedOn,
+      Value<String?> birthControlMethod,
+      Value<String?> birthControlStartedOn,
+      Value<String?> birthControlStoppedOn,
+      Value<bool> healthSyncConsent,
+      Value<DateTime> updatedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+
+final class $$ProfileModesTableReferences
+    extends
+        BaseReferences<
+          _$LunarLogDatabase,
+          $ProfileModesTable,
+          ProfileModeData
+        > {
+  $$ProfileModesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) =>
+      db.profiles.createAlias('profile_modes__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ProfileModesTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $ProfileModesTable> {
+  $$ProfileModesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modeStartedOn => $composableBuilder(
+    column: $table.modeStartedOn,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get birthControlMethod => $composableBuilder(
+    column: $table.birthControlMethod,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get birthControlStartedOn => $composableBuilder(
+    column: $table.birthControlStartedOn,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get birthControlStoppedOn => $composableBuilder(
+    column: $table.birthControlStoppedOn,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get healthSyncConsent => $composableBuilder(
+    column: $table.healthSyncConsent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileModesTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $ProfileModesTable> {
+  $$ProfileModesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modeStartedOn => $composableBuilder(
+    column: $table.modeStartedOn,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get birthControlMethod => $composableBuilder(
+    column: $table.birthControlMethod,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get birthControlStartedOn => $composableBuilder(
+    column: $table.birthControlStartedOn,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get birthControlStoppedOn => $composableBuilder(
+    column: $table.birthControlStoppedOn,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get healthSyncConsent => $composableBuilder(
+    column: $table.healthSyncConsent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileModesTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $ProfileModesTable> {
+  $$ProfileModesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get mode =>
+      $composableBuilder(column: $table.mode, builder: (column) => column);
+
+  GeneratedColumn<String> get modeStartedOn => $composableBuilder(
+    column: $table.modeStartedOn,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get birthControlMethod => $composableBuilder(
+    column: $table.birthControlMethod,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get birthControlStartedOn => $composableBuilder(
+    column: $table.birthControlStartedOn,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get birthControlStoppedOn => $composableBuilder(
+    column: $table.birthControlStoppedOn,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get healthSyncConsent => $composableBuilder(
+    column: $table.healthSyncConsent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<int> get localRev =>
+      $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileModesTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $ProfileModesTable,
+          ProfileModeData,
+          $$ProfileModesTableFilterComposer,
+          $$ProfileModesTableOrderingComposer,
+          $$ProfileModesTableAnnotationComposer,
+          $$ProfileModesTableCreateCompanionBuilder,
+          $$ProfileModesTableUpdateCompanionBuilder,
+          (ProfileModeData, $$ProfileModesTableReferences),
+          ProfileModeData,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$ProfileModesTableTableManager(
+    _$LunarLogDatabase db,
+    $ProfileModesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProfileModesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProfileModesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProfileModesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> profileId = const Value.absent(),
+                Value<String> mode = const Value.absent(),
+                Value<String?> modeStartedOn = const Value.absent(),
+                Value<String?> birthControlMethod = const Value.absent(),
+                Value<String?> birthControlStartedOn = const Value.absent(),
+                Value<String?> birthControlStoppedOn = const Value.absent(),
+                Value<bool> healthSyncConsent = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProfileModesCompanion(
+                profileId: profileId,
+                mode: mode,
+                modeStartedOn: modeStartedOn,
+                birthControlMethod: birthControlMethod,
+                birthControlStartedOn: birthControlStartedOn,
+                birthControlStoppedOn: birthControlStoppedOn,
+                healthSyncConsent: healthSyncConsent,
+                updatedAt: updatedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String profileId,
+                Value<String> mode = const Value.absent(),
+                Value<String?> modeStartedOn = const Value.absent(),
+                Value<String?> birthControlMethod = const Value.absent(),
+                Value<String?> birthControlStartedOn = const Value.absent(),
+                Value<String?> birthControlStoppedOn = const Value.absent(),
+                Value<bool> healthSyncConsent = const Value.absent(),
+                required DateTime updatedAt,
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProfileModesCompanion.insert(
+                profileId: profileId,
+                mode: mode,
+                modeStartedOn: modeStartedOn,
+                birthControlMethod: birthControlMethod,
+                birthControlStartedOn: birthControlStartedOn,
+                birthControlStoppedOn: birthControlStoppedOn,
+                healthSyncConsent: healthSyncConsent,
+                updatedAt: updatedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ProfileModesTable, ProfileModeData>(table),
+                  $$ProfileModesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$ProfileModesTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$ProfileModesTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ProfileModesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $ProfileModesTable,
+      ProfileModeData,
+      $$ProfileModesTableFilterComposer,
+      $$ProfileModesTableOrderingComposer,
+      $$ProfileModesTableAnnotationComposer,
+      $$ProfileModesTableCreateCompanionBuilder,
+      $$ProfileModesTableUpdateCompanionBuilder,
+      (ProfileModeData, $$ProfileModesTableReferences),
+      ProfileModeData,
+      PrefetchHooks Function({bool profileId})
+    >;
+typedef $$CycleOverridesTableCreateCompanionBuilder =
+    CycleOverridesCompanion Function({
+      required String id,
+      required String profileId,
+      required String cycleStartDate,
+      Value<bool> excludedFromAverage,
+      Value<bool> manualStart,
+      Value<String?> noteId,
+      required DateTime updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+typedef $$CycleOverridesTableUpdateCompanionBuilder =
+    CycleOverridesCompanion Function({
+      Value<String> id,
+      Value<String> profileId,
+      Value<String> cycleStartDate,
+      Value<bool> excludedFromAverage,
+      Value<bool> manualStart,
+      Value<String?> noteId,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+
+final class $$CycleOverridesTableReferences
+    extends
+        BaseReferences<
+          _$LunarLogDatabase,
+          $CycleOverridesTable,
+          CycleOverrideData
+        > {
+  $$CycleOverridesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) =>
+      db.profiles.createAlias('cycle_overrides__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CycleOverridesTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $CycleOverridesTable> {
+  $$CycleOverridesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cycleStartDate => $composableBuilder(
+    column: $table.cycleStartDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get excludedFromAverage => $composableBuilder(
+    column: $table.excludedFromAverage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get manualStart => $composableBuilder(
+    column: $table.manualStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CycleOverridesTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $CycleOverridesTable> {
+  $$CycleOverridesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cycleStartDate => $composableBuilder(
+    column: $table.cycleStartDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get excludedFromAverage => $composableBuilder(
+    column: $table.excludedFromAverage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get manualStart => $composableBuilder(
+    column: $table.manualStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CycleOverridesTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $CycleOverridesTable> {
+  $$CycleOverridesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get cycleStartDate => $composableBuilder(
+    column: $table.cycleStartDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get excludedFromAverage => $composableBuilder(
+    column: $table.excludedFromAverage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get manualStart => $composableBuilder(
+    column: $table.manualStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get noteId =>
+      $composableBuilder(column: $table.noteId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<int> get localRev =>
+      $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CycleOverridesTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $CycleOverridesTable,
+          CycleOverrideData,
+          $$CycleOverridesTableFilterComposer,
+          $$CycleOverridesTableOrderingComposer,
+          $$CycleOverridesTableAnnotationComposer,
+          $$CycleOverridesTableCreateCompanionBuilder,
+          $$CycleOverridesTableUpdateCompanionBuilder,
+          (CycleOverrideData, $$CycleOverridesTableReferences),
+          CycleOverrideData,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$CycleOverridesTableTableManager(
+    _$LunarLogDatabase db,
+    $CycleOverridesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CycleOverridesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CycleOverridesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CycleOverridesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> cycleStartDate = const Value.absent(),
+                Value<bool> excludedFromAverage = const Value.absent(),
+                Value<bool> manualStart = const Value.absent(),
+                Value<String?> noteId = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CycleOverridesCompanion(
+                id: id,
+                profileId: profileId,
+                cycleStartDate: cycleStartDate,
+                excludedFromAverage: excludedFromAverage,
+                manualStart: manualStart,
+                noteId: noteId,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String profileId,
+                required String cycleStartDate,
+                Value<bool> excludedFromAverage = const Value.absent(),
+                Value<bool> manualStart = const Value.absent(),
+                Value<String?> noteId = const Value.absent(),
+                required DateTime updatedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CycleOverridesCompanion.insert(
+                id: id,
+                profileId: profileId,
+                cycleStartDate: cycleStartDate,
+                excludedFromAverage: excludedFromAverage,
+                manualStart: manualStart,
+                noteId: noteId,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$CycleOverridesTable, CycleOverrideData>(table),
+                  $$CycleOverridesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$CycleOverridesTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$CycleOverridesTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CycleOverridesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $CycleOverridesTable,
+      CycleOverrideData,
+      $$CycleOverridesTableFilterComposer,
+      $$CycleOverridesTableOrderingComposer,
+      $$CycleOverridesTableAnnotationComposer,
+      $$CycleOverridesTableCreateCompanionBuilder,
+      $$CycleOverridesTableUpdateCompanionBuilder,
+      (CycleOverrideData, $$CycleOverridesTableReferences),
+      CycleOverrideData,
+      PrefetchHooks Function({bool profileId})
+    >;
 typedef $$AppSettingsTableCreateCompanionBuilder =
     AppSettingsCompanion Function({
       required String key,
@@ -7232,6 +9715,8 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorProfiles,
   Value<int> cursorDayEntries,
   Value<int> cursorObservations,
+  Value<int> cursorProfileModes,
+  Value<int> cursorCycleOverrides,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -7244,6 +9729,8 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorProfiles,
   Value<int> cursorDayEntries,
   Value<int> cursorObservations,
+  Value<int> cursorProfileModes,
+  Value<int> cursorCycleOverrides,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -7286,6 +9773,16 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorObservations => $composableBuilder(
     column: $table.cursorObservations,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorProfileModes => $composableBuilder(
+    column: $table.cursorProfileModes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorCycleOverrides => $composableBuilder(
+    column: $table.cursorCycleOverrides,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7349,6 +9846,16 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorProfileModes => $composableBuilder(
+    column: $table.cursorProfileModes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cursorCycleOverrides => $composableBuilder(
+    column: $table.cursorCycleOverrides,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -7402,6 +9909,16 @@ class $$SyncStateTableAnnotationComposer
 
   GeneratedColumn<int> get cursorObservations => $composableBuilder(
     column: $table.cursorObservations,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cursorProfileModes => $composableBuilder(
+    column: $table.cursorProfileModes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cursorCycleOverrides => $composableBuilder(
+    column: $table.cursorCycleOverrides,
     builder: (column) => column,
   );
 
@@ -7461,6 +9978,8 @@ class $$SyncStateTableTableManager
                 Value<int> cursorProfiles = const Value.absent(),
                 Value<int> cursorDayEntries = const Value.absent(),
                 Value<int> cursorObservations = const Value.absent(),
+                Value<int> cursorProfileModes = const Value.absent(),
+                Value<int> cursorCycleOverrides = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -7472,6 +9991,8 @@ class $$SyncStateTableTableManager
                 cursorProfiles: cursorProfiles,
                 cursorDayEntries: cursorDayEntries,
                 cursorObservations: cursorObservations,
+                cursorProfileModes: cursorProfileModes,
+                cursorCycleOverrides: cursorCycleOverrides,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -7485,6 +10006,8 @@ class $$SyncStateTableTableManager
                 Value<int> cursorProfiles = const Value.absent(),
                 Value<int> cursorDayEntries = const Value.absent(),
                 Value<int> cursorObservations = const Value.absent(),
+                Value<int> cursorProfileModes = const Value.absent(),
+                Value<int> cursorCycleOverrides = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -7496,6 +10019,8 @@ class $$SyncStateTableTableManager
                 cursorProfiles: cursorProfiles,
                 cursorDayEntries: cursorDayEntries,
                 cursorObservations: cursorObservations,
+                cursorProfileModes: cursorProfileModes,
+                cursorCycleOverrides: cursorCycleOverrides,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -7547,6 +10072,10 @@ class $LunarLogDatabaseManager {
       $$ProfileGuardiansTableTableManager(_db, _db.profileGuardians);
   $$ObservationsTableTableManager get observations =>
       $$ObservationsTableTableManager(_db, _db.observations);
+  $$ProfileModesTableTableManager get profileModes =>
+      $$ProfileModesTableTableManager(_db, _db.profileModes);
+  $$CycleOverridesTableTableManager get cycleOverrides =>
+      $$CycleOverridesTableTableManager(_db, _db.cycleOverrides);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$SyncStateTableTableManager get syncState =>

@@ -165,6 +165,74 @@ void seedV4(sqlite3.Database raw) {
   raw.execute('PRAGMA user_version = 4');
 }
 
+/// The v7 schema as drift generated it: the v4/v5 shape of [kV3Ddl] (with
+/// profiles' birth_year/relationship/transferred_at/mode) plus the v6
+/// `observations` table and `sync_state.cursor_observations`, and the v7
+/// provenance columns (`day_entries.source/source_id/import_id`,
+/// `observations.import_id`). Seeds one profile (care mode `teen`, to pin
+/// #131's axis surviving untouched beside the new #188 tables), one
+/// imported day entry, one observation, and a bound `sync_state` row, then
+/// stamps `user_version = 7`, so the v7→v9 migrations (main's v8
+/// indexes then Issue #188's
+/// profile_modes/cycle_overrides tables and their two cursors) is exercised
+/// against a real v7 file.
+void seedV7(sqlite3.Database raw) {
+  final v7Ddl = [
+    kV3Ddl.first.replaceFirst(
+        '"local_rev" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id")',
+        '"local_rev" INTEGER NOT NULL DEFAULT 0, "birth_year" INTEGER NULL, '
+        '"relationship" TEXT NULL, "transferred_at" TEXT NULL, '
+        '"mode" TEXT NOT NULL DEFAULT \'standard\', PRIMARY KEY ("id")'),
+    kV3Ddl[1].replaceFirst(
+        '"last_modified_by_user_id" TEXT NULL, PRIMARY KEY ("id")',
+        '"last_modified_by_user_id" TEXT NULL, "source" TEXT NOT NULL '
+        'DEFAULT \'manual\', "source_id" TEXT NULL, "import_id" TEXT NULL, '
+        'PRIMARY KEY ("id")'),
+    kV3Ddl[2],
+    'CREATE TABLE "observations" ("id" TEXT NOT NULL, "day_entry_id" TEXT '
+        'NOT NULL REFERENCES day_entries (id), "profile_id" TEXT NOT NULL '
+        'REFERENCES profiles (id), "local_date" TEXT NOT NULL, '
+        '"observed_at" TEXT NULL, "tz" TEXT NOT NULL, "category" TEXT NULL, '
+        '"code" TEXT NULL, "value_num" REAL NULL, "value_text" TEXT NULL, '
+        '"unit" TEXT NULL, "intensity" INTEGER NULL, "excluded" INTEGER '
+        'NOT NULL DEFAULT 0 CHECK ("excluded" IN (0, 1)), "source" TEXT '
+        'NOT NULL DEFAULT \'manual\', "source_id" TEXT NULL, "import_id" '
+        'TEXT NULL, "raw" TEXT NULL, "updated_at" TEXT NOT NULL, '
+        '"deleted_at" TEXT NULL, "dirty" INTEGER NOT NULL DEFAULT 0 '
+        'CHECK ("dirty" IN (0, 1)), "local_rev" INTEGER NOT NULL DEFAULT 0, '
+        '"logged_by_user_id" TEXT NULL, "last_modified_by_user_id" TEXT '
+        'NULL, PRIMARY KEY ("id"))',
+    kV3Ddl[3],
+    kV3Ddl[4].replaceFirst(
+        '"cursor_day_entries" INTEGER NOT NULL DEFAULT 0,',
+        '"cursor_day_entries" INTEGER NOT NULL DEFAULT 0, '
+        '"cursor_observations" INTEGER NOT NULL DEFAULT 0,'),
+    kV3Ddl[5],
+  ];
+  for (final ddl in v7Ddl) {
+    raw.execute(ddl);
+  }
+  raw.execute(
+      "INSERT INTO profiles (id, display_name, is_minor, sort_order, archived_at, "
+      "created_at, updated_at, deleted_at, dirty, local_rev, birth_year, relationship, mode) VALUES "
+      "('$kV3ProfileId', 'V7 Profile', 1, 0, NULL, '$kV3Stamp', '$kV3Stamp', NULL, 0, 0, 2013, 'daughter', 'teen')");
+  raw.execute(
+      "INSERT INTO day_entries (id, profile_id, local_date, tz, flow, tags, note, "
+      "updated_at, deleted_at, dirty, local_rev, logged_by_user_id, last_modified_by_user_id, source, source_id) VALUES "
+      "('$kV3EntryId', '$kV3ProfileId', '2026-08-01', 'UTC', 'light', "
+      "'[]', NULL, '$kV3Stamp', NULL, 0, 0, 'u-v7', 'u-v7', 'clue_import', 'clue-42')");
+  raw.execute(
+      "INSERT INTO observations (id, day_entry_id, profile_id, local_date, tz, category, code, "
+      "updated_at, dirty, local_rev, logged_by_user_id, last_modified_by_user_id, import_id) VALUES "
+      "('01JV7OBSERVATION0000000000', '$kV3EntryId', '$kV3ProfileId', '2026-08-01', 'UTC', 'pain', 'cramps', "
+      "'$kV3Stamp', 0, 0, 'u-v7', 'u-v7', NULL)");
+  raw.execute(
+      "INSERT INTO sync_state (id, bound_user_id, device_id, cursor_profiles, "
+      "cursor_day_entries, cursor_observations, last_full_pull_at, last_sync_at, last_error, server_clock_offset_ms) VALUES "
+      "(1, 'u-v7', 'dev-v7', 11, 12, 13, NULL, NULL, NULL, NULL)");
+  raw.execute('PRAGMA user_version = 7');
+}
+
 /// Column names of [table] via `PRAGMA table_info`.
 Future<Set<String>> columnsOf(LunarLogDatabase db, String table) async {
   final rows = await db.customSelect('PRAGMA table_info($table)').get();
@@ -180,7 +248,7 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 8);
+  expect(await userVersion(db), 9);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
   expect(
@@ -271,10 +339,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 8 and database opens with the expected tables',
+    test('schema version is 9 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 8);
-      expect(await userVersion(db), 8);
+      expect(db.schemaVersion, 9);
+      expect(await userVersion(db), 9);
 
       final tables = (await db
               .customSelect(
@@ -284,7 +352,8 @@ void main() {
           .map((row) => row.read<String>('name'))
           .toSet();
       expect(tables,
-          containsAll(['profiles', 'day_entries', 'profile_guardians', 'app_settings', 'sync_state']));
+          containsAll(['profiles', 'day_entries', 'profile_guardians', 'app_settings', 'sync_state',
+              'observations', 'profile_modes', 'cycle_overrides']));
       expect(await columnsOf(db, 'profiles'),
           containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
       expect(
@@ -294,6 +363,15 @@ void main() {
       expect(
           await columnsOf(db, 'profile_guardians'), containsAll(['id', 'profile_id', 'user_id', 'role', 'status', 'display_name']));
       expect(await columnsOf(db, 'observations'), contains('import_id'));
+      expect(await columnsOf(db, 'profile_modes'),
+          containsAll(['profile_id', 'mode', 'mode_started_on', 'birth_control_method',
+              'birth_control_started_on', 'birth_control_stopped_on', 'health_sync_consent',
+              'updated_at', 'dirty', 'local_rev']));
+      expect(await columnsOf(db, 'cycle_overrides'),
+          containsAll(['id', 'profile_id', 'cycle_start_date', 'excluded_from_average',
+              'manual_start', 'note_id', 'deleted_at', 'updated_at', 'dirty', 'local_rev']));
+      expect(await columnsOf(db, 'sync_state'),
+          containsAll(['cursor_profile_modes', 'cursor_cycle_overrides']));
 
       // Issue #197: the four read-path indexes exist on a fresh onCreate
       // too, not just via onUpgradeSteps (see schema_migration_test.dart
@@ -1694,7 +1772,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 8);
+      expect(await userVersion(second), 9);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1707,7 +1785,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 8);
+      expect(await userVersion(db), 9);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1752,7 +1830,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 8);
+      expect(await userVersion(db), 9);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1775,6 +1853,66 @@ void main() {
           birthYear: 2013,
           relationship: 'daughter');
       expect(edited.mode, 'irregular');
+    });
+
+    test('a v7 fixture upgrades to v9 by adding profile_modes and '
+        'cycle_overrides with their sync_state cursors, preserving every '
+        'row (Issue #188)', () async {
+      final raw = sqlite3.sqlite3.openInMemory();
+      seedV7(raw);
+      final db = LunarLogDatabase(NativeDatabase.opened(raw));
+      addTearDown(() => db.close());
+
+      expect(await userVersion(db), 9);
+      expect(await columnsOf(db, 'profile_modes'),
+          containsAll(['profile_id', 'mode', 'mode_started_on',
+              'birth_control_method', 'birth_control_started_on',
+              'birth_control_stopped_on', 'health_sync_consent',
+              'updated_at', 'dirty', 'local_rev']));
+      expect(await columnsOf(db, 'cycle_overrides'),
+          containsAll(['id', 'profile_id', 'cycle_start_date',
+              'excluded_from_average', 'manual_start', 'note_id',
+              'deleted_at', 'updated_at', 'dirty', 'local_rev']));
+      expect(await columnsOf(db, 'sync_state'),
+          containsAll(['cursor_profile_modes', 'cursor_cycle_overrides']));
+
+      // Every v7 row survived, care mode and provenance included.
+      final profile =
+          (await db.storage.getProfiles(includeTombstones: true)).single;
+      expect(profile.id, kV3ProfileId);
+      expect(profile.mode, 'teen',
+          reason: '#131''s care-mode axis is untouched by the #188 tables');
+      final entry = (await db.storage.getDayEntries(
+              profileId: kV3ProfileId, includeTombstones: true))
+          .single;
+      expect(entry.source, 'clue_import');
+      expect(entry.sourceId, 'clue-42');
+      final observation = (await db.storage.getObservationsForDayEntry(
+              kV3EntryId,
+              includeTombstones: true))
+          .single;
+      expect(observation.code, 'cramps');
+      final state = await db.storage.readSyncState();
+      expect(state.boundUserId, 'u-v7');
+      expect(state.cursorProfiles, 11);
+      expect(state.cursorObservations, 13);
+      expect(state.cursorProfileModes, 0,
+          reason: 'the new cursors start at zero');
+      expect(state.cursorCycleOverrides, 0);
+
+      // The upgraded database is immediately usable for the new tables.
+      final mode = await db.storage.upsertProfileMode(
+          profileId: kV3ProfileId, mode: 'perimenopause');
+      expect(mode.dirty, isTrue);
+      expect((await db.storage.getProfileMode(kV3ProfileId))!.mode,
+          'perimenopause');
+      final override = await db.storage.upsertCycleOverride(
+          profileId: kV3ProfileId,
+          cycleStartDate: '2026-08-01',
+          excludedFromAverage: true);
+      expect(override.dirty, isTrue);
+      expect(await db.storage.getCycleOverridesForProfile(kV3ProfileId),
+          hasLength(1));
     });
 
     test('an upgrade step failing on profiles.relationship leaves the '
@@ -1828,7 +1966,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 8);
+      expect(await userVersion(db), 9);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

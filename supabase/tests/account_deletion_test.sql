@@ -219,6 +219,8 @@ select is(
   public.delete_account_data(),
   jsonb_build_object(
     'day_entries', 0, 'day_entries_rehomed', 0, 'observations', 0,
+    -- Issue #188 added these two counts to the returned document.
+    'profile_modes', 0, 'cycle_overrides', 0,
     'guardian_invitations', 0,
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,

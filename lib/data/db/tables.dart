@@ -329,6 +329,108 @@ class Observations extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// One row per profile: the life-stage mode axis (Issue #188), mirroring
+/// `public.profile_modes` column-for-column; see
+/// `supabase/migrations/20260909000000_profile_modes_and_cycle_overrides.sql`
+/// for the server shape and its RLS/grants. ORTHOGONAL to [Profiles.mode]
+/// (Issue #131's care modes) — the two enums are never merged; see
+/// `domain/models/lifecycle_mode.dart`'s doc comment.
+///
+/// Unlike every other synced table there is NO `deleted_at`: the server
+/// table has none either — a mode row is created lazily on first write and
+/// dies with its profile. An absent row means `tracking` (the column
+/// default, matching the server's lazy-default contract).
+@DataClassName('ProfileModeData')
+class ProfileModes extends Table {
+  /// The profile this row belongs to (also the primary key — exactly one
+  /// row per profile, enforced by the key itself).
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// Raw `LifecycleMode` `toDb()` string
+  /// (`tracking`/`conceive`/`pregnancy`/`perimenopause`/`postpartum`), the
+  /// server's `profile_modes_mode_check` set. Not validated here (the
+  /// domain enum and the server CHECK are the enforcement points); an
+  /// unrecognised value decodes to `tracking` on pull (see `row_codec.dart`).
+  TextColumn get mode => text().withDefault(const Constant('tracking'))();
+
+  /// ISO calendar date `yyyy-MM-dd` the current mode took effect, or null.
+  TextColumn get modeStartedOn =>
+      text().named('mode_started_on').nullable()();
+
+  /// Current birth-control method (free text, #260 owns the vocabulary) or
+  /// null when none is recorded.
+  TextColumn get birthControlMethod =>
+      text().named('birth_control_method').nullable()();
+
+  TextColumn get birthControlStartedOn =>
+      text().named('birth_control_started_on').nullable()();
+
+  TextColumn get birthControlStoppedOn =>
+      text().named('birth_control_stopped_on').nullable()();
+
+  /// D-29: per-profile opt-in for health-platform writes — a distinct
+  /// consent from cycle sharing/guardian consent, recorded server-side.
+  BoolColumn get healthSyncConsent =>
+      boolean().named('health_sync_consent').withDefault(const Constant(false))();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  /// See [Profiles.dirty]. (No `deleted_at` — this table has no tombstone.)
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {profileId};
+}
+
+/// One row per manually-flagged or manually-started cycle (Issue #188,
+/// consumed by #132's omit-from-average and manual cycle-boundary
+/// correction), mirroring `public.cycle_overrides` column-for-column.
+/// Tombstones (`deletedAt` set) carry no payload — `excludedFromAverage`/
+/// `manualStart` reset to false and `noteId` cleared, mirroring the
+/// server's `cycle_overrides_tombstone_payload_check` exactly.
+@DataClassName('CycleOverrideData')
+class CycleOverrides extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// ISO calendar date `yyyy-MM-dd` of the manual boundary.
+  TextColumn get cycleStartDate =>
+      text().named('cycle_start_date')();
+
+  /// True when this interval is left out of cycle-length averages (#132).
+  BoolColumn get excludedFromAverage =>
+      boolean().named('excluded_from_average').withDefault(const Constant(false))();
+
+  /// True when the user started this cycle by hand.
+  BoolColumn get manualStart =>
+      boolean().named('manual_start').withDefault(const Constant(false))();
+
+  /// Placeholder id of a future notes-table row (#132); null when unset.
+  TextColumn get noteId => text().named('note_id').nullable()();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id, profileId};
+}
+
 @DataClassName('AppSetting')
 class AppSettings extends Table {
   TextColumn get key => text()();
@@ -372,6 +474,16 @@ class SyncState extends Table {
   /// [cursorDayEntries].
   IntColumn get cursorObservations =>
       integer().named('cursor_observations').withDefault(const Constant(0))();
+
+  /// Issue #188: the `profile_modes` pull cursor, same shape as
+  /// [cursorProfiles].
+  IntColumn get cursorProfileModes =>
+      integer().named('cursor_profile_modes').withDefault(const Constant(0))();
+
+  /// Issue #188: the `cycle_overrides` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorCycleOverrides =>
+      integer().named('cursor_cycle_overrides').withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>
       dateTime().named('last_full_pull_at').nullable()();

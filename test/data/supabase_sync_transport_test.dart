@@ -158,6 +158,8 @@ void main() {
           {'id': entryId, 'profile_id': profileId}
         ],
         'p_observations': [],
+        'p_profile_modes': [],
+        'p_cycle_overrides': [],
       });
 
       expect(result.resolved, hasLength(2));
@@ -226,7 +228,8 @@ void main() {
       expect(result.resolved, isEmpty);
       expect(result.rejectedIds, isEmpty);
       expect(jsonDecode(requests.single.body),
-          {'p_profiles': [], 'p_day_entries': [], 'p_observations': []});
+          {'p_profiles': [], 'p_day_entries': [], 'p_observations': [],
+            'p_profile_modes': [], 'p_cycle_overrides': []});
     });
 
     test('sends at most 500 rows per array', () async {

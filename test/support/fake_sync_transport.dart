@@ -38,6 +38,8 @@ class FakeSyncTransport implements SyncTransport {
     SyncTable.dayEntries: [],
     SyncTable.profileGuardians: [],
     SyncTable.observations: [],
+    SyncTable.profileModes: [],
+    SyncTable.cycleOverrides: [],
   };
 
   /// When set, wins over [pages]: computes each page from the call itself

@@ -49,7 +49,7 @@ import 'generated_migrations/schema.dart';
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
 /// dump. A mismatch here is caught by the `schema version is 8` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 8;
+const int _kCurrentSchemaVersion = 9;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
@@ -203,6 +203,72 @@ void main() {
         ]),
         reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create all '
             'four issue #197 indexes',
+      );
+    });
+
+    test(
+        'upgrading from v$fromVersion creates the profile_modes and '
+        'cycle_overrides tables (Issue #188) with their column families and '
+        'both sync_state cursors', () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+      final tables = await db
+          .customSelect(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name IN ('profile_modes', 'cycle_overrides')",
+          )
+          .get();
+      expect(tables, hasLength(2),
+          reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create '
+              'both Issue #188 tables');
+
+      final modeColumns =
+          await db.customSelect("PRAGMA table_info('profile_modes')").get();
+      expect(
+        modeColumns.map((row) => row.data['name'] as String),
+        containsAll([
+          'profile_id',
+          'mode',
+          'mode_started_on',
+          'birth_control_method',
+          'birth_control_started_on',
+          'birth_control_stopped_on',
+          'health_sync_consent',
+          'updated_at',
+          'dirty',
+          'local_rev',
+        ]),
+        reason: 'the full profile_modes column shape must land',
+      );
+
+      final overrideColumns =
+          await db.customSelect("PRAGMA table_info('cycle_overrides')").get();
+      expect(
+        overrideColumns.map((row) => row.data['name'] as String),
+        containsAll([
+          'id',
+          'profile_id',
+          'cycle_start_date',
+          'excluded_from_average',
+          'manual_start',
+          'note_id',
+          'deleted_at',
+          'updated_at',
+          'dirty',
+          'local_rev',
+        ]),
+        reason: 'the full cycle_overrides column shape must land',
+      );
+
+      final syncStateColumns =
+          await db.customSelect("PRAGMA table_info('sync_state')").get();
+      expect(
+        syncStateColumns.map((row) => row.data['name'] as String),
+        containsAll(['cursor_profile_modes', 'cursor_cycle_overrides']),
+        reason: 'both Issue #188 pull cursors must land on sync_state',
       );
     });
   }
