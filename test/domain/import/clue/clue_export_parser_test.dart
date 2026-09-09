@@ -60,7 +60,7 @@ void main() {
       (2, 'pain', 'pain', 'cramps'), // period_cramps -> cramps
       (3, 'feelings', 'feelings', 'happy'),
       (4, 'sex_life', 'sex_life', 'withdrawal'),
-      (5, 'energy', 'energy', 'tired'),
+      (5, 'energy', 'energy', 'tired'), // fatigue -> tired (issue #249)
       (6, 'pms', 'pms', 'irritability'),
       (7, 'digestion', 'digestion', 'bloating'), // bloated -> bloating
       (8, 'discharge', 'discharge', 'creamy'),
@@ -97,6 +97,30 @@ void main() {
     test('tags free text is never normalised', () {
       final dp = result.datapoints[24] as ClueObservationDatapoint;
       expect(dp.code, 'My Vacation Trip!');
+    });
+
+    test('issue #249 mapping table on synthetic Clue-shaped input: '
+        'period_cramps->cramps, lower_back->back_pain, bloated->bloating, '
+        'fatigue->tired', () {
+      final result = parseClueDatapoints(utf8.encode('['
+          '{"date": "2026-02-01", "type": "pain", '
+          '"value": {"option": "period_cramps"}},'
+          '{"date": "2026-02-02", "type": "pain", '
+          '"value": {"option": "lower_back"}},'
+          '{"date": "2026-02-03", "type": "digestion", '
+          '"value": {"option": "bloated"}},'
+          '{"date": "2026-02-04T00:00:00.000Z", "type": "energy", '
+          '"value": {"option": "fatigue"}}'
+          ']'));
+      expect(result.skipped, isEmpty);
+      expect(result.datapoints, hasLength(4));
+      expect(
+        [
+          for (final dp in result.datapoints)
+            (dp as ClueObservationDatapoint).code,
+        ],
+        ['cramps', 'back_pain', 'bloating', 'tired'],
+      );
     });
 
     test('both documented date formats parse to the same civil date shape', () {

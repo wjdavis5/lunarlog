@@ -72,6 +72,9 @@ void main() {
       expect(kClueTypeMap['digestion']!.options['bloated']!.code, 'bloating');
       expect(kClueTypeMap['digestion']!.options['nauseous']!.code, 'nausea');
       expect(kClueTypeMap['digestion']!.options['nauseated']!.code, 'nausea');
+      // Issue #249: Clue's legacy `fatigue` energy option maps onto the
+      // graduated taxonomy's `tired`.
+      expect(kClueTypeMap['energy']!.options['fatigue']!.code, 'tired');
     });
 
     test('an option absent from a type\'s spec passes through (no entry)',

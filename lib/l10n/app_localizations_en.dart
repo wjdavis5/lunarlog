@@ -278,6 +278,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetUnrecognised => 'Unrecognised';
 
   @override
+  String get daySheetUnverifiedPin => 'Unverified — pin before shipping';
+
+  @override
   String get daySheetNoEntry => 'No entry for this day.';
 
   @override

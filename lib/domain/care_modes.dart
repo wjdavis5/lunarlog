@@ -105,11 +105,26 @@ class CareModeCopy {
   String categoryLabel(TagCategory category) => categoryLabels[category]!;
 }
 
+/// Every [TagCategory] has a heading in every mode — including the
+/// option-set-unverified ones (Issue #249's `kUnverifiedTagCategories`),
+/// which the day sheet marks "unverified — pin before shipping" instead of
+/// rendering invented chips.
 const Map<TagCategory, String> _standardCategoryLabels = {
   TagCategory.pain: 'Pain',
+  TagCategory.energy: 'Energy',
+  TagCategory.sleep: 'Sleep',
+  TagCategory.sleepQuality: 'Sleep quality',
+  TagCategory.skin: 'Skin',
+  TagCategory.hair: 'Hair',
+  TagCategory.digestion: 'Digestion',
+  TagCategory.stool: 'Stool',
+  TagCategory.cravings: 'Cravings',
+  TagCategory.breastsChest: 'Breasts & chest',
+  TagCategory.hotFlashes: 'Hot flashes',
+  TagCategory.urine: 'Urine',
+  TagCategory.vulvaVagina: 'Vulva & vagina',
   TagCategory.body: 'Body',
   TagCategory.mood: 'Mood',
-  TagCategory.other: 'Other',
 };
 
 const CareModeCopy _standard = CareModeCopy(
@@ -147,13 +162,35 @@ const CareModeCopy _teen = CareModeCopy(
     TagCategory.body,
     TagCategory.mood,
     TagCategory.pain,
-    TagCategory.other,
+    TagCategory.energy,
+    TagCategory.sleep,
+    TagCategory.sleepQuality,
+    TagCategory.skin,
+    TagCategory.hair,
+    TagCategory.digestion,
+    TagCategory.stool,
+    TagCategory.cravings,
+    TagCategory.breastsChest,
+    TagCategory.hotFlashes,
+    TagCategory.urine,
+    TagCategory.vulvaVagina,
   ],
   categoryLabels: {
     TagCategory.pain: 'Pain',
+    TagCategory.energy: 'Energy',
+    TagCategory.sleep: 'Sleep',
+    TagCategory.sleepQuality: 'Sleep quality',
+    TagCategory.skin: 'Skin',
+    TagCategory.hair: 'Hair',
+    TagCategory.digestion: 'Digestion',
+    TagCategory.stool: 'Stool',
+    TagCategory.cravings: 'Cravings',
+    TagCategory.breastsChest: 'Breasts & chest',
+    TagCategory.hotFlashes: 'Hot flashes',
+    TagCategory.urine: 'Urine',
+    TagCategory.vulvaVagina: 'Vulva & vagina',
     TagCategory.body: 'How your body feels',
     TagCategory.mood: 'Mood',
-    TagCategory.other: 'Other',
   },
 );
 

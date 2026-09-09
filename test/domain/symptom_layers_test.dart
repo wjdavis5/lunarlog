@@ -39,7 +39,7 @@ void main() {
 
   test('ties break in taxonomy order (deterministic ranking)', () {
     // cramps, headache, fatigue all used twice; taxonomy order is
-    // cramps (pain), headache (pain), fatigue (body).
+    // cramps (pain), headache (pain), fatigue (energy, since #249).
     final ranked = rankTagUsage([
       _entry('p', 1, tags: const ['fatigue']),
       _entry('p', 2, tags: const ['headache']),
@@ -78,6 +78,25 @@ void main() {
       _entry('p', 2, tags: const ['cramps']),
     ]);
     expect(ranked.map((u) => u.code).toList(), ['cramps']);
+  });
+
+  test('pain_free never ranks as a symptom layer (issue #249: a positive '
+      '"none today" assertion is not a symptom)', () {
+    final ranked = rankTagUsage([
+      _entry('p', 1, tags: const ['pain_free']),
+      _entry('p', 2, tags: const ['pain_free']),
+      _entry('p', 3, tags: const ['pain_free']),
+      _entry('p', 4, tags: const ['cramps']),
+    ]);
+    expect(ranked.map((u) => u.code).toList(), ['cramps'],
+        reason: 'the most-used code is pain_free, but it must not rank');
+    expect(
+      defaultLayerTags([
+        _entry('p', 1, tags: const ['pain_free', 'headache']),
+        _entry('p', 2, tags: const ['pain_free', 'headache']),
+      ]),
+      ['headache'],
+    );
   });
 
   test('unknown codes rank after known ones and keep their code', () {

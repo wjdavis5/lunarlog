@@ -970,14 +970,22 @@ void main() {
           tz: 'UTC',
           flow: FlowLevel.none);
 
-      // The whole curated taxonomy passes (17 codes, longest 17 characters).
+      // The curated taxonomy passes the bounds check. Issue #249 grew the
+      // taxonomy to 45 codes — more than the 32-element day_entries.tags
+      // cap — so the round-trip covers the first kMaxTagCount of them
+      // (longest code still well under kMaxTagLength).
+      final taxonomyCodes = kTagTaxonomy.map((t) => t.code).toList();
+      expect(taxonomyCodes.length, greaterThan(kMaxTagCount),
+          reason: 'this test exists to pin taxonomy codes against the '
+              'per-day count bound — it must stay meaningful');
+      final storedCodes = taxonomyCodes.take(kMaxTagCount).toList();
       final taxonomyEntry = await storage.upsertDayEntry(
           profileId: profile.id,
           localDate: '2026-05-08',
           tz: 'UTC',
           flow: FlowLevel.spotting,
-          tags: kTagTaxonomy.map((t) => t.code).toList());
-      expect(taxonomyEntry.tags, kTagTaxonomy.map((t) => t.code).toList());
+          tags: storedCodes);
+      expect(taxonomyEntry.tags, storedCodes);
     });
 
     test('soft delete then re-create for the same profile+date: new ULID row '
