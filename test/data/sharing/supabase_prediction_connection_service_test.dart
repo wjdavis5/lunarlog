@@ -17,7 +17,8 @@ import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 SupabaseClient makeClient(
-    Future<http.Response> Function(http.Request) handler) {
+  Future<http.Response> Function(http.Request) handler,
+) {
   return SupabaseClient(
     'https://example.supabase.co',
     'anon-key',
@@ -79,7 +80,7 @@ void main() {
           jsonEncode({
             'message':
                 'prediction-only sharing is unavailable while this profile '
-                    'is in Pregnancy mode',
+                'is in Pregnancy mode',
             'code': 'P0001',
           }),
           400,
@@ -99,7 +100,7 @@ void main() {
           jsonEncode({
             'message':
                 'this profile already has a prediction-only connection or '
-                    'pending invite',
+                'pending invite',
             'code': 'P0001',
           }),
           400,
@@ -137,14 +138,13 @@ void main() {
       expect(result.connectionId, 'conn-1');
     });
 
-    test('the one-directional refusal maps to its own typed failure',
-        () async {
+    test('the one-directional refusal maps to its own typed failure', () async {
       final client = makeClient((req) async {
         return http.Response(
           jsonEncode({
             'message':
                 'cannot share and view predictions with the same person at '
-                    'the same time',
+                'the same time',
             'code': 'P0001',
           }),
           400,
@@ -173,9 +173,86 @@ void main() {
     });
   });
 
+  group('getActiveConnection', () {
+    test('an empty result reads as null (no live connection)', () async {
+      final client = makeClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/rest/v1/prediction_connections');
+        expect(req.url.queryParameters['profile_id'], 'eq.p-1');
+        return http.Response('[]', 200);
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      final result = await service.getActiveConnection(profileId: 'p-1');
+      expect(result, isNull);
+    });
+
+    test('a pending row (no recipient yet) maps pending true', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'conn-1',
+              'profile_id': 'p-1',
+              'recipient_user_id': null,
+              'recipient_label': 'Partner',
+              'created_at': '2026-09-01T00:00:00.000Z',
+              'expires_at': '2026-09-08T00:00:00.000Z',
+            },
+          ]),
+          200,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      final result = await service.getActiveConnection(profileId: 'p-1');
+      expect(result, isNotNull);
+      expect(result!.connectionId, 'conn-1');
+      expect(result.pending, isTrue);
+      expect(result.recipientLabel, 'Partner');
+    });
+
+    test('a redeemed row (recipient set) maps pending false', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'conn-1',
+              'profile_id': 'p-1',
+              'recipient_user_id': 'user-partner',
+              'recipient_label': null,
+              'created_at': '2026-09-01T00:00:00.000Z',
+              'expires_at': '2026-09-08T00:00:00.000Z',
+            },
+          ]),
+          200,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      final result = await service.getActiveConnection(profileId: 'p-1');
+      expect(result!.pending, isFalse);
+      expect(result.recipientLabel, isNull);
+    });
+
+    test('a server error maps through _mapError', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({'message': 'boom', 'code': 'XX000'}),
+          500,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await expectLater(
+        service.getActiveConnection(profileId: 'p-1'),
+        throwsA(isA<PredictionConnectionFailure>()),
+      );
+    });
+  });
+
   group('fetchProjection', () {
-    test('parses the derived-only payload and never anything else',
-        () async {
+    test('parses the derived-only payload and never anything else', () async {
       final client = makeClient((req) async {
         expect(req.url.path, '/rest/v1/rpc/get_prediction_projection');
         return http.Response(
@@ -191,25 +268,29 @@ void main() {
       });
 
       final service = SupabasePredictionConnectionService(client: client);
-      final projection =
-          await service.fetchProjection(profileId: 'p1');
+      final projection = await service.fetchProjection(profileId: 'p1');
 
       expect(projection, isNotNull);
       expect(projection!.generatedAt, LocalDate(2026, 9, 7));
-      expect(projection.periodDays, [LocalDate(2026, 9, 9), LocalDate(2026, 9, 10)]);
+      expect(projection.periodDays, [
+        LocalDate(2026, 9, 9),
+        LocalDate(2026, 9, 10),
+      ]);
       expect(projection.ovulationDays, [LocalDate(2026, 9, 22)]);
       expect(projection.pmsDays, [LocalDate(2026, 9, 2)]);
     });
 
-    test('a null result (no live connection) reads as null, not an error',
-        () async {
-      final client = makeClient((req) async {
-        return http.Response('null', 200);
-      });
+    test(
+      'a null result (no live connection) reads as null, not an error',
+      () async {
+        final client = makeClient((req) async {
+          return http.Response('null', 200);
+        });
 
-      final service = SupabasePredictionConnectionService(client: client);
-      expect(await service.fetchProjection(profileId: 'p1'), isNull);
-    });
+        final service = SupabasePredictionConnectionService(client: client);
+        expect(await service.fetchProjection(profileId: 'p1'), isNull);
+      },
+    );
   });
 
   group('publishProjection', () {
@@ -218,8 +299,10 @@ void main() {
         expect(req.url.path, '/rest/v1/rpc/upsert_prediction_projection');
         final body = jsonDecode(req.body) as Map<String, dynamic>;
         final projection = body['p_projection'] as Map<String, dynamic>;
-        expect(projection.keys.toSet(),
-            PredictionProjection.allowedKeys.toSet());
+        expect(
+          projection.keys.toSet(),
+          PredictionProjection.allowedKeys.toSet(),
+        );
         return http.Response('null', 204);
       });
 
@@ -238,8 +321,7 @@ void main() {
   });
 
   group('list short-circuits', () {
-    test('outgoingConnectedProfileIds is empty while signed out',
-        () async {
+    test('outgoingConnectedProfileIds is empty while signed out', () async {
       var requested = false;
       final client = makeClient((req) async {
         requested = true;
@@ -248,8 +330,7 @@ void main() {
 
       final service = SupabasePredictionConnectionService(client: client);
       expect(await service.outgoingConnectedProfileIds(), isEmpty);
-      expect(requested, isFalse,
-          reason: 'no session means no query at all');
+      expect(requested, isFalse, reason: 'no session means no query at all');
     });
 
     test('listIncomingConnections is empty while signed out', () async {

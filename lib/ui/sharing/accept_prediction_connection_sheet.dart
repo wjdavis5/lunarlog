@@ -47,8 +47,16 @@ class _AcceptPredictionConnectionSheetState
         rawToken: widget.rawToken,
       );
       if (mounted) {
-        widget.onAccepted?.call(result);
+        // Pop this sheet's own route *before* invoking the callback:
+        // [onAccepted] (the app shell's `_showPredictionConnectionSheet`)
+        // pushes the phase calendar onto the same Navigator this sheet
+        // lives on. Popping after the push would pop whatever is now on
+        // top of the stack -- the just-pushed calendar, not this sheet --
+        // leaving the sheet stuck open and the push/pop transitions
+        // fighting each other (observed as `pumpAndSettle` never
+        // settling). Popping first leaves a clean single push behind it.
         Navigator.of(context).pop(result);
+        widget.onAccepted?.call(result);
       }
     } on PredictionConnectionFailure catch (failure) {
       if (mounted) {
@@ -85,8 +93,11 @@ class _AcceptPredictionConnectionSheetState
           children: [
             Row(
               children: [
-                Icon(Icons.calendar_month,
-                    size: 28, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.calendar_month,
+                  size: 28,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -105,17 +116,16 @@ class _AcceptPredictionConnectionSheetState
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
+              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
             ],
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _loading ? null : () => Navigator.of(context).pop(),
+                  onPressed: _loading
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: const Text('Decline'),
                 ),
                 const SizedBox(width: 8),

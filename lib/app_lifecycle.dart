@@ -116,7 +116,9 @@ abstract interface class InactivityTimer {
 }
 
 typedef InactivityTimerFactory = InactivityTimer Function(
-    Duration delay, VoidCallback onTimeout);
+  Duration delay,
+  VoidCallback onTimeout,
+);
 
 class _RealInactivityTimer implements InactivityTimer {
   _RealInactivityTimer(this._timer);
@@ -128,8 +130,9 @@ class _RealInactivityTimer implements InactivityTimer {
 }
 
 InactivityTimer defaultInactivityTimerFactory(
-        Duration delay, VoidCallback onTimeout) =>
-    _RealInactivityTimer(Timer(delay, onTimeout));
+  Duration delay,
+  VoidCallback onTimeout,
+) => _RealInactivityTimer(Timer(delay, onTimeout));
 
 /// Owns the locked/unlocked session state and everything that flips it.
 ///
@@ -317,7 +320,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer = null;
     _systemUiTimer?.cancel();
     _systemUiTimer = inactivityTimerFactory(
-        systemUiDeadline, () => _systemUiDeadlineExpired(epoch));
+      systemUiDeadline,
+      () => _systemUiDeadlineExpired(epoch),
+    );
     if (!wasObscured) notifyListeners();
     return epoch;
   }
@@ -334,7 +339,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _settling = true;
     _settleTimer?.cancel();
     _settleTimer = inactivityTimerFactory(
-        settleTimeout, () => _onSettleTimeout(epoch));
+      settleTimeout,
+      () => _onSettleTimeout(epoch),
+    );
   }
 
   /// The settle timer fired. Guarded because a cancelled-but-already-queued
@@ -521,8 +528,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
     if (!_relockEnabled || _locked || _suppressingLock) return;
-    _inactivityTimer = inactivityTimerFactory(
-        inactivityTimeout, () => lock());
+    _inactivityTimer = inactivityTimerFactory(inactivityTimeout, () => lock());
   }
 
   @override
@@ -596,14 +602,13 @@ SyncEngine defaultSyncEngineBuilder({
   required AuthService authService,
   required SyncTransport transport,
   required GateController gate,
-}) =>
-    SupabaseSyncEngine(
-      storage: db.storage,
-      transport: transport,
-      auth: authService,
-      gate: gate,
-      gateUnlocked: () => gate.unlocked,
-    );
+}) => SupabaseSyncEngine(
+  storage: db.storage,
+  transport: transport,
+  auth: authService,
+  gate: gate,
+  gateUnlocked: () => gate.unlocked,
+);
 
 /// The device reset (KTD16) as the widget tree sees it: provided by
 /// [LunarLogRoot] so any screen can call `context.read<DeviceResetCallback?>()`
@@ -952,17 +957,24 @@ class LunarLogRootState extends State<LunarLogRoot> {
 
     final client = widget.supabaseClient;
     if (client != null) {
-      _builtSharingService =
-          SupabaseSharingService(client: client, syncEngine: engine);
+      _builtSharingService = SupabaseSharingService(
+        client: client,
+        syncEngine: engine,
+      );
       _builtFeedbackService = SupabaseFeedbackService(client: client);
-      _builtAccountDeletionService =
-          SupabaseAccountDeletionService(client: client);
-      _builtOwnershipTransferService =
-          SupabaseOwnershipTransferService(client: client, syncEngine: engine);
-      _builtPredictionConnectionService =
-          SupabasePredictionConnectionService(client: client);
-      _builtAccountExportRemoteSource =
-          SupabaseAccountExportRemoteSource(client: client);
+      _builtAccountDeletionService = SupabaseAccountDeletionService(
+        client: client,
+      );
+      _builtOwnershipTransferService = SupabaseOwnershipTransferService(
+        client: client,
+        syncEngine: engine,
+      );
+      _builtPredictionConnectionService = SupabasePredictionConnectionService(
+        client: client,
+      );
+      _builtAccountExportRemoteSource = SupabaseAccountExportRemoteSource(
+        client: client,
+      );
       final coordinator = RealtimeSyncCoordinator(
         client: client,
         syncEngine: engine,
@@ -982,12 +994,15 @@ class LunarLogRootState extends State<LunarLogRoot> {
             SupabaseNotificationPreferencesService(client: client);
         _reminderWindowUpsert =
             (profileId, estimatedNextStartIso, episodeOpen) async {
-          await client.rpc<dynamic>('upsert_reminder_window', params: {
-            'p_profile_id': profileId,
-            'p_estimated_next_start': estimatedNextStartIso,
-            'p_episode_open': episodeOpen,
-          });
-        };
+              await client.rpc<dynamic>(
+                'upsert_reminder_window',
+                params: {
+                  'p_profile_id': profileId,
+                  'p_estimated_next_start': estimatedNextStartIso,
+                  'p_episode_open': episodeOpen,
+                },
+              );
+            };
       }
     }
   }
@@ -1003,8 +1018,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     AuthService authService,
     SupabaseClient client,
   ) async {
-    final deviceId =
-        await resolvePushDeviceId(DriftSettingsStore(db.storage));
+    final deviceId = await resolvePushDeviceId(DriftSettingsStore(db.storage));
     if (!mounted) return;
 
     final coordinator = PushRegistrationCoordinator(
@@ -1170,7 +1184,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
       await auth.signOut(scope: AuthSignOutScope.local);
     } catch (error) {
       debugPrint(
-          'lunarlog reset: local sign-out failed (${error.runtimeType})');
+        'lunarlog reset: local sign-out failed (${error.runtimeType})',
+      );
     }
   }
 
@@ -1184,36 +1199,50 @@ class LunarLogRootState extends State<LunarLogRoot> {
     super.dispose();
   }
 
+  /// Constructs the real app content once [_db] is open — split out of
+  /// [build] (CRAP-gate fix-up, issue #151 review) purely to keep this
+  /// long chain of `widget.<x> ?? _built<X>` injectable-service fallbacks
+  /// from compounding onto `build()`'s own already branch-heavy
+  /// complexity/coverage budget, the same reasoning behind the
+  /// `_removePushRegistrationCallback`/`_removeAllPushRegistrationsCallback`
+  /// split below. No behavior changes: [db] is exactly what `build()`
+  /// already asserted non-null via `_db!` before this was extracted.
+  Widget _buildLunarLogApp(LunarLogDatabase db) {
+    return LunarLogApp(
+      db: db,
+      scheduler: widget.scheduler,
+      authService: widget.authService,
+      syncEngine: _syncEngine,
+      sharingService: widget.sharingService ?? _builtSharingService,
+      feedbackService: widget.feedbackService ?? _builtFeedbackService,
+      accountDeletionService:
+          widget.accountDeletionService ?? _builtAccountDeletionService,
+      ownershipTransferService:
+          widget.ownershipTransferService ?? _builtOwnershipTransferService,
+      predictionConnectionService:
+          widget.predictionConnectionService ??
+          _builtPredictionConnectionService,
+      notificationPreferencesService:
+          widget.notificationPreferencesService ??
+          _builtNotificationPreferencesService,
+      accountExportRemoteSource:
+          widget.accountExportRemoteSource ?? _builtAccountExportRemoteSource,
+      reminderWindowUpsert: _reminderWindowUpsert,
+      inviteLinks: widget.inviteLinks,
+      initialInviteCode: widget.initialInviteCode,
+      initialInviteProfileId: widget.initialInviteProfileId,
+      initialInviteKind: widget.initialInviteKind,
+      onTeardown: (done) => _appTeardown = done,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Widget content;
     if (_error != null) {
       content = FailClosedApp(error: _error!);
     } else if (_db != null) {
-      content = LunarLogApp(
-        db: _db!,
-        scheduler: widget.scheduler,
-        authService: widget.authService,
-        syncEngine: _syncEngine,
-        sharingService: widget.sharingService ?? _builtSharingService,
-        feedbackService: widget.feedbackService ?? _builtFeedbackService,
-        accountDeletionService:
-            widget.accountDeletionService ?? _builtAccountDeletionService,
-        ownershipTransferService:
-            widget.ownershipTransferService ?? _builtOwnershipTransferService,
-        predictionConnectionService: widget.predictionConnectionService ??
-            _builtPredictionConnectionService,
-        notificationPreferencesService: widget.notificationPreferencesService ??
-            _builtNotificationPreferencesService,
-        accountExportRemoteSource: widget.accountExportRemoteSource ??
-            _builtAccountExportRemoteSource,
-        reminderWindowUpsert: _reminderWindowUpsert,
-        inviteLinks: widget.inviteLinks,
-        initialInviteCode: widget.initialInviteCode,
-        initialInviteProfileId: widget.initialInviteProfileId,
-        initialInviteKind: widget.initialInviteKind,
-        onTeardown: (done) => _appTeardown = done,
-      );
+      content = _buildLunarLogApp(_db!);
     } else if (_gate.locked) {
       // Behind the lock before the first unlock: a static, data-free
       // placeholder — nothing renders, not even a spinner.
