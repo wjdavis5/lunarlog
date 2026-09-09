@@ -27,7 +27,7 @@ jobs:
     # by pushing to main. No Flutter, Java, or Supabase toolchain and no
     # secrets, so this stays fast.
     name: Release guard scripts (unit tests + actionlint)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
