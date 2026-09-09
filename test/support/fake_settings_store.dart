@@ -27,6 +27,13 @@ class FakeSettingsStore implements SettingsStore {
     _controllers[key]?.add(value);
   }
 
+  /// Writes [key] without firing watchers — for seeding a value before a
+  /// subscriber exists (a broadcast `watch` change fired during the seed
+  /// chain's own subscription race is exactly what this avoids).
+  void setSilently(String key, String value) {
+    _values[key] = value;
+  }
+
   @override
   Stream<String?> watch(String key) {
     final controller = _controllers.putIfAbsent(

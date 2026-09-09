@@ -63,6 +63,21 @@ abstract final class SettingsKeys {
   /// [awaitingConfirmationEmail]'s empty-string-means-cleared convention.
   static const String healthStoreProfileId = 'health_store_profile_id';
 
+  /// The health-sync forward-only cursor (Issue #193): epoch milliseconds
+  /// (UTC) of the newest day-entry/observation write the OS health store
+  /// has been brought in line with, or unset when health sync has never
+  /// been granted on this device. Written only by
+  /// `lib/data/health/health_flow_write_service.dart`: first stamped with
+  /// the grant instant (the moment `requestWriteAuthorization` completes —
+  /// the issue's "forward-only from the moment permission is granted", so
+  /// pre-grant days are never backfilled), then advanced to the newest
+  /// processed row's `updatedAt` after a fully successful pass. Cleared
+  /// alongside [healthStoreProfileId] whenever the binding goes away (the
+  /// write coordinator calls the service's unbind path on any bound-profile
+  /// transition), so re-binding re-grants from that new moment. Device-local
+  /// scheduling metadata — a timestamp, never health content.
+  static const String healthSyncWrittenThroughMs = 'health_sync_written_through_ms';
+
   /// Per-profile local reminder configuration (Issue #136, R10/R11), as
   /// the JSON document `encodeReminderConfigs` produces: a versioned map
   /// of profile id -> `ReminderConfig` JSON. Device-local **by design**

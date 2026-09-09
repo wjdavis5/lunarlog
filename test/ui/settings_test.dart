@@ -111,8 +111,10 @@ void main() {
     // Verify relock toggle is present
     expect(find.byKey(const ValueKey('relock-toggle')), findsOneWidget);
 
-    // Issue #153: dormant until AppConfig.hasHealthSync flips true (no
-    // HealthKit/Health Connect adapter exists yet) — never rendered today.
+    // Issue #153/#193: since the flag flipped, the tile is iOS-only (the
+    // Health Connect checklist is #202's) and widget tests run as
+    // Android — so it stays hidden here; the screen itself is covered by
+    // health_sync_screen_test.dart.
     expect(find.byKey(const ValueKey('health-sync-tile')), findsNothing);
 
     // Verify privacy policy tile is present

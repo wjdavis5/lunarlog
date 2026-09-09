@@ -6,10 +6,11 @@
 /// Nothing iOS-specific lives in Dart: both platforms speak the exact
 /// wire protocol defined in `health_channel_codec.dart`, so the per-
 /// platform Dart files exist as the named homes for each platform's
-/// half — this one is where #193's pure `FlowLevel` →
-/// `HKCategoryValueVaginalBleeding` mapping function (with the
-/// spotting-in/outside-episode branch) will live, keeping platform
-/// vocabulary next to its platform pin rather than in the shared engine.
+/// half. #193's pure `FlowLevel` → `HKCategoryValueVaginalBleeding`
+/// mapping (with the spotting-in/outside-episode branch) landed next door
+/// in `health_flow_mapping.dart` rather than here, so it stays inside the
+/// coverage gates — this file's constructor is its entire executable
+/// surface, and the mapping is anything but.
 ///
 /// Coverage-excluded (`tool/quality/exclusions.dart`): the constructor
 /// is the entire executable surface here — the real behavior it binds to

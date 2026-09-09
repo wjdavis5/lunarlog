@@ -3,18 +3,24 @@
 /// lets the operator bind an eligible one behind a confirm dialog naming
 /// what binding means, and offers an unbind action once one is bound.
 ///
-/// Dormant in production: `SettingsScreen` only reaches this screen behind
-/// `AppConfig.hasHealthSync` (currently a hardcoded `false` — no
-/// HealthKit/Health Connect adapter exists yet) and never on web. This
-/// file and its widget are still fully exercised directly by
-/// `test/ui/health_sync_screen_test.dart`, bypassing that gate, which is
-/// what "ships dormant but testable" means here.
+/// Live on iOS since issue #193: binding a profile is the opt-in, and the
+/// write path it arms (wired in `app.dart`) is one-way — period days and
+/// spotting are written to the OS health store and nothing is ever read
+/// back — and forward-only from the authorization moment (no backfill of
+/// days logged before sync was turned on). The copy below documents the
+/// one lossy mapping (`superHeavy` → `heavy`, the same collapse Clue
+/// documents for its own Apple Health integration, plus the spotting
+/// rule), mirroring Clue's own disclosure. `SettingsScreen` still gates
+/// this screen off on web, and off on Android until #202 wires Health
+/// Connect's checklist. The screen itself only ever changes the
+/// device-local [SettingsKeys.healthStoreProfileId] setting via
+/// [HealthSyncBinding]; unbinding tears the write flow down through the
+/// binding stream the write coordinator watches (cursor + native mirror),
+/// so no unbind side effects live here.
 ///
-/// No platform write path exists in this PR — this screen only ever
-/// changes the device-local [SettingsKeys.healthStoreProfileId] setting
-/// via [HealthSyncBinding]. `lib/domain/health/health_sync_policy.dart`'s
-/// doc comment is the canonical statement of the guard every future write
-/// entry point must call before this epic may write anything.
+/// `lib/domain/health/health_sync_policy.dart`'s doc comment is the
+/// canonical statement of the guard every write entry point must call
+/// before this epic may write anything.
 library;
 
 import 'dart:async';
@@ -262,6 +268,29 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
               'Choose the one profile whose data this phone may ever write '
               "to its Health app. Every other profile stays out of this "
               "phone's Health app entirely.",
+            ),
+          ),
+          // Issue #193: document the write surface the way Clue documents
+          // its own — one-way, forward-only, and the one lossy mapping
+          // (superHeavy collapses to Apple's `heavy`; spotting follows the
+          // A3-4 in/outside-episode rule).
+          const Padding(
+            key: ValueKey('health-sync-forward-only-copy'),
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Only days logged after sync is turned on are written — '
+              'nothing already in the app is sent, and nothing is ever '
+              'read back from the Health app.',
+            ),
+          ),
+          const Padding(
+            key: ValueKey('health-sync-flow-collapse-copy'),
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Super heavy days are written to the Health app as Heavy. '
+              'Spotting logged inside a period is written as Light '
+              'bleeding; spotting between periods is written as '
+              'intermenstrual bleeding.',
             ),
           ),
           for (final profile in _profiles) _profileTile(profile),

@@ -171,19 +171,18 @@ abstract final class AppConfig {
       fcmIosApiKey != '' &&
       fcmIosAppId != '';
 
-  /// True once a HealthKit/Health Connect adapter exists AND a
-  /// user-visible write flow runs through it. The first-party
-  /// platform-channel adapter layer itself landed with Issue #173
-  /// (`lib/domain/health/health_platform.dart` + `lib/data/health/` +
-  /// the Swift/Kotlin halves of the `lunarlog/health` channel), but no
-  /// call site writes a data type through it yet — #193 (HealthKit
-  /// menstrual flow) / #202 (Health Connect) add the first real write
-  /// flows, which is when this flips to `true`: until then the Settings
-  /// "Health app sync" entry would still be live with nothing observable
-  /// behind it, the exact state this flag exists to prevent. Deliberately
-  /// a hardcoded constant, not a `--dart-define`: there is no
-  /// build-time toggle to flip today, only a future code change.
-  static const bool hasHealthSync = false;
+  /// True now that a user-visible write flow runs through the #173
+  /// adapter: issue #193 wired the one-way, opt-in, forward-only
+  /// menstrual-flow write path (`lib/data/health/health_flow_write_service.dart`
+  /// + `health_flow_write_coordinator.dart`) over the first-party
+  /// `lunarlog/health` channel's Swift `HKHealthStore` half. Reachable on
+  /// iOS only — the Settings tile and the app.dart coordinator both gate
+  /// on `defaultTargetPlatform == TargetPlatform.iOS` until #202 wires the
+  /// Health Connect half's device checklist. Still off on web and inert in
+  /// every unconfigured build (no storage/profiles wiring, no tile).
+  /// Deliberately a hardcoded constant, not a `--dart-define`: there is no
+  /// build-time toggle, only a code change per epic issue.
+  static const bool hasHealthSync = true;
 
   /// Master switch (Issue #153 P0 review) for whether a minor profile may
   /// ever be bound as this device's health-store profile, even after
@@ -197,10 +196,10 @@ abstract final class AppConfig {
   /// nowhere else, so a future platform adapter cannot invent its own
   /// per-call bypass the way the pre-review write guard let both of its
   /// call sites neutralise the device-binding check by supplying their
-  /// own value. Currently `false` — the #173 adapter layer exists but no
-  /// write flow runs through it yet (#193/#202 add the first callers), so
-  /// nothing exercises the transferred-minor path; flip only alongside
-  /// that first write flow, never before. The server-side half of this
+  /// own value. Still `false` under #193: the flow write path only ever
+  /// writes for profiles whose guard allows them already, so nothing
+  /// exercises the transferred-minor path; flip only alongside a write
+  /// flow that needs it, never before. The server-side half of this
   /// consent (a `profiles` column gating writes at the database layer) is
   /// deferred to issue #188 — this flag is client-side only.
   static const bool healthSyncMinorBindingAllowed = false;
