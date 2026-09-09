@@ -22,6 +22,7 @@ class Profile {
     this.birthYear,
     this.relationship,
     this.transferredAt,
+    this.transferredToUserId,
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
@@ -37,8 +38,10 @@ class Profile {
   /// Care mode (Issue #131, R12): drives vocabulary, logging defaults, and
   /// reminder presets *prospectively*. Presentation only — never permission
   /// (guardian roles stay the only capability model) and never derived from
-  /// [birthYear] or `isMinor`; both of those stay inert display/context
-  /// metadata. Chosen at creation or later from profile settings.
+  /// [birthYear] or `isMinor`; neither feeds any care-mode decision. (Both
+  /// do feed the #153 health-sync minor gate — see [birthYear] and
+  /// [transferredToUserId] — which is a permission, but one this field
+  /// never consults.) Chosen at creation or later from profile settings.
   final ProfileMode mode;
 
   /// UTC instant when the profile was archived, or null when live.
@@ -50,9 +53,14 @@ class Profile {
   /// Null for live profiles: repository reads filter tombstones.
   final DateTime? deletedAt;
 
-  /// Optional birth year of the profile subject (Issue #4 R1). Display and
-  /// context only — never gates, forces, or auto-schedules an ownership
-  /// transfer (R2).
+  /// Optional birth year of the profile subject (Issue #4 R1). Still never
+  /// gates, forces, or auto-schedules an ownership *transfer* (R2), but no
+  /// longer display-only: since the #153 health-sync guard it also feeds
+  /// the fail-closed minor determination in
+  /// `lib/domain/health/health_sync_binding.dart` (`_isMinorNow`) — an
+  /// under-18-by-coarse-year profile is denied health-store binding unless
+  /// the transferred-to-own-account exception holds. That gate fails
+  /// closed on a missing year; it never uses this field for anything else.
   final int? birthYear;
 
   /// Optional closed-set relationship of the subject to the profile creator
@@ -63,6 +71,15 @@ class Profile {
   /// Instant this profile's ownership last moved, or null if it never has
   /// (R5). Server-owned — never set by a local write.
   final DateTime? transferredAt;
+
+  /// The account that accepted this profile's last ownership transfer, or
+  /// null if it never has (Issue #296). Server-owned exactly like
+  /// [transferredAt] — stamped only by the server's
+  /// `accept_ownership_transfer`, pulled but never pushed — so the
+  /// health-sync minor gate can require that the last transfer targeted
+  /// the *signed-in account itself*, not merely that a transfer happened
+  /// and the caller happens to be the resolved owner. Null fails closed.
+  final String? transferredToUserId;
 
   /// Onboarding-collected cycle facts (Issue #218): the start date of the
   /// most recent period as supplied at first run (or edited later from
@@ -105,6 +122,7 @@ class Profile {
     Object? birthYear = _unset,
     Object? relationship = _unset,
     Object? transferredAt = _unset,
+    Object? transferredToUserId = _unset,
     Object? lastPeriodStart = _unset,
     Object? typicalCycleLengthDays = _unset,
     Object? typicalPeriodLengthDays = _unset,
@@ -122,6 +140,8 @@ class Profile {
         birthYear: _resolveNullable(birthYear, this.birthYear),
         relationship: _resolveNullable(relationship, this.relationship),
         transferredAt: _resolveNullable(transferredAt, this.transferredAt),
+        transferredToUserId:
+            _resolveNullable(transferredToUserId, this.transferredToUserId),
         lastPeriodStart:
             _resolveNullable(lastPeriodStart, this.lastPeriodStart),
         typicalCycleLengthDays: _resolveNullable(
@@ -149,6 +169,7 @@ class Profile {
       other.birthYear == birthYear &&
       other.relationship == relationship &&
       other.transferredAt == transferredAt &&
+      other.transferredToUserId == transferredToUserId &&
       other.lastPeriodStart == lastPeriodStart &&
       other.typicalCycleLengthDays == typicalCycleLengthDays &&
       other.typicalPeriodLengthDays == typicalPeriodLengthDays;
@@ -174,6 +195,7 @@ class Profile {
         birthYear,
         relationship,
         transferredAt,
+        transferredToUserId,
         lastPeriodStart,
         typicalCycleLengthDays,
         typicalPeriodLengthDays,

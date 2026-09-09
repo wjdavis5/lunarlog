@@ -31,6 +31,7 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
           ? null
           : domain.ProfileRelationship.fromDb(row.relationship!),
       transferredAt: row.transferredAt,
+      transferredToUserId: row.transferredToUserId,
       lastPeriodStart: row.lastPeriodStart == null
           ? null
           : domain.LocalDate.fromIso(row.lastPeriodStart!),

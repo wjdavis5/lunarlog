@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(159);
+select plan(162);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -538,6 +538,24 @@ select is(pg_temp.resp('meta_transferred_at') -> 'rejected', '[]'::jsonb,
   'U1: a push carrying transferred_at is accepted (tolerated key)');
 select is((select transferred_at from public.profiles where id = tests.ulid(120)), null,
   'U1: transferred_at is never written by sync_push, regardless of the pushed value');
+
+insert into r select 'meta_transferred_to', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(120), 'display_name', 'Meta3', 'birth_year', 2011, 'relationship', 'daughter',
+    'updated_at', pg_temp.ts_txt('t3'),
+    'transferred_to_user_id', tests.get_supabase_uid('user_b'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('meta_transferred_to') -> 'rejected', '[]'::jsonb,
+  '#296: a push carrying transferred_to_user_id is accepted (tolerated key)');
+select is((select transferred_to_user_id from public.profiles where id = tests.ulid(120)), null,
+  '#296: transferred_to_user_id is never written by sync_push, regardless of the pushed value');
+
+select throws_ok(
+  format($$update public.profiles set transferred_to_user_id = %L where id = tests.ulid(120)$$,
+    tests.get_supabase_uid('user_b')),
+  '42501', null,
+  '#296: authenticated has no column grant to write transferred_to_user_id directly'
+);
 
 -- Review item #3 (P1) regression: a client built before U1 never sends
 -- birth_year/relationship at all - the key is absent, not present-with-null.
