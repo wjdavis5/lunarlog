@@ -6,6 +6,12 @@
 /// save/delete affordances, and a repository save/delete failure keeps the
 /// sheet open with all entered values intact plus an inline retry error.
 ///
+/// Issue #131: the profile's care mode selects the category headings and
+/// the order they are surfaced in (`careModeCopyFor`) — a prospective
+/// logging-default only. Every category remains available in every mode
+/// (teen reorders, it never removes: "not a euphemism for a reduced app"),
+/// and saved entries always render verbatim regardless of mode.
+///
 /// Route naming (U2 Approach 2b): the sheet itself is named
 /// `DaySheetScreen` at its push site (`month_calendar.dart`). Its internal
 /// "Delete this entry?" `showDialog` is deliberately left unnamed — a
@@ -14,10 +20,12 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
@@ -30,13 +38,6 @@ String flowLabel(FlowLevel flow) {
   return name[0].toUpperCase() + name.substring(1);
 }
 
-String _categoryLabel(TagCategory category) => switch (category) {
-      TagCategory.pain => 'Pain',
-      TagCategory.body => 'Body',
-      TagCategory.mood => 'Mood',
-      TagCategory.other => 'Other',
-    };
-
 class DaySheet extends StatefulWidget {
   const DaySheet({
     super.key,
@@ -45,6 +46,7 @@ class DaySheet extends StatefulWidget {
     required this.date,
     required this.today,
     this.existing,
+    this.mode = ProfileMode.standard,
     this.readOnly = false,
     this.timezoneProvider,
     this.currentUserId,
@@ -60,6 +62,10 @@ class DaySheet extends StatefulWidget {
 
   /// The current live entry for (profileId, date), or null for a new log.
   final DayEntry? existing;
+
+  /// The profile's care mode (Issue #131): category headings and surfacing
+  /// order. Presentation only — never a permission.
+  final ProfileMode mode;
   final bool readOnly;
 
   /// Provider for the resolved IANA time zone identifier (paired with #38).
@@ -81,12 +87,35 @@ class _DaySheetState extends State<DaySheet> {
   bool _saveFailed = false;
   bool _deleteFailed = false;
 
+  /// The mode's headings and surfacing order (Issue #131).
+  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+
+  /// Stored codes absent from [kTagTaxonomy] at load time (#237): the chip
+  /// grid below only ever renders [kTagTaxonomy] members, so a code the
+  /// running build does not recognise would otherwise be adopted into
+  /// [_tags] invisibly and undeselectably. Rendered separately as inert
+  /// chips (`_unrecognisedTagsSection`) and never touched by the taxonomy
+  /// chip grid's `onSelected`, so they round-trip through Save unchanged.
+  late final List<String> _unrecognisedTags;
+
+  /// Codes the user actively picked from the visible taxonomy chip grid
+  /// this editing session (#237) — as opposed to [_tags], which also holds
+  /// whatever the entry already carried (including [_unrecognisedTags]).
+  /// [validateTagCodes] is invoked against only this set before Save, never
+  /// against the full adopted [_tags]: a pre-existing unknown code must
+  /// never be re-validated (and rejected) just because Save was pressed.
+  final Set<String> _sessionSelectedTags = {};
+
   @override
   void initState() {
     super.initState();
     final existing = widget.existing;
     _flow = existing?.flow ?? FlowLevel.none;
     _tags = {...?existing?.tags};
+    _unrecognisedTags = [
+      for (final code in existing?.tags ?? const <String>[])
+        if (!isValidTagCode(code)) code,
+    ];
     _noteController = TextEditingController(text: existing?.note ?? '');
   }
 
@@ -104,6 +133,12 @@ class _DaySheetState extends State<DaySheet> {
     final note = _noteController.text.trim();
     final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
     try {
+      // Only the codes freshly picked this session from the visible
+      // taxonomy chip grid are validated (#237) — never the full adopted
+      // `_tags`, which may still hold a pre-existing code the running build
+      // does not recognise (`_unrecognisedTags`). That code is preserved,
+      // not silently re-validated and rejected, on every Save.
+      validateTagCodes(_sessionSelectedTags);
       await widget.repository.save(DayEntry(
         id: widget.existing?.id ?? '',
         profileId: widget.profileId,
@@ -239,11 +274,11 @@ class _DaySheetState extends State<DaySheet> {
                 ),
             ],
           ),
-          for (final category in TagCategory.values) ...[
+          for (final category in _copy.categoriesInOrder) ...[
             Padding(
               padding: const EdgeInsets.only(top: 12, bottom: 4),
               child: Text(
-                _categoryLabel(category),
+                _copy.categoryLabel(category),
                 style: theme.textTheme.labelMedium,
               ),
             ),
@@ -262,8 +297,10 @@ class _DaySheetState extends State<DaySheet> {
                               setState(() {
                                 if (selected) {
                                   _tags.add(tag.code);
+                                  _sessionSelectedTags.add(tag.code);
                                 } else {
                                   _tags.remove(tag.code);
+                                  _sessionSelectedTags.remove(tag.code);
                                 }
                               });
                             },
@@ -271,6 +308,7 @@ class _DaySheetState extends State<DaySheet> {
               ],
             ),
           ],
+          if (_unrecognisedTags.isNotEmpty) ..._unrecognisedTagsSection(theme),
           Padding(
             padding: const EdgeInsets.only(top: 12),
             child: TextFormField(
@@ -336,6 +374,29 @@ class _DaySheetState extends State<DaySheet> {
       ),
     );
   }
+
+  /// Inert, visible chips for [_unrecognisedTags] (#237): unlike the
+  /// taxonomy [FilterChip] grid above, these carry no `onSelected` — they
+  /// cannot be toggled, only shown — so they round-trip through `_tags`
+  /// (and therefore through Save) unchanged rather than being silently
+  /// dropped or invisibly resubmitted as if user-validated.
+  List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 4),
+          child: Text('Unrecognised', style: theme.textTheme.labelMedium),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final code in _unrecognisedTags)
+              Chip(
+                key: ValueKey('unrecognised-tag-$code'),
+                label: Text(code),
+              ),
+          ],
+        ),
+      ];
 
   /// R13 copy: when the caller's own accepted role is the reason this sheet
   /// is read-only (not an archived profile - the two reasons are additive,

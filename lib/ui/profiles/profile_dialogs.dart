@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/observability/route_names.dart';
 
@@ -51,12 +52,17 @@ class ProfileEditResult {
   const ProfileEditResult(
     this.displayName,
     this.isMinor, {
+    this.mode = ProfileMode.standard,
     this.birthYear,
     this.relationship,
   });
 
   final String displayName;
   final bool isMinor;
+
+  /// Care mode (Issue #131): presentation only — vocabulary, logging
+  /// defaults, and reminder presets. Never a permission.
+  final ProfileMode mode;
 
   /// Optional birth year of the profile subject (Issue #4 R1). Display and
   /// context only (R2).
@@ -89,11 +95,14 @@ class _ProfileEditDialog extends StatefulWidget {
 
 class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _name =
-      TextEditingController(text: widget.existing?.displayName ?? '');
+  late final TextEditingController _name = TextEditingController(
+    text: widget.existing?.displayName ?? '',
+  );
   late bool _isMinor = widget.existing?.isMinor ?? false;
+  late ProfileMode _mode = widget.existing?.mode ?? ProfileMode.standard;
   late final TextEditingController _birthYear = TextEditingController(
-      text: widget.existing?.birthYear?.toString() ?? '');
+    text: widget.existing?.birthYear?.toString() ?? '',
+  );
   late ProfileRelationship? _relationship = widget.existing?.relationship;
 
   @override
@@ -108,53 +117,94 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     final existing = widget.existing;
     return AlertDialog(
       title: Text(existing == null ? 'Add profile' : 'Rename profile'),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _name,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Name'),
-              maxLength: kMaxDisplayNameLength,
-              maxLengthEnforcement: MaxLengthEnforcement.enforced,
-              validator: validateProfileName,
-            ),
-            CheckboxListTile(
-              value: _isMinor,
-              onChanged: (value) => setState(() => _isMinor = value ?? false),
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-              title: const Text('This profile is for a minor'),
-            ),
-            TextFormField(
-              controller: _birthYear,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Birth year (optional)'),
-              validator: validateBirthYear,
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Relationship', style: Theme.of(context).textTheme.bodySmall),
-            ),
-            DropdownButton<ProfileRelationship?>(
-              value: _relationship,
-              isExpanded: true,
-              onChanged: (value) => setState(() => _relationship = value),
-              items: [
-                const DropdownMenuItem<ProfileRelationship?>(
-                  child: Text('None'),
+      // The mode picker plus its hint line make the form taller than a
+      // small viewport's dialog inset; scroll rather than overflow.
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Name'),
+                maxLength: kMaxDisplayNameLength,
+                maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                validator: validateProfileName,
+              ),
+              CheckboxListTile(
+                value: _isMinor,
+                onChanged: (value) => setState(() => _isMinor = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('This profile is for a minor'),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Care mode',
+                  key: const ValueKey('care-mode-label'),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
-                for (final relationship in ProfileRelationship.values)
-                  DropdownMenuItem<ProfileRelationship?>(
-                    value: relationship,
-                    child: Text(relationship.label),
+              ),
+              DropdownButton<ProfileMode>(
+                key: const ValueKey('care-mode-dropdown'),
+                value: _mode,
+                isExpanded: true,
+                onChanged: (value) =>
+                    setState(() => _mode = value ?? ProfileMode.standard),
+                items: [
+                  for (final mode in ProfileMode.values)
+                    DropdownMenuItem<ProfileMode>(
+                      value: mode,
+                      child: Text(mode.label),
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Text(
+                  _mode.hint,
+                  key: const ValueKey('care-mode-hint'),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.outline),
+                ),
+              ),
+              TextFormField(
+                controller: _birthYear,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Birth year (optional)',
+                ),
+                validator: validateBirthYear,
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Relationship',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              DropdownButton<ProfileRelationship?>(
+                value: _relationship,
+                isExpanded: true,
+                onChanged: (value) => setState(() => _relationship = value),
+                items: [
+                  const DropdownMenuItem<ProfileRelationship?>(
+                    child: Text('None'),
                   ),
-              ],
-            ),
-          ],
+                  for (final relationship in ProfileRelationship.values)
+                    DropdownMenuItem<ProfileRelationship?>(
+                      value: relationship,
+                      child: Text(relationship.label),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -166,14 +216,17 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               final trimmedBirthYear = _birthYear.text.trim();
-              Navigator.of(context).pop(ProfileEditResult(
-                _name.text,
-                _isMinor,
-                birthYear: trimmedBirthYear.isEmpty
-                    ? null
-                    : int.tryParse(trimmedBirthYear),
-                relationship: _relationship,
-              ));
+              Navigator.of(context).pop(
+                ProfileEditResult(
+                  _name.text,
+                  _isMinor,
+                  mode: _mode,
+                  birthYear: trimmedBirthYear.isEmpty
+                      ? null
+                      : int.tryParse(trimmedBirthYear),
+                  relationship: _relationship,
+                ),
+              );
             }
           },
           child: Text(existing == null ? 'Create' : 'Save'),
@@ -183,7 +236,10 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   }
 }
 
-Future<bool> confirmArchiveProfile(BuildContext context, Profile profile) async {
+Future<bool> confirmArchiveProfile(
+  BuildContext context,
+  Profile profile,
+) async {
   final confirmed = await showDialog<bool>(
     context: context,
     routeSettings: const RouteSettings(name: kRouteProfileArchiveDialog),

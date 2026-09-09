@@ -136,6 +136,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             child: _tab == _DetailTab.overview
                 ? OverviewPanel(
                     profileId: widget.profile.id,
+                    mode: widget.profile.mode,
                     todayProvider: widget.todayProvider,
                     readOnly: widget.readOnly,
                     timezoneProvider: widget.timezoneProvider,
@@ -144,6 +145,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 : MonthCalendar(
                     profileId: widget.profile.id,
                     readOnly: widget.readOnly,
+                    mode: widget.profile.mode,
                     todayProvider: widget.todayProvider,
                     timezoneProvider: widget.timezoneProvider,
                     guardiansRepository: guardiansRepository,

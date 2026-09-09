@@ -4,6 +4,7 @@
 /// UI concern (profile stays in history); deleting is a tombstone.
 library;
 
+import 'profile_mode.dart';
 import 'profile_relationship.dart';
 
 class Profile {
@@ -11,6 +12,7 @@ class Profile {
     required this.id,
     required this.displayName,
     required this.isMinor,
+    this.mode = ProfileMode.standard,
     this.sortOrder = 0,
     this.archivedAt,
     required this.createdAt,
@@ -27,6 +29,13 @@ class Profile {
   final String displayName;
   final bool isMinor;
   final int sortOrder;
+
+  /// Care mode (Issue #131, R12): drives vocabulary, logging defaults, and
+  /// reminder presets *prospectively*. Presentation only — never permission
+  /// (guardian roles stay the only capability model) and never derived from
+  /// [birthYear] or `isMinor`; both of those stay inert display/context
+  /// metadata. Chosen at creation or later from profile settings.
+  final ProfileMode mode;
 
   /// UTC instant when the profile was archived, or null when live.
   final DateTime? archivedAt;
@@ -66,6 +75,7 @@ class Profile {
     String? id,
     String? displayName,
     bool? isMinor,
+    ProfileMode? mode,
     int? sortOrder,
     Object? archivedAt = _unset,
     DateTime? createdAt,
@@ -79,6 +89,7 @@ class Profile {
         id: id ?? this.id,
         displayName: displayName ?? this.displayName,
         isMinor: isMinor ?? this.isMinor,
+        mode: mode ?? this.mode,
         sortOrder: sortOrder ?? this.sortOrder,
         archivedAt: _resolveNullable(archivedAt, this.archivedAt),
         createdAt: createdAt ?? this.createdAt,
@@ -97,6 +108,7 @@ class Profile {
       other.id == id &&
       other.displayName == displayName &&
       other.isMinor == isMinor &&
+      other.mode == mode &&
       other.sortOrder == sortOrder &&
       other.createdAt == createdAt;
 
@@ -120,6 +132,7 @@ class Profile {
         id,
         displayName,
         isMinor,
+        mode,
         sortOrder,
         archivedAt,
         createdAt,

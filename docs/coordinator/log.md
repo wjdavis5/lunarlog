@@ -4,3 +4,5 @@
 2026-09-08T22:28:28Z merged PR #149 (issue 142 closed); filed discovery #150 (web/privacy.html SQLCipher staleness); dispatched #125 (feat/125-alert-digest); 3 slots full: #114 #132 #125
 2026-09-08T22:41:13Z merged PR #219 (issue 114 closed); discovery #242 filed (ownership_transfers.token_hash, P1)
 2026-09-08T22:41:44Z dispatched #242 (fix/242-ownership-token-hash-unreadable); slots full: #132 #125 #242
+2026-09-08T23:11:03Z merged PR #273 (issue 132), PR #274 (issue 242), PR #275 (issue 125; migration renumbered to 20260908110000, AGENTS.md conflict resolved; CI-event gap on new PRs worked around via branch synchronize). Dispatched wave 2: #131 care-modes, #133 forecast-calendar, #124 activity-feed.
+2026-09-08T23:23:47Z owner instruction: issue lifecycle labels added (in-progress on dispatch; removed on close/block); PROCESS.md codifies the loop + session-recovery notes; tagged #131 #133 #124 in-progress

@@ -20,6 +20,7 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -247,6 +248,31 @@ void main() {
       await tester.pump();
       expect(find.byType(RestoringScreen), findsNothing,
           reason: 'no session means nothing left to restore for');
+      await h.dispose();
+    });
+  });
+
+  group('care-mode picker (Issue #131)', () {
+    testWidgets('the creation form offers the care modes and persists the '
+        'chosen one', (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('care-mode-dropdown')), findsOneWidget,
+          reason: 'mode is selectable at profile creation (#131 scope)');
+      await tester.enterText(find.byType(TextFormField), 'Nova');
+      await tester.tap(find.byType(DropdownButton<ProfileMode>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Irregular cycles').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create profile'));
+      await tester.pumpAndSettle();
+
+      final profiles = await DriftProfilesRepository(h.db.storage).list();
+      expect(profiles.single.displayName, 'Nova');
+      expect(profiles.single.mode, ProfileMode.irregular);
       await h.dispose();
     });
   });

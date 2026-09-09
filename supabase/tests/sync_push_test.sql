@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(114);
+select plan(127);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -565,6 +565,97 @@ select throws_ok(
 update public.profiles set birth_year = 2010 where id = tests.ulid(120);
 select is((select birth_year from public.profiles where id = tests.ulid(120)), 2010::smallint,
   'U1: authenticated can write birth_year directly on an owned profile');
+
+-- ---------------------------------------------------------------------------
+-- #131: care modes (profiles.mode) — round-trip, default, rejection,
+-- old-client omission, direct grant write, and permission invariance.
+-- Mirrors the U1 birth_year/relationship pattern directly above.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('user_a');
+
+insert into r select 'mode_insert', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(125), 'display_name', 'Modes', 'mode', 'teen',
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('mode_insert') -> 'rejected', '[]'::jsonb,
+  '#131: a push carrying mode is not rejected');
+select is((select mode from public.profiles where id = tests.ulid(125)), 'teen',
+  '#131: mode round-trips through sync_push');
+
+insert into r select 'mode_default', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(126), 'display_name', 'NoMode',
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is((select mode from public.profiles where id = tests.ulid(126)), 'standard',
+  '#131: a push omitting mode lands as the standard default');
+
+insert into r select 'mode_bad', public.sync_push(
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(127), 'display_name', 'Future', 'mode', 'future_mode',
+      'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(128), 'display_name', 'Valid', 'mode', 'irregular',
+      'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(jsonb_array_length(pg_temp.resp('mode_bad') -> 'rejected'), 1,
+  '#131: an out-of-set mode is rejected without aborting the batch');
+select is((select count(*) from public.profiles where id = tests.ulid(127)), 0::bigint,
+  '#131: the out-of-set mode row does not land');
+select is((select mode from public.profiles where id = tests.ulid(128)), 'irregular',
+  '#131: the valid mode row in the same batch still lands');
+
+-- A newer push updates the stored mode, then a pre-#131 client's push
+-- (no 'mode' key at all) renames the profile without disturbing it - the
+-- PR #108 review item #3 containment pattern, applied to mode.
+insert into r select 'mode_update', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(125), 'display_name', 'Modes Renamed', 'mode', 'caregiver',
+    'updated_at', pg_temp.ts_txt('t2'))),
+  '[]'::jsonb);
+select is((select mode from public.profiles where id = tests.ulid(125)), 'caregiver',
+  '#131: a newer push updates the stored mode');
+
+insert into r select 'mode_old_client', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(125), 'display_name', 'Old Client Rename',
+    'updated_at', pg_temp.ts_txt('t3'))),
+  '[]'::jsonb);
+select is((select display_name from public.profiles where id = tests.ulid(125)), 'Old Client Rename',
+  '#131: the old-client push still applies the field it did send');
+select is((select mode from public.profiles where id = tests.ulid(125)), 'caregiver',
+  '#131: an old client omitting mode does not reset the stored mode');
+
+update public.profiles set mode = 'irregular' where id = tests.ulid(125);
+select is((select mode from public.profiles where id = tests.ulid(125)), 'irregular',
+  '#131: authenticated can write mode directly on an owned profile');
+
+-- Permission invariance (Issue #131 hard constraint: mode is presentation,
+-- never permission): a caregiver-role guardian's push that tries to edit
+-- profile metadata (mode included) is still rejected by the unchanged role
+-- check, and a caregiver still writes day entries on the mode-carrying
+-- profile - mode neither grants nor restricts anything.
+select tests.clear_authentication();
+insert into public.profile_guardians (profile_id, user_id, role, status)
+values (tests.ulid(125), tests.get_supabase_uid('user_b'), 'caregiver', 'accepted');
+
+select tests.authenticate_as('user_b');
+insert into r select 'mode_caregiver_edit', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(125), 'display_name', 'Nanny Rename', 'mode', 'teen',
+    'updated_at', pg_temp.ts_txt('t3'))),
+  '[]'::jsonb);
+select is(jsonb_array_length(pg_temp.resp('mode_caregiver_edit') -> 'rejected'), 1,
+  '#131: a caregiver-role push cannot edit profile mode (roles unchanged by mode)');
+select is((select mode from public.profiles where id = tests.ulid(125)), 'irregular',
+  '#131: the rejected caregiver mode edit does not land');
+
+insert into r select 'mode_entry', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(129), 'profile_id', tests.ulid(125), 'local_date', '2026-09-30',
+    'tz', 'UTC', 'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('mode_entry') -> 'rejected', '[]'::jsonb,
+  '#131: a caregiver still writes day entries on a profile with any mode');
 
 select * from finish();
 rollback;

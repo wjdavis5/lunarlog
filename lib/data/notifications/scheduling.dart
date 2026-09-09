@@ -11,6 +11,7 @@
 library;
 
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 /// Days before the estimate the "upcoming period" reminder fires.
@@ -54,22 +55,28 @@ class PlannedReminder {
   int get hashCode => Object.hash(profileId, fireOn, kind);
 }
 
-/// Plans reminders from the active profiles' [ActivePrediction]s.
+/// Plans reminders from the active profiles' [ActivePrediction]s, filtered
+/// by each profile's care-mode [ReminderPreset] (Issue #131, R12).
 ///
 /// Profiles without a live estimate ([NotEnoughHistory],
-/// [PausedAwaitingNextPeriod]) produce nothing — no partial signals.
-/// The result is sorted by fire date and capped at [kMaxPendingReminders].
+/// [PausedAwaitingNextPeriod]) produce nothing — no partial signals. A
+/// profile with no entry in [presets] gets [ReminderPreset.all], so callers
+/// that carry no mode information (and the pre-#131 tests) keep the exact
+/// plan they always produced. The result is sorted by fire date and capped
+/// at [kMaxPendingReminders].
 List<PlannedReminder> planReminders({
   required LocalDate today,
   required Map<String, ActivePrediction> predictions,
+  Map<String, ReminderPreset> presets = const {},
 }) {
   final planned = <PlannedReminder>[];
   for (final entry in predictions.entries) {
     final prediction = entry.value;
+    final preset = presets[entry.key] ?? ReminderPreset.all;
     // Upcoming: estimate − 2 days, only if still in the future.
     final upcomingOn =
         prediction.estimatedNextStart.addDays(-kUpcomingReminderOffsetDays);
-    if (upcomingOn.difference(today) > 0) {
+    if (preset.upcoming && upcomingOn.difference(today) > 0) {
       planned.add(PlannedReminder(
         profileId: entry.key,
         fireOn: upcomingOn,
@@ -77,7 +84,7 @@ List<PlannedReminder> planReminders({
       ));
     }
     // Late: pre-arm a bounded daily window starting today.
-    if (prediction.isLate) {
+    if (preset.late && prediction.isLate) {
       for (var i = 0; i < kLatePreArmDays; i++) {
         planned.add(PlannedReminder(
           profileId: entry.key,

@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -833,6 +834,102 @@ void main() {
       // Dismiss before disposing, matching the other archive tests' pattern.
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
+      await disposeApp(tester, db);
+    });
+  });
+
+  group('care modes (Issue #131)', () {
+    testWidgets('a profile can be created with any mode through the '
+        'Add-profile dialog, and defaults to standard when untouched',
+        (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Seed', isMinor: false);
+      });
+
+      // Untouched dialog: creating keeps the standard default.
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).first, 'Default');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      // Now create one in teen mode through the picker.
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).first, 'Teen');
+      await tester.tap(find.byType(DropdownButton<ProfileMode>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Teen').last);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('care-mode-hint')), findsOneWidget,
+          reason: 'the picker explains what the mode changes');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      final defaultProfile =
+          profiles.singleWhere((p) => p.displayName == 'Default');
+      final teenProfile =
+          profiles.singleWhere((p) => p.displayName == 'Teen');
+      expect(defaultProfile.mode, ProfileMode.standard);
+      expect(teenProfile.mode, ProfileMode.teen);
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('a profile can be switched to any mode later through the '
+        'Rename dialog', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage).create(
+            displayName: 'Alex', isMinor: false, mode: ProfileMode.standard);
+      });
+
+      for (final mode in [
+        ProfileMode.irregular,
+        ProfileMode.caregiver,
+        ProfileMode.teen,
+        ProfileMode.standard,
+      ]) {
+        final tile = find.ancestor(
+            of: find.text('Alex'), matching: find.byType(ListTile));
+        await tester.tap(find.descendant(
+            of: tile, matching: find.byType(PopupMenuButton<String>)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Rename'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(DropdownButton<ProfileMode>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(mode.label).last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+        await tester.pumpAndSettle();
+
+        final profiles = await DriftProfilesRepository(db.storage).list();
+        expect(profiles.single.mode, mode,
+            reason: 'switching to ${mode.name} persists');
+      }
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('mode is never derived: a minor profile with a birth year '
+        'still reads standard until a human chooses otherwise '
+        '(isMinor/birthYear gate nothing automatically)', (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage).create(
+          displayName: 'Kid',
+          isMinor: true,
+          birthYear: 2012,
+          relationship: ProfileRelationship.daughter,
+        );
+      });
+
+      final profiles = await DriftProfilesRepository(db.storage).list();
+      final kid = profiles.single;
+      expect(kid.isMinor, isTrue);
+      expect(kid.birthYear, 2012);
+      expect(kid.mode, ProfileMode.standard,
+          reason: 'mode is chosen, never computed from isMinor/birthYear');
       await disposeApp(tester, db);
     });
   });

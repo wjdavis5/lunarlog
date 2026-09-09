@@ -79,6 +79,13 @@ class Profiles extends Table {
   /// throwing (see `row_codec.dart`).
   TextColumn get relationship => text().nullable()();
 
+  /// Care mode (Issue #131, R12), mirrored by [domain.ProfileMode] and the
+  /// server's `profiles_mode_check` CHECK (`standard|teen|caregiver|
+  /// irregular`). Non-null, defaulting to `standard`; an unrecognised value
+  /// decodes to `standard` rather than throwing (see `row_codec.dart`).
+  /// Presentation only — never consulted by any authorization path.
+  TextColumn get mode => text().withDefault(const Constant('standard'))();
+
   /// Instant this profile's ownership last moved via
   /// `accept_ownership_transfer`, or null if it never has (R5). Never
   /// client-writable — server-owned, pulled but never pushed (see

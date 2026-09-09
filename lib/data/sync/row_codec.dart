@@ -13,6 +13,9 @@
 ///   set on decode: an unrecognised value normalises to null rather than
 ///   surfacing garbage the app never asked for, since it is optional
 ///   display metadata, not a security-relevant field like a guardian role.
+///   `profiles.mode` (Issue #131) gets the same closed-set treatment except
+///   that it is non-null by default: an absent or unrecognised value
+///   normalises to `standard` (presentation-only, never a security field).
 ///   `profiles.transferred_at` (R5) is pulled but never pushed — server-
 ///   owned, written only by `accept_ownership_transfer`.
 /// * Failures are a typed [RowCodecError] naming the table and field and
@@ -24,6 +27,7 @@
 /// normal data-depends-on-domain direction and does not violate that).
 library;
 
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 
 import '../db/db.dart';
@@ -153,6 +157,7 @@ JsonRow encodeProfile(Profile row) {
     'created_at': encodeTimestamp(row.createdAt),
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
+    'mode': row.mode,
     'birth_year': row.birthYear,
     'relationship': row.relationship,
   };
@@ -209,6 +214,7 @@ RemoteProfileRow decodeProfile(JsonRow json) {
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),
     serverVersion: r.integerOr('server_version', 0),
+    mode: ProfileMode.fromDb(r.stringOrNull('mode')).toDb(),
     birthYear: r.integerOrNull('birth_year'),
     relationship: _decodeRelationship(r.stringOrNull('relationship')),
     transferredAt: r.timestampOrNull('transferred_at'),

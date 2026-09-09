@@ -8,8 +8,10 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
+import 'package:lunarlog/data/notifications/scheduling.dart' show ReminderKind;
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
@@ -85,6 +87,50 @@ void main() {
     final last = scheduler.rescheduleCalls.last;
     expect(last, isNotEmpty);
     expect(last.every((r) => r.profileId == 'p1'), isTrue);
+  });
+
+  test('care-mode presets: switching mode replans at the next coordinator '
+      'pass, prospectively (Issue #131, KTD10)', () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final p1 = StreamController<CyclePrediction>(sync: true);
+    final today = LocalDate(2026, 8, 30);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+      today: () => today,
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      await p1.close();
+    });
+
+    // A caregiver-mode profile with a late prediction: its preset arms
+    // nothing, so the plan is empty.
+    profiles.add([_profile('p1').copyWith(mode: ProfileMode.caregiver)]);
+    p1.add(_late(today));
+    await pumpEventQueue();
+    expect(scheduler.rescheduleCalls, isNotEmpty);
+    expect(scheduler.rescheduleCalls.last, isEmpty,
+        reason: 'caregiver preset plans no reminders');
+
+    // Switching the profile's mode rides the same profiles stream; the
+    // next coordinator pass replans with the standard preset. The late
+    // prediction (still live, untouched by the switch) now pre-arms.
+    profiles.add([_profile('p1').copyWith(mode: ProfileMode.standard)]);
+    await pumpEventQueue();
+    final lastPlan = scheduler.rescheduleCalls.last;
+    expect(lastPlan, isNotEmpty);
+    expect(lastPlan.every((r) => r.kind == ReminderKind.late), isTrue,
+        reason: 'the mode switch never touched the prediction or entries');
   });
 
   test('denied permission: no scheduling, reminders cancelled, hint state set',

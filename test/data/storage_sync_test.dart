@@ -50,6 +50,7 @@ void main() {
     String id, {
     String displayName = 'Remote',
     bool isMinor = false,
+    String mode = 'standard',
     int sortOrder = 0,
     required DateTime updatedAt,
     DateTime? createdAt,
@@ -59,6 +60,7 @@ void main() {
         id: id,
         displayName: displayName,
         isMinor: isMinor,
+        mode: mode,
         sortOrder: sortOrder,
         archivedAt: null,
         createdAt: createdAt ?? updatedAt,
@@ -294,11 +296,14 @@ void main() {
       final newer = p.updatedAt.add(const Duration(seconds: 1));
       expect(
           await storage.applyRemoteProfile(remoteProfile(p.id,
-              displayName: 'Remote', isMinor: false, updatedAt: newer)),
+              displayName: 'Remote', isMinor: false, mode: 'teen',
+              updatedAt: newer)),
           isTrue);
       var row = await profileById(p.id);
       expect(row.displayName, 'Remote');
       expect(row.isMinor, isFalse);
+      expect(row.mode, 'teen',
+          reason: '#131: a remotely switched mode applies locally');
       expect(row.dirty, isFalse);
       expect(row.localRev, p.localRev);
 

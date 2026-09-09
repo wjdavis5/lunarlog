@@ -21,7 +21,8 @@ import '../models/profile.dart';
 
 /// Bumped whenever the exported document's shape changes in a way a reader
 /// (a future importer, or a person opening the file) must know about.
-const int kAccountExportSchemaVersion = 1;
+/// v2 adds `profiles[].mode` (Issue #131).
+const int kAccountExportSchemaVersion = 2;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -66,6 +67,7 @@ Map<String, Object?> _exportProfile(
     'id': profile.id,
     'displayName': profile.displayName,
     'isMinor': profile.isMinor,
+    'mode': profile.mode.toDb(),
     'sortOrder': profile.sortOrder,
     'archivedAt': profile.archivedAt?.toUtc().toIso8601String(),
     'createdAt': profile.createdAt.toUtc().toIso8601String(),

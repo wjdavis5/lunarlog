@@ -43,6 +43,7 @@ final class RemoteProfileRow extends RemoteRow {
     required this.updatedAt,
     required this.deletedAt,
     this.serverVersion = 0,
+    this.mode = 'standard',
     this.birthYear,
     this.relationship,
     this.transferredAt,
@@ -61,6 +62,15 @@ final class RemoteProfileRow extends RemoteRow {
   final DateTime? deletedAt;
   @override
   final int serverVersion;
+
+  /// Issue #131. The raw `toDb()` string. `row_codec.dart`'s `decodeProfile`
+  /// already normalises an unrecognised or absent value to `standard`
+  /// against the closed set before constructing this row (mode is
+  /// presentation-only, non-null by default); `mappers.dart`'s
+  /// `ProfileMode.fromDb` normalises again on the way to the domain model,
+  /// so a row built directly (tests) with a raw, unvalidated string still
+  /// degrades safely.
+  final String mode;
 
   /// Issue #4 R1. Raw, undecoded: only `row_codec.dart`'s decode reads it
   /// off the wire; converting to a domain type happens in `mappers.dart`.

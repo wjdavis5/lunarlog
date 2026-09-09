@@ -9,14 +9,22 @@
 /// no fertility vocabulary in any state until #143 lands — and every
 /// estimate sits next to the fixed non-medical disclaimer (R17). No drift
 /// types cross into this file.
+///
+/// Issue #131: the profile's care mode selects the vocabulary
+/// (`careModeCopyFor`) — status labels, estimate framing, and the
+/// empty/insufficient-history copy. `irregular` additionally silences the
+/// late resolver, replacing it with a quiet status line; the disclaimer
+/// stays next to every estimate in every mode, without exception.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
@@ -41,6 +49,7 @@ class OverviewPanel extends StatefulWidget {
   const OverviewPanel({
     super.key,
     required this.profileId,
+    this.mode = ProfileMode.standard,
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.timezoneProvider,
@@ -48,6 +57,11 @@ class OverviewPanel extends StatefulWidget {
   });
 
   final String profileId;
+
+  /// The profile's care mode (Issue #131): selects the vocabulary below.
+  /// Presentation only — it never changes what any guardian role may read
+  /// or write ([_effectiveReadOnly] consults roles alone).
+  final ProfileMode mode;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -76,6 +90,9 @@ class _OverviewPanelState extends State<OverviewPanel> {
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
+
+  /// The mode's vocabulary (Issue #131), resolved once per build.
+  CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
   @override
   void initState() {
@@ -159,6 +176,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
         date: today,
         existing: existing,
         today: today,
+        mode: widget.mode,
         readOnly: _effectiveReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,
@@ -208,6 +226,33 @@ class _OverviewPanelState extends State<OverviewPanel> {
     readOnly: _effectiveReadOnly,
   );
 
+  /// Issue #131: `irregular` silences the late resolver — the error-styled
+  /// banner with log-it/skip/remind actions never renders in that mode.
+  /// The quiet status line that replaces it (in both the active-late and
+  /// paused-awaiting states) carries the disclaimer underneath, exactly as
+  /// the banner did.
+  Widget _lateSectionFor(CyclePrediction prediction, ThemeData theme) {
+    if (_copy.silencesLateBanner) {
+      return Padding(
+        key: const ValueKey('overview-irregular-overdue'),
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _copy.overdueStatusLabel,
+              key: const ValueKey('overview-irregular-overdue-line'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.tertiary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return _resolverFor(prediction);
+  }
+
   Widget _activeCard(BuildContext context, ActivePrediction prediction) {
     final theme = Theme.of(context);
     return Card(
@@ -226,13 +271,14 @@ class _OverviewPanelState extends State<OverviewPanel> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Next period estimate: ${_formatDate(prediction.estimatedNextStart)}',
+              '${_copy.nextEstimateLabel} '
+              '${_formatDate(prediction.estimatedNextStart)}',
               key: const ValueKey('overview-next-period'),
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: 4),
             if (prediction.isLate)
-              _resolverFor(prediction)
+              _lateSectionFor(prediction, theme)
             else
               Text(
                 prediction.untilNextPeriodLabel,
@@ -263,15 +309,17 @@ class _OverviewPanelState extends State<OverviewPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Awaiting next period', style: theme.textTheme.headlineSmall),
+            Text(_copy.awaitingTitle, style: theme.textTheme.headlineSmall),
             const SizedBox(height: 8),
             Text(
-              'Predictions are paused until the next period is logged.',
+              _copy.awaitingBody,
+              key: const ValueKey('overview-awaiting-body'),
               style: theme.textTheme.bodyMedium,
             ),
             // An open cycle past sixty days is the overdue case too — it
-            // still resolves through "log it" (issue #132 AC).
-            _resolverFor(prediction),
+            // still resolves through "log it" (issue #132 AC), except in
+            // `irregular`, where the banner is silenced (#131).
+            _lateSectionFor(prediction, theme),
             const SizedBox(height: 8),
             Text(
               kEstimateDisclaimer,
@@ -294,13 +342,21 @@ class _OverviewPanelState extends State<OverviewPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Not enough history yet',
+              _copy.notEnoughTitle,
+              key: const ValueKey('overview-not-enough-title'),
               style: theme.textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
             Text(
-              'Keep logging — estimates appear once a few cycles are recorded.',
+              _copy.notEnoughBody,
+              key: const ValueKey('overview-not-enough-body'),
               style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              kEstimateDisclaimer,
+              key: const ValueKey('overview-not-enough-disclaimer'),
+              style: theme.textTheme.bodySmall,
             ),
           ],
         ),
