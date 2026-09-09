@@ -18,6 +18,8 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
+import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -88,6 +90,52 @@ class FakeSharing126 implements SharingService {
   }) async {}
 }
 
+/// Minimal [PredictionConnectionService] fake for the #151 merge-
+/// integration coverage: the discoverability suite never arms, redeems,
+/// or publishes — it only needs the Manage Guardians predictions section
+/// to see a configured service that reports no live connection.
+class _FakePredictionConnection151 implements PredictionConnectionService {
+  @override
+  Future<GeneratedPredictionInvite> createConnection({
+    required String profileId,
+    String? recipientLabel,
+    Duration ttl = const Duration(hours: 72),
+  }) =>
+      throw UnimplementedError('not exercised by issue #126 tests');
+
+  @override
+  Future<AcceptedPredictionConnection> acceptConnection({
+    required String rawToken,
+  }) =>
+      throw UnimplementedError('not exercised by issue #126 tests');
+
+  @override
+  Future<void> revokeConnection({required String connectionId}) async {}
+
+  @override
+  Future<ActivePredictionConnection?> getActiveConnection(
+          {required String profileId}) async =>
+      null;
+
+  @override
+  Future<Set<String>> outgoingConnectedProfileIds() async => const {};
+
+  @override
+  Future<List<IncomingPredictionConnection>> listIncomingConnections() async =>
+      const [];
+
+  @override
+  Future<PredictionProjection?> fetchProjection(
+          {required String profileId}) async =>
+      null;
+
+  @override
+  Future<void> publishProjection({
+    required String profileId,
+    required PredictionProjection projection,
+  }) async {}
+}
+
 PendingInvite _invite(
   String profileId,
   String id, {
@@ -125,12 +173,14 @@ Future<LunarLogDatabase> _pumpApp(
   WidgetTester tester, {
   FakeAuthService? auth,
   FakeSharing126? sharing,
+  PredictionConnectionService? predictionConnectionService,
 }) async {
   final db = LunarLogDatabase(NativeDatabase.memory());
   await tester.pumpWidget(LunarLogApp(
     db: db,
     authService: auth,
     sharingService: sharing,
+    predictionConnectionService: predictionConnectionService,
   ));
   await tester.pumpAndSettle();
   return db;
@@ -725,6 +775,70 @@ void main() {
         expect(find.byType(Badge), findsNothing);
         expect(find.byKey(ValueKey('shared-indicator-${ids.alice}')),
             findsOneWidget);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+  });
+
+  group('#151 merge integration', () {
+    testWidgets(
+        'badge and prediction affordances coexist, and the picker pushes '
+        'Manage Guardians exactly once with both features wired',
+        (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final sharing = FakeSharing126();
+      final db = await _pumpApp(
+        tester,
+        auth: auth,
+        sharing: sharing,
+        predictionConnectionService: _FakePredictionConnection151(),
+      );
+      try {
+        final ids = await _seedFamily(db);
+        sharing.pendingByProfile[ids.alice] = [_invite(ids.alice, 'inv-2')];
+        await tester.pumpAndSettle();
+
+        // On the picker itself: the outstanding-invite badge on Alice's
+        // row and the app-bar "shared with me" connection affordance are
+        // both present — neither feature shadows the other.
+        expect(find.byKey(ValueKey('pending-invite-badge-${ids.alice}')),
+            findsOneWidget);
+        expect(find.byKey(const ValueKey('shared-with-me')), findsOneWidget);
+
+        // Alice's row menu routes into Manage Guardians — one push only —
+        // and that screen carries the pending-invite section AND the
+        // #151 predictions section (Mom is Alice's primary guardian).
+        await tester.tap(find.descendant(
+          of: find.byKey(ValueKey('profile-row-${ids.alice}')),
+          matching: find.byType(PopupMenuButton<String>),
+        ));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Caregivers'));
+        await tester.pumpAndSettle();
+        expect(find.text('Alice Caregivers'), findsOneWidget);
+        expect(find.text('Sitter'), findsOneWidget);
+        expect(find.text('Predictions-only sharing'), findsOneWidget);
+        expect(find.byKey(const ValueKey('share-predictions')),
+            findsOneWidget);
+
+        // Cancelling inside Manage Guardians and a single pop lands back
+        // on the picker with the badge cleared and everything else intact.
+        await tester.tap(find.byIcon(Icons.cancel_outlined));
+        await tester.pumpAndSettle();
+        await tester
+            .tap(find.widgetWithText(FilledButton, 'Cancel Invitation'));
+        await tester.pumpAndSettle();
+        expect(sharing.lastCancelledId, 'inv-2');
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byKey(ValueKey('profile-row-${ids.alice}')),
+            findsOneWidget);
+        expect(find.byType(Badge), findsNothing);
+        expect(find.byKey(ValueKey('shared-indicator-${ids.alice}')),
+            findsOneWidget);
+        expect(find.byKey(const ValueKey('shared-with-me')), findsOneWidget);
       } finally {
         await _disposeApp(tester, db);
       }

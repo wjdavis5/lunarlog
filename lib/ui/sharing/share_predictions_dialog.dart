@@ -118,7 +118,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
               'days on a read-only calendar — no notes or logs. The code '
               'expires in 72 hours and can be redeemed once.',
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.outline),
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),

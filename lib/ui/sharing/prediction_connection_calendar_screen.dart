@@ -105,7 +105,7 @@ class _PredictionConnectionCalendarScreenState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.link_off,
-                        size: 48, color: theme.colorScheme.outline),
+                        size: 48, color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(height: 12),
                     Text('Connection ended',
                         style: theme.textTheme.titleMedium),
@@ -114,7 +114,7 @@ class _PredictionConnectionCalendarScreenState
                       'This prediction connection is no longer active.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.outline),
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -191,7 +191,7 @@ class _PhaseMonthGrid extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.outline),
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
       for (var i = 0; i < leadingBlanks; i++) const SizedBox.shrink(),

@@ -16,16 +16,11 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
-import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
-import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
-import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -37,7 +32,6 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/routes.dart';
-import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
@@ -257,40 +251,10 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       BuildContext context, Profile profile, String action) async {
     final controller = context.read<ProfileController>();
     if (action == 'caregivers') {
-      final storage = Provider.of<LunarLogStorage?>(context, listen: false);
-      final sharing = Provider.of<SharingService?>(context, listen: false);
-      final ownershipTransfer =
-          Provider.of<OwnershipTransferService?>(context, listen: false);
-      if (storage != null && sharing != null) {
-        Navigator.of(context).push(
-          buildNamedRoute<void>(
-            name: kRouteManageGuardiansScreen,
-            builder: (_) => ManageGuardiansScreen(
-              profile: profile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
-              sharingService: sharing,
-              currentUserId:
-                  context.read<AuthController?>()?.currentUserId,
-              ownershipTransferService: ownershipTransfer,
-              predictionConnectionService:
-                  Provider.of<PredictionConnectionService?>(
-                      context, listen: false),
-              onPredictionConnectionChanged: (profileId) =>
-                  Provider.of<PredictionProjectionPublisher?>(
-                        context,
-                        listen: false,
-                      )
-                      ?.publishNow(profileId),
-              notificationPreferencesService:
-                  Provider.of<NotificationPreferencesService?>(
-                      context, listen: false),
-              activityRepository: ActivityFeedRepository(storage),
-            ),
-          ),
-        );
-      }
       // Returning from Manage Guardians may have cancelled an invitation:
       // refresh outside badges so the change surfaces without a restart.
+      // The shared push site carries the #151 prediction-connection wiring
+      // too — this must stay a single push of the screen.
       openManageGuardians(context, profile)
           ?.then((_) => _overview?.refreshBadges());
     } else if (action == 'rename') {

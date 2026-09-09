@@ -153,7 +153,7 @@ class _PredictionConnectionsScreenState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.calendar_month,
-                        size: 48, color: theme.colorScheme.outline),
+                        size: 48, color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(height: 12),
                     Text('No shared predictions yet',
                         style: theme.textTheme.titleMedium),
@@ -163,7 +163,7 @@ class _PredictionConnectionsScreenState
                       'their calendar appears here.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.outline),
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),

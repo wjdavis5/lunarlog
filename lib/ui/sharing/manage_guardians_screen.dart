@@ -667,7 +667,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           child: Text(
             'Shares estimated period, fertile, ovulation, and PMS days on a '
             'read-only calendar - never notes or logs. One connection.',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
         if (!_predictionConnectionLoaded)
@@ -690,7 +690,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                 : Text(
                     'Only the primary guardian can share predictions.',
                     style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.outline),
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
           )
         else
@@ -721,7 +721,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           if (connection.pending)
             Text('pending',
                 style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline)),
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
       subtitle: Text(
