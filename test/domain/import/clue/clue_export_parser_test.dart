@@ -32,8 +32,10 @@ void main() {
       expect(result.skipped, isEmpty);
     });
 
-    test('produces exactly one datapoint per row', () {
-      expect(result.datapoints, hasLength(28));
+    test('produces one datapoint per selected option', () {
+      // 30 fixture rows; the partying row is multi-select with two
+      // options, so 31 datapoints total.
+      expect(result.datapoints, hasLength(31));
     });
 
     test('period maps to a flow level, not an observation', () {
@@ -82,6 +84,13 @@ void main() {
       (25, 'birth_control', 'birth_control', 'pill'),
       (26, 'mucus', 'mucus', 'egg_white'),
       (27, 'tests', 'tests', 'negative'),
+      // Issue #251's additions: meditation passes through; partying's
+      // multi-select row yields one datapoint per option, with the
+      // attested "big night" (two words in the export) remapped to the
+      // snake_case tag-namespace code.
+      (28, 'meditation', 'meditation', 'meditated_10_min'),
+      (29, 'partying', 'partying', 'drinks'),
+      (30, 'partying', 'partying', 'big_night'),
     ];
 
     for (final (index, clueType, category, code) in expectedObservations) {
@@ -120,6 +129,41 @@ void main() {
             (dp as ClueObservationDatapoint).code,
         ],
         ['cramps', 'back_pain', 'bloating', 'tired'],
+      );
+    });
+
+    test('issue #251 mapping table on synthetic Clue-shaped input: '
+        'leisure unknown options pass through verbatim (never rejected or '
+        'coerced), partying "big night" snake_cases to big_night, '
+        'meditation passes through', () {
+      final result = parseClueDatapoints(utf8.encode('['
+          '{"date": "2026-03-01", "type": "leisure", '
+          '"value": [{"option": "Reading a Novel"}, '
+          '{"option": "totally undocumented option"}]},'
+          '{"date": "2026-03-02", "type": "partying", '
+          '"value": [{"option": "big night"}, {"option": "hangover"}]},'
+          '{"date": "2026-03-03T00:00:00.000Z", "type": "meditation", '
+          '"value": {"option": "ten minutes"}}'
+          ']'));
+      expect(result.skipped, isEmpty, reason: 'unknown-never-drop');
+      expect(result.datapoints, hasLength(5));
+      expect(
+        [
+          for (final dp in result.datapoints)
+            (
+              (dp as ClueObservationDatapoint).category,
+              dp.code,
+            ),
+        ],
+        [
+          ('leisure', 'Reading a Novel'),
+          // No source enumerates leisure's real option set (A1-45):
+          // anything an export carries must survive byte-for-byte.
+          ('leisure', 'totally undocumented option'),
+          ('partying', 'big_night'),
+          ('partying', 'hangover'),
+          ('meditation', 'ten minutes'),
+        ],
       );
     });
 

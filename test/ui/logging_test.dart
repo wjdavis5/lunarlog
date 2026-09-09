@@ -703,7 +703,7 @@ void main() {
       await disposeLogging(tester, h);
     });
 
-    testWidgets('tag chips render exactly the curated 45 in 15 categories; '
+    testWidgets('tag chips render exactly the curated 67 in 22 categories; '
         'unverified categories ship the pin-first caption; toggling two tags '
         'persists both codes', (tester) async {
       final h = await pumpLogging(tester);
@@ -714,7 +714,7 @@ void main() {
       // Issue #247: the curated tag chips plus the standalone spotting
       // toggle, which is also a FilterChip (see `_editableBody`).
       // Issue #220: plus the standalone first-class PMS toggle.
-      expect(find.byType(FilterChip), findsNWidgets(45 + 2));
+      expect(find.byType(FilterChip), findsNWidgets(67 + 2));
       const headers = [
         'Pain',
         'Energy',
@@ -730,17 +730,31 @@ void main() {
         'Urine',
         'Vulva & vagina',
         'Body',
-        'Mood',
+        // Issue #251: the old `mood` grouping rebuilt as
+        // feelings/mind/lifestyle.
+        'Feelings',
+        'Mind',
+        'Motivation',
+        'Social life',
+        'Leisure',
+        'Meditation',
+        'PMS',
+        'Partying',
       ];
       for (final header in headers) {
-        expect(find.text(header), findsOneWidget);
+        // Issue #251: the PMS category heading shares its exact string
+        // with the standalone #220 PMS presence chip rendered above the
+        // taxonomy grid — both are legitimately on the sheet.
+        expect(find.text(header),
+            header == 'PMS' ? findsNWidgets(2) : findsOneWidget);
       }
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget);
       }
-      // The five option-set-unverified categories (issue #249) render the
+      // The eight option-set-unverified categories (five from issue #249,
+      // three from issue #251: pms, meditation, leisure) render the
       // pin-first caption where their chips would go, and ship no chips.
-      expect(find.text('Unverified — pin before shipping'), findsNWidgets(5));
+      expect(find.text('Unverified — pin before shipping'), findsNWidgets(8));
 
       await tester.tap(find.text('Headache'));
       await tester.pump();
@@ -2180,10 +2194,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      // All 45 curated chips render — nothing is removed by the mode —
+      // All 67 curated chips render — nothing is removed by the mode —
       // plus the standalone spotting toggle (Issue #247) and the
       // standalone PMS toggle (Issue #220), also FilterChips.
-      expect(find.byType(FilterChip), findsNWidgets(45 + 2));
+      expect(find.byType(FilterChip), findsNWidgets(67 + 2));
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget,
             reason: 'teen mode must not hide ${tag.display}');
@@ -2192,7 +2206,9 @@ void main() {
       expect(find.text('How your body feels'), findsOneWidget);
       expect(find.text('Body'), findsNothing);
       // ...and surfaced first (the first heading in the sheet's column).
-      final headings = ['How your body feels', 'Mood', 'Pain', 'Energy'];
+      // Issue #251: the old 'Mood' heading is now 'Feelings' (the mood
+      // grouping rebuilt), still directly below the body heading.
+      final headings = ['How your body feels', 'Feelings', 'Pain', 'Energy'];
       final offsets = headings
           .map((h) => tester.getTopLeft(find.text(h)).dy)
           .toList();
@@ -2773,7 +2789,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Issue #249 grew the taxonomy (45 chips in 15 categories), so the
+      // Issue #249/#251 grew the taxonomy (67 chips in 22 categories), so the
       // sheet's scroll view now genuinely scrolls: bring the note field
       // into view before tapping it, exactly as a user would.
       await tester.ensureVisible(find.byKey(const ValueKey('note-field')));

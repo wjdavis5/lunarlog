@@ -139,6 +139,21 @@ final Map<String, ClueTypeSpec> kClueTypeMap = {
   // Option set not publicly documented (A1-22) — unknown option strings
   // pass through verbatim per #199's escape hatch for options.
   'leisure': const ClueTypeSpec('leisure'),
+  // Issue #251: presence/duration-style category (A1-20, listed in Clue's
+  // current category list) whose option set is undocumented — options pass
+  // through verbatim, never dropped.
+  'meditation': const ClueTypeSpec('meditation'),
+  // Issue #251: attested legacy category (A1-23) with options
+  // drinks/cigarettes/"big night"/hangover. "big night" is the one raw
+  // option string that needs remapping — codes in the day-entry tag
+  // namespace are snake_case (`big_night`), the same treatment
+  // period_cramps -> cramps gets; the rest pass through verbatim.
+  'partying': const ClueTypeSpec(
+    'partying',
+    options: {
+      'big night': ClueOptionSpec(code: 'big_night'),
+    },
+  ),
   'hair': const ClueTypeSpec('hair'),
   // MEDIUM confidence, single-parser (A1-14).
   'skin': const ClueTypeSpec('skin'),

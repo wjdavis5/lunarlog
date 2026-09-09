@@ -73,9 +73,9 @@ one (SNOMED, when verified) and the lunarlog local one, always, so an
 importer can recover the exact original tag without reversing a clinical
 code (`dualCodingFor` in the Dart module implements this).
 
-All 45 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
-rows plus issue #249's 28 explicit local decisions (see the section at
-the end of this document). Every SNOMED
+All 67 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
+rows plus issue #249's 28 and issue #251's 22 explicit local decisions
+(see the sections at the end of this document). Every SNOMED
 row was checked live against the HL7 FHIR terminology server
 (`https://tx.fhir.org`, R4, SNOMED CT edition `900000000000207008`
 version `20250201`) via its `CodeSystem/$lookup` operation, confirming
@@ -114,7 +114,7 @@ than finding-tier — SNOMED has no separate finding-tier acne concept, and
 a distinct diagnosis, so using the disorder-tier code does not overstate
 what the lunarlog `acne` tag means.
 
-### Mood — local-coded (5 of 6)
+### Mood — local-coded (5 of 6; grouping dissolved by issue #251)
 
 Per #152's own assumption, mood tags are expected to resolve to
 "local-coded, no match" rather than be forced into a plausible-looking
@@ -261,3 +261,29 @@ New codes carrying local rows: `ovulation`, `migraine`,
 `carbs`, `chocolate`. The 17 pre-existing rows (including `cravings`, now
 filed under the cravings category as the legacy "unspecified craving"
 member) are unchanged.
+
+## Issue #251's feelings/mind/lifestyle taxonomy — local decisions (2026-09)
+
+Issue #251 grew `lib/domain/tags.dart` from 45 codes to 67 across 22
+categories, rebuilding the old `mood` grouping into `feelings`, `mind`,
+`motivation`, `social_life`, and `partying` (plus the option-set-unverified
+`pms`, `meditation`, and `leisure`). The same rule as #249's section above:
+every new code gets an **explicit local decision**, no SNOMED CT concept
+fetch-verified in this pass — `dualCodingFor` degrades each to its single
+local coding, which is valid FHIR and round-trips exactly. Fetch-verify
+against `tx.fhir.org` and promote clean resolves in the same follow-up
+pass as #249's candidates.
+
+The five re-parented codes (`irritable`, `sad`, `anxious`, `calm`,
+`sensitive`) keep their existing rows — including `anxious`'s verified
+SNOMED `48694002` "Anxiety" — untouched: re-parenting changes a code's
+category, never its coding or its code string.
+
+New codes carrying local rows: `happy`, `angry`, `indifferent`,
+`mood_swings`, `excited`, `insecure`, `grateful` (feelings);
+`distracted`, `focused`, `stressed` (mind); `motivated`, `unmotivated`,
+`productive`, `unproductive` (motivation); `sociable`, `withdrawn`,
+`supportive`, `conflict` (social life); `drinks`, `cigarettes`,
+`big_night`, `hangover` (partying). The `pms`, `meditation`, and
+`leisure` categories ship no codes yet (option sets unverified —
+`kUnverifiedTagCategories`), so they add no rows here.
