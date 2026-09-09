@@ -149,7 +149,7 @@ jobs:
         # for the full "bump -> dump -> generate -> test" procedure).
         run: |
           dart run build_runner build --delete-conflicting-outputs
-          dart run drift_dev schema dump lib/data/db/db.dart drift_schemas/drift_schema_v9.json
+          dart run drift_dev schema dump lib/data/db/db.dart drift_schemas/drift_schema_v10.json
           git diff --exit-code
 
       - name: Analyze
