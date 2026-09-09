@@ -53,14 +53,14 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
   @override
   void initState() {
     super.initState();
-    _views = _service.watch(widget.profileId);
+    _views = _service.watch(widget.profileId, today: widget.todayProvider);
   }
 
   @override
   void didUpdateWidget(CycleHistorySection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profileId != widget.profileId) {
-      _views = _service.watch(widget.profileId);
+      _views = _service.watch(widget.profileId, today: widget.todayProvider);
     }
   }
 

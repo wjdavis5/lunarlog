@@ -49,8 +49,13 @@ const List<String> kForbiddenStems = [
   'follicular',
 ];
 
-/// Five 30-day cycles ending 2026-08-05 (kToday Aug 30 = cycle day 26).
+/// Six 30-day cycles ending 2026-08-05 (kToday Aug 30 = cycle day 26): a
+/// full kAverageWindowCycles(6) window, the minimum for `high` confidence
+/// (issue #213 item 5). Prepended one extra 30-day cycle ahead of the
+/// original five so the open cycle's start (Aug 5, and so kToday's cycle
+/// day) stays unchanged for every other test sharing this fixture.
 final List<LocalDate> kSteadyStarts = [
+  LocalDate(2026, 2, 6),
   LocalDate(2026, 3, 8),
   LocalDate(2026, 4, 7),
   LocalDate(2026, 5, 7),
@@ -65,9 +70,14 @@ final List<LocalDate> kLearningStarts = [
   LocalDate(2026, 7, 29),
 ];
 
-/// Six completed cycles of which only the last three (28s) are valid:
-/// lengths 90, 95, 100 then 28, 28, 28 — valid ratio 0.5 reads irregular.
+/// Seven completed cycles of which only the last three (28s) are valid:
+/// lengths 65, 90, 95, 100, then 28, 28, 28 — valid ratio 3/7 ≈ 0.43, under
+/// the engine's 0.5 threshold, reads irregular (issue #213: ratio is now
+/// recency-windowed over all completed cycles, not just the averaged
+/// three, so a boundary-exact 0.5 no longer suffices — see
+/// kIrregularSpreadThresholdDays/kIrregularValidRatioThreshold).
 final List<LocalDate> kIrregularRatioStarts = [
+  LocalDate(2025, 5, 28), // 65: outlier
   LocalDate(2025, 8, 1),
   LocalDate(2025, 10, 30), // 90: outlier
   LocalDate(2026, 2, 2), // 95: outlier
@@ -78,9 +88,10 @@ final List<LocalDate> kIrregularRatioStarts = [
 ];
 
 /// Lengths 28, 28, 20, 28: the 20-day cycle is the one STARTING Apr 5 (it
-/// runs Apr 5 -> Apr 25); it drags the mean to 25.33 -> estimate Jun 17,
-/// and today Jun 21 makes that late. Omitting it restores 28, 28, 28 ->
-/// estimate Jun 20 -> not late.
+/// runs Apr 5 -> Apr 25); with issue #213's 12-cycle prediction window all
+/// four lengths feed the mean (26.0 exactly) -> estimate Jun 18, and today
+/// Jun 21 makes that late. Omitting it restores 28, 28, 28 -> estimate
+/// Jun 20 -> not late.
 final List<LocalDate> kShortOutlierStarts = [
   LocalDate(2026, 2, 8), // 28-day cycle starts here
   LocalDate(2026, 3, 8), // 28
@@ -253,13 +264,14 @@ void main() {
           'May 7, 2026',
           'April 7, 2026',
           'March 8, 2026',
+          'February 6, 2026',
         ]),
         reason: 'reverse-chronological below the open cycle',
       );
       expect(
         find.text('30 days'),
-        findsNWidgets(6),
-        reason: 'five completed rows plus the avg-cycle statistic',
+        findsNWidgets(7),
+        reason: 'six completed rows plus the avg-cycle statistic',
       );
       expectNoFertilityVocabulary(tester, 'history list');
       await disposeHistory(tester, h);
@@ -285,7 +297,15 @@ void main() {
         starts: kShortOutlierStarts,
       );
 
-      expect(find.text('Next period estimate: June 17, 2026'), findsOneWidget);
+      // Issue #213: only 4 usable cycles feed a 6-cycle average window
+      // that is not yet full, so this reads `learning` (item 5), not
+      // `high` — and lengths [28, 28, 20, 28] have a real, non-degenerate
+      // spread (population std-dev ≈3.46, rounds to 3), so the estimate
+      // renders as a range (June 18 ± 3) rather than one exact date.
+      expect(
+        find.text('Next period estimate: June 15, 2026 – June 21, 2026'),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey('late-resolver')),
         findsOneWidget,
@@ -321,9 +341,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('Next period estimate: June 17, 2026'),
+        find.text('Next period estimate: June 15, 2026 – June 21, 2026'),
         findsOneWidget,
-        reason: 'reversible: including it restores the old estimate',
+        reason: 'reversible: including it restores the old (ranged) '
+            'estimate',
       );
       await disposeHistory(tester, h);
     });
@@ -339,7 +360,7 @@ void main() {
         find.byKey(const ValueKey('history-outlier-2025-10-30')),
         findsOneWidget,
       );
-      expect(find.text('Outlier — never averaged'), findsNWidgets(3));
+      expect(find.text('Outlier — never averaged'), findsNWidgets(4));
       expect(
         find.byKey(const ValueKey('history-omit-2025-10-30')),
         findsNothing,
@@ -396,7 +417,12 @@ void main() {
         starts: kIrregularRatioStarts,
       );
       expect(find.text('Irregular'), findsOneWidget);
-      expect(find.textContaining('vary a lot'), findsOneWidget);
+      // Issue #213 item 1: the history badge and the overview's own tier
+      // caption now share one derivation, so the same "vary a lot"
+      // summary renders in both places for the same data — never
+      // divergent, unlike the two separate derivations this issue
+      // replaced.
+      expect(find.textContaining('vary a lot'), findsNWidgets(2));
       expectNoFertilityVocabulary(tester, 'irregular confidence');
       await disposeHistory(tester, h);
     });

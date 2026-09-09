@@ -93,6 +93,20 @@ final List<LocalDate> kDuringEpisodeStarts = [
   LocalDate(2026, 8, 28),
 ];
 
+/// Three completed cycles of lengths 15, 60, 15 (mean 30, population
+/// std-dev ≈21.21): all three lengths are individually valid (15 and 60
+/// are the window's own boundaries) so validRatio is 1.0, but the spread
+/// alone puts this over kIrregularSpreadThresholdDays (7) — irregular via
+/// spread, not ratio. Estimate March30+June29+30=June29 (last start
+/// 2026-05-30 + mean 30); range June8–July20 (±round(21.21)=21 days).
+final List<LocalDate> kIrregularSpreadStarts = [
+  LocalDate(2026, 3, 1),
+  LocalDate(2026, 3, 16), // 15
+  LocalDate(2026, 5, 15), // 60
+  LocalDate(2026, 5, 30), // 15, open
+];
+final LocalDate kIrregularSpreadToday = LocalDate(2026, 6, 5);
+
 class Harness {
   Harness(this.db, this.profile, this.profiles, this.entries, this._settings);
 
@@ -107,6 +121,7 @@ class Harness {
     Profile profile, {
     NotificationAvailability availability = NotificationAvailability.available,
     RequestNotificationPermissionCallback? requestPermission,
+    LocalDate? today,
   }) {
     return MultiProvider(
       providers: [
@@ -139,7 +154,7 @@ class Harness {
       child: MaterialApp(
         home: ProfileDetailScreen(
           profile: profile,
-          todayProvider: () => kToday,
+          todayProvider: () => today ?? kToday,
         ),
       ),
     );
@@ -151,6 +166,7 @@ Future<Harness> pumpOverview(
   NotificationAvailability availability = NotificationAvailability.available,
   ProfileMode mode = ProfileMode.standard,
   RequestNotificationPermissionCallback? requestPermission,
+  LocalDate? today,
   Future<void> Function(DriftDayEntriesRepository entries, String profileId)?
       seed,
 }) async {
@@ -174,6 +190,7 @@ Future<Harness> pumpOverview(
     profile,
     availability: availability,
     requestPermission: requestPermission,
+    today: today,
   ));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Overview'));
@@ -378,6 +395,65 @@ void main() {
       await disposeOverview(tester, h);
     });
 
+    testWidgets('issue #213: an irregular-tier estimate renders as a range '
+        'with the tier caption', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        today: kIrregularSpreadToday,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kIrregularSpreadStarts),
+      );
+
+      expect(find.byKey(const ValueKey('overview-tier-caption')),
+          findsOneWidget);
+      expect(
+        find.text('Irregular — Cycles vary a lot — treat estimates as '
+            'rough guides.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Next period estimate: June 8, 2026 – July 20, 2026'),
+        findsOneWidget,
+        reason: 'below-high tiers show a range (± round(spreadDays)) '
+            'instead of one exact date',
+      );
+      expectNoFertilityVocabulary(tester, 'irregular-tier range');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #213: a degenerate (rounded-zero) spread falls back '
+        'to the single date instead of a redundant range', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      // kActiveStarts has 5 steady 30-day cycles: the 6-cycle average
+      // window (kAverageWindowCycles) is not yet full, so the tier reads
+      // learning rather than high (issue #213 item 5) and the caption
+      // renders — but the population std-dev of five identical lengths is
+      // exactly 0, so estimatedRangeStart == estimatedRangeEnd. The
+      // estimate line must still show the single date, never
+      // "September 4, 2026 – September 4, 2026".
+      expect(find.byKey(const ValueKey('overview-tier-caption')),
+          findsOneWidget);
+      expect(
+        find.text('Learning — Still learning — estimates improve after a '
+            'few more cycles.'),
+        findsOneWidget,
+      );
+      expect(find.text('Next period estimate: September 4, 2026'),
+          findsOneWidget,
+          reason: 'a degenerate zero spread must fall back to the single '
+              'date');
+      expect(
+        find.textContaining('September 4, 2026 – September 4, 2026'),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
     testWidgets('switching profiles swaps overview content with no '
         'carryover', (tester) async {
       tester.view.physicalSize = const Size(800, 1400);
@@ -534,8 +610,10 @@ void main() {
           reason: 'the new episode resets the open cycle');
       expect(find.text('Period'), findsOneWidget,
           reason: 'today is now day 1 of the new episode');
-      expect(find.text('≈37 days until next period'), findsOneWidget,
-          reason: 'mean of [28, 28, 56] rounds to 37 from 2026-08-30');
+      expect(find.text('≈34 days until next period'), findsOneWidget,
+          reason: 'issue #213 widened the prediction window to 12 cycles '
+              '(was 3): mean of all five lengths [28, 28, 28, 28, 56] is '
+              '33.6, rounding to 34 from 2026-08-30');
       await disposeOverview(tester, h);
     });
   });
@@ -657,6 +735,13 @@ void main() {
         findsOneWidget,
         reason: 'silencing the banner never silences the disclaimer',
       );
+      // Issue #131/#213 cheap fix: kLateStarts' 5 steady cycles would show
+      // the "Learning" tier caption in standard mode (the 6-cycle window
+      // is not yet full) — irregular mode's own overdue line already
+      // carries that framing, so the separate caption is silenced too.
+      expect(find.byKey(const ValueKey('overview-tier-caption')),
+          findsNothing,
+          reason: 'irregular mode silences the tier caption (#131/#213)');
       expectNoFertilityVocabulary(tester, 'irregular late');
       await disposeOverview(tester, h);
     });
