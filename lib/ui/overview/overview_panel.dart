@@ -5,10 +5,12 @@
 /// Issue #132 adds the two surfaces below the estimate card: the
 /// three-option late resolver (R6) replacing the old single-line banner,
 /// and the cycle-history section (R4/R5) with omit-from-average,
-/// statistics, and confidence framing. Wording is date-based only today —
-/// no fertility vocabulary in any state until #143 lands — and every
-/// estimate sits next to the fixed non-medical disclaimer (R17). No drift
-/// types cross into this file.
+/// statistics, and confidence framing. Wording is date-based only here —
+/// #143's fertile-window/ovulation estimate renders on the Analysis tab
+/// (`AnalysisTab`) and the forward calendar (`month_calendar.dart`)
+/// instead, never on this panel — and every estimate sits next to the
+/// fixed non-medical disclaimer (R17). No drift types cross into this
+/// file.
 ///
 /// Issue #131: the profile's care mode selects the vocabulary
 /// (`careModeCopyFor`) — status labels, estimate framing, and the
@@ -73,7 +75,7 @@ import 'package:provider/provider.dart';
 // `estimate_copy.dart`'s doc comment for why the constant itself moved out
 // of this file (it broke a mutual import with `today_card.dart`).
 export 'package:lunarlog/ui/overview/estimate_copy.dart'
-    show kEstimateDisclaimer;
+    show kEstimateDisclaimer, kFertileWindowDisclaimer;
 
 /// Issue #213: `high` confidence keeps the single exact-date estimate
 /// (unchanged from before this issue); any other tier renders the range

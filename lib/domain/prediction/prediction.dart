@@ -4,10 +4,13 @@
 /// streams.
 ///
 /// All date math is on civil dates ([LocalDate]); the caller supplies
-/// `today` in the profile's local zone. Output vocabulary is date-based
-/// only today (period / cycle day / days until next period); fertile-window
-/// and ovulation estimation is planned for this module (#143) and does not
-/// exist yet.
+/// `today` in the profile's local zone. This module's own output vocabulary
+/// stays date-based only (period / cycle day / days until next period);
+/// fertile-window and ovulation estimation (issue #143, enabled by #142)
+/// lives in the sibling `fertile_window.dart` instead, built as a pure
+/// back-calculation from [ActivePrediction.estimatedNextStart] and
+/// [ActivePrediction.tier] rather than a second derivation in this file —
+/// see that file's header for the method and its limits.
 ///
 /// Issue #132 adds the omission seam: a device-local set of cycle *start*
 /// dates the operator has excluded from the averages ("omit from average"

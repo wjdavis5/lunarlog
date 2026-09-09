@@ -3,6 +3,10 @@
 /// horizon coverage, and the per-date cells the calendar renders — band
 /// days, first-cycle-only numerals, fixed-offset badges, and the
 /// past-stays-factual clamp.
+///
+/// Issue #143: each [ForecastCycle]'s own fertile window and its
+/// degradation in step with [ForecastCycle.tier], plus [ForecastDayCell
+/// .fertileWindow] marking on the calendar-cell lookup.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +14,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/fertile_window.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
@@ -260,6 +265,36 @@ void main() {
         CycleConfidence.irregular,
       );
     });
+
+    test('each cycle carries its own fertile window, at that cycle\'s own '
+        '(degrading) tier — issue #143', () {
+      final (cycles, _) = _steadyForecast(
+        _d(2026, 8, 30),
+        kForecastHorizonMonths,
+      );
+      // Cycle 0: start Sep 4, high tier — fertile window matches the same
+      // core `fertileWindowFor` the domain-level `fertile_window_test.dart`
+      // exercises directly.
+      final expectedFirst = fertileWindowFor(
+        start: _d(2026, 9, 4),
+        tier: CycleConfidence.high,
+      );
+      expect(cycles.first.fertileWindow.estimatedOvulation,
+          expectedFirst.estimatedOvulation);
+      expect(cycles.first.fertileWindow.windowStart, expectedFirst.windowStart);
+      expect(cycles.first.fertileWindow.windowEnd, expectedFirst.windowEnd);
+      expect(cycles.first.fertileWindow.tier, CycleConfidence.high);
+
+      // Cycle 1: start Oct 4, already stepped down to learning — its
+      // fertile window must carry that same degraded tier, not cycle 0's.
+      expect(cycles[1].start, _d(2026, 10, 4));
+      expect(cycles[1].tier, CycleConfidence.learning);
+      expect(cycles[1].fertileWindow.tier, CycleConfidence.learning);
+      expect(
+        cycles[1].fertileWindow.estimatedOvulation,
+        _d(2026, 10, 4).addDays(-kDefaultLutealPhaseDays),
+      );
+    });
   });
 
   group('forecastDayCells', () {
@@ -400,6 +435,81 @@ void main() {
         forecastDayCells(cycles: const [], today: _d(2026, 8, 30)),
         isEmpty,
       );
+    });
+
+    test('fertile window marks each cycle\'s own days, at that cycle\'s '
+        'own tier — issue #143', () {
+      // horizonMonths 3 reaches cycle 2 (Nov 3) — cycle 1's own fertile
+      // window (Sep 15-21) sits inside cycle 0's full 30-day numeral span
+      // (Sep 4 - Oct 3, since index-0 walks its whole length, not just its
+      // band), so this test deliberately reads cycle *2* instead, whose
+      // fertile window (Oct 15-21) falls in the gap between cycle 0's
+      // numeral span and cycle 1's own 4-day band (Oct 4-7) — an
+      // uncontested range where the fertile marking is the only thing
+      // deriving a cell at all.
+      final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 3);
+      final cells = forecastDayCells(cycles: cycles, today: _d(2026, 8, 30));
+      expect(cycles[2].start, _d(2026, 11, 3));
+      expect(cycles[2].tier, CycleConfidence.learning);
+
+      // Cycle 0's own fertile window (ovulation Aug 21, band Aug 16-22)
+      // falls entirely before today (Aug 30) — past stays factual, so none
+      // of those days are derived at all.
+      for (final day in [_d(2026, 8, 16), _d(2026, 8, 21), _d(2026, 8, 22)]) {
+        expect(cells[day.iso], isNull, reason: '${day.iso} is in the past');
+      }
+
+      // Cycle 2's fertile window: ovulation Oct 20, band Oct 15-21.
+      for (var i = 0; i < 7; i++) {
+        final day = _d(2026, 10, 15).addDays(i);
+        final cell = cells[day.iso]!;
+        expect(cell.fertileWindow, isTrue, reason: day.iso);
+        expect(cell.tier, CycleConfidence.learning, reason: day.iso);
+        expect(cell.cycleIndex, 2, reason: day.iso);
+        expect(
+          cell.predictedBleed,
+          isFalse,
+          reason: 'the fertile window never overlaps its own bleed band',
+        );
+      }
+      // A day just outside the window on either side carries nothing.
+      expect(cells[_d(2026, 10, 14).iso], isNull);
+      expect(cells[_d(2026, 10, 22).iso], isNull);
+    });
+
+    test(
+        "cycle 1's own fertile window inherits its OWN tier/index even "
+        "when it lands on a date cycle 0's numeral span already claimed — "
+        'the contested overlap case (issue #143 review), not the '
+        'uncontested cycle-2 case above', () {
+      // horizonMonths 2 -> cycles 0 (Sep 4, high) and 1 (Oct 4, learning).
+      // Cycle 1's own fertile window (ovulation Sep 20, band Sep 15-21)
+      // sits inside cycle 0's full 30-day numeral span (Sep 4 - Oct 3,
+      // since index-0 walks its whole length) — so those cells already
+      // exist (numeral, no band, `tier: high`, `cycleIndex: 0`) before the
+      // fertile-marking pass ever reaches them.
+      final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 2);
+      expect(cycles[1].start, _d(2026, 10, 4));
+      expect(cycles[1].tier, CycleConfidence.learning);
+      expect(cycles[1].fertileWindow.windowStart, _d(2026, 9, 15));
+      expect(cycles[1].fertileWindow.windowEnd, _d(2026, 9, 21));
+
+      final cells = forecastDayCells(cycles: cycles, today: _d(2026, 8, 30));
+      for (var i = 0; i < 7; i++) {
+        final day = _d(2026, 9, 15).addDays(i);
+        final cell = cells[day.iso]!;
+        expect(cell.fertileWindow, isTrue, reason: day.iso);
+        // The cell's general tier/cycleIndex still belong to cycle 0's
+        // numeral span (unchanged by the fertile pass) --
+        expect(cell.tier, CycleConfidence.high, reason: day.iso);
+        expect(cell.cycleIndex, 0, reason: day.iso);
+        expect(cell.cycleDayNumber, isNotNull, reason: day.iso);
+        // -- but the FERTILE-specific fields correctly carry cycle 1's own
+        // (degraded) tier/index, not cycle 0's, which is the fix under
+        // test.
+        expect(cell.fertileTier, CycleConfidence.learning, reason: day.iso);
+        expect(cell.fertileCycleIndex, 1, reason: day.iso);
+      }
     });
   });
 }

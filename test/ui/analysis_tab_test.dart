@@ -34,6 +34,15 @@ import '../support/fake_auth_service.dart';
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
 
+/// Issue #143's fertile-window-specific disclaimer (see
+/// `lib/ui/overview/estimate_copy.dart`).
+const String kFertileDisclaimer =
+    'This estimate must not be used to prevent pregnancy. It is not birth '
+    'control and not a backup to birth control. It is based on a '
+    'population-average luteal-phase length, and does not account for '
+    'your own cycle variation. It has not been tested in a research '
+    'study.';
+
 /// Fixed "today" so every derived number is deterministic.
 final LocalDate kToday = LocalDate(2026, 8, 30);
 
@@ -168,11 +177,12 @@ class Harness {
     AuthController? authController,
     ProfileGuardiansRepository? guardiansRepository,
     LocalDate? today,
+    bool isMinor = false,
   }) async {
     final profiles = DriftProfilesRepository(db.storage);
     final entries = DriftDayEntriesRepository(db.storage);
     final profile =
-        await profiles.create(displayName: 'Alice', isMinor: false);
+        await profiles.create(displayName: 'Alice', isMinor: isMinor);
     if (starts.isNotEmpty) {
       await seedEpisodes(entries, profile.id, starts, lengthDays: lengthDays);
     }
@@ -286,6 +296,17 @@ void main() {
       'CyclePredictionService/CycleExclusionList now that Overview no '
       'longer has its own copy of either the section or the estimate to '
       'cross-check against', (tester) async {
+    // Issue #143 review: the fertile-window disclaimer text grew by a
+    // sentence, pushing the history section's omit button below the
+    // default 800x600 test viewport, so `tap` could no longer hit it
+    // on-screen -- a taller viewport (mirroring `forecast_calendar_test
+    // .dart`'s `pumpForecast`) keeps this test independent of exactly how
+    // tall the headline card's content happens to be.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final h = Harness(tester);
     await h.pump(starts: kShortOutlierStarts, today: LocalDate(2026, 6, 21));
 
@@ -440,6 +461,101 @@ void main() {
 
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
       expect(find.byKey(const ValueKey('analysis-stats')), findsOneWidget);
+
+      await h.dispose();
+    });
+  });
+
+  group('estimated fertile window (issue #143)', () {
+    testWidgets(
+        'renders dates and disclaimer, gated the same way the tier '
+        'caption is: standard mode shows the tier-name prefix', (tester) async {
+      final h = Harness(tester);
+      await h.pump(starts: kSteadyStarts);
+
+      // estimatedNextStart Sep 4, 2026; default 14-day luteal -> ovulation
+      // Aug 21; window Aug 16 - Aug 22 -- but kToday is Aug 30, so that
+      // window has already fully passed (windowEnd Aug 22 < today).
+      // `currentFertileWindow` (issue #143 review) walks the forecast
+      // forward to the next cycle whose window has not passed: cycle 2
+      // starts Oct 4, ovulation Sep 20, window Sep 15 - Sep 21, still
+      // `high` tier (a steady history's forecast spread does not cross
+      // the irregular threshold this early) -- matches
+      // `test/domain/fertile_window_test.dart`'s own arithmetic for the
+      // same inputs.
+      expect(
+        textAt(tester, 'analysis-fertile-window'),
+        'High confidence (September 15, 2026 – September 21, 2026)',
+      );
+      expect(textAt(tester, 'analysis-fertile-disclaimer'), kFertileDisclaimer);
+
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a stale fertile window is never shown as current (issue #143 '
+        'review): once "today" pushes the estimate itself late enough to '
+        'roll (#221), the row keeps walking the forecast forward to the '
+        'next cycle whose own window has not yet passed, rather than '
+        'freezing on the first (already-past) one', (tester) async {
+      final h = Harness(tester);
+      // "Today" is Sep 22: more than kLateGraceDays past the un-rolled
+      // estimate (Sep 4), so `estimatedNextStart` rolls forward one full
+      // mean cycle to Oct 4 (#221) -- and even *that* cycle's own fertile
+      // window (ovulation Sep 20, window Sep 15-21) is already behind
+      // Sep 22, so the row must skip past it too, to the cycle after
+      // (start Nov 3, ovulation Oct 20, window Oct 15-21).
+      await h.pump(starts: kSteadyStarts, today: LocalDate(2026, 9, 22));
+
+      expect(find.byKey(const ValueKey('analysis-fertile-window')),
+          findsOneWidget);
+      expect(
+        textAt(tester, 'analysis-fertile-window'),
+        'High confidence (October 15, 2026 – October 21, 2026)',
+      );
+
+      await h.dispose();
+    });
+
+    testWidgets('hidden in the not-enough-history state', (tester) async {
+      final h = Harness(tester);
+      await h.pump(starts: kNotEnoughStarts);
+
+      expect(find.byKey(const ValueKey('analysis-fertile-window')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('analysis-fertile-disclaimer')),
+          findsNothing);
+
+      await h.dispose();
+    });
+
+    testWidgets(
+        'irregular mode hides the row entirely (#143: same false-precision '
+        'reasoning as showsTierCaption/silencesLateBanner) even though the '
+        'headline cycle-length/period-length statistics still render',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump(starts: kSteadyStarts, mode: ProfileMode.irregular);
+
+      expect(find.byKey(const ValueKey('analysis-fertile-window')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('analysis-fertile-disclaimer')),
+          findsNothing);
+      expect(textAt(tester, 'analysis-mean-cycle-length'), '30 days');
+
+      await h.dispose();
+    });
+
+    testWidgets(
+        'available on a minor profile too — #142 removes any isMinor '
+        'gating, and AnalysisTab never carries a minor-status check of '
+        'its own to begin with', (tester) async {
+      final h = Harness(tester);
+      await h.pump(starts: kSteadyStarts, isMinor: true);
+
+      expect(find.byKey(const ValueKey('analysis-fertile-window')),
+          findsOneWidget);
+      expect(textAt(tester, 'analysis-fertile-window'), isNotNull);
 
       await h.dispose();
     });

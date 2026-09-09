@@ -61,7 +61,12 @@ so `irregular` mode shows a number-free summary instead of raw digits — the
 same R17 disclaimer, an honest not-enough-history `EmptyState` below three
 valid cycles, and `overview/cycle_history_section.dart`'s existing
 `CycleHistorySection` mounted below the headline as this tab's scrollable
-history list. Issue #314: this is now `CycleHistorySection`'s *only* mount —
+history list. Issue #143 adds a fourth headline row, "Estimated fertile
+window" (`domain/prediction/fertile_window.dart`'s `estimateFertileWindow`,
+reusing `ActivePrediction`'s own tier rather than deriving a second one),
+plus its own `kFertileWindowDisclaimer` right under the shared R17 one —
+gated on `CareModeCopy.showsFertileWindow`, hidden the same way in the
+not-enough-history state, and with no `isMinor` check anywhere (#142). Issue #314: this is now `CycleHistorySection`'s *only* mount —
 `OverviewPanel` (Today) used to embed the same section too (left open by
 #223 since #209 was concurrently rewriting that file), rendering it twice
 and running two `CycleHistoryService.watch` subscriptions per profile;
@@ -100,7 +105,15 @@ widget; the `CustomPainter` itself stays a thin dispatcher over per-layer
 helper methods to keep the quality gate's per-method CRAP score down.
 Colours come from the theme — plain `ColorScheme` roles for the base
 ring/elapsed arc, `LunarLogColors.predictedBand`/`predictedBorder` (issue
-#176) for the band — never literals.
+#176) for the band — never literals. `logging/month_calendar.dart`'s
+twelve-month forecast (issue #133) uses those same predicted-band tokens
+for its hatched bleed bands, plus a separate pair, `LunarLogColors
+.fertileBand`/`fertileBorder` (issue #143, a distinct tertiary-hue token),
+for its fertile-window/ovulation estimate — rendered as a *dashed* ring
+rather than the bleed band's solid hatch so the two estimates stay
+distinguishable without relying on colour alone, keyed in the calendar
+legend as "Estimated fertile days" and gated, like every other prediction
+number, on `CareModeCopy.showsFertileWindow` (`irregular` mode hides it).
 
 `components/today_card.dart` (`TodayCard`) wraps the wheel with the
 next-period estimate, a compact confidence chip (`LunarLogColors`'
