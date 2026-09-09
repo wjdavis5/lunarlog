@@ -44,6 +44,15 @@ import java.util.Calendar
 // disagreement: a write only proceeds when BOTH the Dart-side settings
 // store and this SharedPreferences copy name the written profile.
 //
+// Store-compliance rule (issue #254, mirroring Apple's 5.1.3 and Play's
+// inaccurate-data prohibition alike): this adapter writes only
+// user-logged or imported data — a flow level, a spotting marker, and
+// the period-record boundaries derived from that same logged bleed
+// history — never a predicted or derived cycle value (no next-period
+// prediction, no fertile-window or ovulation estimate). The written
+// rule lives in lib/data/health/health_channel.dart's library doc and
+// both halves of the channel are bound by it.
+//
 // The stored value is a random profile ULID, not health data.
 class HealthConnectAdapter(context: Context) {
 
