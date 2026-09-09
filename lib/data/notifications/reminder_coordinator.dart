@@ -8,6 +8,11 @@
 /// [ReminderPreset] to every replan, so switching a profile's mode takes
 /// effect at the next coordinator pass — never retroactively rewriting
 /// saved entries or already-delivered reminders.
+///
+/// Issue #178: each replan also runs the cycle-statistic-change detection
+/// pass (see [_detectStatisticChanges]) — the prediction emissions this
+/// class already consumes are the change signal the statistic-change
+/// reminder fires on.
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -27,6 +32,7 @@ import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
+import 'package:lunarlog/domain/notifications/statistic_change.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
@@ -185,10 +191,12 @@ class ReminderCoordinator with WidgetsBindingObserver {
     // plans from its care-mode preset defaults via planReminders.
     Map<String, ReminderConfig> configs = const {};
     Map<String, LocalDate> lateSnoozes = const {};
+    Map<String, LocalDate> statisticSignals = const {};
     final localSettings = _localSettings;
     if (localSettings != null) {
       configs = await localSettings.loadAll();
       lateSnoozes = await localSettings.loadLateSnoozes();
+      statisticSignals = await _detectStatisticChanges(localSettings);
     }
     await _scheduler.rescheduleAll(
       planReminders(
@@ -200,8 +208,53 @@ class ReminderCoordinator with WidgetsBindingObserver {
         },
         configs: configs,
         lateSnoozes: lateSnoozes,
+        statisticChangeSignals: statisticSignals,
       ),
     );
+  }
+
+  /// The `cycleStatisticChange` detection pass (Issue #178): compares each
+  /// live prediction's displayed-statistic snapshot against the stored
+  /// per-profile baseline, records a same-day signal on a meaningful
+  /// change, and re-baselines every observed profile — the prediction
+  /// stream itself is the change signal, no polling timer. Baselines live
+  /// in the device-local store, so a change that lands while the app is
+  /// closed (an overnight sync, a back-dated log) still fires on the first
+  /// post-open replan, and the stored signal date makes the same-day
+  /// reminder survive a restart before it has fired.
+  ///
+  /// Detection runs regardless of the kind's toggle: the signal is data
+  /// about the statistics, and the planner gates on the config — so
+  /// enabling the kind mid-day still fires a change observed earlier that
+  /// day. Baselines are persisted only when the map actually changed,
+  /// which keeps this pass from ping-ponging the settings `changes`
+  /// stream into an endless replan loop.
+  Future<Map<String, LocalDate>> _detectStatisticChanges(
+    ReminderConfigService localSettings,
+  ) async {
+    final today = this.today();
+    final storedSignals = await localSettings.loadStatisticChangeSignals();
+    final signals = Map.of(storedSignals);
+    final nextBaselines = Map.of(await localSettings.loadStatisticBaselines());
+    var baselinesChanged = false;
+    for (final entry in _latest.entries) {
+      final snapshot = CycleStatisticSnapshot.fromPrediction(entry.value);
+      final baseline = nextBaselines[entry.key];
+      if (baseline != null &&
+          isMeaningfulStatisticChange(baseline, snapshot) &&
+          storedSignals[entry.key] != today) {
+        signals[entry.key] = today;
+        await localSettings.recordStatisticChange(entry.key, today: today);
+      }
+      if (baseline != snapshot) {
+        nextBaselines[entry.key] = snapshot;
+        baselinesChanged = true;
+      }
+    }
+    if (baselinesChanged) {
+      await localSettings.saveStatisticBaselines(nextBaselines);
+    }
+    return signals;
   }
 
   @override

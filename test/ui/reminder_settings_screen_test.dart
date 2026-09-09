@@ -13,6 +13,7 @@ import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/reminder_settings_screen.dart';
 import 'package:provider/provider.dart';
@@ -65,6 +66,8 @@ Future<void> _pump(
         ),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ReminderSettingsScreen(timePicker: timePicker ?? _stubPicker),
       ),
     ),
@@ -115,8 +118,7 @@ SwitchListTile _switchOf(WidgetTester tester, String key) =>
     tester.widget<SwitchListTile>(find.byKey(ValueKey(key)));
 
 void main() {
-  testWidgets('renders all four reminder types with their defaults',
-      (tester) async {
+  testWidgets('renders every reminder type with its defaults', (tester) async {
     final store = FakeSettingsStore();
     await _pump(tester, [_profile('p1', 'Alice')], store);
 
@@ -126,7 +128,14 @@ void main() {
         reason: 'the stock default time every type ships with');
 
     // Below the fold: scroll to the opt-in types.
-    for (final kind in [ReminderKind.pms, ReminderKind.late, ReminderKind.log]) {
+    for (final kind in [
+      ReminderKind.periodStartingSoon,
+      ReminderKind.pms,
+      ReminderKind.late,
+      ReminderKind.fertileWindowSoon,
+      ReminderKind.cycleStatisticChange,
+      ReminderKind.log,
+    ]) {
       await _scrollTo(tester, ValueKey('reminder-${kind.name}-switch'));
       final enabled = switch (kind) {
         ReminderKind.upcoming || ReminderKind.late => true,
@@ -139,6 +148,52 @@ void main() {
       );
       expect(_timeLabel(tester, kind), '09:00');
     }
+  });
+
+  testWidgets('AC4: the three Clue groups render with their kinds and the '
+      'birth-control placeholder (Issue #178)', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await _pump(tester, [_profile('p1', 'Alice')], store);
+
+    expect(find.text('Your cycle'), findsOneWidget);
+    // The cycle group lists its kinds; the fertile-window kind carries a
+    // lead row (it is window-anchored), the statistic kind does not.
+    await _scrollTo(tester, const ValueKey('reminder-fertileWindowSoon-lead'));
+    expect(
+        find.text('Days before predicted fertile window'), findsOneWidget);
+
+    await _scrollTo(
+        tester, const ValueKey('reminder-birth-control-placeholder'));
+    expect(find.text('Your birth control'), findsOneWidget);
+    expect(find.text('Birth-control reminders'), findsOneWidget);
+    expect(find.text('Coming in a future update'), findsOneWidget);
+
+    await _scrollTo(tester, const ValueKey('reminder-log-switch'));
+    expect(find.text('Other reminders'), findsOneWidget);
+    expect(await service.load('p1'), isNull,
+        reason: 'rendering the groups stored nothing');
+  });
+
+  testWidgets('the #178 toggles persist per profile like the #136 ones',
+      (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-periodStartingSoon-switch'));
+    await tester.tap(find.byKey(const ValueKey('reminder-periodStartingSoon-switch')));
+    await tester.pumpAndSettle();
+    var stored = await service.load('alice');
+    expect(stored!.periodStartingSoon.enabled, isTrue);
+
+    await _scrollTo(tester, const ValueKey('reminder-cycleStatisticChange-switch'));
+    await tester.tap(find.byKey(const ValueKey('reminder-cycleStatisticChange-switch')));
+    await tester.pumpAndSettle();
+    stored = await service.load('alice');
+    expect(stored!.cycleStatisticChange.enabled, isTrue);
+    expect(stored.periodStartingSoon.enabled, isTrue,
+        reason: 'the earlier toggle survived');
   });
 
   testWidgets('toggling a type persists per profile and keeps other '

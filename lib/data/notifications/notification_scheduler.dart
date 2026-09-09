@@ -20,10 +20,29 @@ import 'package:timezone/timezone.dart' as tz;
 typedef LocalTimeZoneProvider = Future<String> Function();
 
 /// The Darwin notification category the reminder actions (Issue #136) are
-/// registered under. Every non-log reminder carries this category
+/// registered under. Every period-anchored reminder carries this category
 /// identifier so iOS offers its action buttons; the actions themselves are
 /// registered once in [FlutterLocalNotificationsScheduler.initialize].
 const String kReminderCategoryId = 'lunarlog_reminder';
+
+/// Which reminder kinds carry the Started / Spotting / Not yet action
+/// buttons (Issue #136, widened by Issue #178): the period-anchored kinds
+/// do — their "period may be starting" semantics is what the buttons
+/// assert. The daily log nudge, the fertile-window-soon kind, and the
+/// statistic-change kind carry none: their reminders make no period-start
+/// claim, so "Started" would log a period the notification never suggested
+/// (and "Not yet" would pre-snooze a late window it says nothing about).
+bool reminderHasActions(ReminderKind kind) => switch (kind) {
+      ReminderKind.upcoming ||
+      ReminderKind.periodStartingSoon ||
+      ReminderKind.pms ||
+      ReminderKind.late =>
+        true,
+      ReminderKind.fertileWindowSoon ||
+      ReminderKind.cycleStatisticChange ||
+      ReminderKind.log =>
+        false,
+    };
 
 /// Computes the exact [tz.TZDateTime] for a reminder on [fireOn] at
 /// [minuteOfDay] (minutes since local midnight; default 09:00 — the
@@ -375,12 +394,14 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
         location: loc,
         minuteOfDay: reminder.timeOfDayMinutes,
       );
-      // Issue #136: the period reminders (upcoming, PMS-watch, late) offer
-      // the Started / Spotting / Not yet action buttons; the daily log
-      // nudge offers none (a generic nudge opens the app, nothing more).
-      // The action ids ride [kReminderActionIds]; on Darwin they reach the
+      // Issue #136: the period reminders (upcoming, period-starting-soon,
+      // PMS-watch, late) offer the Started / Spotting / Not yet action
+      // buttons; the daily log nudge offers none (a generic nudge opens
+      // the app, nothing more), and so do Issue #178's fertile-window-soon
+      // and statistic-change kinds (see [reminderHasActions]). The action
+      // ids ride [kReminderActionIds]; on Darwin they reach the
       // notification via the category registered in [initialize].
-      final hasActions = reminder.kind != ReminderKind.log;
+      final hasActions = reminderHasActions(reminder.kind);
       await _plugin.zonedSchedule(
         id: reminder.id,
         title: kReminderTitle,

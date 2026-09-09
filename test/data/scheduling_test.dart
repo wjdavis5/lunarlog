@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 ActivePrediction _prediction({
   required LocalDate today,
   required LocalDate estimatedNextStart,
+  List<PredictedCycle> forecast = const [],
 }) {
   final lastStart = estimatedNextStart.addDays(-28);
   final cycleDay = today.difference(lastStart) + 1;
@@ -30,6 +31,7 @@ ActivePrediction _prediction({
     duringEpisode: false,
     completedCycleCount: 4,
     validCycleCount: 4,
+    forecast: forecast,
   );
 }
 
@@ -584,6 +586,262 @@ void main() {
       final plan = planReminders(today: today, predictions: {'p1': nowLate});
       expect(plan.map((r) => r.kind), everyElement(ReminderKind.late),
           reason: 'the late transition pre-arms the daily window');
+    });
+  });
+
+  group('issue #178 kinds (period-starting-soon, fertile-window-soon, '
+      'cycle-statistic-change)', () {
+    // The fertile-window arithmetic the assertions below rely on: the
+    // window for a forecast cycle starting at S is S−19..S−13 (#143's
+    // fertileWindowFor), so the default 2-day lead fires at S−21.
+    List<PredictedCycle> forecastFrom(LocalDate firstStart, {int count = 12}) =>
+        [
+          for (var i = 1; i <= count; i++)
+            PredictedCycle(
+              cycleIndex: i,
+              start: firstStart.addDays(28 * (i - 1)),
+              estimatedPeriodLengthDays: 4,
+              tier: CycleConfidence.high,
+              spreadDays: 2,
+            ),
+        ];
+
+    test('all three kinds ship off: the default plan is unchanged', () {
+      const config = ReminderConfig.standard;
+      expect(config.periodStartingSoon.enabled, isFalse);
+      expect(config.fertileWindowSoon.enabled, isFalse);
+      expect(config.cycleStatisticChange.enabled, isFalse);
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: today.addDays(10)),
+        },
+        configs: {'p1': config},
+        statisticChangeSignals: {'p1': today},
+      );
+      expect(plan.map((r) => r.kind), everyElement(ReminderKind.upcoming),
+          reason: 'an enabled-by-default signal date still plans nothing '
+              'while every #178 kind is off');
+    });
+
+    test('AC1: periodStartingSoon is independent of periodDue and fires at '
+        'its own longer lead', () {
+      final estimate = today.addDays(10);
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: estimate),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            periodStartingSoon: ReminderTypeConfig(
+                enabled: true, leadDays: 4, timeOfDayMinutes: 8 * 60),
+          ),
+        },
+      );
+      final soon = plan.where((r) => r.kind == ReminderKind.periodStartingSoon).single;
+      expect(soon.fireOn, today.addDays(6),
+          reason: 'estimate − 4, not the due reminder\'s − 2');
+      expect(soon.timeOfDayMinutes, 8 * 60);
+      expect(plan.where((r) => r.kind == ReminderKind.upcoming).single.fireOn,
+          today.addDays(8),
+          reason: 'the due reminder plans unchanged beside it');
+    });
+
+    test('periodStartingSoon fires nothing once its moment has passed', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: today.addDays(2)),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            periodStartingSoon: ReminderTypeConfig(
+                enabled: true, leadDays: 4, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+      );
+      expect(plan, isEmpty);
+    });
+
+    test('AC2: fertileWindowSoon arms against the next still-ahead window', () {
+      // Cycle 1's window start (18 − 19) is already past, so the reminder
+      // arms on cycle 2's window instead: start 46 days out → fire at 46 −
+      // 21 = 25 days out.
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(
+            today: today,
+            estimatedNextStart: today.addDays(18),
+            forecast: forecastFrom(today.addDays(18)),
+          ),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            fertileWindowSoon: ReminderTypeConfig(
+                enabled: true, leadDays: 2, timeOfDayMinutes: 10 * 60),
+          ),
+        },
+      );
+      final fertile =
+          plan.where((r) => r.kind == ReminderKind.fertileWindowSoon).toList();
+      expect(fertile, hasLength(1));
+      expect(fertile.single.fireOn, today.addDays(25));
+      expect(fertile.single.timeOfDayMinutes, 10 * 60);
+    });
+
+    test('fertileWindowSoon arms the first cycle when its window is ahead',
+        () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(
+            today: today,
+            estimatedNextStart: today.addDays(25),
+            forecast: forecastFrom(today.addDays(25)),
+          ),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            fertileWindowSoon: ReminderTypeConfig(
+                enabled: true, leadDays: 2, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+      );
+      expect(
+        plan.where((r) => r.kind == ReminderKind.fertileWindowSoon).single,
+        isNotNull,
+      );
+      expect(
+        plan.where((r) => r.kind == ReminderKind.fertileWindowSoon).single.fireOn,
+        today.addDays(4),
+        reason: 'window start 25 − 19 = +6, minus the 2-day lead',
+      );
+    });
+
+    test('AC2: fertileWindowSoon cannot fire without a computed window', () {
+      // No forecast ⇒ no window ⇒ nothing, never a mis-fire against
+      // absent data. (The default due reminder still plans.)
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: today.addDays(25)),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            fertileWindowSoon: ReminderTypeConfig(
+                enabled: true, leadDays: 2, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+      );
+      expect(
+        plan.where((r) => r.kind == ReminderKind.fertileWindowSoon),
+        isEmpty,
+      );
+    });
+
+    test('AC3: the statistic-change reminder fires on the signal date only',
+        () {
+      ReminderConfig configWith({int minuteOfDay = 12 * 60}) =>
+          ReminderConfig.standard.copyWith(
+            cycleStatisticChange: ReminderTypeConfig(
+                enabled: true, timeOfDayMinutes: minuteOfDay),
+          );
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': configWith()},
+        statisticChangeSignals: {'p1': today},
+      );
+      expect(plan, hasLength(1));
+      expect(plan.single.kind, ReminderKind.cycleStatisticChange);
+      expect(plan.single.fireOn, today);
+      expect(plan.single.timeOfDayMinutes, 12 * 60);
+
+      // A stale (yesterday's) signal plans nothing.
+      expect(
+        planReminders(
+          today: today,
+          predictions: {},
+          configs: {'p1': configWith()},
+          statisticChangeSignals: {'p1': today.addDays(-1)},
+        ),
+        isEmpty,
+      );
+      // Without a signal at all: nothing.
+      expect(
+        planReminders(
+          today: today,
+          predictions: {},
+          configs: {'p1': configWith()},
+        ),
+        isEmpty,
+      );
+    });
+
+    test('a same-day late window outranks the statistic-change nudge '
+        '(coalescing)', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(
+              today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            cycleStatisticChange: ReminderTypeConfig(
+                enabled: true, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+        statisticChangeSignals: {'p1': today},
+      );
+      expect(plan.map((r) => r.kind), everyElement(ReminderKind.late),
+          reason: 'the late window wins the coalesced day; the stat nudge '
+              'does not double up');
+    });
+
+    test('the cap still evicts in priority order with the new kinds', () {
+      // One late profile (7 daily slots) and sixty period-starting-soon
+      // profiles (1 slot each) want 67; one statistic-change nudge wants a
+      // 68th. The 60-slot cap keeps late + soon and evicts the
+      // statistic-change nudge (priority 5) before either.
+      final predictions = <String, ActivePrediction>{
+        'late': _prediction(
+            today: today, estimatedNextStart: today.addDays(-10)),
+        for (var i = 0; i < 60; i++)
+          'soon$i': _prediction(
+              today: today, estimatedNextStart: today.addDays(30 + i)),
+      };
+      final configs = <String, ReminderConfig>{
+        for (var i = 0; i < 60; i++)
+          'soon$i': ReminderConfig.standard.copyWith(
+            upcoming:
+                ReminderTypeConfig(enabled: false, timeOfDayMinutes: 9 * 60),
+            periodStartingSoon: ReminderTypeConfig(
+                enabled: true, leadDays: 4, timeOfDayMinutes: 9 * 60),
+          ),
+        'stat': ReminderConfig.standard.copyWith(
+          cycleStatisticChange:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        ),
+      };
+      final plan = planReminders(
+        today: today,
+        predictions: predictions,
+        configs: configs,
+        statisticChangeSignals: {'stat': today},
+      );
+      expect(plan.length, kMaxPendingReminders);
+      expect(plan.any((r) => r.kind == ReminderKind.cycleStatisticChange),
+          isFalse,
+          reason: 'statistic-change outranks only the log nudge, so the cap '
+              'evicts it before the period-anchored kinds');
+      final lateCount = plan.where((r) => r.kind == ReminderKind.late).length;
+      final soonCount =
+          plan.where((r) => r.kind == ReminderKind.periodStartingSoon).length;
+      expect(lateCount, kLatePreArmDays);
+      expect(lateCount + soonCount, kMaxPendingReminders);
     });
   });
 }

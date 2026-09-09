@@ -58,6 +58,30 @@ void main() {
       }
     });
 
+    test('the #178 kinds ship off with their documented defaults', () {
+      const config = ReminderConfig.standard;
+      expect(config.periodStartingSoon.enabled, isFalse,
+          reason: 'an opt-in, not part of any pre-#178 behavior');
+      expect(config.periodStartingSoon.leadDays,
+          kPeriodStartingSoonDefaultLeadDays);
+      expect(config.periodStartingSoon.leadDays, 4,
+          reason: 'longer than the due reminder\'s 2 by construction');
+      expect(config.fertileWindowSoon.enabled, isFalse);
+      expect(config.fertileWindowSoon.leadDays,
+          kFertileWindowSoonDefaultLeadDays);
+      expect(config.cycleStatisticChange.enabled, isFalse);
+      expect(config.cycleStatisticChange.leadDays, isNull,
+          reason: 'event-driven: no forward anchor');
+      // ... and never preset-defaulted on for any mode.
+      for (final mode in ProfileMode.values) {
+        final fromMode = ReminderConfig.fromMode(mode);
+        expect(fromMode.periodStartingSoon.enabled, isFalse, reason: '$mode');
+        expect(fromMode.fertileWindowSoon.enabled, isFalse, reason: '$mode');
+        expect(fromMode.cycleStatisticChange.enabled, isFalse,
+            reason: '$mode');
+      }
+    });
+
     test('fromPreset matches reminderPresetFor exhaustively', () {
       for (final mode in ProfileMode.values) {
         final preset = reminderPresetFor(mode);
@@ -133,6 +157,36 @@ void main() {
       final upcoming = decoded['p1']!.upcoming;
       expect(upcoming.leadDays, kMinLeadDays);
       expect(upcoming.timeOfDayMinutes, kMaxTimeOfDayMinutes);
+    });
+
+    test('#178 fields round-trip, and a pre-#178 document decodes to the '
+        'off defaults', () {
+      const config = ReminderConfig(
+        periodStartingSoon: ReminderTypeConfig(
+            enabled: true, leadDays: 5, timeOfDayMinutes: 7 * 60 + 15),
+        fertileWindowSoon: ReminderTypeConfig(
+            enabled: true, leadDays: 1, timeOfDayMinutes: 21 * 60),
+        cycleStatisticChange:
+            ReminderTypeConfig(enabled: true, timeOfDayMinutes: 18 * 60),
+      );
+      final decoded =
+          decodeReminderConfigs(encodeReminderConfigs({'p1': config}));
+      expect(decoded['p1'], config);
+
+      // A stored document from before #178 has none of the new keys.
+      final legacy = decodeReminderConfigs('''
+{
+  "v": 1,
+  "profiles": {"p1": {"upcoming": {"enabled": true, "leadDays": 2, "timeOfDay": 540}}}
+}
+''');
+      expect(legacy['p1']!.periodStartingSoon,
+          ReminderTypeConfig.periodStartingSoon);
+      expect(legacy['p1']!.fertileWindowSoon,
+          ReminderTypeConfig.fertileWindowSoon);
+      expect(legacy['p1']!.cycleStatisticChange,
+          ReminderTypeConfig.cycleStatisticChange);
+      expect(legacy['p1']!.upcoming.enabled, isTrue);
     });
   });
 

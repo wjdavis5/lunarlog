@@ -73,7 +73,9 @@ one (SNOMED, when verified) and the lunarlog local one, always, so an
 importer can recover the exact original tag without reversing a clinical
 code (`dualCodingFor` in the Dart module implements this).
 
-All 17 codes in `lib/domain/tags.dart` are covered below — every SNOMED
+All 45 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
+rows plus issue #249's 28 explicit local decisions (see the section at
+the end of this document). Every SNOMED
 row was checked live against the HL7 FHIR terminology server
 (`https://tx.fhir.org`, R4, SNOMED CT edition `900000000000207008`
 version `20250201`) via its `CodeSystem/$lookup` operation, confirming
@@ -236,12 +238,26 @@ export look machine-generated rather than clinically credible. No
 specific medication/device codes are reserved here since #260/#192
 haven't landed the method taxonomy this would key off of.
 
-## New taxonomy tags (blocked on #249)
+## Issue #249's expanded taxonomy — local decisions (2026-09)
 
-#249's new tags are not in `lib/domain/tags.dart` on `main` yet, so they
-have no row in `kTagClinicalCodes` and are entirely out of scope for this
-pass — `test/domain/export/clinical_terminology_test.dart`'s
-completeness check only requires coverage for codes that exist in
-`kTagTaxonomy` today. When #249 lands, its new codes need the same
-fetch-and-verify (or explicit local decision) treatment as every row
-above before `kTagClinicalCodes` can cover them.
+Issue #249 grew `lib/domain/tags.dart` from 17 codes to 45 across 15
+categories. Every new code is covered in `kTagClinicalCodes` by an
+**explicit local decision** (system `kSystemLunarlogLocal`, code = the tag
+code, display = the tag display): no SNOMED CT concept has been
+fetch-verified for any of them yet, and the no-guessed-codes rule above
+outranks the temptation to ship a plausible concept id. `dualCodingFor`
+degrades each to its single local coding, which is valid FHIR and
+round-trips exactly. Fetch-verify against `tx.fhir.org` — and promote the
+rows that resolve cleanly (migraine, migraine with aura, ovulation pain,
+diarrhea, constipation are the likely candidates) to verified SNOMED rows
+in a follow-up pass, updating the Dart module and this table together.
+
+New codes carrying local rows: `ovulation`, `migraine`,
+`migraine_with_aura`, `pain_free`, `fully_energized`, `tired`,
+`exhausted`, `0_to_3_hours`, `3_to_6_hours`, `6_to_9_hours`,
+`9_or_more_hours`, `good_skin`, `oily_skin`, `dry_skin`, `good_hair`,
+`bad_hair`, `oily_hair`, `dry_hair`, `gassy`, `great_digestion`,
+`normal`, `constipated`, `great_stool`, `diarrhea`, `sweet`, `salty`,
+`carbs`, `chocolate`. The 17 pre-existing rows (including `cravings`, now
+filed under the cravings category as the legacy "unspecified craving"
+member) are unchanged.

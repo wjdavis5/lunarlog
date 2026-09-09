@@ -65,6 +65,24 @@ ActivePrediction _upcoming(LocalDate today, LocalDate estimate) =>
       validCycleCount: 4,
     );
 
+/// An upcoming prediction whose displayed cycle-length average is
+/// [meanCycleDays] — the statistic the `cycleStatisticChange` reminder
+/// watches (Issue #178).
+ActivePrediction _withMeanCycle(LocalDate today, LocalDate estimate,
+        double meanCycleDays) =>
+    ActivePrediction(
+      today: today,
+      lastEpisodeStart: estimate.addDays(-28),
+      estimatedNextStart: estimate,
+      originalEstimatedNextStart: estimate,
+      averagedCycleLengths: const [28],
+      meanCycleLengthDays: meanCycleDays,
+      cycleDay: today.difference(estimate.addDays(-28)) + 1,
+      duringEpisode: false,
+      completedCycleCount: 4,
+      validCycleCount: 4,
+    );
+
 void main() {
   // The coordinator registers with WidgetsBinding (lifecycle observer);
   // plain tests need the test binding initialized for that.
@@ -720,6 +738,247 @@ void main() {
           .single;
       expect(upcoming.fireOn, today.addDays(10),
           reason: 'estimate 12 days out minus the default 2-day lead');
+    });
+  });
+
+  group('cycle-statistic-change detection (Issue #178)', () {
+    ReminderConfig statEnabled() => ReminderConfig.standard.copyWith(
+          cycleStatisticChange:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        );
+
+    test('AC3: a threshold move against the stored baseline plans a '
+        'same-day notification once; a re-emission does not duplicate',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+      await configService.save('p1', statEnabled());
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      // First emission: no baseline yet, so nothing fires — this pass
+      // re-baselines.
+      profiles.add([_profile('p1')]);
+      p1.add(_withMeanCycle(today, today.addDays(10), 28));
+      await pumpEventQueue();
+      expect(
+        scheduler.rescheduleCalls.last
+            .where((r) => r.kind == ReminderKind.cycleStatisticChange),
+        isEmpty,
+      );
+
+      // +3 displayed days: a meaningful change. The same-day reminder
+      // arms.
+      p1.add(_withMeanCycle(today, today.addDays(10), 31));
+      await pumpEventQueue();
+      final stat = scheduler.rescheduleCalls.last
+          .where((r) => r.kind == ReminderKind.cycleStatisticChange)
+          .single;
+      expect(stat.profileId, 'p1');
+      expect(stat.fireOn, today);
+      expect(stat.timeOfDayMinutes, 9 * 60);
+
+      // The signal persists in the store for the same-day restart case.
+      expect(await configService.loadStatisticChangeSignals(), {'p1': today});
+      // And the baseline moved with the observation.
+      expect((await configService.loadStatisticBaselines())['p1']!
+          .meanCycleLengthDays, 31);
+
+      // A further no-change replan keeps exactly the same plan (same
+      // stable id, no duplicate).
+      p1.add(_withMeanCycle(today, today.addDays(10), 31));
+      await pumpEventQueue();
+      final statAgain = scheduler.rescheduleCalls.last
+          .where((r) => r.kind == ReminderKind.cycleStatisticChange)
+          .toList();
+      expect(statAgain, hasLength(1));
+      expect(statAgain.single.id, stat.id);
+    });
+
+    test('a sub-threshold move plans nothing and updates the baseline',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+      await configService.save('p1', statEnabled());
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_withMeanCycle(today, today.addDays(10), 28));
+      await pumpEventQueue();
+      p1.add(_withMeanCycle(today, today.addDays(10), 29));
+      await pumpEventQueue();
+
+      expect(
+        scheduler.rescheduleCalls.last
+            .where((r) => r.kind == ReminderKind.cycleStatisticChange),
+        isEmpty,
+        reason: '28 → 29 displayed days is below the documented threshold',
+      );
+      expect(
+        scheduler.rescheduleCalls.last
+            .where((r) => r.kind == ReminderKind.upcoming),
+        isNotEmpty,
+        reason: 'the ordinary kinds replanned as always',
+      );
+      expect((await configService.loadStatisticBaselines())['p1']!
+          .meanCycleLengthDays, 29,
+          reason: 'the baseline tracks every observation, fired or not');
+      expect(await configService.loadStatisticChangeSignals(), isEmpty);
+    });
+
+    test('detection runs while the kind is off; enabling it mid-day fires '
+        'the observed change at the next pass', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_withMeanCycle(today, today.addDays(10), 28));
+      await pumpEventQueue();
+      // The kind is still off in the default config.
+      p1.add(_withMeanCycle(today, today.addDays(10), 31));
+      await pumpEventQueue();
+      expect(
+        scheduler.rescheduleCalls.last
+            .where((r) => r.kind == ReminderKind.cycleStatisticChange),
+        isEmpty,
+        reason: 'the toggle gates the notification, not the detection',
+      );
+
+      // The operator flips the toggle; the changes stream replans and the
+      // same-day signal (already recorded) becomes a notification.
+      await configService.save('p1', statEnabled());
+      await pumpEventQueue();
+      final stat = scheduler.rescheduleCalls.last
+          .where((r) => r.kind == ReminderKind.cycleStatisticChange)
+          .single;
+      expect(stat.fireOn, today);
+    });
+
+    test('two profiles detect independently (consistent with the #136 ACs)',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final predictions = <String, StreamController<CyclePrediction>>{};
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+      await configService.save('alice', statEnabled());
+      await configService.save('bea', statEnabled());
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => predictions
+            .putIfAbsent(
+                id, () => StreamController<CyclePrediction>(sync: true))
+            .stream,
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        for (final c in predictions.values) {
+          await c.close();
+        }
+      });
+
+      profiles.add([_profile('alice'), _profile('bea')]);
+      predictions['alice']!
+          .add(_withMeanCycle(today, today.addDays(10), 28));
+      predictions['bea']!.add(_withMeanCycle(today, today.addDays(10), 28));
+      await pumpEventQueue();
+
+      // Only Alice's statistics move past the threshold.
+      predictions['alice']!
+          .add(_withMeanCycle(today, today.addDays(10), 31));
+      await pumpEventQueue();
+
+      final plan = scheduler.rescheduleCalls.last;
+      expect(
+        plan
+            .where((r) => r.kind == ReminderKind.cycleStatisticChange)
+            .map((r) => r.profileId),
+        ['alice'],
+        reason: 'Bea\'s unchanged statistics plan no statistic reminder',
+      );
+      // Bea still plans her ordinary reminder.
+      expect(
+        plan.any((r) => r.profileId == 'bea'),
+        isTrue,
+      );
     });
   });
 }
