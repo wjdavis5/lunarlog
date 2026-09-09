@@ -583,4 +583,77 @@ class AppLocalizationsEn extends AppLocalizations {
   String overviewPmsDaysBeforePeriod(int days, int length) {
     return 'usually starts about $days days before your period and lasts about $length days';
   }
+
+  @override
+  String get reminderSectionCycle => 'Your cycle';
+
+  @override
+  String get reminderSectionBirthControl => 'Your birth control';
+
+  @override
+  String get reminderSectionOther => 'Other reminders';
+
+  @override
+  String get reminderKindPeriodStartingSoon => 'Period starting soon';
+
+  @override
+  String get reminderKindPeriodStartingSoonSubtitle =>
+      'An earlier heads-up than the due reminder';
+
+  @override
+  String get reminderKindPeriodDue => 'Period due';
+
+  @override
+  String get reminderKindPeriodDueSubtitle =>
+      'A heads-up before the predicted period starts';
+
+  @override
+  String get reminderKindPmsWatch => 'PMS watch';
+
+  @override
+  String get reminderKindPmsWatchSubtitle =>
+      'An earlier heads-up for pre-period days';
+
+  @override
+  String get reminderKindPeriodLate => 'Period late';
+
+  @override
+  String get reminderKindPeriodLateSubtitle =>
+      'A daily nudge while the cycle runs late';
+
+  @override
+  String get reminderKindFertileWindowSoon => 'Fertile window soon';
+
+  @override
+  String get reminderKindFertileWindowSoonSubtitle =>
+      'A heads-up before the predicted fertile window';
+
+  @override
+  String get reminderKindCycleStats => 'Cycle statistic changes';
+
+  @override
+  String get reminderKindCycleStatsSubtitle =>
+      'A note when your displayed averages shift meaningfully';
+
+  @override
+  String get reminderKindLogNudge => 'Daily log nudge';
+
+  @override
+  String get reminderKindLogNudgeSubtitle => 'A daily prompt to log the day';
+
+  @override
+  String get reminderLeadDaysBeforeStart => 'Days before predicted start';
+
+  @override
+  String get reminderLeadDaysBeforePms => 'Days before predicted PMS window';
+
+  @override
+  String get reminderLeadDaysBeforeFertileWindow =>
+      'Days before predicted fertile window';
+
+  @override
+  String get reminderBirthControlTitle => 'Birth-control reminders';
+
+  @override
+  String get reminderBirthControlComingSoon => 'Coming in a future update';
 }

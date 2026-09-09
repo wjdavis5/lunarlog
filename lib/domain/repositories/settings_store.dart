@@ -79,4 +79,20 @@ abstract final class SettingsKeys {
   /// which the profile's "Not yet" notification action has suppressed the
   /// late window. Device-local, same posture as [reminderConfigs].
   static const String reminderLateSnoozes = 'reminder_late_snoozes';
+
+  /// Per-profile statistic baselines (Issue #178), as the JSON document
+  /// `encodeStatisticBaselines`
+  /// (`lib/domain/notifications/statistic_change.dart`) produces: profile
+  /// id -> the last-observed displayed-statistic snapshot. Device-local,
+  /// same posture as [reminderConfigs]; it is detection state for the
+  /// `cycleStatisticChange` reminder, not health data.
+  static const String reminderStatisticBaselines =
+      'reminder_statistic_baselines';
+
+  /// Per-profile statistic-change signals (Issue #178), as the JSON
+  /// document `encodeStatisticChangeSignals` produces: profile id -> the
+  /// ISO date a meaningful displayed-statistic change was last observed.
+  /// Device-local, same posture as [reminderConfigs].
+  static const String reminderStatisticChangeSignals =
+      'reminder_statistic_change_signals';
 }

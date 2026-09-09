@@ -1089,6 +1089,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'usually starts about {days} days before your period and lasts about {length} days'**
   String overviewPmsDaysBeforePeriod(int days, int length);
+
+  /// Reminder settings header for the cycle reminders group (Issue #178), matching Clue's information architecture.
+  ///
+  /// In en, this message translates to:
+  /// **'Your cycle'**
+  String get reminderSectionCycle;
+
+  /// Reminder settings header for the birth-control reminders group (Issue #178), matching Clue's information architecture.
+  ///
+  /// In en, this message translates to:
+  /// **'Your birth control'**
+  String get reminderSectionBirthControl;
+
+  /// Reminder settings header for the other-reminders group (Issue #178), matching Clue's information architecture.
+  ///
+  /// In en, this message translates to:
+  /// **'Other reminders'**
+  String get reminderSectionOther;
+
+  /// The period-starting-soon reminder's settings row title (Issue #178; Clue catalogue item 1).
+  ///
+  /// In en, this message translates to:
+  /// **'Period starting soon'**
+  String get reminderKindPeriodStartingSoon;
+
+  /// The period-starting-soon reminder's settings row subtitle (Issue #178).
+  ///
+  /// In en, this message translates to:
+  /// **'An earlier heads-up than the due reminder'**
+  String get reminderKindPeriodStartingSoonSubtitle;
+
+  /// The period-due reminder's settings row title (the existing upcoming kind, now localized; Issue #178).
+  ///
+  /// In en, this message translates to:
+  /// **'Period due'**
+  String get reminderKindPeriodDue;
+
+  /// The period-due reminder's settings row subtitle (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'A heads-up before the predicted period starts'**
+  String get reminderKindPeriodDueSubtitle;
+
+  /// The PMS-watch reminder's settings row title (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'PMS watch'**
+  String get reminderKindPmsWatch;
+
+  /// The PMS-watch reminder's settings row subtitle (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'An earlier heads-up for pre-period days'**
+  String get reminderKindPmsWatchSubtitle;
+
+  /// The late-window reminder's settings row title (Issue #178 localization, aligned with Clue's 'Period late' naming).
+  ///
+  /// In en, this message translates to:
+  /// **'Period late'**
+  String get reminderKindPeriodLate;
+
+  /// The late-window reminder's settings row subtitle (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'A daily nudge while the cycle runs late'**
+  String get reminderKindPeriodLateSubtitle;
+
+  /// The fertile-window-soon reminder's settings row title (Issue #178; Clue catalogue item 4).
+  ///
+  /// In en, this message translates to:
+  /// **'Fertile window soon'**
+  String get reminderKindFertileWindowSoon;
+
+  /// The fertile-window-soon reminder's settings row subtitle (Issue #178).
+  ///
+  /// In en, this message translates to:
+  /// **'A heads-up before the predicted fertile window'**
+  String get reminderKindFertileWindowSoonSubtitle;
+
+  /// The cycle-statistic-change reminder's settings row title (Issue #178; Clue catalogue item 5).
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle statistic changes'**
+  String get reminderKindCycleStats;
+
+  /// The cycle-statistic-change reminder's settings row subtitle (Issue #178).
+  ///
+  /// In en, this message translates to:
+  /// **'A note when your displayed averages shift meaningfully'**
+  String get reminderKindCycleStatsSubtitle;
+
+  /// The daily log nudge's settings row title (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'Daily log nudge'**
+  String get reminderKindLogNudge;
+
+  /// The daily log nudge's settings row subtitle (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'A daily prompt to log the day'**
+  String get reminderKindLogNudgeSubtitle;
+
+  /// Lead-days row title for the period-anchored reminder types (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'Days before predicted start'**
+  String get reminderLeadDaysBeforeStart;
+
+  /// Lead-days row title for the PMS-watch reminder (Issue #178 localization of the existing copy).
+  ///
+  /// In en, this message translates to:
+  /// **'Days before predicted PMS window'**
+  String get reminderLeadDaysBeforePms;
+
+  /// Lead-days row title for the fertile-window-soon reminder (Issue #178).
+  ///
+  /// In en, this message translates to:
+  /// **'Days before predicted fertile window'**
+  String get reminderLeadDaysBeforeFertileWindow;
+
+  /// The disabled birth-control reminders placeholder row title (Issue #178; the reminder itself is issue #183's scope).
+  ///
+  /// In en, this message translates to:
+  /// **'Birth-control reminders'**
+  String get reminderBirthControlTitle;
+
+  /// The disabled birth-control reminders placeholder row subtitle (Issue #178).
+  ///
+  /// In en, this message translates to:
+  /// **'Coming in a future update'**
+  String get reminderBirthControlComingSoon;
 }
 
 class _AppLocalizationsDelegate

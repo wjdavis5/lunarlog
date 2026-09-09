@@ -721,5 +721,93 @@
       "days": {"type": "int"},
       "length": {"type": "int"}
     }
+  },
+  "reminderSectionCycle": "Your cycle",
+  "@reminderSectionCycle": {
+    "description": "Reminder settings header for the cycle reminders group (Issue #178), matching Clue's information architecture."
+  },
+  "reminderSectionBirthControl": "Your birth control",
+  "@reminderSectionBirthControl": {
+    "description": "Reminder settings header for the birth-control reminders group (Issue #178), matching Clue's information architecture."
+  },
+  "reminderSectionOther": "Other reminders",
+  "@reminderSectionOther": {
+    "description": "Reminder settings header for the other-reminders group (Issue #178), matching Clue's information architecture."
+  },
+  "reminderKindPeriodStartingSoon": "Period starting soon",
+  "@reminderKindPeriodStartingSoon": {
+    "description": "The period-starting-soon reminder's settings row title (Issue #178; Clue catalogue item 1)."
+  },
+  "reminderKindPeriodStartingSoonSubtitle": "An earlier heads-up than the due reminder",
+  "@reminderKindPeriodStartingSoonSubtitle": {
+    "description": "The period-starting-soon reminder's settings row subtitle (Issue #178)."
+  },
+  "reminderKindPeriodDue": "Period due",
+  "@reminderKindPeriodDue": {
+    "description": "The period-due reminder's settings row title (the existing upcoming kind, now localized; Issue #178)."
+  },
+  "reminderKindPeriodDueSubtitle": "A heads-up before the predicted period starts",
+  "@reminderKindPeriodDueSubtitle": {
+    "description": "The period-due reminder's settings row subtitle (Issue #178 localization of the existing copy)."
+  },
+  "reminderKindPmsWatch": "PMS watch",
+  "@reminderKindPmsWatch": {
+    "description": "The PMS-watch reminder's settings row title (Issue #178 localization of the existing copy)."
+  },
+  "reminderKindPmsWatchSubtitle": "An earlier heads-up for pre-period days",
+  "@reminderKindPmsWatchSubtitle": {
+    "description": "The PMS-watch reminder's settings row subtitle (Issue #178 localization of the existing copy)."
+  },
+  "reminderKindPeriodLate": "Period late",
+  "@reminderKindPeriodLate": {
+    "description": "The late-window reminder's settings row title (Issue #178 localization, aligned with Clue's 'Period late' naming)."
+  },
+  "reminderKindPeriodLateSubtitle": "A daily nudge while the cycle runs late",
+  "@reminderKindPeriodLateSubtitle": {
+    "description": "The late-window reminder's settings row subtitle (Issue #178 localization of the existing copy)."
+  },
+  "reminderKindFertileWindowSoon": "Fertile window soon",
+  "@reminderKindFertileWindowSoon": {
+    "description": "The fertile-window-soon reminder's settings row title (Issue #178; Clue catalogue item 4)."
+  },
+  "reminderKindFertileWindowSoonSubtitle": "A heads-up before the predicted fertile window",
+  "@reminderKindFertileWindowSoonSubtitle": {
+    "description": "The fertile-window-soon reminder's settings row subtitle (Issue #178)."
+  },
+  "reminderKindCycleStats": "Cycle statistic changes",
+  "@reminderKindCycleStats": {
+    "description": "The cycle-statistic-change reminder's settings row title (Issue #178; Clue catalogue item 5)."
+  },
+  "reminderKindCycleStatsSubtitle": "A note when your displayed averages shift meaningfully",
+  "@reminderKindCycleStatsSubtitle": {
+    "description": "The cycle-statistic-change reminder's settings row subtitle (Issue #178)."
+  },
+  "reminderKindLogNudge": "Daily log nudge",
+  "@reminderKindLogNudge": {
+    "description": "The daily log nudge's settings row title (Issue #178 localization of the existing copy)."
+  },
+  "reminderKindLogNudgeSubtitle": "A daily prompt to log the day",
+  "@reminderKindLogNudgeSubtitle": {
+    "description": "The daily log nudge's settings row subtitle (Issue #178 localization of the existing copy)."
+  },
+  "reminderLeadDaysBeforeStart": "Days before predicted start",
+  "@reminderLeadDaysBeforeStart": {
+    "description": "Lead-days row title for the period-anchored reminder types (Issue #178 localization of the existing copy)."
+  },
+  "reminderLeadDaysBeforePms": "Days before predicted PMS window",
+  "@reminderLeadDaysBeforePms": {
+    "description": "Lead-days row title for the PMS-watch reminder (Issue #178 localization of the existing copy)."
+  },
+  "reminderLeadDaysBeforeFertileWindow": "Days before predicted fertile window",
+  "@reminderLeadDaysBeforeFertileWindow": {
+    "description": "Lead-days row title for the fertile-window-soon reminder (Issue #178)."
+  },
+  "reminderBirthControlTitle": "Birth-control reminders",
+  "@reminderBirthControlTitle": {
+    "description": "The disabled birth-control reminders placeholder row title (Issue #178; the reminder itself is issue #183's scope)."
+  },
+  "reminderBirthControlComingSoon": "Coming in a future update",
+  "@reminderBirthControlComingSoon": {
+    "description": "The disabled birth-control reminders placeholder row subtitle (Issue #178)."
   }
 }
