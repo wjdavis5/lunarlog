@@ -1,0 +1,412 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/export/clinical_terminology.dart';
+import 'package:lunarlog/domain/tags.dart';
+
+/// Compile-time proof that [kTagClinicalCodes] is a `const` map (item 6):
+/// this top-level `const` declaration only compiles if the right-hand
+/// side is a compile-time constant expression.
+const Map<String, ClinicalCode> _kTagClinicalCodesIsConst = kTagClinicalCodes;
+
+void main() {
+  test('kTagClinicalCodes is a compile-time constant', () {
+    // The real check already happened at compile time (the top-level
+    // `const` declaration above would fail to compile otherwise); this
+    // assertion just gives the check a visible place in the test report.
+    expect(_kTagClinicalCodesIsConst, same(kTagClinicalCodes));
+  });
+
+  group('kLoincCodes', () {
+    test('is exactly the seven verified LOINC codes from #152', () {
+      expect(kLoincCodes, hasLength(7));
+      expect(kLoincCodes.map((c) => c.code).toSet(), {
+        '8665-2',
+        '8678-5',
+        '3146-8',
+        '92656-8',
+        '63888-2',
+        '64700-8',
+        '11778-8',
+      });
+    });
+
+    test('every code appears exactly once', () {
+      final codes = kLoincCodes.map((c) => c.code).toList();
+      expect(codes.toSet(), hasLength(codes.length));
+    });
+
+    test('every row uses the LOINC system and an https loinc.org provenance',
+        () {
+      for (final row in kLoincCodes) {
+        expect(row.system, kSystemLoinc, reason: row.code);
+        expect(row.provenanceUrl, startsWith('https://loinc.org/'),
+            reason: row.code);
+        expect(row.display.trim(), isNotEmpty, reason: row.code);
+      }
+    });
+  });
+
+  group('kLoincCodes — golden table (BLOCKING: fails loudly on any edit to '
+      'a verified LOINC row)', () {
+    test('matches the full expected seven rows, in order, with the exact '
+        'verified display for each', () {
+      // (code, display) as literals - a re-verified copy of the LOINC
+      // designations, not derived from the source module. `64700-8`'s
+      // display is the real LOINC SHORTNAME (tx.fhir.org, 2026-09-09),
+      // not #152's original editorial elision.
+      const expected = <(String, String)>[
+        ('8665-2', 'Last menstrual period start date'),
+        ('8678-5', 'Menstrual status - Reported'),
+        ('3146-8', 'Menstrual status'),
+        ('92656-8', 'Number of menstrual periods per year'),
+        ('63888-2', 'Age at first menstrual period'),
+        ('64700-8', 'Menstrual cycle typical days PhenX'),
+        ('11778-8', 'Delivery date Estimated'),
+      ];
+      expect(kLoincCodes, hasLength(expected.length));
+      for (var i = 0; i < expected.length; i++) {
+        final (code, display) = expected[i];
+        expect(kLoincCodes[i].code, code, reason: 'row $i code');
+        expect(kLoincCodes[i].display, display, reason: 'row $i display');
+        expect(kLoincCodes[i].system, 'http://loinc.org', reason: code);
+      }
+    });
+  });
+
+  group('refuted and unverified LOINC codes are never referenced', () {
+    test('kRefutedLoincCodes contains exactly 3141-9', () {
+      expect(kRefutedLoincCodes, ['3141-9']);
+    });
+
+    test('kUnverifiedLoincCodes contains exactly the five unresolved codes',
+        () {
+      expect(kUnverifiedLoincCodes.toSet(),
+          {'49033-4', '63871-7', '21840-4', '8708-3', '3151-8'});
+    });
+
+    test('no refuted or unverified code appears in kLoincCodes', () {
+      final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
+      for (final row in kLoincCodes) {
+        expect(forbidden.contains(row.code), isFalse,
+            reason: '${row.code} must never be a usable LOINC row');
+      }
+    });
+
+    test('no refuted or unverified code appears anywhere in '
+        'kTagClinicalCodes', () {
+      final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
+      for (final entry in kTagClinicalCodes.entries) {
+        expect(forbidden.contains(entry.value.code), isFalse,
+            reason: '${entry.key} must not carry a refuted/unverified code');
+      }
+    });
+
+    test('no refuted or unverified code appears in dualCodingFor output for '
+        'any taxonomy tag', () {
+      final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
+      for (final tag in kTagTaxonomy) {
+        for (final coding in dualCodingFor(tag.code)) {
+          expect(forbidden.contains(coding.code), isFalse,
+              reason: '${tag.code} must not carry a refuted/unverified code');
+        }
+      }
+    });
+
+    test('no refuted or unverified code appears in menstrualStatusCodes or '
+        'cycleLengthCodes', () {
+      final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
+      for (final coding in [...menstrualStatusCodes, ...cycleLengthCodes]) {
+        expect(forbidden.contains(coding.code), isFalse,
+            reason: '${coding.code} must not be refuted/unverified');
+      }
+    });
+
+    test('the two lists never overlap each other', () {
+      expect(
+        kRefutedLoincCodes.toSet().intersection(kUnverifiedLoincCodes.toSet()),
+        isEmpty,
+      );
+    });
+  });
+
+  group('kTagClinicalCodes covers every kTagTaxonomy code exactly once', () {
+    test('every taxonomy code has a row', () {
+      for (final tag in kTagTaxonomy) {
+        expect(kTagClinicalCodes.containsKey(tag.code), isTrue,
+            reason:
+                '${tag.code} has no clinical-terminology mapping row and '
+                'no explicit local decision');
+      }
+    });
+
+    test('no row exists for a code outside the taxonomy', () {
+      final taxonomyCodes = kTagTaxonomy.map((t) => t.code).toSet();
+      for (final code in kTagClinicalCodes.keys) {
+        expect(taxonomyCodes.contains(code), isTrue,
+            reason: '$code in kTagClinicalCodes is not a known tag code');
+      }
+    });
+
+    test('row count matches taxonomy size exactly (17)', () {
+      expect(kTagClinicalCodes, hasLength(17));
+      expect(kTagTaxonomy, hasLength(17));
+    });
+  });
+
+  group('kTagClinicalCodes — golden table (BLOCKING: fails loudly on any '
+      'edit to a verified tag mapping)', () {
+    test('matches the full expected (system, code, display) triple for all '
+        '17 tags', () {
+      const snomed = 'http://snomed.info/sct';
+      const local = 'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
+          'tag';
+      // (system, code, display) as literals for every taxonomy tag - a
+      // re-verified copy of each mapping decision, not derived from the
+      // source module.
+      const expected = <String, (String, String, String)>{
+        // pain
+        'cramps': (snomed, '266599000', 'Dysmenorrhea'),
+        'headache': (snomed, '25064002', 'Headache'),
+        'back_pain': (snomed, '161891005', 'Backache'),
+        'breast_tenderness': (snomed, '55222007', 'Tenderness of breast'),
+        // body
+        'bloating': (snomed, '116289008', 'Abdominal bloating'),
+        'acne': (snomed, '11381005', 'Acne'),
+        'nausea': (snomed, '422587007', 'Nausea'),
+        'fatigue': (snomed, '84229001', 'Fatigue'),
+        'dizziness': (snomed, '404640003', 'Dizziness'),
+        // mood
+        'irritable': (local, 'irritable', 'Irritable'),
+        'sad': (local, 'sad', 'Sad'),
+        'anxious': (snomed, '48694002', 'Anxiety'),
+        'calm': (local, 'calm', 'Calm'),
+        'energetic': (local, 'energetic', 'Energetic'),
+        'sensitive': (local, 'sensitive', 'Sensitive'),
+        // other
+        'sleep_trouble': (snomed, '301345002', 'Difficulty sleeping'),
+        'cravings': (snomed, '248132003', 'Craving for food or drink'),
+      };
+      expect(kTagClinicalCodes, hasLength(expected.length));
+      expect(kTagClinicalCodes.keys.toSet(), expected.keys.toSet());
+      for (final entry in expected.entries) {
+        final row = kTagClinicalCodes[entry.key];
+        expect(row, isNotNull, reason: entry.key);
+        final (system, code, display) = entry.value;
+        expect(row!.system, system, reason: '${entry.key} system');
+        expect(row.code, code, reason: '${entry.key} code');
+        expect(row.display, display, reason: '${entry.key} display');
+      }
+    });
+  });
+
+  group('mood tags — the four expected-local ones stay local', () {
+    test('irritable, calm, energetic, sensitive are local-coded', () {
+      for (final code in ['irritable', 'calm', 'energetic', 'sensitive']) {
+        expect(kTagClinicalCodes[code]!.system, kSystemLunarlogLocal,
+            reason: code);
+      }
+    });
+  });
+
+  group('every SNOMED row is verifiably sourced', () {
+    test('every SNOMED row has a non-empty https provenanceUrl', () {
+      for (final entry in kTagClinicalCodes.entries) {
+        if (entry.value.system == kSystemSnomed) {
+          expect(entry.value.provenanceUrl, startsWith('https://'),
+              reason: entry.key);
+          expect(entry.value.code, isNotEmpty, reason: entry.key);
+          expect(entry.value.display.trim(), isNotEmpty, reason: entry.key);
+        }
+      }
+    });
+
+    test('every local row cites the exact local-code-policy doc anchor', () {
+      for (final entry in kTagClinicalCodes.entries) {
+        if (entry.value.system == kSystemLunarlogLocal) {
+          expect(
+            entry.value.provenanceUrl,
+            'docs/clinical/terminology.md#local-code-policy',
+            reason: entry.key,
+          );
+        }
+      }
+    });
+
+    test('localTagCoding cites the same exact anchor', () {
+      expect(localTagCoding('cramps').provenanceUrl,
+          'docs/clinical/terminology.md#local-code-policy');
+    });
+  });
+
+  group('system URIs are the canonical FHIR ones', () {
+    test('constants match the FHIR-registered / lunarlog-controlled URIs',
+        () {
+      expect(kSystemLoinc, 'http://loinc.org');
+      expect(kSystemSnomed, 'http://snomed.info/sct');
+      expect(kSystemLunarlogLocal,
+          'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag');
+    });
+
+    test('every kTagClinicalCodes row uses one of the three known systems',
+        () {
+      const known = {kSystemLoinc, kSystemSnomed, kSystemLunarlogLocal};
+      for (final entry in kTagClinicalCodes.entries) {
+        expect(known.contains(entry.value.system), isTrue,
+            reason: entry.key);
+      }
+    });
+
+    test('every kLoincCodes row uses kSystemLoinc', () {
+      for (final row in kLoincCodes) {
+        expect(row.system, kSystemLoinc, reason: row.code);
+      }
+    });
+  });
+
+  group('localTagCoding', () {
+    test('builds a local coding from the taxonomy code and display', () {
+      final coding = localTagCoding('cramps');
+      expect(coding.system, kSystemLunarlogLocal);
+      expect(coding.code, 'cramps');
+      expect(coding.display, tagByCode('cramps')!.display);
+    });
+
+    test('throws for an unknown tag code', () {
+      expect(() => localTagCoding('not-a-tag'), throwsArgumentError);
+    });
+  });
+
+  group('dualCodingFor', () {
+    test('always includes the local coding, for every taxonomy tag', () {
+      for (final tag in kTagTaxonomy) {
+        final codings = dualCodingFor(tag.code);
+        final hasLocal = codings.any((c) =>
+            c.system == kSystemLunarlogLocal &&
+            c.code == tag.code &&
+            c.display == tag.display);
+        expect(hasLocal, isTrue,
+            reason: '${tag.code} dual coding must always carry the local '
+                'coding for round-trip fidelity');
+      }
+    });
+
+    test('a SNOMED-mapped tag returns [clinical, local] in that order', () {
+      final codings = dualCodingFor('headache');
+      expect(codings, hasLength(2));
+      expect(codings[0].system, kSystemSnomed);
+      expect(codings[0].code, '25064002');
+      expect(codings[1].system, kSystemLunarlogLocal);
+      expect(codings[1].code, 'headache');
+    });
+
+    test('a local-only tag returns a single coding, not a duplicate pair',
+        () {
+      final codings = dualCodingFor('calm');
+      expect(codings, hasLength(1));
+      expect(codings.single.system, kSystemLunarlogLocal);
+      expect(codings.single.code, 'calm');
+    });
+
+    test('throws for an unknown tag code', () {
+      expect(() => dualCodingFor('not-a-tag'), throwsArgumentError);
+    });
+
+    test('degrades to the local coding (not a throw) when a taxonomy tag '
+        'has no row in clinicalCodes', () {
+      final codings =
+          dualCodingFor('cramps', clinicalCodes: const <String, ClinicalCode>{});
+      expect(codings, hasLength(1));
+      expect(codings.single, localTagCoding('cramps'));
+      expect(codings.single.system, kSystemLunarlogLocal);
+    });
+
+    test('still throws for a code outside the taxonomy even with an empty '
+        'clinicalCodes override', () {
+      expect(
+        () => dualCodingFor('not-a-tag',
+            clinicalCodes: const <String, ClinicalCode>{}),
+        throwsArgumentError,
+      );
+    });
+
+    test('an explicit clinicalCodes override is honored over the default '
+        'table', () {
+      final codings = dualCodingFor('headache', clinicalCodes: const {
+        'headache': ClinicalCode(
+          system: kSystemSnomed,
+          code: '999999',
+          display: 'Overridden',
+          provenanceUrl: 'https://example.test/999999',
+        ),
+      });
+      expect(codings, hasLength(2));
+      expect(codings[0].code, '999999');
+      expect(codings[1].system, kSystemLunarlogLocal);
+    });
+  });
+
+  group('loincByCode', () {
+    test('finds a known code', () {
+      expect(loincByCode('8665-2')!.display,
+          'Last menstrual period start date');
+    });
+
+    test('returns null for an unknown code', () {
+      expect(loincByCode('0000-0'), isNull);
+    });
+
+    test('returns null for a refuted or unverified code', () {
+      expect(loincByCode('3141-9'), isNull);
+      expect(loincByCode('49033-4'), isNull);
+    });
+  });
+
+  group('menstrualStatusCodes and cycleLengthCodes (#157 helpers)', () {
+    test('menstrualStatusCodes exposes 8678-5 and 3146-8', () {
+      expect(menstrualStatusCodes.map((c) => c.code).toSet(),
+          {'8678-5', '3146-8'});
+      for (final row in menstrualStatusCodes) {
+        expect(row.system, kSystemLoinc);
+      }
+    });
+
+    test('cycleLengthCodes exposes 64700-8', () {
+      expect(cycleLengthCodes.map((c) => c.code).toList(), ['64700-8']);
+      expect(cycleLengthCodes.single.system, kSystemLoinc);
+    });
+  });
+
+  group('ClinicalCode value semantics', () {
+    test('equal fields compare equal', () {
+      const a = ClinicalCode(
+        system: kSystemSnomed,
+        code: '25064002',
+        display: 'Headache',
+        provenanceUrl: 'https://example.test/25064002',
+      );
+      const b = ClinicalCode(
+        system: kSystemSnomed,
+        code: '25064002',
+        display: 'Headache',
+        provenanceUrl: 'https://example.test/25064002',
+      );
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+    });
+
+    test('differing fields compare unequal', () {
+      const a = ClinicalCode(
+        system: kSystemSnomed,
+        code: '25064002',
+        display: 'Headache',
+        provenanceUrl: 'https://example.test/25064002',
+      );
+      const b = ClinicalCode(
+        system: kSystemSnomed,
+        code: '84229001',
+        display: 'Fatigue',
+        provenanceUrl: 'https://example.test/84229001',
+      );
+      expect(a == b, isFalse);
+    });
+  });
+}
