@@ -1245,6 +1245,8 @@ class LunarLogStorage {
   /// `_dayEntryNote`'s precedent, but built once as a single record so
   /// [_applyObservation]'s insert and update branches can share it instead of
   /// repeating the same ten `tombstone ? … : remote.…` ternaries twice.
+  /// Split into a cleared constant and a live builder so no single method
+  /// carries ten conditionals (the CRAP gate counts each `?:`).
   ({
     DateTime? observedAt,
     String? category,
@@ -1256,17 +1258,58 @@ class LunarLogStorage {
     bool excluded,
     String? sourceId,
     String? raw,
-  }) _observationPayload(RemoteObservationRow remote, bool tombstone) => (
-        observedAt: tombstone ? null : remote.observedAt?.toUtc(),
-        category: tombstone ? null : remote.category,
-        code: tombstone ? null : remote.code,
-        valueNum: tombstone ? null : remote.valueNum,
-        valueText: tombstone ? null : remote.valueText,
-        unit: tombstone ? null : remote.unit,
-        intensity: tombstone ? null : remote.intensity,
-        excluded: tombstone ? false : remote.excluded,
-        sourceId: tombstone ? null : remote.sourceId,
-        raw: tombstone ? null : remote.raw,
+  }) _observationPayload(RemoteObservationRow remote, bool tombstone) =>
+      tombstone ? _clearedObservationPayload : _liveObservationPayload(remote);
+
+  /// Every payload column cleared: what a tombstone carries locally (the
+  /// server's `observations_tombstone_payload_check` enforces the same).
+  static const ({
+    DateTime? observedAt,
+    String? category,
+    String? code,
+    double? valueNum,
+    String? valueText,
+    String? unit,
+    int? intensity,
+    bool excluded,
+    String? sourceId,
+    String? raw,
+  }) _clearedObservationPayload = (
+    observedAt: null,
+    category: null,
+    code: null,
+    valueNum: null,
+    valueText: null,
+    unit: null,
+    intensity: null,
+    excluded: false,
+    sourceId: null,
+    raw: null,
+  );
+
+  /// The remote values as-is for a live row.
+  ({
+    DateTime? observedAt,
+    String? category,
+    String? code,
+    double? valueNum,
+    String? valueText,
+    String? unit,
+    int? intensity,
+    bool excluded,
+    String? sourceId,
+    String? raw,
+  }) _liveObservationPayload(RemoteObservationRow remote) => (
+        observedAt: remote.observedAt?.toUtc(),
+        category: remote.category,
+        code: remote.code,
+        valueNum: remote.valueNum,
+        valueText: remote.valueText,
+        unit: remote.unit,
+        intensity: remote.intensity,
+        excluded: remote.excluded,
+        sourceId: remote.sourceId,
+        raw: remote.raw,
       );
 
   /// Issue #240: applies a server copy of an observation keyed by id — the
