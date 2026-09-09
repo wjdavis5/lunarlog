@@ -62,6 +62,51 @@ void main() {
       expect(tapped, isTrue);
     });
 
+    testWidgets(
+        "wraps the title in Semantics(header: true) so it is a heading "
+        'for screen-reader navigation (issue #308)', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        const EmptyState(title: 'No entries this month', body: 'Body'),
+      );
+
+      final node = tester.getSemantics(find.text('No entries this month'));
+      expect(node.flagsCollection.isHeader, isTrue);
+
+      handle.dispose();
+    });
+
+    testWidgets(
+        'titleStyle overrides the default titleMedium weight, and '
+        'crossAxisAlignment.start left-aligns the title/body text '
+        '(issue #308)', (tester) async {
+      final theme = ThemeData();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            body: EmptyState(
+              title: 'Not enough history yet',
+              body: 'Body',
+              titleStyle: theme.textTheme.headlineSmall,
+              crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+        ),
+      );
+
+      final title = tester.widget<Text>(find.text('Not enough history yet'));
+      expect(title.style?.fontSize, theme.textTheme.headlineSmall?.fontSize);
+      expect(title.textAlign, TextAlign.start);
+
+      final body = tester.widget<Text>(find.text('Body'));
+      expect(body.textAlign, TextAlign.start);
+
+      final column = tester.widget<Column>(find.byType(Column));
+      expect(column.crossAxisAlignment, CrossAxisAlignment.start);
+    });
+
     test('asserts label and callback are both set or both absent', () {
       expect(
         () => EmptyState(
@@ -125,6 +170,45 @@ void main() {
 
       final node = tester.getSemantics(find.byType(InlineError));
       expect(node.flagsCollection.isLiveRegion, isTrue);
+
+      handle.dispose();
+    });
+
+    testWidgets(
+        "the live-region node's label is exactly the message, not merely "
+        'something containing it (issue #308) — pins a node whose message '
+        'text is wrapped in ExcludeSemantics, which would still pass an '
+        'isLiveRegion-only assertion',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        const InlineError(message: "Couldn't save — try again"),
+      );
+
+      final node = tester.getSemantics(find.byType(InlineError));
+      expect(node.label, "Couldn't save — try again");
+
+      handle.dispose();
+    });
+
+    testWidgets(
+        "the Retry variant's live-region label is still only the message "
+        "— 'Retry' is the button's own semantics node, not folded into "
+        'the message node (issue #308)',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        InlineError(
+          message: "Couldn't load pending invitations.",
+          onRetry: () {},
+        ),
+      );
+
+      final node = tester.getSemantics(find.byType(InlineError));
+      expect(node.label, "Couldn't load pending invitations.");
+      expect(node.label, isNot(contains('Retry')));
 
       handle.dispose();
     });

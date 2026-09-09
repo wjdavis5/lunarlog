@@ -581,6 +581,9 @@ class _OverviewPanelState extends State<OverviewPanel> {
   /// issue only changes the presentation, never the copy. The disclaimer
   /// stays a plain [Text] alongside it (R17: next to every estimate,
   /// without exception) rather than folded into the component itself.
+  /// Issue #308: `titleStyle`/`crossAxisAlignment` regain this card's old
+  /// `headlineSmall`, left-aligned heading now that [EmptyState] otherwise
+  /// defaults to a centred `titleMedium`.
   Widget _notEnoughCard(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
@@ -593,6 +596,8 @@ class _OverviewPanelState extends State<OverviewPanel> {
             EmptyState(
               title: _copy.notEnoughTitle,
               body: _copy.notEnoughBody,
+              titleStyle: theme.textTheme.headlineSmall,
+              crossAxisAlignment: CrossAxisAlignment.start,
             ),
             const SizedBox(height: 8),
             Text(

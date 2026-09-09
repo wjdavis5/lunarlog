@@ -256,9 +256,11 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   final bool failDelete;
   List<DayEntry> seeded = const [];
   int deleteCalls = 0;
+  int saveCalls = 0;
 
   @override
   Future<DayEntry> save(DayEntry entry) async {
+    saveCalls++;
     if (failSave) throw Exception('simulated write failure');
     return entry;
   }
@@ -313,6 +315,37 @@ void main() {
         find.byKey(const ValueKey('calendar-month-empty')),
         findsNothing,
         reason: 'the displayed month now has an entry',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        "_monthHasEntries is scoped to the displayed month, not the whole "
+        'entries stream (issue #308): a month with entries shows no '
+        'banner, but navigating to a quiet month still shows one',
+        (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage)
+              .save(entryFor(profileId, kToday));
+        },
+      );
+
+      // August 2026 (today's month) has the seeded entry -- no banner.
+      expect(
+        find.byKey(const ValueKey('calendar-month-empty')),
+        findsNothing,
+        reason: 'the displayed month has an entry',
+      );
+
+      // Navigate to a quiet month via the existing chevron.
+      await showMonth(tester, 2026, 6);
+
+      expect(
+        find.byKey(const ValueKey('calendar-month-empty')),
+        findsOneWidget,
+        reason: 'June 2026 has no entries even though August does',
       );
       await disposeLogging(tester, h);
     });
@@ -756,6 +789,40 @@ void main() {
             .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Heavy'))
             .selected,
         isTrue,
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        "save failure's Retry re-attempts the save (issue #308) — only "
+        'the delete-failure Retry path (below) was covered before this',
+        (tester) async {
+      final repo = ThrowingDayEntriesRepository();
+      final h = await pumpLogging(tester, entryRepositoryOverride: repo);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('save-error')), findsOneWidget);
+      expect(repo.saveCalls, 1);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('save-error')),
+          matching: find.widgetWithText(TextButton, 'Retry'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repo.saveCalls, 2);
+      expect(
+        find.byKey(const ValueKey('save-error')),
+        findsOneWidget,
+        reason: 'the repository still throws, so the error stays visible',
       );
       await disposeLogging(tester, h);
     });

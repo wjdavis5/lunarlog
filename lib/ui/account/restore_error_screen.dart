@@ -40,12 +40,19 @@ class RestoreErrorScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              Text(
-                message ??
-                    'We could not restore your account data from the cloud. '
-                        'Please check your internet connection and try again.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
+              // Issue #308: a full screen that stops the app cold must still
+              // announce its message the way InlineError does — this was the
+              // `lib/ui/README.md` follow-up ("does not do this yet").
+              Semantics(
+                liveRegion: true,
+                container: true,
+                child: Text(
+                  message ??
+                      'We could not restore your account data from the cloud. '
+                          'Please check your internet connection and try again.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ),
               const SizedBox(height: 24),
               FilledButton.icon(
