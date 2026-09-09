@@ -18,3 +18,4 @@
 2026-09-09T14:49:39Z merged PR #349 (#216 onboarding) and PR #351 (#138 a11y). Filed+fixed #352 (actionlint linux-binary-on-mac-runner infra failure; arch-aware download landed via #349's branch). In flight: #218.
 2026-09-09T15:25:44Z wave 5 closed: #216/#349, #138/#351, #218/#356 merged (#197 superseded by #339). Filed+fixed #352 (actionlint arch). Main now PR-only (repo rules) — state syncs via PR (#355 merged). ci.yml drift-dump lesson added to PROCESS.md.
 2026-09-09T17:22:13Z QUOTA STOP: all three wave-6 coders (#151 #136 #162) killed at dispatch by the 5-hour usage limit (resets 2026-09-10T01:13:32Z); zero work written; worktrees clean; issues remain tagged in-progress; re-dispatch on resume.
+2026-09-09T17:34:41Z QUOTA RECOVERED EARLY: probe dispatch of #162 survived the 7-9min death window and is actively editing; #151 and #136 re-dispatched. All three wave-6 slots live again.
