@@ -35,6 +35,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
@@ -370,6 +371,14 @@ class _OverviewPanelState extends State<OverviewPanel> {
     );
   }
 
+  /// Issue #187: the not-enough-history state is a loaded-but-empty result
+  /// (no cycle history yet), not a loading state, so it renders through
+  /// [EmptyState] instead of a bespoke card. Care-mode copy routing (#131)
+  /// is unchanged — [_copy.notEnoughTitle]/[_copy.notEnoughBody] still
+  /// choose the words; the explainer content itself is #139's, so this
+  /// issue only changes the presentation, never the copy. The disclaimer
+  /// stays a plain [Text] alongside it (R17: next to every estimate,
+  /// without exception) rather than folded into the component itself.
   Widget _notEnoughCard(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
@@ -379,16 +388,9 @@ class _OverviewPanelState extends State<OverviewPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _copy.notEnoughTitle,
-              key: const ValueKey('overview-not-enough-title'),
-              style: theme.textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _copy.notEnoughBody,
-              key: const ValueKey('overview-not-enough-body'),
-              style: theme.textTheme.bodyMedium,
+            EmptyState(
+              title: _copy.notEnoughTitle,
+              body: _copy.notEnoughBody,
             ),
             const SizedBox(height: 8),
             Text(

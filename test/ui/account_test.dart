@@ -32,6 +32,7 @@ import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
@@ -176,7 +177,7 @@ void main() {
       expect(key('auth-error'), findsOneWidget);
       expect(find.textContaining('was not accepted'), findsOneWidget);
       expect(
-        tester.widget<Text>(key('auth-error')).data,
+        tester.widget<InlineError>(key('auth-error')).message,
         isNot(contains('a@b.c')),
         reason: 'the error never echoes the email',
       );
@@ -214,7 +215,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(key('auth-error'), findsOneWidget);
       expect(
-        tester.widget<Text>(key('auth-error')).data,
+        tester.widget<InlineError>(key('auth-error')).message,
         contains('12 characters'),
       );
       expect(h.auth.signUpCalls, isEmpty);
@@ -381,7 +382,7 @@ void main() {
       await tester.tap(key('auth-google'));
       await tester.pumpAndSettle();
       expect(s.auth.googleCalls, 2);
-      final copy = tester.widget<Text>(key('auth-error')).data!;
+      final copy = tester.widget<InlineError>(key('auth-error')).message;
       expect(copy, contains('email'));
       expect(copy, isNot(contains('@')));
     });
@@ -529,7 +530,7 @@ void main() {
       await tester.tap(key('auth-passkey'));
       await tester.pumpAndSettle();
 
-      final copy = tester.widget<Text>(key('auth-error')).data!;
+      final copy = tester.widget<InlineError>(key('auth-error')).message;
       expect(copy, contains('email'));
       expect(copy.toLowerCase(), isNot(contains('passkey')));
       expect(copy.toLowerCase(), isNot(contains('google')));
@@ -1275,7 +1276,7 @@ void main() {
 
       expect(s.auth.registerPasskeyCalls, 1);
       expect(key('account-link-error'), findsOneWidget);
-      final copy = tester.widget<Text>(key('account-link-error')).data!;
+      final copy = tester.widget<InlineError>(key('account-link-error')).message;
       expect(copy.toLowerCase(), isNot(contains('passkey')));
       expect(copy.toLowerCase(), isNot(contains('google')));
     });

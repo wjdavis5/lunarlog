@@ -28,6 +28,7 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
@@ -294,6 +295,15 @@ void main() {
       expect(find.textContaining('days until next period'), findsNothing);
       expect(find.textContaining('Next period estimate'), findsNothing);
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
+      // Issue #187: the not-enough state is now the shared EmptyState
+      // component, not a bespoke card.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('overview-not-enough')),
+          matching: find.byType(EmptyState),
+        ),
+        findsOneWidget,
+      );
 
       // Issue #132: the cycle-history card now renders below the estimate
       // card for every profile with episodes, and it legitimately shows

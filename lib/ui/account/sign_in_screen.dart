@@ -37,6 +37,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/google_sign_in_button.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart'
     show SignInWithAppleButton, SignInWithAppleButtonStyle;
@@ -399,10 +400,9 @@ class _SignInScreenState extends State<SignInScreen> {
   List<Widget> _buildStatusMessages(BuildContext context) => [
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(
-            _error!,
+          InlineError(
             key: const ValueKey('auth-error'),
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            message: _error!,
           ),
         ],
         if (_info != null) ...[

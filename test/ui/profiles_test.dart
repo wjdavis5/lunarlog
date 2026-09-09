@@ -16,17 +16,24 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/profiles/profile_picker_screen.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
+import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
+import '../support/fake_settings_store.dart';
 import '../support/fake_sync_engine.dart';
 
 const String kNoticeText =
@@ -933,4 +940,83 @@ void main() {
       await disposeApp(tester, db);
     });
   });
+
+  group('profile picker empty edge (issue #187)', () {
+    testWidgets(
+        'zero active and zero archived profiles renders EmptyState with '
+        'an Add-profile action instead of a blank list', (tester) async {
+      // In-memory fakes throughout (no drift/native DB) — this test only
+      // needs `ProfileController` to observe zero profiles, never to
+      // persist one.
+      final settings = FakeSettingsStore();
+      final controller = ProfileController(
+        profilesRepository: _EmptyProfilesRepository(),
+        settingsStore: settings,
+      )..load();
+      addTearDown(controller.dispose);
+      addTearDown(settings.close);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ProfileController>.value(
+          value: controller,
+          child: const MaterialApp(home: ProfilePickerScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('profile-picker-empty')), findsOneWidget);
+      expect(
+        tester.widget(find.byKey(const ValueKey('profile-picker-empty'))),
+        isA<EmptyState>(),
+      );
+      expect(find.text('No profiles yet'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Add profile'),
+        findsOneWidget,
+      );
+
+      // The action opens the same Add-profile dialog as the app-bar
+      // affordance (no new flow invented for this edge).
+      await tester.tap(find.widgetWithText(FilledButton, 'Add profile'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextFormField), findsWidgets);
+    });
+  });
+}
+
+/// Zero-profile [ProfilesRepository] for the picker's empty-edge test
+/// (issue #187): never asked to create/update/archive/delete in that test,
+/// so those throw rather than silently no-op.
+class _EmptyProfilesRepository implements ProfilesRepository {
+  @override
+  Future<List<Profile>> list() async => const [];
+
+  @override
+  Stream<List<Profile>> watch() => Stream.value(const []);
+
+  @override
+  Future<Profile?> findById(String id) async => null;
+
+  @override
+  Future<Profile> create({
+    required String displayName,
+    required bool isMinor,
+    int sortOrder = 0,
+    ProfileMode mode = ProfileMode.standard,
+    int? birthYear,
+    ProfileRelationship? relationship,
+  }) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
+
+  @override
+  Future<Profile> update(Profile profile) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
+
+  @override
+  Future<void> setArchived(String id, bool archived) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
+
+  @override
+  Future<void> delete(String id) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
 }

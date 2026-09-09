@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:provider/provider.dart';
 
@@ -257,7 +258,7 @@ void main() {
 
       expect(key('your-data-export-error'), findsOneWidget);
       expect(
-        tester.widget<Text>(key('your-data-export-error')).data,
+        tester.widget<InlineError>(key('your-data-export-error')).message,
         kAccountExportFailureCopy,
       );
     });

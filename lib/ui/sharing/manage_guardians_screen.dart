@@ -23,6 +23,7 @@ import '../../domain/models/profile_guardian.dart';
 import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/sharing_service.dart';
+import '../components/inline_error.dart';
 import 'activity_feed_screen.dart';
 import 'invite_guardian_dialog.dart';
 import 'notification_preferences_screen.dart';
@@ -322,16 +323,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         } else if (snapshot.hasError) {
           content = Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Could not load pending invitations.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
-                  ),
-                ),
-                TextButton(onPressed: _loadPendingInvites, child: const Text('Retry')),
-              ],
+            child: InlineError(
+              key: const ValueKey('pending-invites-error'),
+              message: 'Could not load pending invitations.',
+              onRetry: _loadPendingInvites,
             ),
           );
         } else {
