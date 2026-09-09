@@ -34,6 +34,13 @@
 ///   `supabase/migrations/20260908170000_import_provenance.sql`'s
 ///   `observations_tombstone_payload_check`). `day_entries.source`/
 ///   `source_id`/`import_id` (Issue #159) get the same treatment.
+/// * Profile modes (Issue #188) are one row per profile keyed by
+///   `profile_id`, with NO tombstone (the server table has none either) —
+///   an absent row means `tracking`, and rows are created lazily on first
+///   write. Cycle overrides (Issue #188) tombstone like day entries:
+///   `excluded_from_average`/`manual_start` reset to false and `note_id`
+///   clears, while `cycle_start_date` (identity) survives — mirroring the
+///   server's `cycle_overrides_tombstone_payload_check` exactly.
 /// * UI reads filter tombstones; full-fidelity reads (tombstones included)
 ///   exist for sync.
 library;
@@ -55,8 +62,10 @@ export 'package:lunarlog/domain/sync/local_row_counts.dart' show LocalRowCounts;
 
 export '../sync/remote_rows.dart'
     show
+        RemoteCycleOverrideRow,
         RemoteDayEntryRow,
         RemoteObservationRow,
+        RemoteProfileModeRow,
         RemoteProfileRow,
         RemoteRow,
         RetryableSyncApplyError,
@@ -221,6 +230,29 @@ void _validateObservation({
   }
 }
 
+/// Issue #188: mirrors `profile_modes`' CHECK constraints
+/// (`profile_modes_birth_control_method_length_check`) and validates the
+/// three optional date fields as ISO calendar dates (the server validates
+/// the same shape with a `^\d{4}-\d{2}-\d{2}$` check in `sync_push`).
+void _validateProfileModePayload({
+  String? modeStartedOn,
+  String? birthControlMethod,
+  String? birthControlStartedOn,
+  String? birthControlStoppedOn,
+}) {
+  if (modeStartedOn != null) _validateLocalDate(modeStartedOn);
+  _boundedOrThrow(
+      birthControlMethod, kMaxBirthControlMethodLength, 'birthControlMethod');
+  if (birthControlStartedOn != null) _validateLocalDate(birthControlStartedOn);
+  if (birthControlStoppedOn != null) _validateLocalDate(birthControlStoppedOn);
+}
+
+/// Issue #188: mirrors `cycle_overrides`' CHECK constraints
+/// (`cycle_overrides_note_id_length_check`).
+void _validateCycleOverridePayload({String? noteId}) {
+  _boundedOrThrow(noteId, kMaxCycleOverrideNoteIdLength, 'noteId');
+}
+
 /// The `sync_state` row as read when none has been written yet.
 const SyncStateRow kDefaultSyncState = SyncStateRow(
   id: 1,
@@ -228,6 +260,8 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorProfiles: 0,
   cursorDayEntries: 0,
   cursorObservations: 0,
+  cursorProfileModes: 0,
+  cursorCycleOverrides: 0,
 );
 
 class LunarLogStorage {
@@ -824,6 +858,192 @@ class LunarLogStorage {
     return query.get();
   }
 
+  // ------------------------------------------------------------- profile modes
+
+  /// Creates or updates the profile's single life-stage mode row (Issue
+  /// #188), keyed by [profileId] — exactly one row per profile, no
+  /// tombstone. Creates the row lazily on first write (the server's
+  /// contract: an absent row means `tracking`). Marks the row dirty and
+  /// bumps `local_rev`; an update stamps `updated_at` strictly after the
+  /// stored value. [mode] is the raw `LifecycleMode` `toDb()` string, not
+  /// validated here (the domain enum and the server's
+  /// `profile_modes_mode_check` are the enforcement points — the
+  /// `upsertProfile` care-mode precedent). Throws [ArgumentError] for a
+  /// non-ISO date field or a [birthControlMethod] over
+  /// [kMaxBirthControlMethodLength].
+  Future<ProfileModeData> upsertProfileMode({
+    required String profileId,
+    required String mode,
+    String? modeStartedOn,
+    String? birthControlMethod,
+    String? birthControlStartedOn,
+    String? birthControlStoppedOn,
+    bool healthSyncConsent = false,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateProfileModePayload(
+      modeStartedOn: modeStartedOn,
+      birthControlMethod: birthControlMethod,
+      birthControlStartedOn: birthControlStartedOn,
+      birthControlStoppedOn: birthControlStoppedOn,
+    );
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      final existing = await _profileModeOrNull(profileId);
+      if (existing == null) {
+        await db.into(db.profileModes).insert(ProfileModesCompanion.insert(
+              profileId: profileId,
+              mode: Value(mode),
+              modeStartedOn: Value(modeStartedOn),
+              birthControlMethod: Value(birthControlMethod),
+              birthControlStartedOn: Value(birthControlStartedOn),
+              birthControlStoppedOn: Value(birthControlStoppedOn),
+              healthSyncConsent: Value(healthSyncConsent),
+              updatedAt: now,
+              dirty: const Value(true),
+              localRev: const Value(1),
+            ));
+        return _profileModeById(profileId);
+      }
+      await (db.update(db.profileModes)
+            ..where((t) => t.profileId.equals(profileId)))
+          .write(ProfileModesCompanion(
+        mode: Value(mode),
+        modeStartedOn: Value(modeStartedOn),
+        birthControlMethod: Value(birthControlMethod),
+        birthControlStartedOn: Value(birthControlStartedOn),
+        birthControlStoppedOn: Value(birthControlStoppedOn),
+        healthSyncConsent: Value(healthSyncConsent),
+        updatedAt: Value(_afterStored(now, existing.updatedAt)),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _profileModeById(profileId);
+    });
+  }
+
+  /// The profile's mode row, or null when none was ever written (which
+  /// means `tracking` — the lazy-default contract; callers fall back to
+  /// [LifecycleMode.tracking] rather than storing a default row).
+  Future<ProfileModeData?> getProfileMode(String profileId) =>
+      _profileModeOrNull(profileId);
+
+  /// Stream variant of [getProfileMode] for reactive UI.
+  Stream<ProfileModeData?> watchProfileMode(String profileId) =>
+      (db.select(db.profileModes)
+            ..where((t) => t.profileId.equals(profileId)))
+          .watchSingleOrNull();
+
+  // ----------------------------------------------------------- cycle overrides
+
+  /// Creates or updates a manual cycle correction (Issue #188), keyed by
+  /// [id] within [profileId] (a fresh ULID is generated when omitted).
+  /// Marks the row dirty and bumps `local_rev`; an update stamps
+  /// `updated_at` strictly after the stored value. Throws
+  /// [ArgumentError] for a non-ISO [cycleStartDate] or a [noteId] over
+  /// [kMaxCycleOverrideNoteIdLength].
+  Future<CycleOverrideData> upsertCycleOverride({
+    String? id,
+    required String profileId,
+    required String cycleStartDate,
+    bool excludedFromAverage = false,
+    bool manualStart = false,
+    String? noteId,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateLocalDate(cycleStartDate);
+    _validateCycleOverridePayload(noteId: noteId);
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      CycleOverrideData? existing;
+      if (id != null) existing = await _cycleOverrideOrNull(id, profileId);
+      if (existing == null) {
+        final rowId = id ?? _generator.next();
+        await db.into(db.cycleOverrides).insert(CycleOverridesCompanion.insert(
+              id: rowId,
+              profileId: profileId,
+              cycleStartDate: cycleStartDate,
+              excludedFromAverage: Value(excludedFromAverage),
+              manualStart: Value(manualStart),
+              noteId: Value(noteId),
+              updatedAt: now,
+              dirty: const Value(true),
+              localRev: const Value(1),
+            ));
+        return _cycleOverrideById(rowId, profileId);
+      }
+      final rowId = existing.id;
+      await (db.update(db.cycleOverrides)
+            ..where((t) =>
+                t.id.equals(rowId) & t.profileId.equals(profileId)))
+          .write(CycleOverridesCompanion(
+        cycleStartDate: Value(cycleStartDate),
+        excludedFromAverage: Value(excludedFromAverage),
+        manualStart: Value(manualStart),
+        noteId: Value(noteId),
+        updatedAt: Value(_afterStored(now, existing.updatedAt)),
+        deletedAt: const Value(null),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _cycleOverrideById(rowId, profileId);
+    });
+  }
+
+  /// Tombstones the cycle override [id] within [profileId]: sets
+  /// `deleted_at` (and bumps `updated_at`), clears every payload column
+  /// (`excluded_from_average`/`manual_start` reset to false, `note_id`
+  /// nulled — mirroring the server's
+  /// `cycle_overrides_tombstone_payload_check` exactly), keeps
+  /// `cycle_start_date` (identity). Marks the row dirty. Idempotent:
+  /// re-deleting a tombstone does nothing. No-op when the row is not held
+  /// locally.
+  Future<void> softDeleteCycleOverride({
+    required String id,
+    required String profileId,
+  }) async {
+    await db.transaction(() async {
+      final existing = await _cycleOverrideOrNull(id, profileId);
+      if (existing == null || existing.deletedAt != null) return;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.cycleOverrides)
+            ..where((t) => t.id.equals(id) & t.profileId.equals(profileId)))
+          .write(CycleOverridesCompanion(
+        excludedFromAverage: const Value(false),
+        manualStart: const Value(false),
+        noteId: const Value(null),
+        updatedAt: Value(at),
+        deletedAt: Value(at),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+    });
+  }
+
+  /// A profile's manual cycle corrections — UI reads (default) filter
+  /// tombstones; `includeTombstones: true` gives full-fidelity reads for
+  /// sync. Ordered by `cycle_start_date` then id.
+  Future<List<CycleOverrideData>> getCycleOverridesForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _cycleOverrideQuery(profileId,
+            includeTombstones: includeTombstones)
+        .get();
+  }
+
+  /// Stream variant of [getCycleOverridesForProfile] for reactive UI.
+  Stream<List<CycleOverrideData>> watchCycleOverridesForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _cycleOverrideQuery(profileId,
+            includeTombstones: includeTombstones)
+        .watch();
+  }
+
   // ------------------------------------------------------------- app settings
 
   /// Device-local key-value state. Not part of the sync model (open design
@@ -918,6 +1138,38 @@ class LunarLogStorage {
     return query.get();
   }
 
+  /// Profile mode rows with unpushed local changes, ordered by profile id
+  /// (Issue #188; there is no tombstone on this table). Same keyset-paging
+  /// contract as [readDirtyProfiles].
+  Future<List<ProfileModeData>> readDirtyProfileModes(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.profileModes)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.profileId.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.profileId)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
+  /// Cycle overrides with unpushed local changes, tombstones included,
+  /// ordered by id (Issue #188). Same keyset-paging contract as
+  /// [readDirtyProfiles].
+  Future<List<CycleOverrideData>> readDirtyCycleOverrides(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.cycleOverrides)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
   /// still equals [localRevAtPush] (the value read when the push was
   /// assembled). Returns whether the flag was cleared; `false` means a
@@ -945,6 +1197,20 @@ class LunarLogStorage {
               ..where((t) =>
                   t.id.equals(id) & t.localRev.equals(localRevAtPush)))
             .write(const ObservationsCompanion(dirty: Value(false)));
+      case SyncTable.profileModes:
+        changed = await (db.update(db.profileModes)
+              ..where((t) =>
+                  t.profileId.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const ProfileModesCompanion(dirty: Value(false)));
+      case SyncTable.cycleOverrides:
+        // The table's key is composite (id, profile_id), but ids are
+        // client-generated ULIDs — globally unique in practice — so the id
+        // alone identifies at most one row; matching on it keeps
+        // [markPushed]'s table-agnostic signature.
+        changed = await (db.update(db.cycleOverrides)
+              ..where((t) =>
+                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const CycleOverridesCompanion(dirty: Value(false)));
       case SyncTable.profileGuardians:
         changed = 0;
     }
@@ -960,7 +1226,11 @@ class LunarLogStorage {
         db.dayEntries.dirty.equals(true));
     final o = await _count(db.observations, db.observations.id,
         db.observations.dirty.equals(true));
-    return p + d + o;
+    final pm = await _count(db.profileModes, db.profileModes.profileId,
+        db.profileModes.dirty.equals(true));
+    final co = await _count(db.cycleOverrides, db.cycleOverrides.id,
+        db.cycleOverrides.dirty.equals(true));
+    return p + d + o + pm + co;
   }
 
   /// Flags every row, live and tombstoned, in every synced table for push
@@ -979,14 +1249,22 @@ class LunarLogStorage {
             dirty: const Constant(true),
             localRev: db.observations.localRev + const Constant(1),
           ));
+      await db.update(db.profileModes).write(ProfileModesCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.profileModes.localRev + const Constant(1),
+          ));
+      await db.update(db.cycleOverrides).write(CycleOverridesCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.cycleOverrides.localRev + const Constant(1),
+          ));
     });
   }
 
   /// Row counts, live and tombstoned, of the two synced tables the upload-
-  /// consent screen shows (R14, AS4) — observations are deliberately not a
-  /// third field here (no UI surface for them yet; see [isEmpty], which
-  /// does account for them so a device holding only observations is never
-  /// silently treated as empty).
+  /// consent screen shows (R14, AS4) — observations and the two Issue #188
+  /// tables are deliberately not extra fields here (no UI surface for them
+  /// yet; see [isEmpty], which does account for them so a device holding
+  /// only those rows is never silently treated as empty).
   Future<LocalRowCounts> countAllRows() async {
     final [p, d] = await Future.wait([
       _count(db.profiles, db.profiles.id),
@@ -1000,7 +1278,11 @@ class LunarLogStorage {
   Future<bool> isEmpty() async {
     final counts = await countAllRows();
     if (counts.profiles != 0 || counts.dayEntries != 0) return false;
-    return await _count(db.observations, db.observations.id) == 0;
+    if (await _count(db.observations, db.observations.id) != 0) return false;
+    if (await _count(db.profileModes, db.profileModes.profileId) != 0) {
+      return false;
+    }
+    return await _count(db.cycleOverrides, db.cycleOverrides.id) == 0;
   }
 
   // ---------------------------------------------------- sync: remote applies
@@ -1032,6 +1314,20 @@ class LunarLogStorage {
   /// entry is not held locally yet.
   Future<bool> applyRemoteObservation(RemoteObservationRow remote) =>
       db.transaction(() => _applyObservation(remote, onlyExisting: false));
+
+  /// Applies a server copy of a profile mode row keyed by profile id
+  /// (Issue #188; per-id LWW rule as for profiles — one row per profile,
+  /// no tombstone). Throws [RetryableSyncApplyError] when the profile is
+  /// not held locally yet.
+  Future<bool> applyRemoteProfileMode(RemoteProfileModeRow remote) =>
+      db.transaction(() => _applyProfileMode(remote, onlyExisting: false));
+
+  /// Applies a server copy of a cycle override keyed by (id, profile id)
+  /// (Issue #188; per-id LWW rule as for day entries, minus the same-date
+  /// resolver). Throws [RetryableSyncApplyError] when the profile is not
+  /// held locally yet.
+  Future<bool> applyRemoteCycleOverride(RemoteCycleOverrideRow remote) =>
+      db.transaction(() => _applyCycleOverride(remote, onlyExisting: false));
 
   /// Applies one pull page: every row (all of [table]) and the table's new
   /// cursor in ONE transaction, so a crash can only re-fetch rows, never
@@ -1066,6 +1362,10 @@ class LunarLogStorage {
         await _applyProfileGuardian(row);
       case RemoteObservationRow():
         await _applyObservation(row, onlyExisting: false);
+      case RemoteProfileModeRow():
+        await _applyProfileMode(row, onlyExisting: false);
+      case RemoteCycleOverrideRow():
+        await _applyCycleOverride(row, onlyExisting: false);
     }
   }
 
@@ -1079,6 +1379,10 @@ class LunarLogStorage {
           SyncStateCompanion(cursorDayEntries: Value(newCursor)),
         SyncTable.observations =>
           SyncStateCompanion(cursorObservations: Value(newCursor)),
+        SyncTable.profileModes =>
+          SyncStateCompanion(cursorProfileModes: Value(newCursor)),
+        SyncTable.cycleOverrides =>
+          SyncStateCompanion(cursorCycleOverrides: Value(newCursor)),
         SyncTable.profileGuardians =>
           const SyncStateCompanion(),
       },
@@ -1088,10 +1392,11 @@ class LunarLogStorage {
   /// Applies one full-reconcile page (rows of one or more tables) in ONE
   /// transaction without touching any cursor (KTD2). Same per-row rules as
   /// [applyRemoteProfile] / [applyRemoteDayEntry] / [applyRemoteObservation];
-  /// profiles, then day entries, then observations (Issue #240 — an
-  /// observation's day entry must already be applied for its referential
-  /// check to succeed). A throwing row rolls the page back — callers that
-  /// need per-row independence fall back to the single-row applies.
+  /// profiles, then day entries, then observations, then the two Issue
+  /// #188 tables (both reference only a profile, which is already applied
+  /// by the time their turns come). A throwing row rolls the page back —
+  /// callers that need per-row independence fall back to the single-row
+  /// applies.
   Future<void> applyRemoteRows(List<RemoteRow> rows) async {
     await db.transaction(() async {
       for (final row in rows.whereType<RemoteProfileRow>()) {
@@ -1106,15 +1411,22 @@ class LunarLogStorage {
       for (final row in rows.whereType<RemoteObservationRow>()) {
         await _applyObservation(row, onlyExisting: false);
       }
+      for (final row in rows.whereType<RemoteProfileModeRow>()) {
+        await _applyProfileMode(row, onlyExisting: false);
+      }
+      for (final row in rows.whereType<RemoteCycleOverrideRow>()) {
+        await _applyCycleOverride(row, onlyExisting: false);
+      }
     });
   }
 
   /// Applies the server's `resolved` copies returned by a push (rows the
   /// server tombstoned by resolution or declined as older): same rules as
-  /// [applyRemoteProfile] / [applyRemoteDayEntry] / [applyRemoteObservation],
-  /// written with `dirty = false`, profiles before day entries before
-  /// observations. Ids not held locally are no-ops — a resolution never
-  /// inserts. One transaction for the batch.
+  /// [applyRemoteProfile] / [applyRemoteDayEntry] / [applyRemoteObservation] /
+  /// [applyRemoteProfileMode] / [applyRemoteCycleOverride], written with
+  /// `dirty = false`, profiles before day entries before observations
+  /// before the two Issue #188 tables. Ids not held locally are no-ops — a
+  /// resolution never inserts. One transaction for the batch.
   Future<void> applyResolved(List<RemoteRow> rows) async {
     await db.transaction(() async {
       for (final row in rows.whereType<RemoteProfileRow>()) {
@@ -1125,6 +1437,12 @@ class LunarLogStorage {
       }
       for (final row in rows.whereType<RemoteObservationRow>()) {
         await _applyObservation(row, onlyExisting: true);
+      }
+      for (final row in rows.whereType<RemoteProfileModeRow>()) {
+        await _applyProfileMode(row, onlyExisting: true);
+      }
+      for (final row in rows.whereType<RemoteCycleOverrideRow>()) {
+        await _applyCycleOverride(row, onlyExisting: true);
       }
     });
   }
@@ -1584,6 +1902,125 @@ class LunarLogStorage {
     return true;
   }
 
+  /// Issue #188: applies a server copy of a profile mode row keyed by
+  /// profile id — the same per-id LWW rule [_applyProfile] uses. No
+  /// tombstone exists on this table. Throws [RetryableSyncApplyError] when
+  /// the profile is not held locally yet (checked up front so the failure
+  /// is typed rather than a raw constraint exception, mirroring
+  /// [_ensureDayEntryProfileExists]).
+  Future<bool> _applyProfileMode(RemoteProfileModeRow remote,
+      {required bool onlyExisting}) async {
+    final local = await _profileModeOrNull(remote.profileId);
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return false;
+    }
+    if (await _profileOrNull(remote.profileId) == null) {
+      throw RetryableSyncApplyError(
+          'profile mode ${remote.profileId} references a profile not held locally');
+    }
+    final updatedAt = remote.updatedAt.toUtc();
+    if (local == null) {
+      await db.into(db.profileModes).insert(ProfileModesCompanion.insert(
+            profileId: remote.profileId,
+            mode: Value(remote.mode),
+            modeStartedOn: Value(remote.modeStartedOn),
+            birthControlMethod: Value(remote.birthControlMethod),
+            birthControlStartedOn: Value(remote.birthControlStartedOn),
+            birthControlStoppedOn: Value(remote.birthControlStoppedOn),
+            healthSyncConsent: Value(remote.healthSyncConsent),
+            updatedAt: updatedAt,
+            dirty: const Value(false),
+            localRev: const Value(0),
+          ));
+      return true;
+    }
+    await (db.update(db.profileModes)
+          ..where((t) => t.profileId.equals(remote.profileId)))
+        .write(ProfileModesCompanion(
+      mode: Value(remote.mode),
+      modeStartedOn: Value(remote.modeStartedOn),
+      birthControlMethod: Value(remote.birthControlMethod),
+      birthControlStartedOn: Value(remote.birthControlStartedOn),
+      birthControlStoppedOn: Value(remote.birthControlStoppedOn),
+      healthSyncConsent: Value(remote.healthSyncConsent),
+      updatedAt: Value(updatedAt),
+      dirty: const Value(false),
+    ));
+    return true;
+  }
+
+  /// The redacted payload columns for a cycle override row: the remote
+  /// values as-is when live, or the cleared state for a tombstone
+  /// (`excluded_from_average`/`manual_start` reset to false, `note_id`
+  /// nulled — mirroring the server's
+  /// `cycle_overrides_tombstone_payload_check`). `cycle_start_date` is
+  /// identity and always written from `remote` directly.
+  ({bool excludedFromAverage, bool manualStart, String? noteId})
+      _cycleOverridePayload(RemoteCycleOverrideRow remote, bool tombstone) =>
+          tombstone
+              ? (excludedFromAverage: false, manualStart: false, noteId: null)
+              : (
+                  excludedFromAverage: remote.excludedFromAverage,
+                  manualStart: remote.manualStart,
+                  noteId: remote.noteId,
+                );
+
+  /// Issue #188: applies a server copy of a cycle override keyed by
+  /// (id, profile id) — the same per-id LWW rule [_applyObservation] uses,
+  /// with no same-date resolver. A tombstone clears the payload columns
+  /// (see [_cycleOverridePayload]).
+  Future<bool> _applyCycleOverride(RemoteCycleOverrideRow remote,
+      {required bool onlyExisting}) async {
+    final local = await _cycleOverrideOrNull(remote.id, remote.profileId);
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return false;
+    }
+    if (await _profileOrNull(remote.profileId) == null) {
+      throw RetryableSyncApplyError(
+          'cycle override ${remote.id} references a profile not held locally');
+    }
+    final tombstone = remote.isTombstone;
+    final updatedAt = remote.updatedAt.toUtc();
+    final deletedAt = remote.deletedAt?.toUtc();
+    final payload = _cycleOverridePayload(remote, tombstone);
+    if (local == null) {
+      await db.into(db.cycleOverrides).insert(CycleOverridesCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            cycleStartDate: remote.cycleStartDate,
+            excludedFromAverage: Value(payload.excludedFromAverage),
+            manualStart: Value(payload.manualStart),
+            noteId: Value(payload.noteId),
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            localRev: const Value(0),
+          ));
+      return true;
+    }
+    await (db.update(db.cycleOverrides)
+          ..where((t) =>
+              t.id.equals(remote.id) & t.profileId.equals(remote.profileId)))
+        .write(CycleOverridesCompanion(
+      cycleStartDate: Value(remote.cycleStartDate),
+      excludedFromAverage: Value(payload.excludedFromAverage),
+      manualStart: Value(payload.manualStart),
+      noteId: Value(payload.noteId),
+      updatedAt: Value(updatedAt),
+      deletedAt: Value(deletedAt),
+      dirty: const Value(false),
+    ));
+    return true;
+  }
+
   static bool _tagsEqual(List<String> a, List<String> b) {
     if (identical(a, b)) return true;
     final setA = a.toSet();
@@ -1858,5 +2295,50 @@ class LunarLogStorage {
     final row = await _observationOrNull(id);
     if (row == null) throw StateError('observation disappeared: $id');
     return row;
+  }
+
+  Future<ProfileModeData?> _profileModeOrNull(String profileId) =>
+      (db.select(db.profileModes)
+            ..where((t) => t.profileId.equals(profileId)))
+          .getSingleOrNull();
+
+  Future<ProfileModeData> _profileModeById(String profileId) async {
+    final row = await _profileModeOrNull(profileId);
+    if (row == null) throw StateError('profile mode disappeared: $profileId');
+    return row;
+  }
+
+  Future<CycleOverrideData?> _cycleOverrideOrNull(String id, String profileId) =>
+      (db.select(db.cycleOverrides)
+            ..where((t) => t.id.equals(id) & t.profileId.equals(profileId)))
+          .getSingleOrNull();
+
+  Future<CycleOverrideData> _cycleOverrideById(
+      String id, String profileId) async {
+    final row = await _cycleOverrideOrNull(id, profileId);
+    if (row == null) throw StateError('cycle override disappeared: $id');
+    return row;
+  }
+
+  /// The shared builder behind [getCycleOverridesForProfile] and its watch
+  /// variant: ordered by `cycle_start_date` then id, tombstones filtered
+  /// unless [includeTombstones].
+  Selectable<CycleOverrideData> _cycleOverrideQuery(
+    String profileId, {
+    required bool includeTombstones,
+  }) {
+    final query = db.select(db.cycleOverrides)
+      ..where((t) {
+        var condition = t.profileId.equals(profileId);
+        if (!includeTombstones) {
+          condition = condition & t.deletedAt.isNull();
+        }
+        return condition;
+      })
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.cycleStartDate),
+        (t) => OrderingTerm(expression: t.id),
+      ]);
+    return query;
   }
 }

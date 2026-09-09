@@ -34,6 +34,9 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  # #198: locale-aware date formatting for the day sheet (B-14); already in
+  # the tree transitively — pinned directly until #160's shared l10n
+  # scaffolding makes it the app-wide dependency of record.
   drift: ^2.34.3
   sqlite3: ^3.5.2
   flutter_secure_storage: ^11.0.0

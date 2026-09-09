@@ -241,6 +241,12 @@
   "@daySheetSave": {
     "description": "The day sheet's save button label."
   },
+  "daySheetDiscardTitle": "Discard unsaved changes?",
+  "daySheetKeepEditing": "Keep editing",
+  "daySheetDiscard": "Discard",
+  "daySheetSaving": "Saving…",
+  "daySheetSaved": "Saved",
+  "daySheetRetryHint": "Couldn't save. Changes are kept — retry or close.",
   "daySheetUnrecognised": "Unrecognised",
   "@daySheetUnrecognised": {
     "description": "Heading above inert chips for tags this build does not recognise."

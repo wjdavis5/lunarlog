@@ -191,6 +191,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetSave => 'Save';
 
   @override
+  String get daySheetDiscardTitle => 'Discard unsaved changes?';
+
+  @override
+  String get daySheetKeepEditing => 'Keep editing';
+
+  @override
+  String get daySheetDiscard => 'Discard';
+
+  @override
+  String get daySheetSaving => 'Saving…';
+
+  @override
+  String get daySheetSaved => 'Saved';
+
+  @override
+  String get daySheetRetryHint =>
+      'Couldn\'t save. Changes are kept — retry or close.';
+
+  @override
   String get daySheetUnrecognised => 'Unrecognised';
 
   @override

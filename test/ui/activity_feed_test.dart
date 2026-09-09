@@ -356,10 +356,11 @@ void main() {
     );
     expect(find.text("Sync merge kept Dad's version"), findsOneWidget);
     expect(find.textContaining("Mom's note was discarded"), findsOneWidget);
-    // Tap-through still opens the surviving date's sheet.
+    // Tap-through still opens the surviving date's sheet (#198: its title
+    // is the human-readable date now, not the raw ISO string).
     await tester.tap(find.byIcon(Icons.call_merge));
     await tester.pumpAndSettle();
-    expect(find.text('2026-08-19'), findsWidgets);
+    expect(find.text('Wed 19 Aug 2026'), findsOneWidget);
     await dismissSheet(tester);
     await disposeActivity(tester, h);
   });
@@ -406,8 +407,11 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('activity-item-entry:e-tap')));
     await tester.pumpAndSettle();
-    expect(find.text('2026-08-19'), findsWidgets);
-    expect(find.byKey(const ValueKey('save-button')), findsOneWidget,
+    // #198: the sheet title is the human-readable label keyed by
+    // 'day-sheet-date-title' (via daySheetDateLabel), never the raw ISO
+    // string the sheet used to render.
+    expect(find.byKey(const ValueKey('day-sheet-date-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget,
         reason: 'a non-viewer opens the sheet editable, as from the calendar');
     await dismissSheet(tester);
     await disposeActivity(tester, h);
@@ -476,7 +480,7 @@ void main() {
     // The sheet opens in the viewer read-only mode, with its named reason.
     expect(find.text('You have view-only access to this profile.'),
         findsOneWidget);
-    expect(find.byKey(const ValueKey('save-button')), findsNothing);
+    expect(find.byKey(const ValueKey('autosave-status')), findsNothing);
     await dismissSheet(tester);
     await disposeActivity(tester, h);
   });

@@ -352,9 +352,10 @@ void main() {
       await showMonth(tester, 2026, 3);
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-03-01')));
       await tester.pumpAndSettle();
-      expect(find.text('2026-03-01'), findsOneWidget,
-          reason: 'entry viewable in the read-only day sheet');
-      expect(find.byKey(const ValueKey('save-button')), findsNothing,
+      expect(find.text('Sun 1 Mar 2026'), findsOneWidget,
+          reason: 'entry viewable in the read-only day sheet (#198: '
+              'human-readable date, never raw ISO)');
+      expect(find.byKey(const ValueKey('autosave-status')), findsNothing,
           reason: 'no logging affordances for archived profiles');
       await tester.tapAt(const Offset(20, 20));
       await tester.pumpAndSettle();

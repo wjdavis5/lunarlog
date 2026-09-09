@@ -37,6 +37,8 @@ class SupabaseSyncTransport implements SyncTransport {
         'p_profiles': batch.profiles,
         'p_day_entries': batch.dayEntries,
         'p_observations': batch.observations,
+        'p_profile_modes': batch.profileModes,
+        'p_cycle_overrides': batch.cycleOverrides,
       });
     } catch (error) {
       throw mapSyncTransportError(error);
