@@ -292,7 +292,12 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
       title: const Text('Support history'),
       subtitle: const Text('See replies and continue a conversation'),
       trailing: _unread
-          ? const Icon(Icons.circle, key: ValueKey('support-history-unread-badge'), size: 10, color: Colors.red)
+          ? Icon(
+              Icons.circle,
+              key: const ValueKey('support-history-unread-badge'),
+              size: 10,
+              color: Theme.of(context).colorScheme.error,
+            )
           : const Icon(Icons.chevron_right),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(

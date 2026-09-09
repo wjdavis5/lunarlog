@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 class AccountMismatchScreen extends StatefulWidget {
@@ -114,9 +115,9 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
             child: const Text('Switch account'),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Signs out and keeps everything on this device.',
-            style: TextStyle(fontSize: 12),
+            style: LLType.bodySmall.toTextStyle(),
           ),
           const SizedBox(height: 16),
           OutlinedButton(

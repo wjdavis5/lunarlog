@@ -46,6 +46,7 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
+import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
@@ -636,9 +637,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
         navigatorKey: _navigatorKey,
         navigatorObservers: _navigatorObservers,
         title: 'lunarlog',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00696F)),
-        ),
+        theme: AppTheme.lightTheme,
         // KTD16: the web wipe is the device reset when one is provided.
         builder: (context, child) => WebGuardrails(
           showBanner: widget.showWebBanner,

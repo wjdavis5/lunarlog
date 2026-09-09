@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
+import 'package:lunarlog/ui/theme/app_theme.dart';
 
 class LockScreen extends StatelessWidget {
   const LockScreen({super.key, required this.controller});
@@ -17,9 +18,7 @@ class LockScreen extends StatelessWidget {
     final theme = Theme.of(context);
     return MaterialApp(
       title: 'lunarlog',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00696F)),
-      ),
+      theme: AppTheme.lightTheme,
       home: Scaffold(
         key: const ValueKey('lock-screen'),
         body: Center(

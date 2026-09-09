@@ -1298,6 +1298,9 @@ class PrivacyCover extends StatelessWidget {
   Widget build(BuildContext context) {
     return const ColoredBox(
       key: ValueKey('privacy-cover'),
+      // Deliberate literal (issue #176): opaque black regardless of theme —
+      // this is what the app-switcher snapshot must show, never a theme
+      // role (which a future dark-theme tweak could lighten).
       color: Color(0xFF000000),
       child: SizedBox.expand(),
     );

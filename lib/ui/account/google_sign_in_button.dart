@@ -33,6 +33,9 @@ class GoogleSignInButton extends StatelessWidget {
         child: Opacity(
           opacity: enabled ? 1 : 0.38,
           child: Material(
+            // Deliberate literal (issue #176): Google's branding guidelines
+            // fix this button's fill to white regardless of app theme —
+            // never a theme role.
             color: Colors.white,
             shape: RoundedRectangleBorder(
               side: const BorderSide(color: _kGoogleStroke),

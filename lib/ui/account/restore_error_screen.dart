@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 
 class RestoreErrorScreen extends StatelessWidget {
   const RestoreErrorScreen({
@@ -27,15 +28,15 @@ class RestoreErrorScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.cloud_off_outlined,
                 size: 64,
-                color: Colors.redAccent,
+                color: Theme.of(context).colorScheme.error,
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Unable to restore data',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: LLType.headlineSmall.toTextStyle(),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),

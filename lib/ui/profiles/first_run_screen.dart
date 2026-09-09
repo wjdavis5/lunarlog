@@ -34,6 +34,7 @@ import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
@@ -205,9 +206,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                Text(
                   kFirstRunNoticeCopy,
-                  style: TextStyle(fontSize: 18),
+                  style: LLType.titleMedium.toTextStyle(),
                 ),
                 const SizedBox(height: 24),
                 FilledButton(

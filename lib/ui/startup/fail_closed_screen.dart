@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunarlog/data/db/errors.dart';
+import 'package:lunarlog/ui/theme/app_theme.dart';
 
 class FailClosedApp extends StatelessWidget {
   const FailClosedApp({super.key, required this.error});
@@ -19,9 +20,7 @@ class FailClosedApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'lunarlog',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00696F)),
-      ),
+      theme: AppTheme.lightTheme,
       home: FailClosedScreen(error: error),
     );
   }
