@@ -68,6 +68,11 @@
 	<string>lunarlog can write the bound profile's period and symptom data to Apple Health, and read what Apple Health holds, only for the one profile you choose in Settings.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>lunarlog can write the bound profile's period and symptom data to Apple Health, and read what Apple Health holds, only for the one profile you choose in Settings.</string>
+	<!-- Issue #207: required by image_picker_ios the moment a gallery source
+	     is offered; without it the photo pick crashes the app on iOS 14+.
+	     Only the feedback sheet's screenshot attachment opens the picker. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Lunarlog uses your photo library only when you choose to attach a screenshot to a support ticket. Nothing is uploaded unless you pick an image and submit the ticket.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
