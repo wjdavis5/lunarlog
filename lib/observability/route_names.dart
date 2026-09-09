@@ -41,8 +41,8 @@ const String kRouteProfileDetailScreen = 'ProfileDetailScreen';
 const String kRouteManageGuardiansScreen = 'ManageGuardiansScreen';
 
 /// `lib/ui/sharing/activity_feed_screen.dart` (issue #124) — a real
-/// destination with its own content, pushed from the profile screen and
-/// from Manage Guardians.
+/// destination with its own content, pushed from the archived-profile
+/// screen, Manage Guardians, and the app shell's own bar (issue #313).
 const String kRouteActivityFeedScreen = 'ActivityFeedScreen';
 
 /// The day-entry bottom sheet (`lib/ui/logging/month_calendar.dart` pushes
@@ -100,6 +100,17 @@ const String kRouteAcceptInviteSheet = 'AcceptInviteSheet';
 /// `lib/app.dart` (issue #182).
 const String kRouteClaimProfileSheet = 'ClaimProfileSheet';
 
+/// `lib/ui/sharing/transfer_ownership_screen.dart` — pushed from Manage
+/// Guardians' "Transfer ownership" action (issue #313: previously pushed
+/// with no `RouteSettings` at all, invisible to the Sentry route observer).
+const String kRouteTransferOwnershipScreen = 'TransferOwnershipScreen';
+
+/// `lib/ui/sharing/notification_preferences_screen.dart` — pushed from
+/// Manage Guardians' "Notifications" action (issue #313: same
+/// unnamed-route defect as [kRouteTransferOwnershipScreen]).
+const String kRouteNotificationPreferencesScreen =
+    'NotificationPreferencesScreen';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -125,4 +136,6 @@ const Set<String> kSentryRouteNames = {
   kRouteHealthSyncBindDialog,
   kRouteAcceptInviteSheet,
   kRouteClaimProfileSheet,
+  kRouteTransferOwnershipScreen,
+  kRouteNotificationPreferencesScreen,
 };

@@ -34,11 +34,17 @@
 /// Issue #313: the body is wrapped in an [AppShellScope] so tab content can
 /// switch tabs itself (issue #314's "See cycle history" link on
 /// [OverviewPanel] is the first caller) without reaching into this file's
-/// private state -- see `app_shell_scope.dart`.
+/// private state -- see `app_shell_scope.dart`. The whole shell is also
+/// wrapped in a [PopScope] (issue #313): the shell is the app's root route,
+/// so with no guard system back from Calendar/Insights/More would exit the
+/// app outright; instead the first back press returns to Today and only a
+/// second one (already on Today) is allowed through, matching Material's
+/// "up returns to the first destination before exiting" guidance.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -50,10 +56,16 @@ import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
+import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
 import 'package:provider/provider.dart';
 
 import 'app_shell_scope.dart';
 
+/// Issue #313: the app-bar title ([_ProfileSwitcher]) stays fresh across a
+/// profile rename or switch only because `profile_home_gate.dart`'s
+/// `ProfileHomeGate` does `context.watch<ProfileController>()` and rebuilds
+/// this whole shell with a new `widget.profile` -- nothing in this file
+/// listens for profile changes itself.
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
@@ -201,72 +213,91 @@ class _AppShellState extends State<AppShell> {
     // it is reachable from anywhere under this shell -- app bar included --
     // even though today's only caller (#314's "See cycle history" link)
     // only needs it from the body.
-    return AppShellScope(
-      current: _tab,
-      select: _selectTab,
-      child: Scaffold(
-        appBar: _tab == AppTab.more ? null : _shellAppBar(hasSync),
-        body: IndexedStack(
-          index: _tab.index,
-          children: [
-            for (final tab in AppTab.values)
-              _tabContent(tab, storage, guardiansRepository),
-          ],
-        ),
-        // Issue #209 item 4a: "Log today" opens the day sheet directly,
-        // only where logging today makes sense (Today/Calendar) -- not
-        // Insights or More. Hidden for a viewer-role guardian by
-        // TodayLogFab itself.
-        floatingActionButton: _tab == AppTab.today || _tab == AppTab.calendar
-            ? TodayLogFab(
-                profileId: widget.profile.id,
-                mode: widget.profile.mode,
-                todayProvider: widget.todayProvider,
-                timezoneProvider: widget.timezoneProvider,
-                guardiansRepository: guardiansRepository,
-              )
-            : null,
-        bottomNavigationBar: NavigationBar(
-          key: const ValueKey('app-shell-nav-bar'),
-          selectedIndex: _tab.index,
-          onDestinationSelected: (index) => _selectTab(AppTab.values[index]),
-          destinations: const [
-            NavigationDestination(
-              key: ValueKey('app-shell-tab-today'),
-              icon: Icon(Icons.today_outlined),
-              selectedIcon: Icon(Icons.today),
-              label: 'Today',
-            ),
-            NavigationDestination(
-              key: ValueKey('app-shell-tab-calendar'),
-              icon: Icon(Icons.calendar_month_outlined),
-              selectedIcon: Icon(Icons.calendar_month),
-              label: 'Calendar',
-            ),
-            NavigationDestination(
-              key: ValueKey('app-shell-tab-insights'),
-              icon: Icon(Icons.insights_outlined),
-              selectedIcon: Icon(Icons.insights),
-              label: 'Insights',
-            ),
-            NavigationDestination(
-              key: ValueKey('app-shell-tab-more'),
-              icon: Icon(Icons.more_horiz),
-              label: 'More',
-            ),
-          ],
+    return PopScope(
+      // Issue #313: canPop only on Today, so a non-Today tab's system back
+      // press is intercepted (didPop is then false below) rather than
+      // popping this root route and exiting the app; a second back press,
+      // now on Today, is let through.
+      canPop: _tab == AppTab.today,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _selectTab(AppTab.today);
+      },
+      child: AppShellScope(
+        current: _tab,
+        select: _selectTab,
+        child: Scaffold(
+          appBar: _tab == AppTab.more ? null : _shellAppBar(hasSync, storage),
+          body: IndexedStack(
+            index: _tab.index,
+            children: [
+              for (final tab in AppTab.values)
+                _tabContent(tab, storage, guardiansRepository),
+            ],
+          ),
+          // Issue #209 item 4a: "Log today" opens the day sheet directly,
+          // only where logging today makes sense (Today/Calendar) -- not
+          // Insights or More. Hidden for a viewer-role guardian by
+          // TodayLogFab itself.
+          floatingActionButton: _tab == AppTab.today || _tab == AppTab.calendar
+              ? TodayLogFab(
+                  profileId: widget.profile.id,
+                  mode: widget.profile.mode,
+                  todayProvider: widget.todayProvider,
+                  timezoneProvider: widget.timezoneProvider,
+                  guardiansRepository: guardiansRepository,
+                )
+              : null,
+          bottomNavigationBar: NavigationBar(
+            key: const ValueKey('app-shell-nav-bar'),
+            selectedIndex: _tab.index,
+            onDestinationSelected: (index) => _selectTab(AppTab.values[index]),
+            destinations: const [
+              NavigationDestination(
+                key: ValueKey('app-shell-tab-today'),
+                icon: Icon(Icons.today_outlined),
+                selectedIcon: Icon(Icons.today),
+                label: 'Today',
+              ),
+              NavigationDestination(
+                key: ValueKey('app-shell-tab-calendar'),
+                icon: Icon(Icons.calendar_month_outlined),
+                selectedIcon: Icon(Icons.calendar_month),
+                label: 'Calendar',
+              ),
+              NavigationDestination(
+                key: ValueKey('app-shell-tab-insights'),
+                icon: Icon(Icons.insights_outlined),
+                selectedIcon: Icon(Icons.insights),
+                label: 'Insights',
+              ),
+              NavigationDestination(
+                key: ValueKey('app-shell-tab-more'),
+                icon: Icon(Icons.more_horiz),
+                label: 'More',
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   /// The app bar shared by Today/Calendar/Insights (issue #182 AC2/AC3/AC5):
-  /// the profile switcher, the sync glyph (only when a build has one), and
-  /// a Settings action. Extracted out of [build] to keep that method's
-  /// branching low (CRAP gate).
-  AppBar _shellAppBar(bool hasSync) => AppBar(
+  /// the profile switcher, the Activity feed action (issue #313 -- #124's
+  /// [ActivityFeedButton], reachable again now that the shell replaced
+  /// `ProfileDetailScreen` as where the active profile lives), the sync
+  /// glyph (only when a build has one), and a Settings action. Extracted
+  /// out of [build] to keep that method's branching low (CRAP gate).
+  AppBar _shellAppBar(bool hasSync, LunarLogStorage? storage) => AppBar(
         title: _ProfileSwitcher(profile: widget.profile, onTap: _openPicker),
         actions: [
+          if (storage != null)
+            ActivityFeedButton(
+              profile: widget.profile,
+              repository: ActivityFeedRepository(storage),
+              todayProvider: widget.todayProvider,
+              timezoneProvider: widget.timezoneProvider,
+            ),
           if (hasSync) SyncStatusGlyph(onPressed: _openMoreTab),
           IconButton(
             key: const ValueKey('app-shell-settings-action'),

@@ -19,6 +19,7 @@ import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
+import 'package:lunarlog/ui/sharing/transfer_ownership_screen.dart';
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_notification_preferences_service.dart';
@@ -1068,6 +1069,13 @@ void main() {
 
       expect(find.text('Notifications'), findsOneWidget);
       expect(find.byKey(const ValueKey('discretion-copy')), findsOneWidget);
+      // Issue #313: previously pushed with no RouteSettings at all,
+      // invisible to the Sentry route observer.
+      final route = ModalRoute.of(
+        tester.element(find.byKey(const ValueKey('discretion-copy'))),
+      );
+      expect(route?.settings.name, kRouteNotificationPreferencesScreen);
+      expect(kSentryRouteNames, contains(kRouteNotificationPreferencesScreen));
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -1087,6 +1095,56 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('notifications-action')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+  });
+
+  group('ManageGuardiansScreen Transfer ownership action (issue #313)', () {
+    testWidgets(
+        'the primary guardian sees the action and it pushes '
+        'TransferOwnershipScreen as a named route', (tester) async {
+      await storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-0',
+          profileId: testProfile.id,
+          userId: 'user-mom',
+          role: 'primary_guardian',
+          status: 'accepted',
+          displayName: 'Mom',
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
+      final transferService = FakeOwnershipTransferService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+            ownershipTransferService: transferService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Transfer ownership'), findsOneWidget);
+      await tester.tap(find.byTooltip('Transfer ownership'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TransferOwnershipScreen), findsOneWidget);
+      // Issue #313: previously pushed with no RouteSettings at all,
+      // invisible to the Sentry route observer.
+      final route = ModalRoute.of(
+        tester.element(find.byType(TransferOwnershipScreen)),
+      );
+      expect(route?.settings.name, kRouteTransferOwnershipScreen);
+      expect(kSentryRouteNames, contains(kRouteTransferOwnershipScreen));
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

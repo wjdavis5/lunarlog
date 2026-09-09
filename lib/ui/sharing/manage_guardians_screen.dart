@@ -23,7 +23,9 @@ import '../../domain/models/profile_guardian.dart';
 import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/sharing_service.dart';
+import '../../observability/route_names.dart';
 import '../components/inline_error.dart';
+import '../routes.dart';
 import 'activity_feed_screen.dart';
 import 'invite_guardian_dialog.dart';
 import 'notification_preferences_screen.dart';
@@ -413,7 +415,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                 tooltip: 'Transfer ownership',
                 icon: const Icon(Icons.compare_arrows),
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  buildNamedRoute<void>(
+                    name: kRouteTransferOwnershipScreen,
                     builder: (_) => TransferOwnershipScreen(
                       profile: widget.profile,
                       service: widget.ownershipTransferService!,
@@ -429,7 +432,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               tooltip: 'Notifications',
               icon: const Icon(Icons.notifications_outlined),
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
+                buildNamedRoute<void>(
+                  name: kRouteNotificationPreferencesScreen,
                   builder: (_) => NotificationPreferencesScreen(
                     profile: widget.profile,
                     preferencesService: notificationPreferencesService,

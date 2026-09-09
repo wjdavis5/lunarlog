@@ -10,7 +10,9 @@
 /// [CycleHistorySection] mounts exactly once across the shell once both
 /// Today and Insights have been visited (it used to mount twice — once
 /// per tab, each running its own `CycleHistoryService.watch` subscription
-/// — until Overview stopped embedding its own copy).
+/// — until Overview stopped embedding its own copy). Issue #313: Android
+/// back returns to Today before it exits, the Activity Feed action in the
+/// shared app bar, and the `didUpdateWidget` reset-to-Today seam.
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -18,18 +20,25 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
+import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
 import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/activity/merge_events.dart'
+    show activityLastSeenKey;
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/app_shell.dart' show AppShell;
 import 'package:lunarlog/ui/components/app_shell_scope.dart' show AppTab;
 import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
@@ -37,10 +46,24 @@ import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
+import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
+import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
+import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_engine.dart';
+
+/// A gate that never requires unlocking (issue #313's launch-payload test
+/// needs a [GateController] wired in, but nothing here exercises the
+/// device-credential path itself).
+class _NoLockGate implements AppGate {
+  @override
+  bool get requiresUnlock => false;
+
+  @override
+  Future<bool> requestAccess() async => true;
+}
 
 /// Materializes a server-authored guardian row locally (mirrors
 /// `test/ui/logging_test.dart`'s helper of the same name).
@@ -463,6 +486,267 @@ void main() {
           reason: 'the link switched the shell\'s own selected tab, not '
               'just pushed a new screen on top of it');
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
+      await h.dispose();
+    });
+  });
+
+  group('issue #313: Android back returns to Today before it exits', () {
+    testWidgets(
+        'system back from Calendar is intercepted and switches the shell '
+        'back to Today rather than exiting', (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MonthCalendar), findsOneWidget);
+
+      final popped = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(popped, isTrue,
+          reason: 'PopScope intercepted the pop, so the framework treats '
+              'it as handled');
+      expect(find.byType(NavigationBar), findsOneWidget,
+          reason: 'still inside the shell -- the app did not exit');
+      final navBar =
+          tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, AppTab.today.index);
+      expect(find.byType(MonthCalendar), findsNothing,
+          reason: 'Calendar is no longer the painted tab -- a real tab '
+              'switch, not a route pop');
+      expect(find.byType(OverviewPanel), findsOneWidget,
+          reason: 'Today is the painted tab now');
+      await h.dispose();
+    });
+
+    testWidgets(
+        'the shell\'s PopScope only blocks the pop away from Today',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      // `find.byType` requires an exact generic match and `PopScope`'s type
+      // argument is inferred, not declared, at the app_shell.dart call
+      // site -- a predicate keyed on `is PopScope` (dynamic's type-test
+      // wildcard) finds it regardless of what that argument resolves to.
+      // Scoped to descendants of AppShell so a PopScope mounted elsewhere in
+      // the tree (e.g. by a route this test pushes later) can never make
+      // `.single` ambiguous.
+      PopScope popScope() => tester
+          .widgetList<PopScope>(find.descendant(
+            of: find.byType(AppShell),
+            matching: find.byWidgetPredicate((w) => w is PopScope),
+          ))
+          .single;
+
+      expect(popScope().canPop, isTrue,
+          reason: 'Today is the default tab -- a back press here may exit');
+      expect(await tester.binding.handlePopRoute(), isFalse,
+          reason: 'canPop is true on Today, so PopScope lets the pop '
+              'through; with nothing left to pop, the framework hands it '
+              'back to the platform instead of handling it itself');
+
+      await tester.tap(tabKey('insights'));
+      await tester.pumpAndSettle();
+      expect(popScope().canPop, isFalse);
+
+      await tester.tap(tabKey('more'));
+      await tester.pumpAndSettle();
+      expect(popScope().canPop, isFalse);
+      await h.dispose();
+    });
+  });
+
+  group('issue #313: the Activity Feed action in the shell app bar', () {
+    testWidgets(
+        'present on Today, Calendar and Insights; absent on More (which '
+        'carries its own app bar)', (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      expect(find.byKey(const ValueKey('activity-feed-button')),
+          findsOneWidget,
+          reason: 'Today (the default tab)');
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(
+          find.byKey(const ValueKey('activity-feed-button')), findsOneWidget);
+
+      await tester.tap(tabKey('insights'));
+      await tester.pumpAndSettle();
+      expect(
+          find.byKey(const ValueKey('activity-feed-button')), findsOneWidget);
+
+      await tester.tap(tabKey('more'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('activity-feed-button')), findsNothing,
+          reason: "More is Settings' own app bar, not the shell's");
+      await h.dispose();
+    });
+
+    testWidgets(
+        'tapping it opens the Activity feed through the app\'s one named '
+        'route path', (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      await tester.tap(find.byKey(const ValueKey('activity-feed-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ActivityFeedScreen), findsOneWidget);
+      final route =
+          ModalRoute.of(tester.element(find.byType(ActivityFeedScreen)));
+      expect(route?.settings.name, kRouteActivityFeedScreen);
+      expect(kSentryRouteNames, contains(kRouteActivityFeedScreen));
+      await h.dispose();
+    });
+  });
+
+  group('issue #313: didUpdateWidget resets to Today only for a '
+      'launch-payload profile switch', () {
+    testWidgets(
+        'GateController.setPendingLaunchProfileId resets an off-Today tab '
+        'back to Today once the switch lands', (tester) async {
+      final h = Harness(tester);
+      final gate = GateController(gate: _NoLockGate());
+      addTearDown(gate.dispose);
+
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final alice =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      final bob = await profiles.create(displayName: 'Bob', isMinor: false);
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.lastActiveProfile, alice.id);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<GateController>.value(
+          value: gate,
+          child: LunarLogApp(db: h.db, authService: h.auth, syncEngine: h.engine),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MonthCalendar), findsOneWidget);
+
+      gate.setPendingLaunchProfileId(bob.id);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bob'), findsOneWidget,
+          reason: 'the launch payload switched the active profile');
+      expect(find.byType(MonthCalendar), findsNothing,
+          reason: 'the launch-payload switch reset the shell to Today');
+      final navBar =
+          tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, AppTab.today.index);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'an ordinary profile switch (no launch payload) keeps the '
+        'operator\'s current tab', (tester) async {
+      final h = Harness(tester);
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final alice =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      final bob = await profiles.create(displayName: 'Bob', isMinor: false);
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.lastActiveProfile, alice.id);
+
+      await tester.pumpWidget(
+          LunarLogApp(db: h.db, authService: h.auth, syncEngine: h.engine));
+      await tester.pumpAndSettle();
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MonthCalendar), findsOneWidget);
+
+      final controller =
+          tester.element(find.byType(MonthCalendar)).read<ProfileController>();
+      await controller.selectProfile(bob.id);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bob'), findsOneWidget,
+          reason: 'the switch happened');
+      expect(find.byType(MonthCalendar), findsOneWidget,
+          reason: 'an ordinary switch (no launch payload) keeps the tab '
+              'the operator was on');
+      await h.dispose();
+    });
+  });
+
+  group(
+      'issue #313 review: the Activity Feed action re-watches the feed on '
+      'an in-place profile switch', () {
+    testWidgets(
+        'the new-activity badge follows whichever profile is active -- '
+        'deleting _ActivityFeedButtonState.didUpdateWidget must fail this '
+        'test', (tester) async {
+      final h = Harness(tester);
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final alice =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      final bob = await profiles.create(displayName: 'Bob', isMinor: false);
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.lastActiveProfile, alice.id);
+
+      // Alice has one entry newer than her device-local last-seen stamp
+      // (unseen activity, so the badge should show); Bob has no last-seen
+      // stamp at all -- a first-ever visit marks nothing New, so his badge
+      // should never show, on this device or any other.
+      await h.db.storage.applyRemoteRows([
+        RemoteDayEntryRow(
+          id: 'e-alice',
+          profileId: alice.id,
+          localDate: LocalDate(2026, 8, 19).iso,
+          tz: 'UTC',
+          flow: flowFromDomain(FlowLevel.medium),
+          tags: const ['cramps'],
+          note: null,
+          updatedAt: DateTime.utc(2026, 8, 20),
+          deletedAt: null,
+          loggedByUserId: 'user-dad',
+        ),
+      ]);
+      await h.db.storage.setSetting(
+        key: activityLastSeenKey(alice.id),
+        value: DateTime.utc(2026, 8, 19).toIso8601String(),
+      );
+
+      await tester.pumpWidget(
+          LunarLogApp(db: h.db, authService: h.auth, syncEngine: h.engine));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.byKey(const ValueKey('activity-feed-button-new')),
+          findsOneWidget,
+          reason: 'Alice has activity newer than her last-seen stamp');
+
+      final controller = tester
+          .element(find.byType(NavigationBar))
+          .read<ProfileController>();
+      await controller.selectProfile(bob.id);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bob'), findsOneWidget,
+          reason: 'the in-place profile switch landed');
+      expect(find.byKey(const ValueKey('activity-feed-button-new')),
+          findsNothing,
+          reason: 'the button must re-watch Bob\'s own feed rather than '
+              'keep rendering Alice\'s stale snapshot from before the '
+              'switch');
+
+      await controller.selectProfile(alice.id);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.byKey(const ValueKey('activity-feed-button-new')),
+          findsOneWidget,
+          reason: 'switching back re-watches Alice\'s feed again, so her '
+              'still-unseen activity reappears');
       await h.dispose();
     });
   });
