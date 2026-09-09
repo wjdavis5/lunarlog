@@ -65,6 +65,12 @@ const String kRouteProfileArchiveDialog = 'ProfileArchiveDialog';
 /// destination explaining the predicted state, never the log sheet.
 const String kRouteFutureDayExplainerScreen = 'FutureDayExplainerScreen';
 
+/// The month/year picker sheet (`lib/ui/logging/month_calendar.dart`, issue
+/// #191) — pushed when the month label is tapped; a genuine destination
+/// with its own year/month grid, not a trivial confirm dialog (U2 Approach
+/// 2b).
+const String kRouteMonthYearPickerDialog = 'MonthYearPickerDialog';
+
 /// `lib/ui/feedback/attachment_field.dart` — explains what a screenshot may
 /// contain before the picker opens; worth distinguishing from a plain
 /// confirm (U2 Approach 2b).
@@ -112,6 +118,7 @@ const Set<String> kSentryRouteNames = {
   kRouteProfileEditDialog,
   kRouteProfileArchiveDialog,
   kRouteFutureDayExplainerScreen,
+  kRouteMonthYearPickerDialog,
   kRouteAttachmentConsentDialog,
   kRouteAccountMismatchDialog,
   kRouteHealthSyncScreen,
