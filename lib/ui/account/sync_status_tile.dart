@@ -7,6 +7,7 @@ library;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/data/sync/sync_transport.dart' show PushBatch;
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -141,13 +142,19 @@ String? _fixedPhaseCopy(SyncSnapshot snapshot) {
   }
 }
 
-/// The pushing-phase copy: a live "Uploading X of Y" once the engine has
-/// reported this cycle's push progress (a large first import), the plain
-/// syncing copy otherwise (no batch has completed yet, or the dirty set
-/// was too small for progress to be worth showing).
+/// The pushing-phase copy: a live "Uploading X of Y" once the cycle's
+/// dirty set is bigger than a single push batch (so the counter reflects
+/// more than one transport round-trip), the plain syncing copy otherwise
+/// — an ordinary sync never needs the counter, since it completes in one
+/// batch before progress is worth showing. `pushedRows` is clamped to
+/// `totalDirtyRows` so a stale or racing snapshot never reads e.g.
+/// "Uploading 600 of 500".
 String _pushingCopy(SyncSnapshot snapshot) {
-  if (snapshot.totalDirtyRows <= 0) return kSyncingCopy;
-  return 'Uploading ${_thousands(snapshot.pushedRows)} of '
+  if (snapshot.totalDirtyRows <= PushBatch.maxRows) return kSyncingCopy;
+  final pushedRows = snapshot.pushedRows > snapshot.totalDirtyRows
+      ? snapshot.totalDirtyRows
+      : snapshot.pushedRows;
+  return 'Uploading ${_thousands(pushedRows)} of '
       '${_thousands(snapshot.totalDirtyRows)}';
 }
 

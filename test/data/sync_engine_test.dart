@@ -192,6 +192,40 @@ class HookedStorage extends LunarLogStorage {
   }
 }
 
+/// Storage decorator (KTD6 pattern, like [HookedStorage]) recording the
+/// returned page length of every `readDirtyProfiles`/`readDirtyDayEntries`
+/// call, so a test can pin the bounded-read property (finding #3): no such
+/// call may return more rows than the engine's batch size, however large
+/// the dirty set, and regardless of what else is happening mid-push (e.g.
+/// un-rejecting a day entry). This fails against the old single-shot
+/// `_chunk` (an unbounded read of the whole dirty set) and against the
+/// pre-fix `_unrejectEntriesOf` (an unbounded `readDirtyDayEntries()` call
+/// with no `limit`).
+class CountingStorage extends LunarLogStorage {
+  CountingStorage(super.db, {super.clock});
+
+  final List<int> profilePageLengths = [];
+  final List<int> dayEntryPageLengths = [];
+
+  @override
+  Future<List<Profile>> readDirtyProfiles({int? limit, String? afterId}) async {
+    final page = await super.readDirtyProfiles(limit: limit, afterId: afterId);
+    profilePageLengths.add(page.length);
+    return page;
+  }
+
+  @override
+  Future<List<DayEntry>> readDirtyDayEntries({
+    int? limit,
+    String? afterId,
+  }) async {
+    final page =
+        await super.readDirtyDayEntries(limit: limit, afterId: afterId);
+    dayEntryPageLengths.add(page.length);
+    return page;
+  }
+}
+
 class Rig {
   Rig({
     AuthSessionState authState = AuthSessionState.signedIn,
@@ -452,6 +486,124 @@ void main() {
       expect(progressAtEachCall[2].pushedRows, 1000);
       expect(rig.engine.snapshot.pushedRows, 1200);
       expect(rig.engine.snapshot.totalDirtyRows, 1200);
+    });
+
+    test('Issue #177 finding #1: a profile created mid-cycle (after batch 1 '
+        'is acknowledged) is not permanently skipped by a latched '
+        '"profiles done" flag — it is pushed no later than the batch '
+        'carrying its own day entry, never after, with zero rejections',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p =
+          await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      await rig.storage.markPushed(
+          table: SyncTable.profiles,
+          id: p.id,
+          localRevAtPush:
+              (await rig.storage.readDirtyProfiles()).single.localRev);
+      await seedDirtyEntries(rig.storage, p.id, 1200);
+
+      String? newProfileId;
+      String? newEntryId;
+      rig.transport.onPush = (_) async {
+        if (rig.transport.pushes.length == 1 && newProfileId == null) {
+          final p2 = await rig.storage.upsertProfile(
+              displayName: 'B (created mid-cycle)', isMinor: false);
+          final e2 = await rig.storage.upsertDayEntry(
+              profileId: p2.id,
+              localDate: '2030-01-01',
+              tz: 'UTC',
+              flow: FlowLevel.light);
+          newProfileId = p2.id;
+          newEntryId = e2.id;
+        }
+      };
+
+      await rig.start();
+
+      expect(newProfileId, isNotNull, reason: 'the mid-cycle write ran');
+      final profileBatchIndex = rig.transport.pushes
+          .indexWhere((b) => ids(b.profiles).contains(newProfileId));
+      final entryBatchIndex = rig.transport.pushes
+          .indexWhere((b) => ids(b.dayEntries).contains(newEntryId));
+      expect(profileBatchIndex, isNot(-1),
+          reason: 'the new profile must be pushed within this cycle — a '
+              'permanently latched "profiles done" flag would silently '
+              'skip it forever');
+      expect(entryBatchIndex, isNot(-1),
+          reason: 'the new entry must be pushed within this cycle');
+      expect(profileBatchIndex, lessThanOrEqualTo(entryBatchIndex),
+          reason: 'the profile must be pushed before or with its own day '
+              'entry, never after — after would reject the entry on a '
+              'foreign key the server has not seen yet');
+      expect(rig.engine.snapshot.rejectedCount, 0,
+          reason: 'the profile always arrives no later than its entry, so '
+              'nothing is ever rejected on a missing foreign key');
+      expect(await rig.storage.dirtyCount(), 0);
+    });
+
+    test('Issue #177 finding #3: no readDirtyProfiles/readDirtyDayEntries '
+        'call during a push returns more rows than the batch size, even '
+        'while un-rejecting a day entry mid-push', () async {
+      final rig = Rig(
+        batchSize: 4,
+        storageFactory: (db, clock) => CountingStorage(db, clock: clock),
+      );
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final counting = rig.storage as CountingStorage;
+
+      final p =
+          await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      final e = await rig.storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      // Push 1: both the profile and its entry are rejected.
+      rig.transport.scriptPushResult(rejectedIds: [p.id, e.id]);
+      await rig.start();
+      expect(rig.engine.snapshot.rejectedCount, 2);
+
+      // A pile of unrelated dirty day entries — well over the batch size
+      // — under a second, already-clean profile, so ordinary paged
+      // batches carry them regardless of the un-rejection exercised below.
+      final p2 =
+          await rig.storage.upsertProfile(displayName: 'B', isMinor: false);
+      await rig.storage.markPushed(
+          table: SyncTable.profiles,
+          id: p2.id,
+          localRevAtPush: (await rig.storage.readDirtyProfiles())
+              .firstWhere((row) => row.id == p2.id)
+              .localRev);
+      await seedDirtyEntries(rig.storage, p2.id, 20);
+
+      // Editing p bumps its local_rev, making it pushable again; its
+      // accepted push should un-reject e (finding #2) with no storage read
+      // large enough to exceed the batch size (finding #3) — this is
+      // exactly what the pre-fix `_unrejectEntriesOf`'s unbounded
+      // `readDirtyDayEntries()` call would have returned (well over 20
+      // rows) had it still been in place.
+      await rig.storage.upsertProfile(
+          id: p.id, displayName: 'A Fixed', isMinor: false);
+      await rig.sync();
+
+      expect(rig.engine.snapshot.rejectedCount, 0);
+      expect((await rig.entry(p.id, e.id)).dirty, isFalse,
+          reason: 'e was un-rejected and re-sent once p was accepted');
+      for (final n in counting.profilePageLengths) {
+        expect(n, lessThanOrEqualTo(4),
+            reason: 'a readDirtyProfiles call returned more than the batch '
+                'size — an unbounded read slipped into the push path');
+      }
+      for (final n in counting.dayEntryPageLengths) {
+        expect(n, lessThanOrEqualTo(4),
+            reason: 'a readDirtyDayEntries call returned more than the '
+                'batch size — this is exactly what the pre-fix '
+                '_unrejectEntriesOf\'s unbounded read would trip');
+      }
     });
 
     test('Issue #177: a _SyncPaused between batches (the device locks '

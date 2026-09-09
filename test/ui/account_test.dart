@@ -1824,9 +1824,10 @@ void main() {
         );
       });
 
-      test('Issue #177: pushing with known progress reads "Uploading X of '
-          'Y"; pushing with no progress yet falls back to the plain '
-          'syncing copy', () {
+      test('Issue #177: pushing with a dirty set bigger than one batch '
+          'reads "Uploading X of Y"; an ordinary (single-batch) push always '
+          'reads the plain syncing copy, and pushedRows is clamped to '
+          'totalDirtyRows', () {
         expect(
           copy(
             snapshot: const SyncSnapshot(
@@ -1844,8 +1845,34 @@ void main() {
             authState: AuthSessionState.signedIn,
           ),
           kSyncingCopy,
-          reason: 'no progress reported yet (or a small push it was never '
-              'observed mid-flight for) still reads the plain copy',
+          reason: 'no progress reported yet still reads the plain copy',
+        );
+        expect(
+          copy(
+            snapshot: const SyncSnapshot(
+              phase: SyncPhase.pushing,
+              pushedRows: 250,
+              totalDirtyRows: 500,
+            ),
+            authState: AuthSessionState.signedIn,
+          ),
+          kSyncingCopy,
+          reason: 'a dirty set at or under the batch size (500) completes '
+              'in one transport call — the counter is never worth showing '
+              'for an ordinary sync, even mid-flight',
+        );
+        expect(
+          copy(
+            snapshot: const SyncSnapshot(
+              phase: SyncPhase.pushing,
+              pushedRows: 600,
+              totalDirtyRows: 501,
+            ),
+            authState: AuthSessionState.signedIn,
+          ),
+          'Uploading 501 of 501',
+          reason: 'pushedRows is clamped to totalDirtyRows so a stale or '
+              'racing snapshot never reads past the denominator',
         );
       });
 
