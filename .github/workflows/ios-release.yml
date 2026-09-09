@@ -1,14 +1,18 @@
 name: iOS Release
 
-# Builds, signs, and ships an iOS build on every push to main.
+# Builds, signs, and ships an iOS build. Manual dispatch only — the
+# push-to-main trigger was removed so merges no longer auto-ship to
+# TestFlight; run this workflow from the Actions tab when a release is
+# wanted. App Store submission therefore reaches the build only through
+# the explicit submit_for_review dispatch input (a dispatch without it
+# never auto-submits; see .github/scripts/detect-version-bump.sh).
 #
 # Mirrored from taxiGame.
 #
 # Two stages of delivery:
-#   - Every push to main uploads a build to TestFlight.
-#   - App Store review submission fires when the `version:` string in
-#     pubspec.yaml changes anywhere across the pushed commit range (or when
-#     manually dispatched with submit_for_review: true). See
+#   - A dispatched run uploads a build to TestFlight.
+#   - App Store review submission fires when dispatched with
+#     submit_for_review: true. See
 #     .github/scripts/detect-version-bump.sh for the detection logic and
 #     .github/scripts/check-release-gate.sh for the account-deletion gate
 #     that can withhold submission (issue #17, issue #41).
@@ -31,8 +35,6 @@ name: iOS Release
 #   SENTRY_PROJECT                Sentry project slug
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       submit_for_review:
@@ -72,7 +74,7 @@ jobs:
         run: flutter test
 
   migration-gate:
-    # Issue #47. A push to main uploads a client build to TestFlight, but
+    # Issue #47. A released client build uploads to TestFlight, but
     # migrations are pushed by a *separate*, manually-gated workflow. Nothing
     # enforced the ordering, so the client could ship expecting a schema
     # production did not have yet -- which is exactly what happened on
@@ -162,7 +164,7 @@ jobs:
     # requests submission (submit_for_review: true) while the
     # account-deletion release gate (issue #17) is closed. Deliberately has
     # no job-level `if:` -- a skipped `needs` job by default also skips its
-    # dependent job, which would block every ordinary push to main. This
+    # dependent job, which would block every ordinary release dispatch. This
     # job always runs and always succeeds except in the one case it exists
     # to catch.
     name: Verify the release gate for explicit submission
