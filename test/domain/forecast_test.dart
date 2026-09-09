@@ -15,8 +15,12 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 
 /// Steady 30-day cycles with 4-day bleeds, the open cycle starting
 /// 2026-08-05; today 2026-08-30 → estimate 2026-09-04, confidence high,
-/// variation 0.
+/// variation 0. Six completed cycles — a full kAverageWindowCycles(6)
+/// window, the minimum for `high` confidence (issue #213 item 5); the
+/// extra cycle is prepended (not appended) so every other date here stays
+/// unchanged.
 const List<(int, int, int)> kSteadyStarts = [
+  (2026, 2, 6),
   (2026, 3, 8),
   (2026, 4, 7),
   (2026, 5, 7),
@@ -48,7 +52,7 @@ DayEntry _bleed(String profileId, LocalDate date) => DayEntry(
     entries: entries,
     today: today,
   );
-  final history = deriveCycleHistoryFromEntries(entries: entries);
+  final history = deriveCycleHistoryFromEntries(entries: entries, today: today);
   final active = prediction as ActivePrediction;
   return (
     deriveForecast(
@@ -138,23 +142,28 @@ void main() {
     });
 
     test('irregular histories never upgrade with distance', () {
-      // Lengths 90, 95, 100 (outliers) then 28, 28, 28: valid ratio 0.5
-      // reads irregular; every cycle in the forecast stays irregular.
+      // Lengths 65, 90, 95, 100 (outliers) then 28, 28, 28: valid ratio
+      // 3/7 ≈ 0.43, under the engine's 0.5 threshold — reads irregular;
+      // every cycle in the forecast stays irregular.
       final starts = [
+        _d(2025, 5, 28), // 65: outlier
         _d(2025, 8, 1),
-        _d(2025, 10, 30),
-        _d(2026, 2, 2),
-        _d(2026, 5, 13),
-        _d(2026, 6, 10),
-        _d(2026, 7, 8),
-        _d(2026, 8, 5),
+        _d(2025, 10, 30), // 90
+        _d(2026, 2, 2), // 95
+        _d(2026, 5, 13), // 100
+        _d(2026, 6, 10), // 28
+        _d(2026, 7, 8), // 28
+        _d(2026, 8, 5), // 28, open
       ];
       final entries = [
         for (final start in starts)
           for (var i = 0; i < 4; i++) _bleed('p', start.addDays(i)),
       ];
       final today = _d(2026, 8, 30);
-      final history = deriveCycleHistoryFromEntries(entries: entries);
+      final history = deriveCycleHistoryFromEntries(
+        entries: entries,
+        today: today,
+      );
       expect(history.confidence, CycleConfidence.irregular);
       final cycles = deriveForecast(
         prediction: computePredictionFromEntries(
@@ -193,7 +202,10 @@ void main() {
           for (var i = 0; i < 4; i++) _bleed('p', start.addDays(i)),
       ];
       final today = _d(2026, 4, 7);
-      final history = deriveCycleHistoryFromEntries(entries: entries);
+      final history = deriveCycleHistoryFromEntries(
+        entries: entries,
+        today: today,
+      );
       expect(history.variationDays, 6);
       final cycles = deriveForecast(
         prediction: computePredictionFromEntries(
@@ -223,7 +235,10 @@ void main() {
       expect(
         deriveForecast(
           prediction: prediction,
-          history: deriveCycleHistory(episodes: const []),
+          history: deriveCycleHistory(
+            episodes: const [],
+            today: _d(2026, 8, 30),
+          ),
           today: _d(2026, 8, 30),
         ),
         isEmpty,
@@ -350,7 +365,10 @@ void main() {
       expect(prediction.estimatedNextStart, _d(2026, 5, 24));
       final cycles = deriveForecast(
         prediction: prediction,
-        history: deriveCycleHistoryFromEntries(entries: entries),
+        history: deriveCycleHistoryFromEntries(
+          entries: entries,
+          today: today,
+        ),
         today: today,
         horizonMonths: 1,
       );

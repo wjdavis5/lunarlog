@@ -1,3 +1,5 @@
+import 'dart:math' show sqrt;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -662,6 +664,122 @@ void main() {
         CycleConfidence.irregular,
       );
     });
+
+    test('below kAverageWindowCycles reads learning even when neither '
+        'other threshold is crossed; at kAverageWindowCycles reads high '
+        '(issue #213 item 5: learning is reachable — the window is not '
+        'yet full)', () {
+      expect(
+        confidenceTierFor(
+          validCycleCountInWindow: kAverageWindowCycles - 1,
+          spreadDays: 0,
+          validRatio: 1.0,
+        ),
+        CycleConfidence.learning,
+      );
+      expect(
+        confidenceTierFor(
+          validCycleCountInWindow: kAverageWindowCycles,
+          spreadDays: 0,
+          validRatio: 1.0,
+        ),
+        CycleConfidence.high,
+      );
+    });
+
+    test('computePrediction reaches learning with 5 usable cycles and high '
+        'with 6 (issue #213 item 5 boundary, end to end)', () {
+      final fiveCycles = [
+        for (var i = 0; i < 6; i++) d(2026, 1, 1).addDays(30 * i),
+      ];
+      final five = computePrediction(
+        episodes: episodesFromStarts(fiveCycles),
+        today: fiveCycles.last.addDays(5),
+      ) as ActivePrediction;
+      expect(five.tier, CycleConfidence.learning);
+
+      final sixCycles = [
+        for (var i = 0; i < 7; i++) d(2026, 1, 1).addDays(30 * i),
+      ];
+      final six = computePrediction(
+        episodes: episodesFromStarts(sixCycles),
+        today: sixCycles.last.addDays(5),
+      ) as ActivePrediction;
+      expect(six.tier, CycleConfidence.high);
+    });
+  });
+
+  group('window pinning with real fixtures (issue #213 item 2)', () {
+    test('a 7-valid-cycle fixture: the 6-cycle average window excludes the '
+        'oldest cycle from spreadDays and meanPeriodLengthDays, but the '
+        '12-cycle prediction window still includes it in '
+        'meanCycleLengthDays', () {
+      // Cycle lengths, oldest to newest: 55 (a large but still-valid
+      // outlier), then six steady 28-day cycles. Bleed lengths: the
+      // oldest episode bleeds 10 days; every other episode bleeds 4.
+      final starts = [
+        d(2026, 1, 1),
+        d(2026, 2, 25), // +55: the oldest cycle
+        d(2026, 3, 25), // +28
+        d(2026, 4, 22), // +28
+        d(2026, 5, 20), // +28
+        d(2026, 6, 17), // +28
+        d(2026, 7, 15), // +28
+        d(2026, 8, 12), // +28, open
+      ];
+      const bleedLengths = [10, 4, 4, 4, 4, 4, 4, 4];
+      final episodes = [
+        for (var i = 0; i < starts.length; i++)
+          Episode(starts[i], starts[i].addDays(bleedLengths[i] - 1)),
+      ];
+      final result = computePrediction(
+        episodes: episodes,
+        today: starts.last.addDays(5),
+      );
+      final p = result as ActivePrediction;
+
+      expect(p.averagedCycleLengths, [55, 28, 28, 28, 28, 28, 28],
+          reason: 'the 12-cycle prediction window keeps all 7 valid '
+              'lengths');
+      expect(p.meanCycleLengthDays, closeTo(223 / 7, 1e-9),
+          reason: 'meanCycleLengthDays is the 12-cycle prediction window '
+              '— the oldest (55) is still included here, unlike '
+              'spreadDays/meanPeriodLengthDays below');
+      expect(p.spreadDays, 0,
+          reason: 'the 6-cycle average window drops the oldest (55), '
+              'leaving six identical 28-day lengths');
+      expect(p.meanPeriodLengthDays, closeTo(4.0, 1e-9),
+          reason: "the 6-cycle average window also drops the oldest "
+              "episode's 10-day bleed");
+    });
+
+    test('a 13-cycle fixture: the 12-cycle recency window excludes the '
+        '13th-oldest cycle from validRatio, keeping the tier at the '
+        'boundary instead of dragging it into irregular', () {
+      // Oldest cycle (200 days) sits outside the 12-cycle recency window;
+      // the 12 cycles inside it alternate invalid/valid (90, 28) six
+      // times each — a windowed ratio of exactly 6/12 = 0.5 (the
+      // boundary itself, not "under" it) — high, given the six valid
+      // 28s are perfectly steady and fill the average window. Had the
+      // recency window not excluded the oldest cycle, the ratio would
+      // have been 6/13 ≈ 0.4615 — under the threshold — and this same
+      // history would have read irregular instead.
+      var start = d(2024, 1, 1);
+      final starts = <LocalDate>[start];
+      for (final length in [
+        200, 90, 28, 90, 28, 90, 28, 90, 28, 90, 28, 90, 28,
+      ]) {
+        start = start.addDays(length);
+        starts.add(start);
+      }
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: start.addDays(5),
+      );
+      final p = result as ActivePrediction;
+      expect(p.tier, CycleConfidence.high);
+      expect(p.spreadDays, 0);
+    });
   });
 
   group('period-length aggregation (issue #213, item 3)', () {
@@ -688,27 +806,82 @@ void main() {
   });
 
   group('forecast sequence (issue #213, item 4)', () {
-    test('a steady, high-tier history forecasts kPredictionWindowCycles '
-        'cycles, all at high tier with zero spread', () {
-      final starts = [for (var i = 0; i < 6; i++) d(2026, 1, 1).addDays(30 * i)];
+    test('a steady, high-tier history (six 30-day cycles — a full '
+        'kAverageWindowCycles window, issue #213 item 5) forecasts '
+        'kPredictionWindowCycles cycles, all at high tier, with a floored '
+        'spread that strictly widens', () {
+      // Six identical 30-day cycles: p.spreadDays (the exact, unfloored
+      // population std-dev) is 0 — but a zero *base* would leave every
+      // forecast cycle's spread at 0 forever (0 * sqrt(i) == 0), never
+      // widening and never able to degrade the tier. The floor
+      // (item 4: max(spreadDays, 1.0)) makes each forecast cycle's own
+      // spread exactly sqrt(cycleIndex): strictly increasing, but here it
+      // never exceeds sqrt(kPredictionWindowCycles) = sqrt(12) ≈ 3.464 —
+      // comfortably under kIrregularSpreadThresholdDays (7) — so this
+      // particular (perfectly steady) profile's tier never crosses into a
+      // lower one, however far out the forecast goes.
+      final starts = [for (var i = 0; i < 7; i++) d(2026, 1, 1).addDays(30 * i)];
       final result = computePrediction(
         episodes: episodesFromStarts(starts),
         today: starts.last.addDays(5),
       );
       final p = result as ActivePrediction;
       expect(p.tier, CycleConfidence.high);
-      expect(p.spreadDays, 0);
+      expect(p.spreadDays, 0,
+          reason: "the floor only affects the forecast's own widening, "
+              'never the displayed ActivePrediction.spreadDays');
       expect(p.forecast, hasLength(kPredictionWindowCycles));
       expect(p.forecast.first.start, p.estimatedNextStart);
       for (var i = 0; i < p.forecast.length; i++) {
         final cycle = p.forecast[i];
         expect(cycle.cycleIndex, i + 1);
         expect(cycle.start, p.estimatedNextStart.addDays(30 * i));
-        expect(cycle.spreadDays, 0);
+        expect(cycle.spreadDays, closeTo(sqrt(cycle.cycleIndex), 1e-9));
+        if (i > 0) {
+          expect(cycle.spreadDays, greaterThan(p.forecast[i - 1].spreadDays),
+              reason: 'the floored spread strictly widens cycle over '
+                  'cycle, even from a perfectly steady history');
+        }
         expect(cycle.tier, CycleConfidence.high,
-            reason: 'zero spread never crosses the irregular threshold, '
-                'however far out the forecast goes');
+            reason: 'sqrt(12) ≈ 3.464 stays under the 7-day threshold for '
+                'this steady profile');
       }
+    });
+
+    test('issue #213 item 4: the floored spread eventually crosses into a '
+        'lower tier for a mildly variable (still high-tier) profile', () {
+      // Lengths 27, 27, 27, 33, 33, 33 (population std-dev exactly 3.0,
+      // under the 7-day threshold, so the base tier is high — a full
+      // 6-cycle window, all valid, ratio 1.0): spread(i) = 3 *
+      // sqrt(cycleIndex). sqrt(i) exceeds 7/3 ≈ 2.333 once i > 5.44 —
+      // from cycleIndex 6 on — so forecast[5..11] (cycleIndex 6..12) step
+      // down to learning; forecast[0..4] (cycleIndex 1..5) stay high.
+      final starts = [
+        d(2026, 1, 1),
+        d(2026, 1, 28), // 27
+        d(2026, 2, 24), // 27
+        d(2026, 3, 23), // 27
+        d(2026, 4, 25), // 33
+        d(2026, 5, 28), // 33
+        d(2026, 6, 30), // 33, open
+      ];
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 7, 5),
+      );
+      final p = result as ActivePrediction;
+      expect(p.tier, CycleConfidence.high);
+      expect(p.spreadDays, closeTo(3.0, 1e-9));
+      for (final cycle in p.forecast) {
+        expect(cycle.spreadDays, closeTo(3.0 * sqrt(cycle.cycleIndex), 1e-9));
+      }
+      expect(p.forecast[4].tier, CycleConfidence.high,
+          reason: 'cycleIndex 5: spread 3*sqrt(5) ≈ 6.708 is still under 7');
+      expect(p.forecast[5].tier, CycleConfidence.learning,
+          reason: 'cycleIndex 6: spread 3*sqrt(6) ≈ 7.348 crosses 7');
+      expect(p.forecast[11].tier, isNot(CycleConfidence.high),
+          reason: 'cycleIndex 12: still degraded — never upgrades with '
+              'distance');
     });
 
     test('an irregular-tier history forecasts every cycle at irregular, '

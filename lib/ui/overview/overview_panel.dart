@@ -50,12 +50,22 @@ String _formatDate(LocalDate date) =>
 /// Issue #213: `high` confidence keeps the single exact-date estimate
 /// (unchanged from before this issue); any other tier renders the range
 /// `estimatedRangeStart`–`estimatedRangeEnd` instead of one exact date,
-/// per the issue's own display rule.
-String _estimateDateText(ActivePrediction prediction) =>
-    prediction.tier == CycleConfidence.high
-        ? _formatDate(prediction.estimatedNextStart)
-        : '${_formatDate(prediction.estimatedRangeStart)} – '
-            '${_formatDate(prediction.estimatedRangeEnd)}';
+/// per the issue's own display rule — except when that range is
+/// degenerate (a spread that rounds to zero days, e.g. a perfectly steady
+/// history that has not yet filled the 6-cycle average window): showing
+/// "June 18, 2026 – June 18, 2026" would be a redundant, confusing range
+/// for a single date, so that case falls back to the plain date instead.
+String _estimateDateText(ActivePrediction prediction) {
+  if (prediction.tier == CycleConfidence.high) {
+    return _formatDate(prediction.estimatedNextStart);
+  }
+  final rangeStart = prediction.estimatedRangeStart;
+  final rangeEnd = prediction.estimatedRangeEnd;
+  if (rangeStart == rangeEnd) {
+    return _formatDate(prediction.estimatedNextStart);
+  }
+  return '${_formatDate(rangeStart)} – ${_formatDate(rangeEnd)}';
+}
 
 class OverviewPanel extends StatefulWidget {
   const OverviewPanel({
@@ -287,11 +297,16 @@ class _OverviewPanelState extends State<OverviewPanel> {
               key: const ValueKey('overview-next-period'),
               style: theme.textTheme.titleMedium,
             ),
-            // Issue #213: below `high` confidence, the estimate above is
-            // already a range rather than one exact date; this caption
-            // names why (no numbers, matching the rest of R11's
-            // no-partial-numbers framing).
-            if (prediction.tier != CycleConfidence.high) ...[
+            // Issue #213: below `high` confidence (`learning` included —
+            // #213 item 5), the estimate above is already a range rather
+            // than one exact date; this caption names why (no numbers,
+            // matching the rest of R11's no-partial-numbers framing).
+            // Issue #131 cheap fix: routed through CareModeCopy so
+            // `irregular` care mode — which already replaces the late
+            // banner with its own quiet, non-numeric framing — can silence
+            // this caption rather than showing it twice over.
+            if (_copy.showsTierCaption &&
+                prediction.tier != CycleConfidence.high) ...[
               const SizedBox(height: 4),
               Text(
                 '${prediction.tier.label} — ${prediction.tier.summary}',

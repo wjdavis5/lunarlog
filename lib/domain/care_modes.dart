@@ -32,6 +32,7 @@ class CareModeCopy {
     required this.nextEstimateLabel,
     required this.overdueStatusLabel,
     required this.silencesLateBanner,
+    required this.showsTierCaption,
     required this.categoriesInOrder,
     required this.categoryLabels,
   });
@@ -64,6 +65,14 @@ class CareModeCopy {
   /// silences the late banner").
   final bool silencesLateBanner;
 
+  /// Whether the overview's tier caption (issue #213: the short
+  /// "Learning"/"Irregular" line under the estimate, below `high`
+  /// confidence) renders for this mode. Only `irregular` silences it — that
+  /// mode already replaces the late banner with its own quiet, non-numeric
+  /// status line, so the separate tier caption would say much the same
+  /// thing a second time.
+  final bool showsTierCaption;
+
   /// Which tracking categories are surfaced first (Issue #131 defaults):
   /// the day sheet renders headings in this order. Always a permutation of
   /// [TagCategory.values] — teen reorders (body literacy first), it never
@@ -92,6 +101,7 @@ const CareModeCopy _standard = CareModeCopy(
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
+  showsTierCaption: true,
   categoriesInOrder: TagCategory.values,
   categoryLabels: _standardCategoryLabels,
 );
@@ -106,6 +116,7 @@ const CareModeCopy _teen = CareModeCopy(
   nextEstimateLabel: 'Your next period is estimated around:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
+  showsTierCaption: true,
   // Body-literacy framing surfaces how the body feels first; every
   // standard category is still here, only reordered (not a reduced app).
   categoriesInOrder: [
@@ -132,6 +143,7 @@ const CareModeCopy _caregiver = CareModeCopy(
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
+  showsTierCaption: true,
   categoriesInOrder: TagCategory.values,
   categoryLabels: _standardCategoryLabels,
 );
@@ -146,6 +158,10 @@ const CareModeCopy _irregular = CareModeCopy(
   overdueStatusLabel: 'No new period logged yet — with irregular cycles, '
       'variation like this is common and expected.',
   silencesLateBanner: true,
+  // Issue #131 cheap fix: the overdue status line above already carries
+  // this mode's own "variation is expected" framing, so the tier caption
+  // is redundant here — silenced the same way the late banner is.
+  showsTierCaption: false,
   categoriesInOrder: TagCategory.values,
   categoryLabels: _standardCategoryLabels,
 );

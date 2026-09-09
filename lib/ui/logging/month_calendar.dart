@@ -252,7 +252,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
       widget.profileId,
       today: widget.todayProvider,
     );
-    _historyStream = _historyService?.watch(widget.profileId);
+    _historyStream = _historyService?.watch(
+      widget.profileId,
+      today: widget.todayProvider,
+    );
   }
 
   @override
@@ -383,7 +386,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
               stream: _historyStream,
               builder: (context, historySnapshot) {
                 final history = _historyStream == null
-                    ? deriveCycleHistoryFromEntries(entries: entries)
+                    ? deriveCycleHistoryFromEntries(
+                        entries: entries,
+                        today: today,
+                      )
                     : historySnapshot.data;
                 if (history == null) {
                   return const Center(child: CircularProgressIndicator());

@@ -66,6 +66,13 @@ const int kAverageWindowCycles = 6;
 /// period") instead of extrapolating.
 const int kMaxOpenCycleDays = 60;
 
+/// Fallback bleed length used only when the period-length window carries
+/// no episodes at all (see `computePrediction`'s use, below) — unreachable
+/// with an [ActivePrediction] today, kept so that case reads as an honest,
+/// named fallback rather than an unexplained `1`. Mirrors `forecast.dart`'s
+/// own `kDefaultPredictedPeriodDays`.
+const int kDefaultPeriodLengthDays = 4;
+
 /// Late means today is more than this many days past the estimate.
 const int kLateGraceDays = 2;
 
@@ -91,9 +98,16 @@ const double kIrregularValidRatioThreshold = 0.5;
 /// PROVISIONAL (issue #213, A2-16): each forecast cycle further out widens
 /// the reported spread geometrically by `sqrt(cycleIndex)` — Clue does not
 /// publish its own degradation formula, so this is this issue's own
-/// proposal for "confidence compounds the further out you look".
+/// proposal for "confidence compounds the further out you look". The base
+/// is floored at one day: an exactly-zero spread (a perfectly steady
+/// history) would otherwise stay zero forever (`0 * sqrt(i) == 0`),
+/// leaving every forecast cycle at the same tier however far out it goes —
+/// the floor guarantees the widening actually widens, and can eventually
+/// cross into a lower tier, without changing [ActivePrediction.spreadDays]
+/// itself (that display value stays the exact, unfloored population
+/// standard deviation).
 double _forecastSpreadFor(double baseSpreadDays, int cycleIndex) =>
-    baseSpreadDays * sqrt(cycleIndex);
+    (baseSpreadDays < 1.0 ? 1.0 : baseSpreadDays) * sqrt(cycleIndex);
 
 /// R5/#132's confidence framing, reused everywhere the app talks about how
 /// much to trust an estimate (the history list, the forward calendar, this
@@ -131,6 +145,13 @@ enum CycleConfidence {
 /// in practice it never falls below [kMinCompletedValidCycles] once
 /// [computePrediction] has already gated on that count, but the check is
 /// kept for defensiveness and to document the rule on its own.
+///
+/// `learning` reads as: 3–5 usable cycles (the [kAverageWindowCycles]
+/// window is not yet full) and not otherwise `irregular`. Below three, this
+/// function still reads `learning` for the same reason (defensiveness) even
+/// though [computePrediction] never actually reaches it with fewer than
+/// three — that gate returns [NotEnoughHistory] first. At exactly six (the
+/// window full) and not irregular, this reads `high`.
 CycleConfidence confidenceTierFor({
   required int validCycleCountInWindow,
   required double spreadDays,
@@ -142,6 +163,9 @@ CycleConfidence confidenceTierFor({
   if (spreadDays > kIrregularSpreadThresholdDays ||
       validRatio < kIrregularValidRatioThreshold) {
     return CycleConfidence.irregular;
+  }
+  if (validCycleCountInWindow < kAverageWindowCycles) {
+    return CycleConfidence.learning;
   }
   return CycleConfidence.high;
 }
@@ -415,9 +439,14 @@ CyclePrediction computePrediction({
     return PausedAwaitingNextPeriod(today: today, lastEpisodeStart: lastStart);
   }
 
-  final averaged = usableLengths.length <= kPredictionWindowCycles
-      ? usableLengths
-      : usableLengths.sublist(usableLengths.length - kPredictionWindowCycles);
+  // Issue #213 cheap fix: this used to re-truncate to kPredictionWindowCycles
+  // here, but that branch was dead — usableLengths is already bounded to at
+  // most kRecencyWindowCycles entries by the recency window above, and
+  // kRecencyWindowCycles == kPredictionWindowCycles, so usableLengths can
+  // never be longer than kPredictionWindowCycles by the time it gets here.
+  // kPredictionWindowCycles still names the forecast's own cycle count
+  // (_buildForecast, below) — only the redundant second truncation is gone.
+  final averaged = usableLengths;
   var total = 0;
   for (final length in averaged) {
     total += length;
@@ -438,6 +467,15 @@ CyclePrediction computePrediction({
       ? usableLengths
       : usableLengths.sublist(usableLengths.length - kAverageWindowCycles);
   final spreadDays = _populationStdDev(averageWindow);
+  // Deliberately NOT omission-aware: an omitted-but-otherwise-valid cycle
+  // still counts toward recentValidCount (and so toward validRatio) even
+  // though it never feeds averageWindow/spreadDays above. validRatio reads
+  // the raw regularity of what was actually recorded (a data-quality
+  // signal); omission is the operator's editorial choice about which
+  // otherwise-normal cycles feed the averages, not a claim that the cycle
+  // was irregular. Counting an omission as invalid here would let omitting
+  // a handful of ordinary cycles manufacture an `irregular` tier on its
+  // own, which is not what omission means.
   final recentValidCount = recentLengths.where(_withinValidWindow).length;
   final validRatio =
       recentLengths.isEmpty ? 1.0 : recentValidCount / recentLengths.length;
@@ -462,10 +500,22 @@ CyclePrediction computePrediction({
   final meanPeriodLengthDays =
       periodWindow.isEmpty ? 0.0 : _meanOf(periodWindow);
 
+  // Issue #213 cheap fix: periodWindow is empty only when every episode in
+  // the recency window is omitted — unreachable today with an
+  // ActivePrediction (an omission never removes an episode from history,
+  // only from the averages), but a silent `.clamp(1, ...)` on a fake 0.0
+  // mean would read as "the app estimated a 1-day period" rather than "no
+  // data" if that ever changed. kDefaultPeriodLengthDays names the
+  // fallback honestly instead (mirrors forecast.dart's own
+  // kDefaultPredictedPeriodDays).
+  final maxPeriodLengthDays = meanDays <= 0 ? 1 : meanDays;
+  final periodLengthDays = periodWindow.isEmpty
+      ? kDefaultPeriodLengthDays.clamp(1, maxPeriodLengthDays)
+      : meanPeriodLengthDays.round().clamp(1, maxPeriodLengthDays);
   final forecast = _buildForecast(
     firstStart: firstEstimateStart,
     meanCycleDays: meanDays,
-    periodLengthDays: meanPeriodLengthDays.round().clamp(1, meanDays <= 0 ? 1 : meanDays),
+    periodLengthDays: periodLengthDays,
     baseTier: tier,
     baseSpreadDays: spreadDays,
   );

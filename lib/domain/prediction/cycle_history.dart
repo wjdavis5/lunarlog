@@ -21,7 +21,13 @@ import '../models/day_entry.dart';
 import '../models/local_date.dart';
 import '../repositories/settings_store.dart';
 import 'prediction.dart'
-    show CycleConfidence, kAverageWindowCycles, kMinCycleDays, kMaxCycleDays;
+    show
+        ActivePrediction,
+        CycleConfidence,
+        computePrediction,
+        kAverageWindowCycles,
+        kMinCycleDays,
+        kMaxCycleDays;
 
 // Issue #213 moved the canonical [CycleConfidence] enum into
 // `prediction.dart` (so #132's history/confidence and #133's forecast share
@@ -214,38 +220,22 @@ class CycleHistoryView {
   final CycleConfidence? confidence;
 }
 
-/// PROVISIONAL (issue #132): the confidence thresholds below are named
-/// constants pending measurement against real histories (roadmap
-/// assumption); they are expected to move once aggregate data exists.
-const int kConfidenceMinAveragedCycles = 3;
-const int kProvisionalIrregularSpreadDays = 7;
-const double kProvisionalIrregularValidRatio = 0.6;
-
-/// PROVISIONAL (see above): fewer averaged cycles than this reads as
-/// `learning`; a raw valid-ratio or spread beyond these reads as
-/// `irregular`.
-CycleConfidence _confidenceFor({
-  required int averagedCount,
-  required int validCount,
-  required int completedCount,
-  required int variationDays,
-}) {
-  if (averagedCount < kConfidenceMinAveragedCycles) {
-    return CycleConfidence.learning;
-  }
-  final ratio = completedCount == 0 ? 1.0 : validCount / completedCount;
-  if (ratio < kProvisionalIrregularValidRatio) {
-    return CycleConfidence.irregular;
-  }
-  if (variationDays > kProvisionalIrregularSpreadDays) {
-    return CycleConfidence.irregular;
-  }
-  return CycleConfidence.high;
-}
-
 /// Derives the history view. Pure; the order of [episodes] is irrelevant.
+///
+/// Issue #213: [confidence] is no longer this file's own derivation — it is
+/// the same [ActivePrediction.tier] the overview panel's estimate caption
+/// renders, computed from the same engine (`prediction.dart`'s
+/// [computePrediction]) over the same [episodes]/[today]/
+/// [omittedCycleStarts], so the history badge and the overview caption can
+/// never disagree. [today] is required for that computation (it was not
+/// needed before this issue, when confidence was purely a function of the
+/// counted lengths here). [variationDays] stays as its own display
+/// statistic (max − min over this file's own averaged window) — a
+/// different, simpler number than [ActivePrediction.spreadDays]'s
+/// population standard deviation, kept for the statistics row.
 CycleHistoryView deriveCycleHistory({
   required List<Episode> episodes,
+  required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
 }) {
   final sorted = [...episodes]..sort();
@@ -295,6 +285,20 @@ CycleHistoryView deriveCycleHistory({
       .length;
   final variation = averaged.length < 2 ? null : _spreadOf(averaged);
 
+  // Issue #213: one confidence derivation. The same computePrediction the
+  // overview panel's estimate uses decides the tier here too — anything
+  // short of an active estimate (not enough history yet, or paused on a
+  // long open cycle) reads as `learning`, the same honest "no reliable
+  // estimate yet" the overview shows in those states.
+  final prediction = computePrediction(
+    episodes: sorted,
+    today: today,
+    omittedCycleStarts: omittedCycleStarts,
+  );
+  final confidence = prediction is ActivePrediction
+      ? prediction.tier
+      : CycleConfidence.learning;
+
   return CycleHistoryView(
     items: List.unmodifiable(items),
     episodeCount: sorted.length,
@@ -304,12 +308,7 @@ CycleHistoryView deriveCycleHistory({
     meanCycleLengthDays: _meanOf(averaged),
     meanPeriodLengthDays: _meanOf(bleedLengths),
     variationDays: variation,
-    confidence: _confidenceFor(
-      averagedCount: counted.length,
-      validCount: validCount,
-      completedCount: items.length - 1,
-      variationDays: variation ?? 0,
-    ),
+    confidence: confidence,
   );
 }
 
@@ -324,8 +323,10 @@ int _spreadOf(List<int> values) =>
 /// [computePredictionFromEntries]).
 CycleHistoryView deriveCycleHistoryFromEntries({
   required Iterable<DayEntry> entries,
+  required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
 }) => deriveCycleHistory(
   episodes: deriveEpisodes(bleedDatesOf(entries)),
+  today: today,
   omittedCycleStarts: omittedCycleStarts,
 );

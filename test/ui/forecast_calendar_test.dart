@@ -60,8 +60,12 @@ final List<LocalDate> kPausedStarts = [
   LocalDate(2026, 6, 26),
 ];
 
-/// Lengths 90, 95, 100 (outliers) then 28, 28, 28: valid ratio 0.5 →
-/// irregular confidence, estimate Sep 2.
+/// Lengths 90, 95, 100 (outliers) then 28, 28, 28: estimate Sep 2. Only
+/// three usable cycles feed a 6-cycle average window that is not yet full,
+/// so this reads `learning` (issue #213 item 5) rather than `high` — still
+/// below the top tier, which is all this suite's own assertions need (the
+/// band still renders, just at a lower confidence-weighted opacity; no
+/// assertion here pins the exact tier).
 final List<LocalDate> kIrregularStarts = [
   LocalDate(2025, 8, 1),
   LocalDate(2025, 10, 30),
@@ -636,7 +640,8 @@ void main() {
       await disposeForecast(tester, h);
     });
 
-    testWidgets('an irregular history still bands, at its own weight', (
+    testWidgets('a below-high-confidence history still bands, at its own '
+        'weight', (
       tester,
     ) async {
       final h = await pumpForecast(
