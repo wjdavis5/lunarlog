@@ -93,6 +93,36 @@ void main() {
       );
     });
 
+    test("issue #373: the server's minor-profile refusal maps to "
+        'minorProfile, on create and on accept', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message':
+                "prediction-only sharing is unavailable for a minor's profile",
+            'code': 'P0001',
+          }),
+          400,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await expectLater(
+        service.createConnection(profileId: 'p1'),
+        throwsA(const PredictionConnectionFailure.minorProfile()),
+      );
+      await expectLater(
+        service.acceptConnection(rawToken: 'code'),
+        throwsA(const PredictionConnectionFailure.minorProfile()),
+      );
+      expect(
+        const PredictionConnectionFailure.minorProfile().userFacingMessage,
+        contains("minor's profile"),
+      );
+      expect(const PredictionConnectionFailure.minorProfile().toString(),
+          'PredictionConnectionFailure.minorProfile');
+    });
+
     test('the one-connection cap maps to alreadyConnected', () async {
       final client = makeClient((req) async {
         return http.Response(

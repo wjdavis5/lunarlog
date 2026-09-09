@@ -207,7 +207,8 @@ class LunarLogApp extends StatefulWidget {
   State<LunarLogApp> createState() => _LunarLogAppState();
 }
 
-class _LunarLogAppState extends State<LunarLogApp> {
+class _LunarLogAppState extends State<LunarLogApp>
+    with WidgetsBindingObserver {
   // KTD3/R5: one instance of each repository for this widget's lifetime,
   // built once in [initState] from the (stable) database and shared by the
   // reminder coordinator and the provider tree below.
@@ -297,6 +298,12 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _initHealthFlowWriter();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
+    // Issue #373: started on its own, never nested inside the push-gated
+    // reminder publisher above - the prediction service is constructed on
+    // every build with a Supabase client (web and no-push included), so
+    // its publisher must start on every one of them too.
+    _startPredictionProjectionPublisher();
+    WidgetsBinding.instance.addObserver(this);
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
     // session when needed.
@@ -396,14 +403,16 @@ class _LunarLogAppState extends State<LunarLogApp> {
     );
     _reminderWindowPublisher = publisher;
     publisher.start();
-    _startPredictionProjectionPublisher();
   }
 
   /// Issue #151: keep the server's derived-phase snapshot in step for the
   /// profiles this account shares predictions OUT. Starts only when a
   /// [PredictionConnectionService] is configured - an unconfigured build
   /// has nothing to publish to and never constructs the publisher, the
-  /// same zero-conditional gating the reminder publisher uses.
+  /// same zero-conditional gating the reminder publisher uses. Issue #373:
+  /// that is the ONLY gate - it is deliberately not tied to the
+  /// `AppConfig.hasPush`/web gate the reminder publisher sits behind,
+  /// because the service (and so the whole sharing UI) exists without push.
   void _startPredictionProjectionPublisher() {
     final service = widget.predictionConnectionService;
     if (service == null) return;
@@ -415,6 +424,18 @@ class _LunarLogAppState extends State<LunarLogApp> {
     );
     _predictionProjectionPublisher = publisher;
     publisher.start();
+  }
+
+  /// Issue #373: the sharer's device is the only place a projection can be
+  /// computed, and the stream-driven publisher only fires on a prediction
+  /// change - so a recipient who redeemed a code while this app was in the
+  /// background would otherwise wait for the sharer's next cycle event.
+  /// Re-publishing every connected profile on resume bounds that wait to
+  /// the sharer's next foreground, cheaply (one narrow select per resume).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_predictionProjectionPublisher?.republishConnected());
   }
 
   /// Issue #193: the one-way, opt-in, forward-only menstrual-flow write
@@ -735,6 +756,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _inviteSub?.cancel();
     _inviteSub = null;
     _authController?.dispose();
@@ -748,6 +770,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
     final projectionPublisherTeardown =
         _predictionProjectionPublisher?.dispose() ?? Future<void>.value();
     _reminderWindowPublisher = null;
+    _predictionProjectionPublisher = null;
     final healthFlowTeardown =
         _healthFlowCoordinator?.dispose() ?? Future<void>.value();
     _healthFlowCoordinator = null;

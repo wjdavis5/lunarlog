@@ -134,18 +134,45 @@ class PredictionProjectionPublisher {
   Future<void> publishNow(String profileId) async {
     if (_disposed || !_isSignedIn()) return;
     try {
-      final prediction = await _predictionFor(profileId).first;
-      if (_disposed) return;
-      if (prediction is! ActivePrediction) return;
       final connected = await _service.outgoingConnectedProfileIds();
       if (!connected.contains(profileId)) return;
-      await _service.publishProjection(
-        profileId: profileId,
-        projection: buildPredictionProjection(prediction),
-      );
+      await _publishCurrent(profileId);
     } catch (_) {
       // Best-effort (see above).
     }
+  }
+
+  /// Issue #373: publishes the current prediction for EVERY profile this
+  /// account shares OUT, right away. The app shell calls it on resume:
+  /// the stream-driven path only fires on a prediction change, so a
+  /// recipient who redeemed a code while the sharer's app was in the
+  /// background would otherwise see no snapshot until the sharer's next
+  /// cycle event. One narrow select, then one idempotent upsert per
+  /// connected profile; best-effort like [publishNow].
+  Future<void> republishConnected() async {
+    if (_disposed || !_isSignedIn()) return;
+    try {
+      final connected = await _service.outgoingConnectedProfileIds();
+      for (final profileId in connected) {
+        if (_disposed) return;
+        await _publishCurrent(profileId);
+      }
+    } catch (_) {
+      // Best-effort (see above).
+    }
+  }
+
+  /// The shared tail of [publishNow] and [republishConnected]: reads the
+  /// profile's current prediction once and uploads it when derived. The
+  /// caller has already confirmed the profile is connected.
+  Future<void> _publishCurrent(String profileId) async {
+    final prediction = await _predictionFor(profileId).first;
+    if (_disposed) return;
+    if (prediction is! ActivePrediction) return;
+    await _service.publishProjection(
+      profileId: profileId,
+      projection: buildPredictionProjection(prediction),
+    );
   }
 
   Future<void> dispose() async {

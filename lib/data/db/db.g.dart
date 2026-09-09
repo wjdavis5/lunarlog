@@ -167,6 +167,17 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _transferredToUserIdMeta =
+      const VerificationMeta('transferredToUserId');
+  @override
+  late final GeneratedColumn<String> transferredToUserId =
+      GeneratedColumn<String>(
+        'transferred_to_user_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _lastPeriodStartMeta = const VerificationMeta(
     'lastPeriodStart',
   );
@@ -215,6 +226,7 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     relationship,
     mode,
     transferredAt,
+    transferredToUserId,
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,
@@ -331,6 +343,15 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         ),
       );
     }
+    if (data.containsKey('transferred_to_user_id')) {
+      context.handle(
+        _transferredToUserIdMeta,
+        transferredToUserId.isAcceptableOrUnknown(
+          data['transferred_to_user_id']!,
+          _transferredToUserIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_period_start')) {
       context.handle(
         _lastPeriodStartMeta,
@@ -423,6 +444,10 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}transferred_at'],
       ),
+      transferredToUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}transferred_to_user_id'],
+      ),
       lastPeriodStart: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}last_period_start'],
@@ -488,6 +513,13 @@ class Profile extends DataClass implements Insertable<Profile> {
   /// `encodeProfile` in `row_codec.dart`).
   final DateTime? transferredAt;
 
+  /// The account that accepted this profile's last ownership transfer, or
+  /// null if it never has (Issue #296). Same server-owned, pulled-never-
+  /// pushed treatment as [transferredAt]: the health-sync minor gate
+  /// requires this to equal the signed-in user id before a transferred
+  /// minor profile may bind, and null fails closed.
+  final String? transferredToUserId;
+
   /// Onboarding-collected cycle facts (Issue #218), mirrored by the
   /// server's `profiles` columns added in
   /// `20260909120000_provisional_cycle_facts.sql`. ISO calendar date
@@ -520,6 +552,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     this.relationship,
     required this.mode,
     this.transferredAt,
+    this.transferredToUserId,
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
@@ -550,6 +583,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     map['mode'] = Variable<String>(mode);
     if (!nullToAbsent || transferredAt != null) {
       map['transferred_at'] = Variable<DateTime>(transferredAt);
+    }
+    if (!nullToAbsent || transferredToUserId != null) {
+      map['transferred_to_user_id'] = Variable<String>(transferredToUserId);
     }
     if (!nullToAbsent || lastPeriodStart != null) {
       map['last_period_start'] = Variable<String>(lastPeriodStart);
@@ -591,6 +627,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       transferredAt: transferredAt == null && nullToAbsent
           ? const Value.absent()
           : Value(transferredAt),
+      transferredToUserId: transferredToUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transferredToUserId),
       lastPeriodStart: lastPeriodStart == null && nullToAbsent
           ? const Value.absent()
           : Value(lastPeriodStart),
@@ -623,6 +662,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       relationship: serializer.fromJson<String?>(json['relationship']),
       mode: serializer.fromJson<String>(json['mode']),
       transferredAt: serializer.fromJson<DateTime?>(json['transferredAt']),
+      transferredToUserId: serializer.fromJson<String?>(
+        json['transferredToUserId'],
+      ),
       lastPeriodStart: serializer.fromJson<String?>(json['lastPeriodStart']),
       typicalCycleLengthDays: serializer.fromJson<int?>(
         json['typicalCycleLengthDays'],
@@ -650,6 +692,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       'relationship': serializer.toJson<String?>(relationship),
       'mode': serializer.toJson<String>(mode),
       'transferredAt': serializer.toJson<DateTime?>(transferredAt),
+      'transferredToUserId': serializer.toJson<String?>(transferredToUserId),
       'lastPeriodStart': serializer.toJson<String?>(lastPeriodStart),
       'typicalCycleLengthDays': serializer.toJson<int?>(typicalCycleLengthDays),
       'typicalPeriodLengthDays': serializer.toJson<int?>(
@@ -673,6 +716,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     Value<String?> relationship = const Value.absent(),
     String? mode,
     Value<DateTime?> transferredAt = const Value.absent(),
+    Value<String?> transferredToUserId = const Value.absent(),
     Value<String?> lastPeriodStart = const Value.absent(),
     Value<int?> typicalCycleLengthDays = const Value.absent(),
     Value<int?> typicalPeriodLengthDays = const Value.absent(),
@@ -693,6 +737,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     transferredAt: transferredAt.present
         ? transferredAt.value
         : this.transferredAt,
+    transferredToUserId: transferredToUserId.present
+        ? transferredToUserId.value
+        : this.transferredToUserId,
     lastPeriodStart: lastPeriodStart.present
         ? lastPeriodStart.value
         : this.lastPeriodStart,
@@ -727,6 +774,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       transferredAt: data.transferredAt.present
           ? data.transferredAt.value
           : this.transferredAt,
+      transferredToUserId: data.transferredToUserId.present
+          ? data.transferredToUserId.value
+          : this.transferredToUserId,
       lastPeriodStart: data.lastPeriodStart.present
           ? data.lastPeriodStart.value
           : this.lastPeriodStart,
@@ -756,6 +806,7 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('relationship: $relationship, ')
           ..write('mode: $mode, ')
           ..write('transferredAt: $transferredAt, ')
+          ..write('transferredToUserId: $transferredToUserId, ')
           ..write('lastPeriodStart: $lastPeriodStart, ')
           ..write('typicalCycleLengthDays: $typicalCycleLengthDays, ')
           ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays')
@@ -779,6 +830,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     relationship,
     mode,
     transferredAt,
+    transferredToUserId,
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,
@@ -801,6 +853,7 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.relationship == this.relationship &&
           other.mode == this.mode &&
           other.transferredAt == this.transferredAt &&
+          other.transferredToUserId == this.transferredToUserId &&
           other.lastPeriodStart == this.lastPeriodStart &&
           other.typicalCycleLengthDays == this.typicalCycleLengthDays &&
           other.typicalPeriodLengthDays == this.typicalPeriodLengthDays);
@@ -821,6 +874,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<String?> relationship;
   final Value<String> mode;
   final Value<DateTime?> transferredAt;
+  final Value<String?> transferredToUserId;
   final Value<String?> lastPeriodStart;
   final Value<int?> typicalCycleLengthDays;
   final Value<int?> typicalPeriodLengthDays;
@@ -840,6 +894,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.relationship = const Value.absent(),
     this.mode = const Value.absent(),
     this.transferredAt = const Value.absent(),
+    this.transferredToUserId = const Value.absent(),
     this.lastPeriodStart = const Value.absent(),
     this.typicalCycleLengthDays = const Value.absent(),
     this.typicalPeriodLengthDays = const Value.absent(),
@@ -860,6 +915,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.relationship = const Value.absent(),
     this.mode = const Value.absent(),
     this.transferredAt = const Value.absent(),
+    this.transferredToUserId = const Value.absent(),
     this.lastPeriodStart = const Value.absent(),
     this.typicalCycleLengthDays = const Value.absent(),
     this.typicalPeriodLengthDays = const Value.absent(),
@@ -884,6 +940,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<String>? relationship,
     Expression<String>? mode,
     Expression<DateTime>? transferredAt,
+    Expression<String>? transferredToUserId,
     Expression<String>? lastPeriodStart,
     Expression<int>? typicalCycleLengthDays,
     Expression<int>? typicalPeriodLengthDays,
@@ -904,6 +961,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       if (relationship != null) 'relationship': relationship,
       if (mode != null) 'mode': mode,
       if (transferredAt != null) 'transferred_at': transferredAt,
+      if (transferredToUserId != null)
+        'transferred_to_user_id': transferredToUserId,
       if (lastPeriodStart != null) 'last_period_start': lastPeriodStart,
       if (typicalCycleLengthDays != null)
         'typical_cycle_length_days': typicalCycleLengthDays,
@@ -928,6 +987,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<String?>? relationship,
     Value<String>? mode,
     Value<DateTime?>? transferredAt,
+    Value<String?>? transferredToUserId,
     Value<String?>? lastPeriodStart,
     Value<int?>? typicalCycleLengthDays,
     Value<int?>? typicalPeriodLengthDays,
@@ -948,6 +1008,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       relationship: relationship ?? this.relationship,
       mode: mode ?? this.mode,
       transferredAt: transferredAt ?? this.transferredAt,
+      transferredToUserId: transferredToUserId ?? this.transferredToUserId,
       lastPeriodStart: lastPeriodStart ?? this.lastPeriodStart,
       typicalCycleLengthDays:
           typicalCycleLengthDays ?? this.typicalCycleLengthDays,
@@ -1002,6 +1063,11 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     if (transferredAt.present) {
       map['transferred_at'] = Variable<DateTime>(transferredAt.value);
     }
+    if (transferredToUserId.present) {
+      map['transferred_to_user_id'] = Variable<String>(
+        transferredToUserId.value,
+      );
+    }
     if (lastPeriodStart.present) {
       map['last_period_start'] = Variable<String>(lastPeriodStart.value);
     }
@@ -1038,6 +1104,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('relationship: $relationship, ')
           ..write('mode: $mode, ')
           ..write('transferredAt: $transferredAt, ')
+          ..write('transferredToUserId: $transferredToUserId, ')
           ..write('lastPeriodStart: $lastPeriodStart, ')
           ..write('typicalCycleLengthDays: $typicalCycleLengthDays, ')
           ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays, ')
@@ -7777,6 +7844,7 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> relationship,
   Value<String> mode,
   Value<DateTime?> transferredAt,
+  Value<String?> transferredToUserId,
   Value<String?> lastPeriodStart,
   Value<int?> typicalCycleLengthDays,
   Value<int?> typicalPeriodLengthDays,
@@ -7797,6 +7865,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> relationship,
   Value<String> mode,
   Value<DateTime?> transferredAt,
+  Value<String?> transferredToUserId,
   Value<String?> lastPeriodStart,
   Value<int?> typicalCycleLengthDays,
   Value<int?> typicalPeriodLengthDays,
@@ -8017,6 +8086,11 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<DateTime> get transferredAt => $composableBuilder(
     column: $table.transferredAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get transferredToUserId => $composableBuilder(
+    column: $table.transferredToUserId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8290,6 +8364,11 @@ class $$ProfilesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get transferredToUserId => $composableBuilder(
+    column: $table.transferredToUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get lastPeriodStart => $composableBuilder(
     column: $table.lastPeriodStart,
     builder: (column) => ColumnOrderings(column),
@@ -8362,6 +8441,11 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get transferredAt => $composableBuilder(
     column: $table.transferredAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get transferredToUserId => $composableBuilder(
+    column: $table.transferredToUserId,
     builder: (column) => column,
   );
 
@@ -8606,6 +8690,7 @@ class $$ProfilesTableTableManager
                 Value<String?> relationship = const Value.absent(),
                 Value<String> mode = const Value.absent(),
                 Value<DateTime?> transferredAt = const Value.absent(),
+                Value<String?> transferredToUserId = const Value.absent(),
                 Value<String?> lastPeriodStart = const Value.absent(),
                 Value<int?> typicalCycleLengthDays = const Value.absent(),
                 Value<int?> typicalPeriodLengthDays = const Value.absent(),
@@ -8625,6 +8710,7 @@ class $$ProfilesTableTableManager
                 relationship: relationship,
                 mode: mode,
                 transferredAt: transferredAt,
+                transferredToUserId: transferredToUserId,
                 lastPeriodStart: lastPeriodStart,
                 typicalCycleLengthDays: typicalCycleLengthDays,
                 typicalPeriodLengthDays: typicalPeriodLengthDays,
@@ -8646,6 +8732,7 @@ class $$ProfilesTableTableManager
                 Value<String?> relationship = const Value.absent(),
                 Value<String> mode = const Value.absent(),
                 Value<DateTime?> transferredAt = const Value.absent(),
+                Value<String?> transferredToUserId = const Value.absent(),
                 Value<String?> lastPeriodStart = const Value.absent(),
                 Value<int?> typicalCycleLengthDays = const Value.absent(),
                 Value<int?> typicalPeriodLengthDays = const Value.absent(),
@@ -8665,6 +8752,7 @@ class $$ProfilesTableTableManager
                 relationship: relationship,
                 mode: mode,
                 transferredAt: transferredAt,
+                transferredToUserId: transferredToUserId,
                 lastPeriodStart: lastPeriodStart,
                 typicalCycleLengthDays: typicalCycleLengthDays,
                 typicalPeriodLengthDays: typicalPeriodLengthDays,
