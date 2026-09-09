@@ -21,3 +21,4 @@
 2026-09-09T17:34:41Z QUOTA RECOVERED EARLY: probe dispatch of #162 survived the 7-9min death window and is actively editing; #151 and #136 re-dispatched. All three wave-6 slots live again.
 2026-09-10T00:40Z
  merged PR #365 (#162 closed) — also repaired main's analyze (external #127 merge broke a11y_pass_test fake; main CI red 17:03-17:17Z, green again). #162 probe confirmed early quota recovery; #151/#136 re-dispatched. Dispatched #220 (PMS phase). Slots: #151 #136 #220. Briefs for 151/136/162/220 ride this branch (main is PR-only).
+2026-09-10T01:25Z merged PR #367 (#136 closed; comment-only conflict with main resolved). In flight: #151 #220.
