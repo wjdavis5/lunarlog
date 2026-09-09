@@ -14,7 +14,9 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
+import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
@@ -29,6 +31,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -223,6 +226,16 @@ class _LunarLogAppState extends State<LunarLogApp> {
   late final List<NavigatorObserver> _navigatorObservers =
       sentryNavigatorObservers();
   ReminderCoordinator? _coordinator;
+
+  /// Executes reminder notification action-button taps (Issue #136),
+  /// latching them while the device gate is locked (KTD4) and writing on
+  /// unlock. Non-null only when a scheduler was provided.
+  ReminderActionExecutor? _actionExecutor;
+
+  /// The per-profile reminder configuration store (Issue #136) backing
+  /// the coordinator; provided to the tree for the reminder settings
+  /// screen. Non-null only when a scheduler was provided.
+  ReminderConfigService? _reminderConfigService;
   ReminderWindowPublisher? _reminderWindowPublisher;
   PredictionProjectionPublisher? _predictionProjectionPublisher;
   AuthController? _authController;
@@ -309,6 +322,21 @@ class _LunarLogAppState extends State<LunarLogApp> {
     if (scheduler is FlutterLocalNotificationsScheduler) {
       scheduler.settingsStore = _settings;
     }
+    // Issue #136: the per-profile reminder configuration service and the
+    // action executor live exactly as long as the coordinator does — no
+    // scheduler (widget-test harnesses, web) means neither is built and
+    // no provider is registered.
+    final configService = ReminderConfigService(_settings);
+    _reminderConfigService = configService;
+    final gate = context.read<GateController?>();
+    _actionExecutor = ReminderActionExecutor(
+      dayEntries: _dayEntries,
+      observations: _observations,
+      configService: configService,
+      isUnlocked: gate == null ? null : () => gate.unlocked,
+      addUnlockListener: gate?.addListener,
+      removeUnlockListener: gate?.removeListener,
+    );
     // The coordinator is constructed synchronously, right here, so the
     // provider tree below (`build`'s `_coordinator != null` check) sees a
     // non-null instance on this very first build. Only the actual
@@ -319,6 +347,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
       permissionState: _permissionState,
       activeProfiles: _profiles.watch(),
       predictionFor: _prediction.watch,
+      localSettings: configService,
     );
     _coordinator = coordinator;
     _scheduleReminderStart(coordinator);
@@ -595,9 +624,25 @@ class _LunarLogAppState extends State<LunarLogApp> {
     GateController? gate,
   ) {
     Future<void> run() => coordinator.start(
-          onLaunchFromNotification: gate?.setPendingLaunchProfileId,
+          onLaunchFromNotification: _handleReminderLaunch,
         );
     return gate != null ? gate.duringSystemUi(run) : run();
+  }
+
+  /// Issue #136: routes a notification tap. A plain tap keeps the
+  /// pre-existing seam — the firing profile's overview opens after the
+  /// gate. An action-button tap ("Started"/"Spotting"/"Not yet") goes to
+  /// the executor instead, which writes only after the gate unlocks
+  /// (KTD4) and never routes.
+  void _handleReminderLaunch(ReminderLaunch launch) {
+    if (!mounted) return;
+    if (launch.isAction) {
+      _actionExecutor?.handleAction(launch);
+      return;
+    }
+    context.read<GateController?>()?.setPendingLaunchProfileId(
+          launch.profileId,
+        );
   }
 
   /// Issue #168: backs [RequestNotificationPermissionCallback] for the
@@ -643,6 +688,8 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _inviteSub = null;
     _authController?.dispose();
     _authController = null;
+    _actionExecutor?.dispose();
+    _actionExecutor = null;
     final coordinatorTeardown = _coordinator?.dispose() ?? Future<void>.value();
     _coordinator = null;
     final publisherTeardown =
@@ -733,6 +780,14 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider<ObservationsRepository>.value(value: _observations),
         Provider<CareContentRepository>.value(value: _careContent),
         Provider<SettingsStore>.value(value: _settings),
+        // Issue #136: the per-profile reminder configuration store. Present
+        // whenever reminders are (a scheduler was provided); the reminder
+        // settings screen reads and writes through it, and the coordinator
+        // replans from its `changes` stream.
+        if (_reminderConfigService != null)
+          Provider<ReminderConfigService>.value(
+            value: _reminderConfigService!,
+          ),
         // Issue #218: the onboarding persistence seam for the
         // birth-control-method and goal/mode answers (#216's form calls
         // ProfileController with them; profile-settings editing uses the

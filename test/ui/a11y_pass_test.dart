@@ -274,9 +274,9 @@ class _NoInvitesSharingService implements SharingService {
     required String targetUserId,
   }) => throw UnimplementedError();
 
-  // Pre-existing on main (#351 added this fake without the Issue #127
-  // interface method, leaving `flutter analyze` red) - added so the
-  // analyzer gate passes again. Unreachable, like every sibling above.
+  // Issue #127 added this to the interface without updating this fake
+  // (caught by `flutter analyze` on main); the pending list is still the
+  // only call this suite's screens make, so it stays unimplemented here.
   @override
   Future<void> updateGuardianRole({
     required String profileId,

@@ -100,7 +100,7 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
             const SizedBox(height: 12),
             Text(
               'Expires in 48 hours. Can be redeemed once.',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),

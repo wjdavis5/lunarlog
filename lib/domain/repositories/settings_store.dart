@@ -62,4 +62,21 @@ abstract final class SettingsKeys {
   /// Cleared (set to the empty string) by `unbind()`, matching
   /// [awaitingConfirmationEmail]'s empty-string-means-cleared convention.
   static const String healthStoreProfileId = 'health_store_profile_id';
+
+  /// Per-profile local reminder configuration (Issue #136, R10/R11), as
+  /// the JSON document `encodeReminderConfigs` produces: a versioned map
+  /// of profile id -> `ReminderConfig` JSON. Device-local **by design**
+  /// and never synced — these are scheduling preferences about this
+  /// device's own notifications, not health data (see
+  /// `lib/domain/notifications/reminder_config.dart`'s library doc for
+  /// the deliberate call and its recorded tension with the sync-first
+  /// direction). Absent (or unparsable) means every profile falls back to
+  /// its care-mode preset defaults — the exact pre-#136 plan.
+  static const String reminderConfigs = 'reminder_configs';
+
+  /// Per-profile late-reminder snoozes (Issue #136), as the JSON document
+  /// `encodeLateSnoozes` produces: profile id -> the ISO date through
+  /// which the profile's "Not yet" notification action has suppressed the
+  /// late window. Device-local, same posture as [reminderConfigs].
+  static const String reminderLateSnoozes = 'reminder_late_snoozes';
 }

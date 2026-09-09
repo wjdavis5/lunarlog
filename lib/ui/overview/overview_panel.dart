@@ -663,17 +663,21 @@ class _ReminderHintState extends State<_ReminderHint> {
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
+          // Issue #162 (B-24): the hint reads as de-emphasised copy, so it
+          // uses `onSurfaceVariant` (the M3 text role for that job) for both
+          // the icon and the text at the same value -- `tertiary` is not
+          // contrast-guaranteed against `surface` in a fromSeed palette.
           Icon(
             Icons.notifications_off,
             size: 18,
-            color: theme.colorScheme.tertiary,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               l10n.overviewReminderHint,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.tertiary,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),

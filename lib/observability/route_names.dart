@@ -135,6 +135,9 @@ const String kRoutePredictionCalendarScreen = 'PredictionCalendarScreen';
 /// the kind=prediction counterpart of AcceptInviteSheet.
 const String kRouteAcceptPredictionConnectionSheet =
     'AcceptPredictionConnectionSheet';
+/// `lib/ui/settings/reminder_settings_screen.dart` (Issue #136) — the
+/// per-profile local reminder configuration, pushed from Settings.
+const String kRouteReminderSettingsScreen = 'ReminderSettingsScreen';
 
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
@@ -168,4 +171,5 @@ const Set<String> kSentryRouteNames = {
   kRoutePredictionConnectionsScreen,
   kRoutePredictionCalendarScreen,
   kRouteAcceptPredictionConnectionSheet,
+  kRouteReminderSettingsScreen,
 };

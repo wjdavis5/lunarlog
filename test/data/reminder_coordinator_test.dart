@@ -8,15 +8,18 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart' show ReminderKind;
+import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_config.dart';
+import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 
 import '../support/fake_reminder_scheduler.dart';
+import '../support/fake_settings_store.dart';
 
 class _RecordingSink implements NotificationAvailabilitySink {
   final List<NotificationAvailability> updates = [];
@@ -43,6 +46,20 @@ ActivePrediction _late(LocalDate today) => ActivePrediction(
       averagedCycleLengths: const [28],
       meanCycleLengthDays: 28,
       cycleDay: 35,
+      duringEpisode: false,
+      completedCycleCount: 4,
+      validCycleCount: 4,
+    );
+
+ActivePrediction _upcoming(LocalDate today, LocalDate estimate) =>
+    ActivePrediction(
+      today: today,
+      lastEpisodeStart: estimate.addDays(-28),
+      estimatedNextStart: estimate,
+      originalEstimatedNextStart: estimate,
+      averagedCycleLengths: const [28],
+      meanCycleLengthDays: 28,
+      cycleDay: today.difference(estimate.addDays(-28)) + 1,
       duringEpisode: false,
       completedCycleCount: 4,
       validCycleCount: 4,
@@ -295,7 +312,7 @@ void main() {
     final scheduler = FakeReminderScheduler();
     final permissionState =
         NotificationPermissionState(NotificationAvailability.available);
-    String? launched;
+    ReminderLaunch? launched;
     final coordinator = ReminderCoordinator(
       scheduler: scheduler,
       permissionState: permissionState,
@@ -303,11 +320,14 @@ void main() {
       predictionFor: (_) => const Stream.empty(),
       replanDebounce: Duration.zero,
     );
-    await coordinator.start(onLaunchFromNotification: (id) => launched = id);
+    await coordinator.start(onLaunchFromNotification: (launch) {
+      launched = launch;
+    });
     addTearDown(coordinator.dispose);
 
-    scheduler.launchSink!('p9');
-    expect(launched, 'p9');
+    scheduler.launchSink!(const ReminderLaunch(profileId: 'p9'));
+    expect(launched, isNotNull);
+    expect(launched!.profileId, 'p9');
   });
 
   test('resume refreshes permission before replanning', () async {
@@ -456,5 +476,250 @@ void main() {
 
     expect(permissionState.value, NotificationAvailability.available);
     expect(scheduler.cancelCalls, 0);
+  });
+
+  group('per-profile local reminder configuration (Issue #136)', () {
+    test('a stored config flows into the plan; a profile without one '
+        'keeps its preset defaults', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      // p1 turns the log nudge on; p2 stays unconfigured.
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          log: ReminderTypeConfig(
+              enabled: true, timeOfDayMinutes: 20 * 60),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1'), _profile('p2')]);
+      p1.add(_upcoming(today, today.addDays(10)));
+      await pumpEventQueue();
+
+      final plan = scheduler.rescheduleCalls.last;
+      final p1Kinds =
+          plan.where((r) => r.profileId == 'p1').map((r) => r.kind).toSet();
+      expect(p1Kinds, {ReminderKind.upcoming, ReminderKind.log},
+          reason: 'the stored config adds the nudge to the preset default');
+      expect(
+        plan.where((r) => r.profileId == 'p2').map((r) => r.kind),
+        isEmpty,
+        reason: 'p2 has no prediction, so only its (absent) nudge could '
+            'plan — nothing else',
+      );
+    });
+
+    test('a settings edit replans at the next pass (the changes stream)',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_upcoming(today, today.addDays(10)));
+      await pumpEventQueue();
+      expect(
+        scheduler.rescheduleCalls.last
+            .any((r) => r.kind == ReminderKind.log),
+        isFalse,
+      );
+
+      // The settings screen saves; no prediction or profile change
+      // happens — the changes stream alone drives the replan.
+      final plansBefore = scheduler.rescheduleCalls.length;
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          log: ReminderTypeConfig(
+              enabled: true, timeOfDayMinutes: 20 * 60),
+        ),
+      );
+      await pumpEventQueue();
+      expect(scheduler.rescheduleCalls.length, greaterThan(plansBefore));
+      expect(
+        scheduler.rescheduleCalls.last
+            .any((r) => r.kind == ReminderKind.log),
+        isTrue,
+      );
+    });
+
+    test('two profiles hold different schedules and both plan correctly',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final predictions = <String, StreamController<CyclePrediction>>{};
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      // Alice: due reminder at 07:30. Bea: late nudge disabled, log nudge
+      // at 21:00.
+      await configService.save(
+        'alice',
+        ReminderConfig.standard.copyWith(
+          upcoming: ReminderTypeConfig(
+              enabled: true, leadDays: 2, timeOfDayMinutes: 7 * 60 + 30),
+        ),
+      );
+      await configService.save(
+        'bea',
+        ReminderConfig.standard.copyWith(
+          upcoming: ReminderTypeConfig(
+              enabled: false, leadDays: 2, timeOfDayMinutes: 9 * 60),
+          log: ReminderTypeConfig(
+              enabled: true, timeOfDayMinutes: 21 * 60),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => predictions
+            .putIfAbsent(
+                id, () => StreamController<CyclePrediction>(sync: true))
+            .stream,
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        for (final c in predictions.values) {
+          await c.close();
+        }
+      });
+
+      profiles.add([_profile('alice'), _profile('bea')]);
+      predictions['alice']!
+          .add(_upcoming(today, today.addDays(10)));
+      predictions['bea']!.add(_upcoming(today, today.addDays(10)));
+      await pumpEventQueue();
+
+      final plan = scheduler.rescheduleCalls.last;
+      final aliceUpcoming = plan
+          .where((r) => r.profileId == 'alice' && r.kind == ReminderKind.upcoming)
+          .single;
+      expect(aliceUpcoming.fireOn, today.addDays(8));
+      expect(aliceUpcoming.timeOfDayMinutes, 7 * 60 + 30);
+      final beaPlan = plan.where((r) => r.profileId == 'bea').toList();
+      expect(beaPlan, isNotEmpty);
+      expect(beaPlan.map((r) => r.kind), everyElement(ReminderKind.log),
+          reason: 'Bea\'s due reminder is off; only her nudge plans');
+      expect(beaPlan.every((r) => r.timeOfDayMinutes == 21 * 60), isTrue);
+      expect(beaPlan.map((r) => r.fireOn), contains(today),
+          reason: 'the nudge window starts today');
+    });
+
+    test('a "Not yet" snooze suppresses the late window at the next '
+        'replan, and an estimate shift re-derives the fire date', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_late(today));
+      await pumpEventQueue();
+      expect(
+        scheduler.rescheduleCalls.last
+            .map((r) => r.kind)
+            .toSet(),
+        {ReminderKind.late},
+      );
+
+      // The "Not yet" action snoozes through the executor; the write lands
+      // in the same service the coordinator re-reads.
+      await configService.snoozeLate('p1', days: 3, today: today);
+      await pumpEventQueue();
+      expect(
+        scheduler.rescheduleCalls.last
+            .where((r) => r.kind == ReminderKind.late),
+        isEmpty,
+        reason: 'the snoozed late window stops planning',
+      );
+
+      // The estimate shifts: the next replan re-derives the upcoming fire
+      // date from the live estimate.
+      p1.add(_upcoming(today, today.addDays(12)));
+      await pumpEventQueue();
+      final upcoming = scheduler.rescheduleCalls.last
+          .where((r) => r.kind == ReminderKind.upcoming)
+          .single;
+      expect(upcoming.fireOn, today.addDays(10),
+          reason: 'estimate 12 days out minus the default 2-day lead');
+    });
   });
 }

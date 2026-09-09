@@ -453,7 +453,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Text(
                     'No pending invitations',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                 )
               : Column(
@@ -597,13 +597,13 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.people_outline, size: 48, color: theme.colorScheme.outline),
+                        Icon(Icons.people_outline, size: 48, color: theme.colorScheme.onSurfaceVariant),
                         const SizedBox(height: 12),
                         Text('No caregivers linked yet', style: theme.textTheme.titleMedium),
                         const SizedBox(height: 4),
                         Text(
                           'Invite a co-parent or caregiver to sync and share tracking.',
-                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
