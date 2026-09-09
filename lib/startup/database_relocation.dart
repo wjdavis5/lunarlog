@@ -283,45 +283,11 @@ Future<File> relocateLegacyDatabase({
   final sentinel = _sentinelFileFor(targetFile);
 
   if (!await legacyFile.exists()) {
-    // Nothing to migrate from. Only clean up interrupted-attempt staging
-    // leftovers — never delete a promoted target just because it lacks
-    // the sentinel: this is the normal state for both a fresh install
-    // (which creates its database directly at the target and never earns
-    // a sentinel) and a device whose migration already fully completed.
-    // See the library doc comment's "round 3" section.
-    await _deleteStagingFiles(targetFile);
-    if (await targetFile.exists()) {
-      if (_passesQuickCheck(targetFile)) {
-        if (!await sentinel.exists()) {
-          // Retroactively mark this target as done so the next launch
-          // short-circuits immediately instead of re-running this check.
-          await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
-        }
-      } else {
-        // Not even an openable database, and there is no legacy copy to
-        // fall back to — genuine residue from a broken previous attempt.
-        // Clear it so ordinary DB-open machinery creates a fresh, empty
-        // database here, same as any other fresh install.
-        await deleteDatabaseFiles(targetFile);
-        if (await sentinel.exists()) await sentinel.delete();
-      }
-    }
-    return targetFile;
+    return _handleNoLegacy(targetFile: targetFile, sentinel: sentinel);
   }
 
   if (await sentinel.exists()) {
-    // A prior call completed the whole sequence; the target is
-    // authoritative and is never rewritten. Best-effort clean up a legacy
-    // copy that might have survived a process killed between the
-    // sentinel write and the legacy delete below (finding #2) — otherwise
-    // it lingers forever, in plaintext, in the iCloud-backed `Documents/`
-    // directory.
-    try {
-      await deleteDatabaseFiles(legacyFile);
-    } catch (_) {
-      // Best effort only — see the promotion path's own comment below.
-    }
-    return targetFile;
+    return _handleAlreadyMigrated(legacyFile: legacyFile, targetFile: targetFile);
   }
 
   if (await targetFile.exists()) {
@@ -330,19 +296,105 @@ Future<File> relocateLegacyDatabase({
     // whose sentinel write itself got interrupted (indistinguishable
     // except by actually checking the data). Adopt it in place if it
     // verifies; otherwise clear it and re-migrate from legacy below.
-    if (_verifyStagedDatabase(legacyFile: legacyFile, stagedFile: targetFile)) {
-      await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
-      try {
-        await deleteDatabaseFiles(legacyFile);
-      } catch (_) {
-        // Best effort only — see above.
-      }
-      return targetFile;
-    }
-    await deleteDatabaseFiles(targetFile);
-    await _deleteStagingFiles(targetFile);
+    final adopted = await _tryAdoptUnsentinelledTarget(
+      legacyFile: legacyFile,
+      targetFile: targetFile,
+      sentinel: sentinel,
+    );
+    if (adopted != null) return adopted;
   }
 
+  return _migrateFromLegacy(
+    legacyFile: legacyFile,
+    targetFile: targetFile,
+    sentinel: sentinel,
+    copier: copier,
+  );
+}
+
+/// No legacy file: nothing to migrate from. Only cleans up
+/// interrupted-attempt staging leftovers — never deletes a promoted target
+/// just because it lacks the sentinel: this is the normal state for both a
+/// fresh install (which creates its database directly at the target and
+/// never earns a sentinel) and a device whose migration already fully
+/// completed. See the library doc comment's "round 3" section.
+Future<File> _handleNoLegacy({
+  required File targetFile,
+  required File sentinel,
+}) async {
+  await _deleteStagingFiles(targetFile);
+  if (await targetFile.exists()) {
+    if (_passesQuickCheck(targetFile)) {
+      if (!await sentinel.exists()) {
+        // Retroactively mark this target as done so the next launch
+        // short-circuits immediately instead of re-running this check.
+        await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
+      }
+    } else {
+      // Not even an openable database, and there is no legacy copy to
+      // fall back to — genuine residue from a broken previous attempt.
+      // Clear it so ordinary DB-open machinery creates a fresh, empty
+      // database here, same as any other fresh install.
+      await deleteDatabaseFiles(targetFile);
+      if (await sentinel.exists()) await sentinel.delete();
+    }
+  }
+  return targetFile;
+}
+
+/// A prior call completed the whole sequence; the target is authoritative
+/// and is never rewritten. Best-effort clean up a legacy copy that might
+/// have survived a process killed between the sentinel write and this
+/// delete (finding #2) — otherwise it lingers forever, in plaintext, in
+/// the iCloud-backed `Documents/` directory.
+Future<File> _handleAlreadyMigrated({
+  required File legacyFile,
+  required File targetFile,
+}) async {
+  try {
+    await deleteDatabaseFiles(legacyFile);
+  } catch (_) {
+    // Best effort only — see the promotion path's own comment.
+  }
+  return targetFile;
+}
+
+/// Verifies an un-sentinelled target found beside a still-present legacy
+/// file against that legacy database and, if it matches, adopts it in
+/// place (sentinel written, legacy best-effort cleaned up) — returning the
+/// adopted [targetFile]. Otherwise the target is residue from an
+/// interrupted attempt: it (and any leftover staging files) is cleared and
+/// `null` is returned so the caller re-migrates from legacy.
+Future<File?> _tryAdoptUnsentinelledTarget({
+  required File legacyFile,
+  required File targetFile,
+  required File sentinel,
+}) async {
+  if (_verifyStagedDatabase(legacyFile: legacyFile, stagedFile: targetFile)) {
+    await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
+    try {
+      await deleteDatabaseFiles(legacyFile);
+    } catch (_) {
+      // Best effort only — see above.
+    }
+    return targetFile;
+  }
+  await deleteDatabaseFiles(targetFile);
+  await _deleteStagingFiles(targetFile);
+  return null;
+}
+
+/// The staging/verify/promote/re-verify/sentinel sequence — see the
+/// library doc comment's "Crash safety" section. Returns [targetFile] once
+/// the sentinel has been durably written, or [legacyFile] if anything in
+/// the sequence threw (staging, promotion, and the sentinel are all rolled
+/// back by [_rollbackFailedMigration] in that case).
+Future<File> _migrateFromLegacy({
+  required File legacyFile,
+  required File targetFile,
+  required File sentinel,
+  required DatabaseFileCopier copier,
+}) async {
   final targetDir = targetFile.parent;
   if (!await targetDir.exists()) {
     await targetDir.create(recursive: true);
@@ -350,26 +402,12 @@ Future<File> relocateLegacyDatabase({
 
   final stagedBySuffix = <String, File>{};
   try {
-    for (final suffix in kDatabaseSiblingSuffixes) {
-      if (suffix == '-shm') {
-        // The -shm file is a memory-mapped WAL index, process-local and
-        // not portable by copying — sqlite rebuilds it from the -wal file
-        // on next open, so any content that matters is already reflected
-        // there. Copying it could hand the target a stale/foreign
-        // shared-memory image instead. Just make sure no stale -shm
-        // survives at the target from an earlier run.
-        final staleTargetShm = File('${targetFile.path}$suffix');
-        if (await staleTargetShm.exists()) {
-          await staleTargetShm.delete();
-        }
-        continue;
-      }
-      final source = File('${legacyFile.path}$suffix');
-      if (!await source.exists()) continue;
-      final stagingFile = _stagingFileFor(targetFile, suffix);
-      await copier(source, stagingFile);
-      stagedBySuffix[suffix] = stagingFile;
-    }
+    await _stageLegacySiblings(
+      legacyFile: legacyFile,
+      targetFile: targetFile,
+      copier: copier,
+      stagedBySuffix: stagedBySuffix,
+    );
 
     final stagedMain = stagedBySuffix[''];
     if (stagedMain == null ||
@@ -377,67 +415,129 @@ Future<File> relocateLegacyDatabase({
       throw StateError('relocated database failed verification');
     }
 
-    for (final entry in stagedBySuffix.entries) {
-      if (!await entry.value.exists()) {
-        // Verification's own sqlite3 open of the staged main file (above)
-        // can itself consume this sidecar — e.g. a real `-wal` gets
-        // checkpointed into the main file and removed as an ordinary
-        // consequence of SQLite opening a WAL-mode database, or an
-        // invalid one gets discarded during WAL-index recovery. Either
-        // way its content (if any was real) is already reflected in the
-        // staged main file that just passed verification, so there is
-        // nothing left here to promote.
-        continue;
-      }
-      final promotedPath = '${targetFile.path}${entry.key}';
-      await entry.value.rename(promotedPath);
-    }
+    await _promoteStagedFiles(stagedBySuffix, targetFile);
     stagedBySuffix.clear(); // promoted — the catch block must not re-delete these.
 
     // Finding #4: re-verify the promoted file itself (both verification
     // connections above are already closed by _verifyStagedDatabase's own
     // `finally`) before considering the relocation durable. This catches
     // anything a rename-time filesystem inconsistency could have
-    // introduced that verifying the pre-promotion staged copy couldn't.
-    // A failure here throws into the catch block below exactly like any
+    // introduced that verifying the pre-promotion staged copy couldn't. A
+    // failure here throws into the catch block below exactly like any
     // other failure in this sequence — it rolls the promotion back
     // (deletes what was just promoted to the target) and falls back to
     // the still-untouched legacy file, it does **not** leave a half-valid
     // target in place.
-    sqlite3.Database? promotedDb;
-    try {
-      promotedDb = sqlite3.sqlite3.open(targetFile.path);
-      final quickCheck = promotedDb.select('PRAGMA quick_check');
-      if (quickCheck.isEmpty || quickCheck.first.values.first != 'ok') {
-        throw StateError('promoted database failed post-promotion verification');
-      }
-    } finally {
-      promotedDb?.close();
-    }
+    await _verifyPromotedDatabase(targetFile);
 
     // Sentinel last, only once every rename above and the re-verification
     // above have succeeded. Once this write succeeds, the relocation
     // itself is complete and durable.
     await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
   } catch (_) {
-    // Crash-safety: remove every remaining staging file plus anything
-    // already promoted to the target, and leave the legacy file
-    // untouched — see the return-value doc above.
-    for (final stagingFile in stagedBySuffix.values) {
-      if (await stagingFile.exists()) await stagingFile.delete();
-    }
-    await deleteDatabaseFiles(targetFile);
-    if (await sentinel.exists()) await sentinel.delete();
+    await _rollbackFailedMigration(stagedBySuffix, targetFile, sentinel);
     return legacyFile;
   }
 
-  // The relocation is complete and durable (sentinel written above).
-  // Deleting the legacy file from here on is tidying, not safety, so it
-  // gets its own try/catch that never undoes the promotion: a failure here
-  // (the file still open elsewhere, a permission error, …) leaves a
-  // harmless leftover — the *next* call sees the sentinel and returns
-  // immediately without touching legacyFile again (the no-op branch at the
-  // top of this function).
+  return _finishMigration(legacyFile, targetFile);
+}
+
+/// Copies each existing sibling of [legacyFile] into a `.migrating`-marked
+/// staging file beside [targetFile], recording each in [stagedBySuffix]
+/// (mutated in place so the caller's `catch` block still sees whatever was
+/// staged before a failure).
+Future<void> _stageLegacySiblings({
+  required File legacyFile,
+  required File targetFile,
+  required DatabaseFileCopier copier,
+  required Map<String, File> stagedBySuffix,
+}) async {
+  for (final suffix in kDatabaseSiblingSuffixes) {
+    if (suffix == '-shm') {
+      // The -shm file is a memory-mapped WAL index, process-local and not
+      // portable by copying — sqlite rebuilds it from the -wal file on
+      // next open, so any content that matters is already reflected
+      // there. Copying it could hand the target a stale/foreign
+      // shared-memory image instead. Just make sure no stale -shm
+      // survives at the target from an earlier run.
+      final staleTargetShm = File('${targetFile.path}$suffix');
+      if (await staleTargetShm.exists()) {
+        await staleTargetShm.delete();
+      }
+      continue;
+    }
+    final source = File('${legacyFile.path}$suffix');
+    if (!await source.exists()) continue;
+    final stagingFile = _stagingFileFor(targetFile, suffix);
+    await copier(source, stagingFile);
+    stagedBySuffix[suffix] = stagingFile;
+  }
+}
+
+/// Renames each staged file in [stagedBySuffix] into place beside
+/// [targetFile] (same directory/volume, so the rename is atomic).
+Future<void> _promoteStagedFiles(
+  Map<String, File> stagedBySuffix,
+  File targetFile,
+) async {
+  for (final entry in stagedBySuffix.entries) {
+    if (!await entry.value.exists()) {
+      // Verification's own sqlite3 open of the staged main file (in
+      // [_migrateFromLegacy]) can itself consume this sidecar — e.g. a
+      // real `-wal` gets checkpointed into the main file and removed as
+      // an ordinary consequence of SQLite opening a WAL-mode database, or
+      // an invalid one gets discarded during WAL-index recovery. Either
+      // way its content (if any was real) is already reflected in the
+      // staged main file that just passed verification, so there is
+      // nothing left here to promote.
+      continue;
+    }
+    final promotedPath = '${targetFile.path}${entry.key}';
+    await entry.value.rename(promotedPath);
+  }
+}
+
+/// Standalone `PRAGMA quick_check` re-verification of the just-promoted
+/// [targetFile], throwing if it fails — see the "Finding #4" comment at
+/// the call site in [_migrateFromLegacy].
+Future<void> _verifyPromotedDatabase(File targetFile) async {
+  sqlite3.Database? promotedDb;
+  try {
+    promotedDb = sqlite3.sqlite3.open(targetFile.path);
+    final quickCheck = promotedDb.select('PRAGMA quick_check');
+    if (quickCheck.isEmpty || quickCheck.first.values.first != 'ok') {
+      throw StateError('promoted database failed post-promotion verification');
+    }
+  } finally {
+    promotedDb?.close();
+  }
+}
+
+/// Crash-safety rollback for a failed [_migrateFromLegacy] attempt:
+/// removes every remaining staging file plus anything already promoted to
+/// [targetFile], and drops the sentinel if one was somehow written — the
+/// legacy file itself is left untouched, per [relocateLegacyDatabase]'s
+/// return-value doc.
+Future<void> _rollbackFailedMigration(
+  Map<String, File> stagedBySuffix,
+  File targetFile,
+  File sentinel,
+) async {
+  for (final stagingFile in stagedBySuffix.values) {
+    if (await stagingFile.exists()) await stagingFile.delete();
+  }
+  await deleteDatabaseFiles(targetFile);
+  if (await sentinel.exists()) await sentinel.delete();
+}
+
+/// The relocation is complete and durable (sentinel already written by the
+/// caller). Deleting the legacy file from here on is tidying, not safety,
+/// so it gets its own try/catch that never undoes the promotion: a
+/// failure here (the file still open elsewhere, a permission error, …)
+/// leaves a harmless leftover — the *next* call sees the sentinel and
+/// returns immediately without touching legacyFile again (the no-op
+/// branch at the top of [relocateLegacyDatabase]).
+Future<File> _finishMigration(File legacyFile, File targetFile) async {
   try {
     await deleteDatabaseFiles(legacyFile);
   } catch (_) {
