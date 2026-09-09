@@ -99,12 +99,50 @@ class _SyncAborted implements Exception {
 }
 
 class _PushItem {
-  const _PushItem(this.table, this.id, this.localRev, this.json);
+  const _PushItem(this.table, this.id, this.localRev, this.json,
+      {this.profileId});
 
   final SyncTable table;
   final String id;
   final int localRev;
   final JsonRow json;
+
+  /// The owning profile's id for a day-entry item; `null` for a profile
+  /// item. Carried so [SupabaseSyncEngine._unrejectEntriesOf] can filter
+  /// the in-memory [SupabaseSyncEngine._rejected] map without a storage
+  /// read (finding #2).
+  final String? profileId;
+}
+
+/// Keyset cursor state for one [SupabaseSyncEngine._push] call, split out
+/// so [SupabaseSyncEngine._readPushRound] stays small. `readProfilePage`
+/// is always a live read with no cached "done" flag (finding #1) —
+/// `entriesDone` only latches for day entries, whose own read is gated by
+/// the caller once a page comes back short.
+class _PushCursor {
+  _PushCursor(this._storage, this.batchSize);
+
+  final LunarLogStorage _storage;
+  final int batchSize;
+
+  String? _profileCursor;
+  String? _entryCursor;
+  bool entriesDone = false;
+
+  Future<List<Profile>> readProfilePage() async {
+    final page = await _storage.readDirtyProfiles(
+        limit: batchSize, afterId: _profileCursor);
+    if (page.isNotEmpty) _profileCursor = page.last.id;
+    return page;
+  }
+
+  Future<List<DayEntry>> readEntryPage() async {
+    final page = await _storage.readDirtyDayEntries(
+        limit: batchSize, afterId: _entryCursor);
+    entriesDone = page.length < batchSize;
+    if (page.isNotEmpty) _entryCursor = page.last.id;
+    return page;
+  }
 }
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
@@ -188,10 +226,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// forever.
   int _consecutiveGuardianPullRetries = 0;
 
-  /// Rows the server rejected, id → `local_rev` at rejection. A row is
-  /// excluded from pushes while its `local_rev` still equals the rejected
-  /// one; a later local write bumps it and the row is retried.
-  final Map<String, int> _rejected = {};
+  /// Rows the server rejected: id → (`local_rev` at rejection, owning
+  /// profile id — `null` for a profile row itself). A row is excluded from
+  /// pushes while its `local_rev` still equals the rejected one; a later
+  /// local write bumps it and the row is retried. The `profileId` lets
+  /// [_unrejectEntriesOf] filter this map in memory when a profile is
+  /// accepted, with no storage read (finding #2).
+  final Map<String, ({int localRev, String? profileId})> _rejected = {};
 
   StreamSubscription<AuthSessionState>? _authSub;
   StreamSubscription<Set<TableUpdate>>? _writeSub;
@@ -342,7 +383,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     String Function(T) id,
     int Function(T) localRev,
   ) =>
-      rows.where((row) => _rejected[id(row)] != localRev(row));
+      rows.where((row) => _rejected[id(row)]?.localRev != localRev(row));
 
   // ------------------------------------------------------------------- loop
 
@@ -624,28 +665,79 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   // ------------------------------------------------------------------- push
 
-  /// Pushes every pushable dirty row, profiles first, in batches. Returns
-  /// whether any batch answered with resolved rows (a reconcile trigger).
+  /// Pushes every pushable dirty row, profiles first, streaming at most
+  /// [_batchSize] rows per table from storage — and JSON-encoding only
+  /// that page — one batch at a time, instead of materialising and
+  /// encoding the full dirty set up front (which could be thousands of
+  /// rows after a large import). Each round's items and termination
+  /// signal come from [_readPushRound] (finding #1's fix lives there); this
+  /// method stays a plain read-push-repeat loop so it scores well under
+  /// the CRAP gate on its own.
+  ///
+  /// A [_SyncPaused] raised by [_checkpoint] inside [_pushBatch] between
+  /// two batches propagates out of this loop and out of [_cycle]: every
+  /// batch already sent already called `markPushed` and stays committed,
+  /// so the next cycle's fresh keyset scan (this method starting over
+  /// with a fresh [_PushCursor]) sees only the rows still `dirty` and
+  /// resumes from there — there is no separate persisted resume cursor to
+  /// maintain. Returns whether any batch answered with resolved rows (a
+  /// reconcile trigger).
   Future<bool> _push(String uid) async {
-    final profiles = [
-      for (final row in _pushable(
-          await _storage.readDirtyProfiles(), (p) => p.id, (p) => p.localRev))
-        _PushItem(SyncTable.profiles, row.id, row.localRev, encodeProfile(row)),
-    ];
-    final entries = [
-      for (final row in _pushable(await _storage.readDirtyDayEntries(),
-          (e) => e.id, (e) => e.localRev))
-        _PushItem(
-            SyncTable.dayEntries, row.id, row.localRev, encodeDayEntry(row)),
-    ];
-    if (profiles.isEmpty && entries.isEmpty) return false;
+    final totalDirty = await _storage.dirtyCount();
+    _emit(_snapshot.copyWith(pushedRows: 0, totalDirtyRows: totalDirty));
+    if (totalDirty == 0) return false;
 
     var resolvedSeen = false;
-    for (final batch in _chunk(profiles, entries)) {
-      final outcome = await _pushBatch(uid, batch);
+    var pushedRows = 0;
+    final cursor = _PushCursor(_storage, _batchSize);
+    while (true) {
+      final round = await _readPushRound(cursor);
+      if (round.batch.isEmpty) {
+        if (round.done) break;
+        continue;
+      }
+      final outcome = await _pushBatch(uid, round.batch);
       if (outcome.resolvedSeen) resolvedSeen = true;
+      pushedRows += round.batch.length;
+      _emit(_snapshot.copyWith(pushedRows: pushedRows));
+      if (round.done) break;
     }
     return resolvedSeen;
+  }
+
+  /// One round of [_push]: a fresh profiles page is read on *every* call
+  /// via [cursor] — never gated behind a cached "done" flag (finding #1).
+  /// Whenever that fresh page falls short of a full batch (profiles
+  /// momentarily exhausted, from this round's point of view), the same
+  /// round also reads the next day-entry page, so the two ride together
+  /// exactly as the old single-shot chunking did. Because the profiles
+  /// read is never skipped, a profile created mid-cycle (a ULID above the
+  /// cursor) surfaces in a later round's page and is pushed before or
+  /// alongside its own day entries — never after, which would otherwise
+  /// reject the entries on a foreign key it hasn't seen yet. Returns this
+  /// round's pushable items and whether the loop may terminate after it
+  /// (this round's profile page was genuinely empty and day entries are
+  /// exhausted).
+  Future<({List<_PushItem> batch, bool done})> _readPushRound(
+    _PushCursor cursor,
+  ) async {
+    final profilePage = await cursor.readProfilePage();
+    final profilesEmptyThisRound = profilePage.isEmpty;
+    final batch = <_PushItem>[
+      for (final row
+          in _pushable(profilePage, (p) => p.id, (p) => p.localRev))
+        _PushItem(
+            SyncTable.profiles, row.id, row.localRev, encodeProfile(row)),
+    ];
+    if (profilePage.length < cursor.batchSize && !cursor.entriesDone) {
+      final entryPage = await cursor.readEntryPage();
+      batch.addAll([
+        for (final row in _pushable(entryPage, (e) => e.id, (e) => e.localRev))
+          _PushItem(SyncTable.dayEntries, row.id, row.localRev,
+              encodeDayEntry(row), profileId: row.profileId),
+      ]);
+    }
+    return (batch: batch, done: profilesEmptyThisRound && cursor.entriesDone);
   }
 
   /// One push batch's request/response handling, split out of [_push]
@@ -680,10 +772,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   }
 
   void _markRejected(List<_PushItem> batch, List<String> rejectedIds) {
-    final batchRevs = {for (final i in batch) i.id: i.localRev};
+    final byId = {for (final i in batch) i.id: i};
     for (final id in rejectedIds) {
-      final rev = batchRevs[id];
-      if (rev != null) _rejected[id] = rev;
+      final item = byId[id];
+      if (item != null) {
+        _rejected[id] = (localRev: item.localRev, profileId: item.profileId);
+      }
     }
   }
 
@@ -692,7 +786,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     final acceptedProfileIds = <String>{};
     for (final item in batch) {
       if (rejected.contains(item.id)) {
-        _rejected[item.id] = item.localRev;
+        _rejected[item.id] =
+            (localRev: item.localRev, profileId: item.profileId);
         continue;
       }
       _rejected.remove(item.id);
@@ -703,7 +798,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           table: item.table, id: item.id, localRevAtPush: item.localRev);
     }
     if (acceptedProfileIds.isNotEmpty) {
-      await _unrejectEntriesOf(acceptedProfileIds, rejected);
+      _unrejectEntriesOf(acceptedProfileIds, rejected);
     }
     if (result.resolved.isNotEmpty) {
       await _storage.applyResolved(result.resolved);
@@ -711,41 +806,26 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   }
 
   /// A day entry rejected alongside its profile is un-rejected once that
-  /// profile is accepted (and the entry itself wasn't [rejected]), so it is
-  /// retried on the next push instead of waiting for its own local edit.
-  Future<void> _unrejectEntriesOf(
+  /// profile is accepted (and the entry itself wasn't [rejectedThisBatch]),
+  /// so it is retried on the next push instead of waiting for its own
+  /// local edit. Filters the in-memory [_rejected] map by the `profileId`
+  /// carried on each rejected entry — no storage read (finding #2), so
+  /// this stays bounded regardless of how large the dirty set is.
+  void _unrejectEntriesOf(
     Set<String> acceptedProfileIds,
-    Set<String> rejected,
-  ) async {
-    final dirty = await _storage.readDirtyDayEntries();
-    for (final entry in dirty) {
-      if (acceptedProfileIds.contains(entry.profileId) &&
-          !rejected.contains(entry.id)) {
-        _rejected.remove(entry.id);
+    Set<String> rejectedThisBatch,
+  ) {
+    final toUnreject = <String>[];
+    for (final entry in _rejected.entries) {
+      if (rejectedThisBatch.contains(entry.key)) continue;
+      final profileId = entry.value.profileId;
+      if (profileId != null && acceptedProfileIds.contains(profileId)) {
+        toUnreject.add(entry.key);
       }
     }
-  }
-
-  /// Batches of at most [_batchSize] rows per table with profiles in the
-  /// earliest batches: profile-only batches until the profiles run out, the
-  /// last of which also carries the first day entries.
-  List<List<_PushItem>> _chunk(List<_PushItem> profiles, List<_PushItem> entries) {
-    final batches = <List<_PushItem>>[];
-    var p = 0;
-    var e = 0;
-    while (p < profiles.length || e < entries.length) {
-      final batch = <_PushItem>[];
-      final pEnd = min(p + _batchSize, profiles.length);
-      batch.addAll(profiles.sublist(p, pEnd));
-      p = pEnd;
-      if (p >= profiles.length) {
-        final eEnd = min(e + _batchSize, entries.length);
-        batch.addAll(entries.sublist(e, eEnd));
-        e = eEnd;
-      }
-      batches.add(batch);
+    for (final id in toUnreject) {
+      _rejected.remove(id);
     }
-    return batches;
   }
 
   // ------------------------------------------------------------------- pull

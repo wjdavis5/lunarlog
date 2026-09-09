@@ -69,6 +69,8 @@ class SyncSnapshot {
     this.lastSyncAt,
     this.lastError = SyncErrorKind.none,
     this.boundUserId,
+    this.pushedRows = 0,
+    this.totalDirtyRows = 0,
   });
 
   /// The engine before [SyncEngine.start] has observed anything.
@@ -93,6 +95,18 @@ class SyncSnapshot {
   /// .bound_user_id`).
   final String? boundUserId;
 
+  /// Rows sent to the server so far in the current (or most recent)
+  /// [SyncPhase.pushing] cycle. Meaningful only alongside [totalDirtyRows];
+  /// both reset to 0 at the start of every push and stay at their final
+  /// value once the push ends, so a large first upload can render
+  /// "Uploading 1,200 of 3,650" across app foregrounds/backgrounds instead
+  /// of appearing stuck or silently restarting from zero.
+  final int pushedRows;
+
+  /// The dirty row count this cycle's push started with (both tables,
+  /// live and tombstoned) — the denominator for [pushedRows].
+  final int totalDirtyRows;
+
   SyncSnapshot copyWith({
     SyncPhase? phase,
     int? dirtyCount,
@@ -100,6 +114,8 @@ class SyncSnapshot {
     DateTime? lastSyncAt,
     SyncErrorKind? lastError,
     String? boundUserId,
+    int? pushedRows,
+    int? totalDirtyRows,
   }) =>
       SyncSnapshot(
         phase: phase ?? this.phase,
@@ -108,6 +124,8 @@ class SyncSnapshot {
         lastSyncAt: lastSyncAt ?? this.lastSyncAt,
         lastError: lastError ?? this.lastError,
         boundUserId: boundUserId ?? this.boundUserId,
+        pushedRows: pushedRows ?? this.pushedRows,
+        totalDirtyRows: totalDirtyRows ?? this.totalDirtyRows,
       );
 
   @override
@@ -118,15 +136,18 @@ class SyncSnapshot {
       other.rejectedCount == rejectedCount &&
       other.lastSyncAt == lastSyncAt &&
       other.lastError == lastError &&
-      other.boundUserId == boundUserId;
+      other.boundUserId == boundUserId &&
+      other.pushedRows == pushedRows &&
+      other.totalDirtyRows == totalDirtyRows;
 
   @override
-  int get hashCode => Object.hash(
-      phase, dirtyCount, rejectedCount, lastSyncAt, lastError, boundUserId);
+  int get hashCode => Object.hash(phase, dirtyCount, rejectedCount, lastSyncAt,
+      lastError, boundUserId, pushedRows, totalDirtyRows);
 
   @override
   String toString() => 'SyncSnapshot(${phase.name}, dirty: $dirtyCount, '
-      'rejected: $rejectedCount, lastError: ${lastError.name})';
+      'rejected: $rejectedCount, lastError: ${lastError.name}, '
+      'push: $pushedRows/$totalDirtyRows)';
 }
 
 /// The sync seam. Built by `LunarLogRoot` after the database opens and

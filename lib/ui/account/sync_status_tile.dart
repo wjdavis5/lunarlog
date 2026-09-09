@@ -7,6 +7,7 @@ library;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/data/sync/sync_transport.dart' show PushBatch;
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -108,7 +109,7 @@ String _snapshotCopy({
 }) {
   if (snapshot.phase == SyncPhase.error) return _errorCopy(snapshot.lastError);
   if (authState == AuthSessionState.expired) return kSignInAgainCopy;
-  final phaseCopy = _fixedPhaseCopy(snapshot.phase);
+  final phaseCopy = _fixedPhaseCopy(snapshot);
   if (phaseCopy != null) return phaseCopy;
   return _restingStateCopy(snapshot: snapshot, signedIn: signedIn, now: now);
 }
@@ -120,17 +121,18 @@ String _errorCopy(SyncErrorKind lastError) => switch (lastError) {
   SyncErrorKind.other || SyncErrorKind.none => 'Sync failed — will retry',
 };
 
-/// Copy fixed by [phase] alone, or `null` to fall through to
+/// Copy fixed by [snapshot]'s phase, or `null` to fall through to
 /// [_restingStateCopy]'s checks (covers `paused`, `idle` and `error` —
 /// `error` is unreachable here, already handled by [_snapshotCopy]).
-String? _fixedPhaseCopy(SyncPhase phase) {
-  switch (phase) {
+String? _fixedPhaseCopy(SyncSnapshot snapshot) {
+  switch (snapshot.phase) {
     case SyncPhase.accountMismatch:
       return 'Signed in as a different account';
     case SyncPhase.awaitingUploadConsent:
       return kUploadPendingCopy;
-    case SyncPhase.restoring:
     case SyncPhase.pushing:
+      return _pushingCopy(snapshot);
+    case SyncPhase.restoring:
     case SyncPhase.pulling:
       return kSyncingCopy;
     case SyncPhase.paused:
@@ -138,6 +140,34 @@ String? _fixedPhaseCopy(SyncPhase phase) {
     case SyncPhase.error:
       return null;
   }
+}
+
+/// The pushing-phase copy: a live "Uploading X of Y" once the cycle's
+/// dirty set is bigger than a single push batch (so the counter reflects
+/// more than one transport round-trip), the plain syncing copy otherwise
+/// — an ordinary sync never needs the counter, since it completes in one
+/// batch before progress is worth showing. `pushedRows` is clamped to
+/// `totalDirtyRows` so a stale or racing snapshot never reads e.g.
+/// "Uploading 600 of 500".
+String _pushingCopy(SyncSnapshot snapshot) {
+  if (snapshot.totalDirtyRows <= PushBatch.maxRows) return kSyncingCopy;
+  final pushedRows = snapshot.pushedRows > snapshot.totalDirtyRows
+      ? snapshot.totalDirtyRows
+      : snapshot.pushedRows;
+  return 'Uploading ${_thousands(pushedRows)} of '
+      '${_thousands(snapshot.totalDirtyRows)}';
+}
+
+/// Thousands-separated integer (`1200` -> `"1,200"`) — no `intl`
+/// dependency for this one format.
+String _thousands(int n) {
+  final digits = n.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(digits[i]);
+  }
+  return buffer.toString();
 }
 
 /// The resting-state tiers: rejected rows, signed-out, paused, then the

@@ -142,6 +142,49 @@ void main() {
       expect(dirtyEntries.single.localRev, 3);
     });
 
+    test('Issue #177: readDirtyProfiles/readDirtyDayEntries page by '
+        '`limit`/`afterId` in id order, so a caller can stream a large '
+        'dirty set instead of reading it all at once', () async {
+      final p = await storage.upsertProfile(displayName: 'Owner', isMinor: false);
+      final ids = <String>[];
+      for (var i = 0; i < 10; i++) {
+        final e = await storage.upsertDayEntry(
+            profileId: p.id,
+            localDate: '2026-02-${(i + 1).toString().padLeft(2, '0')}',
+            tz: 'UTC',
+            flow: FlowLevel.light);
+        ids.add(e.id);
+      }
+      expect(ids, ids.toList()..sort(),
+          reason: 'ULIDs generated in order sort in that same order');
+
+      final page1 = await storage.readDirtyDayEntries(limit: 4);
+      expect(page1.map((e) => e.id).toList(), ids.sublist(0, 4));
+
+      final page2 = await storage.readDirtyDayEntries(
+          limit: 4, afterId: page1.last.id);
+      expect(page2.map((e) => e.id).toList(), ids.sublist(4, 8));
+
+      final page3 = await storage.readDirtyDayEntries(
+          limit: 4, afterId: page2.last.id);
+      expect(page3.map((e) => e.id).toList(), ids.sublist(8, 10),
+          reason: 'the final page is shorter than the limit');
+
+      final page4 = await storage.readDirtyDayEntries(
+          limit: 4, afterId: page3.last.id);
+      expect(page4, isEmpty, reason: 'nothing left after the last row');
+
+      // readDirtyProfiles takes the same two parameters (only one profile
+      // here, so this just proves the call shape and the afterId cutoff).
+      expect(await storage.readDirtyProfiles(limit: 1), [
+        (await storage.readDirtyProfiles()).first,
+      ]);
+      expect(await storage.readDirtyProfiles(afterId: p.id), isEmpty);
+
+      // No limit given still reads everything, unchanged from before.
+      expect(await storage.readDirtyDayEntries(), hasLength(10));
+    });
+
     test('tombstones carry no payload; a later upsert for the same date '
         'creates a new live row with its own payload', () async {
       final p = await storage.upsertProfile(displayName: 'Luna', isMinor: true);
