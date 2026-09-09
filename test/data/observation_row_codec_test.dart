@@ -214,14 +214,11 @@ void main() {
       );
     });
 
-    test('a missing category throws missing', () {
+    test('a missing category decodes as null (tombstones carry no category '
+        'after the redaction fix; the server CHECK keeps live rows non-null)',
+        () {
       final json = _json()..remove('category');
-      expect(
-        () => decodeObservation(json),
-        throwsA(isA<RowCodecError>()
-            .having((e) => e.kind, 'kind', RowCodecErrorKind.missing)
-            .having((e) => e.field, 'field', 'category')),
-      );
+      expect(decodeObservation(json).category, isNull);
     });
 
     test('a non-numeric value_num throws wrongType', () {
