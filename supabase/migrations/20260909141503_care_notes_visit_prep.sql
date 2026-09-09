@@ -84,7 +84,18 @@
 -- after 20260909000000_profile_modes_and_cycle_overrides.sql (the tip of
 -- `main` at dispatch), which it re-emits `sync_push`,
 -- `delete_account_data()`, and `reconcile_realtime_publication()` from.
--- No merged migration is edited in place.
+-- Rebase note (review round 2): 20260909120000_provisional_cycle_facts.sql
+-- (Issue #218) merged to `main` after this branch forked and re-emitted
+-- `sync_push` with the three onboarding cycle-fact keys
+-- (`last_period_start`, `typical_cycle_length_days`,
+-- `typical_period_length_days`). This file's `sync_push` is re-emitted from
+-- that body — the cycle-facts allowlist entry, declarations, parse block,
+-- INSERT columns, and `v_row ? 'key'` UPDATE guards are carried forward
+-- verbatim, with `p_care_notes`/`p_visit_prep_items` added — so merging
+-- never drops #218's handling. `delete_account_data()` and
+-- `reconcile_realtime_publication()` are unaffected by #218 (it touches
+-- neither) and still carry the 20260909000000 bodies plus this issue's
+-- steps. No merged migration is edited in place.
 
 -- ---------------------------------------------------------------------------
 -- 1. public.care_notes
@@ -434,8 +445,9 @@ grant update (last_modified_by_user_id) on table public.visit_prep_items to auth
 
 -- ---------------------------------------------------------------------------
 -- 6. sync_push: create-or-replaced from its latest body
---    (20260909000000_profile_modes_and_cycle_overrides.sql, the current tip
---    on main), copied verbatim, with a sixth and seventh parameter
+--    (20260909120000_provisional_cycle_facts.sql, the current tip
+--    on main — rebase note in this file's header), copied verbatim
+--    including the #218 cycle-facts handling, with a sixth and seventh
 --    (p_care_notes jsonb default '[]', p_visit_prep_items jsonb default
 --    '[]') and two new per-table sections appended after the
 --    cycle_overrides section. Nothing about the profiles/day_entries/
@@ -482,6 +494,8 @@ declare
     'birth_year', 'relationship',
     -- #131: care mode, syncable like any other profile column
     'mode',
+    -- #218: onboarding cycle facts, syncable like any other profile column
+    'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days',
     -- tolerated but never read
     'user_id', 'server_version', 'transferred_at'];
   c_day_entry_keys constant text[] := array[
@@ -550,6 +564,10 @@ declare
   v_relationship text;
   -- #131: care mode; absent key parses to the column default
   v_mode text;
+  -- #218: onboarding cycle facts
+  v_last_period_start date;
+  v_typical_cycle_length_days smallint;
+  v_typical_period_length_days smallint;
   v_profile_id text;
   v_local_date date;
   v_tz text;
@@ -723,6 +741,12 @@ begin
       -- The UPDATE path applies the same `?` containment guard so a
       -- pre-#131 client's push never touches a stored mode.
       v_mode := coalesce(v_row ->> 'mode', 'standard');
+      -- #218: cycle facts parse like birth_year/relationship -- optional
+      -- metadata validated by the table's own CHECK constraints; a bad
+      -- value lands the row in `rejected` via the exception handler.
+      v_last_period_start := (v_row ->> 'last_period_start')::date;
+      v_typical_cycle_length_days := (v_row ->> 'typical_cycle_length_days')::smallint;
+      v_typical_period_length_days := (v_row ->> 'typical_period_length_days')::smallint;
       if v_deleted_at is not null then
         -- tombstones carry no payload
         v_display_name := '';
@@ -740,10 +764,12 @@ begin
         -- New profile insertion: creator becomes primary_guardian via trigger
         insert into public.profiles
           (id, display_name, is_minor, sort_order, archived_at, created_at, updated_at, deleted_at,
-           birth_year, relationship, mode)
+           birth_year, relationship, mode,
+           last_period_start, typical_cycle_length_days, typical_period_length_days)
         values
           (v_id, v_display_name, v_is_minor, v_sort_order, v_archived_at, v_created_at, v_updated_at, v_deleted_at,
-           v_birth_year, v_relationship, v_mode);
+           v_birth_year, v_relationship, v_mode,
+           v_last_period_start, v_typical_cycle_length_days, v_typical_period_length_days);
       else
         -- Profile exists: check guardian role of caller
         select role into v_caller_role
@@ -796,7 +822,13 @@ begin
                  -- client's push never clobbers a stored mode.
                  birth_year = case when v_row ? 'birth_year' then v_birth_year else v_stored_profile.birth_year end,
                  relationship = case when v_row ? 'relationship' then v_relationship else v_stored_profile.relationship end,
-                 mode = case when v_row ? 'mode' then v_mode else v_stored_profile.mode end
+                 mode = case when v_row ? 'mode' then v_mode else v_stored_profile.mode end,
+                 -- #218: same containment guard as birth_year/relationship
+                 -- above -- a pre-#218 client never sends these keys, and
+                 -- its ordinary metadata edits must not null a stored fact.
+                 last_period_start = case when v_row ? 'last_period_start' then v_last_period_start else v_stored_profile.last_period_start end,
+                 typical_cycle_length_days = case when v_row ? 'typical_cycle_length_days' then v_typical_cycle_length_days else v_stored_profile.typical_cycle_length_days end,
+                 typical_period_length_days = case when v_row ? 'typical_period_length_days' then v_typical_period_length_days else v_stored_profile.typical_period_length_days end
            where id = v_id;
         elsif v_updated_at = v_stored_profile.updated_at
               and v_deleted_at is not null

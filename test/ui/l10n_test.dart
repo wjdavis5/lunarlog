@@ -74,6 +74,8 @@ void main() {
       expect(l10n.calendarLegendLight, 'Light flow');
       expect(l10n.calendarLegendMedium, 'Medium flow');
       expect(l10n.calendarLegendHeavy, 'Heavy flow');
+      // #138: the legend's one remaining inline literal, moved verbatim.
+      expect(l10n.calendarLegendSuperHeavy, 'Super heavy flow (5 marks)');
       expect(l10n.calendarLegendSymptom, 'Symptom day');
       expect(l10n.calendarLegendToday, 'Today');
       expect(l10n.calendarLegendPredicted, 'Predicted day');
@@ -146,6 +148,11 @@ void main() {
       expect(l10n.flowLevelLight, 'Light');
       expect(l10n.flowLevelMedium, 'Medium');
       expect(l10n.flowLevelHeavy, 'Heavy');
+      // #138: the two inline `en` fallbacks issue #247 left behind, moved
+      // into ARB verbatim (and the day-cell labels read flow levels
+      // through them).
+      expect(l10n.flowLevelNotBleeding, 'Not bleeding');
+      expect(l10n.flowLevelSuperHeavy, 'Super heavy');
       expect(l10n.daySheetDeleteTitle, 'Delete this entry?');
       expect(
         l10n.daySheetDeleteBody('2026-09-07'),
@@ -169,6 +176,17 @@ void main() {
     testWidgets('overview panel', (tester) async {
       final l10n = await pumpL10n(tester);
       expect(l10n.overviewSeeHistory, 'See cycle history');
+      // #138: the cycle wheel's centre labels and screen-reader phrases,
+      // moved into ARB verbatim (visible centre label, phase, and full
+      // body keep their historical spellings — the period-day centre
+      // label keeps its middle dot, the spoken phase its comma).
+      expect(l10n.cycleWheelCenterCycleDay(14), 'Cycle day 14');
+      expect(l10n.cycleWheelCenterPeriodDay(2), 'Period · day 2');
+      expect(l10n.cycleWheelPhasePeriodDay(2), 'Period, day 2');
+      expect(
+        l10n.cycleWheelSemanticsBody('Cycle day 14', 30, 4),
+        'Cycle day 14 of about 30 days. Period usually runs about 4 days.',
+      );
       expect(
         l10n.overviewLoggedSnackbar,
         'Recorded a medium-flow period start for today.',
@@ -256,6 +274,115 @@ void main() {
         ),
       );
       expect(l10n.settingsClose, 'Close');
+    });
+
+    testWidgets('first-run flow (#216): extracted pre-existing literals '
+        'plus the new onboarding copy', (tester) async {
+      final l10n = await pumpL10n(tester);
+      // Extracted verbatim from the pre-#216 first-run surface (the
+      // parity promise: no visible change).
+      expect(
+        l10n.firstRunNoticeBody,
+        'Signing in syncs this profile across your devices and lets you '
+        'share it with other guardians. Until then, everything you log '
+        'stays on this device.',
+      );
+      expect(l10n.firstRunUnderstand, 'I understand');
+      expect(l10n.firstRunCreateTitle, 'Create a profile');
+      expect(l10n.firstRunNameLabel, 'Name');
+      expect(l10n.firstRunMinorLabel, 'This profile is for a minor');
+      expect(l10n.firstRunCareModeLabel, 'Care mode');
+      expect(l10n.firstRunCreateButton, 'Create profile');
+      // New #216 copy, pinned for review.
+      expect(l10n.firstRunValueHeadline,
+          'A private cycle log for your family');
+      expect(
+        l10n.firstRunValueBody,
+        'Guardians can share a profile and log it together. Everything '
+        'works offline. No ads, no data selling, no behavioral tracking — '
+        'and predictions are never paywalled.',
+      );
+      expect(l10n.firstRunGuardiansTitle, 'Profiles and guardians');
+      expect(
+        l10n.firstRunGuardiansBody,
+        "Each profile holds one person's cycle log. After signing in, you "
+        'can invite another guardian — a co-parent or caregiver — to view '
+        'or help log it.',
+      );
+      expect(l10n.firstRunMinorExplainerTitle, 'About the minor checkbox');
+      expect(
+        l10n.firstRunMinorExplainerBody,
+        "It's a label with one real effect today: the profile is kept out "
+        "of this phone's Health app sync. It doesn't restrict anything "
+        'else — wording and reminders come from the care mode picked on '
+        'the next screen, not from this checkbox.',
+      );
+      expect(l10n.firstRunMinorHint,
+          "A label with one effect: this profile is kept out of this "
+          "phone's Health app sync.");
+      expect(l10n.firstRunNext, 'Next');
+      expect(l10n.firstRunSkip, 'Skip');
+      expect(l10n.firstRunContinue, 'Continue');
+      expect(
+        l10n.firstRunCycleCaption,
+        'A few optional questions to set this profile up — every one can '
+        'be skipped. The goal and birth-control answers can be changed '
+        'later when editing the profile.',
+      );
+      expect(l10n.firstRunCycleLastPeriodLabel, 'Last period start');
+      expect(l10n.firstRunCycleChooseDate, 'Choose date');
+      expect(l10n.firstRunCycleChangeDate, 'Change date');
+      expect(l10n.firstRunCycleClearDate, 'Clear');
+      expect(l10n.firstRunCycleTypicalCycleLabel,
+          'Typical cycle length (days)');
+      expect(l10n.firstRunCycleTypicalCycleHint, 'e.g. 28');
+      expect(l10n.firstRunCycleTypicalPeriodLabel,
+          'Typical period length (days)');
+      expect(l10n.firstRunCycleTypicalPeriodHint, 'e.g. 5');
+      expect(l10n.firstRunCycleLengthRangeError,
+          'Enter a number between 10 and 90');
+      expect(l10n.firstRunPeriodLengthRangeError,
+          'Enter a number between 1 and 14');
+      expect(l10n.firstRunCycleBirthControlLabel, 'Birth-control method');
+      expect(l10n.firstRunCycleGoalLabel, 'Goal / mode');
+      expect(l10n.lifeStageModeLabel, 'Life-stage mode');
+      expect(l10n.birthControlNotAnswered, 'Not answered');
+      expect(l10n.birthControlNone, 'None');
+      expect(l10n.birthControlPill, 'Pill');
+      expect(l10n.birthControlHormonalIud, 'Hormonal IUD');
+      expect(l10n.birthControlCopperIud, 'Copper IUD');
+      expect(l10n.birthControlImplant, 'Implant');
+      expect(l10n.birthControlInjection, 'Injection');
+      expect(l10n.birthControlRing, 'Vaginal ring');
+      expect(l10n.birthControlPatch, 'Patch');
+      expect(l10n.birthControlCondom, 'Condom');
+      expect(l10n.birthControlOther, 'Other');
+    });
+  });
+
+  group('confidence-tier copy (issue #218): the four localized labels and '
+      'summaries match the domain vocabulary they render', () {
+    testWidgets('labels', (tester) async {
+      final l10n = await pumpL10n(tester);
+      expect(l10n.cycleConfidenceHigh, 'High confidence');
+      expect(l10n.cycleConfidenceLearning, 'Learning');
+      expect(l10n.cycleConfidenceIrregular, 'Irregular');
+      expect(l10n.cycleConfidenceProvisional, 'Provisional');
+    });
+
+    testWidgets('summaries', (tester) async {
+      final l10n = await pumpL10n(tester);
+      expect(l10n.cycleConfidenceSummaryHigh,
+          'Recent cycles are steady — estimates are at their most reliable.');
+      expect(l10n.cycleConfidenceSummaryLearning,
+          'Still learning — estimates improve after a few more cycles.');
+      expect(l10n.cycleConfidenceSummaryIrregular,
+          'Cycles vary a lot — treat estimates as rough guides.');
+      expect(
+        l10n.cycleConfidenceSummaryProvisional,
+        'Based on your onboarding answers — estimates improve once real '
+        'cycles are logged.',
+      );
     });
   });
 

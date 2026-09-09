@@ -11,6 +11,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/data/sync/row_codec.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
@@ -248,9 +249,10 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 10);
+  expect(await userVersion(db), 11);
   expect(await columnsOf(db, 'profiles'),
-      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
+      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode',
+              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days']));
   expect(
       await columnsOf(db, 'day_entries'),
       containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
@@ -339,10 +341,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 10 and database opens with the expected tables',
+    test('schema version is 11 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 10);
-      expect(await userVersion(db), 10);
+      expect(db.schemaVersion, 11);
+      expect(await userVersion(db), 11);
 
       final tables = (await db
               .customSelect(
@@ -356,7 +358,8 @@ void main() {
               'observations', 'profile_modes', 'cycle_overrides',
               'care_notes', 'visit_prep_items']));
       expect(await columnsOf(db, 'profiles'),
-          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
+          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode',
+              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days']));
       expect(
           await columnsOf(db, 'day_entries'),
           containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
@@ -486,6 +489,72 @@ void main() {
       expect(entryReread.tags, ['cramps', 'headache']);
       expect(entryReread.note, 'rough day');
       expect(entryReread.flow, FlowLevel.heavy);
+    });
+
+    test('issue #218: onboarding cycle facts round-trip through create, '
+        'update, and clear; a malformed date is rejected', () async {
+      final created = await storage.upsertProfile(
+          displayName: 'Luna',
+          isMinor: false,
+          lastPeriodStart: '2026-01-02',
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5);
+      expect(created.lastPeriodStart, '2026-01-02');
+      expect(created.typicalCycleLengthDays, 28);
+      expect(created.typicalPeriodLengthDays, 5);
+
+      clock.now = clock.now.add(const Duration(hours: 1));
+      final updated = await storage.upsertProfile(
+          id: created.id,
+          displayName: 'Luna',
+          isMinor: false,
+          lastPeriodStart: '2026-01-09',
+          typicalCycleLengthDays: 30,
+          typicalPeriodLengthDays: 6);
+      expect(updated.lastPeriodStart, '2026-01-09');
+      expect(updated.typicalCycleLengthDays, 30);
+      expect(updated.typicalPeriodLengthDays, 6);
+
+      // Clearing an answer is an explicit null, not an omission: the
+      // whole-row upsert writes nulls when nulls are handed to it.
+      clock.now = clock.now.add(const Duration(hours: 1));
+      final cleared = await storage.upsertProfile(
+          id: created.id,
+          displayName: 'Luna',
+          isMinor: false,
+          lastPeriodStart: null,
+          typicalCycleLengthDays: null,
+          typicalPeriodLengthDays: null);
+      expect(cleared.lastPeriodStart, isNull);
+      expect(cleared.typicalCycleLengthDays, isNull);
+      expect(cleared.typicalPeriodLengthDays, isNull);
+
+      expect(
+        () => storage.upsertProfile(
+            displayName: 'Luna',
+            isMinor: false,
+            lastPeriodStart: 'January 2'),
+        throwsArgumentError,
+        reason: 'the stored date must be a real ISO yyyy-MM-dd string',
+      );
+    });
+
+    test('issue #218: remote-applyed profile rows carry the cycle facts '
+        '(the sync pull path)', () async {
+      final created = await storage.upsertProfile(
+          displayName: 'RemoteSeed',
+          isMinor: false,
+          lastPeriodStart: '2026-01-02',
+          typicalCycleLengthDays: 26,
+          typicalPeriodLengthDays: 4);
+      // Round-trip through the codec + remote apply, the way a pull does.
+      final decoded = decodeProfile(encodeProfile(created));
+      final applied = await storage.applyRemoteProfile(decoded);
+      expect(applied, isTrue);
+      final reread = await storage.getProfile(created.id);
+      expect(reread!.lastPeriodStart, '2026-01-02');
+      expect(reread.typicalCycleLengthDays, 26);
+      expect(reread.typicalPeriodLengthDays, 4);
     });
 
     test('AE5 (data layer half): soft delete tombstones the row — present in '
@@ -1784,7 +1853,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 10);
+      expect(await userVersion(second), 11);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1797,7 +1866,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 10);
+      expect(await userVersion(db), 11);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1842,7 +1911,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 10);
+      expect(await userVersion(db), 11);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1867,7 +1936,7 @@ void main() {
       expect(edited.mode, 'irregular');
     });
 
-    test('a v7 fixture upgrades to v10 by adding profile_modes and '
+    test('a v7 fixture upgrades to v11 by adding profile_modes and '
         'cycle_overrides with their sync_state cursors, preserving every '
         'row (Issue #188)', () async {
       final raw = sqlite3.sqlite3.openInMemory();
@@ -1875,7 +1944,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 10);
+      expect(await userVersion(db), 11);
       expect(await columnsOf(db, 'profile_modes'),
           containsAll(['profile_id', 'mode', 'mode_started_on',
               'birth_control_method', 'birth_control_started_on',
@@ -1978,7 +2047,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 10);
+      expect(await userVersion(db), 11);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

@@ -29,6 +29,8 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart' show kQuickLogFlowLevel;
 import 'package:lunarlog/domain/prediction/prediction.dart'
     show CycleConfidence;
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 
@@ -165,7 +167,17 @@ class _TodayCardState extends State<TodayCard> {
         ),
         if (widget.showConfidenceChip) ...[
           const SizedBox(width: 8),
-          _ConfidenceChip(tier: widget.tier),
+          // #138: the chip's bare tier word ("High") reads ambiguously on
+          // its own — the wrapper announces the same phrase the calendar's
+          // future-day explainer uses, reusing its ARB key rather than
+          // adding a near-duplicate string.
+          Semantics(
+            label: AppLocalizations.of(
+              context,
+            ).futureExplainerConfidence(widget.tier.label.toLowerCase()),
+            excludeSemantics: true,
+            child: _ConfidenceChip(tier: widget.tier),
+          ),
         ],
       ],
     );
@@ -208,6 +220,7 @@ class _ConfidenceChip extends StatelessWidget {
         CycleConfidence.high => colors.confidenceHigh,
         CycleConfidence.learning => colors.confidenceLearning,
         CycleConfidence.irregular => colors.confidenceIrregular,
+        CycleConfidence.provisional => colors.confidenceProvisional,
       };
 
   @override
@@ -226,7 +239,11 @@ class _ConfidenceChip extends StatelessWidget {
         border: Border.all(color: color),
       ),
       child: Text(
-        tier.label,
+        // Issue #218: the chip's label routes through AppLocalizations
+        // (via the shared tier-vocabulary mapper) rather than the domain
+        // enum's own `label`, so the new `provisional` tier renders
+        // localized copy like every other surfaced string.
+        tierLabel(AppLocalizations.of(context), tier),
         style: theme.textTheme.labelMedium?.copyWith(color: color),
       ),
     );

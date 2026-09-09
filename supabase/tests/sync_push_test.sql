@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(147);
+select plan(159);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -664,6 +664,66 @@ insert into r select 'mode_entry', public.sync_push('[]'::jsonb,
     'tz', 'UTC', 'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
 select is(pg_temp.resp('mode_entry') -> 'rejected', '[]'::jsonb,
   '#131: a caregiver still writes day entries on a profile with any mode');
+
+
+-- ---------------------------------------------------------------------------
+-- #218: onboarding cycle facts (last_period_start,
+-- typical_cycle_length_days, typical_period_length_days) -- round-trip,
+-- CHECK rejection, old-client omission, direct grant write. Mirrors the
+-- U1 birth_year/relationship and #131 mode patterns directly above.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('user_a');
+
+insert into r select 'facts_insert', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(134), 'display_name', 'Facts',
+    'last_period_start', '2026-09-01',
+    'typical_cycle_length_days', 28, 'typical_period_length_days', 5,
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('facts_insert') -> 'rejected', '[]'::jsonb,
+  '#218: a push carrying the cycle facts is not rejected');
+select is((select last_period_start::text from public.profiles where id = tests.ulid(134)), '2026-09-01',
+  '#218: last_period_start round-trips through sync_push');
+select is((select typical_cycle_length_days from public.profiles where id = tests.ulid(134)), 28::smallint,
+  '#218: typical_cycle_length_days round-trips through sync_push');
+select is((select typical_period_length_days from public.profiles where id = tests.ulid(134)), 5::smallint,
+  '#218: typical_period_length_days round-trips through sync_push');
+
+insert into r select 'facts_bad_cycle', public.sync_push(
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(135), 'display_name', 'Huge', 'typical_cycle_length_days', 400,
+      'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(136), 'display_name', 'Fine', 'typical_cycle_length_days', 90,
+      'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(jsonb_array_length(pg_temp.resp('facts_bad_cycle') -> 'rejected'), 1,
+  '#218: a typical_cycle_length_days outside 1-365 is rejected by the CHECK constraint');
+select is((select count(*) from public.profiles where id = tests.ulid(135)), 0::bigint,
+  '#218: the out-of-range cycle-facts row does not land');
+select is((select typical_cycle_length_days from public.profiles where id = tests.ulid(136)), 90::smallint,
+  '#218: the wide-but-valid answer (90) still lands -- storage is honest-wide, seeding is a client gate');
+
+-- Old-client regression (the PR #108 item #3 / #218 containment guard): a
+-- client built before #218 never sends these keys; its ordinary profile
+-- edit must not null the stored facts.
+insert into r select 'facts_old_client', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(134), 'display_name', 'Facts Renamed',
+    'updated_at', pg_temp.ts_txt('t2'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('facts_old_client') -> 'rejected', '[]'::jsonb,
+  '#218: an old-client push omitting the fact keys is not rejected');
+select is((select display_name from public.profiles where id = tests.ulid(134)), 'Facts Renamed',
+  '#218: the old-client push still applies the field it did send');
+select is((select last_period_start::text from public.profiles where id = tests.ulid(134)), '2026-09-01',
+  '#218: an old client omitting last_period_start does not null the stored value');
+select is((select typical_cycle_length_days from public.profiles where id = tests.ulid(134)), 28::smallint,
+  '#218: an old client omitting typical_cycle_length_days does not null the stored value');
+
+update public.profiles set typical_period_length_days = 6 where id = tests.ulid(134);
+select is((select typical_period_length_days from public.profiles where id = tests.ulid(134)), 6::smallint,
+  '#218: authenticated can write the fact columns directly on an owned profile');
 
 -- ---------------------------------------------------------------------------
 -- Issue #159: day_entries provenance (source/source_id/import_id)

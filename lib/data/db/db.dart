@@ -64,7 +64,7 @@ const String kCareNotesProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_care_notes_profile_id '
     'ON care_notes (profile_id)';
 
-/// Schema v10 (issue #128): index over `visit_prep_items.profile_id` —
+/// Schema v11 (issue #128): index over `visit_prep_items.profile_id` —
 /// every prep-item read filters by it.
 const String kVisitPrepItemsProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_visit_prep_items_profile_id '
@@ -113,11 +113,14 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 9 — `profile_modes` + `cycle_overrides` tables (Issue #188,
   ///   life-stage modes and manual cycle corrections) and their two pull
   ///   cursors on `sync_state`.
-  /// * 10 — `care_notes` + `visit_prep_items` tables (Issue #128, shared
+  /// * 10 — `last_period_start` + `typical_cycle_length_days` +
+  ///   `typical_period_length_days` on `profiles` (Issue #218, onboarding
+  ///   cycle facts seeding provisional predictions).
+  /// * 11 — `care_notes` + `visit_prep_items` tables (Issue #128, shared
   ///   care notes and the visit-prep checklist) with their two pull
   ///   cursors on `sync_state` and a `profile_id` index on each.
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -153,6 +156,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `day_entries.updated_at_index`, `profile_guardians.profile_id_index`.
   /// Issue #188 adds `profile_modes`, `cycle_overrides`,
   /// `sync_state.cursor_profile_modes`, `sync_state.cursor_cycle_overrides`.
+  /// Issue #218 adds `profiles.last_period_start`,
+  /// `profiles.typical_cycle_length_days`,
+  /// `profiles.typical_period_length_days`.
   /// Issue #128 adds `care_notes`, `visit_prep_items`,
   /// `sync_state.cursor_care_notes`, `sync_state.cursor_visit_prep_items`,
   /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
@@ -280,9 +286,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // included) in [_upgradeToV9] so this method's branch count stays
     // under the CRAP gate as versions accumulate.
     await _upgradeToV9(m, from);
-    // Issue #128's v10 step lives whole in [_upgradeToV10] for the same
-    // reason.
+    // Issue #218's v10 step and issue #128's v11 step, same shape.
     await _upgradeToV10(m, from);
+    await _upgradeToV11(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -294,6 +300,18 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // so this only ever does work in the previously-uncovered case.
     await customStatement(kLiveDayEntryIndexSql);
     await migrationStepHook?.call('day_entries.live_index');
+    // Issue #218 extends the same unconditional re-assert to the four
+    // issue #197 read-path indexes: now that the schema-verification
+    // harness can start from a v8/v9 fixture (whose createAll-only
+    // reconstruction never ran the real `onCreate`), the `from < 8`
+    // block is skipped on those upgrades and nothing else would create
+    // them there. `CREATE INDEX IF NOT EXISTS` keeps this a no-op for
+    // every real device, which got all four from its own `onCreate` or
+    // its own `from < 8` step.
+    await customStatement(kDayEntriesProfileDateIndexSql);
+    await customStatement(kDayEntriesDirtyIndexSql);
+    await customStatement(kDayEntriesUpdatedAtIndexSql);
+    await customStatement(kProfileGuardiansProfileIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -322,15 +340,32 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
-  /// The v10 upgrade step (Issue #128): the `care_notes` and
+  /// The v10 upgrade step (Issue #218): the three onboarding cycle-fact
+  /// columns on `profiles`. Same standalone-method shape as [_upgradeToV9]
+  /// so [onUpgradeSteps]'s branch count stays under the CRAP gate.
+  Future<void> _upgradeToV10(Migrator m, int from) async {
+    if (from >= 10) return;
+    await transaction(() async {
+      // `profiles` has existed since v1 on every real device, so these
+      // addColumns are always safe regardless of `from`.
+      await m.addColumn(profiles, profiles.lastPeriodStart);
+      await migrationStepHook?.call('profiles.last_period_start');
+      await m.addColumn(profiles, profiles.typicalCycleLengthDays);
+      await migrationStepHook?.call('profiles.typical_cycle_length_days');
+      await m.addColumn(profiles, profiles.typicalPeriodLengthDays);
+      await migrationStepHook?.call('profiles.typical_period_length_days');
+    });
+  }
+
+  /// The v11 upgrade step (Issue #128): the `care_notes` and
   /// `visit_prep_items` tables, their two `sync_state` pull cursors, and a
   /// `profile_id` index on each new table. Same shape as [_upgradeToV9]
   /// (including the `sync_state` gotcha: `m.createTable(syncState)` in the
   /// `from < 2` block already declares the new cursor columns on the
   /// *current* `SyncState` class, so only a device that already had
   /// `sync_state` (from >= 2) needs the explicit addColumns).
-  Future<void> _upgradeToV10(Migrator m, int from) async {
-    if (from >= 10) return;
+  Future<void> _upgradeToV11(Migrator m, int from) async {
+    if (from >= 11) return;
     await transaction(() async {
       await m.createTable(careNotes);
       await migrationStepHook?.call('care_notes');

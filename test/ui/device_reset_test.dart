@@ -198,7 +198,8 @@ void main() {
     expect(h.engines.first.disposeCalls, 1);
     expect(h.engines.last.startCalls, 1);
     expect(h.auth.signOutCalls, [AuthSignOutScope.local]);
-    expect(find.text(kNoticeText), findsOneWidget,
+    // #216: first-run now opens on the introduction's first card.
+    expect(find.text('A private cycle log for your family'), findsOneWidget,
         reason: 'AE10: first-run, never the fail-closed screen');
     expect(find.text('Alice'), findsNothing);
     expect(h.auth.state, AuthSessionState.signedOut);
@@ -229,7 +230,8 @@ void main() {
       'open',
     ]);
     expect(h.auth.signOutCalls, [AuthSignOutScope.local]);
-    expect(find.text(kNoticeText), findsOneWidget);
+    // #216: first-run now opens on the introduction's first card.
+    expect(find.text('A private cycle log for your family'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await h.dispose();
   });
@@ -256,7 +258,8 @@ void main() {
       'signOut',
       'open',
     ], reason: 'wipeAllData runs on the old database before it closes');
-    expect(find.text(kNoticeText), findsOneWidget);
+    // #216: first-run now opens on the introduction's first card.
+    expect(find.text('A private cycle log for your family'), findsOneWidget);
     await h.dispose();
   });
 

@@ -45,6 +45,7 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     required this.confidenceHigh,
     required this.confidenceLearning,
     required this.confidenceIrregular,
+    required this.confidenceProvisional,
     required this.roleOwner,
     required this.roleCoParent,
     required this.roleCaregiver,
@@ -151,6 +152,12 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       confidenceHigh: badge(142, 0.45), // green -- regular, well-established
       confidenceLearning: badge(38, 0.65), // amber -- still building history
       confidenceIrregular: badge(6, 0.60), // red-orange -- flagged irregular
+      // Issue #218: steel blue -- seeded from onboarding answers, not yet
+      // real history. Deliberately close to learning's weight but on the
+      // opposite side of the wheel from all three existing confidence
+      // hues (green/amber/red-orange) and the violet/blue role badges
+      // stay distinguishable by saturation context.
+      confidenceProvisional: badge(215, 0.45),
       roleOwner: badge(primaryHue, 0.50),
       roleCoParent: badge(258, 0.40), // violet
       roleCaregiver: badge(199, 0.45), // blue
@@ -193,6 +200,10 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   final Color confidenceLearning;
   final Color confidenceIrregular;
 
+  /// Issue #218: the `provisional` tier's badge colour -- an estimate
+  /// seeded from onboarding answers rather than logged history.
+  final Color confidenceProvisional;
+
   /// Family-role badge colours.
   final Color roleOwner;
   final Color roleCoParent;
@@ -228,6 +239,7 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     Color? confidenceHigh,
     Color? confidenceLearning,
     Color? confidenceIrregular,
+    Color? confidenceProvisional,
     Color? roleOwner,
     Color? roleCoParent,
     Color? roleCaregiver,
@@ -250,6 +262,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       confidenceHigh: _or(confidenceHigh, this.confidenceHigh),
       confidenceLearning: _or(confidenceLearning, this.confidenceLearning),
       confidenceIrregular: _or(confidenceIrregular, this.confidenceIrregular),
+      confidenceProvisional:
+          _or(confidenceProvisional, this.confidenceProvisional),
       roleOwner: _or(roleOwner, this.roleOwner),
       roleCoParent: _or(roleCoParent, this.roleCoParent),
       roleCaregiver: _or(roleCaregiver, this.roleCaregiver),
@@ -282,6 +296,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
           Color.lerp(confidenceLearning, other.confidenceLearning, t)!,
       confidenceIrregular:
           Color.lerp(confidenceIrregular, other.confidenceIrregular, t)!,
+      confidenceProvisional:
+          Color.lerp(confidenceProvisional, other.confidenceProvisional, t)!,
       roleOwner: Color.lerp(roleOwner, other.roleOwner, t)!,
       roleCoParent: Color.lerp(roleCoParent, other.roleCoParent, t)!,
       roleCaregiver: Color.lerp(roleCaregiver, other.roleCaregiver, t)!,
@@ -312,7 +328,8 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   bool _sameConfidenceColors(LunarLogColors other) =>
       other.confidenceHigh == confidenceHigh &&
       other.confidenceLearning == confidenceLearning &&
-      other.confidenceIrregular == confidenceIrregular;
+      other.confidenceIrregular == confidenceIrregular &&
+      other.confidenceProvisional == confidenceProvisional;
 
   bool _sameRoleColors(LunarLogColors other) =>
       other.roleOwner == roleOwner &&
@@ -353,6 +370,7 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
         confidenceHigh,
         confidenceLearning,
         confidenceIrregular,
+        confidenceProvisional,
         roleOwner,
         roleCoParent,
         roleCaregiver,

@@ -554,13 +554,30 @@ void main() {
       await showMonthForward(tester, 2026, 11);
       expect(find.byKey(const ValueKey('predicted-2026-11-25')), findsNothing);
       expect(find.byKey(const ValueKey('fertile-2026-11-25')), findsNothing);
-      final opacity = tester.widget<Opacity>(
+      // #138 (B-23): the plain-future-day dim is now a text colour on the
+      // day number itself (`onSurface` at `kFutureDayTextAlpha`) instead
+      // of a whole-cell `Opacity`, which dragged the numeral below usable
+      // contrast — the same visual weight, applied only where it belongs.
+      final dimmedNumber = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('day-cell-2026-11-25')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(
+        dimmedNumber.style?.color,
+        Theme.of(tester.element(find.byType(MonthCalendar))).colorScheme.onSurface
+            .withValues(alpha: kFutureDayTextAlpha),
+        reason: 'plain future days stay dimmed, on the number text only',
+      );
+      expect(
         find.descendant(
           of: find.byKey(const ValueKey('day-cell-2026-11-25')),
           matching: find.byType(Opacity),
         ),
+        findsNothing,
+        reason: 'no whole-cell Opacity layer remains on a day cell (#138)',
       );
-      expect(opacity.opacity, 0.35, reason: 'plain future days stay dimmed');
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-11-25')));
       await tester.pumpAndSettle();
       expect(
@@ -630,7 +647,7 @@ void main() {
     });
   });
 
-  group('semantics and visual weight (#138 groundwork)', () {
+  group('semantics and visual weight (#138 groundwork, extended by #138)', () {
     testWidgets('predicted and logged days carry distinct semantics labels', (
       tester,
     ) async {
@@ -642,17 +659,24 @@ void main() {
       );
 
       expect(
-        find.bySemanticsLabel('August 5, logged period day'),
+        find.bySemanticsLabel(
+          'Wednesday, August 5, Medium flow, no symptoms',
+        ),
         findsOneWidget,
-        reason: 'a logged bleed is announced as logged',
+        reason: 'a logged bleed is announced as logged, with its flow level '
+            'and symptom presence (#138 cell-label spec)',
       );
       await showMonthForward(tester, 2026, 9);
       expect(
         find.bySemanticsLabel(
-          RegExp('September 4, predicted period day, cycle day 1'),
+          RegExp(
+            'Friday, September 4, predicted period day, cycle day 1.*'
+            'future date, not yet loggable',
+          ),
         ),
         findsOneWidget,
-        reason: 'a predicted band day is announced as predicted',
+        reason: 'a predicted band day is announced as predicted and '
+            'not-yet-loggable, never as logged',
       );
       handle.dispose();
       await disposeForecast(tester, h);
@@ -738,8 +762,11 @@ void main() {
       expect(light, isNot(equals(dark)));
     });
 
-    test('the semantic label distinguishes every predicted/logged state', () {
+    test('the semantic label distinguishes every predicted/logged state '
+        '(#138 cell-label spec: date, flow state, symptom presence, '
+        'loggability)', () {
       final today = LocalDate(2026, 8, 30);
+      final l10n = lookupAppLocalizations(const Locale('en'));
       DayEntry entry(FlowLevel flow, {List<String> tags = const []}) =>
           DayEntry(
             id: '',
@@ -751,6 +778,7 @@ void main() {
             updatedAt: DateTime.utc(2026, 1, 1),
           );
       final bleed = entry(FlowLevel.medium);
+      final bleedWithSymptoms = entry(FlowLevel.heavy, tags: const ['cramps']);
       final symptoms = entry(FlowLevel.none, tags: const ['cramps']);
       final bare = entry(FlowLevel.none);
       final date = LocalDate(2026, 8, 5);
@@ -761,8 +789,19 @@ void main() {
           entry: bleed,
           today: today,
           cell: null,
+          l10n: l10n,
         ),
-        'August 5, logged period day',
+        'Wednesday, August 5, Medium flow, no symptoms',
+      );
+      expect(
+        dayCellSemanticLabel(
+          date: date,
+          entry: bleedWithSymptoms,
+          today: today,
+          cell: null,
+          l10n: l10n,
+        ),
+        'Wednesday, August 5, Heavy flow, symptoms logged',
       );
       expect(
         dayCellSemanticLabel(
@@ -770,16 +809,29 @@ void main() {
           entry: symptoms,
           today: today,
           cell: null,
+          l10n: l10n,
         ),
-        'August 5, logged symptoms',
+        'Wednesday, August 5, logged symptoms',
       );
       expect(
-        dayCellSemanticLabel(date: date, entry: bare, today: today, cell: null),
-        'August 5, logged',
+        dayCellSemanticLabel(
+          date: date,
+          entry: bare,
+          today: today,
+          cell: null,
+          l10n: l10n,
+        ),
+        'Wednesday, August 5, logged, no symptoms',
       );
       expect(
-        dayCellSemanticLabel(date: date, entry: null, today: today, cell: null),
-        'August 5, not logged',
+        dayCellSemanticLabel(
+          date: date,
+          entry: null,
+          today: today,
+          cell: null,
+          l10n: l10n,
+        ),
+        'Wednesday, August 5, not logged',
       );
       expect(
         dayCellSemanticLabel(
@@ -787,8 +839,9 @@ void main() {
           entry: null,
           today: today,
           cell: null,
+          l10n: l10n,
         ),
-        'September 1, future date, not yet loggable',
+        'Tuesday, September 1, future date, not yet loggable',
       );
       expect(
         dayCellSemanticLabel(
@@ -804,9 +857,10 @@ void main() {
             tier: CycleConfidence.high,
             cycleIndex: 0,
           ),
+          l10n: l10n,
         ),
-        'September 4, predicted period day, cycle day 1, '
-        'predicted cramps window',
+        'Friday, September 4, predicted period day, cycle day 1, '
+        'predicted cramps window, future date, not yet loggable',
       );
       expect(
         dayCellSemanticLabel(
@@ -822,8 +876,10 @@ void main() {
             tier: CycleConfidence.high,
             cycleIndex: 0,
           ),
+          l10n: l10n,
         ),
-        'September 20, cycle day 17 of the first predicted cycle',
+        'Sunday, September 20, cycle day 17 of the first predicted cycle, '
+        'future date, not yet loggable',
       );
       expect(
         dayCellSemanticLabel(
@@ -839,8 +895,37 @@ void main() {
             tier: CycleConfidence.high,
             cycleIndex: 0,
           ),
+          l10n: l10n,
+          fertileWindowLabel: 'Estimated fertile window',
         ),
-        'September 15, estimated fertile window',
+        'Tuesday, September 15, estimated fertile window, '
+        'future date, not yet loggable',
+      );
+    });
+
+    test('the semantic label carries today and read-only status (#138)', () {
+      final today = LocalDate(2026, 8, 30);
+      final l10n = lookupAppLocalizations(const Locale('en'));
+      expect(
+        dayCellSemanticLabel(
+          date: today,
+          entry: null,
+          today: today,
+          cell: null,
+          l10n: l10n,
+        ),
+        'Sunday, August 30, not logged, today',
+      );
+      expect(
+        dayCellSemanticLabel(
+          date: LocalDate(2026, 8, 5),
+          entry: null,
+          today: today,
+          cell: null,
+          l10n: l10n,
+          readOnly: true,
+        ),
+        'Wednesday, August 5, not logged, read-only',
       );
     });
   });
@@ -1015,15 +1100,22 @@ void main() {
         find.byKey(const ValueKey('predicted-2026-10-15')),
         findsNothing,
       );
-      final opacity = tester.widget<Opacity>(
+      // #138 (B-23): the dim is a text colour on the number now, not a
+      // whole-cell Opacity layer — same assertion shape as the
+      // plain-future-day case above.
+      final dimmedNumber = tester.widget<Text>(
         find.descendant(
           of: find.byKey(const ValueKey('day-cell-2026-10-15')),
-          matching: find.byType(Opacity),
+          matching: find.byType(Text),
         ),
       );
-      expect(opacity.opacity, 0.35,
-          reason: 'a hidden fertile-only day must stay dimmed, like any '
-              'other plain future day');
+      expect(
+        dimmedNumber.style?.color,
+        Theme.of(tester.element(find.byType(MonthCalendar))).colorScheme.onSurface
+            .withValues(alpha: kFutureDayTextAlpha),
+        reason: 'a hidden fertile-only day must stay dimmed, like any '
+            'other plain future day',
+      );
 
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-10-15')));
       await tester.pumpAndSettle();

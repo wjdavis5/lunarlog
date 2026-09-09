@@ -125,6 +125,31 @@ class Profiles extends Table with TableInfo {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> lastPeriodStart = GeneratedColumn<String>(
+    'last_period_start',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> typicalCycleLengthDays = GeneratedColumn<int>(
+    'typical_cycle_length_days',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> typicalPeriodLengthDays =
+      GeneratedColumn<int>(
+        'typical_period_length_days',
+        aliasedName,
+        true,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        $customConstraints: 'NULL',
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -141,6 +166,9 @@ class Profiles extends Table with TableInfo {
     relationship,
     mode,
     transferredAt,
+    lastPeriodStart,
+    typicalCycleLengthDays,
+    typicalPeriodLengthDays,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -956,264 +984,6 @@ class CycleOverrides extends Table with TableInfo {
   bool get dontWriteConstraints => true;
 }
 
-class CareNotes extends Table with TableInfo {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  CareNotes(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
-    'profile_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL REFERENCES profiles(id)',
-  );
-  late final GeneratedColumn<String> body = GeneratedColumn<String>(
-    'body',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> deletedAt = GeneratedColumn<String>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> dirty = GeneratedColumn<int>(
-    'dirty',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1))',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
-    'local_rev',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<String> loggedByUserId = GeneratedColumn<String>(
-    'logged_by_user_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> lastModifiedByUserId =
-      GeneratedColumn<String>(
-        'last_modified_by_user_id',
-        aliasedName,
-        true,
-        type: DriftSqlType.string,
-        requiredDuringInsert: false,
-        $customConstraints: 'NULL',
-      );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    profileId,
-    body,
-    updatedAt,
-    deletedAt,
-    dirty,
-    localRev,
-    loggedByUserId,
-    lastModifiedByUserId,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'care_notes';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  Never map(Map<String, dynamic> data, {String? tablePrefix}) {
-    throw UnsupportedError('TableInfo.map in schema verification code');
-  }
-
-  @override
-  CareNotes createAlias(String alias) {
-    return CareNotes(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class VisitPrepItems extends Table with TableInfo {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  VisitPrepItems(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
-    'profile_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL REFERENCES profiles(id)',
-  );
-  late final GeneratedColumn<String> body = GeneratedColumn<String>(
-    'body',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> isChecked = GeneratedColumn<int>(
-    'is_checked',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (is_checked IN (0, 1))',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<String> checkedByUserId = GeneratedColumn<String>(
-    'checked_by_user_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> checkedAt = GeneratedColumn<String>(
-    'checked_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> deletedAt = GeneratedColumn<String>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> dirty = GeneratedColumn<int>(
-    'dirty',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1))',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
-    'local_rev',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<String> loggedByUserId = GeneratedColumn<String>(
-    'logged_by_user_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> lastModifiedByUserId =
-      GeneratedColumn<String>(
-        'last_modified_by_user_id',
-        aliasedName,
-        true,
-        type: DriftSqlType.string,
-        requiredDuringInsert: false,
-        $customConstraints: 'NULL',
-      );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    profileId,
-    body,
-    isChecked,
-    checkedByUserId,
-    checkedAt,
-    updatedAt,
-    deletedAt,
-    dirty,
-    localRev,
-    loggedByUserId,
-    lastModifiedByUserId,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'visit_prep_items';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  Never map(Map<String, dynamic> data, {String? tablePrefix}) {
-    throw UnsupportedError('TableInfo.map in schema verification code');
-  }
-
-  @override
-  VisitPrepItems createAlias(String alias) {
-    return VisitPrepItems(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
 class AppSettings extends Table with TableInfo {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -1343,24 +1113,6 @@ class SyncState extends Table with TableInfo {
     $customConstraints: 'NOT NULL DEFAULT 0',
     defaultValue: const CustomExpression('0'),
   );
-  late final GeneratedColumn<int> cursorCareNotes = GeneratedColumn<int>(
-    'cursor_care_notes',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> cursorVisitPrepItems = GeneratedColumn<int>(
-    'cursor_visit_prep_items',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
   late final GeneratedColumn<String> lastFullPullAt = GeneratedColumn<String>(
     'last_full_pull_at',
     aliasedName,
@@ -1403,8 +1155,6 @@ class SyncState extends Table with TableInfo {
     cursorObservations,
     cursorProfileModes,
     cursorCycleOverrides,
-    cursorCareNotes,
-    cursorVisitPrepItems,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -1441,8 +1191,6 @@ class DatabaseAtV10 extends GeneratedDatabase {
   late final Observations observations = Observations(this);
   late final ProfileModes profileModes = ProfileModes(this);
   late final CycleOverrides cycleOverrides = CycleOverrides(this);
-  late final CareNotes careNotes = CareNotes(this);
-  late final VisitPrepItems visitPrepItems = VisitPrepItems(this);
   late final AppSettings appSettings = AppSettings(this);
   late final SyncState syncState = SyncState(this);
   @override
@@ -1456,8 +1204,6 @@ class DatabaseAtV10 extends GeneratedDatabase {
     observations,
     profileModes,
     cycleOverrides,
-    careNotes,
-    visitPrepItems,
     appSettings,
     syncState,
   ];

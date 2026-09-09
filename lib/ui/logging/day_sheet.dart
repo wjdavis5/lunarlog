@@ -104,11 +104,39 @@ const List<FlowLevel> kSelectableFlowLevels = [
   FlowLevel.superHeavy,
 ];
 
+/// [#138] Wraps a chip so a screen reader hears its group, its label, and
+/// its selected state as one node, with an accessibility tap action wired
+/// to the same toggle the visible chip performs. The chip's own semantics
+/// are excluded and rebuilt by the wrapper: a raw chip announces only its
+/// own text plus its selected flag ("Medium, selected"), never which group
+/// of controls it belongs to, and [Semantics.onTap] keeps activation
+/// working after the exclusion. The `'<group>, <chip>'` phrase shape (and
+/// its comma join) matches `dayCellSemanticLabel`'s, so every semantic
+/// label this pass introduces reads the same way.
+Widget groupedChipSemantics({
+  required String group,
+  required String label,
+  required bool selected,
+  required Widget child,
+  VoidCallback? onTap,
+}) {
+  return Semantics(
+    label: '$group, $label',
+    button: onTap != null,
+    enabled: onTap != null,
+    selected: selected,
+    onTap: onTap,
+    excludeSemantics: true,
+    child: child,
+  );
+}
+
 /// Issue #160: the localized flow-chip label. Same strings [flowLabel]
 /// derives for `en`; this variant reads them from [AppLocalizations] so
 /// the sheet's chips follow the active locale (`flowLabel` stays as the
 /// `en` fallback for callers outside the four localized screens, e.g. the
-/// activity feed).
+/// activity feed). #138: `notBleeding`/`superHeavy` (issue #247) now have
+/// ARB keys of their own instead of inline `en` literals.
 String localizedFlowLabel(FlowLevel flow, AppLocalizations l10n) =>
     switch (flow) {
       FlowLevel.none => l10n.flowLevelNone,
@@ -117,9 +145,8 @@ String localizedFlowLabel(FlowLevel flow, AppLocalizations l10n) =>
       FlowLevel.light => l10n.flowLevelLight,
       FlowLevel.medium => l10n.flowLevelMedium,
       FlowLevel.heavy => l10n.flowLevelHeavy,
-      // Issue #247 values: no ARB keys yet (#160 follow-up) — `en` fallback.
-      FlowLevel.notBleeding => 'Not bleeding',
-      FlowLevel.superHeavy => 'Super heavy',
+      FlowLevel.notBleeding => l10n.flowLevelNotBleeding,
+      FlowLevel.superHeavy => l10n.flowLevelSuperHeavy,
     };
 
 class DaySheet extends StatefulWidget {
@@ -705,46 +732,98 @@ class _DaySheetState extends State<DaySheet> {
   /// The flow chip row plus the standalone spotting toggle (issue #247).
   /// Split out of [_editableBody] to keep each method under the CRAP gate.
   /// Every chip re-arms the autosave debounce (#198) — a flow/spotted
-  /// change is a change like any other.
+  /// change is a change like any other. #138: every chip is wrapped in
+  /// [groupedChipSemantics] so it announces its group ("Flow") and its
+  /// own label/selected state as one node.
   Widget _flowChips(AppLocalizations l10n) {
+    final group = l10n.daySheetFlowLabel;
     return Wrap(
       spacing: 8,
       runSpacing: 4,
       children: [
         for (final level in kSelectableFlowLevels)
-          ChoiceChip(
-            label: Text(localizedFlowLabel(level, l10n)),
+          groupedChipSemantics(
+            group: group,
+            label: localizedFlowLabel(level, l10n),
             selected: _flow == level,
-            onSelected: _busy
-                ? null
-                : (selected) {
-                    if (selected) {
-                      setState(() {
-                        _flow = level;
-                        _flowExplicitlySet = true;
-                      });
-                      _markDirty();
-                    }
-                  },
+            // Mirrors ChoiceChip's own gesture semantics: re-tapping the
+            // already-selected chip is a no-op, not a re-selection.
+            onTap: _busy || _flow == level ? null : () => _selectFlow(level),
+            child: ChoiceChip(
+              label: Text(localizedFlowLabel(level, l10n)),
+              selected: _flow == level,
+              onSelected: _busy
+                  ? null
+                  : (selected) {
+                      if (selected) _selectFlow(level);
+                    },
+            ),
           ),
         // Issue #247: spotting is its own `observations` category,
         // not a flow level — a standalone toggle rather than one of
         // the flow chips above, so it can coexist with any flow
-        // selection (see `_syncSpottingObservation`).
-        FilterChip(
-          key: const ValueKey('spotting-chip'),
-          label: const Text('Spotting'),
+        // selection (see `_syncSpottingObservation`). #160/#138: the
+        // label reads from ARB (same string the deprecated flow level
+        // uses) like every other chip here.
+        groupedChipSemantics(
+          group: group,
+          label: l10n.flowLevelSpotting,
           selected: _spotting,
-          onSelected: _busy
-              ? null
-              : (selected) {
-                  setState(() => _spotting = selected);
-                  _markDirty();
-                },
+          onTap: _busy ? null : () => _toggleSpotting(!_spotting),
+          child: FilterChip(
+            key: const ValueKey('spotting-chip'),
+            label: Text(l10n.flowLevelSpotting),
+            selected: _spotting,
+            onSelected: _busy ? null : _toggleSpotting,
+          ),
         ),
       ],
     );
   }
+
+  /// Selects [level] as the day's flow — the single write path behind both
+  /// the visible ChoiceChip's `onSelected` and the #138 semantics wrapper's
+  /// accessibility tap.
+  void _selectFlow(FlowLevel level) {
+    setState(() {
+      _flow = level;
+      _flowExplicitlySet = true;
+    });
+    _markDirty();
+  }
+
+  /// Sets the standalone spotting toggle (issue #247) — shared by the
+  /// visible chip and its semantics tap.
+  void _toggleSpotting(bool value) {
+    setState(() => _spotting = value);
+    _markDirty();
+  }
+
+  /// Adds or removes [code] from the taxonomy grid — shared by the visible
+  /// chip and its semantics tap (#138).
+  void _toggleTag(String code) {
+    setState(() {
+      if (_tags.contains(code)) {
+        _tags.remove(code);
+        _sessionSelectedTags.remove(code);
+      } else {
+        _tags.add(code);
+        _sessionSelectedTags.add(code);
+      }
+    });
+    _markDirty();
+  }
+
+  /// A section heading for the editable sheet (#138): visible like before
+  /// (labelMedium), and flagged [Semantics.header] so screen readers offer
+  /// heading navigation between the chip groups.
+  Widget _sectionHeading(ThemeData theme, String label) => Padding(
+    padding: const EdgeInsets.only(top: 12, bottom: 4),
+    child: Semantics(
+      header: true,
+      child: Text(label, style: theme.textTheme.labelMedium),
+    ),
+  );
 
   Widget _editableBody() {
     final theme = Theme.of(context);
@@ -769,10 +848,15 @@ class _DaySheetState extends State<DaySheet> {
                     alignment: WrapAlignment.spaceBetween,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Text(
-                        key: const ValueKey('day-sheet-date-title'),
-                        daySheetDateLabel(widget.date, widget.today),
-                        style: theme.textTheme.titleMedium,
+                      // #138: flagged as a heading so the sheet's date is
+                      // reachable through screen-reader heading navigation.
+                      Semantics(
+                        header: true,
+                        child: Text(
+                          key: const ValueKey('day-sheet-date-title'),
+                          daySheetDateLabel(widget.date, widget.today),
+                          style: theme.textTheme.titleMedium,
+                        ),
                       ),
                       if (widget.existing != null)
                         CaregiverAttributionBadge(
@@ -786,38 +870,28 @@ class _DaySheetState extends State<DaySheet> {
                     ],
                   ),
                 ),
+                _sectionHeading(theme, l10n.daySheetFlowLabel),
                 _flowChips(l10n),
                 for (final category in _copy.categoriesInOrder) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, bottom: 4),
-                    child: Text(
-                      _copy.categoryLabel(category),
-                      style: theme.textTheme.labelMedium,
-                    ),
-                  ),
+                  _sectionHeading(theme, _copy.categoryLabel(category)),
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,
                     children: [
                       for (final tag in kTagTaxonomy)
                         if (tag.category == category)
-                          FilterChip(
-                            label: Text(tag.display),
+                          groupedChipSemantics(
+                            group: _copy.categoryLabel(category),
+                            label: tag.display,
                             selected: _tags.contains(tag.code),
-                            onSelected: _busy
-                                ? null
-                                : (selected) {
-                                    setState(() {
-                                      if (selected) {
-                                        _tags.add(tag.code);
-                                        _sessionSelectedTags.add(tag.code);
-                                      } else {
-                                        _tags.remove(tag.code);
-                                        _sessionSelectedTags.remove(tag.code);
-                                      }
-                                    });
-                                    _markDirty();
-                                  },
+                            onTap: _busy ? null : () => _toggleTag(tag.code),
+                            child: FilterChip(
+                              label: Text(tag.display),
+                              selected: _tags.contains(tag.code),
+                              onSelected: _busy
+                                  ? null
+                                  : (selected) => _toggleTag(tag.code),
+                            ),
                           ),
                     ],
                   ),
@@ -1008,10 +1082,14 @@ class _DaySheetState extends State<DaySheet> {
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(
-              key: const ValueKey('day-sheet-date-title'),
-              daySheetDateLabel(existing.localDate, widget.today),
-              style: theme.textTheme.titleMedium,
+            // #138: heading flag mirrors the editable sheet's date title.
+            Semantics(
+              header: true,
+              child: Text(
+                key: const ValueKey('day-sheet-date-title'),
+                daySheetDateLabel(existing.localDate, widget.today),
+                style: theme.textTheme.titleMedium,
+              ),
             ),
             CaregiverAttributionBadge(
               loggedByUserId: existing.loggedByUserId,

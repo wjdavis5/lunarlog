@@ -76,8 +76,9 @@ void main() {
 
     expect(find.byType(ProfileHomeGate), findsOneWidget);
     expect(homeContext(tester).read<AuthController?>(), isNull);
-    // The pre-U4 first-run surface (notice → "I understand") is untouched.
-    expect(find.text('I understand'), findsOneWidget);
+    // The first-run surface (#216: introduction cards) renders without an
+    // auth service.
+    expect(find.text('A private cycle log for your family'), findsOneWidget);
 
     await disposeApp(tester, db);
   });

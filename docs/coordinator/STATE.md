@@ -3,9 +3,7 @@
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
-| 138 | feat/138-a11y-pass | ../lunarlog-wt/138-a11y-pass | 2026-09-09T14:10Z | — | coding |
 | 218 | feat/218-provisional-seeding | ../lunarlog-wt/218-provisional-seeding | 2026-09-09T14:35Z | — | coding (domain/data side; #216 owns the form) |
-| 216 | feat/216-onboarding | ../lunarlog-wt/216-onboarding | 2026-09-09T14:10Z | — | coding |
 | 242 | fix/242-ownership-token-hash-unreadable | ../lunarlog-wt/242-ownership-token-hash-unreadable | 2026-09-09T00:05Z | — | coding |
 | 125 | feat/125-alert-digest | ../lunarlog-wt/125-alert-digest | 2026-09-08T23:10Z | — | coding |
 | 132 | feat/132-cycle-history | ../lunarlog-wt/132-cycle-history | 2026-09-08T22:20Z | — | coding |
@@ -28,6 +26,8 @@
 | 198 | 341 | 2026-09-09T13:30Z |
 | 188 | 344 | 2026-09-09T13:40Z |
 | 173 | 345 | 2026-09-09T14:00Z |
+| 216 | 349 | 2026-09-09T15:10Z |
+| 138 | 351 | 2026-09-09T15:25Z |
 
 ## Externally in-flight (ANOTHER orchestrator session's set — do NOT review/merge from this session to avoid racing its loop)
 PRs #335 (#247), #329 (#321), #327 (#167), #325 (#140), #336 (docs). Issues labeled in-progress not ours: #143 #152 #157.

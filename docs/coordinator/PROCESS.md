@@ -85,6 +85,15 @@ user-facing truth. STATE.md remains the detailed record (worktree, PR, attempts)
 7. **Stop conditions**: no eligible issues; three consecutive blocks; CI failing on `main` after a
    merge (revert, file `needs-human-review`, stop); auth/quota errors (record and stop).
 
+## State commits (rule change 2026-09-09)
+
+`main` now has a repository rule requiring all changes through PRs — direct pushes are
+rejected. Coordinator state (`STATE.md`, `log.md`, `briefs/`) moves via a small
+`chore/coordinator-state-sync` branch + PR; batch updates rather than one PR per action.
+When committing state in the shared checkout: stage ONLY `docs/coordinator/STATE.md`,
+`log.md`, and the specific `briefs/<n>.md` you wrote — other sessions keep their own
+files under `docs/coordinator/` (e.g. `opencode-muse/`); never `git add` the directory.
+
 ## Session-recovery notes (learned the hard way)
 
 - New PRs may silently lack `ci.yml` runs (event gap). Always list head-SHA check-runs; if the CI

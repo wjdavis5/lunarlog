@@ -162,6 +162,36 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "last_period_start",
+            "getter_name": "lastPeriodStart",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "typical_cycle_length_days",
+            "getter_name": "typicalCycleLengthDays",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "typical_period_length_days",
+            "getter_name": "typicalPeriodLengthDays",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           }
         ],
         "is_virtual": false,
@@ -1087,298 +1117,6 @@
     },
     {
       "id": 6,
-      "references": [
-        0
-      ],
-      "type": "table",
-      "data": {
-        "name": "care_notes",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "profile_id",
-            "getter_name": "profileId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "REFERENCES profiles (id)",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "REFERENCES profiles (id)"
-            },
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [
-              {
-                "foreign_key": {
-                  "to": {
-                    "table": "profiles",
-                    "column": "id"
-                  },
-                  "initially_deferred": false,
-                  "on_update": null,
-                  "on_delete": null
-                }
-              }
-            ]
-          },
-          {
-            "name": "body",
-            "getter_name": "body",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "dateTime",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "dateTime",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "dirty",
-            "getter_name": "dirty",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"dirty\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"dirty\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "local_rev",
-            "getter_name": "localRev",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "logged_by_user_id",
-            "getter_name": "loggedByUserId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "last_modified_by_user_id",
-            "getter_name": "lastModifiedByUserId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 7,
-      "references": [
-        0
-      ],
-      "type": "table",
-      "data": {
-        "name": "visit_prep_items",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "profile_id",
-            "getter_name": "profileId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "REFERENCES profiles (id)",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "REFERENCES profiles (id)"
-            },
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [
-              {
-                "foreign_key": {
-                  "to": {
-                    "table": "profiles",
-                    "column": "id"
-                  },
-                  "initially_deferred": false,
-                  "on_update": null,
-                  "on_delete": null
-                }
-              }
-            ]
-          },
-          {
-            "name": "body",
-            "getter_name": "body",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "is_checked",
-            "getter_name": "isChecked",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"is_checked\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"is_checked\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "checked_by_user_id",
-            "getter_name": "checkedByUserId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "checked_at",
-            "getter_name": "checkedAt",
-            "moor_type": "dateTime",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "dateTime",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "dateTime",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "dirty",
-            "getter_name": "dirty",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"dirty\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"dirty\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "local_rev",
-            "getter_name": "localRev",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "logged_by_user_id",
-            "getter_name": "loggedByUserId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "last_modified_by_user_id",
-            "getter_name": "lastModifiedByUserId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 8,
       "references": [],
       "type": "table",
       "data": {
@@ -1425,7 +1163,7 @@
       }
     },
     {
-      "id": 9,
+      "id": 7,
       "references": [],
       "type": "table",
       "data": {
@@ -1527,26 +1265,6 @@
             "dsl_features": []
           },
           {
-            "name": "cursor_care_notes",
-            "getter_name": "cursorCareNotes",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "cursor_visit_prep_items",
-            "getter_name": "cursorVisitPrepItems",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "last_full_pull_at",
             "getter_name": "lastFullPullAt",
             "moor_type": "dateTime",
@@ -1602,7 +1320,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"profiles\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"is_minor\" INTEGER NOT NULL CHECK (\"is_minor\" IN (0, 1)), \"sort_order\" INTEGER NOT NULL DEFAULT 0, \"archived_at\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"birth_year\" INTEGER NULL, \"relationship\" TEXT NULL, \"mode\" TEXT NOT NULL DEFAULT 'standard', \"transferred_at\" TEXT NULL, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"profiles\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"is_minor\" INTEGER NOT NULL CHECK (\"is_minor\" IN (0, 1)), \"sort_order\" INTEGER NOT NULL DEFAULT 0, \"archived_at\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"birth_year\" INTEGER NULL, \"relationship\" TEXT NULL, \"mode\" TEXT NOT NULL DEFAULT 'standard', \"transferred_at\" TEXT NULL, \"last_period_start\" TEXT NULL, \"typical_cycle_length_days\" INTEGER NULL, \"typical_period_length_days\" INTEGER NULL, PRIMARY KEY (\"id\"));"
         }
       ]
     },
@@ -1652,24 +1370,6 @@
       ]
     },
     {
-      "name": "care_notes",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"care_notes\" (\"id\" TEXT NOT NULL, \"profile_id\" TEXT NOT NULL REFERENCES profiles (id), \"body\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"logged_by_user_id\" TEXT NULL, \"last_modified_by_user_id\" TEXT NULL, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "visit_prep_items",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"visit_prep_items\" (\"id\" TEXT NOT NULL, \"profile_id\" TEXT NOT NULL REFERENCES profiles (id), \"body\" TEXT NOT NULL, \"is_checked\" INTEGER NOT NULL DEFAULT 0 CHECK (\"is_checked\" IN (0, 1)), \"checked_by_user_id\" TEXT NULL, \"checked_at\" TEXT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"logged_by_user_id\" TEXT NULL, \"last_modified_by_user_id\" TEXT NULL, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
       "name": "app_settings",
       "sql": [
         {
@@ -1683,7 +1383,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"sync_state\" (\"id\" INTEGER NOT NULL CHECK(\"id\" = 1), \"bound_user_id\" TEXT NULL, \"device_id\" TEXT NOT NULL DEFAULT '', \"cursor_profiles\" INTEGER NOT NULL DEFAULT 0, \"cursor_day_entries\" INTEGER NOT NULL DEFAULT 0, \"cursor_observations\" INTEGER NOT NULL DEFAULT 0, \"cursor_profile_modes\" INTEGER NOT NULL DEFAULT 0, \"cursor_cycle_overrides\" INTEGER NOT NULL DEFAULT 0, \"cursor_care_notes\" INTEGER NOT NULL DEFAULT 0, \"cursor_visit_prep_items\" INTEGER NOT NULL DEFAULT 0, \"last_full_pull_at\" TEXT NULL, \"last_sync_at\" TEXT NULL, \"last_error\" TEXT NULL, \"server_clock_offset_ms\" INTEGER NULL, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"sync_state\" (\"id\" INTEGER NOT NULL CHECK(\"id\" = 1), \"bound_user_id\" TEXT NULL, \"device_id\" TEXT NOT NULL DEFAULT '', \"cursor_profiles\" INTEGER NOT NULL DEFAULT 0, \"cursor_day_entries\" INTEGER NOT NULL DEFAULT 0, \"cursor_observations\" INTEGER NOT NULL DEFAULT 0, \"cursor_profile_modes\" INTEGER NOT NULL DEFAULT 0, \"cursor_cycle_overrides\" INTEGER NOT NULL DEFAULT 0, \"last_full_pull_at\" TEXT NULL, \"last_sync_at\" TEXT NULL, \"last_error\" TEXT NULL, \"server_clock_offset_ms\" INTEGER NULL, PRIMARY KEY (\"id\"));"
         }
       ]
     }

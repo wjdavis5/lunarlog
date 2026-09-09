@@ -49,13 +49,13 @@ import 'generated_migrations/schema.dart';
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
 /// dump. A mismatch here is caught by the `schema version is 8` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 10;
+const int _kCurrentSchemaVersion = 11;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -283,6 +283,30 @@ void main() {
         syncStateColumns.map((row) => row.data['name'] as String),
         containsAll(['cursor_profile_modes', 'cursor_cycle_overrides']),
         reason: 'both Issue #188 pull cursors must land on sync_state',
+      );
+    });
+
+    test(
+        'upgrading from v$fromVersion keeps the Issue #218 onboarding '
+        'cycle-fact columns on profiles (no column loss in the v11 rebase)',
+        () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+      final profileColumns =
+          await db.customSelect("PRAGMA table_info('profiles')").get();
+      expect(
+        profileColumns.map((row) => row.data['name'] as String),
+        containsAll([
+          'last_period_start',
+          'typical_cycle_length_days',
+          'typical_period_length_days',
+        ]),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must preserve '
+            'the Issue #218 cycle-fact columns; the v11 rebase moved the '
+            'Issue #128 tables to their own step and must not drop these',
       );
     });
 

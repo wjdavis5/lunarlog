@@ -31,6 +31,11 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
           ? null
           : domain.ProfileRelationship.fromDb(row.relationship!),
       transferredAt: row.transferredAt,
+      lastPeriodStart: row.lastPeriodStart == null
+          ? null
+          : domain.LocalDate.fromIso(row.lastPeriodStart!),
+      typicalCycleLengthDays: row.typicalCycleLengthDays,
+      typicalPeriodLengthDays: row.typicalPeriodLengthDays,
     );
 
 /// Storage `FlowLevel` -> domain `FlowLevel`. Issue #247 spotting-alias

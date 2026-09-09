@@ -187,7 +187,7 @@ jobs:
   release:
     name: Build, sign, and upload to TestFlight
     needs: [verify, migration-gate, release-gate]
-    runs-on: macos-latest
+    runs-on: self-hosted
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
