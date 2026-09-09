@@ -663,6 +663,8 @@ void main() {
           providers: [Provider<DayEntriesRepository>.value(value: recording)],
           child: MaterialApp(
             theme: AppTheme.lightTheme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: MonthCalendar(
                 profileId: secondProfile.id,
