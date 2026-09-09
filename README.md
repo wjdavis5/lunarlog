@@ -231,6 +231,14 @@ and meaningful. Plan:
 (gap-closure pass against the shipped guardian/sharing infrastructure from
 issue #8).
 
+Alongside those four guardian roles, a profile's primary guardian can also
+arm a fifth, narrower relationship: a **prediction-only connection**
+(issue #151, the Clue Connect equivalent). It is not a guardian role at
+all — the recipient shares only derived cycle-phase dates (period,
+fertile, ovulation, PMS windows), never notes, tags, or raw day entries —
+and it is unavailable for minor profiles. Ending the connection deletes
+the shared snapshot server-side.
+
 ## Config & credentials
 
 Remote backend: Supabase Cloud (`dleexnnevuuddcgcpztq`); crash reporting:

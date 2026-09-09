@@ -2,19 +2,20 @@
 -- schema shape (RLS, policies, column-scoped grants, the one-connection
 -- cap index, both triggers), the create/accept/revoke RPC lifecycle
 -- (primary-guardian-only arming, Pregnancy-mode refusal at create AND
--- accept, stale-code refusal, guardian-reciprocal refusal, the
--- one-directional pair rule, the one-active-connection cap, terminal
--- idempotency), the projection boundary (derived-only payload validation,
--- recipient read path, guardian preview, enumeration-safe null), the
--- residual-access guarantees (revocation deletes the snapshot in the same
--- transaction; a guardian revocation kills the connection too; Realtime
--- publication revert), and the recipient's total isolation from raw data
--- (no profile_guardians row, no day_entries/profiles visibility, no
--- direct write on either new table, token_hash unreadable).
+-- accept, minor-profile refusal at create AND accept, stale-code refusal,
+-- guardian-reciprocal refusal, the one-directional pair rule, the
+-- one-active-connection cap, terminal idempotency), the projection
+-- boundary (derived-only payload validation, recipient read path,
+-- guardian preview, enumeration-safe null), the residual-access
+-- guarantees (revocation deletes the snapshot in the same transaction; a
+-- guardian revocation kills the connection too; Realtime publication
+-- revert), and the recipient's total isolation from raw data (no
+-- profile_guardians row, no day_entries/profiles visibility, no direct
+-- write on either new table, token_hash unreadable).
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(97);
+select plan(101);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -62,8 +63,12 @@ as $$ select count(*) from public.prediction_projections $$;
 -- P1: the raw row the recipient must never see.
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('mom');
+-- Issue #151 fix-up: is_minor is false here (not the earlier true) so the
+-- general create/accept/revoke lifecycle below is unaffected by the new
+-- minor-profile gate this migration adds -- that gate gets its own
+-- dedicated section (7a), mirroring the Pregnancy-mode section.
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
-values (tests.ulid(901), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+values (tests.ulid(901), 'Riley', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select public.create_guardian_invitation(
   tests.ulid(901), 'co_parent', 'Dad', pg_temp.token(101), 48);
@@ -81,7 +86,7 @@ select public.accept_guardian_invitation(pg_temp.token(103), 'Doctor');
 
 select tests.authenticate_as('stranger');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
-values (tests.ulid(902), 'Other Kid', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+values (tests.ulid(902), 'Other Kid', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select tests.authenticate_as('mom');
 insert into public.day_entries
@@ -551,7 +556,55 @@ select is(
   'the same, not-yet-consumed code redeems once Pregnancy mode is left');
 
 -- ---------------------------------------------------------------------------
--- 8. Stale codes and guardian revocation close the door too.
+-- 8. Minor profiles: refused at create AND at accept (PRIVACY.md: minor
+--    profiles "are never shared or analyzed"), mirroring the Pregnancy-mode
+--    section immediately above -- is_minor is just as mutable a column as
+--    profile_modes.mode, so the same arm-then-redemption race applies.
+-- ---------------------------------------------------------------------------
+-- Clear the still-active connection section 7 leaves behind so the cap
+-- doesn't mask the gate under test here (section 9's "stale codes" block
+-- below opens with this same cleanup step; borrowed here too).
+select tests.clear_authentication();
+update public.prediction_connections set revoked_at = clock_timestamp()
+ where profile_id = tests.ulid(901);
+
+update public.profiles set is_minor = true where id = tests.ulid(901);
+select tests.authenticate_as('mom');
+select throws_ok(
+  format($$select public.create_prediction_connection(%L, %L, null, 72)$$,
+    tests.ulid(901), pg_temp.token(310)),
+  '55000', 'prediction-only sharing is unavailable for minor profiles',
+  'creating is refused for a minor profile');
+
+select tests.clear_authentication();
+update public.profiles set is_minor = false where id = tests.ulid(901);
+select tests.authenticate_as('mom');
+select ok(
+  public.create_prediction_connection(tests.ulid(901), pg_temp.token(310), 'Partner', 72)
+    is not null,
+  'clearing is_minor re-opens creation');
+
+-- is_minor can change between arming and redemption, the same way
+-- Pregnancy mode can: accept re-checks.
+select tests.clear_authentication();
+update public.profiles set is_minor = true where id = tests.ulid(901);
+select tests.authenticate_as('stranger');
+select throws_ok(
+  format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(310)),
+  '55000', 'prediction-only sharing is unavailable for minor profiles',
+  'accepting is refused once the profile became a minor profile after arming');
+
+select tests.clear_authentication();
+update public.profiles set is_minor = false where id = tests.ulid(901);
+select tests.authenticate_as('stranger');
+insert into r select 'accept_minor_lifted', public.accept_prediction_connection(pg_temp.token(310));
+select is(
+  (select v ->> 'profile_id' from r where name = 'accept_minor_lifted'),
+  tests.ulid(901),
+  'the same, not-yet-consumed code redeems once is_minor is cleared');
+
+-- ---------------------------------------------------------------------------
+-- 9. Stale codes and guardian revocation close the door too.
 -- ---------------------------------------------------------------------------
 -- Stale-code guard: if the sharer loses the primary seat between arming
 -- and redemption, the code refuses.
@@ -619,8 +672,8 @@ select is(
   null, 'the guardian-revoked recipient has no residual access');
 
 -- ---------------------------------------------------------------------------
--- 9. Realtime: reconcile_realtime_publication reverts a Studio toggle on
---    the new tables (they must never cross the websocket).
+-- 10. Realtime: reconcile_realtime_publication reverts a Studio toggle on
+--     the new tables (they must never cross the websocket).
 -- ---------------------------------------------------------------------------
 select tests.clear_authentication();
 alter publication supabase_realtime add table public.prediction_connections;
@@ -643,7 +696,7 @@ select is(
   'sync_signals stays the only published table, unchanged two-column shape');
 
 -- ---------------------------------------------------------------------------
--- 10. Everything requires a session.
+-- 11. Everything requires a session.
 -- ---------------------------------------------------------------------------
 select tests.clear_authentication();
 select throws_ok(

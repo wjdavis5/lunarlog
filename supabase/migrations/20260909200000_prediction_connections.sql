@@ -44,6 +44,11 @@
 --     axis from 20260909000000_profile_modes_and_cycle_overrides.sql, not
 --     #131's care mode): both create and accept refuse while
 --     profile_modes.mode = 'pregnancy'.
+--   * Minor profiles (PRIVACY.md: "Minor profiles ... are never shared or
+--     analyzed"): both create and accept refuse when profiles.is_minor is
+--     true, mirroring the Pregnancy-mode gate exactly (same rationale for
+--     checking at both call sites -- is_minor is just as mutable a column
+--     as profile_modes.mode).
 --   * One-directional (R: "a recipient of a prediction-only share cannot
 --     simultaneously be a source of one back"): accept refuses when the
 --     accepting user already holds an active connection back to the
@@ -396,6 +401,17 @@ begin
       using errcode = 'object_not_in_prerequisite_state';
   end if;
 
+  -- Minor gate (issue #151; PRIVACY.md: minor profiles "are never shared
+  -- or analyzed"). Mirrors the Pregnancy gate immediately above -- same
+  -- errcode, same "checked at create AND accept" reasoning, because
+  -- is_minor is just as mutable as profile_modes.mode (both are plain
+  -- owner-writable columns synced through the normal push path), so the
+  -- same race between arming a code and its redemption applies here too.
+  if v_profile.is_minor then
+    raise exception 'prediction-only sharing is unavailable for minor profiles'
+      using errcode = 'object_not_in_prerequisite_state';
+  end if;
+
   if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
     raise exception 'token_hash must be a 64-character hex string' using errcode = 'invalid_parameter_value';
   end if;
@@ -451,10 +467,12 @@ $$;
 
 comment on function public.create_prediction_connection(text, text, text, int) is
   'Arms one prediction-only invite (Issue #151): primary-guardian-only, '
-  'refused in Pregnancy mode, capped at one live (pending or active) '
-  'connection per profile by prediction_connections_one_live_uq with this '
-  'function as the friendly error path. The caller supplies a client-side '
-  'SHA-256 token hash; the plaintext never reaches the server.';
+  'refused in Pregnancy mode and for minor profiles (PRIVACY.md: minor '
+  'data is never shared or analyzed), capped at one live (pending or '
+  'active) connection per profile by prediction_connections_one_live_uq '
+  'with this function as the friendly error path. The caller supplies a '
+  'client-side SHA-256 token hash; the plaintext never reaches the '
+  'server.';
 
 revoke all on function public.create_prediction_connection(text, text, text, int)
   from public, anon;
@@ -546,6 +564,16 @@ begin
       using errcode = 'object_not_in_prerequisite_state';
   end if;
 
+  -- Minor gate, re-checked at redemption -- same reasoning as the
+  -- Pregnancy gate immediately above: is_minor is a plain owner-writable
+  -- column (synced through the normal push path) just like
+  -- profile_modes.mode, so it can change between arming a code and its
+  -- redemption.
+  if v_profile.is_minor then
+    raise exception 'prediction-only sharing is unavailable for minor profiles'
+      using errcode = 'object_not_in_prerequisite_state';
+  end if;
+
   -- A guardian of the profile already sees everything; a prediction-only
   -- seat under them would muddy revocation semantics for no gain.
   if public.is_profile_guardian(v_conn.profile_id, v_uid) then
@@ -590,9 +618,11 @@ comment on function public.accept_prediction_connection(text) is
   'Redeems a prediction-only invite (Issue #151): single-use, expiry- and '
   'revocation-checked, refused for the sharer themself, for an existing '
   'guardian, for a profile whose sharer lost the primary seat, for '
-  'Pregnancy mode (re-checked at accept), and for a reciprocal '
-  'share-with-the-same-person pair. The recipient gains exactly one '
-  'thing: read access to get_prediction_projection() for this profile.';
+  'Pregnancy mode and for a minor profile (both re-checked at accept -- '
+  'either can change between arming a code and its redemption), and for '
+  'a reciprocal share-with-the-same-person pair. The recipient gains '
+  'exactly one thing: read access to get_prediction_projection() for '
+  'this profile.';
 
 revoke all on function public.accept_prediction_connection(text) from public, anon;
 grant execute on function public.accept_prediction_connection(text) to authenticated;
