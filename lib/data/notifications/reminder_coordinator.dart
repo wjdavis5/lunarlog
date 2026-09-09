@@ -184,6 +184,20 @@ class ReminderCoordinator with WidgetsBindingObserver {
     _scheduleReplan();
   }
 
+  /// Issue #168: the overview hint's "Turn on reminders" tap. Same
+  /// generation-guarded shape as [start] and [_refreshPermissionAndReplan]
+  /// so a resume racing this request can't let a stale answer win, and
+  /// republishes through the same [_setAvailability] seam so the hint
+  /// reacts immediately rather than waiting for the next app resume.
+  Future<void> requestPermission() async {
+    if (_disposed || !_started) return;
+    final generation = ++_permissionProbeGeneration;
+    final availability = await _scheduler.requestPermission();
+    if (_disposed || generation != _permissionProbeGeneration) return;
+    _setAvailability(availability);
+    _scheduleReplan();
+  }
+
   Future<void> dispose() async {
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this);

@@ -105,11 +105,16 @@ void main() {
   final calls = <MethodCall>[];
   bool? permissionEnabled;
   Object? permissionError;
+  // Issue #168: the answer `requestNotificationsPermission` (Android) and
+  // `requestPermissions` (Darwin) hand back — independent of
+  // `permissionEnabled`, which only backs the read-only probes.
+  bool? requestPermissionGranted;
 
   setUp(() {
     calls.clear();
     permissionEnabled = null;
     permissionError = null;
+    requestPermissionGranted = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall call) async {
       calls.add(call);
@@ -133,8 +138,20 @@ void main() {
         }
         return null;
       }
+      if (call.method == 'requestNotificationsPermission' ||
+          call.method == 'requestPermissions') {
+        return requestPermissionGranted;
+      }
+      if (call.method == 'openAppNotificationSettings') {
+        return true;
+      }
       if (call.method == 'getNotificationAppLaunchDetails') {
         return null;
+      }
+      // The Android plugin's own `initialize()` declares a non-nullable
+      // `Future<bool>` return, unlike every other method above.
+      if (call.method == 'initialize') {
+        return true;
       }
       return null;
     });
@@ -215,6 +232,136 @@ void main() {
       final scheduler = schedulerFor(TargetPlatform.iOS);
       final availability = await scheduler.checkAvailability();
 
+      expect(availability, NotificationAvailability.available);
+    });
+  });
+
+  group('Android POST_NOTIFICATIONS request (issue #168)', () {
+    test('initialize() requests the Android runtime permission before the '
+        'first availability check', () async {
+      requestPermissionGranted = true;
+      permissionEnabled = true;
+      final scheduler = schedulerFor(TargetPlatform.android);
+
+      final availability = await scheduler.initialize();
+
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+        reason: 'API 33+ requires an explicit runtime request even though '
+            'the manifest already declares POST_NOTIFICATIONS',
+      );
+      expect(availability, NotificationAvailability.available);
+    });
+
+    test('initialize() never requests the Android permission on iOS -- '
+        'Darwin behavior is unchanged', () async {
+      requestPermissionGranted = true;
+      permissionEnabled = true;
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+
+      await scheduler.initialize();
+
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isFalse,
+      );
+    });
+
+    test(
+        'initialize() requests the permission regardless of push/FCM '
+        'configuration -- the scheduler has no such gate at all', () async {
+      // There is no AppConfig.hasPush-style parameter anywhere on
+      // FlutterLocalNotificationsScheduler or its initialize(); this test
+      // documents that absence rather than exercising a flag.
+      requestPermissionGranted = false;
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.android);
+
+      await scheduler.initialize();
+
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+      );
+    });
+
+    test(
+        'requestPermission() re-requests after one denial, then opens '
+        'settings once denied twice', () async {
+      requestPermissionGranted = false;
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize(); // first ask, denied -> attempts = 1
+      calls.clear();
+
+      await scheduler.requestPermission(); // second ask, denied -> attempts = 2
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+        reason: 'still eligible after only one prior denial',
+      );
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isFalse,
+      );
+      calls.clear();
+
+      await scheduler.requestPermission(); // third ask: permanently denied
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isTrue,
+        reason: 'two refusals is Android\'s own permanently-denied line',
+      );
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isFalse,
+        reason: 'the dialog would silently no-op; settings is the only '
+            'path back to "on"',
+      );
+    });
+
+    test(
+        'requestPermission() reports available once granted and resets '
+        'the denial count', () async {
+      requestPermissionGranted = false;
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize(); // denied -> attempts = 1
+
+      requestPermissionGranted = true;
+      permissionEnabled = true;
+      final availability = await scheduler.requestPermission();
+      expect(availability, NotificationAvailability.available);
+
+      // A later denial goes through one more full request cycle rather
+      // than jumping straight to settings, proving the grant reset the
+      // count.
+      requestPermissionGranted = false;
+      permissionEnabled = false;
+      calls.clear();
+      await scheduler.requestPermission();
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+      );
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isFalse,
+      );
+    });
+
+    test('requestPermission() re-requests the Darwin permission on iOS',
+        () async {
+      requestPermissionGranted = true;
+      permissionEnabled = true;
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+      await scheduler.initialize();
+      calls.clear();
+
+      final availability = await scheduler.requestPermission();
+
+      expect(calls.any((c) => c.method == 'requestPermissions'), isTrue);
       expect(availability, NotificationAvailability.available);
     });
   });

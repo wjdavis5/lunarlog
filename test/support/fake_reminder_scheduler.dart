@@ -16,6 +16,7 @@ class FakeReminderScheduler implements ReminderScheduler {
   FakeReminderScheduler({
     this.initialAvailability = NotificationAvailability.available,
     this.initializeGate,
+    this.requestPermissionGate,
   });
 
   final NotificationAvailability initialAvailability;
@@ -23,6 +24,12 @@ class FakeReminderScheduler implements ReminderScheduler {
   /// When set, [initialize] parks on this completer before reporting
   /// availability — the window in which an app resume can race `start()`.
   final Completer<void>? initializeGate;
+
+  /// When set, [requestPermission] parks on this completer before
+  /// reporting availability — the window in which the "Turn on reminders"
+  /// tap's own system-UI wrapping (issue #168) can be observed before the
+  /// (fake) OS dialog resolves.
+  final Completer<void>? requestPermissionGate;
 
   /// Answer for the next [checkAvailability] (the resume-time re-probe),
   /// when it should differ from [initialAvailability] — e.g. a permission
@@ -37,7 +44,12 @@ class FakeReminderScheduler implements ReminderScheduler {
   int initializeCalls = 0;
   int cancelCalls = 0;
   int availabilityChecks = 0;
+  int requestPermissionCalls = 0;
   void Function(String profileId)? launchSink;
+
+  /// Answer for the next [requestPermission] (issue #168's "Turn on
+  /// reminders" tap), when it should differ from [currentAvailability].
+  NotificationAvailability? requestPermissionResult;
 
   @override
   Future<NotificationAvailability> initialize({
@@ -56,6 +68,13 @@ class FakeReminderScheduler implements ReminderScheduler {
       return availabilityGates.removeAt(0).future;
     }
     return currentAvailability ?? initialAvailability;
+  }
+
+  @override
+  Future<NotificationAvailability> requestPermission() async {
+    requestPermissionCalls++;
+    await requestPermissionGate?.future;
+    return requestPermissionResult ?? currentAvailability ?? initialAvailability;
   }
 
   @override

@@ -403,9 +403,38 @@ class _LunarLogAppState extends State<LunarLogApp> {
       predictionFor: _prediction.watch,
     );
     _coordinator = coordinator;
+    // Issue #168: `start()` now requests the Android permission too (Darwin
+    // already did), whose dialog is system UI exactly like the biometric
+    // prompt -- but this call runs from `initState()`, still inside the
+    // ancestor's build phase, where `GateController.duringSystemUi` cannot
+    // be used safely: opening a window notifies listeners synchronously,
+    // and `LunarLogRootState` calling `setState()` on itself mid-build
+    // throws ("setState() or markNeedsBuild() called during build").
+    // Unwrapped here matches the pre-existing (unwrapped) Darwin request
+    // this mirrors; only the explicit, user-triggered re-request in
+    // [_requestNotificationPermission] -- which never runs during a build
+    // -- is wrapped.
     await coordinator.start(
       onLaunchFromNotification: gate?.setPendingLaunchProfileId,
     );
+  }
+
+  /// Issue #168: backs [RequestNotificationPermissionCallback] for the
+  /// overview hint's "Turn on reminders" tap. Wrapped in the gate's
+  /// system-UI window (like [unlock]/[reauthenticate]) because the OS
+  /// permission dialog reports the same backgrounding lifecycle event a
+  /// real departure does — without this a denial (or even a grant) could
+  /// be read as the operator having left and re-lock the app right after
+  /// they tapped the hint.
+  Future<void> _requestNotificationPermission() async {
+    final coordinator = _coordinator;
+    if (coordinator == null) return;
+    final gate = context.read<GateController?>();
+    if (gate != null) {
+      await gate.duringSystemUi(coordinator.requestPermission);
+    } else {
+      await coordinator.requestPermission();
+    }
   }
 
   /// AS10: a signed-in session (the confirmation link opened on this
@@ -515,6 +544,19 @@ class _LunarLogAppState extends State<LunarLogApp> {
         ChangeNotifierProvider.value(
           value: _permissionState,
         ),
+        // Issue #168: the overview hint's "Turn on reminders" action.
+        // `_coordinator` is set synchronously before `_startReminders`'s
+        // first `await` (inside `coordinator.start()`), so it is already
+        // non-null by this first build whenever a scheduler was provided;
+        // null here (no scheduler) means availability never leaves
+        // `available` and the hint the button lives in never renders.
+        if (_coordinator != null)
+          Provider<RequestNotificationPermissionCallback>.value(
+            value: RequestNotificationPermissionCallback(
+              _requestNotificationPermission,
+            ),
+            updateShouldNotify: (_, _) => false,
+          ),
         ChangeNotifierProvider(
           create: (context) => ProfileController(
             profilesRepository: context.read<ProfilesRepository>(),

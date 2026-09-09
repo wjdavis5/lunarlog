@@ -8,6 +8,8 @@
 /// those same instances (KTD3, R5).
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +25,7 @@ import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -36,7 +39,7 @@ import '../support/fake_reminder_scheduler.dart';
 import '../support/fake_supabase_client.dart';
 import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
-import 'gate_test.dart' show FakeGate;
+import 'gate_test.dart' show FakeGate, FakeInactivityTimers;
 import 'overview_test.dart' show seedEpisodes;
 
 Future<void> disposeApp(WidgetTester tester, LunarLogDatabase db) async {
@@ -321,5 +324,56 @@ void main() {
     expect(scheduler.cancelCalls, 0);
 
     await disposeApp(tester, db);
+  });
+
+  group('reminder permission requests run inside the system-UI window '
+      '(issue #168)', () {
+    // The automatic startup request (initState -> _startReminders ->
+    // coordinator.start()) is deliberately *not* wrapped in
+    // `duringSystemUi`: it runs during the ancestor's build phase, where
+    // opening a system-UI window's synchronous `notifyListeners()` would
+    // hit `LunarLogRootState` calling `setState()` mid-build. It stays
+    // unwrapped, matching the pre-existing (also unwrapped) Darwin
+    // request it mirrors. Only the explicit, user-triggered re-request
+    // below -- which never runs during a build -- is wrapped.
+    testWidgets(
+        'the "Turn on reminders" re-request is wrapped the same way',
+        (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final requestGate = Completer<void>();
+      final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied,
+        requestPermissionGate: requestGate,
+      )..requestPermissionResult = NotificationAvailability.available;
+
+      await tester.pumpWidget(LunarLogRoot(
+        gate: FakeGate(requiresUnlock: false),
+        dbOpener: () async => db,
+        scheduler: scheduler,
+        inactivityTimerFactory: FakeInactivityTimers().factory,
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final gateController = homeContext(tester).read<GateController>();
+      final requestPermission =
+          homeContext(tester).read<RequestNotificationPermissionCallback>();
+
+      final pending = requestPermission();
+      await tester.pump();
+
+      expect(gateController.systemUiActive, isTrue,
+          reason: 'the re-request dialog is system UI too');
+      gateController.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(gateController.locked, isFalse,
+          reason: 'this is the app\'s own request dialog, not a real '
+              'departure');
+
+      requestGate.complete();
+      await pending;
+      await tester.pumpAndSettle();
+
+      await disposeApp(tester, db);
+    });
   });
 }
