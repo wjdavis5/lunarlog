@@ -54,6 +54,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarLegendHeavy => 'Heavy flow';
 
   @override
+  String get calendarLegendSuperHeavy => 'Super heavy flow (5 marks)';
+
+  @override
   String get calendarLegendSymptom => 'Symptom day';
 
   @override
@@ -88,6 +91,62 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get calendarKeepLogging =>
       'Keep logging — predicted bands appear once a few cycles are recorded.';
+
+  @override
+  String calendarCellDateLabel(String weekday, String month, int day) {
+    return '$weekday, $month $day';
+  }
+
+  @override
+  String calendarCellFlowState(String level) {
+    return '$level flow';
+  }
+
+  @override
+  String get calendarCellSymptomsLogged => 'symptoms logged';
+
+  @override
+  String get calendarCellNoSymptoms => 'no symptoms';
+
+  @override
+  String get calendarCellLoggedSymptoms => 'logged symptoms';
+
+  @override
+  String get calendarCellLogged => 'logged';
+
+  @override
+  String get calendarCellNotLogged => 'not logged';
+
+  @override
+  String get calendarCellToday => 'today';
+
+  @override
+  String get calendarCellFuture => 'future date, not yet loggable';
+
+  @override
+  String get calendarCellReadOnly => 'read-only';
+
+  @override
+  String get calendarCellPredictedPeriod => 'predicted period day';
+
+  @override
+  String calendarCellCycleDay(int day) {
+    return 'cycle day $day';
+  }
+
+  @override
+  String calendarCellCycleDayFirstCycle(int day) {
+    return 'cycle day $day of the first predicted cycle';
+  }
+
+  @override
+  String get calendarCellPmsWindow => 'predicted premenstrual window';
+
+  @override
+  String get calendarCellCrampsWindow => 'predicted cramps window';
+
+  @override
+  String get calendarCellNoPrediction => 'no prediction for this date';
 
   @override
   String get monthPickerPreviousYear => 'Previous year';
@@ -157,6 +216,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get flowLevelHeavy => 'Heavy';
+
+  @override
+  String get flowLevelNotBleeding => 'Not bleeding';
+
+  @override
+  String get flowLevelSuperHeavy => 'Super heavy';
 
   @override
   String get daySheetDeleteTitle => 'Delete this entry?';
@@ -258,6 +323,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewTurnOnReminders => 'Turn on reminders';
+
+  @override
+  String cycleWheelCenterCycleDay(int day) {
+    return 'Cycle day $day';
+  }
+
+  @override
+  String cycleWheelCenterPeriodDay(int day) {
+    return 'Period · day $day';
+  }
+
+  @override
+  String cycleWheelPhasePeriodDay(int day) {
+    return 'Period, day $day';
+  }
+
+  @override
+  String cycleWheelSemanticsBody(String phase, int cycleDays, int periodDays) {
+    return '$phase of about $cycleDays days. Period usually runs about $periodDays days.';
+  }
 
   @override
   String get settingsTitle => 'Settings';

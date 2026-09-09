@@ -548,7 +548,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               : theme.colorScheme.onSurfaceVariant,
         ),
       ),
-      title: Row(
+      // #138 (AC4): a Wrap, not a Row — the "(you)" suffix and the name are
+      // one announcement, and at 200% text scale they flow to a second
+      // line instead of overflowing the tile.
+      title: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 6,
         children: [
           Text(
             guardian.displayName?.isNotEmpty == true
@@ -556,10 +561,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                 : guardian.role.label,
             style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
           ),
-          if (isMe) ...[
-            const SizedBox(width: 6),
+          if (isMe)
             Text('(you)', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
-          ],
         ],
       ),
       subtitle: Text(guardian.role.label),

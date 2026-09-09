@@ -95,6 +95,13 @@ void main() {
         () {
       expect(narrowWeekdayInitials(), ['S', 'M', 'T', 'W', 'T', 'F', 'S']);
     });
+
+    test('full weekday names are Sunday-first (#138 semantics labels)', () {
+      expect(fullWeekdayNames(), [
+        'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+        'Saturday',
+      ]);
+    });
   });
 
   group('first-day-of-week seam (month_calendar.dart)', () {

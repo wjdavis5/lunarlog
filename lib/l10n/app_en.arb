@@ -64,6 +64,10 @@
   "@calendarLegendHeavy": {
     "description": "Legend entry for a heavy-level logged bleed day."
   },
+  "calendarLegendSuperHeavy": "Super heavy flow (5 marks)",
+  "@calendarLegendSuperHeavy": {
+    "description": "Legend entry for a super-heavy logged bleed day; the parenthetical names its non-colour dot-count channel."
+  },
   "calendarLegendSymptom": "Symptom day",
   "@calendarLegendSymptom": {
     "description": "Legend entry for a logged symptom-only day."
@@ -112,6 +116,84 @@
   "calendarKeepLogging": "Keep logging — predicted bands appear once a few cycles are recorded.",
   "@calendarKeepLogging": {
     "description": "Strip shown on quiet months while no estimate is active."
+  },
+  "calendarCellDateLabel": "{weekday}, {month} {day}",
+  "@calendarCellDateLabel": {
+    "description": "The date half of a calendar day cell's screen-reader label, e.g. 'Wednesday, September 9'.",
+    "placeholders": {
+      "weekday": {"type": "String"},
+      "month": {"type": "String"},
+      "day": {"type": "int"}
+    }
+  },
+  "calendarCellFlowState": "{level} flow",
+  "@calendarCellFlowState": {
+    "description": "Screen-reader fragment naming a logged day's bleed level, e.g. 'Medium flow'.",
+    "placeholders": {
+      "level": {"type": "String"}
+    }
+  },
+  "calendarCellSymptomsLogged": "symptoms logged",
+  "@calendarCellSymptomsLogged": {
+    "description": "Screen-reader fragment for a logged day that also carries tags or a note."
+  },
+  "calendarCellNoSymptoms": "no symptoms",
+  "@calendarCellNoSymptoms": {
+    "description": "Screen-reader fragment for a logged day with no tags and no note."
+  },
+  "calendarCellLoggedSymptoms": "logged symptoms",
+  "@calendarCellLoggedSymptoms": {
+    "description": "Screen-reader fragment for a symptom-only logged day (no bleed)."
+  },
+  "calendarCellLogged": "logged",
+  "@calendarCellLogged": {
+    "description": "Screen-reader fragment for a logged day with no bleed and no symptoms."
+  },
+  "calendarCellNotLogged": "not logged",
+  "@calendarCellNotLogged": {
+    "description": "Screen-reader fragment for a past or present day with no entry."
+  },
+  "calendarCellToday": "today",
+  "@calendarCellToday": {
+    "description": "Screen-reader fragment marking the calendar's today cell."
+  },
+  "calendarCellFuture": "future date, not yet loggable",
+  "@calendarCellFuture": {
+    "description": "Screen-reader fragment explaining why a future calendar cell opens an explainer instead of the log sheet."
+  },
+  "calendarCellReadOnly": "read-only",
+  "@calendarCellReadOnly": {
+    "description": "Screen-reader fragment marking a past calendar cell whose day sheet opens read-only (viewer role)."
+  },
+  "calendarCellPredictedPeriod": "predicted period day",
+  "@calendarCellPredictedPeriod": {
+    "description": "Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike."
+  },
+  "calendarCellCycleDay": "cycle day {day}",
+  "@calendarCellCycleDay": {
+    "description": "Screen-reader fragment for a predicted bleed day's cycle-day numeral.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "calendarCellCycleDayFirstCycle": "cycle day {day} of the first predicted cycle",
+  "@calendarCellCycleDayFirstCycle": {
+    "description": "Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "calendarCellPmsWindow": "predicted premenstrual window",
+  "@calendarCellPmsWindow": {
+    "description": "Screen-reader fragment for a day carrying the PMS badge."
+  },
+  "calendarCellCrampsWindow": "predicted cramps window",
+  "@calendarCellCrampsWindow": {
+    "description": "Screen-reader fragment for a day carrying the cramps badge."
+  },
+  "calendarCellNoPrediction": "no prediction for this date",
+  "@calendarCellNoPrediction": {
+    "description": "Screen-reader fragment for a future day whose forecast cell carries no marker."
   },
   "monthPickerPreviousYear": "Previous year",
   "@monthPickerPreviousYear": {
@@ -195,6 +277,14 @@
   "flowLevelHeavy": "Heavy",
   "@flowLevelHeavy": {
     "description": "Day sheet flow chip label for heavy flow."
+  },
+  "flowLevelNotBleeding": "Not bleeding",
+  "@flowLevelNotBleeding": {
+    "description": "Day sheet flow chip label for an explicit no-bleed assertion (issue #247)."
+  },
+  "flowLevelSuperHeavy": "Super heavy",
+  "@flowLevelSuperHeavy": {
+    "description": "Day sheet flow chip label for super-heavy flow (issue #247)."
   },
   "daySheetDeleteTitle": "Delete this entry?",
   "@daySheetDeleteTitle": {
@@ -306,6 +396,36 @@
   "overviewTurnOnReminders": "Turn on reminders",
   "@overviewTurnOnReminders": {
     "description": "Action on the denied-permission reminder hint."
+  },
+  "cycleWheelCenterCycleDay": "Cycle day {day}",
+  "@cycleWheelCenterCycleDay": {
+    "description": "The overview wheel's centre label mid-cycle.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "cycleWheelCenterPeriodDay": "Period · day {day}",
+  "@cycleWheelCenterPeriodDay": {
+    "description": "The overview wheel's centre label during a logged bleed episode.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "cycleWheelPhasePeriodDay": "Period, day {day}",
+  "@cycleWheelPhasePeriodDay": {
+    "description": "The phase half of the overview wheel's screen-reader label during a bleed episode.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "cycleWheelSemanticsBody": "{phase} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsBody": {
+    "description": "The overview wheel's screen-reader label; {phase} is a cycleWheelCenter*/cycleWheelPhase* fragment.",
+    "placeholders": {
+      "phase": {"type": "String"},
+      "cycleDays": {"type": "int"},
+      "periodDays": {"type": "int"}
+    }
   },
   "settingsTitle": "Settings",
   "@settingsTitle": {

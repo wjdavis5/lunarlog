@@ -178,6 +178,12 @@ abstract class AppLocalizations {
   /// **'Heavy flow'**
   String get calendarLegendHeavy;
 
+  /// Legend entry for a super-heavy logged bleed day; the parenthetical names its non-colour dot-count channel.
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy flow (5 marks)'**
+  String get calendarLegendSuperHeavy;
+
   /// Legend entry for a logged symptom-only day.
   ///
   /// In en, this message translates to:
@@ -243,6 +249,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Keep logging — predicted bands appear once a few cycles are recorded.'**
   String get calendarKeepLogging;
+
+  /// The date half of a calendar day cell's screen-reader label, e.g. 'Wednesday, September 9'.
+  ///
+  /// In en, this message translates to:
+  /// **'{weekday}, {month} {day}'**
+  String calendarCellDateLabel(String weekday, String month, int day);
+
+  /// Screen-reader fragment naming a logged day's bleed level, e.g. 'Medium flow'.
+  ///
+  /// In en, this message translates to:
+  /// **'{level} flow'**
+  String calendarCellFlowState(String level);
+
+  /// Screen-reader fragment for a logged day that also carries tags or a note.
+  ///
+  /// In en, this message translates to:
+  /// **'symptoms logged'**
+  String get calendarCellSymptomsLogged;
+
+  /// Screen-reader fragment for a logged day with no tags and no note.
+  ///
+  /// In en, this message translates to:
+  /// **'no symptoms'**
+  String get calendarCellNoSymptoms;
+
+  /// Screen-reader fragment for a symptom-only logged day (no bleed).
+  ///
+  /// In en, this message translates to:
+  /// **'logged symptoms'**
+  String get calendarCellLoggedSymptoms;
+
+  /// Screen-reader fragment for a logged day with no bleed and no symptoms.
+  ///
+  /// In en, this message translates to:
+  /// **'logged'**
+  String get calendarCellLogged;
+
+  /// Screen-reader fragment for a past or present day with no entry.
+  ///
+  /// In en, this message translates to:
+  /// **'not logged'**
+  String get calendarCellNotLogged;
+
+  /// Screen-reader fragment marking the calendar's today cell.
+  ///
+  /// In en, this message translates to:
+  /// **'today'**
+  String get calendarCellToday;
+
+  /// Screen-reader fragment explaining why a future calendar cell opens an explainer instead of the log sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'future date, not yet loggable'**
+  String get calendarCellFuture;
+
+  /// Screen-reader fragment marking a past calendar cell whose day sheet opens read-only (viewer role).
+  ///
+  /// In en, this message translates to:
+  /// **'read-only'**
+  String get calendarCellReadOnly;
+
+  /// Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike.
+  ///
+  /// In en, this message translates to:
+  /// **'predicted period day'**
+  String get calendarCellPredictedPeriod;
+
+  /// Screen-reader fragment for a predicted bleed day's cycle-day numeral.
+  ///
+  /// In en, this message translates to:
+  /// **'cycle day {day}'**
+  String calendarCellCycleDay(int day);
+
+  /// Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'cycle day {day} of the first predicted cycle'**
+  String calendarCellCycleDayFirstCycle(int day);
+
+  /// Screen-reader fragment for a day carrying the PMS badge.
+  ///
+  /// In en, this message translates to:
+  /// **'predicted premenstrual window'**
+  String get calendarCellPmsWindow;
+
+  /// Screen-reader fragment for a day carrying the cramps badge.
+  ///
+  /// In en, this message translates to:
+  /// **'predicted cramps window'**
+  String get calendarCellCrampsWindow;
+
+  /// Screen-reader fragment for a future day whose forecast cell carries no marker.
+  ///
+  /// In en, this message translates to:
+  /// **'no prediction for this date'**
+  String get calendarCellNoPrediction;
 
   /// Tooltip on the month/year picker's back-year chevron.
   ///
@@ -333,6 +435,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Heavy'**
   String get flowLevelHeavy;
+
+  /// Day sheet flow chip label for an explicit no-bleed assertion (issue #247).
+  ///
+  /// In en, this message translates to:
+  /// **'Not bleeding'**
+  String get flowLevelNotBleeding;
+
+  /// Day sheet flow chip label for super-heavy flow (issue #247).
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy'**
+  String get flowLevelSuperHeavy;
 
   /// Title of the day entry delete confirmation dialog.
   ///
@@ -519,6 +633,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Turn on reminders'**
   String get overviewTurnOnReminders;
+
+  /// The overview wheel's centre label mid-cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle day {day}'**
+  String cycleWheelCenterCycleDay(int day);
+
+  /// The overview wheel's centre label during a logged bleed episode.
+  ///
+  /// In en, this message translates to:
+  /// **'Period · day {day}'**
+  String cycleWheelCenterPeriodDay(int day);
+
+  /// The phase half of the overview wheel's screen-reader label during a bleed episode.
+  ///
+  /// In en, this message translates to:
+  /// **'Period, day {day}'**
+  String cycleWheelPhasePeriodDay(int day);
+
+  /// The overview wheel's screen-reader label; {phase} is a cycleWheelCenter*/cycleWheelPhase* fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'{phase} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsBody(String phase, int cycleDays, int periodDays);
 
   /// The settings screen's app bar title.
   ///
