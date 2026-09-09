@@ -122,8 +122,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 12 — `pms` on `day_entries` (Issue #220, the first-class PMS
   ///   marker that feeds the 6-cycle PMS averages and the predicted PMS
   ///   band).
+  /// * 13 — `tracking_preferences` on `profiles` (Issue #259, the synced
+  ///   per-profile category curation document the day sheet reads; JSON
+  ///   text mirroring the server's jsonb).
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -165,7 +168,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// Issue #128 adds `care_notes`, `visit_prep_items`,
   /// `sync_state.cursor_care_notes`, `sync_state.cursor_visit_prep_items`,
   /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
-  /// Issue #220 adds `day_entries.pms`.
+  /// Issue #220 adds `day_entries.pms`. Issue #259 adds
+  /// `profiles.tracking_preferences`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -295,6 +299,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV11(m, from);
     // Issue #220's v12 step, same shape again.
     await _upgradeToV12(m, from);
+    // Issue #259's v13 step, same shape again.
+    await _upgradeToV13(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -400,6 +406,21 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await transaction(() async {
       await m.addColumn(dayEntries, dayEntries.pms);
       await migrationStepHook?.call('day_entries.pms');
+    });
+  }
+
+  /// The v13 upgrade step (Issue #259): the synced tracking-preferences
+  /// document on `profiles`. `profiles` has existed since v1 on every real
+  /// device, so the addColumn is always safe regardless of `from`; the
+  /// column is nullable with no default, so every existing row reads as
+  /// "never customized" — the all-defaults state — until the profile's
+  /// guardians curate it (the server migration adds the same-shaped jsonb
+  /// column the same way).
+  Future<void> _upgradeToV13(Migrator m, int from) async {
+    if (from >= 13) return;
+    await transaction(() async {
+      await m.addColumn(profiles, profiles.trackingPreferences);
+      await migrationStepHook?.call('profiles.tracking_preferences');
     });
   }
 

@@ -60,6 +60,7 @@ final class RemoteProfileRow extends RemoteRow {
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
+    this.trackingPreferences,
   });
 
   @override
@@ -109,6 +110,15 @@ final class RemoteProfileRow extends RemoteRow {
   final String? lastPeriodStart;
   final int? typicalCycleLengthDays;
   final int? typicalPeriodLengthDays;
+
+  /// Issue #259: the profile's tracking-preferences document, raw and
+  /// undecoded — the JSON text of the `{category: {enabled, sort_order}}`
+  /// object (the wire carries a JSON object; `row_codec.dart` re-encodes
+  /// it to text exactly like `observations.raw`). Null when the profile
+  /// was never customized. Pulled and pushed (only when locally non-null)
+  /// like any other profile column; parsing into the domain model happens
+  /// in `mappers.dart`.
+  final String? trackingPreferences;
 
   @override
   SyncTable get table => SyncTable.profiles;

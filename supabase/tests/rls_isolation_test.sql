@@ -259,6 +259,11 @@ select is((select count(*) from pg_policies
 -- same category (backs observations_tz_valid/day_entries_tz_valid; no table
 -- access, exception-safe, IMMUTABLE) and its migration deliberately does not
 -- revoke the default PUBLIC/anon grant either - see that migration's header.
+-- Issue #259 adds `is_valid_tracking_preferences(jsonb)` in the same
+-- category (backs profiles_tracking_preferences_check; no table access,
+-- IMMUTABLE, must stay executable by any writer for the CHECK to
+-- evaluate - revoking from PUBLIC would break every authenticated
+-- profile write).
 -- ---------------------------------------------------------------------------
 select is(
   (select count(*)
@@ -271,7 +276,8 @@ select is(
       -- each parameter's name and would never match a plain type-list literal.
       and p.oid::regprocedure::text
             not in ('is_valid_tags_array(jsonb)', 'merge_tag_arrays(jsonb,jsonb)',
-                    'is_allowed_device_info(jsonb)', 'is_valid_timezone(text)')),
+                    'is_allowed_device_info(jsonb)', 'is_valid_timezone(text)',
+                    'is_valid_tracking_preferences(jsonb)')),
   0::bigint,
   'anon holds no EXECUTE on any public function outside the documented pure-helper allow-list');
 

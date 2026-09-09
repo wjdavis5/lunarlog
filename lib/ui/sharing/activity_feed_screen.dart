@@ -376,6 +376,11 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         date: date,
         existing: existing,
         today: widget.todayProvider(),
+        // Issue #259: the sheet reads the same synced curation document
+        // the calendar's sheets do (a co-parent opening a day from the
+        // feed edits under the profile's own curated set, AC6).
+        trackingPreferences: widget.profile.trackingPreferences,
+        isMinor: widget.profile.isMinor,
         readOnly: widget.readOnly || viewerReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,

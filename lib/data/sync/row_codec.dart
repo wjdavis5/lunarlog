@@ -24,6 +24,12 @@
 ///   `typical_period_length_days` (Issue #218, onboarding cycle facts) are
 ///   pulled *and* pushed like any other profile column; the date stays a
 ///   `yyyy-MM-dd` string, same as `profile_modes.mode_started_on`.
+/// * `profiles.tracking_preferences` (Issue #259) is a JSON object on the
+///   wire and JSON text locally (the `observations.raw` precedent). It is
+///   pulled like any other column but pushed ONLY when locally non-null —
+///   a null means "not customized on this device", and emitting it would
+///   clear a co-guardian's curated document; the server's `?` containment
+///   guard backstops the same rule for old clients.
 /// * `observations.category`/`code` (Issue #240) are free text and
 ///   deliberately NOT validated against a closed set here — unlike
 ///   `flow`/`mode`, an unrecognised value round-trips unchanged (the D-10
@@ -86,6 +92,10 @@ enum RowCodecErrorKind {
 
   /// `observations.raw` (Issue #240) does not parse as JSON.
   invalidRaw,
+
+  /// `profiles.tracking_preferences` (Issue #259) does not parse as a JSON
+  /// object on either direction of the codec.
+  invalidTrackingPreferences,
 }
 
 /// Typed codec failure. Deliberately carries no payload: the table, the
@@ -198,6 +208,17 @@ JsonRow encodeProfile(Profile row) {
     'last_period_start': row.lastPeriodStart,
     'typical_cycle_length_days': row.typicalCycleLengthDays,
     'typical_period_length_days': row.typicalPeriodLengthDays,
+    // Issue #259: emitted ONLY when locally non-null — unlike the columns
+    // above, a null here is "never customized on this device", not an
+    // instruction to clear. Emitting an explicit null from a device that
+    // had simply not pulled yet would wipe a co-guardian's curated
+    // document server-side; the key's absence leaves the stored value
+    // alone (the server's `?` containment guard) and the next pull
+    // converges this device onto it. "Clear back to defaults" is a
+    // deliberate write of an empty document, not a null.
+    if (row.trackingPreferences != null)
+      'tracking_preferences':
+          _decodeTrackingPreferencesForWire(row.trackingPreferences),
   };
 }
 
@@ -349,6 +370,19 @@ Object? _decodeRawForWire(String? raw) {
   }
 }
 
+/// Issue #259: same wire shape as [_decodeRawForWire] (local JSON text ->
+/// decoded JSON object), with the codec failure attributed to
+/// `profiles.tracking_preferences`.
+Object? _decodeTrackingPreferencesForWire(String? text) {
+  if (text == null) return null;
+  try {
+    return jsonDecode(text);
+  } on FormatException {
+    throw const RowCodecError(RowCodecErrorKind.invalidTrackingPreferences,
+        table: SyncTable.profiles, field: 'tracking_preferences');
+  }
+}
+
 /// The `p_observations` element for [row] (Issue #240). `category`/`code`
 /// are emitted as-is — free text, never validated against a closed set
 /// here (the write RPC is the validation point per the issue's D-10
@@ -422,7 +456,26 @@ RemoteProfileRow decodeProfile(JsonRow json) {
         _decodeIsoDate(r.stringOrNull('last_period_start'), r, 'last_period_start'),
     typicalCycleLengthDays: r.integerOrNull('typical_cycle_length_days'),
     typicalPeriodLengthDays: r.integerOrNull('typical_period_length_days'),
+    // Issue #259: the wire carries a JSON object (or an absent/null key for
+    // a never-customized profile); it is stored locally as JSON text, the
+    // `observations.raw` precedent. A key present with a non-object value
+    // is a typed codec failure — that shape can only come from a broken
+    // writer, and silently dropping it would present a curated profile as
+    // a default one.
+    trackingPreferences: _decodeTrackingPreferencesFromWire(json, r),
   );
+}
+
+/// Issue #259: `profiles.tracking_preferences` off the wire. Absent or
+/// JSON-null -> null (never customized); a JSON object -> its text form;
+/// anything else -> a typed failure attributed to the field.
+String? _decodeTrackingPreferencesFromWire(JsonRow json, _Reader r) {
+  final value = json['tracking_preferences'];
+  if (value == null) return null;
+  if (value is Map<String, dynamic>) return jsonEncode(value);
+  if (value is Map) return jsonEncode(value);
+  r._fail(RowCodecErrorKind.invalidTrackingPreferences,
+      'tracking_preferences');
 }
 
 /// Normalises a raw `relationship` string against the closed set: an

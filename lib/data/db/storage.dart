@@ -335,6 +335,12 @@ class LunarLogStorage {
   /// plain ints, stored as supplied and synced like any other profile
   /// column — the prediction domain's `CycleFacts.canSeed` is the gate on
   /// which values can seed an estimate, not this method.
+  /// [trackingPreferences] (Issue #259) is the raw JSON text of the
+  /// profile's `{category: {enabled, sort_order}}` curation document;
+  /// like every parameter here it is a full-row overwrite value, so
+  /// callers that hold a stored row must pass the stored text back
+  /// through (the repository layer does) rather than implicitly nulling a
+  /// co-guardian's curated document on an unrelated metadata edit.
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
@@ -349,6 +355,7 @@ class LunarLogStorage {
     String? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    String? trackingPreferences,
   }) async {
     // Async so validation failures surface as failed futures.
     _validateDisplayName(displayName);
@@ -377,6 +384,7 @@ class LunarLogStorage {
               lastPeriodStart: Value(lastPeriodStart),
               typicalCycleLengthDays: Value(typicalCycleLengthDays),
               typicalPeriodLengthDays: Value(typicalPeriodLengthDays),
+              trackingPreferences: Value(trackingPreferences),
             ));
         return _profileById(rowId);
       }
@@ -397,6 +405,7 @@ class LunarLogStorage {
           lastPeriodStart: Value(lastPeriodStart),
           typicalCycleLengthDays: Value(typicalCycleLengthDays),
           typicalPeriodLengthDays: Value(typicalPeriodLengthDays),
+          trackingPreferences: Value(trackingPreferences),
         ),
       );
       return _profileById(rowId);
@@ -421,6 +430,51 @@ class LunarLogStorage {
           localRev: Value(existing.localRev + 1),
         ),
       );
+    });
+  }
+
+  /// Writes (or clears) the profile's tracking-preferences document
+  /// (Issue #259): [jsonText] is the raw JSON text [TrackingPreferences]
+  /// produces, or null to clear back to "never customized" (which resolves
+  /// identically to an empty document). This is the column's *only*
+  /// dedicated write path — everything else about the row is untouched —
+  /// so curating the day sheet never restamps or clobbers any other
+  /// profile metadata. Marks the row dirty and bumps `local_rev` (the
+  /// document syncs to co-guardians, AC1/AC6); stamps `updated_at`
+  /// strictly after the stored value like every local write. No-op when
+  /// the row is not held locally or is tombstoned (curating a deleted
+  /// profile is meaningless). Throws [ArgumentError] when [jsonText] is
+  /// not null and not a JSON object — the same shape rule the server's
+  /// `profiles_tracking_preferences_check` enforces, applied here so the
+  /// row never goes dirty into a push that can only be rejected.
+  Future<Profile?> setTrackingPreferences(
+    String profileId,
+    String? jsonText,
+  ) async {
+    if (jsonText != null) {
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(jsonText);
+      } on FormatException {
+        throw ArgumentError.value(jsonText, 'jsonText',
+            'tracking preferences must be valid JSON');
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw ArgumentError.value(jsonText, 'jsonText',
+            'tracking preferences must be a JSON object');
+      }
+    }
+    return db.transaction(() async {
+      final existing = await _profileOrNull(profileId);
+      if (existing == null || existing.deletedAt != null) return null;
+      await (db.update(db.profiles)..where((t) => t.id.equals(profileId)))
+          .write(ProfilesCompanion(
+        trackingPreferences: Value(jsonText),
+        updatedAt: Value(_afterStored(_now(), existing.updatedAt)),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _profileById(profileId);
     });
   }
 
@@ -1888,6 +1942,7 @@ class LunarLogStorage {
             lastPeriodStart: Value(remote.lastPeriodStart),
             typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
             typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
+            trackingPreferences: Value(remote.trackingPreferences),
           ));
       return true;
     }
@@ -1908,6 +1963,7 @@ class LunarLogStorage {
         lastPeriodStart: Value(remote.lastPeriodStart),
         typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
         typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
+        trackingPreferences: Value(remote.trackingPreferences),
       ),
     );
     return true;

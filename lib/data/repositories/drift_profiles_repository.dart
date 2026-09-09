@@ -2,6 +2,7 @@
 library;
 
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -40,6 +41,10 @@ class DriftProfilesRepository implements ProfilesRepository {
             lastPeriodStart: lastPeriodStart?.iso,
             typicalCycleLengthDays: typicalCycleLengthDays,
             typicalPeriodLengthDays: typicalPeriodLengthDays,
+            // A brand-new profile starts never-customized (Issue #259);
+            // the parameter exists so a stored row's document survives
+            // the other full-row callers below, not for creation.
+            trackingPreferences: null,
           )
           .then(profileToDomain);
 
@@ -61,6 +66,12 @@ class DriftProfilesRepository implements ProfilesRepository {
       lastPeriodStart: profile.lastPeriodStart?.iso,
       typicalCycleLengthDays: profile.typicalCycleLengthDays,
       typicalPeriodLengthDays: profile.typicalPeriodLengthDays,
+      // Issue #259: upsertProfile is a full-row overwrite, so the stored
+      // document must ride every metadata edit — omitting it here would
+      // null it (and, once pushed, clear the co-guardians' shared copy)
+      // on an unrelated rename/birth-year edit. Deliberate clears go
+      // through [setTrackingPreferences], which can also express null.
+      trackingPreferences: profile.trackingPreferences?.toJsonText(),
     ));
   }
 
@@ -99,9 +110,21 @@ class DriftProfilesRepository implements ProfilesRepository {
       lastPeriodStart: row.lastPeriodStart,
       typicalCycleLengthDays: row.typicalCycleLengthDays,
       typicalPeriodLengthDays: row.typicalPeriodLengthDays,
+      // Issue #259: same full-row-overwrite discipline as [update] — the
+      // stored document survives an archive toggle untouched.
+      trackingPreferences: row.trackingPreferences,
     );
   }
 
   @override
   Future<void> delete(String id) => _storage.softDeleteProfile(id);
+
+  @override
+  Future<domain.Profile?> setTrackingPreferences(
+    String id,
+    TrackingPreferences? preferences,
+  ) =>
+      _storage
+          .setTrackingPreferences(id, preferences?.toJsonText())
+          .then((row) => row == null ? null : profileToDomain(row));
 }

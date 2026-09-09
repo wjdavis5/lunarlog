@@ -48,6 +48,45 @@ enum TagCategory {
   mood,
 }
 
+/// The stable snake_case wire name for each category (Issue #259): the key
+/// a synced `tracking_preferences` document uses for the category
+/// (`sleep_quality`, `breasts_chest`, `vulva_vagina`, ...). Codes are
+/// stable identifiers (see the library doc comment); category wire names
+/// follow the same rule — never renamed, so a stored preference document
+/// outlives client refactors. A table, not a switch: the mapping is data,
+/// and a table lookup keeps the getter trivially simple.
+const Map<TagCategory, String> _kCategoryWireNames = {
+  TagCategory.pain: 'pain',
+  TagCategory.energy: 'energy',
+  TagCategory.sleep: 'sleep',
+  TagCategory.sleepQuality: 'sleep_quality',
+  TagCategory.skin: 'skin',
+  TagCategory.hair: 'hair',
+  TagCategory.digestion: 'digestion',
+  TagCategory.stool: 'stool',
+  TagCategory.cravings: 'cravings',
+  TagCategory.breastsChest: 'breasts_chest',
+  TagCategory.hotFlashes: 'hot_flashes',
+  TagCategory.urine: 'urine',
+  TagCategory.vulvaVagina: 'vulva_vagina',
+  TagCategory.body: 'body',
+  TagCategory.mood: 'mood',
+};
+
+extension TagCategoryWireName on TagCategory {
+  String get wireName => _kCategoryWireNames[this]!;
+}
+
+final Map<String, TagCategory> _categoryByWireName = {
+  for (final entry in _kCategoryWireNames.entries) entry.value: entry.key,
+};
+
+/// Inverse of [TagCategoryWireName.wireName]: null for anything this build
+/// does not know (a document written by a newer client with a category
+/// this build has not adopted yet round-trips but never resolves — see
+/// `TrackingPreferences` in `lib/domain/logging/tracking_preferences.dart`).
+TagCategory? categoryFromWireName(String name) => _categoryByWireName[name];
+
 class TagCode {
   const TagCode(this.code, this.category, this.display);
 

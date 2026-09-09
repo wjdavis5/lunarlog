@@ -25,6 +25,8 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
+import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -2947,4 +2949,147 @@ void main() {
       await disposeLogging(tester, h);
     });
   });
+
+group('tracking preferences read path (Issue #259)', () {
+  final curatedDoc = TrackingPreferences({
+    'mood': TrackingCategoryPreference(enabled: false, sortOrder: 0),
+    'pain': TrackingCategoryPreference(enabled: true, sortOrder: 1),
+  });
+
+  testWidgets('a disabled category is hidden from the picker and curated '
+      'order leads (AC2/AC3)', (tester) async {
+    final db = await pumpSheetWithPrefs(tester, trackingPreferences: curatedDoc);
+    addTearDown(db.close);
+
+    // Mood is disabled: neither its heading nor any of its chips render.
+    expect(find.text('Mood'), findsNothing);
+    expect(find.text('Irritable'), findsNothing);
+    expect(find.text('Anxious'), findsNothing);
+
+    // Everything else still renders, pain first (sort_order 1) ahead of
+    // the uncurated remainder.
+    final headers = sheetCategoryHeaders(tester);
+    expect(headers, isNot(contains('Mood')));
+    final taxonomyOrder = [
+      for (final category in TagCategory.values)
+        if (category != TagCategory.mood)
+          careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+    ];
+    expect(headers.skip(2).toList(), taxonomyOrder,
+        reason: 'headers are [date, Flow, then the resolved categories]; '
+            'pain leads because the document curates it');
+    expect(headers[2], 'Pain');
+  });
+
+  testWidgets('an absent document renders the default order and every '
+      'category (the null case stays exactly the pre-#259 sheet)',
+      (tester) async {
+    final db = await pumpSheetWithPrefs(tester);
+    addTearDown(db.close);
+
+    final headers = sheetCategoryHeaders(tester);
+    final expected = [
+      for (final category in TagCategory.values)
+        careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+    ];
+    expect(headers.skip(2).toList(), expected);
+    expect(find.byType(FilterChip), findsNWidgets(45 + 2),
+        reason: '45 curated chips plus the spotting and PMS toggles');
+  });
+
+  testWidgets('already-logged tags in a disabled category are never '
+      'deleted: they round-trip through autosave untouched (AC3)',
+      (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final profilesRepo = DriftProfilesRepository(db.storage);
+    final entries = DriftDayEntriesRepository(db.storage);
+    final profile = await profilesRepo.create(displayName: 'A', isMinor: true);
+    final seeded = await entries.save(
+      entryFor(profile.id, kToday, flow: FlowLevel.none, tags: ['irritable']),
+    );
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          // The sheet's spotting toggle reads the observations repository
+          // whenever an existing entry is loaded (issue #247).
+          Provider<ObservationsRepository>.value(
+              value: DriftObservationsRepository(db.storage)),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: DaySheet(
+              repository: entries,
+              profileId: profile.id,
+              date: kToday,
+              today: kToday,
+              existing: seeded,
+              trackingPreferences: curatedDoc,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The hidden category's chip is not rendered ...
+    expect(find.text('Irritable'), findsNothing);
+    // ... but a visible edit still preserves the hidden tag.
+    await tester.tap(find.text('Headache'));
+    await pumpAutosave(tester);
+
+    final saved = await entries.find(profile.id, kToday);
+    expect(saved!.tags, unorderedEquals(['irritable', 'headache']),
+        reason: 'hiding a category never deletes or rewrites its data');
+  });
+});
 }
+
+/// Pumps the day sheet directly (no calendar shell) with an explicit
+/// preference document, the way AppShell would forward it from the
+/// profile (Issue #259 read path).
+Future<LunarLogDatabase> pumpSheetWithPrefs(
+  WidgetTester tester, {
+  TrackingPreferences? trackingPreferences,
+  bool isMinor = false,
+  DayEntry? existing,
+}) async {
+  final db = LunarLogDatabase(NativeDatabase.memory());
+  final entries = DriftDayEntriesRepository(db.storage);
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: DaySheet(
+          repository: entries,
+          profileId: 'p',
+          date: kToday,
+          today: kToday,
+          existing: existing,
+          trackingPreferences: trackingPreferences,
+          isMinor: isMinor,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return db;
+}
+
+/// The taxonomy category headings the sheet renders, in render order (the
+/// date title and the Flow heading come first; see `_editableBody`).
+List<String> sheetCategoryHeaders(WidgetTester tester) => tester
+    .widgetList<Semantics>(find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.header == true))
+    .map((s) {
+      final child = s.child;
+      return child is Text ? child.data ?? '' : '';
+    })
+    .where((label) => label.isNotEmpty)
+    .toList();
+
+

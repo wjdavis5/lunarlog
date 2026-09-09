@@ -7,6 +7,7 @@ library;
 import 'local_date.dart';
 import 'profile_mode.dart';
 import 'profile_relationship.dart';
+import '../logging/tracking_preferences.dart';
 
 class Profile {
   Profile({
@@ -25,6 +26,7 @@ class Profile {
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
+    this.trackingPreferences,
   });
 
   /// Storage-assigned ULID (empty on unsaved, client-created models).
@@ -81,6 +83,18 @@ class Profile {
   /// (Issue #218). Same treatment as [typicalCycleLengthDays].
   final int? typicalPeriodLengthDays;
 
+  /// The profile's curated tracking categories (Issue #259): which
+  /// categories the day sheet surfaces and in what order, synced so
+  /// co-guardians see the same set (AC1/AC6). Null means never customized
+  /// — every category resolves to its default (enabled, taxonomy order)
+  /// except the minor-hidden set on an [isMinor] profile; see
+  /// `resolveTrackingCategories` in
+  /// `lib/domain/logging/tracking_preferences.dart`. Presentation
+  /// curation only: hiding a category never deletes or hides
+  /// already-logged entries for it (AC3), and this field is never
+  /// consulted by any authorization path.
+  final TrackingPreferences? trackingPreferences;
+
   static const Object _unset = Object();
 
   /// Resolves a `copyWith` sentinel-typed parameter: an unpassed argument
@@ -108,6 +122,7 @@ class Profile {
     Object? lastPeriodStart = _unset,
     Object? typicalCycleLengthDays = _unset,
     Object? typicalPeriodLengthDays = _unset,
+    Object? trackingPreferences = _unset,
   }) =>
       Profile(
         id: id ?? this.id,
@@ -128,6 +143,8 @@ class Profile {
             typicalCycleLengthDays, this.typicalCycleLengthDays),
         typicalPeriodLengthDays: _resolveNullable(
             typicalPeriodLengthDays, this.typicalPeriodLengthDays),
+        trackingPreferences:
+            _resolveNullable(trackingPreferences, this.trackingPreferences),
       );
 
   /// Identity-ish fields: what a row's primary key and headline attributes
@@ -151,7 +168,8 @@ class Profile {
       other.transferredAt == transferredAt &&
       other.lastPeriodStart == lastPeriodStart &&
       other.typicalCycleLengthDays == typicalCycleLengthDays &&
-      other.typicalPeriodLengthDays == typicalPeriodLengthDays;
+      other.typicalPeriodLengthDays == typicalPeriodLengthDays &&
+      other.trackingPreferences == trackingPreferences;
 
   @override
   bool operator ==(Object other) =>
@@ -177,6 +195,7 @@ class Profile {
         lastPeriodStart,
         typicalCycleLengthDays,
         typicalPeriodLengthDays,
+        trackingPreferences,
       );
 
   @override

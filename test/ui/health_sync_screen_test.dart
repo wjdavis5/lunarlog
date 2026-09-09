@@ -17,6 +17,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
 
 import '../support/fake_settings_store.dart';
@@ -42,6 +43,11 @@ class FakeProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> delete(String id) => throw UnimplementedError();
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
+      throw UnimplementedError();
 
   @override
   Future<Profile?> findById(String id) async {
@@ -85,6 +91,11 @@ class ThrowingProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> delete(String id) => throw UnimplementedError();
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
+      throw UnimplementedError();
 
   @override
   Future<Profile?> findById(String id) => throw UnimplementedError();

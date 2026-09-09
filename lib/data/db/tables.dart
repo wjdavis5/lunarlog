@@ -154,6 +154,22 @@ class Profiles extends Table {
   IntColumn get typicalPeriodLengthDays =>
       integer().named('typical_period_length_days').nullable()();
 
+  /// The profile's curated tracking categories (Issue #259), as the JSON
+  /// text `TrackingPreferences.toJsonText` produces — the same partial
+  /// `{category: {enabled, sort_order}}` document the server's
+  /// `profiles.tracking_preferences` jsonb carries (mirroring
+  /// [Observations.raw]'s wire-JSON/local-text precedent). Null means
+  /// never customized: every category resolves to its default (enabled,
+  /// taxonomy order) except the minor-hidden set on an [isMinor] profile.
+  /// Presentation curation only — never consulted by any authorization
+  /// path, and hiding a category never touches already-logged entries.
+  /// Synced like any other profile column; `row_codec.dart` carries it on
+  /// the wire as a JSON object and only ever emits the key when locally
+  /// non-null, so this client never clears a co-guardian's document by
+  /// accident (the server's `?` containment guard is the backstop).
+  TextColumn get trackingPreferences =>
+      text().named('tracking_preferences').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
