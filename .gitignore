@@ -73,3 +73,6 @@ supabase/tests/manual/package-lock.json
 
 # OpenCode's own local install (plugin/SDK deps for the opencode-muse coordinator)
 .opencode/node_modules/
+
+# opencode-muse coordinator state is local-only (GitHub labels are the source of truth)
+docs/coordinator/opencode-muse/
