@@ -16,6 +16,43 @@ actually consume this parser's output — out of scope here), #134
 (lunarlog-internal taxonomy migrations — see "Not Clue-side renames"
 below).
 
+**Reusing #140's `ImportPlan` (added after this spec was written):** issue
+#140 shipped restore-from-file import for the app's own export format —
+`lib/domain/import/account_import.dart`'s `planImport`/`ImportPlan` and
+`lib/data/import/account_importer.dart`'s `AccountImporter` — with a merge
+policy (additive, same-date tag/flow/note merge, observation dedup by
+`(profileId, localDate, category, code)`, transactional apply) that has
+nothing file-export-specific about it: it operates on the same
+`ImportedProfile`/`ImportedDayEntry`/`ImportedObservation` shapes this
+Clue parser's own output (once #172 maps a `ClueDatapoint` stream into
+those shapes) can be adapted into. #172's write path should build an
+`ImportPlan` from the Clue parser's output and apply it through the same
+`AccountImporter`, rather than inventing a second merge/write path — the
+only new work #172 needs is the `ClueDatapoint` -> `ImportedProfile`
+adapter (respecting the sequencing note below).
+
+**Row-id reuse trade-off (Issue #140 review round 2, item 3):** when
+`AccountImporter` writes a brand-new (`add`-outcome) day entry or
+observation, it reuses the imported row's own `id` from the file as the
+local row id — instead of always minting a fresh ULID — whenever that id
+is a syntactically valid ULID and nothing already occupies the slot it
+would claim ((profileId, localDate) for a day entry; (profileId, localDate,
+category, code) for an observation). The payoff: two devices signed into
+the same account that both import the same file (a Clue export routed
+through this adapter, or the app's own account-export file) converge on
+the SAME row id for the same logical entry, so a later sync sees one row,
+not two independently-generated rows racing on the server's
+`day_entries_profile_source_source_id_uq` partial unique index. The cost
+is a (astronomically unlikely, but non-zero) collision: if the reused id
+happens to already exist locally as an unrelated row — a ULID isn't
+scoped to this device, so nothing but the 2^80 randomness space rules this
+out — `LunarLogStorage.upsertDayEntry`/`upsertObservation`'s own `id:`
+path treats it as a revival and overwrites *that* row's fields, not just
+inserts a new one. This adapter inherits the same trade-off for free (it
+never mints its own row ids either), and should not try to route around it
+— the alternative (always minting a fresh id) reintroduces the
+cross-device duplicate-row problem item 3 exists to close.
+
 **Sequencing — #247 before #172:** this parser's `ClueFlowLevel` already
 matches #247's still-unmerged shape, but until #247 actually ships,
 converting a `ClueFlowLevel` to the app's own `FlowLevel` is lossy (see

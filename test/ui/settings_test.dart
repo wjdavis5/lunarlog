@@ -423,10 +423,13 @@ void main() {
           reason: '"Your data" sits above "Account" in the list');
     });
 
-    testWidgets('no profiles: the section (and its header) is absent',
-        (tester) async {
+    testWidgets(
+        'no profiles: the section still renders for "Import from file" '
+        '(Issue #140 — restoring a device with none yet is the point), but '
+        '"Export my data" is absent (nothing to export)', (tester) async {
       await pumpWithProfiles(tester, profiles: const []);
-      expect(find.text('Your data'), findsNothing);
+      expect(find.text('Your data'), findsOneWidget);
+      expect(find.byKey(const ValueKey('your-data-import')), findsOneWidget);
       expect(find.byKey(const ValueKey('your-data-export')), findsNothing);
     });
 

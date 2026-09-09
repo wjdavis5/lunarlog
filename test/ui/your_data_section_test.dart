@@ -346,4 +346,57 @@ void main() {
       expect(key('your-data-export'), findsNothing);
     });
   });
+
+  group('Import from file (Issue #140)', () {
+    testWidgets('renders with zero profiles — restoring a device with no '
+        'profiles yet is the point', (tester) async {
+      final profiles = FakeProfilesRepository(const []);
+      await _pump(tester, profiles: profiles);
+      expect(key('your-data-import'), findsOneWidget);
+      expect(key('your-data-export'), findsNothing,
+          reason: 'nothing to export with zero profiles');
+    });
+
+    testWidgets('renders alongside Export once a profile exists',
+        (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      await _pump(tester, profiles: profiles);
+      expect(key('your-data-import'), findsOneWidget);
+      expect(key('your-data-export'), findsOneWidget);
+    });
+
+    testWidgets('showImport: false hides only the import tile',
+        (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              Provider<ProfilesRepository>.value(value: profiles),
+              Provider<DayEntriesRepository>.value(value: FakeDayEntriesRepository()),
+              Provider<ObservationsRepository>.value(value: FakeObservationsRepository()),
+            ],
+            child: const Scaffold(
+              body: YourDataSection(showImport: false),
+            ),
+          ),
+        ),
+      );
+      addTearDown(profiles.dispose);
+      await tester.pumpAndSettle();
+      expect(key('your-data-import'), findsNothing);
+      expect(key('your-data-export'), findsOneWidget);
+    });
+
+    testWidgets('tapping the tile pushes ImportScreen', (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      await _pump(tester, profiles: profiles);
+
+      await tester.tap(key('your-data-import'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Import from file'), findsWidgets);
+      expect(find.byKey(const ValueKey('import-pick-button')), findsOneWidget);
+    });
+  });
 }

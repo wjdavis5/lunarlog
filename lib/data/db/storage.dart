@@ -348,6 +348,40 @@ class LunarLogStorage {
     });
   }
 
+  /// Un-tombstones profile [id] in place — clears `deleted_at`, bumps
+  /// `updated_at` (strictly after the stored value) and `local_rev`, marks
+  /// the row dirty — without touching any other column (Issue #140 review
+  /// round 2, item 6). Unlike [upsertProfile], which always overwrites
+  /// every metadata column with the caller's values, restoring an
+  /// account-import file's profile onto a tombstoned local one must keep
+  /// what is actually stored (a `softDeleteProfile`'d row's own
+  /// `isMinor`/`mode`/`sortOrder`/`birthYear`/`relationship` all survive a
+  /// tombstone unchanged — only `displayName` was cleared, per
+  /// [softDeleteProfile]'s own doc comment) rather than let the file's
+  /// copy of that metadata silently win. A no-op — returns the row as-is —
+  /// when [id] is already live; throws [StateError] when [id] does not
+  /// exist at all (this should only ever be called for a profile already
+  /// confirmed tombstoned).
+  Future<Profile> reviveTombstonedProfile(String id) async {
+    return db.transaction(() async {
+      final existing = await _profileOrNull(id);
+      if (existing == null) {
+        throw StateError('profile not found: $id');
+      }
+      if (existing.deletedAt == null) return existing;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.profiles)..where((t) => t.id.equals(id))).write(
+        ProfilesCompanion(
+          updatedAt: Value(at),
+          deletedAt: const Value(null),
+          dirty: const Value(true),
+          localRev: Value(existing.localRev + 1),
+        ),
+      );
+      return _profileById(id);
+    });
+  }
+
   /// Profiles for UI reads ([includeTombstones] false, default) or for sync
   /// (true), ordered by [Profiles.sortOrder] then id for stable lists.
   Future<List<Profile>> getProfiles({bool includeTombstones = false}) =>
@@ -382,10 +416,24 @@ class LunarLogStorage {
   ///   a new row with a fresh ULID is inserted. The old tombstone remains in
   ///   full-fidelity reads for sync; the new ULID row wins UI reads.
   ///
+  /// [id], when given, targets that exact row by id instead of the ordinary
+  /// live-by-date lookup above — Issue #140 review, item 5: the partial
+  /// unique index `day_entries_profile_source_source_id_uq` is not scoped
+  /// to live rows, so an importer that finds an existing (live OR
+  /// tombstoned) row for the same (profileId, source, sourceId) triple
+  /// (`LunarLogStorage.findDayEntryBySource`) must revive that row by id
+  /// rather than let the ordinary live-only lookup miss it and insert a
+  /// second, colliding row. Reviving a tombstone this way is safe against
+  /// the live-uniqueness index (`uq_day_entries_profile_date_live`): the
+  /// only caller of this path (`AccountImporter`) only does so when
+  /// [_planDayEntry] in `lib/domain/import/account_import.dart` has already
+  /// established there is no live row at [localDate] to collide with.
+  ///
   /// Marks the row dirty and bumps `local_rev`. Throws [ArgumentError] for
   /// a [note] over [kMaxNoteLength], a [tags] list over [kMaxTagCount]
   /// elements, or a [tags] element over [kMaxTagLength].
   Future<DayEntry> upsertDayEntry({
+    String? id,
     required String profileId,
     required String localDate,
     required String tz,
@@ -405,10 +453,11 @@ class LunarLogStorage {
     _validateDayEntryProvenance(sourceId: sourceId);
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
-      final live = await _liveDayEntry(profileId, localDate);
+      final live =
+          id == null ? await _liveDayEntry(profileId, localDate) : await _dayEntryOrNull(id);
       if (live == null) {
         await db.into(db.dayEntries).insert(DayEntriesCompanion.insert(
-              id: _generator.next(),
+              id: id ?? _generator.next(),
               profileId: profileId,
               localDate: localDate,
               tz: tz,
@@ -432,6 +481,16 @@ class LunarLogStorage {
         );
         await (db.update(db.dayEntries)..where((t) => t.id.equals(rowId)))
             .write(DayEntriesCompanion(
+          // Issue #140 review round 2, item 2: `localDate` must be written
+          // here too, not just on the ordinary (id == null) path above —
+          // the `id:` revival path (this branch) can target a row whose
+          // stored `local_date` differs from [localDate] (a tombstone
+          // found by (profileId, source, sourceId) rather than by date).
+          // Leaving it out silently kept the stale date, so the read below
+          // (`_liveDayEntries(profileId, localDate)`, which queries by the
+          // NEW date) found nothing and threw `StateError('day entry
+          // disappeared')`.
+          localDate: Value(localDate),
           tz: Value(tz),
           flow: Value(flow),
           tags: Value(tags),
@@ -516,6 +575,38 @@ class LunarLogStorage {
       includeTombstones: false,
       localDate: localDate,
     ).get();
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// The day entry (live OR tombstoned) for (profileId, source, sourceId),
+  /// or null when none exists — Issue #140 review, item 5: an importer must
+  /// dedup against this exact triple, including tombstones, before
+  /// planning a new row, since the server's partial unique index
+  /// `day_entries_profile_source_source_id_uq` is not scoped to live rows
+  /// either (`supabase/migrations/20260908170000_import_provenance.sql`).
+  /// [sourceId] is never null in practice for a caller of this method — the
+  /// index itself only applies `where source_id is not null` — but this
+  /// still answers a null query the ordinary way (no match) rather than
+  /// throwing.
+  Future<DayEntry?> findDayEntryBySource({
+    required String profileId,
+    required String source,
+    required String? sourceId,
+  }) async {
+    if (sourceId == null) return null;
+    // Issue #140 review round 2, item 7: `get()` + first, not
+    // `getSingleOrNull` — the server's partial unique index constrains
+    // this triple, but this store's own local rows are never guaranteed
+    // unique on it (e.g. a row written before that index existed, or by a
+    // path that doesn't go through it), so more than one local match must
+    // read as "found one", never throw.
+    final rows = await (db.select(db.dayEntries)
+          ..where((t) =>
+              t.profileId.equals(profileId) &
+              t.source.equals(source) &
+              t.sourceId.equals(sourceId))
+          ..orderBy([(t) => OrderingTerm(expression: t.id)]))
+        .get();
     return rows.isEmpty ? null : rows.first;
   }
 

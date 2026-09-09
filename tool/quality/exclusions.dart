@@ -91,6 +91,15 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'checklist instead, same treatment as google_sign_in_client.dart.',
   ),
   const CoverageExclusion(
+    'lib/data/import/import_file_picker.dart',
+    'pickImportFile wraps the file_picker plugin (FilePicker.pickFile) and '
+        "the returned PlatformFile's readAsBytes, neither of which can run "
+        'under flutter test. All content-shaped logic lives in the pure '
+        'lib/domain/import/account_import.dart parser it feeds, which is '
+        'unit-tested directly; this file is proven by the device checklist '
+        'instead, same treatment as account_export_writer.dart.',
+  ),
+  const CoverageExclusion(
     'lib/data/notifications/firebase_push_token_source.dart',
     'FirebasePushTokenSource wraps firebase_core/firebase_messaging calls '
         '(Firebase.initializeApp, requestPermission, getToken, and the two '

@@ -25,6 +25,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
 import 'package:lunarlog/ui/feedback/support_history_screen.dart';
+import 'package:lunarlog/ui/settings/import_screen.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 
 /// Builds the screen for a named [Route] from a [BuildContext] alone.
@@ -48,6 +49,7 @@ final Map<String, LunarLogWidgetBuilder> kAppRoutes = {
   kRouteSettingsScreen: (_) => const SettingsScreen(),
   kRouteFeedbackScreen: (_) => const FeedbackScreen(),
   kRouteSupportHistoryScreen: (_) => const SupportHistoryScreen(),
+  kRouteImportScreen: (_) => const ImportScreen(),
   kRouteSignInScreen: (_) => const SignInScreen(),
 };
 

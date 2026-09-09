@@ -1286,6 +1286,154 @@ void main() {
         expect(stillImported.importId, 'import-4');
       });
     });
+
+    group('Issue #140 review round 2, item 2: upsertDayEntry\'s id: '
+        'revival path writes localDate', () {
+      test('reviving a tombstoned row at a DIFFERENT date than it was '
+          'originally tombstoned at moves it to the new date instead of '
+          'throwing \'day entry disappeared\'', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final original = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-07-01',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          source: 'clue_import',
+          sourceId: 'clue-move',
+        );
+        await storage.softDeleteDayEntry(
+            profileId: profile.id, localDate: '2026-07-01');
+
+        // The revival path (`id:` supplied) targets the tombstone directly
+        // by id, at a DIFFERENT date than it was tombstoned at — mirrors
+        // `AccountImporter._revivalIdFor` finding a row by (profileId,
+        // source, sourceId) whose stored local_date differs from the plan
+        // it's about to apply.
+        final revived = await storage.upsertDayEntry(
+          id: original.id,
+          profileId: profile.id,
+          localDate: '2026-07-05',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+          source: 'clue_import',
+          sourceId: 'clue-move',
+        );
+
+        expect(revived.id, original.id);
+        expect(revived.localDate, '2026-07-05',
+            reason: 'the row\'s own local_date column must move with it, '
+                'not stay stuck at the tombstone\'s old date');
+        expect(revived.flow, FlowLevel.heavy);
+        expect(revived.deletedAt, isNull);
+
+        // The new date now reads it back as the live entry.
+        final atNewDate = await storage.getDayEntry(
+            profileId: profile.id, localDate: '2026-07-05');
+        expect(atNewDate?.id, original.id);
+        // The old date no longer holds a live entry.
+        final atOldDate = await storage.getDayEntry(
+            profileId: profile.id, localDate: '2026-07-01');
+        expect(atOldDate, isNull);
+      });
+    });
+
+    group('findDayEntryBySource (Issue #140 review round 2, item 7)', () {
+      test('finds a live row', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final entry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-08-01',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          source: 'clue_import',
+          sourceId: 'clue-live',
+        );
+
+        final found = await storage.findDayEntryBySource(
+          profileId: profile.id,
+          source: 'clue_import',
+          sourceId: 'clue-live',
+        );
+        expect(found?.id, entry.id);
+      });
+
+      test('finds a tombstoned row', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final entry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-08-02',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          source: 'clue_import',
+          sourceId: 'clue-tomb',
+        );
+        await storage.softDeleteDayEntry(
+            profileId: profile.id, localDate: '2026-08-02');
+
+        final found = await storage.findDayEntryBySource(
+          profileId: profile.id,
+          source: 'clue_import',
+          sourceId: 'clue-tomb',
+        );
+        expect(found?.id, entry.id);
+        expect(found?.deletedAt, isNotNull);
+      });
+
+      test('a null sourceId returns null without querying — the server\'s '
+          'partial unique index only applies where source_id is not null',
+          () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-08-03',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+        );
+
+        final found = await storage.findDayEntryBySource(
+          profileId: profile.id,
+          source: 'manual',
+          sourceId: null,
+        );
+        expect(found, isNull);
+      });
+
+      test('more than one local match does not throw — reads as "found '
+          'one", never a StateError (this store carries no local '
+          'uniqueness constraint on (profile_id, source, source_id), only '
+          'the server does)', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final first = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-08-04',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          source: 'clue_import',
+          sourceId: 'clue-dup',
+        );
+        final second = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-08-05',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+          source: 'clue_import',
+          sourceId: 'clue-dup',
+        );
+
+        final found = await storage.findDayEntryBySource(
+          profileId: profile.id,
+          source: 'clue_import',
+          sourceId: 'clue-dup',
+        );
+        expect(found, isNotNull);
+        expect({first.id, second.id}, contains(found!.id));
+      });
+    });
   });
 
   group('migrations', () {

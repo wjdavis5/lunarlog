@@ -314,8 +314,12 @@ Part of the home lab; the canonical inventory lives in the lab root's
   its data in that account and can restore it on another device. A device
   that never signed in has no backup — losing it loses the data. "Export my
   data" (Your data section) saves a JSON file of profiles and entries through
-  the share sheet, but it is a manual, one-time export, not a backup
-  mechanism.
+  the share sheet; it is still a manual, one-time export, not an automatic
+  backup mechanism, but as of issue #140 that file is no longer a dead end —
+  "Import from file" (same section) reads it back, previews what would
+  change, and merges it into the local store, so exporting before a wipe or
+  reinstall is a real (manual) restore path even for a device that never
+  signed in.
 - In-app account deletion and JSON export have shipped in code (issue
   #17), but release itself still **gates** on the mechanically-enforced
   check: no App Store submission and no Play `production` dispatch until
