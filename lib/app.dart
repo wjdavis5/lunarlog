@@ -226,76 +226,111 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _permissionState = NotificationPermissionState(
       NotificationAvailability.available,
     );
-    final authService = widget.authService;
-    if (authService != null) {
-      final controller = AuthController(authService: authService)
-        ..addListener(_onAuthChanged);
-      _authController = controller;
-      if (controller.signedIn) _clearAwaitingConfirmation();
-    }
-    // Reminders start only when the shell passes a scheduler (main.dart
-    // does on production platforms). Without one — e.g. in widget tests —
-    // no notification machinery is touched at all.
-    if (widget.scheduler != null) {
-      // Issue #168: `main.dart` constructs the scheduler before the
-      // database (and so this settings store) exists, so
-      // `FlutterLocalNotificationsScheduler.settingsStore` is attached
-      // here, as soon as it does, rather than at that scheduler's own
-      // construction. The web `NoopReminderScheduler` has no such field.
-      final scheduler = widget.scheduler!;
-      if (scheduler is FlutterLocalNotificationsScheduler) {
-        scheduler.settingsStore = _settings;
-      }
-      // The coordinator is constructed synchronously, right here, so the
-      // provider tree below (`build`'s `_coordinator != null` check) sees a
-      // non-null instance on this very first build. Only the actual
-      // `start()` call is deferred to a post-frame callback (see
-      // [_startReminders]).
-      final coordinator = ReminderCoordinator(
-        scheduler: scheduler,
-        permissionState: _permissionState,
-        activeProfiles: _profiles.watch(),
-        predictionFor: _prediction.watch,
-      );
-      _coordinator = coordinator;
-      final gate = context.read<GateController?>();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_startReminders(coordinator, gate));
-      });
-    }
-    // Issue #5, U6/U8: keep the server's reminder-window snapshot in step
-    // with the local prediction. Both collaborators come from the same
-    // AppConfig.hasPush gate (app_lifecycle.dart), so this either starts
-    // with both present or not at all - R17 holds with zero conditionals
-    // beyond this null check.
-    final reminderWindowUpsert = widget.reminderWindowUpsert;
-    if (widget.notificationPreferencesService != null &&
-        reminderWindowUpsert != null) {
-      final publisher = ReminderWindowPublisher(
-        activeProfiles: _profiles.watch(),
-        predictionFor: _prediction.watch,
-        upsert: reminderWindowUpsert,
-        isSignedIn: () => _authController?.signedIn ?? false,
-      );
-      _reminderWindowPublisher = publisher;
-      publisher.start();
-    }
+    _initAuthController();
+    _buildReminderCoordinator();
+    _initReminderWindowPublisher();
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
     // session when needed.
     _inviteSub = widget.inviteLinks?.listen(_handleInviteLink);
-    final initialInviteCode = widget.initialInviteCode;
-    if (initialInviteCode != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _maybePresentInvite(
-          initialInviteCode,
-          widget.initialInviteProfileId,
-          widget.initialInviteKind,
-        );
-      });
+    _scheduleInitialInvitePresentation();
+  }
+
+  /// Wires [_authController] from [LunarLogApp.authService], if the shell
+  /// provided one. Extracted out of [initState] (issue #168 CRAP gate) so
+  /// this branching doesn't count against that method's complexity.
+  void _initAuthController() {
+    final authService = widget.authService;
+    if (authService == null) return;
+    final controller = AuthController(authService: authService)
+      ..addListener(_onAuthChanged);
+    _authController = controller;
+    if (controller.signedIn) _clearAwaitingConfirmation();
+  }
+
+  /// Reminders start only when the shell passes a scheduler (main.dart
+  /// does on production platforms). Without one — e.g. in widget tests —
+  /// no notification machinery is touched at all. Extracted out of
+  /// [initState] (issue #168 CRAP gate) so this branching doesn't count
+  /// against that method's complexity.
+  void _buildReminderCoordinator() {
+    final scheduler = widget.scheduler;
+    if (scheduler == null) return;
+    // Issue #168: `main.dart` constructs the scheduler before the
+    // database (and so this settings store) exists, so
+    // `FlutterLocalNotificationsScheduler.settingsStore` is attached
+    // here, as soon as it does, rather than at that scheduler's own
+    // construction. The web `NoopReminderScheduler` has no such field.
+    if (scheduler is FlutterLocalNotificationsScheduler) {
+      scheduler.settingsStore = _settings;
     }
+    // The coordinator is constructed synchronously, right here, so the
+    // provider tree below (`build`'s `_coordinator != null` check) sees a
+    // non-null instance on this very first build. Only the actual
+    // `start()` call is deferred to a post-frame callback (see
+    // [_scheduleReminderStart]).
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: _permissionState,
+      activeProfiles: _profiles.watch(),
+      predictionFor: _prediction.watch,
+    );
+    _coordinator = coordinator;
+    _scheduleReminderStart(coordinator);
+  }
+
+  /// Defers `coordinator.start()` (via [_startReminders]) to a post-frame
+  /// callback. Extracted out of [_buildReminderCoordinator] (issue #168
+  /// CRAP gate) so this branching doesn't count against that method's
+  /// complexity.
+  void _scheduleReminderStart(ReminderCoordinator coordinator) {
+    final gate = context.read<GateController?>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_startReminders(coordinator, gate));
+    });
+  }
+
+  /// Issue #5, U6/U8: keep the server's reminder-window snapshot in step
+  /// with the local prediction. Both collaborators come from the same
+  /// AppConfig.hasPush gate (app_lifecycle.dart), so this either starts
+  /// with both present or not at all - R17 holds with zero conditionals
+  /// beyond this null check. Extracted out of [initState] (issue #168
+  /// CRAP gate) so this branching doesn't count against that method's
+  /// complexity.
+  void _initReminderWindowPublisher() {
+    final reminderWindowUpsert = widget.reminderWindowUpsert;
+    if (widget.notificationPreferencesService == null ||
+        reminderWindowUpsert == null) {
+      return;
+    }
+    final publisher = ReminderWindowPublisher(
+      activeProfiles: _profiles.watch(),
+      predictionFor: _prediction.watch,
+      upsert: reminderWindowUpsert,
+      isSignedIn: _isSignedIn,
+    );
+    _reminderWindowPublisher = publisher;
+    publisher.start();
+  }
+
+  bool _isSignedIn() => _authController?.signedIn ?? false;
+
+  /// Schedules the cold-start invite presentation, if `main.dart` (or a
+  /// test) passed an initial invite code. Extracted out of [initState]
+  /// (issue #168 CRAP gate) so this branching doesn't count against that
+  /// method's complexity.
+  void _scheduleInitialInvitePresentation() {
+    final initialInviteCode = widget.initialInviteCode;
+    if (initialInviteCode == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _maybePresentInvite(
+        initialInviteCode,
+        widget.initialInviteProfileId,
+        widget.initialInviteKind,
+      );
+    });
   }
 
   void _handleInviteLink(Uri uri) {
