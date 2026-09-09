@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -1173,5 +1174,10 @@ class _EmptyProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> delete(String id) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
       throw UnimplementedError('not exercised in the empty-edge test');
 }

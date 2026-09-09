@@ -36,6 +36,14 @@
 /// (teen reorders, it never removes: "not a euphemism for a reduced app"),
 /// and saved entries always render verbatim regardless of mode.
 ///
+/// Issue #259: the profile's synced tracking preferences overlay the care
+/// mode's default — the sheet renders [resolveTrackingCategories]'s
+/// curated-first order and skips disabled categories entirely (their
+/// already-logged tags keep round-tripping through autosave untouched;
+/// hiding never deletes), with the minor-visibility default applied for
+/// never-mentioned categories. The concrete picker UI that edits the
+/// document is #234; this is the read path.
+///
 /// Route naming (U2 Approach 2b): the sheet itself is named
 /// `DaySheetScreen` at its push site (`month_calendar.dart`). Its internal
 /// "Delete this entry?" / "Discard unsaved changes?" `showDialog`s are
@@ -51,6 +59,7 @@ import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -158,6 +167,8 @@ class DaySheet extends StatefulWidget {
     required this.today,
     this.existing,
     this.mode = ProfileMode.standard,
+    this.trackingPreferences,
+    this.isMinor = false,
     this.readOnly = false,
     this.timezoneProvider,
     this.currentUserId,
@@ -177,6 +188,22 @@ class DaySheet extends StatefulWidget {
   /// The profile's care mode (Issue #131): category headings and surfacing
   /// order. Presentation only — never a permission.
   final ProfileMode mode;
+
+  /// The profile's curated tracking categories (Issue #259): the synced
+  /// preference document the day sheet reads to decide which categories
+  /// render and in what order (AC2). Null — the default — means never
+  /// customized: every category resolves to its default. Presentation
+  /// only; a disabled category is simply not shown, never deleted (AC3),
+  /// and this field is never consulted by any authorization path.
+  final TrackingPreferences? trackingPreferences;
+
+  /// Whether the profile subject is a minor (Issue #259): gates the
+  /// minor-visibility *defaults* — categories in
+  /// [kMinorDefaultHiddenTrackingCategories] stay unsurfaced for a minor
+  /// until a primary guardian explicitly enables them (AC4). Defaults to
+  /// false; only resolution of absent entries reads it, never any stored
+  /// entry (an explicit enable/disable always wins over the default).
+  final bool isMinor;
   final bool readOnly;
 
   /// Provider for the resolved IANA time zone identifier (paired with #38).
@@ -267,6 +294,20 @@ class _DaySheetState extends State<DaySheet> {
 
   /// The mode's headings and surfacing order (Issue #131).
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
+
+  /// The categories this sheet surfaces, resolved per Issue #259 (AC2):
+  /// the profile's curated set and order first, then the uncurated
+  /// remainder in the mode's default order, with the minor-visibility
+  /// default applied to categories the document never mentions (AC4).
+  /// Computed in [didChangeDependencies]/build time — it depends only on
+  /// the widget inputs and the mode copy, so it is recomputed on rebuild;
+  /// a sync that changes the document rebuilds the sheet through the
+  /// profile watch in the shells above.
+  late final List<TagCategory> _categoriesInOrder = resolveTrackingCategories(
+    defaultOrder: _copy.categoriesInOrder,
+    preferences: widget.trackingPreferences,
+    isMinor: widget.isMinor,
+  );
 
   /// Stored codes absent from [kTagTaxonomy] at load time (#237): the chip
   /// grid below only ever renders [kTagTaxonomy] members, so a code the
@@ -914,7 +955,12 @@ class _DaySheetState extends State<DaySheet> {
                 // Issue #220: the first-class PMS toggle sits between the
                 // flow row and the taxonomy grid — it belongs to neither.
                 _pmsChip(l10n),
-                for (final category in _copy.categoriesInOrder) ...[
+                // Issue #259: the profile's curated categories and order
+                // (resolved above) replace the mode's default list; an
+                // entry's already-logged tags for a disabled category stay
+                // in [_tags] and round-trip through autosave untouched
+                // (AC3) — they are simply not rendered here.
+                for (final category in _categoriesInOrder) ...[
                   _sectionHeading(theme, _copy.categoryLabel(category)),
                   // Issue #249: a category whose Clue option set is not
                   // yet attested (`kUnverifiedTagCategories`) carries no

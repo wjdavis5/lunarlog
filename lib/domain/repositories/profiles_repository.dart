@@ -3,6 +3,7 @@
 /// drift-backed implementations live in `lib/data/repositories/`.
 library;
 
+import '../logging/tracking_preferences.dart';
 import '../models/local_date.dart';
 import '../models/profile.dart';
 import '../models/profile_mode.dart';
@@ -52,4 +53,21 @@ abstract interface class ProfilesRepository {
 
   /// Tombstones the profile (soft delete; never row removal).
   Future<void> delete(String id);
+
+  /// Writes (or clears) the profile's tracking-preferences document
+  /// (Issue #259): [preferences] is the curated set the day sheet reads,
+  /// or null to clear back to "never customized". Touches only that
+  /// column (plus the usual sync bookkeeping) — an ordinary metadata edit
+  /// must never restamp or clobber a co-guardian's curated document, and
+  /// this write marks the row dirty so the document syncs (AC1/AC6).
+  /// Returns the updated profile, or null when [id] is unknown or
+  /// tombstoned. [preferences.toJsonText]'s null (nothing to store) and
+  /// an empty document are accepted as the same "clear" instruction.
+  /// Throws [ArgumentError] when the document does not serialize to a
+  /// JSON object (it always does from a well-formed
+  /// [TrackingPreferences]; the check guards programmatic misuse).
+  Future<Profile?> setTrackingPreferences(
+    String id,
+    TrackingPreferences? preferences,
+  );
 }

@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -148,6 +149,48 @@ void main() {
       final reread = await profiles.findById(created.id);
       expect(reread, created);
       expect(reread, isNot(equals(created.copyWith(displayName: 'Other'))));
+    });
+
+    test('tracking preferences round-trip through the domain model '
+        '(Issue #259)', () async {
+      final created = await profiles.create(displayName: 'A', isMinor: true);
+      expect(created.trackingPreferences, isNull,
+          reason: 'a new profile starts never-customized');
+
+      final doc = TrackingPreferences({
+        'mood': TrackingCategoryPreference(enabled: false, sortOrder: 0),
+        'pain': TrackingCategoryPreference(enabled: true, sortOrder: 1),
+      });
+      await profiles.update(created.copyWith(trackingPreferences: doc));
+      final reread = await profiles.findById(created.id);
+      expect(reread!.trackingPreferences, doc,
+          reason: 'update() must carry the document through the full-row '
+              'overwrite, never silently null it');
+    });
+
+    test('setTrackingPreferences writes and clears without touching any '
+        'other metadata (Issue #259)', () async {
+      final created = await profiles.create(
+          displayName: 'A', isMinor: true, sortOrder: 4);
+      final updated = await profiles.setTrackingPreferences(
+          created.id,
+          TrackingPreferences({
+            'sex_life': TrackingCategoryPreference(enabled: true, sortOrder: 0),
+          }));
+      expect(updated, isNotNull);
+      expect(updated!.trackingPreferences,
+          TrackingPreferences({
+            'sex_life': TrackingCategoryPreference(enabled: true, sortOrder: 0),
+          }));
+      expect(updated.displayName, 'A');
+      expect(updated.sortOrder, 4);
+      expect(updated.updatedAt.isAfter(created.updatedAt), isTrue);
+
+      expect((await profiles.setTrackingPreferences(created.id, null))!
+          .trackingPreferences, isNull);
+      expect(await profiles.setTrackingPreferences('01JPROFILEUNKNOWN000000000', null),
+          isNull,
+          reason: 'unknown id: nothing to curate');
     });
   });
 

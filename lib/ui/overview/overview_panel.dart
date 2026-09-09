@@ -45,6 +45,7 @@ import 'package:lunarlog/app_lifecycle.dart'
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -110,6 +111,8 @@ class OverviewPanel extends StatefulWidget {
     super.key,
     required this.profileId,
     this.mode = ProfileMode.standard,
+    this.trackingPreferences,
+    this.isMinor = false,
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.timezoneProvider,
@@ -123,6 +126,14 @@ class OverviewPanel extends StatefulWidget {
   /// Presentation only — it never changes what any guardian role may read
   /// or write ([_effectiveReadOnly] consults roles alone).
   final ProfileMode mode;
+
+  /// The profile's curated tracking categories (Issue #259), forwarded to
+  /// [DaySheet]; null means never customized. Presentation only.
+  final TrackingPreferences? trackingPreferences;
+
+  /// Whether the profile subject is a minor (Issue #259): gates the
+  /// minor-visibility defaults in [DaySheet]. Presentation only.
+  final bool isMinor;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -254,6 +265,8 @@ class _OverviewPanelState extends State<OverviewPanel> {
         existing: existing,
         today: today,
         mode: widget.mode,
+        trackingPreferences: widget.trackingPreferences,
+        isMinor: widget.isMinor,
         readOnly: _effectiveReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,

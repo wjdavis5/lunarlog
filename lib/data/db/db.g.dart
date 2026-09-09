@@ -210,6 +210,17 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         type: DriftSqlType.int,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _trackingPreferencesMeta =
+      const VerificationMeta('trackingPreferences');
+  @override
+  late final GeneratedColumn<String> trackingPreferences =
+      GeneratedColumn<String>(
+        'tracking_preferences',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -230,6 +241,7 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,
+    trackingPreferences,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -379,6 +391,15 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         ),
       );
     }
+    if (data.containsKey('tracking_preferences')) {
+      context.handle(
+        _trackingPreferencesMeta,
+        trackingPreferences.isAcceptableOrUnknown(
+          data['tracking_preferences']!,
+          _trackingPreferencesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -460,6 +481,10 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.int,
         data['${effectivePrefix}typical_period_length_days'],
       ),
+      trackingPreferences: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tracking_preferences'],
+      ),
     );
   }
 
@@ -537,6 +562,21 @@ class Profile extends DataClass implements Insertable<Profile> {
 
   /// The supplied "typical period length" answer in days (Issue #218).
   final int? typicalPeriodLengthDays;
+
+  /// The profile's curated tracking categories (Issue #259), as the JSON
+  /// text `TrackingPreferences.toJsonText` produces — the same partial
+  /// `{category: {enabled, sort_order}}` document the server's
+  /// `profiles.tracking_preferences` jsonb carries (mirroring
+  /// [Observations.raw]'s wire-JSON/local-text precedent). Null means
+  /// never customized: every category resolves to its default (enabled,
+  /// taxonomy order) except the minor-hidden set on an [isMinor] profile.
+  /// Presentation curation only — never consulted by any authorization
+  /// path, and hiding a category never touches already-logged entries.
+  /// Synced like any other profile column; `row_codec.dart` carries it on
+  /// the wire as a JSON object and only ever emits the key when locally
+  /// non-null, so this client never clears a co-guardian's document by
+  /// accident (the server's `?` containment guard is the backstop).
+  final String? trackingPreferences;
   const Profile({
     required this.id,
     required this.displayName,
@@ -556,6 +596,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
+    this.trackingPreferences,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -598,6 +639,9 @@ class Profile extends DataClass implements Insertable<Profile> {
         typicalPeriodLengthDays,
       );
     }
+    if (!nullToAbsent || trackingPreferences != null) {
+      map['tracking_preferences'] = Variable<String>(trackingPreferences);
+    }
     return map;
   }
 
@@ -639,6 +683,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       typicalPeriodLengthDays: typicalPeriodLengthDays == null && nullToAbsent
           ? const Value.absent()
           : Value(typicalPeriodLengthDays),
+      trackingPreferences: trackingPreferences == null && nullToAbsent
+          ? const Value.absent()
+          : Value(trackingPreferences),
     );
   }
 
@@ -672,6 +719,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       typicalPeriodLengthDays: serializer.fromJson<int?>(
         json['typicalPeriodLengthDays'],
       ),
+      trackingPreferences: serializer.fromJson<String?>(
+        json['trackingPreferences'],
+      ),
     );
   }
   @override
@@ -698,6 +748,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       'typicalPeriodLengthDays': serializer.toJson<int?>(
         typicalPeriodLengthDays,
       ),
+      'trackingPreferences': serializer.toJson<String?>(trackingPreferences),
     };
   }
 
@@ -720,6 +771,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     Value<String?> lastPeriodStart = const Value.absent(),
     Value<int?> typicalCycleLengthDays = const Value.absent(),
     Value<int?> typicalPeriodLengthDays = const Value.absent(),
+    Value<String?> trackingPreferences = const Value.absent(),
   }) => Profile(
     id: id ?? this.id,
     displayName: displayName ?? this.displayName,
@@ -749,6 +801,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     typicalPeriodLengthDays: typicalPeriodLengthDays.present
         ? typicalPeriodLengthDays.value
         : this.typicalPeriodLengthDays,
+    trackingPreferences: trackingPreferences.present
+        ? trackingPreferences.value
+        : this.trackingPreferences,
   );
   Profile copyWithCompanion(ProfilesCompanion data) {
     return Profile(
@@ -786,6 +841,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       typicalPeriodLengthDays: data.typicalPeriodLengthDays.present
           ? data.typicalPeriodLengthDays.value
           : this.typicalPeriodLengthDays,
+      trackingPreferences: data.trackingPreferences.present
+          ? data.trackingPreferences.value
+          : this.trackingPreferences,
     );
   }
 
@@ -809,7 +867,8 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('transferredToUserId: $transferredToUserId, ')
           ..write('lastPeriodStart: $lastPeriodStart, ')
           ..write('typicalCycleLengthDays: $typicalCycleLengthDays, ')
-          ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays')
+          ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays, ')
+          ..write('trackingPreferences: $trackingPreferences')
           ..write(')'))
         .toString();
   }
@@ -834,6 +893,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,
+    trackingPreferences,
   );
   @override
   bool operator ==(Object other) =>
@@ -856,7 +916,8 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.transferredToUserId == this.transferredToUserId &&
           other.lastPeriodStart == this.lastPeriodStart &&
           other.typicalCycleLengthDays == this.typicalCycleLengthDays &&
-          other.typicalPeriodLengthDays == this.typicalPeriodLengthDays);
+          other.typicalPeriodLengthDays == this.typicalPeriodLengthDays &&
+          other.trackingPreferences == this.trackingPreferences);
 }
 
 class ProfilesCompanion extends UpdateCompanion<Profile> {
@@ -878,6 +939,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<String?> lastPeriodStart;
   final Value<int?> typicalCycleLengthDays;
   final Value<int?> typicalPeriodLengthDays;
+  final Value<String?> trackingPreferences;
   final Value<int> rowid;
   const ProfilesCompanion({
     this.id = const Value.absent(),
@@ -898,6 +960,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.lastPeriodStart = const Value.absent(),
     this.typicalCycleLengthDays = const Value.absent(),
     this.typicalPeriodLengthDays = const Value.absent(),
+    this.trackingPreferences = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfilesCompanion.insert({
@@ -919,6 +982,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.lastPeriodStart = const Value.absent(),
     this.typicalCycleLengthDays = const Value.absent(),
     this.typicalPeriodLengthDays = const Value.absent(),
+    this.trackingPreferences = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        displayName = Value(displayName),
@@ -944,6 +1008,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<String>? lastPeriodStart,
     Expression<int>? typicalCycleLengthDays,
     Expression<int>? typicalPeriodLengthDays,
+    Expression<String>? trackingPreferences,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -968,6 +1033,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
         'typical_cycle_length_days': typicalCycleLengthDays,
       if (typicalPeriodLengthDays != null)
         'typical_period_length_days': typicalPeriodLengthDays,
+      if (trackingPreferences != null)
+        'tracking_preferences': trackingPreferences,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -991,6 +1058,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<String?>? lastPeriodStart,
     Value<int?>? typicalCycleLengthDays,
     Value<int?>? typicalPeriodLengthDays,
+    Value<String?>? trackingPreferences,
     Value<int>? rowid,
   }) {
     return ProfilesCompanion(
@@ -1014,6 +1082,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           typicalCycleLengthDays ?? this.typicalCycleLengthDays,
       typicalPeriodLengthDays:
           typicalPeriodLengthDays ?? this.typicalPeriodLengthDays,
+      trackingPreferences: trackingPreferences ?? this.trackingPreferences,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1081,6 +1150,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
         typicalPeriodLengthDays.value,
       );
     }
+    if (trackingPreferences.present) {
+      map['tracking_preferences'] = Variable<String>(trackingPreferences.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1108,6 +1180,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('lastPeriodStart: $lastPeriodStart, ')
           ..write('typicalCycleLengthDays: $typicalCycleLengthDays, ')
           ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays, ')
+          ..write('trackingPreferences: $trackingPreferences, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7848,6 +7921,7 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> lastPeriodStart,
   Value<int?> typicalCycleLengthDays,
   Value<int?> typicalPeriodLengthDays,
+  Value<String?> trackingPreferences,
   Value<int> rowid,
 });
 typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
@@ -7869,6 +7943,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> lastPeriodStart,
   Value<int?> typicalCycleLengthDays,
   Value<int?> typicalPeriodLengthDays,
+  Value<String?> trackingPreferences,
   Value<int> rowid,
 });
 
@@ -8106,6 +8181,11 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<int> get typicalPeriodLengthDays => $composableBuilder(
     column: $table.typicalPeriodLengthDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get trackingPreferences => $composableBuilder(
+    column: $table.trackingPreferences,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8383,6 +8463,11 @@ class $$ProfilesTableOrderingComposer
     column: $table.typicalPeriodLengthDays,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get trackingPreferences => $composableBuilder(
+    column: $table.trackingPreferences,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -8461,6 +8546,11 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<int> get typicalPeriodLengthDays => $composableBuilder(
     column: $table.typicalPeriodLengthDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get trackingPreferences => $composableBuilder(
+    column: $table.trackingPreferences,
     builder: (column) => column,
   );
 
@@ -8694,6 +8784,7 @@ class $$ProfilesTableTableManager
                 Value<String?> lastPeriodStart = const Value.absent(),
                 Value<int?> typicalCycleLengthDays = const Value.absent(),
                 Value<int?> typicalPeriodLengthDays = const Value.absent(),
+                Value<String?> trackingPreferences = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion(
                 id: id,
@@ -8714,6 +8805,7 @@ class $$ProfilesTableTableManager
                 lastPeriodStart: lastPeriodStart,
                 typicalCycleLengthDays: typicalCycleLengthDays,
                 typicalPeriodLengthDays: typicalPeriodLengthDays,
+                trackingPreferences: trackingPreferences,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8736,6 +8828,7 @@ class $$ProfilesTableTableManager
                 Value<String?> lastPeriodStart = const Value.absent(),
                 Value<int?> typicalCycleLengthDays = const Value.absent(),
                 Value<int?> typicalPeriodLengthDays = const Value.absent(),
+                Value<String?> trackingPreferences = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion.insert(
                 id: id,
@@ -8756,6 +8849,7 @@ class $$ProfilesTableTableManager
                 lastPeriodStart: lastPeriodStart,
                 typicalCycleLengthDays: typicalCycleLengthDays,
                 typicalPeriodLengthDays: typicalPeriodLengthDays,
+                trackingPreferences: trackingPreferences,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

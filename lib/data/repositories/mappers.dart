@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart' as domain;
 import 'package:lunarlog/domain/models/profile_relationship.dart' as domain;
+import 'package:lunarlog/domain/logging/tracking_preferences.dart' as domain;
 import 'package:lunarlog/domain/models/visit_prep_item.dart' as domain;
 
 domain.Profile profileToDomain(db.Profile row) => domain.Profile(
@@ -37,6 +38,11 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
           : domain.LocalDate.fromIso(row.lastPeriodStart!),
       typicalCycleLengthDays: row.typicalCycleLengthDays,
       typicalPeriodLengthDays: row.typicalPeriodLengthDays,
+      // Issue #259: parsed here (not in the codec) so every UI read of
+      // domain.Profile sees the resolved-tolerant document; a malformed
+      // stored text degrades to null (all defaults), never a throwing read.
+      trackingPreferences: domain.TrackingPreferences.fromJsonText(
+          row.trackingPreferences),
     );
 
 /// Storage `FlowLevel` -> domain `FlowLevel`. Issue #247 spotting-alias

@@ -44,6 +44,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -489,6 +490,8 @@ class MonthCalendar extends StatefulWidget {
     required this.profileId,
     this.readOnly = false,
     this.mode = ProfileMode.standard,
+    this.trackingPreferences,
+    this.isMinor = false,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
     this.guardiansRepository,
@@ -500,6 +503,14 @@ class MonthCalendar extends StatefulWidget {
   /// The profile's care mode (Issue #131): forwarded to [DaySheet] for its
   /// category headings and surfacing order. Presentation only.
   final ProfileMode mode;
+
+  /// The profile's curated tracking categories (Issue #259), forwarded to
+  /// [DaySheet]; null means never customized. Presentation only.
+  final TrackingPreferences? trackingPreferences;
+
+  /// Whether the profile subject is a minor (Issue #259): gates the
+  /// minor-visibility defaults in [DaySheet]. Presentation only.
+  final bool isMinor;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -919,6 +930,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
         existing: entry,
         today: widget.todayProvider(),
         mode: widget.mode,
+        trackingPreferences: widget.trackingPreferences,
+        isMinor: widget.isMinor,
         readOnly: _effectiveReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,

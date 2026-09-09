@@ -91,6 +91,7 @@ void main() {
     required DateTime updatedAt,
     DateTime? createdAt,
     DateTime? deletedAt,
+    String? trackingPreferences,
   }) =>
       RemoteProfileRow(
         id: id,
@@ -102,6 +103,7 @@ void main() {
         createdAt: createdAt ?? updatedAt,
         updatedAt: updatedAt,
         deletedAt: deletedAt,
+        trackingPreferences: trackingPreferences,
       );
 
   RemoteDayEntryRow remoteEntry(
@@ -635,6 +637,91 @@ void main() {
       final json = encodeDayEntry(
           dirty.firstWhere((e) => e.localDate == '2026-02-02'));
       expect(json['pms'], true);
+    });
+  });
+
+  group('tracking preferences (Issue #259)', () {
+    test('setTrackingPreferences writes only that column plus sync '
+        'bookkeeping, and null clears it', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: true);
+      final revBefore = p.localRev;
+
+      final updated = await storage.setTrackingPreferences(
+          p.id, '{"mood": {"enabled": false, "sort_order": 0}}');
+      expect(updated, isNotNull);
+      expect(updated!.trackingPreferences,
+          '{"mood": {"enabled": false, "sort_order": 0}}');
+      expect(updated.dirty, isTrue,
+          reason: 'the document syncs to co-guardians (AC1/AC6)');
+      expect(updated.localRev, revBefore + 1);
+      expect(updated.updatedAt.isAfter(p.updatedAt), isTrue,
+          reason: 'stamped strictly after the stored value');
+      expect(updated.displayName, 'P',
+          reason: 'no other metadata column is touched');
+      expect(updated.mode, 'standard');
+
+      final cleared =
+          await storage.setTrackingPreferences(p.id, null);
+      expect(cleared!.trackingPreferences, isNull);
+      expect(cleared.dirty, isTrue);
+      expect(cleared.localRev, revBefore + 2);
+    });
+
+    test('setTrackingPreferences rejects a non-JSON-object document and '
+        'no-ops on unknown and tombstoned ids', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      expect(
+        () => storage.setTrackingPreferences(p.id, '["mood"]'),
+        throwsArgumentError,
+      );
+      expect(
+        () => storage.setTrackingPreferences(p.id, 'garbage'),
+        throwsArgumentError,
+      );
+      expect(await storage.setTrackingPreferences('01J0000000000000000000000Z',
+          '{"mood": {"enabled": true, "sort_order": 0}}'),
+          isNull,
+          reason: 'unknown profile: nothing to curate');
+
+      await storage.softDeleteProfile(p.id);
+      final tombstoned =
+          await storage.getProfiles(includeTombstones: true).then((rows) =>
+              rows.firstWhere((r) => r.id == p.id));
+      expect(
+        await storage.setTrackingPreferences(
+            p.id, '{"mood": {"enabled": true, "sort_order": 0}}'),
+        isNull,
+        reason: 'curating a deleted profile is meaningless');
+      expect(tombstoned.trackingPreferences, isNull);
+    });
+
+    test('a newer remote profile carrying a document applies it; the '
+        'document rides every remote apply', () async {
+      final p = await storage.upsertProfile(displayName: 'Local', isMinor: true);
+      final newer = p.updatedAt.add(const Duration(seconds: 1));
+      expect(
+        await storage.applyRemoteProfile(remoteProfile(p.id,
+            displayName: 'Remote',
+            isMinor: true,
+            updatedAt: newer,
+            trackingPreferences:
+                '{"partying": {"enabled": true, "sort_order": 0}}')),
+        isTrue,
+      );
+      final row = await profileById(p.id);
+      expect(row.trackingPreferences,
+          '{"partying": {"enabled": true, "sort_order": 0}}');
+      expect(row.dirty, isFalse);
+
+      // A newer remote apply without the field clears it (full-row
+      // semantics mirror the server's own update path).
+      final evenNewer = newer.add(const Duration(seconds: 1));
+      expect(
+        await storage.applyRemoteProfile(remoteProfile(p.id,
+            displayName: 'Remote2', isMinor: true, updatedAt: evenNewer)),
+        isTrue,
+      );
+      expect((await profileById(p.id)).trackingPreferences, isNull);
     });
   });
 
