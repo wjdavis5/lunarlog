@@ -133,6 +133,9 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
 
   Widget _confidenceChip(BuildContext context, CycleHistoryView view) {
     final theme = Theme.of(context);
+    // TODO(#209): consume LunarLogColors.confidence* instead of this
+    // colorScheme-role mapping, so this chip shares the same badge palette
+    // as the rest of the app.
     final color = switch (view.confidence!) {
       CycleConfidence.high => theme.colorScheme.primary,
       CycleConfidence.learning => theme.colorScheme.tertiary,

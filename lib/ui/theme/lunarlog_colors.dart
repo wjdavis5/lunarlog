@@ -5,13 +5,18 @@
 ///
 /// Every colour here is *derived*, not hardcoded: each is built from the
 /// theme's own generated [ColorScheme] (its primary/tertiary hue and its
-/// actual `surface` luminance) via a luminance search, so the documented
+/// actual surface luminance) via a luminance search, so the documented
 /// contrast ratios hold for whatever seed/brightness produced the scheme --
 /// see [LunarLogColors.forColorScheme] and `test/ui/theme_test.dart`, which
-/// walks both themes and asserts the ratios independently.
+/// walks both themes and asserts the ratios independently. The flow ramp
+/// solves against `colorScheme.surfaceContainerLow` specifically, not
+/// `surface`: that's the actual `CardThemeData.color` (see `app_theme.dart`)
+/// the calendar/overview widgets render flow chips onto, so the ramp's 3:1
+/// floor (`flowSpotting`) holds against the background it really sits on
+/// rather than a background it never appears against.
 ///
 /// Dark variants are *re-derived*, not merely inverted (the #137 failure
-/// this issue heads off): boldness reads as "further from `surface`" in
+/// this issue heads off): boldness reads as "further from the background" in
 /// both directions, but which direction that is flips with brightness (see
 /// `toneLighterThanSurface` below), so a "heavy" step still pops off a dark
 /// backdrop instead of receding into it.
@@ -52,13 +57,17 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   factory LunarLogColors.forColorScheme(ColorScheme colorScheme) {
     final toneLighterThanSurface = colorScheme.brightness == Brightness.dark;
     final surfaceLuminance = _relativeLuminance(colorScheme.surface);
+    // The flow ramp is solved against the Card background it actually
+    // renders onto (`CardThemeData.color` in `app_theme.dart`), not
+    // `surface` -- see the library doc comment.
+    final cardLuminance = _relativeLuminance(colorScheme.surfaceContainerLow);
     final primaryHue = HSLColor.fromColor(colorScheme.primary).hue;
     final tertiaryHue = HSLColor.fromColor(colorScheme.tertiary).hue;
 
-    // Four steps, increasingly bold: contrast against `surface` climbs from
-    // the documented minimum (3:1) upward, and saturation climbs with it,
-    // so the ramp actually reads as a progression rather than four hues at
-    // one fixed lightness.
+    // Four steps, increasingly bold: contrast against the card background
+    // climbs from the documented minimum (3:1) upward, and saturation
+    // climbs with it, so the ramp actually reads as a progression rather
+    // than four hues at one fixed lightness.
     const flowMinContrasts = [3.0, 4.2, 5.6, 7.4];
     const flowSaturations = [0.30, 0.48, 0.65, 0.85];
     final flowSteps = [
@@ -66,7 +75,7 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
         _ToneOnTone.build(
           hue: primaryHue,
           saturation: flowSaturations[i],
-          backgroundLuminance: surfaceLuminance,
+          backgroundLuminance: cardLuminance,
           toneLighterThanBackground: toneLighterThanSurface,
           minToneContrast: flowMinContrasts[i],
           minOnToneContrast: 4.5,
@@ -157,6 +166,17 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   final Color roleCaregiver;
   final Color roleViewer;
 
+  /// Resolves a `copyWith` parameter: an unpassed (`null`) argument keeps
+  /// [fallback]. Pulling the `??` out of [copyWith] and into this helper
+  /// keeps that method's own body free of `??`/`&&`/`||` decision points --
+  /// the quality gate's per-method CRAP score counts each `??` as one, and
+  /// eighteen of them inline (one per field) pushed `copyWith` well past
+  /// the gate's complexity cap regardless of test coverage. Mirrors the
+  /// sentinel-based `_resolveNullable` in `Profile.copyWith`, minus the
+  /// sentinel: every field here is non-nullable, so a plain `??` (not
+  /// "was this argument passed at all") is the right resolution rule.
+  static T _or<T>(T? value, T fallback) => value ?? fallback;
+
   @override
   LunarLogColors copyWith({
     Color? flowSpotting,
@@ -179,24 +199,24 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     Color? roleViewer,
   }) {
     return LunarLogColors(
-      flowSpotting: flowSpotting ?? this.flowSpotting,
-      onFlowSpotting: onFlowSpotting ?? this.onFlowSpotting,
-      flowLight: flowLight ?? this.flowLight,
-      onFlowLight: onFlowLight ?? this.onFlowLight,
-      flowMedium: flowMedium ?? this.flowMedium,
-      onFlowMedium: onFlowMedium ?? this.onFlowMedium,
-      flowHeavy: flowHeavy ?? this.flowHeavy,
-      onFlowHeavy: onFlowHeavy ?? this.onFlowHeavy,
-      symptomDot: symptomDot ?? this.symptomDot,
-      predictedBand: predictedBand ?? this.predictedBand,
-      predictedBorder: predictedBorder ?? this.predictedBorder,
-      confidenceHigh: confidenceHigh ?? this.confidenceHigh,
-      confidenceLearning: confidenceLearning ?? this.confidenceLearning,
-      confidenceIrregular: confidenceIrregular ?? this.confidenceIrregular,
-      roleOwner: roleOwner ?? this.roleOwner,
-      roleCoParent: roleCoParent ?? this.roleCoParent,
-      roleCaregiver: roleCaregiver ?? this.roleCaregiver,
-      roleViewer: roleViewer ?? this.roleViewer,
+      flowSpotting: _or(flowSpotting, this.flowSpotting),
+      onFlowSpotting: _or(onFlowSpotting, this.onFlowSpotting),
+      flowLight: _or(flowLight, this.flowLight),
+      onFlowLight: _or(onFlowLight, this.onFlowLight),
+      flowMedium: _or(flowMedium, this.flowMedium),
+      onFlowMedium: _or(onFlowMedium, this.onFlowMedium),
+      flowHeavy: _or(flowHeavy, this.flowHeavy),
+      onFlowHeavy: _or(onFlowHeavy, this.onFlowHeavy),
+      symptomDot: _or(symptomDot, this.symptomDot),
+      predictedBand: _or(predictedBand, this.predictedBand),
+      predictedBorder: _or(predictedBorder, this.predictedBorder),
+      confidenceHigh: _or(confidenceHigh, this.confidenceHigh),
+      confidenceLearning: _or(confidenceLearning, this.confidenceLearning),
+      confidenceIrregular: _or(confidenceIrregular, this.confidenceIrregular),
+      roleOwner: _or(roleOwner, this.roleOwner),
+      roleCoParent: _or(roleCoParent, this.roleCoParent),
+      roleCaregiver: _or(roleCaregiver, this.roleCaregiver),
+      roleViewer: _or(roleViewer, this.roleViewer),
     );
   }
 
@@ -229,6 +249,72 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       roleViewer: Color.lerp(roleViewer, other.roleViewer, t)!,
     );
   }
+
+  /// The four-step flow ramp, split out purely to keep [operator ==]'s own
+  /// cyclomatic complexity (and so its CRAP score) low as fields grow --
+  /// same reasoning as `Profile._sameProfileIdentity`/`_sameProfileDetails`.
+  bool _sameFlowColors(LunarLogColors other) =>
+      other.flowSpotting == flowSpotting &&
+      other.onFlowSpotting == onFlowSpotting &&
+      other.flowLight == flowLight &&
+      other.onFlowLight == onFlowLight &&
+      other.flowMedium == flowMedium &&
+      other.onFlowMedium == onFlowMedium &&
+      other.flowHeavy == flowHeavy &&
+      other.onFlowHeavy == onFlowHeavy;
+
+  bool _sameAccentColors(LunarLogColors other) =>
+      other.symptomDot == symptomDot &&
+      other.predictedBand == predictedBand &&
+      other.predictedBorder == predictedBorder;
+
+  bool _sameConfidenceColors(LunarLogColors other) =>
+      other.confidenceHigh == confidenceHigh &&
+      other.confidenceLearning == confidenceLearning &&
+      other.confidenceIrregular == confidenceIrregular;
+
+  bool _sameRoleColors(LunarLogColors other) =>
+      other.roleOwner == roleOwner &&
+      other.roleCoParent == roleCoParent &&
+      other.roleCaregiver == roleCaregiver &&
+      other.roleViewer == roleViewer;
+
+  // Value equality (issue #176 review): without this, two independently
+  // built `LunarLogColors` instances (e.g. `AppTheme.lightTheme` read
+  // twice, pre-memoization) never compare equal, which made every
+  // containing `ThemeData` compare unequal too -- `AnimatedTheme` restarted
+  // its animation and every `Theme.of` dependent rebuilt on every
+  // `setState`, even when nothing about the theme actually changed.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LunarLogColors &&
+          _sameFlowColors(other) &&
+          _sameAccentColors(other) &&
+          _sameConfidenceColors(other) &&
+          _sameRoleColors(other);
+
+  @override
+  int get hashCode => Object.hashAll([
+        flowSpotting,
+        onFlowSpotting,
+        flowLight,
+        onFlowLight,
+        flowMedium,
+        onFlowMedium,
+        flowHeavy,
+        onFlowHeavy,
+        symptomDot,
+        predictedBand,
+        predictedBorder,
+        confidenceHigh,
+        confidenceLearning,
+        confidenceIrregular,
+        roleOwner,
+        roleCoParent,
+        roleCaregiver,
+        roleViewer,
+      ]);
 }
 
 /// WCAG 2.x relative luminance of an sRGB colour, in `[0, 1]`.
