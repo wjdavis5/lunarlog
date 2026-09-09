@@ -243,11 +243,16 @@ select is((select count(*) from pg_policies
 -- has a `grant execute ... to authenticated` (20260906130000_feedback_tickets.sql)
 -- but, like `is_valid_tags_array`/`merge_tag_arrays`, no matching revoke, so
 -- it still carried the default PUBLIC/anon grant. The allow-list holds only
--- these three - all `security invoker` (or plain SQL) pure predicates with no
--- table access and no SECURITY DEFINER, documented at their own definitions
--- (20260906130000_feedback_tickets.sql, 20260907010000_tags_element_length_check.sql,
--- 20260906200000_same_date_tag_merge.sql) as needing no privilege restriction
--- beyond that default.
+-- these four - all `security invoker` (or plain SQL/plpgsql) pure predicates
+-- with no table access and no SECURITY DEFINER, documented at their own
+-- definitions (20260906130000_feedback_tickets.sql,
+-- 20260907010000_tags_element_length_check.sql,
+-- 20260906200000_same_date_tag_merge.sql,
+-- 20260908180000_timezone_contract.sql) as needing no privilege restriction
+-- beyond that default. Issue #180 added `is_valid_timezone(text)` in the
+-- same category (backs observations_tz_valid/day_entries_tz_valid; no table
+-- access, exception-safe, IMMUTABLE) and its migration deliberately does not
+-- revoke the default PUBLIC/anon grant either - see that migration's header.
 -- ---------------------------------------------------------------------------
 select is(
   (select count(*)
@@ -260,7 +265,7 @@ select is(
       -- each parameter's name and would never match a plain type-list literal.
       and p.oid::regprocedure::text
             not in ('is_valid_tags_array(jsonb)', 'merge_tag_arrays(jsonb,jsonb)',
-                    'is_allowed_device_info(jsonb)')),
+                    'is_allowed_device_info(jsonb)', 'is_valid_timezone(text)')),
   0::bigint,
   'anon holds no EXECUTE on any public function outside the documented pure-helper allow-list');
 
