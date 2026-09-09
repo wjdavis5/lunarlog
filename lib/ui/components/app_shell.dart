@@ -1,10 +1,16 @@
 /// The single shell every active profile mounts inside (issue #182): a
-/// Material 3 [NavigationBar] with four destinations -- Today (for now the
-/// existing [OverviewPanel]; the cycle wheel is #209), Calendar (the
+/// Material 3 [NavigationBar] with four destinations -- Today (the
+/// existing [OverviewPanel], now topped by the #209 cycle wheel/Today card),
+/// Calendar (the
 /// existing [MonthCalendar]), Insights (the real Analysis tab, issue #223's
 /// [AnalysisTab]), and More (the existing [SettingsScreen], unmodified,
 /// including its own app bar). Today is the default/first tab (paired with
 /// #209).
+///
+/// Issue #209 item 4a: a [TodayLogFab] floats over Today and Calendar
+/// (not Insights/More, where logging today makes no sense), opening the
+/// day sheet for today's date directly; it hides itself for a
+/// `viewer`-role guardian.
 ///
 /// The app bar shared by Today/Calendar/Insights (not rebuilt per screen,
 /// and not shown at all on More -- [SettingsScreen] carries its own) holds
@@ -34,6 +40,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -123,19 +130,25 @@ class _AppShellState extends State<AppShell> {
   ) {
     if (!_everShown.contains(tab)) return const SizedBox.shrink();
     return switch (tab) {
-      AppTab.today => OverviewPanel(
-          profileId: widget.profile.id,
-          mode: widget.profile.mode,
-          todayProvider: widget.todayProvider,
-          timezoneProvider: widget.timezoneProvider,
-          guardiansRepository: guardiansRepository,
+      AppTab.today => _withFabClearance(
+          tab,
+          OverviewPanel(
+            profileId: widget.profile.id,
+            mode: widget.profile.mode,
+            todayProvider: widget.todayProvider,
+            timezoneProvider: widget.timezoneProvider,
+            guardiansRepository: guardiansRepository,
+          ),
         ),
-      AppTab.calendar => MonthCalendar(
-          profileId: widget.profile.id,
-          mode: widget.profile.mode,
-          todayProvider: widget.todayProvider,
-          timezoneProvider: widget.timezoneProvider,
-          guardiansRepository: guardiansRepository,
+      AppTab.calendar => _withFabClearance(
+          tab,
+          MonthCalendar(
+            profileId: widget.profile.id,
+            mode: widget.profile.mode,
+            todayProvider: widget.todayProvider,
+            timezoneProvider: widget.timezoneProvider,
+            guardiansRepository: guardiansRepository,
+          ),
         ),
       AppTab.insights => AnalysisTab(
           profileId: widget.profile.id,
@@ -146,6 +159,27 @@ class _AppShellState extends State<AppShell> {
       AppTab.more => const SettingsScreen(),
     };
   }
+
+  /// Reserves room at the bottom of Today/Calendar (issue #316 review item
+  /// 4) so [TodayLogFab] -- an extended FAB floating over exactly those two
+  /// tabs -- never sits on top of the calendar's last row or the overview's
+  /// last card. [MediaQuery.removePadding] keeps the reserved space from
+  /// stacking on top of the view's own bottom safe-area inset (a
+  /// notch/gesture-bar device); [_kFabClearance] alone covers the FAB's
+  /// own height plus its default screen margin. Keyed per tab -- both
+  /// bodies stay mounted side by side under the shell's [IndexedStack], so
+  /// a shared key across siblings would collide.
+  static const double _kFabClearance = 72;
+
+  Widget _withFabClearance(AppTab tab, Widget child) => MediaQuery.removePadding(
+        key: ValueKey('app-shell-tab-clearance-${tab.name}'),
+        context: context,
+        removeBottom: true,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: _kFabClearance),
+          child: child,
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -166,6 +200,18 @@ class _AppShellState extends State<AppShell> {
             _tabContent(tab, storage, guardiansRepository),
         ],
       ),
+      // Issue #209 item 4a: "Log today" opens the day sheet directly, only
+      // where logging today makes sense (Today/Calendar) -- not Insights or
+      // More. Hidden for a viewer-role guardian by TodayLogFab itself.
+      floatingActionButton: _tab == AppTab.today || _tab == AppTab.calendar
+          ? TodayLogFab(
+              profileId: widget.profile.id,
+              mode: widget.profile.mode,
+              todayProvider: widget.todayProvider,
+              timezoneProvider: widget.timezoneProvider,
+              guardiansRepository: guardiansRepository,
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         key: const ValueKey('app-shell-nav-bar'),
         selectedIndex: _tab.index,

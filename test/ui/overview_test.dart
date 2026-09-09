@@ -13,9 +13,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart'
     show RequestNotificationPermissionCallback;
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -28,14 +31,40 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
+import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:provider/provider.dart';
+
+import '../support/fake_auth_service.dart';
 
 /// Fixed "today" so every derived number is deterministic.
 final LocalDate kToday = LocalDate(2026, 8, 30);
+
+/// Materializes a server-authored guardian row locally (mirrors
+/// `test/ui/logging_test.dart`'s helper of the same name -- each suite
+/// keeps its own tiny copy rather than sharing one, matching the existing
+/// convention across this test directory).
+RemoteProfileGuardianRow guardianRow(
+  String profileId,
+  String id,
+  String userId,
+  String role, {
+  String status = 'accepted',
+}) => RemoteProfileGuardianRow(
+  id: id,
+  profileId: profileId,
+  userId: userId,
+  role: role,
+  status: status,
+  invitedBy: null,
+  createdAt: DateTime.utc(2026, 1, 1),
+  updatedAt: DateTime.utc(2026, 1, 1),
+  serverVersion: 1,
+);
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
 const String kReminderHint = 'Reminders unavailable — notifications are off';
@@ -124,11 +153,20 @@ class Harness {
   final DriftSettingsStore _settings;
 
   /// The pumpable app for any profile over the same repositories.
+  ///
+  /// [authController]/[withStorage] (issue #316 review item 3) wire the
+  /// same viewer-role seam `test/ui/logging_test.dart` exercises for the
+  /// day sheet: without `withStorage`, [ProfileDetailScreen] gets no
+  /// `LunarLogStorage` and so builds no `ProfileGuardiansRepository` at
+  /// all, matching every pre-existing test's local-only tree unchanged.
   Widget appFor(
     Profile profile, {
     NotificationAvailability availability = NotificationAvailability.available,
     RequestNotificationPermissionCallback? requestPermission,
     LocalDate? today,
+    bool readOnly = false,
+    AuthController? authController,
+    bool withStorage = false,
   }) {
     return MultiProvider(
       providers: [
@@ -151,6 +189,9 @@ class Harness {
           Provider<RequestNotificationPermissionCallback>.value(
             value: requestPermission,
           ),
+        if (withStorage) Provider<LunarLogStorage>.value(value: db.storage),
+        if (authController != null)
+          ChangeNotifierProvider<AuthController>.value(value: authController),
         ChangeNotifierProvider(
           create: (_) => ProfileController(
             profilesRepository: profiles,
@@ -159,8 +200,10 @@ class Harness {
         ),
       ],
       child: MaterialApp(
+        theme: AppTheme.lightTheme,
         home: ProfileDetailScreen(
           profile: profile,
+          readOnly: readOnly,
           todayProvider: () => today ?? kToday,
         ),
       ),
@@ -174,8 +217,15 @@ Future<Harness> pumpOverview(
   ProfileMode mode = ProfileMode.standard,
   RequestNotificationPermissionCallback? requestPermission,
   LocalDate? today,
+  bool readOnly = false,
+  AuthController? authController,
+  bool withStorage = false,
   Future<void> Function(DriftDayEntriesRepository entries, String profileId)?
       seed,
+  /// Applied after the profile exists but before the widget pumps, so a
+  /// guardian row can name the profile id (issue #316 review item 3).
+  Future<void> Function(LunarLogStorage storage, String profileId)?
+      seedGuardians,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -191,6 +241,9 @@ Future<Harness> pumpOverview(
   if (seed != null) {
     await seed(entries, profile.id);
   }
+  if (seedGuardians != null) {
+    await seedGuardians(db.storage, profile.id);
+  }
   final harness =
       Harness(db, profile, profiles, entries, settings);
   await tester.pumpWidget(harness.appFor(
@@ -198,6 +251,9 @@ Future<Harness> pumpOverview(
     availability: availability,
     requestPermission: requestPermission,
     today: today,
+    readOnly: readOnly,
+    authController: authController,
+    withStorage: withStorage,
   ));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Overview'));
@@ -456,7 +512,9 @@ void main() {
             seedEpisodes(entries, profileId, kActiveStarts),
       );
 
-      expect(find.byKey(const ValueKey('overview-phase')),
+      // Issue #209: the plain-text phase headline moved into the Today
+      // card's cycle wheel (its centre label carries this key now).
+      expect(find.byKey(const ValueKey('cycle-wheel-center-label')),
           findsOneWidget);
       expect(find.text('Cycle day 26'), findsOneWidget);
       expect(find.text('Period'), findsNothing,
@@ -465,15 +523,16 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets('during an episode the phase reads "Period" and no cycle-day '
-        'count shows', (tester) async {
+    testWidgets('during an episode the phase reads "Period · day N" and no '
+        'bare "Cycle day" count shows', (tester) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kDuringEpisodeStarts),
       );
 
-      expect(find.text('Period'), findsOneWidget);
+      // Issue #209: the wheel's centre label carries the day count too.
+      expect(find.text('Period · day 3'), findsOneWidget);
       expect(find.textContaining('Cycle day'), findsNothing);
       expect(find.text('Next period estimate: September 27, 2026'),
           findsOneWidget);
@@ -694,7 +753,7 @@ void main() {
 
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
           reason: 'the new episode resets the open cycle');
-      expect(find.text('Period'), findsOneWidget,
+      expect(find.text('Period · day 1'), findsOneWidget,
           reason: 'today is now day 1 of the new episode');
       expect(find.text('≈34 days until next period'), findsOneWidget,
           reason: 'issue #213 widened the prediction window to 12 cycles '
@@ -866,6 +925,277 @@ void main() {
         ),
         findsOneWidget,
       );
+      await disposeOverview(tester, h);
+    });
+  });
+
+  group('issue #209: Today card (cycle wheel + one-tap quick log)', () {
+    testWidgets('renders the wheel, next-period estimate, confidence chip, '
+        'and disclaimer exactly once', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
+      expect(find.byKey(const ValueKey('cycle-wheel-center-label')),
+          findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('today-card')),
+          matching: find.text('Next period estimate: September 4, 2026'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('today-card-confidence-chip')),
+          findsOneWidget);
+      // Issue #132's own cycle-history card (below this one) carries its
+      // own confidence chip with the same tier label, so this checks the
+      // Today card's copy specifically rather than a bare `find.text`.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('today-card-confidence-chip')),
+          matching: find.text('Learning'),
+        ),
+        findsOneWidget,
+        reason: 'kActiveStarts has not yet filled the 6-cycle average '
+            'window (issue #213 item 5)',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('today-card')),
+          matching: find.text(kDisclaimer),
+        ),
+        findsOneWidget,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('tapping "Period started today" logs a medium-flow entry '
+        'for today through the ordinary DayEntriesRepository path, and the '
+        'wheel updates to reflect it', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      expect(await h.entries.find(h.profile.id, kToday), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(saved, isNotNull);
+      expect(saved!.flow, FlowLevel.medium);
+      expect(find.text('Period · day 1'), findsOneWidget,
+          reason: 'the new episode recomputes the prediction stream');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('a second tap is idempotent: no duplicate entry, and an '
+        'already-heavier flow is never downgraded', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          // Today is already logged heavier than the quick-log default.
+          await entries.save(DayEntry(
+            id: '',
+            profileId: profileId,
+            localDate: kToday,
+            tz: 'America/Chicago',
+            flow: FlowLevel.heavy,
+            tags: const [],
+            note: 'already logged',
+            updatedAt: DateTime.utc(2026, 1, 1),
+            deletedAt: null,
+          ));
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+
+      final all = await h.entries.listForProfile(h.profile.id);
+      final todays = all.where((e) => e.localDate == kToday).toList();
+      expect(todays, hasLength(1),
+          reason: 'a second tap must never create a second entry');
+      expect(todays.single.flow, FlowLevel.heavy,
+          reason: 'a flow already logged heavier than the quick-log '
+              'default must never be downgraded');
+      expect(todays.single.note, 'already logged',
+          reason: 'the rest of the existing entry is preserved');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the quick-log action is hidden (not merely disabled) for '
+        'a read-only (archived) profile, though the wheel/estimate stay '
+        'visible', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        readOnly: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('today-card-log-action')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('irregular mode silences the confidence chip too (same '
+        'flag that silences the tier caption)', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.irregular,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kLateStarts),
+      );
+
+      expect(
+        find.byKey(const ValueKey('today-card-confidence-chip')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+  });
+
+  group('issue #316 review item 3: viewer-role gate on the Today card '
+      'quick-log action', () {
+    testWidgets('an accepted viewer guardian hides the quick-log action '
+        'entirely (the same live guardian watch TodayLogFab and '
+        'MonthCalendar already use)', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-doc'));
+      final authController = AuthController(authService: auth);
+      final h = await pumpOverview(
+        tester,
+        authController: authController,
+        withStorage: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+        seedGuardians: (storage, profileId) => storage.applyRemoteRows([
+          guardianRow(profileId, 'g-doc', 'user-doc', 'viewer'),
+        ]),
+      );
+
+      expect(find.byKey(const ValueKey('today-card')), findsOneWidget,
+          reason: 'the wheel/estimate stay visible -- only the write '
+              'action is gated');
+      expect(
+        find.byKey(const ValueKey('today-card-log-action')),
+        findsNothing,
+      );
+
+      authController.dispose();
+      await auth.dispose();
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('an accepted co-parent guardian keeps the quick-log action '
+        'visible', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-parent'));
+      final authController = AuthController(authService: auth);
+      final h = await pumpOverview(
+        tester,
+        authController: authController,
+        withStorage: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+        seedGuardians: (storage, profileId) => storage.applyRemoteRows([
+          guardianRow(profileId, 'g-parent', 'user-parent', 'co_parent'),
+        ]),
+      );
+
+      expect(
+        find.byKey(const ValueKey('today-card-log-action')),
+        findsOneWidget,
+      );
+
+      authController.dispose();
+      await auth.dispose();
+      await disposeOverview(tester, h);
+    });
+  });
+
+  group('issue #316 review item 5: undo + disclosure on the quick-log '
+      'write', () {
+    testWidgets('a successful write shows a confirmation snackbar with an '
+        'Undo action; undo after a create removes the entry entirely',
+        (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      expect(await h.entries.find(h.profile.id, kToday), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+
+      expect(await h.entries.find(h.profile.id, kToday), isNotNull);
+      expect(
+        find.text('Recorded a medium-flow period start for today.'),
+        findsOneWidget,
+      );
+      expect(find.text('Undo'), findsOneWidget);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(await h.entries.find(h.profile.id, kToday), isNull,
+          reason: 'undo after a create removes the entry the tap made, '
+              'through the ordinary DayEntriesRepository delete path');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('undo after an upgrade restores the prior flow level and '
+        'preserves tags/note', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await entries.save(DayEntry(
+            id: '',
+            profileId: profileId,
+            localDate: kToday,
+            tz: 'America/Chicago',
+            flow: FlowLevel.light,
+            tags: const ['cramps'],
+            note: 'before the quick log',
+            updatedAt: DateTime.utc(2026, 1, 1),
+            deletedAt: null,
+          ));
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+
+      final upgraded = await h.entries.find(h.profile.id, kToday);
+      expect(upgraded, isNotNull);
+      expect(upgraded!.flow, FlowLevel.medium);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      final restored = await h.entries.find(h.profile.id, kToday);
+      expect(restored, isNotNull);
+      expect(restored!.flow, FlowLevel.light,
+          reason: 'undo restores the prior flow level exactly');
+      expect(restored.tags, ['cramps']);
+      expect(restored.note, 'before the quick log');
       await disposeOverview(tester, h);
     });
   });

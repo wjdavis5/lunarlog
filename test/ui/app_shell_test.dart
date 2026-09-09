@@ -16,16 +16,40 @@ import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
+import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_engine.dart';
+
+/// Materializes a server-authored guardian row locally (mirrors
+/// `test/ui/logging_test.dart`'s helper of the same name).
+RemoteProfileGuardianRow guardianRow(
+  String profileId,
+  String id,
+  String userId,
+  String role,
+) => RemoteProfileGuardianRow(
+  id: id,
+  profileId: profileId,
+  userId: userId,
+  role: role,
+  status: 'accepted',
+  invitedBy: null,
+  createdAt: DateTime.utc(2026, 1, 1),
+  updatedAt: DateTime.utc(2026, 1, 1),
+  serverVersion: 1,
+);
 
 class Harness {
   Harness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory());
@@ -35,13 +59,27 @@ class Harness {
   final FakeAuthService auth = FakeAuthService();
   final FakeSyncEngine engine = FakeSyncEngine();
 
+  /// Set by [pump] once the seeded profile's id is known -- for a test
+  /// that needs to seed a guardian row before pumping (issue #316 review
+  /// item 3).
+  String? profileId;
+
   /// Seeds one profile and marks it active, so the app opens directly on
-  /// its AppShell (no picker in between).
-  Future<void> pump({bool withSync = true}) async {
+  /// its AppShell (no picker in between). [seedGuardians] runs after the
+  /// profile exists but before the widget pumps.
+  Future<void> pump({
+    bool withSync = true,
+    Future<void> Function(LunarLogDatabase db, String profileId)?
+        seedGuardians,
+  }) async {
     final profile = await DriftProfilesRepository(db.storage)
         .create(displayName: 'Alice', isMinor: false);
+    profileId = profile.id;
     await DriftSettingsStore(db.storage)
         .set(SettingsKeys.lastActiveProfile, profile.id);
+    if (seedGuardians != null) {
+      await seedGuardians(db, profile.id);
+    }
     await tester.pumpWidget(LunarLogApp(
       db: db,
       authService: auth,
@@ -221,5 +259,110 @@ void main() {
     expect(find.text('Insights are on the way'), findsNothing,
         reason: 'the #182 placeholder copy is gone');
     await h.dispose();
+  });
+
+  group('issue #209: the "Log today" FAB', () {
+    testWidgets('floats over Today and Calendar, but not Insights or More',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      expect(find.byType(TodayLogFab), findsOneWidget,
+          reason: 'Today (the default tab)');
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayLogFab), findsOneWidget);
+
+      await tester.tap(tabKey('insights'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayLogFab), findsNothing);
+
+      await tester.tap(tabKey('more'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayLogFab), findsNothing);
+      await h.dispose();
+    });
+
+    testWidgets('tapping it opens the day sheet for today directly',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      await tester.tap(find.byKey(const ValueKey('today-log-fab')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DaySheet), findsOneWidget);
+      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      await h.dispose();
+    });
+  });
+
+  group('issue #316 review item 3: viewer-role gate on the "Log today" '
+      'FAB', () {
+    testWidgets('an accepted viewer guardian hides the FAB entirely -- '
+        'deleting TodayLogFab\'s own "if (!_canLog) return '
+        'SizedBox.shrink()" guard must fail this test', (tester) async {
+      final h = Harness(tester);
+      h.auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-doc'));
+      await h.pump(
+        seedGuardians: (db, profileId) => db.storage.applyRemoteRows([
+          guardianRow(profileId, 'g-doc', 'user-doc', 'viewer'),
+        ]),
+      );
+
+      expect(find.byKey(const ValueKey('today-log-fab')), findsNothing);
+      await h.dispose();
+    });
+
+    testWidgets('an accepted co-parent guardian keeps the FAB visible',
+        (tester) async {
+      final h = Harness(tester);
+      h.auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-parent'));
+      await h.pump(
+        seedGuardians: (db, profileId) => db.storage.applyRemoteRows([
+          guardianRow(profileId, 'g-parent', 'user-parent', 'co_parent'),
+        ]),
+      );
+
+      expect(find.byKey(const ValueKey('today-log-fab')), findsOneWidget);
+      await h.dispose();
+    });
+  });
+
+  group('issue #316 review item 4: the FAB never covers Today/Calendar '
+      'content', () {
+    testWidgets('the overview\'s content sits above the FAB\'s top edge',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      final contentRect = tester.getRect(find.byType(OverviewPanel));
+      final fabRect =
+          tester.getRect(find.byKey(const ValueKey('today-log-fab')));
+      expect(contentRect.bottom, lessThanOrEqualTo(fabRect.top),
+          reason: 'the overview\'s own bottom edge must never reach into '
+              'the FAB\'s footprint');
+      await h.dispose();
+    });
+
+    testWidgets('the calendar\'s content sits above the FAB\'s top edge',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+
+      final contentRect = tester.getRect(find.byType(MonthCalendar));
+      final fabRect =
+          tester.getRect(find.byKey(const ValueKey('today-log-fab')));
+      expect(contentRect.bottom, lessThanOrEqualTo(fabRect.top),
+          reason: 'the calendar\'s own bottom edge must never reach into '
+              'the FAB\'s footprint');
+      await h.dispose();
+    });
   });
 }

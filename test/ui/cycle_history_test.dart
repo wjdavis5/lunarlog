@@ -380,7 +380,16 @@ void main() {
         'period 4, variation 0, disclaimer, device-local note', (tester) async {
       final h = await pumpHistory(tester, today: aug30, starts: kSteadyStarts);
 
-      expect(find.text('High confidence'), findsOneWidget);
+      // Issue #209: the Today card above this one carries its own
+      // confidence chip with the same tier label, so this checks the
+      // history card's copy specifically rather than a bare `find.text`.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('history-confidence')),
+          matching: find.text('High confidence'),
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('steady'), findsOneWidget);
       expect(find.text('Avg cycle'), findsOneWidget);
       expect(find.text('30 days'), findsAtLeastNWidgets(1));
@@ -421,7 +430,16 @@ void main() {
         today: aug30,
         starts: kIrregularRatioStarts,
       );
-      expect(find.text('Irregular'), findsOneWidget);
+      // Issue #209: the Today card above this one carries its own
+      // confidence chip with the same tier label, so this checks the
+      // history card's copy specifically rather than a bare `find.text`.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('history-confidence')),
+          matching: find.text('Irregular'),
+        ),
+        findsOneWidget,
+      );
       // Issue #213 item 1: the history badge and the overview's own tier
       // caption now share one derivation, so the same "vary a lot"
       // summary renders in both places for the same data — never

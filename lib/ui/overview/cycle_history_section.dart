@@ -22,8 +22,9 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
-import 'package:lunarlog/ui/overview/overview_panel.dart'
+import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
+import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:provider/provider.dart';
 
 String _formatDate(LocalDate date) =>
@@ -159,16 +160,19 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
     );
   }
 
+  /// Issue #209: consumes [LunarLogColors.confidenceHigh]/
+  /// [LunarLogColors.confidenceLearning]/[LunarLogColors.confidenceIrregular]
+  /// so this chip shares the same badge palette as `TodayCard`'s own
+  /// confidence chip, rather than an ad hoc `ColorScheme`-role mapping. A
+  /// theme with no [LunarLogColors] extension (a bare `ThemeData()` in an
+  /// older test harness) falls back to the previous role mapping instead
+  /// of throwing.
   Widget _confidenceChip(BuildContext context, CycleHistoryView view) {
     final theme = Theme.of(context);
-    // TODO(#209): consume LunarLogColors.confidence* instead of this
-    // colorScheme-role mapping, so this chip shares the same badge palette
-    // as the rest of the app.
-    final color = switch (view.confidence!) {
-      CycleConfidence.high => theme.colorScheme.primary,
-      CycleConfidence.learning => theme.colorScheme.tertiary,
-      CycleConfidence.irregular => theme.colorScheme.error,
-    };
+    final colors = theme.extension<LunarLogColors>();
+    final color = colors == null
+        ? _fallbackColorFor(theme, view.confidence!)
+        : _colorFor(colors, view.confidence!);
     return Container(
       key: const ValueKey('history-confidence'),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -182,6 +186,20 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
       ),
     );
   }
+
+  Color _colorFor(LunarLogColors colors, CycleConfidence tier) =>
+      switch (tier) {
+        CycleConfidence.high => colors.confidenceHigh,
+        CycleConfidence.learning => colors.confidenceLearning,
+        CycleConfidence.irregular => colors.confidenceIrregular,
+      };
+
+  Color _fallbackColorFor(ThemeData theme, CycleConfidence tier) =>
+      switch (tier) {
+        CycleConfidence.high => theme.colorScheme.primary,
+        CycleConfidence.learning => theme.colorScheme.tertiary,
+        CycleConfidence.irregular => theme.colorScheme.error,
+      };
 
   Widget _statsRow(BuildContext context, CycleHistoryView view) {
     final theme = Theme.of(context);
