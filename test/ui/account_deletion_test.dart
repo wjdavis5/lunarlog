@@ -512,6 +512,7 @@ void main() {
       AccountDeletionFailure.unauthorized(),
       AccountDeletionFailure.appleCodeRequired(),
       AccountDeletionFailure.appleRevokeFailed(),
+      AccountDeletionFailure.attachmentCleanupFailed(),
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
@@ -558,6 +559,30 @@ void main() {
       // Edge Function fails closed before Step 4's destructive RPC even
       // runs) - the copy must say so, not the appleRevokeFailed line's
       // "your account data was deleted, but...".
+      expect(copy, isNot(contains('your account data was deleted')));
+      expect(copy.toLowerCase(), contains('nothing was deleted'));
+      expect(copy.toLowerCase(), contains('try again'));
+    });
+
+    testWidgets('attachmentCleanupFailed explains nothing was deleted and '
+        'the operator should retry (Issue #243 round 2 fix)', (tester) async {
+      const failure = AccountDeletionFailure.attachmentCleanupFailed();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      // The attachment-cleanup step now runs before the destructive RPC
+      // (Issue #243 round 2 fix), so a failure here leaves everything
+      // untouched, exactly like appleCodeRequired - the copy must say so,
+      // not the appleRevokeFailed line's "your account data was deleted,
+      // but...".
       expect(copy, isNot(contains('your account data was deleted')));
       expect(copy.toLowerCase(), contains('nothing was deleted'));
       expect(copy.toLowerCase(), contains('try again'));

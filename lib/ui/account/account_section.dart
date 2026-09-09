@@ -94,6 +94,11 @@ const String kAppVersionForExport = '1.0.0+1';
 /// .appleCodeRequired] gets its own distinct line too (#17 P1 round 2 fix):
 /// unlike [AccountDeletionFailure.appleRevokeFailed], nothing was touched
 /// on this path at all, so its copy must not claim any data was deleted.
+/// [AccountDeletionFailure.attachmentCleanupFailed] (Issue #243 round 2
+/// fix, 2026-09-08) gets the same "nothing was touched" treatment as
+/// [AccountDeletionFailure.appleCodeRequired]: the attachment-cleanup step
+/// now runs before the destructive RPC, so a failure there leaves every
+/// row, the Apple grant, and `auth.users` untouched.
 String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
     switch (failure) {
       AccountDeletionNetworkFailure() =>
@@ -111,6 +116,9 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
             'sign-in revocation, so your account sign-in itself still '
             'exists. Try again to finish removing it, or contact support if '
             'you\'re concerned about the lingering Apple access.',
+      AccountDeletionAttachmentCleanupFailedFailure() =>
+        'Nothing was deleted. We couldn\'t remove your support attachments, '
+            'so the deletion never began - please try again.',
       AccountDeletionTimeoutFailure() =>
         'This is taking longer than expected and we can\'t confirm whether '
             'your account was deleted. Wait a moment and check whether '

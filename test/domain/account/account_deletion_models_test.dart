@@ -19,6 +19,8 @@ void main() {
           isA<AccountDeletionAppleCodeRequiredFailure>());
       expect(const AccountDeletionFailure.appleRevokeFailed(),
           isA<AccountDeletionAppleRevokeFailedFailure>());
+      expect(const AccountDeletionFailure.attachmentCleanupFailed(),
+          isA<AccountDeletionAttachmentCleanupFailedFailure>());
       expect(const AccountDeletionFailure.timeout(),
           isA<AccountDeletionTimeoutFailure>());
       expect(const AccountDeletionFailure.deleteUserFailed(),
@@ -34,6 +36,7 @@ void main() {
       AccountDeletionFailure.unauthorized(),
       AccountDeletionFailure.appleCodeRequired(),
       AccountDeletionFailure.appleRevokeFailed(),
+      AccountDeletionFailure.attachmentCleanupFailed(),
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
@@ -82,6 +85,8 @@ void main() {
           'AccountDeletionFailure.appleCodeRequired');
       expect(const AccountDeletionFailure.appleRevokeFailed().toString(),
           'AccountDeletionFailure.appleRevokeFailed');
+      expect(const AccountDeletionFailure.attachmentCleanupFailed().toString(),
+          'AccountDeletionFailure.attachmentCleanupFailed');
       expect(const AccountDeletionFailure.timeout().toString(),
           'AccountDeletionFailure.timeout');
       expect(const AccountDeletionFailure.deleteUserFailed().toString(),

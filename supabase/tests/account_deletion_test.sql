@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(61);
+select plan(65);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -216,7 +216,7 @@ select is(
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,
     'notification_outbox', 0, 'profile_reminder_windows', 0,
-    'missed_entry_alert_state', 0
+    'missed_entry_alert_state', 0, 'feedback_tickets', 0
   ),
   'calling delete_account_data twice reports zero counts the second time'
 );
@@ -753,6 +753,59 @@ select is(
     where profile_id = tests.ulid(52) and user_id = tests.get_supabase_uid('user_o')),
   1::bigint,
   '#8: the revoked guardian''s missed_entry_alert_state marker for a different profile they still guard survives'
+);
+
+-- ---------------------------------------------------------------------------
+-- 12. Issue #243 (D-25): feedback_tickets are deleted explicitly by
+--     delete_account_data() - not merely as a side effect of the
+--     auth.users cascade - and the deleted count is reported in the
+--     returned jsonb; feedback_replies cascades with its ticket, and
+--     another user's ticket survives untouched.
+-- ---------------------------------------------------------------------------
+
+select tests.create_supabase_user('user_p');
+select tests.create_supabase_user('user_q');
+
+select tests.authenticate_as('user_p');
+with ins as (
+  insert into public.feedback_tickets (user_id, reply_email, category, message)
+  values (tests.get_supabase_uid('user_p'), 'p@example.com', 'bug', 'a P ticket')
+  returning id
+)
+select pg_temp.snapshot('p_ticket_id', to_jsonb((select id from ins)::text));
+
+insert into public.feedback_replies (ticket_id, author_type, message)
+values ((pg_temp.snap('p_ticket_id') #>> '{}')::uuid, 'user', 'a P reply');
+
+select tests.authenticate_as('user_q');
+insert into public.feedback_tickets (user_id, reply_email, category, message)
+values (tests.get_supabase_uid('user_q'), 'q@example.com', 'bug', 'a Q ticket');
+
+select tests.authenticate_as('user_p');
+select pg_temp.snapshot('p_result', public.delete_account_data());
+
+select is(
+  pg_temp.snap('p_result') -> 'feedback_tickets', '1'::jsonb,
+  'Issue #243: result includes a feedback_tickets count of 1'
+);
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
+select is(
+  (select count(*) from public.feedback_tickets where user_id = tests.get_supabase_uid('user_p')),
+  0::bigint,
+  'Issue #243: after delete_account_data, the caller has zero feedback_tickets rows'
+);
+select is(
+  (select count(*) from public.feedback_replies where ticket_id = (pg_temp.snap('p_ticket_id') #>> '{}')::uuid),
+  0::bigint,
+  'Issue #243: the deleted ticket''s replies are gone too (cascade from feedback_tickets, no separate delete needed)'
+);
+select is(
+  (select count(*) from public.feedback_tickets where user_id = tests.get_supabase_uid('user_q')),
+  1::bigint,
+  'Issue #243: a different user''s feedback ticket survives untouched'
 );
 
 select tests.clear_authentication();

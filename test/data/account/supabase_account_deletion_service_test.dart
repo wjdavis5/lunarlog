@@ -134,6 +134,41 @@ void main() {
       );
     });
 
+    test('a non-2xx response body carrying code attachment_cleanup_failed '
+        'maps to attachmentCleanupFailed (Issue #243 round 2 fix)', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            throw const FunctionsHttpException(
+          status: 409,
+          details: {'ok': false, 'code': 'attachment_cleanup_failed'},
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.attachmentCleanupFailed()),
+      );
+    });
+
+    test('a 2xx response body reporting ok:false with code '
+        'attachment_cleanup_failed also maps to attachmentCleanupFailed',
+        () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(
+          data: {'ok': false, 'code': 'attachment_cleanup_failed'},
+          status: 200,
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.attachmentCleanupFailed()),
+      );
+    });
+
     test('SocketException maps to network', () async {
       final client = FakeSupabaseClient(
         functionsInvoke: (name, {headers, body}) async =>

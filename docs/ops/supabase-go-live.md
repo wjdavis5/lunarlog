@@ -281,6 +281,13 @@ Supabase Auth setup above.
 - [ ] The device checklist's Apple-account deletion item (below) passes on
       a real Apple ID: the app disappears from Settings → Apple ID → Sign in
       with Apple → apps using this Apple ID.
+- [ ] The `feedback-attachments` Storage bucket (see "Feedback (issue #6)"
+      above) is a hard dependency of deletion, not just of feedback: since
+      the Issue #243 round 2 fix, `delete-account` lists and removes the
+      caller's attachment objects *before* it touches any row, so if the
+      bucket is absent or misconfigured, every account deletion (Apple or
+      not) fails closed with `409 attachment_cleanup_failed` until the
+      bucket is fixed - not just feedback submission.
 
 ### Passkeys (issue #30)
 
@@ -504,7 +511,7 @@ Then, in another shell, against the local stack (`http://127.0.0.1:54321`):
   `500 {"ok":false,"code":"delete_user_failed"}` (#17 P1 fix), not the
   generic `unknown` code - the profile/day-entry rows are already gone at
   this point.
-- (#17 P1 round 2 fix) The Step 6 final re-home pass now runs on the
+- (#17 P1 round 2 fix) The Step 7 final re-home pass now runs on the
   function's service-role client with an explicit caller id, not on the
   caller's own client — `rehome_stray_day_entries` no longer grants
   `EXECUTE` to `authenticated` at all (see
