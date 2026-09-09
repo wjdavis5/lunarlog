@@ -105,6 +105,13 @@ files under `docs/coordinator/` (e.g. `opencode-muse/`); never `git add` the dir
 - Migration filenames must sort after the current tip; renumber on the PR branch if a parallel
   merge took the timestamp.
 - Self-approval is impossible on the owner's own PRs: record the review as a comment, then merge.
+- Any schemaVersion bump requires ALL of: build_runner regen, drift_schemas/drift_schema_v<N>.json
+  dump, AND the filename bump in ci.yml's codegen-freshness step (missed twice: #344, #356 — put
+  it in every schema-touching brief).
+- NEVER push a merge commit whose full test suite is still failing — fix first, then push
+  (#369: pushed a red merge, had to hand the behavioral fix to the branch's coder).
+- Behavioral merge conflicts (two features touching the same logic, not just imports) go back
+  to a coder with both parents' context; the coordinator resolves textual conflicts only.
 - After ANY scripted conflict resolution, `grep -c '<<<<<<<'` before committing — a failed script
   plus a non-`set -e` shell once shipped markers to the remote branch (fixed forward, never
   force-push).
