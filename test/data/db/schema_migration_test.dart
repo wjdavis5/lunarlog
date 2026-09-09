@@ -47,15 +47,15 @@ import 'generated_migrations/schema.dart';
 
 /// The current schema version, kept in lockstep with
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
-/// dump. A mismatch here is caught by the `schema version is 7` assertion
+/// dump. A mismatch here is caught by the `schema version is 8` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 7;
+const int _kCurrentSchemaVersion = 8;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -174,6 +174,35 @@ void main() {
         contains('import_id'),
         reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
             'observations.import_id (Issue #159)',
+      );
+    });
+
+    test(
+        'upgrading from v$fromVersion creates the four issue #197 read-path '
+        'indexes — same invisible-to-migrateAndValidate situation as '
+        'uq_day_entries_profile_date_live above', () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+      final indexNames = (await db
+              .customSelect(
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
+              )
+              .get())
+          .map((row) => row.read<String>('name'))
+          .toSet();
+      expect(
+        indexNames,
+        containsAll([
+          'ix_day_entries_profile_date',
+          'ix_day_entries_dirty',
+          'ix_day_entries_updated_at',
+          'ix_profile_guardians_profile_id',
+        ]),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create all '
+            'four issue #197 indexes',
       );
     });
   }

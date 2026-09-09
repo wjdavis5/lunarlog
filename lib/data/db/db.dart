@@ -21,6 +21,43 @@ const String kLiveDayEntryIndexSql =
     'CREATE UNIQUE INDEX IF NOT EXISTS uq_day_entries_profile_date_live '
     'ON day_entries (profile_id, local_date) WHERE deleted_at IS NULL';
 
+/// Schema v8 (issue #197, performance): plain (non-unique, non-partial)
+/// index covering the calendar's windowed `(profile_id, local_date)` range
+/// scan (`LunarLogStorage._dayEntryQuery`'s `fromLocalDate`/`toLocalDate`) —
+/// distinct from [kLiveDayEntryIndexSql], which only ever helps a
+/// `deleted_at IS NULL` (live-row) predicate, not this range's tombstoned
+/// rows too.
+const String kDayEntriesProfileDateIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_day_entries_profile_date '
+    'ON day_entries (profile_id, local_date)';
+
+/// Schema v8 (issue #197): partial index over the sync engine's dirty-row
+/// scan (`LunarLogStorage.readDirtyDayEntries`) — `dirty = 1` matches
+/// drift's boolean-column encoding (`BoolColumn` stores `0`/`1`), so this
+/// mirrors the same partial-index technique [kLiveDayEntryIndexSql] uses,
+/// just keyed on `dirty` instead of `deleted_at`.
+const String kDayEntriesDirtyIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_day_entries_dirty '
+    'ON day_entries (dirty) WHERE dirty = 1';
+
+/// Schema v8 (issue #197): index over `updated_at`, serving
+/// [LunarLogStorage.getDayEntries]'s `updatedAfter` (incremental sync)
+/// predicate. Review follow-up: this does **not** serve
+/// [LunarLogStorage.readDirtyDayEntries]'s keyset ordering — that query
+/// orders by `id` (ULIDs, already insertion order), never by `updated_at`,
+/// so an index on `updated_at` has nothing to offer it.
+const String kDayEntriesUpdatedAtIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_day_entries_updated_at '
+    'ON day_entries (updated_at)';
+
+/// Schema v8 (issue #197): index over `profile_guardians.profile_id` —
+/// every guardian read (`getGuardiansForProfile`, and
+/// `ProfileGuardiansRepository.watchForProfile`) filters by it and had no
+/// index to do so with before this version.
+const String kProfileGuardiansProfileIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_profile_guardians_profile_id '
+    'ON profile_guardians (profile_id)';
+
 @DriftDatabase(tables: [
   Profiles,
   DayEntries,
@@ -51,14 +88,24 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   `sync_state`.
   /// * 7 — `source` + `source_id` + `import_id` on `day_entries`, and
   ///   `import_id` on `observations` (Issue #159, import-dedup provenance).
+  /// * 8 — four read-path indexes (Issue #197, performance): a plain
+  ///   `(profile_id, local_date)` index on `day_entries` for the calendar's
+  ///   windowed range scan, a partial `dirty = 1` index and a plain
+  ///   `updated_at` index on `day_entries` for the sync engine's dirty scan
+  ///   and incremental reads, and a `profile_id` index on
+  ///   `profile_guardians`. No table/column changes.
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
           await customStatement(kLiveDayEntryIndexSql);
+          await customStatement(kDayEntriesProfileDateIndexSql);
+          await customStatement(kDayEntriesDirtyIndexSql);
+          await customStatement(kDayEntriesUpdatedAtIndexSql);
+          await customStatement(kProfileGuardiansProfileIndexSql);
         },
         onUpgrade: (m, from, to) => onUpgradeSteps(m, from, to),
         beforeOpen: (details) async {
@@ -77,7 +124,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// proves the transaction wrapper rolls the whole upgrade back. Must be
   /// set before the first query. Null in production. Issue #159 adds
   /// `day_entries.source`, `day_entries.source_id`, `day_entries.import_id`,
-  /// `observations.import_id`.
+  /// `observations.import_id`. Issue #197 adds
+  /// `day_entries.profile_date_index`, `day_entries.dirty_index`,
+  /// `day_entries.updated_at_index`, `profile_guardians.profile_id_index`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -180,6 +229,22 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await m.addColumn(observations, observations.importId);
           await migrationStepHook?.call('observations.import_id');
         }
+      });
+    }
+    if (from < 8) {
+      await transaction(() async {
+        // Plain (non-unique, non-partial) indexes — no column changes, so
+        // unlike every block above there is no "already got it for free
+        // from createTable" case to guard against; each is a fresh
+        // `CREATE INDEX IF NOT EXISTS`.
+        await customStatement(kDayEntriesProfileDateIndexSql);
+        await migrationStepHook?.call('day_entries.profile_date_index');
+        await customStatement(kDayEntriesDirtyIndexSql);
+        await migrationStepHook?.call('day_entries.dirty_index');
+        await customStatement(kDayEntriesUpdatedAtIndexSql);
+        await migrationStepHook?.call('day_entries.updated_at_index');
+        await customStatement(kProfileGuardiansProfileIndexSql);
+        await migrationStepHook?.call('profile_guardians.profile_id_index');
       });
     }
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is

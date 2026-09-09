@@ -323,6 +323,56 @@ void main() {
     });
   });
 
+  group('watchForProfile from/to threading (issue #197)', () {
+    test('from/to narrow the domain stream to an inclusive date range',
+        () async {
+      final profile = await profiles.create(displayName: 'A', isMinor: false);
+      await dayEntries.save(entryFor(profile.id, LocalDate(2026, 5, 31)));
+      await dayEntries.save(entryFor(profile.id, LocalDate(2026, 6, 1)));
+      await dayEntries.save(entryFor(profile.id, LocalDate(2026, 6, 15)));
+      await dayEntries.save(entryFor(profile.id, LocalDate(2026, 6, 30)));
+      await dayEntries.save(entryFor(profile.id, LocalDate(2026, 7, 1)));
+
+      final windowed = await dayEntries
+          .watchForProfile(
+            profile.id,
+            from: LocalDate(2026, 6, 1),
+            to: LocalDate(2026, 6, 30),
+          )
+          .first;
+      expect(windowed.map((e) => e.localDate), [
+        LocalDate(2026, 6, 1),
+        LocalDate(2026, 6, 15),
+        LocalDate(2026, 6, 30),
+      ], reason: 'the boundary dates themselves must be included');
+    });
+
+    test('omitting from/to still reads full history, unchanged', () async {
+      final profile = await profiles.create(displayName: 'A', isMinor: false);
+      await dayEntries.save(entryFor(profile.id, LocalDate(2020, 1, 1)));
+      await dayEntries.save(entryFor(profile.id, LocalDate(2026, 4, 1)));
+
+      final full = await dayEntries.watchForProfile(profile.id).first;
+      expect(full, hasLength(2));
+    });
+
+    test('a range never leaks another profile\'s entries', () async {
+      final a = await profiles.create(displayName: 'A', isMinor: true);
+      final b = await profiles.create(displayName: 'B', isMinor: false);
+      await dayEntries.save(entryFor(a.id, LocalDate(2026, 6, 15)));
+      await dayEntries.save(entryFor(b.id, LocalDate(2026, 6, 15)));
+
+      final aWindowed = await dayEntries
+          .watchForProfile(
+            a.id,
+            from: LocalDate(2026, 6, 1),
+            to: LocalDate(2026, 6, 30),
+          )
+          .first;
+      expect(aWindowed.map((e) => e.profileId).toSet(), {a.id});
+    });
+  });
+
   group('settings store contract', () {
     test('get/set/watch round-trip; missing keys read as null', () async {
       expect(await settings.get(SettingsKeys.lastActiveProfile), isNull);

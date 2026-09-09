@@ -289,7 +289,11 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   Future<List<DayEntry>> listForProfile(String profileId) async => seeded;
 
   @override
-  Stream<List<DayEntry>> watchForProfile(String profileId) =>
+  Stream<List<DayEntry>> watchForProfile(
+    String profileId, {
+    LocalDate? from,
+    LocalDate? to,
+  }) =>
       Stream.value(seeded);
 
   @override

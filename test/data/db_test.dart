@@ -180,7 +180,7 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 7);
+  expect(await userVersion(db), 8);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode']));
   expect(
@@ -271,10 +271,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 7 and database opens with the expected tables',
+    test('schema version is 8 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 7);
-      expect(await userVersion(db), 7);
+      expect(db.schemaVersion, 8);
+      expect(await userVersion(db), 8);
 
       final tables = (await db
               .customSelect(
@@ -294,6 +294,25 @@ void main() {
       expect(
           await columnsOf(db, 'profile_guardians'), containsAll(['id', 'profile_id', 'user_id', 'role', 'status', 'display_name']));
       expect(await columnsOf(db, 'observations'), contains('import_id'));
+
+      // Issue #197: the four read-path indexes exist on a fresh onCreate
+      // too, not just via onUpgradeSteps (see schema_migration_test.dart
+      // for the upgrade-path assertion).
+      final indexNames = (await db
+              .customSelect(
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
+              )
+              .get())
+          .map((row) => row.read<String>('name'))
+          .toSet();
+      expect(
+          indexNames,
+          containsAll([
+            'ix_day_entries_profile_date',
+            'ix_day_entries_dirty',
+            'ix_day_entries_updated_at',
+            'ix_profile_guardians_profile_id',
+          ]));
     });
 
     test('partial unique index enforces one live entry per profile+date, '
@@ -471,6 +490,137 @@ void main() {
           .first;
       expect(aStream, hasLength(2));
       expect(aStream.every((e) => e.profileId == a.id), isTrue);
+    });
+
+    group('issue #197: fromLocalDate/toLocalDate range', () {
+      test('bounds are inclusive on both ends', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        for (final date in [
+          '2026-05-31',
+          '2026-06-01',
+          '2026-06-15',
+          '2026-06-30',
+          '2026-07-01',
+        ]) {
+          await storage.upsertDayEntry(
+              profileId: profile.id,
+              localDate: date,
+              tz: 'UTC',
+              flow: FlowLevel.light);
+        }
+
+        final windowed = await storage.getDayEntries(
+          profileId: profile.id,
+          fromLocalDate: '2026-06-01',
+          toLocalDate: '2026-06-30',
+        );
+        expect(windowed.map((e) => e.localDate).toList(), [
+          '2026-06-01',
+          '2026-06-15',
+          '2026-06-30',
+        ], reason: 'the boundary dates themselves must be included');
+
+        final fromOnly = await storage.getDayEntries(
+          profileId: profile.id,
+          fromLocalDate: '2026-06-15',
+        );
+        expect(fromOnly.map((e) => e.localDate),
+            ['2026-06-15', '2026-06-30', '2026-07-01']);
+
+        final toOnly = await storage.getDayEntries(
+          profileId: profile.id,
+          toLocalDate: '2026-06-15',
+        );
+        expect(toOnly.map((e) => e.localDate),
+            ['2026-05-31', '2026-06-01', '2026-06-15']);
+      });
+
+      test('a tombstoned date inside the range is excluded from UI reads '
+          'but present in a full-fidelity read', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        await storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-06-10',
+            tz: 'UTC',
+            flow: FlowLevel.medium);
+        await storage.softDeleteDayEntry(
+            profileId: profile.id, localDate: '2026-06-10');
+
+        final ui = await storage.getDayEntries(
+          profileId: profile.id,
+          fromLocalDate: '2026-06-01',
+          toLocalDate: '2026-06-30',
+        );
+        expect(ui, isEmpty,
+            reason: 'the tombstone must not appear in a UI-scoped range read');
+
+        final full = await storage.getDayEntries(
+          profileId: profile.id,
+          fromLocalDate: '2026-06-01',
+          toLocalDate: '2026-06-30',
+          includeTombstones: true,
+        );
+        expect(full, hasLength(1));
+        expect(full.single.deletedAt, isNotNull);
+      });
+
+      test('never returns another profile\'s rows, range or no range',
+          () async {
+        final a = await storage.upsertProfile(displayName: 'A', isMinor: true);
+        final b = await storage.upsertProfile(displayName: 'B', isMinor: false);
+        await storage.upsertDayEntry(
+            profileId: a.id,
+            localDate: '2026-06-15',
+            tz: 'UTC',
+            flow: FlowLevel.light);
+        await storage.upsertDayEntry(
+            profileId: b.id,
+            localDate: '2026-06-15',
+            tz: 'UTC',
+            flow: FlowLevel.heavy);
+
+        final aWindowed = await storage.getDayEntries(
+          profileId: a.id,
+          fromLocalDate: '2026-06-01',
+          toLocalDate: '2026-06-30',
+        );
+        expect(aWindowed, hasLength(1));
+        expect(aWindowed.single.profileId, a.id);
+
+        final aStream = await storage
+            .watchDayEntries(
+              profileId: a.id,
+              fromLocalDate: '2026-06-01',
+              toLocalDate: '2026-06-30',
+            )
+            .first;
+        expect(aStream.map((e) => e.profileId).toSet(), {a.id});
+      });
+
+      test('a date just outside the range is excluded', () async {
+        final profile =
+            await storage.upsertProfile(displayName: 'P', isMinor: false);
+        await storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-05-31',
+            tz: 'UTC',
+            flow: FlowLevel.light);
+        await storage.upsertDayEntry(
+            profileId: profile.id,
+            localDate: '2026-07-01',
+            tz: 'UTC',
+            flow: FlowLevel.light);
+
+        final windowed = await storage.getDayEntries(
+          profileId: profile.id,
+          fromLocalDate: '2026-06-01',
+          toLocalDate: '2026-06-30',
+        );
+        expect(windowed, isEmpty,
+            reason: 'both entries fall one day outside the range');
+      });
     });
 
     test('R3: foreign key rejects entries for unknown profiles', () async {
@@ -1544,7 +1694,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 7);
+      expect(await userVersion(second), 8);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1557,7 +1707,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 7);
+      expect(await userVersion(db), 8);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1602,7 +1752,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 7);
+      expect(await userVersion(db), 8);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1678,7 +1828,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 7);
+      expect(await userVersion(db), 8);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

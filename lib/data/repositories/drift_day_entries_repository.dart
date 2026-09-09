@@ -55,9 +55,17 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
         dayEntryToDomain(row)];
 
   @override
-  Stream<List<domain.DayEntry>> watchForProfile(String profileId) =>
+  Stream<List<domain.DayEntry>> watchForProfile(
+    String profileId, {
+    domain.LocalDate? from,
+    domain.LocalDate? to,
+  }) =>
       _storage
-          .watchDayEntries(profileId: profileId)
+          .watchDayEntries(
+            profileId: profileId,
+            fromLocalDate: from?.iso,
+            toLocalDate: to?.iso,
+          )
           .map((rows) => [for (final row in rows) dayEntryToDomain(row)]);
 
   @override
