@@ -113,6 +113,23 @@ class FakeSharingService implements SharingService {
         .toList();
     return scriptedCancelOutcome;
   }
+
+  String? lastRoleChangeUserId;
+  GuardianRole? lastRoleChangeNewRole;
+  Object? scriptedRoleChangeError;
+
+  @override
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  }) async {
+    if (scriptedRoleChangeError != null) {
+      throw scriptedRoleChangeError!;
+    }
+    lastRoleChangeUserId = targetUserId;
+    lastRoleChangeNewRole = newRole;
+  }
 }
 
 /// Hand-written [OwnershipTransferService] fake for U10's claim-sheet and
@@ -410,6 +427,222 @@ void main() {
         ),
         findsNothing,
       );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        'primary guardian changes a viewer to caregiver with confirmation (Issue #127)',
+        (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-2', 'user-sue', 'viewer', 'Sue'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Sue's row offers a role control; Mom's own row does not (AC4: no
+      // self-change, so no control on the caller's own row).
+      expect(find.byKey(const ValueKey('change-role-user-sue')), findsOneWidget);
+      expect(find.byKey(const ValueKey('change-role-user-mom')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('change-role-user-sue')));
+      await tester.pumpAndSettle();
+
+      // Viewer -> caregiver and co-parent are offered; viewer itself and
+      // primary_guardian never are (AC5) - exactly two menu items.
+      expect(find.byType(PopupMenuItem<GuardianRole>), findsNWidgets(2));
+      expect(find.text('Caregiver'), findsOneWidget);
+      expect(find.text('Co-Parent'), findsOneWidget);
+
+      await tester.tap(find.text('Caregiver'));
+      await tester.pumpAndSettle();
+
+      // The confirmation names the access being added.
+      expect(find.text('Change role to Caregiver?'), findsOneWidget);
+      expect(
+        find.textContaining('gain the ability to log entries'),
+        findsOneWidget,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Change role'));
+      await tester.pumpAndSettle();
+
+      expect(sharingService.lastRoleChangeUserId, 'user-sue');
+      expect(sharingService.lastRoleChangeNewRole, GuardianRole.caregiver);
+      expect(find.text('Role updated to Caregiver'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('cancelling the role confirmation changes nothing',
+        (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-2', 'user-sue', 'viewer', 'Sue'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('change-role-user-sue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Caregiver'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(sharingService.lastRoleChangeUserId, isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('role change failure surfaces an error message',
+        (tester) async {
+      sharingService.scriptedRoleChangeError =
+          const SharingUnauthorizedFailure();
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-2', 'user-sue', 'viewer', 'Sue'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('change-role-user-sue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Caregiver'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Change role'));
+      await tester.pumpAndSettle();
+
+      expect(sharingService.lastRoleChangeUserId, isNull);
+      expect(
+        find.text('You do not have permission for this action.'),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('co-parent sees a role control only on caregiver/viewer rows',
+        (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+        guardianRow('g-2', 'user-sue', 'caregiver', 'Sue'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-dad',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // AC3: Sue's row offers the control; Mom's row and Dad's own row do
+      // not.
+      expect(find.byKey(const ValueKey('change-role-user-sue')), findsOneWidget);
+      expect(find.byKey(const ValueKey('change-role-user-mom')), findsNothing);
+      expect(find.byKey(const ValueKey('change-role-user-dad')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('narrowing copy names the read-only outcome (Issue #127)',
+        (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('change-role-user-dad')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Viewer'));
+      await tester.pumpAndSettle();
+
+      // AC2: the confirmation names the read-only outcome before it lands.
+      expect(find.text('Change role to Viewer?'), findsOneWidget);
+      expect(find.textContaining('read-only'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Change role'));
+      await tester.pumpAndSettle();
+
+      expect(sharingService.lastRoleChangeUserId, 'user-dad');
+      expect(sharingService.lastRoleChangeNewRole, GuardianRole.viewer);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('a viewer sees no role control at all', (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-3', 'user-doc', 'viewer', 'Doc'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-doc',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PopupMenuButton<GuardianRole>), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
