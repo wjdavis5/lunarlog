@@ -1025,6 +1025,43 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(TextFormField), findsWidgets);
     });
+
+    testWidgets(
+        'zero profiles renders EmptyState safely at a large text scale on '
+        'a short viewport — no RenderFlex overflow (issue #308): the '
+        'empty Scaffold body used to be a fixed Center > Padding > Column '
+        'that a ListView never could overflow', (tester) async {
+      tester.view.physicalSize = const Size(400, 500);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final settings = FakeSettingsStore();
+      final controller = ProfileController(
+        profilesRepository: _EmptyProfilesRepository(),
+        settingsStore: settings,
+      )..load();
+      addTearDown(controller.dispose);
+      addTearDown(settings.close);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ProfileController>.value(
+          value: controller,
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(2.5)),
+              child: child!,
+            ),
+            home: const ProfilePickerScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('profile-picker-empty')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
 
