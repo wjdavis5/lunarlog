@@ -303,6 +303,12 @@ class LunarLogStorage {
   /// device-local bookkeeping: both sync like any other profile column.
   /// [mode] (Issue #131) is the raw `toDb()` care-mode string, same
   /// treatment: presentation-only, synced like any other profile column.
+  /// The three cycle-fact parameters (Issue #218) are the onboarding
+  /// answers: [lastPeriodStart] as an ISO `yyyy-MM-dd` string (validated
+  /// like every other stored civil date) and the two typical lengths as
+  /// plain ints, stored as supplied and synced like any other profile
+  /// column — the prediction domain's `CycleFacts.canSeed` is the gate on
+  /// which values can seed an estimate, not this method.
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
@@ -314,9 +320,13 @@ class LunarLogStorage {
     DateTime? updatedAt,
     int? birthYear,
     String? relationship,
+    String? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
   }) async {
     // Async so validation failures surface as failed futures.
     _validateDisplayName(displayName);
+    if (lastPeriodStart != null) _validateLocalDate(lastPeriodStart);
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
       Profile? existing;
@@ -338,6 +348,9 @@ class LunarLogStorage {
               mode: Value(mode),
               birthYear: Value(birthYear),
               relationship: Value(relationship),
+              lastPeriodStart: Value(lastPeriodStart),
+              typicalCycleLengthDays: Value(typicalCycleLengthDays),
+              typicalPeriodLengthDays: Value(typicalPeriodLengthDays),
             ));
         return _profileById(rowId);
       }
@@ -355,6 +368,9 @@ class LunarLogStorage {
           mode: Value(mode),
           birthYear: Value(birthYear),
           relationship: Value(relationship),
+          lastPeriodStart: Value(lastPeriodStart),
+          typicalCycleLengthDays: Value(typicalCycleLengthDays),
+          typicalPeriodLengthDays: Value(typicalPeriodLengthDays),
         ),
       );
       return _profileById(rowId);
@@ -1494,6 +1510,9 @@ class LunarLogStorage {
             birthYear: Value(remote.birthYear),
             relationship: Value(remote.relationship),
             transferredAt: Value(remote.transferredAt?.toUtc()),
+            lastPeriodStart: Value(remote.lastPeriodStart),
+            typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
+            typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
           ));
       return true;
     }
@@ -1511,6 +1530,9 @@ class LunarLogStorage {
         birthYear: Value(remote.birthYear),
         relationship: Value(remote.relationship),
         transferredAt: Value(remote.transferredAt?.toUtc()),
+        lastPeriodStart: Value(remote.lastPeriodStart),
+        typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
+        typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
       ),
     );
     return true;

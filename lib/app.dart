@@ -18,6 +18,7 @@ import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/db/storage.dart';
@@ -31,6 +32,7 @@ import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -191,6 +193,11 @@ class _LunarLogAppState extends State<LunarLogApp> {
   late final CycleHistoryService _cycleHistory;
   late final CycleExclusionList _cycleExclusions;
   late final NotificationPermissionState _permissionState;
+
+  /// Issue #218: the profile-modes repository backing the onboarding
+  /// birth-control/method persistence seam (`ProfileController` writes
+  /// through it; #216's form is the UI half).
+  late final ProfileModesRepository _profileModes;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   // U2 Approach 1b: allocated once, not per build. `build` re-runs on every
   // `setState` (the invite-link and auth-change paths both trigger one),
@@ -234,8 +241,13 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _settings = DriftSettingsStore(storage);
     // Issue #132: the device-local omission list joins both streams, so
     // estimates and history re-derive (and reminders replan) whenever the
-    // operator omits, restores, or skips a cycle.
-    _prediction = CyclePredictionService(_dayEntries, settings: _settings);
+    // operator omits, restores, or skips a cycle. Issue #218: the profiles
+    // repository joins too, so a profile with onboarding-supplied cycle
+    // facts but fewer than three logged cycles gets a provisional
+    // prediction (and re-derives whenever the facts are edited).
+    _prediction = CyclePredictionService(_dayEntries,
+        settings: _settings, profiles: _profiles);
+    _profileModes = DriftProfileModesRepository(storage);
     _cycleHistory = CycleHistoryService(_dayEntries, settings: _settings);
     _cycleExclusions = CycleExclusionList(_settings);
     _permissionState = NotificationPermissionState(
@@ -611,6 +623,11 @@ class _LunarLogAppState extends State<LunarLogApp> {
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),
         Provider<SettingsStore>.value(value: _settings),
+        // Issue #218: the onboarding persistence seam for the
+        // birth-control-method and goal/mode answers (#216's form calls
+        // ProfileController with them; profile-settings editing uses the
+        // same repository).
+        Provider<ProfileModesRepository>.value(value: _profileModes),
         Provider<CyclePredictionService>.value(value: _prediction),
         Provider<CycleHistoryService>.value(value: _cycleHistory),
         Provider<CycleExclusionList>.value(value: _cycleExclusions),
@@ -637,6 +654,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
           create: (context) => ProfileController(
             profilesRepository: context.read<ProfilesRepository>(),
             settingsStore: context.read<SettingsStore>(),
+            profileModesRepository: context.read<ProfileModesRepository>(),
           )..load(),
         ),
       ],

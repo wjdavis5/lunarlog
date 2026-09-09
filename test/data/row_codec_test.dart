@@ -26,6 +26,9 @@ void main() {
     int? birthYear,
     String? relationship,
     DateTime? transferredAt,
+    String? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
   }) =>
       Profile(
         id: profileId,
@@ -42,6 +45,9 @@ void main() {
         birthYear: birthYear,
         relationship: relationship,
         transferredAt: transferredAt,
+        lastPeriodStart: lastPeriodStart,
+        typicalCycleLengthDays: typicalCycleLengthDays,
+        typicalPeriodLengthDays: typicalPeriodLengthDays,
       );
 
   DayEntry makeEntry({
@@ -128,6 +134,9 @@ void main() {
         'mode': 'standard',
         'birth_year': null,
         'relationship': null,
+        'last_period_start': null,
+        'typical_cycle_length_days': null,
+        'typical_period_length_days': null,
       });
       expect(json.keys, isNot(contains('dirty')));
       expect(json.keys, isNot(contains('local_rev')));
@@ -143,6 +152,54 @@ void main() {
       expect(json['birth_year'], 2015);
       expect(json['relationship'], 'daughter');
       expect(json.keys, isNot(contains('transferred_at')));
+    });
+
+    test('encode includes the onboarding cycle facts (Issue #218)', () {
+      final json = encodeProfile(makeProfile(
+        lastPeriodStart: '2026-08-14',
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      ));
+      expect(json['last_period_start'], '2026-08-14');
+      expect(json['typical_cycle_length_days'], 28);
+      expect(json['typical_period_length_days'], 5);
+    });
+
+    test('cycle facts round-trip through decode (Issue #218)', () {
+      final decoded = decodeProfile(encodeProfile(makeProfile(
+        lastPeriodStart: '2026-08-14',
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      )));
+      expect(decoded.lastPeriodStart, '2026-08-14');
+      expect(decoded.typicalCycleLengthDays, 28);
+      expect(decoded.typicalPeriodLengthDays, 5);
+    });
+
+    test('a pre-#218 payload without the fact keys decodes to nulls, and a '
+        'malformed date is a typed failure (Issue #218)', () {
+      final oldClient = decodeProfile({
+        'id': profileId,
+        'display_name': 'Kid',
+        'is_minor': true,
+        'sort_order': 3,
+        'archived_at': null,
+        'created_at': '2026-09-01T10:00:00.123456Z',
+        'updated_at': '2026-09-02T08:30:15.999999Z',
+        'deleted_at': null,
+        'mode': 'standard',
+      });
+      expect(oldClient.lastPeriodStart, isNull);
+      expect(oldClient.typicalCycleLengthDays, isNull);
+      expect(oldClient.typicalPeriodLengthDays, isNull);
+
+      expect(
+        () => decodeProfile({
+          ...encodeProfile(makeProfile()),
+          'last_period_start': 'August 14',
+        }),
+        throwsA(isA<RowCodecError>()),
+      );
     });
 
     test('round-trips every column including microseconds', () {

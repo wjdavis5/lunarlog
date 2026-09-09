@@ -55,6 +55,9 @@ final class RemoteProfileRow extends RemoteRow {
     this.birthYear,
     this.relationship,
     this.transferredAt,
+    this.lastPeriodStart,
+    this.typicalCycleLengthDays,
+    this.typicalPeriodLengthDays,
   });
 
   @override
@@ -95,6 +98,15 @@ final class RemoteProfileRow extends RemoteRow {
   /// Issue #4 R5. Server-owned; pulled here but never pushed by
   /// `encodeProfile`.
   final DateTime? transferredAt;
+
+  /// Issue #218: the onboarding cycle facts, raw and undecoded. The date
+  /// is the `yyyy-MM-dd` wire string (same shape as
+  /// `RemoteProfileModeRow.modeStartedOn`); `mappers.dart` parses it into
+  /// a `LocalDate` on the way to the domain model. Pushed and pulled like
+  /// any other profile column.
+  final String? lastPeriodStart;
+  final int? typicalCycleLengthDays;
+  final int? typicalPeriodLengthDays;
 
   @override
   SyncTable get table => SyncTable.profiles;

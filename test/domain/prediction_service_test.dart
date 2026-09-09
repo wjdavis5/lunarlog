@@ -285,6 +285,190 @@ void main() {
     });
   });
 
+    group('provisional seeding (issue #218)', () {
+      late CyclePredictionService seeded;
+
+      setUp(() {
+        seeded = CyclePredictionService(dayEntries, profiles: profiles);
+      });
+
+      test('a profile with facts but no logged cycles gets an immediate '
+          'provisional estimate', () async {
+        final profile = await profiles.create(
+          displayName: 'A',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
+
+        final p = await seeded.current(profile.id, today: () => today);
+        expect(p, isA<ActivePrediction>());
+        final active = p as ActivePrediction;
+        expect(active.tier, CycleConfidence.provisional);
+        expect(active.estimatedNextStart, LocalDate(2026, 5, 18));
+        expect(active.meanCycleLengthDays, 28.0);
+        expect(active.meanPeriodLengthDays, 5.0);
+      });
+
+      test('watch() emits the provisional estimate and re-derives when the '
+          'facts are edited (the profile-settings edit path)', () async {
+        final profile = await profiles.create(
+          displayName: 'A',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
+
+        final seen = <CyclePrediction>[];
+        final sub =
+            seeded.watch(profile.id, today: () => today).listen(seen.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+        expect(seen.last, isA<ActivePrediction>());
+        expect((seen.last as ActivePrediction).tier,
+            CycleConfidence.provisional);
+        expect(
+            (seen.last as ActivePrediction).estimatedNextStart, LocalDate(2026, 5, 18));
+
+        // Edit the typical cycle length the way the profile-settings seam
+        // does: a whole-row update through the repository.
+        await profiles.update(profile.copyWith(typicalCycleLengthDays: 30));
+        await pumpEventQueue();
+        expect((seen.last as ActivePrediction).estimatedNextStart,
+            LocalDate(2026, 5, 20),
+            reason: 'the edited answer moves the seed');
+      });
+
+      test('skipping the questions keeps NotEnoughHistory exactly as '
+          'today (no-facts path bit-identical)', () async {
+        final profile = await profiles.create(displayName: 'A', isMinor: false);
+
+        final seen = <CyclePrediction>[];
+        final sub =
+            seeded.watch(profile.id, today: () => today).listen(seen.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+
+        final none = seen.last;
+        expect(none, isA<NotEnoughHistory>());
+        expect((none as NotEnoughHistory).episodeCount, 0);
+        expect(none.completedCycleCount, 0);
+        expect(none.validCycleCount, 0);
+      });
+
+      test('a service constructed without a profiles repository never '
+          'seeds, even when the profile carries facts', () async {
+        final profile = await profiles.create(
+          displayName: 'A',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
+
+        final p =
+            await service.current(profile.id, today: () => today);
+        expect(p, isA<NotEnoughHistory>());
+      });
+
+      test('displacement: once 3 real valid cycles land, the computed '
+          'result wins and provisional is never returned again', () async {
+        final profile = await profiles.create(
+          displayName: 'A',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
+
+        final seen = <CyclePrediction>[];
+        final sub =
+            seeded.watch(profile.id, today: () => today).listen(seen.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+        expect((seen.last as ActivePrediction).tier,
+            CycleConfidence.provisional);
+
+        // Two recorded cycles: still provisional (fewer than 3 valid).
+        await recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+        await recordBleed(profile.id, LocalDate(2026, 2, 1), 4);
+        await pumpEventQueue();
+        expect((seen.last as ActivePrediction).tier,
+            CycleConfidence.provisional,
+            reason: '2 valid cycles stay below kMinCompletedValidCycles');
+
+        // The third valid completed cycle displaces the seed: four bleed
+        // starts (1/1, 2/1, 3/2, 4/1) span three valid intervals
+        // (31, 29, 30), and the estimate is now computed from the logged
+        // history, with no blending of the onboarding numbers.
+        await recordBleed(profile.id, LocalDate(2026, 3, 2), 4);
+        await recordBleed(profile.id, LocalDate(2026, 4, 1), 4);
+        await pumpEventQueue();
+        final active = seen.last as ActivePrediction;
+        expect(active.tier, isNot(CycleConfidence.provisional));
+        expect(active.averagedCycleLengths, isNotEmpty,
+            reason: 'the estimate is computed from real cycle lengths');
+        expect(active.validCycleCount, 3);
+
+        // And it stays displaced when yet another cycle lands.
+        await recordBleed(profile.id, LocalDate(2026, 4, 29), 4);
+        await pumpEventQueue();
+        expect((seen.last as ActivePrediction).tier,
+            isNot(CycleConfidence.provisional));
+      });
+
+      test('an out-of-window answer is stored but never seeds '
+          '(CycleFacts.canSeed gates)', () async {
+        final profile = await profiles.create(
+          displayName: 'A',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 90,
+          typicalPeriodLengthDays: 5,
+        );
+
+        final p = await seeded.current(profile.id, today: () => today);
+        expect(p, isA<NotEnoughHistory>());
+      });
+
+      test('a facts edit re-derives through the memo: an unrelated '
+          'profile-row change does not, a changed fact does (issue #197 '
+          'key extension)', () async {
+        final profile = await profiles.create(
+          displayName: 'A',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
+
+        final seen = <CyclePrediction>[];
+        final sub =
+            seeded.watch(profile.id, today: () => today).listen(seen.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+        expect(seen, hasLength(1));
+        final beforeRename = seen.last;
+
+        // An unrelated profile edit (a rename): the facts are unchanged,
+        // so the memo must reuse the cached prediction object.
+        await profiles.update(profile.copyWith(displayName: 'Renamed'));
+        await pumpEventQueue();
+        expect(identical(beforeRename, seen.last), isTrue,
+            reason: 'an unchanged facts stamp must reuse the cached '
+                'prediction');
+
+        // A real facts edit must recompute.
+        await profiles.update(profile.copyWith(typicalCycleLengthDays: 35));
+        await pumpEventQueue();
+        expect((seen.last as ActivePrediction).estimatedNextStart,
+            LocalDate(2026, 5, 25),
+            reason: '2026-04-20 + 35');
+      });
+    });
+
   group('memoised recomputation (issue #197)', () {
     test('two emissions carrying the same entries stamp compute the '
         'prediction once — the second reuses the same object, it does '

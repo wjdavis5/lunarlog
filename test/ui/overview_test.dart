@@ -535,7 +535,94 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    group('issue #132 (AC6): three-option late resolver actions -- moved '
+    group('provisional onboarding-seeded estimate (issue #218)', () {
+    testWidgets('a profile with cycle facts and no logged cycles shows the '
+        'provisional estimate, tier caption, and disclaimer — never the '
+        'not-enough state', (tester) async {
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final entries = DriftDayEntriesRepository(db.storage);
+      final profile = await profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+        lastPeriodStart: LocalDate(2026, 8, 7),
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<DayEntriesRepository>.value(value: entries),
+            Provider<SettingsStore>.value(value: settings),
+            // The one behavioral difference from the harness above: the
+            // profiles repository is wired, so the service can seed.
+            Provider<CyclePredictionService>.value(
+              value: CyclePredictionService(entries,
+                  settings: settings, profiles: profiles),
+            ),
+            Provider<CycleExclusionList>.value(
+              value: CycleExclusionList(settings),
+            ),
+            ChangeNotifierProvider<NotificationPermissionState>.value(
+              value:
+                  NotificationPermissionState(NotificationAvailability.available),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: OverviewPanel(profileId: profile.id, todayProvider: () => kToday),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 2026-08-07 + 28 = 2026-09-04; provisional is not `high`, so the
+      // estimate renders as the ±kProvisionalSpreadDays range.
+      expect(
+        find.text('Next period estimate: August 31, 2026 – September 8, 2026'),
+        findsOneWidget,
+      );
+      expect(find.text('Provisional — Based on your onboarding answers — '
+          'estimates improve once real cycles are logged.'), findsOneWidget);
+      expect(find.text('≈5 days until next period'), findsOneWidget);
+      expect(find.text('Provisional'), findsOneWidget,
+          reason: 'the Today card confidence chip');
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
+      expect(find.byKey(const ValueKey('overview-tier-caption')),
+          findsOneWidget);
+      // R17: the disclaimer sits next to the seeded estimate like any
+      // other.
+      expect(find.text(kDisclaimer), findsWidgets);
+
+      // Same teardown discipline as disposeOverview: unmount, let the
+      // drift stream store's close-timer fire, then close the database —
+      // otherwise the pending FakeTimer fails the test's invariants.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets('skipping the questions keeps the not-enough state exactly '
+        'as today (a facts-less profile with no repository wiring is the '
+        'pre-#218 behavior)', (tester) async {
+      final h = await pumpOverview(tester);
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-tier-caption')), findsNothing);
+      await disposeOverview(tester, h);
+    });
+  });
+
+  group('issue #132 (AC6): three-option late resolver actions -- moved '
         'here from cycle_history_test.dart under issue #314, since the '
         'resolver stays in OverviewPanel while the cycle-history section '
         'it used to sit next to moved to the Analysis tab', () {

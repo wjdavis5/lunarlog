@@ -133,6 +133,27 @@ class Profiles extends Table {
   DateTimeColumn get transferredAt =>
       dateTime().named('transferred_at').nullable()();
 
+  /// Onboarding-collected cycle facts (Issue #218), mirrored by the
+  /// server's `profiles` columns added in
+  /// `20260909120000_provisional_cycle_facts.sql`. ISO calendar date
+  /// `yyyy-MM-dd` of the supplied last-period start, like
+  /// `profile_modes.mode_started_on`'s text-date shape. Optional and
+  /// editable later from profile settings; feeds the provisional
+  /// prediction seed — never a `day_entries` row (a supplied answer is
+  /// not an observation).
+  TextColumn get lastPeriodStart =>
+      text().named('last_period_start').nullable()();
+
+  /// The supplied "typical cycle length" answer in days (Issue #218).
+  /// Stored as supplied; `CycleFacts.canSeed` in the prediction domain is
+  /// the semantic bound on which values can seed an estimate.
+  IntColumn get typicalCycleLengthDays =>
+      integer().named('typical_cycle_length_days').nullable()();
+
+  /// The supplied "typical period length" answer in days (Issue #218).
+  IntColumn get typicalPeriodLengthDays =>
+      integer().named('typical_period_length_days').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

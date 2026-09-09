@@ -99,8 +99,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 9 — `profile_modes` + `cycle_overrides` tables (Issue #188,
   ///   life-stage modes and manual cycle corrections) and their two pull
   ///   cursors on `sync_state`.
+  /// * 10 — `last_period_start` + `typical_cycle_length_days` +
+  ///   `typical_period_length_days` on `profiles` (Issue #218, onboarding
+  ///   cycle facts seeding provisional predictions).
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -132,10 +135,13 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `observations.import_id`. Issue #197 adds
   /// `day_entries.profile_date_index`, `day_entries.dirty_index`,
   /// `day_entries.updated_at_index`, `profile_guardians.profile_id_index`.
-  /// Issue #188 adds `profile_modes`, `cycle_overrides`,
-  /// `sync_state.cursor_profile_modes`, `sync_state.cursor_cycle_overrides`.
-  @visibleForTesting
-  Future<void> Function(String completedStep)? migrationStepHook;
+    /// Issue #188 adds `profile_modes`, `cycle_overrides`,
+    /// `sync_state.cursor_profile_modes`, `sync_state.cursor_cycle_overrides`.
+    /// Issue #218 adds `profiles.last_period_start`,
+    /// `profiles.typical_cycle_length_days`,
+    /// `profiles.typical_period_length_days`.
+    @visibleForTesting
+    Future<void> Function(String completedStep)? migrationStepHook;
 
   /// Step-by-step migration steps, one `if (from < n)` block per version.
   ///
@@ -258,6 +264,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // included) in [_upgradeToV9] so this method's branch count stays
     // under the CRAP gate as versions accumulate.
     await _upgradeToV9(m, from);
+    // Issue #218's v10 step, same shape.
+    await _upgradeToV10(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -269,6 +277,18 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // so this only ever does work in the previously-uncovered case.
     await customStatement(kLiveDayEntryIndexSql);
     await migrationStepHook?.call('day_entries.live_index');
+    // Issue #218 extends the same unconditional re-assert to the four
+    // issue #197 read-path indexes: now that the schema-verification
+    // harness can start from a v8/v9 fixture (whose createAll-only
+    // reconstruction never ran the real `onCreate`), the `from < 8`
+    // block is skipped on those upgrades and nothing else would create
+    // them there. `CREATE INDEX IF NOT EXISTS` keeps this a no-op for
+    // every real device, which got all four from its own `onCreate` or
+    // its own `from < 8` step.
+    await customStatement(kDayEntriesProfileDateIndexSql);
+    await customStatement(kDayEntriesDirtyIndexSql);
+    await customStatement(kDayEntriesUpdatedAtIndexSql);
+    await customStatement(kProfileGuardiansProfileIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -295,6 +315,23 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await m.addColumn(syncState, syncState.cursorCycleOverrides);
         await migrationStepHook?.call('sync_state.cursor_cycle_overrides');
       }
+    });
+  }
+
+  /// The v10 upgrade step (Issue #218): the three onboarding cycle-fact
+  /// columns on `profiles`. Same standalone-method shape as [_upgradeToV9]
+  /// so [onUpgradeSteps]'s branch count stays under the CRAP gate.
+  Future<void> _upgradeToV10(Migrator m, int from) async {
+    if (from >= 10) return;
+    await transaction(() async {
+      // `profiles` has existed since v1 on every real device, so these
+      // addColumns are always safe regardless of `from`.
+      await m.addColumn(profiles, profiles.lastPeriodStart);
+      await migrationStepHook?.call('profiles.last_period_start');
+      await m.addColumn(profiles, profiles.typicalCycleLengthDays);
+      await migrationStepHook?.call('profiles.typical_cycle_length_days');
+      await m.addColumn(profiles, profiles.typicalPeriodLengthDays);
+      await migrationStepHook?.call('profiles.typical_period_length_days');
     });
   }
 

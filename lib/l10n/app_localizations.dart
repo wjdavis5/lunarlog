@@ -574,6 +574,54 @@ abstract class AppLocalizations {
   /// **'No note'**
   String get daySheetNoNote;
 
+  /// Confidence-tier label: steady recent cycles (issue #213). Character-identical to CycleConfidence.high's domain label it replaces in rendered copy.
+  ///
+  /// In en, this message translates to:
+  /// **'High confidence'**
+  String get cycleConfidenceHigh;
+
+  /// Confidence-tier label: still building history (issue #213).
+  ///
+  /// In en, this message translates to:
+  /// **'Learning'**
+  String get cycleConfidenceLearning;
+
+  /// Confidence-tier label: cycles vary a lot (issue #213).
+  ///
+  /// In en, this message translates to:
+  /// **'Irregular'**
+  String get cycleConfidenceIrregular;
+
+  /// Confidence-tier label: estimate seeded from onboarding answers, not logged history (issue #218).
+  ///
+  /// In en, this message translates to:
+  /// **'Provisional'**
+  String get cycleConfidenceProvisional;
+
+  /// Confidence-tier summary under a high-confidence estimate. Matches CycleConfidence.high.summary exactly.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent cycles are steady — estimates are at their most reliable.'**
+  String get cycleConfidenceSummaryHigh;
+
+  /// Confidence-tier summary under a learning estimate. Matches CycleConfidence.learning.summary exactly.
+  ///
+  /// In en, this message translates to:
+  /// **'Still learning — estimates improve after a few more cycles.'**
+  String get cycleConfidenceSummaryLearning;
+
+  /// Confidence-tier summary under an irregular estimate. Matches CycleConfidence.irregular.summary exactly.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycles vary a lot — treat estimates as rough guides.'**
+  String get cycleConfidenceSummaryIrregular;
+
+  /// Confidence-tier summary under a provisional (onboarding-seeded) estimate (issue #218). Matches CycleConfidence.provisional.summary exactly.
+  ///
+  /// In en, this message translates to:
+  /// **'Based on your onboarding answers — estimates improve once real cycles are logged.'**
+  String get cycleConfidenceSummaryProvisional;
+
   /// Link from the overview panel to the Insights cycle history.
   ///
   /// In en, this message translates to:

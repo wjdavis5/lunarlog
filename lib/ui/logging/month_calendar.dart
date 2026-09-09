@@ -156,6 +156,10 @@ double forecastBandOpacity(CycleConfidence tier) => switch (tier) {
   CycleConfidence.high => 0.9,
   CycleConfidence.learning => 0.6,
   CycleConfidence.irregular => 0.35,
+  // Issue #218: an onboarding-seeded forecast reads weaker than `learning`
+  // (which at least has real cycles behind it) but stronger than the
+  // deliberately faint `irregular`.
+  CycleConfidence.provisional => 0.5,
 };
 
 /// Floor under [forecastBandOpacity] for a predicted band's *border* stroke

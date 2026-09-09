@@ -4,6 +4,7 @@
 /// UI concern (profile stays in history); deleting is a tombstone.
 library;
 
+import 'local_date.dart';
 import 'profile_mode.dart';
 import 'profile_relationship.dart';
 
@@ -21,6 +22,9 @@ class Profile {
     this.birthYear,
     this.relationship,
     this.transferredAt,
+    this.lastPeriodStart,
+    this.typicalCycleLengthDays,
+    this.typicalPeriodLengthDays,
   });
 
   /// Storage-assigned ULID (empty on unsaved, client-created models).
@@ -60,6 +64,23 @@ class Profile {
   /// (R5). Server-owned — never set by a local write.
   final DateTime? transferredAt;
 
+  /// Onboarding-collected cycle facts (Issue #218): the start date of the
+  /// most recent period as supplied at first run (or edited later from
+  /// profile settings). Optional and editable like every other fact
+  /// below; feeds the provisional prediction seed — never a logged
+  /// `day_entries` row (a supplied answer is not an observation).
+  final LocalDate? lastPeriodStart;
+
+  /// Onboarding-collected "typical cycle length" answer in days
+  /// (Issue #218). Stored and synced as supplied; the seeding gate (see
+  /// `CycleFacts.canSeed`) is what bounds which values can feed an
+  /// estimate.
+  final int? typicalCycleLengthDays;
+
+  /// Onboarding-collected "typical period length" answer in days
+  /// (Issue #218). Same treatment as [typicalCycleLengthDays].
+  final int? typicalPeriodLengthDays;
+
   static const Object _unset = Object();
 
   /// Resolves a `copyWith` sentinel-typed parameter: an unpassed argument
@@ -84,6 +105,9 @@ class Profile {
     Object? birthYear = _unset,
     Object? relationship = _unset,
     Object? transferredAt = _unset,
+    Object? lastPeriodStart = _unset,
+    Object? typicalCycleLengthDays = _unset,
+    Object? typicalPeriodLengthDays = _unset,
   }) =>
       Profile(
         id: id ?? this.id,
@@ -98,6 +122,12 @@ class Profile {
         birthYear: _resolveNullable(birthYear, this.birthYear),
         relationship: _resolveNullable(relationship, this.relationship),
         transferredAt: _resolveNullable(transferredAt, this.transferredAt),
+        lastPeriodStart:
+            _resolveNullable(lastPeriodStart, this.lastPeriodStart),
+        typicalCycleLengthDays: _resolveNullable(
+            typicalCycleLengthDays, this.typicalCycleLengthDays),
+        typicalPeriodLengthDays: _resolveNullable(
+            typicalPeriodLengthDays, this.typicalPeriodLengthDays),
       );
 
   /// Identity-ish fields: what a row's primary key and headline attributes
@@ -118,7 +148,10 @@ class Profile {
       other.deletedAt == deletedAt &&
       other.birthYear == birthYear &&
       other.relationship == relationship &&
-      other.transferredAt == transferredAt;
+      other.transferredAt == transferredAt &&
+      other.lastPeriodStart == lastPeriodStart &&
+      other.typicalCycleLengthDays == typicalCycleLengthDays &&
+      other.typicalPeriodLengthDays == typicalPeriodLengthDays;
 
   @override
   bool operator ==(Object other) =>
@@ -141,6 +174,9 @@ class Profile {
         birthYear,
         relationship,
         transferredAt,
+        lastPeriodStart,
+        typicalCycleLengthDays,
+        typicalPeriodLengthDays,
       );
 
   @override

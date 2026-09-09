@@ -357,6 +357,38 @@
   "@daySheetNoNote": {
     "description": "Placeholder shown for an empty note in the read-only day sheet."
   },
+  "cycleConfidenceHigh": "High confidence",
+  "@cycleConfidenceHigh": {
+    "description": "Confidence-tier label: steady recent cycles (issue #213). Character-identical to CycleConfidence.high's domain label it replaces in rendered copy."
+  },
+  "cycleConfidenceLearning": "Learning",
+  "@cycleConfidenceLearning": {
+    "description": "Confidence-tier label: still building history (issue #213)."
+  },
+  "cycleConfidenceIrregular": "Irregular",
+  "@cycleConfidenceIrregular": {
+    "description": "Confidence-tier label: cycles vary a lot (issue #213)."
+  },
+  "cycleConfidenceProvisional": "Provisional",
+  "@cycleConfidenceProvisional": {
+    "description": "Confidence-tier label: estimate seeded from onboarding answers, not logged history (issue #218)."
+  },
+  "cycleConfidenceSummaryHigh": "Recent cycles are steady — estimates are at their most reliable.",
+  "@cycleConfidenceSummaryHigh": {
+    "description": "Confidence-tier summary under a high-confidence estimate. Matches CycleConfidence.high.summary exactly."
+  },
+  "cycleConfidenceSummaryLearning": "Still learning — estimates improve after a few more cycles.",
+  "@cycleConfidenceSummaryLearning": {
+    "description": "Confidence-tier summary under a learning estimate. Matches CycleConfidence.learning.summary exactly."
+  },
+  "cycleConfidenceSummaryIrregular": "Cycles vary a lot — treat estimates as rough guides.",
+  "@cycleConfidenceSummaryIrregular": {
+    "description": "Confidence-tier summary under an irregular estimate. Matches CycleConfidence.irregular.summary exactly."
+  },
+  "cycleConfidenceSummaryProvisional": "Based on your onboarding answers — estimates improve once real cycles are logged.",
+  "@cycleConfidenceSummaryProvisional": {
+    "description": "Confidence-tier summary under a provisional (onboarding-seeded) estimate (issue #218). Matches CycleConfidence.provisional.summary exactly."
+  },
   "overviewSeeHistory": "See cycle history",
   "@overviewSeeHistory": {
     "description": "Link from the overview panel to the Insights cycle history."
