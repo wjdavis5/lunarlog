@@ -30,6 +30,8 @@ import 'package:lunarlog/app_lifecycle.dart'
     show RequestNotificationPermissionCallback;
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/logging/quick_log.dart';
+import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -39,17 +41,26 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
+import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:provider/provider.dart';
 
-const String kEstimateDisclaimer = 'Estimates only — not medical advice.';
+// Issue #316 review: re-exported (not just imported) so
+// `month_calendar.dart`'s existing `import '...overview_panel.dart' show
+// kEstimateDisclaimer` keeps resolving unchanged -- see
+// `estimate_copy.dart`'s doc comment for why the constant itself moved out
+// of this file (it broke a mutual import with `today_card.dart`).
+export 'package:lunarlog/ui/overview/estimate_copy.dart'
+    show kEstimateDisclaimer;
 
 String _formatDate(LocalDate date) =>
     '${kMonthNames[date.month - 1]} ${date.day}, ${date.year}';
@@ -218,6 +229,75 @@ class _OverviewPanelState extends State<OverviewPanel> {
     );
   }
 
+  /// [TodayCard]'s primary "Period started today" action (issue #209 item
+  /// 4c): an upsert through the same [DayEntriesRepository] the day sheet
+  /// uses — not a second write path. [quickLogFlowLevel] keeps a second
+  /// tap (or a day already logged heavier than the quick-log default, via
+  /// the full day sheet) from ever downgrading an existing flow level, and
+  /// the upsert-by-(profileId, date) identity keeps a second tap from ever
+  /// creating a second entry.
+  ///
+  /// Issue #316 review: `tz` is now recomputed from [widget.timezoneProvider]
+  /// the same way [DaySheet._save] does, rather than silently keeping a
+  /// pre-existing entry's stale zone; the old `now` bump on the existing-entry
+  /// branch was dead code -- the drift repository's `save` never reads
+  /// [DayEntry.updatedAt] back out, it is storage-assigned -- so it is gone
+  /// rather than carried along for no effect.
+  ///
+  /// Deliberately has no `try`/`catch` of its own: a throwing [save] must
+  /// propagate to [TodayCard], which is what actually surfaces the failure
+  /// (an [InlineError] with Retry) rather than this method swallowing it.
+  ///
+  /// Issue #316 review item 5 (undo + disclosure): a successful write shows
+  /// a confirmation snackbar with an Undo action that restores exactly
+  /// what was there before -- the previous [DayEntry] if today already had
+  /// one, or a tombstone (through the repository's own delete path, so sync
+  /// dirty-marking still applies) if this tap created it.
+  Future<void> _logPeriodStartedToday() async {
+    final repository = context.read<DayEntriesRepository>();
+    final today = widget.todayProvider();
+    final previous = await repository.find(widget.profileId, today);
+    if (!mounted) return;
+    final flow = quickLogFlowLevel(previous?.flow);
+    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
+    final entry = previous?.copyWith(flow: flow, tz: tz) ??
+        DayEntry(
+          id: '',
+          profileId: widget.profileId,
+          localDate: today,
+          tz: tz,
+          flow: flow,
+          updatedAt: DateTime.now().toUtc(),
+        );
+    final messenger = ScaffoldMessenger.of(context);
+    await repository.save(entry);
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: const Text(
+        'Recorded a medium-flow period start for today.',
+        key: ValueKey('today-card-logged-snackbar'),
+      ),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () => _undoLogToday(previous, today),
+      ),
+    ));
+  }
+
+  /// Restores exactly what [_logPeriodStartedToday] overwrote: the prior
+  /// [DayEntry] (flow/tags/note preserved) if today already had one, or a
+  /// tombstone if the quick-log tap is what created it. Goes through
+  /// [DayEntriesRepository] either way -- never a bespoke undo path -- so
+  /// sync dirty-marking applies exactly as it would to any other edit.
+  Future<void> _undoLogToday(DayEntry? previous, LocalDate today) async {
+    final repository = context.read<DayEntriesRepository>();
+    if (previous == null) {
+      await repository.delete(widget.profileId, today);
+    } else {
+      await repository.save(previous);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final availability = context.watch<NotificationPermissionState>().value;
@@ -287,6 +367,13 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return _resolverFor(prediction);
   }
 
+  /// Issue #209: the wheel/estimate/disclaimer/quick-log surface now lives
+  /// in [TodayCard], mounted at the top of this card instead of the old
+  /// standalone phase headline + next-period-estimate + disclaimer `Text`s
+  /// — moved there rather than duplicated, so each still renders exactly
+  /// once (the wheel's centre label replaces the old plain-text phase
+  /// headline). The tier caption, late resolver/status line, and
+  /// long-cycle prompt are unchanged.
   Widget _activeCard(BuildContext context, ActivePrediction prediction) {
     final theme = Theme.of(context);
     return Card(
@@ -296,19 +383,19 @@ class _OverviewPanelState extends State<OverviewPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              key: const ValueKey('overview-phase'),
-              prediction.duringEpisode
-                  ? 'Period'
-                  : 'Cycle day ${prediction.cycleDay}',
-              style: theme.textTheme.headlineMedium,
+            TodayCard(
+              cycleDay: prediction.cycleDay,
+              duringEpisode: prediction.duringEpisode,
+              cycleLengthDays: prediction.meanCycleLengthDays.round(),
+              periodLengthDays: prediction.meanPeriodLengthDays.round(),
+              estimateText:
+                  '${_copy.nextEstimateLabel} ${_estimateDateText(prediction)}',
+              tier: prediction.tier,
+              showConfidenceChip: _copy.showsTierCaption,
+              canLog: !_effectiveReadOnly,
+              onLogToday: _logPeriodStartedToday,
             ),
             const SizedBox(height: 12),
-            Text(
-              '${_copy.nextEstimateLabel} ${_estimateDateText(prediction)}',
-              key: const ValueKey('overview-next-period'),
-              style: theme.textTheme.titleMedium,
-            ),
             // Issue #213: below `high` confidence (`learning` included —
             // #213 item 5), the estimate above is already a range rather
             // than one exact date; this caption names why (no numbers,
@@ -319,14 +406,13 @@ class _OverviewPanelState extends State<OverviewPanel> {
             // this caption rather than showing it twice over.
             if (_copy.showsTierCaption &&
                 prediction.tier != CycleConfidence.high) ...[
-              const SizedBox(height: 4),
               Text(
                 '${prediction.tier.label} — ${prediction.tier.summary}',
                 key: const ValueKey('overview-tier-caption'),
                 style: theme.textTheme.bodySmall,
               ),
+              const SizedBox(height: 4),
             ],
-            const SizedBox(height: 4),
             if (prediction.isLate || prediction.unusuallyLongCycle)
               _lateSectionFor(prediction, theme)
             else
@@ -339,12 +425,6 @@ class _OverviewPanelState extends State<OverviewPanel> {
               const SizedBox(height: 8),
               _longCycleSection(context, prediction, theme),
             ],
-            const SizedBox(height: 12),
-            Text(
-              kEstimateDisclaimer,
-              key: const ValueKey('overview-disclaimer'),
-              style: theme.textTheme.bodySmall,
-            ),
           ],
         ),
       ),

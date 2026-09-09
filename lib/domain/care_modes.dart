@@ -9,7 +9,7 @@
 ///   category `standard` does, merely in a different order; a test pins
 ///   that the ordering is a permutation, never a subset.
 /// * The estimate disclaimer is rendered by the overview card in every
-///   mode; it lives in `overview_panel.dart` (`kEstimateDisclaimer`) so the
+///   mode; it lives in `estimate_copy.dart` (`kEstimateDisclaimer`) so the
 ///   same fixed string appears next to every estimate regardless of mode.
 /// * Vocabulary is prospective presentation only — switching modes never
 ///   touches a saved entry (tests pin that in `test/ui/profiles_test.dart`

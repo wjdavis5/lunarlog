@@ -26,8 +26,8 @@ illustration set and when to introduce it.
 
 Once a profile is active, `ProfileHomeGate` (`profiles/profile_home_gate.dart`)
 mounts `AppShell` (`components/app_shell.dart`): a Material 3 bottom
-`NavigationBar` with four destinations — Today (`overview/overview_panel.dart`;
-the cycle wheel is #209), Calendar (`logging/month_calendar.dart`), Insights
+`NavigationBar` with four destinations — Today (`overview/overview_panel.dart`,
+topped by the #209 cycle wheel/Today card), Calendar (`logging/month_calendar.dart`), Insights
 (`insights/analysis_tab.dart`'s `AnalysisTab`, issue #223 — the nav-bar label
 stays "Insights" per #182, the screen's own heading reads "Analysis"), and
 More (`settings/settings_screen.dart`, unmodified, including its own app bar).
@@ -57,6 +57,44 @@ opening the existing profile picker, the `SyncStatusGlyph`
 the More tab. `ProfileDetailScreen` (`profiles/profile_detail_screen.dart`)
 remains only for the archived-profile read-only view, still pushed explicitly
 from the picker.
+
+## Today card and cycle wheel (issue #209)
+
+`components/cycle_wheel.dart` (`CycleWheel`) is the ring visualization of
+the current cycle — an elapsed-days progress arc, the predicted-bleed band
+at the top of the ring, today's marker, and a centre label ("Cycle day N"
+or "Period · day N"). Its geometry (`cycleWheelFraction`) and screen-reader
+label (`cycleWheelSemanticsLabel`) are exposed as pure top-level functions
+so the math and the Semantics text are unit-testable without pumping a
+widget; the `CustomPainter` itself stays a thin dispatcher over per-layer
+helper methods to keep the quality gate's per-method CRAP score down.
+Colours come from the theme — plain `ColorScheme` roles for the base
+ring/elapsed arc, `LunarLogColors.predictedBand`/`predictedBorder` (issue
+#176) for the band — never literals.
+
+`components/today_card.dart` (`TodayCard`) wraps the wheel with the
+next-period estimate, a compact confidence chip (`LunarLogColors`'
+`confidenceHigh`/`confidenceLearning`/`confidenceIrregular`), the R17
+disclaimer, and the primary "Period started today" one-tap action —
+omitted entirely (not merely disabled) when the caller's effective role
+can't log. `OverviewPanel` mounts it at the top of its active-estimate
+card, in place of what used to be a standalone phase headline,
+next-period-estimate line, and disclaimer `Text` — moved into `TodayCard`
+rather than duplicated, so each still renders exactly once per card. The
+tier caption, late resolver/status line, and long-cycle prompt below it
+are unchanged. The one-tap write itself goes through the same
+`DayEntriesRepository` upsert `OverviewPanel`'s day sheet already uses;
+`lib/domain/logging/quick_log.dart`'s `quickLogFlowLevel` is the pure rule
+that keeps a second tap (or a day already logged heavier via the full day
+sheet) from ever downgrading an existing flow level — the upsert's own
+(profileId, date) identity is what keeps a second tap from ever creating a
+second entry.
+
+`components/today_log_fab.dart` (`TodayLogFab`) is the shell-level "Log
+today" `FloatingActionButton.extended` (issue #209 item 4a): it floats over
+the Today and Calendar tabs only, opens the day sheet for today's date
+directly (the same entry point the overview's late resolver "Log it"
+already opens), and hides itself for a `viewer`-role guardian.
 
 `routes.dart` centralizes named-route construction: `buildNamedRoute` pairs a
 `kRoute*` constant (`lib/observability/route_names.dart`) with a

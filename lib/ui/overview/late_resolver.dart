@@ -21,7 +21,7 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
-import 'package:lunarlog/ui/overview/overview_panel.dart'
+import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 
 String _formatDate(LocalDate date) =>
