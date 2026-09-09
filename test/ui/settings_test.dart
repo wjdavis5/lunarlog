@@ -66,6 +66,10 @@ void main() {
     // Verify relock toggle is present
     expect(find.byKey(const ValueKey('relock-toggle')), findsOneWidget);
 
+    // Issue #153: dormant until AppConfig.hasHealthSync flips true (no
+    // HealthKit/Health Connect adapter exists yet) — never rendered today.
+    expect(find.byKey(const ValueKey('health-sync-tile')), findsNothing);
+
     // Verify privacy policy tile is present
     final privacyTile = find.byKey(const ValueKey('privacy-policy-tile'));
     expect(privacyTile, findsOneWidget);
@@ -311,6 +315,27 @@ void main() {
       );
       expect(route?.settings.name, kRouteSupportHistoryScreen);
       expect(kSentryRouteNames, contains(kRouteSupportHistoryScreen));
+    });
+  });
+
+  group('confirmedHealthSyncUserId (Issue #153)', () {
+    test('null controller -> null', () {
+      expect(confirmedHealthSyncUserId(null), isNull);
+    });
+
+    test('signed-in controller -> its currentUserId', () {
+      final auth = signedInAuth();
+      expect(confirmedHealthSyncUserId(auth), 'u1');
+    });
+
+    test('signed-out controller -> null, even though the underlying '
+        'service may still carry a stale currentUserId', () {
+      final service = FakeAuthService();
+      addTearDown(service.dispose);
+      final controller = AuthController(authService: service);
+      addTearDown(controller.dispose);
+      expect(controller.signedIn, isFalse);
+      expect(confirmedHealthSyncUserId(controller), isNull);
     });
   });
 }

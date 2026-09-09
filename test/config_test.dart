@@ -322,6 +322,9 @@ void main() {
       expect(AppConfig.fcmIosApiKey, isEmpty);
       expect(AppConfig.fcmIosAppId, isEmpty);
       expect(AppConfig.hasPush, isFalse);
+      // Issue #153: no HealthKit/Health Connect adapter exists yet — this
+      // stays false until the PR that adds the first one flips it.
+      expect(AppConfig.hasHealthSync, isFalse);
     });
 
     test('hasSupabase agrees with the pure function for this platform', () {

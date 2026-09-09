@@ -51,4 +51,15 @@ abstract final class SettingsKeys {
   /// Generated once and persisted so a token refresh upserts the same
   /// `push_devices` row instead of creating a new one.
   static const String pushDeviceId = 'push_device_id';
+
+  /// The single profile id this device's OS health store (HealthKit/Health
+  /// Connect) may ever be written for (Issue #153). Device-local; defaults
+  /// to unset (health sync off for every profile) until the operator picks
+  /// one deliberately in Settings — never inferred or defaulted to the
+  /// first profile. At most one value at a time by construction (this is a
+  /// single key, not a set); `HealthSyncBinding`
+  /// (`lib/domain/health/health_sync_binding.dart`) is the only writer.
+  /// Cleared (set to the empty string) by `unbind()`, matching
+  /// [awaitingConfirmationEmail]'s empty-string-means-cleared convention.
+  static const String healthStoreProfileId = 'health_store_profile_id';
 }

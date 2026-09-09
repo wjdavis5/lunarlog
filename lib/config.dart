@@ -170,6 +170,37 @@ abstract final class AppConfig {
       fcmAndroidAppId != '' &&
       fcmIosApiKey != '' &&
       fcmIosAppId != '';
+
+  /// True once a HealthKit/Health Connect adapter exists for this build
+  /// (Issue #153 is domain + local-storage only — the profile-to-device
+  /// binding invariant and guardian-write guard the whole Health Platform
+  /// Sync epic, #156 through #246, depends on; no platform adapter exists
+  /// yet). Deliberately a hardcoded `false`, not a `--dart-define`: there is
+  /// no build-time toggle to flip today, only a future code change once an
+  /// adapter lands. Gates the Settings "Health app sync" entry so that UI
+  /// ships dormant (built and fully tested) rather than live with nothing
+  /// behind it — flip this to `true` in the PR that adds the first
+  /// adapter, never before.
+  static const bool hasHealthSync = false;
+
+  /// Master switch (Issue #153 P0 review) for whether a minor profile may
+  /// ever be bound as this device's health-store profile, even after
+  /// ownership has transferred to the minor's own account (issue #4) and
+  /// the signed-in account is that owner —
+  /// `HealthSyncBinding.canBind`/`canWrite` deny every minor profile
+  /// outright while this is `false`, regardless of transfer state.
+  /// Deliberately a single hardcoded constant here, not a parameter either
+  /// of those methods accepts: `lib/domain/health/health_sync_policy.dart`
+  /// documents that its call sites must source this value from here and
+  /// nowhere else, so a future platform adapter cannot invent its own
+  /// per-call bypass the way the pre-review write guard let both of its
+  /// call sites neutralise the device-binding check by supplying their
+  /// own value. Currently `false` — no platform adapter exists yet to
+  /// exercise the transferred-minor path at all; flip only alongside that
+  /// adapter, never before. The server-side half of this consent (a
+  /// `profiles` column gating writes at the database layer) is deferred to
+  /// issue #188 — this flag is client-side only.
+  static const bool healthSyncMinorBindingAllowed = false;
 }
 
 /// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.

@@ -11,14 +11,21 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:lunarlog/config.dart';
+import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
 import 'package:lunarlog/ui/feedback/support_history_screen.dart';
+import 'package:lunarlog/ui/settings/health_sync_screen.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -58,6 +65,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // that also falls back rather than risking the form.
     final signedIn = authController?.signedIn ?? false;
     final hasFeedback = Provider.of<FeedbackService?>(context) != null && signedIn;
+    // Issue #153: dormant until a HealthKit/Health Connect adapter exists
+    // (AppConfig.hasHealthSync) and never on web — see that flag's doc
+    // comment. Also needs the storage/profiles wiring a fully unconfigured
+    // build (e.g. tests with no LunarLogStorage provided) may not have.
+    final storage = Provider.of<LunarLogStorage?>(context);
+    final profilesRepository = Provider.of<ProfilesRepository?>(context);
+    final hasHealthSync = AppConfig.hasHealthSync &&
+        !kIsWeb &&
+        storage != null &&
+        profilesRepository != null;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -112,6 +129,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : null,
           ),
           const Divider(),
+          if (hasHealthSync) ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text('Health', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            ListTile(
+              key: const ValueKey('health-sync-tile'),
+              leading: const Icon(Icons.favorite_outline),
+              title: const Text('Health app sync'),
+              subtitle: const Text(
+                "Choose which profile's data may sync to this phone's Health app",
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openHealthSync(context, storage, profilesRepository),
+            ),
+            const Divider(),
+          ],
           ListTile(
             key: const ValueKey('privacy-policy-tile'),
             leading: const Icon(Icons.shield_outlined),
@@ -121,6 +155,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showPrivacyPolicy(context),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Issue #153: pushes [HealthSyncScreen] with dependencies constructed
+  /// the same ad hoc way `profile_picker_screen.dart` builds
+  /// [ProfileGuardiansRepository] for [ManageGuardiansScreen] — no
+  /// app-wide provider for it, since only this one entry point needs it.
+  void _openHealthSync(
+    BuildContext context,
+    LunarLogStorage storage,
+    ProfilesRepository profilesRepository,
+  ) {
+    final signedInUserId = confirmedHealthSyncUserId(
+      Provider.of<AuthController?>(context, listen: false),
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: kRouteHealthSyncScreen),
+        builder: (_) => HealthSyncScreen(
+          profilesRepository: profilesRepository,
+          guardiansForProfile: ProfileGuardiansRepository(storage).getForProfile,
+          binding: HealthSyncBinding(context.read<SettingsStore>()),
+          signedInUserId: signedInUserId,
+        ),
       ),
     );
   }
@@ -244,3 +303,13 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
     );
   }
 }
+
+/// The signed-in account's id for health-sync purposes (Issue #153): null
+/// unless [controller] reports [AuthController.signedIn] — mirroring
+/// `AuthService`'s `confirmedUserId` extension's guard against trusting a
+/// stale id during password recovery, an expired session, or no controller
+/// at all. A pure top-level function (rather than inline in
+/// `_openHealthSync`) so it carries its own test coverage instead of the
+/// untested navigation wiring around it.
+String? confirmedHealthSyncUserId(AuthController? controller) =>
+    (controller?.signedIn ?? false) ? controller!.currentUserId : null;
