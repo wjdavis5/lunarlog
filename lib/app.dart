@@ -287,6 +287,7 @@ class _LunarLogAppState extends State<LunarLogApp> {
     _initAuthController();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
+    _startPredictionProjectionPublisher();
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
     // session when needed.
@@ -386,14 +387,19 @@ class _LunarLogAppState extends State<LunarLogApp> {
     );
     _reminderWindowPublisher = publisher;
     publisher.start();
-    _startPredictionProjectionPublisher();
   }
 
   /// Issue #151: keep the server's derived-phase snapshot in step for the
   /// profiles this account shares predictions OUT. Starts only when a
   /// [PredictionConnectionService] is configured - an unconfigured build
-  /// has nothing to publish to and never constructs the publisher, the
-  /// same zero-conditional gating the reminder publisher uses.
+  /// has nothing to publish to and never constructs the publisher.
+  /// Called directly from [initState], independent of the push-notification
+  /// gate that guards [_initReminderWindowPublisher] - the prediction
+  /// connection UI is reachable whenever a Supabase client is present
+  /// (`app_lifecycle.dart` constructs [widget.predictionConnectionService]
+  /// off that alone), including web/no-push builds where
+  /// [widget.notificationPreferencesService] and
+  /// [widget.reminderWindowUpsert] are both null.
   void _startPredictionProjectionPublisher() {
     final service = widget.predictionConnectionService;
     if (service == null) return;
