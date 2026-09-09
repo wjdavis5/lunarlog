@@ -394,6 +394,42 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get daySheetSave;
 
+  /// No description provided for @daySheetDiscardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard unsaved changes?'**
+  String get daySheetDiscardTitle;
+
+  /// No description provided for @daySheetKeepEditing.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get daySheetKeepEditing;
+
+  /// No description provided for @daySheetDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get daySheetDiscard;
+
+  /// No description provided for @daySheetSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get daySheetSaving;
+
+  /// No description provided for @daySheetSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get daySheetSaved;
+
+  /// No description provided for @daySheetRetryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save. Changes are kept — retry or close.'**
+  String get daySheetRetryHint;
+
   /// Heading above inert chips for tags this build does not recognise.
   ///
   /// In en, this message translates to:

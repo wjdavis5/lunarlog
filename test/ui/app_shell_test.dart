@@ -354,7 +354,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(DaySheet), findsOneWidget);
-      expect(find.byKey(const ValueKey('save-button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget);
       await h.dispose();
     });
   });
