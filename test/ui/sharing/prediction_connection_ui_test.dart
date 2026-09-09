@@ -14,7 +14,6 @@
 /// drains before the binding's no-pending-work check.
 library;
 
-
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,19 +40,24 @@ import 'package:provider/provider.dart';
 import '../../support/fake_auth_service.dart';
 
 PredictionProjection _projection(LocalDate asOf) => PredictionProjection(
-      generatedAt: asOf,
-      periodDays: [asOf.addDays(3), asOf.addDays(4)],
-      fertileDays: [asOf.addDays(15)],
-      ovulationDays: [asOf.addDays(17)],
-      pmsDays: [asOf.addDays(-4)],
-    );
+  generatedAt: asOf,
+  periodDays: [asOf.addDays(3), asOf.addDays(4)],
+  fertileDays: [asOf.addDays(15)],
+  ovulationDays: [asOf.addDays(17)],
+  pmsDays: [asOf.addDays(-4)],
+);
 
 class _FakePredictionConnectionService implements PredictionConnectionService {
-  _FakePredictionConnectionService({this.projection, this.connections = const []});
+  _FakePredictionConnectionService({
+    this.projection,
+    this.connections = const [],
+  });
 
   PredictionProjection? projection;
   List<IncomingPredictionConnection> connections = const [];
   ActivePredictionConnection? getActiveConnectionResult;
+  PredictionConnectionFailure? getActiveConnectionFailure;
+  Object? getActiveConnectionGenericError;
   ActivePredictionConnection? getActiveConnectionAfterCreate;
   GeneratedPredictionInvite? scriptedInvite;
   PredictionConnectionFailure? createFailure;
@@ -76,14 +80,21 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
           profileId: profileId,
           rawToken: 'raw-token',
           tokenHash: 'hash-token',
-          inviteUri: Uri.parse('lunarlog://invite?code=raw-token&kind=prediction'),
+          inviteUri: Uri.parse(
+            'lunarlog://invite?code=raw-token&kind=prediction',
+          ),
           expiresAt: DateTime.utc(2026, 9, 10),
         );
   }
 
   @override
-  Future<ActivePredictionConnection?> getActiveConnection(
-      {required String profileId}) async {
+  Future<ActivePredictionConnection?> getActiveConnection({
+    required String profileId,
+  }) async {
+    final genericError = getActiveConnectionGenericError;
+    if (genericError != null) throw genericError;
+    final failure = getActiveConnectionFailure;
+    if (failure != null) throw failure;
     return getActiveConnectionResult;
   }
 
@@ -95,8 +106,9 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
   void Function()? overrideAccept;
 
   @override
-  Future<AcceptedPredictionConnection> acceptConnection(
-      {required String rawToken}) async {
+  Future<AcceptedPredictionConnection> acceptConnection({
+    required String rawToken,
+  }) async {
     final override = overrideAccept;
     if (override != null) {
       override();
@@ -107,8 +119,9 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
   }
 
   @override
-  Future<PredictionProjection?> fetchProjection(
-      {required String profileId}) async {
+  Future<PredictionProjection?> fetchProjection({
+    required String profileId,
+  }) async {
     return projection;
   }
 
@@ -164,13 +177,15 @@ void main() {
         projection: _projection(asOf),
       );
 
-      await tester.pumpWidget(MaterialApp(
-        home: PredictionConnectionCalendarScreen(
-          profileId: 'p1',
-          profileName: 'Riley',
-          service: service,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PredictionConnectionCalendarScreen(
+            profileId: 'p1',
+            profileName: 'Riley',
+            service: service,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       // Phase legend present.
@@ -182,9 +197,11 @@ void main() {
       // The month grid renders.
       expect(find.byKey(const ValueKey('prediction-grid')), findsNothing);
       expect(
-        find.byWidgetPredicate((w) =>
-            w.key is ValueKey<String> &&
-            (w.key as ValueKey<String>).value.startsWith('prediction-grid-')),
+        find.byWidgetPredicate(
+          (w) =>
+              w.key is ValueKey<String> &&
+              (w.key as ValueKey<String>).value.startsWith('prediction-grid-'),
+        ),
         findsOneWidget,
       );
 
@@ -193,18 +210,23 @@ void main() {
       // interactive widget at all - a day-cell tap target would need one.
       expect(
         find.descendant(
-            of: find.byType(GridView), matching: find.byType(InkWell)),
+          of: find.byType(GridView),
+          matching: find.byType(InkWell),
+        ),
         findsNothing,
       );
       expect(
         find.descendant(
-            of: find.byType(GridView), matching: find.byType(InkResponse)),
+          of: find.byType(GridView),
+          matching: find.byType(InkResponse),
+        ),
         findsNothing,
       );
       expect(
         find.descendant(
-            of: find.byType(GridView),
-            matching: find.byType(GestureDetector)),
+          of: find.byType(GridView),
+          matching: find.byType(GestureDetector),
+        ),
         findsNothing,
       );
     });
@@ -213,20 +235,26 @@ void main() {
         '(revocation takes effect on the next fetch)', (tester) async {
       final service = _FakePredictionConnectionService(projection: null);
 
-      await tester.pumpWidget(MaterialApp(
-        home: PredictionConnectionCalendarScreen(
-          profileId: 'p1',
-          profileName: 'Riley',
-          service: service,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PredictionConnectionCalendarScreen(
+            profileId: 'p1',
+            profileName: 'Riley',
+            service: service,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Connection ended'), findsOneWidget);
-      expect(find.byKey(const ValueKey('prediction-calendar-ended')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey('prediction-calendar-waiting')),
-          findsNothing);
+      expect(
+        find.byKey(const ValueKey('prediction-calendar-ended')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('prediction-calendar-waiting')),
+        findsNothing,
+      );
     });
 
     testWidgets('issue #373: a null projection while this account still '
@@ -243,30 +271,39 @@ void main() {
         ],
       );
 
-      await tester.pumpWidget(MaterialApp(
-        home: PredictionConnectionCalendarScreen(
-          profileId: 'p1',
-          profileName: 'Riley',
-          service: service,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PredictionConnectionCalendarScreen(
+            profileId: 'p1',
+            profileName: 'Riley',
+            service: service,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('prediction-calendar-waiting')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('prediction-calendar-waiting')),
+        findsOneWidget,
+      );
       expect(find.text('Waiting for the first update'), findsOneWidget);
       expect(find.textContaining("Riley's app"), findsOneWidget);
       expect(find.text('Connection ended'), findsNothing);
-      expect(find.text('Period'), findsNothing,
-          reason: 'no calendar until a snapshot exists');
+      expect(
+        find.text('Period'),
+        findsNothing,
+        reason: 'no calendar until a snapshot exists',
+      );
 
       // The sharer publishes; a refresh swaps in the calendar.
       service.projection = _projection(LocalDate.today());
       await tester.tap(find.byKey(const ValueKey('prediction-refresh')));
       await tester.pumpAndSettle();
       expect(find.text('Period'), findsOneWidget);
-      expect(find.byKey(const ValueKey('prediction-calendar-waiting')),
-          findsNothing);
+      expect(
+        find.byKey(const ValueKey('prediction-calendar-waiting')),
+        findsNothing,
+      );
 
       // A connection listed for a DIFFERENT profile does not count.
       service.projection = null;
@@ -288,13 +325,15 @@ void main() {
         projection: _projection(asOf),
       );
 
-      await tester.pumpWidget(MaterialApp(
-        home: PredictionConnectionCalendarScreen(
-          profileId: 'p1',
-          profileName: 'Riley',
-          service: service,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PredictionConnectionCalendarScreen(
+            profileId: 'p1',
+            profileName: 'Riley',
+            service: service,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
       expect(find.text('September 2026'), findsOneWidget);
 
@@ -312,8 +351,9 @@ void main() {
   });
 
   group('PredictionConnectionsScreen', () {
-    testWidgets('lists incoming connections and opens the calendar on tap',
-        (tester) async {
+    testWidgets('lists incoming connections and opens the calendar on tap', (
+      tester,
+    ) async {
       final service = _FakePredictionConnectionService(
         projection: _projection(LocalDate(2026, 9, 7)),
         connections: [
@@ -325,9 +365,9 @@ void main() {
         ],
       );
 
-      await tester.pumpWidget(MaterialApp(
-        home: PredictionConnectionsScreen(service: service),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(home: PredictionConnectionsScreen(service: service)),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -338,12 +378,16 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('prediction-connection-p1')));
       await tester.pumpAndSettle();
-      expect(find.text('Period'), findsOneWidget,
-          reason: 'the calendar pushed on top of the list');
+      expect(
+        find.text('Period'),
+        findsOneWidget,
+        reason: 'the calendar pushed on top of the list',
+      );
     });
 
-    testWidgets('manual code entry redeems and opens the calendar',
-        (tester) async {
+    testWidgets('manual code entry redeems and opens the calendar', (
+      tester,
+    ) async {
       final service = _FakePredictionConnectionService(
         projection: _projection(LocalDate(2026, 9, 7)),
         connections: const [],
@@ -355,56 +399,63 @@ void main() {
       );
 
       AcceptedPredictionConnection? connectedResult;
-      await tester.pumpWidget(MaterialApp(
-        home: PredictionConnectionsScreen(
-          service: service,
-          onConnected: (result) => connectedResult = result,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PredictionConnectionsScreen(
+            service: service,
+            onConnected: (result) => connectedResult = result,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('enter-prediction-code')));
       await tester.pumpAndSettle();
       await tester.enterText(
-          find.byKey(const ValueKey('prediction-code-field')), 'the-code');
+        find.byKey(const ValueKey('prediction-code-field')),
+        'the-code',
+      );
       await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
       await tester.pumpAndSettle();
 
       expect(connectedResult, isNotNull);
       expect(connectedResult!.profileId, 'p2');
-      expect(find.text('Avery'), findsOneWidget,
-          reason: 'the calendar pushed with the accepted profile name');
+      expect(
+        find.text('Avery'),
+        findsOneWidget,
+        reason: 'the calendar pushed with the accepted profile name',
+      );
     });
 
-    testWidgets('a typed failure surfaces its user-facing message',
-        (tester) async {
+    testWidgets('a typed failure surfaces its user-facing message', (
+      tester,
+    ) async {
       final service = _FakePredictionConnectionService(connections: const []);
-      service.acceptFailure =
-          const PredictionConnectionFailure.pregnancyMode();
+      service.acceptFailure = const PredictionConnectionFailure.pregnancyMode();
 
-      await tester.pumpWidget(MaterialApp(
-        home: PredictionConnectionsScreen(service: service),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(home: PredictionConnectionsScreen(service: service)),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('enter-prediction-code')));
       await tester.pumpAndSettle();
       await tester.enterText(
-          find.byKey(const ValueKey('prediction-code-field')), 'the-code');
+        find.byKey(const ValueKey('prediction-code-field')),
+        'the-code',
+      );
       await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('Pregnancy mode'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Pregnancy mode'), findsOneWidget);
       expect(find.text('Avery'), findsNothing);
     });
   });
 
   group('AcceptPredictionConnectionSheet', () {
-    testWidgets('accepts the latched code and pops with the result',
-        (tester) async {
+    testWidgets('accepts the latched code and pops with the result', (
+      tester,
+    ) async {
       final service = _FakePredictionConnectionService(connections: const []);
       service.scriptedAccept = AcceptedPredictionConnection(
         connectionId: 'conn-9',
@@ -413,35 +464,36 @@ void main() {
       );
 
       AcceptedPredictionConnection? popped;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Builder(builder: (context) {
-            return Center(
-              child: FilledButton(
-                onPressed: () {
-                  showModalBottomSheet<void>(
-                    context: context,
-                    builder: (_) => AcceptPredictionConnectionSheet(
-                      rawToken: 'code',
-                      service: service,
-                      onAccepted: (result) => popped = result,
-                    ),
-                  );
-                },
-                child: const Text('open'),
-              ),
-            );
-          }),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                return Center(
+                  child: FilledButton(
+                    onPressed: () {
+                      showModalBottomSheet<void>(
+                        context: context,
+                        builder: (_) => AcceptPredictionConnectionSheet(
+                          rawToken: 'code',
+                          service: service,
+                          onAccepted: (result) => popped = result,
+                        ),
+                      );
+                    },
+                    child: const Text('open'),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
-      ));
+      );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
       expect(find.text('Connect to cycle predictions'), findsOneWidget);
-      expect(
-        find.textContaining('read-only calendar'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('read-only calendar'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
       await tester.pumpAndSettle();
@@ -456,26 +508,30 @@ void main() {
       service.acceptFailure =
           const PredictionConnectionFailure.oneDirectional();
 
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Builder(builder: (context) {
-            return Center(
-              child: FilledButton(
-                onPressed: () {
-                  showModalBottomSheet<void>(
-                    context: context,
-                    builder: (_) => AcceptPredictionConnectionSheet(
-                      rawToken: 'code',
-                      service: service,
-                    ),
-                  );
-                },
-                child: const Text('open'),
-              ),
-            );
-          }),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                return Center(
+                  child: FilledButton(
+                    onPressed: () {
+                      showModalBottomSheet<void>(
+                        context: context,
+                        builder: (_) => AcceptPredictionConnectionSheet(
+                          rawToken: 'code',
+                          service: service,
+                        ),
+                      );
+                    },
+                    child: const Text('open'),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
-      ));
+      );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
@@ -487,8 +543,9 @@ void main() {
       expect(find.text('Connect to cycle predictions'), findsOneWidget);
     });
 
-    testWidgets('an unexpected error surfaces the generic message',
-        (tester) async {
+    testWidgets('an unexpected error surfaces the generic message', (
+      tester,
+    ) async {
       final service = _FakePredictionConnectionService(connections: const []);
       service.scriptedAccept = null;
       service.acceptFailure = null;
@@ -496,26 +553,30 @@ void main() {
       // throws UnimplementedError via noSuchMethod.
       service.overrideAccept = () => throw StateError('boom');
 
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Builder(builder: (context) {
-            return Center(
-              child: FilledButton(
-                onPressed: () {
-                  showModalBottomSheet<void>(
-                    context: context,
-                    builder: (_) => AcceptPredictionConnectionSheet(
-                      rawToken: 'code',
-                      service: service,
-                    ),
-                  );
-                },
-                child: const Text('open'),
-              ),
-            );
-          }),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                return Center(
+                  child: FilledButton(
+                    onPressed: () {
+                      showModalBottomSheet<void>(
+                        context: context,
+                        builder: (_) => AcceptPredictionConnectionSheet(
+                          rawToken: 'code',
+                          service: service,
+                        ),
+                      );
+                    },
+                    child: const Text('open'),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
-      ));
+      );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
@@ -553,7 +614,8 @@ void main() {
       // Issue #373: an adult - a minor's profile can no longer be shared
       // at all (its own case below), so the happy paths need an adult.
       testProfile = profileToDomain(
-          await storage.upsertProfile(displayName: 'Riley', isMinor: false));
+        await storage.upsertProfile(displayName: 'Riley', isMinor: false),
+      );
     });
 
     tearDown(() async {
@@ -577,39 +639,46 @@ void main() {
       // Seed the caller's primary-guardian row so the section's role gate
       // resolves (mom = primary_guardian), the same fixture
       // sharing_flow_test.dart uses.
-      await storage.applyRemoteRows([guardianRow('user-mom', 'primary_guardian')]);
+      await storage.applyRemoteRows([
+        guardianRow('user-mom', 'primary_guardian'),
+      ]);
 
-      await tester.pumpWidget(MaterialApp(
-        home: ManageGuardiansScreen(
-          profile: profile ?? testProfile,
-          guardiansRepository: ProfileGuardiansRepository(storage),
-          sharingService: _NoInvitesSharingService(),
-          currentUserId: 'user-mom',
-          predictionConnectionService: connectionService,
-          onPredictionConnectionChanged: onPredictionConnectionChanged,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: profile ?? testProfile,
+            guardiansRepository: ProfileGuardiansRepository(storage),
+            sharingService: _NoInvitesSharingService(),
+            currentUserId: 'user-mom',
+            predictionConnectionService: connectionService,
+            onPredictionConnectionChanged: onPredictionConnectionChanged,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
     }
 
     testWidgets(
-        'a primary guardian sees the sharing section and can arm a connection',
-        (tester) async {
-      await pumpScreen(tester);
+      'a primary guardian sees the sharing section and can arm a connection',
+      (tester) async {
+        await pumpScreen(tester);
 
-      expect(find.text('Predictions-only sharing'), findsOneWidget);
-      expect(find.byKey(const ValueKey('share-predictions')), findsOneWidget);
-      expect(find.byKey(const ValueKey('share-predictions-minor')),
-          findsNothing);
+        expect(find.text('Predictions-only sharing'), findsOneWidget);
+        expect(find.byKey(const ValueKey('share-predictions')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('share-predictions-minor')),
+          findsNothing,
+        );
 
-      await unmount(tester);
-    });
+        await unmount(tester);
+      },
+    );
 
     testWidgets("issue #373: a minor's profile gets no share affordance, "
-        'only the explanation, even for the primary guardian',
-        (tester) async {
+        'only the explanation, even for the primary guardian', (tester) async {
       final minor = profileToDomain(
-          await storage.upsertProfile(displayName: 'Kid', isMinor: true));
+        await storage.upsertProfile(displayName: 'Kid', isMinor: true),
+      );
       // The guardian row keys off testProfile's id; seed one for the minor
       // too so the role gate resolves the same way.
       await storage.applyRemoteRows([
@@ -629,18 +698,23 @@ void main() {
       await pumpScreen(tester, profile: minor);
 
       expect(find.text('Predictions-only sharing'), findsOneWidget);
-      expect(find.byKey(const ValueKey('share-predictions-minor')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('share-predictions-minor')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('share-predictions')), findsNothing);
-      expect(find.byKey(const ValueKey('prediction-connection-tile')),
-          findsNothing);
+      expect(
+        find.byKey(const ValueKey('prediction-connection-tile')),
+        findsNothing,
+      );
 
       await unmount(tester);
     });
 
     testWidgets('issue #373: a pending invite is polled, and its redemption '
-        'fires the publish hook exactly once, then stops polling',
-        (tester) async {
+        'fires the publish hook exactly once, then stops polling', (
+      tester,
+    ) async {
       final pendingRow = ActivePredictionConnection(
         connectionId: 'conn-1',
         profileId: testProfile.id,
@@ -651,8 +725,7 @@ void main() {
       );
       connectionService.getActiveConnectionResult = pendingRow;
       final published = <String>[];
-      await pumpScreen(tester,
-          onPredictionConnectionChanged: published.add);
+      await pumpScreen(tester, onPredictionConnectionChanged: published.add);
 
       expect(find.text('pending'), findsOneWidget);
       expect(published, isEmpty, reason: 'nothing to publish while pending');
@@ -674,12 +747,18 @@ void main() {
       await tester.pump(ManageGuardiansScreen.pendingPollInterval);
       await tester.pumpAndSettle();
 
-      expect(published, [testProfile.id],
-          reason: 'the pending -> active transition publishes, from the '
-              'sharer side');
+      expect(
+        published,
+        [testProfile.id],
+        reason:
+            'the pending -> active transition publishes, from the '
+            'sharer side',
+      );
       expect(find.text('pending'), findsNothing);
-      expect(find.text('Phases-only calendar • not a guardian'),
-          findsOneWidget);
+      expect(
+        find.text('Phases-only calendar • not a guardian'),
+        findsOneWidget,
+      );
 
       // Polling stopped: further intervals neither re-read nor re-publish.
       await tester.pump(ManageGuardiansScreen.pendingPollInterval * 3);
@@ -689,10 +768,39 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets(
+      'a typed PredictionConnectionFailure loading the active connection '
+      'still resolves the loading state, falling back to the '
+      'no-connection affordance rather than hanging on a spinner',
+      (tester) async {
+        connectionService.getActiveConnectionFailure =
+            const PredictionConnectionFailure.network();
+        await pumpScreen(tester);
+
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byKey(const ValueKey('share-predictions')), findsOneWidget);
+
+        await unmount(tester);
+      },
+    );
+
+    testWidgets(
+      'an untyped error loading the active connection also resolves the '
+      'loading state (the generic catch branch)',
+      (tester) async {
+        connectionService.getActiveConnectionGenericError = StateError('boom');
+        await pumpScreen(tester);
+
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byKey(const ValueKey('share-predictions')), findsOneWidget);
+
+        await unmount(tester);
+      },
+    );
+
     testWidgets('the live connection shows with its revoke control, and '
         'revoke calls the service', (tester) async {
-      connectionService.getActiveConnectionResult =
-          ActivePredictionConnection(
+      connectionService.getActiveConnectionResult = ActivePredictionConnection(
         connectionId: 'conn-1',
         profileId: testProfile.id,
         pending: false,
@@ -703,11 +811,14 @@ void main() {
       await pumpScreen(tester);
 
       expect(find.text('Partner'), findsOneWidget);
-      expect(find.text('Phases-only calendar • not a guardian'),
-          findsOneWidget);
+      expect(
+        find.text('Phases-only calendar • not a guardian'),
+        findsOneWidget,
+      );
 
       await tester.tap(
-          find.byKey(const ValueKey('revoke-prediction-connection')));
+        find.byKey(const ValueKey('revoke-prediction-connection')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'End sharing'));
       await tester.pumpAndSettle();
@@ -728,8 +839,7 @@ void main() {
 
       connectionService.createFailure =
           const PredictionConnectionFailure.pregnancyMode();
-      await tester.enterText(
-          find.byType(TextField), 'Partner');
+      await tester.enterText(find.byType(TextField), 'Partner');
       await tester.tap(find.widgetWithText(FilledButton, 'Create Link'));
       await tester.pumpAndSettle();
 
@@ -786,19 +896,22 @@ void main() {
       String? initialInviteKind,
       bool withService = true,
     }) async {
-      await tester.pumpWidget(LunarLogApp(
-        db: db,
-        authService: auth,
-        predictionConnectionService: withService ? service : null,
-        initialInviteCode: initialInviteCode,
-        initialInviteKind: initialInviteKind,
-      ));
+      await tester.pumpWidget(
+        LunarLogApp(
+          db: db,
+          authService: auth,
+          predictionConnectionService: withService ? service : null,
+          initialInviteCode: initialInviteCode,
+          initialInviteKind: initialInviteKind,
+        ),
+      );
       await tester.pumpAndSettle();
     }
 
     testWidgets('issue #373: the projection publisher starts (and is '
-        'provided) whenever the service is, with no push wiring at all',
-        (tester) async {
+        'provided) whenever the service is, with no push wiring at all', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
 
@@ -816,8 +929,9 @@ void main() {
       await unmountApp(tester);
     });
 
-    testWidgets('issue #373: without a service no publisher is provided',
-        (tester) async {
+    testWidgets('issue #373: without a service no publisher is provided', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
 
@@ -844,8 +958,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(service.outgoingQueries, 0);
 
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-mom'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-mom'),
+      );
       await tester.pumpAndSettle();
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -854,10 +970,12 @@ void main() {
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
-      expect(service.outgoingQueries, 1,
-          reason: 'one narrow select on resume');
-      expect(service.publishedFor, isEmpty,
-          reason: 'no connected profile here, so nothing uploaded');
+      expect(service.outgoingQueries, 1, reason: 'one narrow select on resume');
+      expect(
+        service.publishedFor,
+        isEmpty,
+        reason: 'no connected profile here, so nothing uploaded',
+      );
 
       await unmountApp(tester);
     });
@@ -867,31 +985,42 @@ void main() {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
 
-      await pumpApp(tester, auth,
-          initialInviteCode: 'cold-prediction-token',
-          initialInviteKind: 'prediction');
+      await pumpApp(
+        tester,
+        auth,
+        initialInviteCode: 'cold-prediction-token',
+        initialInviteKind: 'prediction',
+      );
 
       expect(find.text('Connect to cycle predictions'), findsNothing);
 
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-dad'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-dad'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Connect to cycle predictions'), findsOneWidget);
       await unmountApp(tester);
     });
 
-    testWidgets('without a PredictionConnectionService the code is ignored',
-        (tester) async {
+    testWidgets('without a PredictionConnectionService the code is ignored', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-dad'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-dad'),
+      );
 
-      await pumpApp(tester, auth,
-          initialInviteCode: 'cold-prediction-token',
-          initialInviteKind: 'prediction',
-          withService: false);
+      await pumpApp(
+        tester,
+        auth,
+        initialInviteCode: 'cold-prediction-token',
+        initialInviteKind: 'prediction',
+        withService: false,
+      );
 
       expect(find.text('Connect to cycle predictions'), findsNothing);
       await unmountApp(tester);
