@@ -8,3 +8,6 @@ Future<LunarLogDbFactory> buildDbFactory() async =>
 
 Future<void> deleteLocalDatabase() async =>
     throw UnsupportedError('lunarlog does not support this platform');
+
+Future<void> protectDatabaseFile() async =>
+    throw UnsupportedError('lunarlog does not support this platform');

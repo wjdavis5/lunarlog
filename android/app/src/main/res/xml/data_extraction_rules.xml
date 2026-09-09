@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Issue #244: the API 31+ control for both cloud backup and device-to-device
+  transfer (the "Copy your data" / Wi-Fi Direct-or-cable migration flow when
+  setting up a new device). `android:allowBackup="false"` (AndroidManifest.xml)
+  already disables Auto Backup to the cloud outright, but device-to-device
+  transfer on API 31+ is governed independently by this file's
+  <device-transfer-content> — without it, the local database (a household's
+  full cycle history, including minors' records) would still copy to a new
+  device during setup even with allowBackup false. <cloud-backup-content> is
+  included too, belt-and-suspenders: it only takes effect if allowBackup ever
+  becomes true, at which point this exclusion is already in place instead of
+  needing to be added in the same change.
+
+  Paths are relative to the "file" domain (Context.getFilesDir(), which is
+  what path_provider's getApplicationSupportDirectory() resolves to on
+  Android — see lib/startup/startup_native.dart's localDatabaseFile()).
+-->
+<data-extraction-rules>
+    <cloud-backup-content>
+        <exclude domain="file" path="lunarlog.db"/>
+        <exclude domain="file" path="lunarlog.db-wal"/>
+        <exclude domain="file" path="lunarlog.db-shm"/>
+        <exclude domain="file" path="lunarlog.db-journal"/>
+    </cloud-backup-content>
+    <device-transfer-content>
+        <exclude domain="file" path="lunarlog.db"/>
+        <exclude domain="file" path="lunarlog.db-wal"/>
+        <exclude domain="file" path="lunarlog.db-shm"/>
+        <exclude domain="file" path="lunarlog.db-journal"/>
+    </device-transfer-content>
+</data-extraction-rules>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Issue #244: the pre-API-31 backup-content schema. Inert today —
+  `android:allowBackup="false"` (AndroidManifest.xml) already disables the
+  Auto Backup service entirely on every API level, so this file has no
+  effect while that stays false — but declared for the same
+  belt-and-suspenders reason as data_extraction_rules.xml's
+  <cloud-backup-content>: if allowBackup is ever flipped to true (e.g. for
+  non-health app data), the database exclusion is already here rather than
+  needing to be added in the same change.
+-->
+<full-backup-content>
+    <exclude domain="file" path="lunarlog.db"/>
+    <exclude domain="file" path="lunarlog.db-wal"/>
+    <exclude domain="file" path="lunarlog.db-shm"/>
+    <exclude domain="file" path="lunarlog.db-journal"/>
+</full-backup-content>

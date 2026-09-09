@@ -82,7 +82,16 @@ Future<void> _runLunarlog() async {
   }
   runApp(wrapWithSentry(LunarLogRoot(
     gate: defaultAppGate(),
-    dbOpener: () async => (await buildDbFactory()).open(),
+    // Issue #244: `protectDatabaseFile` runs after `.open()` succeeds (so
+    // the file is guaranteed to exist — `.open()`'s own `SELECT 1` probe
+    // already forced drift to create it) and on every open, not just the
+    // first — a device reset (KTD16) closes and recreates this file, which
+    // needs the same iOS hardening reapplied. A no-op on Android/web.
+    dbOpener: () async {
+      final db = await (await buildDbFactory()).open();
+      await protectDatabaseFile();
+      return db;
+    },
     // KTD7/KTD9: reminders are a native-only surface; web gets the no-op.
     scheduler:
         kIsWeb ? NoopReminderScheduler() : FlutterLocalNotificationsScheduler(),

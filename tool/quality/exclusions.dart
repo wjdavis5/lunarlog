@@ -33,6 +33,24 @@ class CoverageExclusion {
 
 final List<CoverageExclusion> excludedLibFilePaths = [
   const CoverageExclusion(
+    'lib/startup/startup_native.dart',
+    'protectDatabaseFile (issue #244) is an iOS-only platform-channel call '
+        '(NSFileProtectionComplete/NSURLIsExcludedFromBackupKey via '
+        'AppDelegate.swift) gated on defaultTargetPlatform == '
+        'TargetPlatform.iOS, which flutter test never reports on this '
+        'suite\'s host platforms — the branch cannot be driven true, so the '
+        'method scores 0% covered no matter how it is called, same '
+        'treatment as google_sign_in_client.dart. The file\'s other '
+        'logic — relocateLegacyDatabase and its helpers, the one-time '
+        '#244 migration off Documents/ — is pure dart:io/sqlite3 and is '
+        'directly, fully unit-tested against real temp-directory files in '
+        'test/startup/startup_native_test.dart; excluding the whole file '
+        'only removes it from the gate\'s denominator, per this file\'s own '
+        'doc comment, same treatment as '
+        'notifications/firebase_push_token_source.dart\'s '
+        'buildFirebaseOptions().',
+  ),
+  const CoverageExclusion(
     'lib/data/auth/google_sign_in_client.dart',
     'PluginGoogleSignInClient wraps the google_sign_in plugin and cannot '
         'run under flutter test; the file also holds a trivial immutable '

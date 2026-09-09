@@ -1039,8 +1039,18 @@ pgTAP tests.
   "pull now" hint; Apple Sign-In on Android/web; client-side syncing of
   `settings`; `birth_year` / `color` profile attributes; client-side
   encryption of `note` and `display_name`; managing auth settings via
-  `supabase config push`; iCloud backup exclusion and the `ThisDeviceOnly`
-  key-class migration; `https` App Links; new-device sign-in email notice.
+  `supabase config push`; the `ThisDeviceOnly` key-class migration (moot as
+  of `e7c787c` — SQLCipher and its app-managed database key were removed
+  entirely, so there is no key left to migrate a class for); `https` App
+  Links; new-device sign-in email notice. iCloud backup exclusion is **no
+  longer deferred as of issue #244**: the database moved to
+  `getApplicationSupportDirectory()` (not backed up by default, with a
+  one-time migration off the old `Documents/` path) and is additionally
+  marked `NSURLIsExcludedFromBackupKey`/`NSFileProtectionComplete` via
+  `AppDelegate.swift`; Android gained the equivalent
+  `android:dataExtractionRules`. See README "Known limitations" for the
+  iOS device-verification status (unverified on real hardware as of this
+  writing — this repo's Windows dev box cannot build iOS).
   (In-app account deletion and JSON export shipped in issue #17 — see the
   "Release gate" and "Account deletion (issue #17)" sections above.) Sentry
   debug-symbol upload is **no longer deferred as of issue #7** — both

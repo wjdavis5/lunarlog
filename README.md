@@ -337,14 +337,30 @@ Part of the home lab; the canonical inventory lives in the lab root's
   notification-permission prompt is covered by this too, on both
   platforms (issue #168) — the automatic startup request and the overview
   hint's "Turn on reminders" re-request both run inside the same window.
-- iOS: the database file is not explicitly excluded from iCloud backups
-  (skipped in U7 — it needs AppDelegate work on the Mac; Android covers the
-  equivalent with `allowBackup="false"`). There is no app-managed database
-  key to pin or unpin now that at-rest protection is the OS's own
-  (docs/ops/ios-export-compliance.md). Excluding the database file from
-  backups is deferred (docs/ops/supabase-go-live.md). The Supabase session
-  and PKCE verifier are stored with `first_unlock_this_device` and never
-  travel in a backup.
+- iOS: the database file now lives under `getApplicationSupportDirectory()`,
+  not `Documents/` (issue #244 — `Documents/` is included in iCloud/device
+  backup by default, `Application Support` is not), with a one-time startup
+  migration that relocates a pre-#244 install's `Documents/lunarlog.db` (and
+  its `-wal`/`-shm`/`-journal` siblings) the first time it runs
+  (`lib/startup/startup_native.dart`'s `relocateLegacyDatabase`). On top of
+  the directory move, `AppDelegate.swift`'s `lunarlog/privacy` channel (the
+  iOS half of the same channel Android's FLAG_SECURE handler in
+  `MainActivity.kt` uses) marks the file `NSURLIsExcludedFromBackupKey` and
+  `NSFileProtectionComplete` — belt-and-suspenders, best effort. This has not
+  yet been verified on a real device/Mac build (tracked as a blocker on
+  issue #244; `flutter analyze`/`flutter test`/`flutter build apk` all pass,
+  but the iOS-only platform-channel code cannot run under `flutter test` and
+  this repo's Windows dev box cannot build iOS). There is no app-managed
+  database key to pin or unpin now that at-rest protection is the OS's own
+  (docs/ops/ios-export-compliance.md). The Supabase session and PKCE
+  verifier are stored with `first_unlock_this_device` and never travel in a
+  backup.
+- Android: `allowBackup="false"` (device/cloud backup off entirely) is now
+  joined by `android:dataExtractionRules` (API 31+) excluding the database
+  file from both cloud backup and device-to-device transfer, and
+  `android:fullBackupContent` for the pre-31 schema — see
+  `android/app/src/main/res/xml/data_extraction_rules.xml` and
+  `backup_rules.xml` (issue #244).
 - Realtime co-caregiver sync (issue #77) publishes only a dedicated
   `public.sync_signals` table (profile_id, updated_at — no health content)
   to `supabase_realtime`, never `public.profiles`/`public.day_entries`
