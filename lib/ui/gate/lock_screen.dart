@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 
 class LockScreen extends StatelessWidget {
@@ -19,6 +20,11 @@ class LockScreen extends StatelessWidget {
     return MaterialApp(
       title: 'lunarlog',
       theme: AppTheme.lightTheme,
+      // Issue #160: same localization scaffolding as the main MaterialApp
+      // in `lib/app.dart` — this screen renders above (and independent of)
+      // the app content, so it must carry its own delegates.
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
         key: const ValueKey('lock-screen'),
         body: Center(

@@ -32,6 +32,7 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
@@ -145,6 +146,8 @@ Future<Harness> pumpActivity(
         ),
       ],
       child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: screen == null
             ? _defaultScreen(profile, activity)
             : screen(profile, activity, db),

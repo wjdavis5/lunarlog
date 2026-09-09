@@ -14,6 +14,7 @@ import 'package:lunarlog/ui/feedback/feedback_screen.dart'
     show FeedbackScreen, kSupportEmailAddress;
 import 'package:lunarlog/ui/feedback/support_history_screen.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
@@ -88,6 +89,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: Provider<SettingsStore>.value(
           value: settingsStore,
           child: const SettingsScreen(),
@@ -147,6 +150,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: MultiProvider(
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
@@ -169,6 +174,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: Provider<SettingsStore>.value(
           value: settingsStore,
           child: const SettingsScreen(),
@@ -198,6 +205,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: MultiProvider(
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
@@ -239,6 +248,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: MultiProvider(
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
@@ -262,6 +273,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: MultiProvider(
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
@@ -283,6 +296,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         home: MultiProvider(
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
@@ -313,7 +328,11 @@ void main() {
           // Providers must sit above MaterialApp/Navigator, not inside
           // `home:` -- a pushed route is a sibling of the initial route in
           // the Navigator's stack, not a descendant of `home:`'s subtree.
-          child: const MaterialApp(home: SettingsScreen()),
+          child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: SettingsScreen(),
+        ),
         ),
       );
       await tester.pumpAndSettle();
@@ -339,7 +358,11 @@ void main() {
             Provider<FeedbackService>.value(value: FakeFeedbackService()),
             ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
           ],
-          child: const MaterialApp(home: SettingsScreen()),
+          child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: SettingsScreen(),
+        ),
         ),
       );
       await tester.pumpAndSettle();
@@ -384,6 +407,8 @@ void main() {
     }) async {
       await tester.pumpWidget(
         MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               Provider<SettingsStore>.value(value: FakeSettingsStore()),

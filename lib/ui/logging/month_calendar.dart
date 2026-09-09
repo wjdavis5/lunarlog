@@ -44,31 +44,51 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/symptoms/symptom_layers.dart';
 import 'package:lunarlog/domain/tags.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
     show kEstimateDisclaimer;
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:provider/provider.dart';
 
-const List<String> kMonthNames = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
+/// The weekday the month grid's weeks start on, as a `DateTime` weekday
+/// constant (`DateTime.monday` .. `DateTime.sunday`). Explicit seam
+/// (issue #160): the grid previously baked Sunday-start into
+/// `DateTime.weekday % 7` arithmetic. The value stays Sunday to preserve
+/// today's layout; deriving a default from the active locale and persisting
+/// a user override in Settings are tracked follow-on work — both consumers
+/// of this seam ([leadingBlanksFor] and [weekdayHeaderLabels]) already
+/// honour it.
+const int kFirstDayOfWeek = DateTime.sunday;
 
-const List<String> kWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/// Leading blank cells before day 1 of [year]/[month] in a grid whose weeks
+/// start on [firstDayOfWeek] (a `DateTime` weekday constant).
+/// `DateTime.weekday` is 1=Monday..7=Sunday; Dart's `%` keeps the result
+/// non-negative for a positive divisor, so `(weekday - firstDay) % 7` is
+/// correct for every seam value. Public and pure for direct testing, the
+/// same discipline as [dayCellSemanticLabel] below.
+int leadingBlanksFor(
+  int year,
+  int month, {
+  int firstDayOfWeek = kFirstDayOfWeek,
+}) => (DateTime(year, month, 1).weekday - firstDayOfWeek) % 7;
+
+/// The weekday header's single-letter initials, ordered for a grid whose
+/// weeks start on [firstDayOfWeek] — the first initial is that day's.
+/// [dates.narrowWeekdayInitials] is locale-derived and Sunday-first, so a
+/// Sunday start is the identity ordering (the old `kWeekdayLabels` list).
+/// Public and pure for direct testing.
+List<String> weekdayHeaderLabels({
+  String locale = dates.kFallbackLocale,
+  int firstDayOfWeek = kFirstDayOfWeek,
+}) {
+  final narrow = dates.narrowWeekdayInitials(locale: locale);
+  return [for (var i = 0; i < 7; i++) narrow[(firstDayOfWeek + i) % 7]];
+}
 
 /// Forward navigation may move at most this many months past the current
 /// one (R1); [kForecastHorizonMonths] in the forecast module covers it.
@@ -190,30 +210,38 @@ Color crampsBadgeColor(Brightness brightness) => brightness == Brightness.light
     ? const Color(0xFF9A6A00)
     : const Color(0xFFFFCC80);
 
-String _formatDate(LocalDate date) =>
-    '${kMonthNames[date.month - 1]} ${date.day}, ${date.year}';
-
 /// The semantic (screen-reader) label for one day cell (#133 brief: the
 /// predicted/logged distinction must be semantic, not just visual). Public
 /// for direct testing; the calendar wraps every cell's contents with it.
+///
+/// Issue #160: [monthNames] is the locale-derived full-month-name list the
+/// widget passes in (`dates.monthNames(locale: dates.calendarLocale(...))`);
+/// it defaults to the `en` list so this pure, context-free helper (and its
+/// direct tests) keep working without a widget tree.
 String dayCellSemanticLabel({
   required LocalDate date,
   required DayEntry? entry,
   required LocalDate today,
   required ForecastDayCell? cell,
+  List<String>? monthNames,
 }) {
-  if (!date.isAfter(today)) return _loggedDaySemanticLabel(date, entry);
+  final names = monthNames ?? dates.monthNames();
+  if (!date.isAfter(today)) return _loggedDaySemanticLabel(date, entry, names);
   final safeCell = cell;
   return safeCell == null
-      ? '${_dateLabel(date)}, future date, not yet loggable'
-      : _predictedDaySemanticLabel(date, safeCell);
+      ? '${_dateLabel(date, names)}, future date, not yet loggable'
+      : _predictedDaySemanticLabel(date, safeCell, names);
 }
 
-String _dateLabel(LocalDate date) =>
-    '${kMonthNames[date.month - 1]} ${date.day}';
+String _dateLabel(LocalDate date, List<String> monthNames) =>
+    '${monthNames[date.month - 1]} ${date.day}';
 
-String _loggedDaySemanticLabel(LocalDate date, DayEntry? entry) {
-  final label = _dateLabel(date);
+String _loggedDaySemanticLabel(
+  LocalDate date,
+  DayEntry? entry,
+  List<String> monthNames,
+) {
+  final label = _dateLabel(date, monthNames);
   if (entry == null) return '$label, not logged';
   if (isBleed(entry.flow)) return '$label, logged period day';
   if (entry.tags.isNotEmpty || entry.note != null) {
@@ -222,7 +250,11 @@ String _loggedDaySemanticLabel(LocalDate date, DayEntry? entry) {
   return '$label, logged';
 }
 
-String _predictedDaySemanticLabel(LocalDate date, ForecastDayCell cell) {
+String _predictedDaySemanticLabel(
+  LocalDate date,
+  ForecastDayCell cell,
+  List<String> monthNames,
+) {
   final parts = <String>[
     if (cell.predictedBleed)
       'predicted period day'
@@ -233,7 +265,7 @@ String _predictedDaySemanticLabel(LocalDate date, ForecastDayCell cell) {
     if (cell.crampsBadge) 'predicted cramps window',
   ];
   if (parts.isEmpty) parts.add('no prediction for this date');
-  return '${_dateLabel(date)}, ${parts.join(', ')}';
+  return '${_dateLabel(date, monthNames)}, ${parts.join(', ')}';
 }
 
 int _monthIndex(int year, int month) => year * 12 + (month - 1);
@@ -611,10 +643,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final selected = current.contains(code);
     if (!selected && current.length >= kMaxSymptomLayers) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          key: ValueKey('layer-limit-snack'),
-          content: Text('Up to three symptom layers at once'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          key: const ValueKey('layer-limit-snack'),
+          content: Text(
+            AppLocalizations.of(context).calendarLayerLimitSnack,
+          ),
+          duration: const Duration(seconds: 2),
         ),
       );
       return;
@@ -704,13 +738,15 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final palette = symptomLayerPalette(theme.brightness);
     final maxPageIndex =
         _pageIndexFor(today.year, today.month) + kForwardMonthLimit;
+    final l10n = AppLocalizations.of(context);
+    final locale = dates.calendarLocale(context);
 
     return Column(
       children: [
         Row(
           children: [
             IconButton(
-              tooltip: 'Previous month',
+              tooltip: l10n.calendarPreviousMonthTooltip,
               icon: const Icon(Icons.chevron_left),
               onPressed: () => _shiftMonth(-1),
             ),
@@ -720,7 +756,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
                 onTap: _openMonthYearPicker,
                 child: Center(
                   child: Text(
-                    '${kMonthNames[_displayedMonth - 1]} $_displayedYear',
+                    l10n.calendarMonthYearLabel(
+                      dates.monthNames(locale: locale)[_displayedMonth - 1],
+                      _displayedYear,
+                    ),
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
@@ -728,12 +767,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
             IconButton(
               key: const ValueKey('today-button'),
-              tooltip: 'Today',
+              tooltip: l10n.calendarTodayTooltip,
               icon: const Icon(Icons.today_outlined),
               onPressed: _goToToday,
             ),
             IconButton(
-              tooltip: 'Next month',
+              tooltip: l10n.calendarNextMonthTooltip,
               icon: const Icon(Icons.chevron_right),
               onPressed: nextDisabled ? null : () => _shiftMonth(1),
             ),
@@ -747,7 +786,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
             children: [
-              for (final label in kWeekdayLabels)
+              for (final label
+                  in weekdayHeaderLabels(locale: locale))
                 Expanded(
                   child: Center(
                     child: Text(label, style: theme.textTheme.labelSmall),
@@ -793,8 +833,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
                         // (e.g. mid-swipe, both the outgoing and incoming
                         // page built).
                         key: ValueKey('calendar-month-empty-$year-$month'),
-                        title: 'No entries this month',
-                        body: 'Tap a day to log it',
+                        title: l10n.calendarNoEntriesTitle,
+                        body: l10n.calendarNoEntriesBody,
                       ),
                     GridView.count(
                       key: ValueKey('calendar-grid-$year-$month'),
@@ -835,6 +875,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   Widget _legendStrip(BuildContext context, ThemeData theme, LunarLogColors colors) {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final expanded = _legendExpanded ?? textScale < kLegendCollapseTextScale;
+    final l10n = AppLocalizations.of(context);
     return Column(
       key: const ValueKey('calendar-legend'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -843,7 +884,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Semantics(
             button: true,
-            label: expanded ? 'Hide legend' : 'Show legend',
+            label: expanded ? l10n.calendarHideLegend : l10n.calendarShowLegend,
             excludeSemantics: true,
             child: InkWell(
               key: const ValueKey('legend-toggle'),
@@ -856,7 +897,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
                     size: 16,
                   ),
                   const SizedBox(width: 2),
-                  Text('Legend', style: theme.textTheme.bodySmall),
+                  Text(l10n.calendarLegend, style: theme.textTheme.bodySmall),
                 ],
               ),
             ),
@@ -880,16 +921,17 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// test that opens it with a chip selected.
   Widget _legendEntries(ThemeData theme, LunarLogColors colors) {
     final brightness = theme.brightness;
+    final l10n = AppLocalizations.of(context);
     final entries = [
-      _LegendEntry('spotting', colors.flowSpotting, 'Spotting flow', style: _LegendSwatchStyle.ring),
-      _LegendEntry('light', colors.flowLight, 'Light flow'),
-      _LegendEntry('medium', colors.flowMedium, 'Medium flow'),
-      _LegendEntry('heavy', colors.flowHeavy, 'Heavy flow'),
-      _LegendEntry('symptom', colors.symptomDot, 'Symptom day'),
-      _LegendEntry('today', theme.colorScheme.primary, 'Today', style: _LegendSwatchStyle.ring),
-      _LegendEntry('predicted', colors.predictedBorder, 'Predicted day', style: _LegendSwatchStyle.hatched),
-      _LegendEntry('pms', pmsBadgeColor(brightness), 'PMS window', style: _LegendSwatchStyle.icon, icon: Icons.spa),
-      _LegendEntry('cramps', crampsBadgeColor(brightness), 'Cramps window', style: _LegendSwatchStyle.icon, icon: Icons.bolt),
+      _LegendEntry('spotting', colors.flowSpotting, l10n.calendarLegendSpotting, style: _LegendSwatchStyle.ring),
+      _LegendEntry('light', colors.flowLight, l10n.calendarLegendLight),
+      _LegendEntry('medium', colors.flowMedium, l10n.calendarLegendMedium),
+      _LegendEntry('heavy', colors.flowHeavy, l10n.calendarLegendHeavy),
+      _LegendEntry('symptom', colors.symptomDot, l10n.calendarLegendSymptom),
+      _LegendEntry('today', theme.colorScheme.primary, l10n.calendarLegendToday, style: _LegendSwatchStyle.ring),
+      _LegendEntry('predicted', colors.predictedBorder, l10n.calendarLegendPredicted, style: _LegendSwatchStyle.hatched),
+      _LegendEntry('pms', pmsBadgeColor(brightness), l10n.calendarLegendPms, style: _LegendSwatchStyle.icon, icon: Icons.spa),
+      _LegendEntry('cramps', crampsBadgeColor(brightness), l10n.calendarLegendCramps, style: _LegendSwatchStyle.icon, icon: Icons.bolt),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -929,7 +971,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
         // selected (issue #312 review) — a shared label would collide
         // with every `find.text` lookup in a widget test that opens with
         // the default (unselected) layer set.
-        Text('Symptom layer dots', style: theme.textTheme.labelSmall),
+        Text(
+          AppLocalizations.of(context).calendarLegendLayerDots,
+          style: theme.textTheme.labelSmall,
+        ),
       ],
     );
   }
@@ -986,9 +1031,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// The symptom-layers control (R2): a collapsed summary row (tap to
   /// expand) over the collapsible chip panel.
   Widget _layersHeader(List<String> layerList, ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
     final summary = layerList.isEmpty
-        ? 'Symptom layers'
-        : 'Layers: ${layerList.map(_displayOf).join(', ')}';
+        ? l10n.calendarSymptomLayers
+        : l10n.calendarLayersSummary(layerList.map(_displayOf).join(', '));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
@@ -996,8 +1042,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
           IconButton(
             key: const ValueKey('symptom-layers-toggle'),
             tooltip: _layersExpanded
-                ? 'Hide symptom layers'
-                : 'Show symptom layers',
+                ? l10n.calendarHideSymptomLayers
+                : l10n.calendarShowSymptomLayers,
             icon: Icon(_layersExpanded ? Icons.expand_less : Icons.expand_more),
             visualDensity: VisualDensity.compact,
             onPressed: () => setState(() => _layersExpanded = !_layersExpanded),
@@ -1043,9 +1089,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// like any other estimate, so the only caller left of this strip is
   /// [NotEnoughHistory].
   Widget _keepLoggingStrip(ThemeData theme) {
-    const message =
-        'Keep logging — predicted bands appear once a few cycles are '
-        'recorded.';
+    final message = AppLocalizations.of(context).calendarKeepLogging;
     return Padding(
       key: const ValueKey('keep-logging-strip'),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -1083,8 +1127,9 @@ class _MonthCalendarState extends State<MonthCalendar> {
         ? LocalDate(year + 1, 1, 1)
         : LocalDate(year, month + 1, 1);
     final daysInMonth = firstOfNext.difference(firstOfMonth);
-    // DateTime.weekday is 1=Monday..7=Sunday; the grid starts on Sunday.
-    final leadingBlanks = DateTime(year, month, 1).weekday % 7;
+    // Issue #160: the grid's week start is the explicit [kFirstDayOfWeek]
+    // seam (today Sunday), no longer `weekday % 7` arithmetic.
+    final leadingBlanks = leadingBlanksFor(year, month);
     return [
       for (var blank = 0; blank < leadingBlanks; blank++)
         const SizedBox.shrink(),
@@ -1138,6 +1183,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
           entry: entry,
           today: today,
           cell: forecastCell,
+          monthNames:
+              dates.monthNames(locale: dates.calendarLocale(context)),
         ),
         excludeSemantics: true,
         child: Opacity(
@@ -1531,12 +1578,15 @@ class _FutureDayExplainer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _formatDate(date),
+              dates.formatMonthDayYear(
+                DateTime(date.year, date.month, date.day),
+                locale: dates.calendarLocale(context),
+              ),
               key: const ValueKey('future-explainer-date'),
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
-            ..._body(theme),
+            ..._body(theme, AppLocalizations.of(context)),
             const SizedBox(height: 16),
             Text(
               kEstimateDisclaimer,
@@ -1549,13 +1599,12 @@ class _FutureDayExplainer extends StatelessWidget {
     );
   }
 
-  List<Widget> _body(ThemeData theme) {
+  List<Widget> _body(ThemeData theme, AppLocalizations l10n) {
     final body = theme.textTheme.bodyMedium;
     if (cycles.isEmpty) {
       return [
         Text(
-          'No estimates yet — keep logging. Predicted bands appear on the '
-          'calendar once a few cycles are recorded.',
+          l10n.futureExplainerNoEstimate,
           key: const ValueKey('future-explainer-no-estimate'),
           style: body,
         ),
@@ -1565,8 +1614,7 @@ class _FutureDayExplainer extends StatelessWidget {
     if (cell == null) {
       return [
         Text(
-          'No prediction for this date. Days can be logged once they '
-          'arrive.',
+          l10n.futureExplainerNone,
           key: const ValueKey('future-explainer-none'),
           style: body,
         ),
@@ -1576,38 +1624,33 @@ class _FutureDayExplainer extends StatelessWidget {
     return [
       if (cell.predictedBleed)
         Text(
-          'Predicted period day'
-          '${cell.cycleDayNumber == null ? '' : ' — cycle day ${cell.cycleDayNumber} of the first predicted cycle'}. '
-          'The date may shift by about $spread day${spread == 1 ? '' : 's'} '
-          'either way as new periods are logged.',
+          cell.cycleDayNumber == null
+              ? l10n.futureExplainerBand(spread)
+              : l10n.futureExplainerBandWithCycleDay(cell.cycleDayNumber!, spread),
           key: const ValueKey('future-explainer-band'),
           style: body,
         ),
       if (cell.pmsBadge)
         Text(
-          'Inside the predicted premenstrual window — symptoms like mood '
-          'shifts and bloating often show up in the week before a period.',
+          l10n.futureExplainerPms,
           key: const ValueKey('future-explainer-pms'),
           style: body,
         ),
       if (cell.crampsBadge)
         Text(
-          'Inside the predicted cramps window — cramps commonly occur '
-          'within two days of a period start.',
+          l10n.futureExplainerCramps,
           key: const ValueKey('future-explainer-cramps'),
           style: body,
         ),
       if (cell.cycleDayNumber != null && !cell.predictedBleed)
         Text(
-          'Cycle day ${cell.cycleDayNumber} of the first predicted cycle. '
-          'Only the first predicted cycle is counted day by day — '
-          'estimates compound too much further out.',
+          l10n.futureExplainerNumeral(cell.cycleDayNumber!),
           key: const ValueKey('future-explainer-numeral'),
           style: body,
         ),
       const SizedBox(height: 8),
       Text(
-        'Estimate confidence: ${cell.tier.label.toLowerCase()}.',
+        l10n.futureExplainerConfidence(cell.tier.label.toLowerCase()),
         key: const ValueKey('future-explainer-confidence'),
         style: body,
       ),
@@ -1657,6 +1700,7 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final nextYearDisabled = _monthIndex(_year + 1, 1) > widget.maxMonthIndex;
     return SafeArea(
       child: Padding(
@@ -1670,7 +1714,7 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
               children: [
                 IconButton(
                   key: const ValueKey('month-picker-prev-year'),
-                  tooltip: 'Previous year',
+                  tooltip: l10n.monthPickerPreviousYear,
                   icon: const Icon(Icons.chevron_left),
                   onPressed: () => _shiftYear(-1),
                 ),
@@ -1681,7 +1725,7 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
                 ),
                 IconButton(
                   key: const ValueKey('month-picker-next-year'),
-                  tooltip: 'Next year',
+                  tooltip: l10n.monthPickerNextYear,
                   icon: const Icon(Icons.chevron_right),
                   onPressed: nextYearDisabled ? null : () => _shiftYear(1),
                 ),
@@ -1714,7 +1758,11 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
         onPressed: disabled
             ? null
             : () => Navigator.of(context).pop((_year, month)),
-        child: Text(kMonthNames[month - 1].substring(0, 3)),
+        child: Text(
+          dates.shortMonthNames(
+            locale: dates.calendarLocale(context),
+          )[month - 1],
+        ),
       ),
     );
   }

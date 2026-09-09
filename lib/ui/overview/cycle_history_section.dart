@@ -21,14 +21,20 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
-import 'package:lunarlog/ui/logging/month_calendar.dart' show kMonthNames;
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:provider/provider.dart';
 
-String _formatDate(LocalDate date) =>
-    '${kMonthNames[date.month - 1]} ${date.day}, ${date.year}';
+/// Issue #160: month names are locale-derived (`lib/ui/l10n/dates.dart`),
+/// replacing the `kMonthNames` list this file used to import from the
+/// month calendar.
+String _formatDate(LocalDate date, BuildContext context) =>
+    dates.formatMonthDayYear(
+      DateTime(date.year, date.month, date.day),
+      locale: dates.calendarLocale(context),
+    );
 
 /// Shared with `AnalysisTab` (issue #223 follow-up) so both headline-stat
 /// renderings format identically without a second copy of this logic.
@@ -255,14 +261,14 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
   Widget _itemRow(BuildContext context, CycleHistoryItem item) {
     final theme = Theme.of(context);
     final iso = item.start.iso;
-    if (item.isOpen) return _openRow(theme, item);
+    if (item.isOpen) return _openRow(context, theme, item);
     return Opacity(
       opacity: item.omitted ? 0.55 : 1,
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         dense: true,
         key: ValueKey('history-item-$iso'),
-        title: Text(_formatDate(item.start)),
+        title: Text(_formatDate(item.start, context)),
         subtitle: item.omitted
             ? const Text('Excluded from averages')
             : item.outlier
@@ -305,7 +311,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
     );
   }
 
-  Widget _openRow(ThemeData theme, CycleHistoryItem item) {
+  Widget _openRow(BuildContext context, ThemeData theme, CycleHistoryItem item) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
@@ -315,7 +321,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         size: 18,
         color: theme.colorScheme.primary,
       ),
-      title: Text('Current cycle — started ${_formatDate(item.start)}'),
+      title: Text('Current cycle — started ${_formatDate(item.start, context)}'),
       subtitle: item.omitted
           ? const Text('Skipped — excluded from averages')
           : null,

@@ -1,0 +1,376 @@
+{
+  "@@locale": "en",
+  "calendarPreviousMonthTooltip": "Previous month",
+  "@calendarPreviousMonthTooltip": {
+    "description": "Tooltip on the month calendar's back-month chevron."
+  },
+  "calendarTodayTooltip": "Today",
+  "@calendarTodayTooltip": {
+    "description": "Tooltip on the month calendar's jump-to-today button."
+  },
+  "calendarNextMonthTooltip": "Next month",
+  "@calendarNextMonthTooltip": {
+    "description": "Tooltip on the month calendar's forward-month chevron."
+  },
+  "calendarMonthYearLabel": "{month} {year}",
+  "@calendarMonthYearLabel": {
+    "description": "The month calendar's header label, e.g. 'September 2026'.",
+    "placeholders": {
+      "month": {
+        "type": "String"
+      },
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "calendarNoEntriesTitle": "No entries this month",
+  "@calendarNoEntriesTitle": {
+    "description": "Title of the empty-month banner above the calendar grid."
+  },
+  "calendarNoEntriesBody": "Tap a day to log it",
+  "@calendarNoEntriesBody": {
+    "description": "Body of the empty-month banner above the calendar grid."
+  },
+  "calendarLayerLimitSnack": "Up to three symptom layers at once",
+  "@calendarLayerLimitSnack": {
+    "description": "Snackbar shown when a fourth symptom layer is selected."
+  },
+  "calendarShowLegend": "Show legend",
+  "@calendarShowLegend": {
+    "description": "Semantics label expanding the calendar's legend strip."
+  },
+  "calendarHideLegend": "Hide legend",
+  "@calendarHideLegend": {
+    "description": "Semantics label collapsing the calendar's legend strip."
+  },
+  "calendarLegend": "Legend",
+  "@calendarLegend": {
+    "description": "The collapsed label of the calendar's legend strip."
+  },
+  "calendarLegendSpotting": "Spotting flow",
+  "@calendarLegendSpotting": {
+    "description": "Legend entry for a spotting-level logged bleed day."
+  },
+  "calendarLegendLight": "Light flow",
+  "@calendarLegendLight": {
+    "description": "Legend entry for a light-level logged bleed day."
+  },
+  "calendarLegendMedium": "Medium flow",
+  "@calendarLegendMedium": {
+    "description": "Legend entry for a medium-level logged bleed day."
+  },
+  "calendarLegendHeavy": "Heavy flow",
+  "@calendarLegendHeavy": {
+    "description": "Legend entry for a heavy-level logged bleed day."
+  },
+  "calendarLegendSymptom": "Symptom day",
+  "@calendarLegendSymptom": {
+    "description": "Legend entry for a logged symptom-only day."
+  },
+  "calendarLegendToday": "Today",
+  "@calendarLegendToday": {
+    "description": "Legend entry for today's ring marker."
+  },
+  "calendarLegendPredicted": "Predicted day",
+  "@calendarLegendPredicted": {
+    "description": "Legend entry for a predicted (hatched) day band."
+  },
+  "calendarLegendPms": "PMS window",
+  "@calendarLegendPms": {
+    "description": "Legend entry for the predicted premenstrual badge."
+  },
+  "calendarLegendCramps": "Cramps window",
+  "@calendarLegendCramps": {
+    "description": "Legend entry for the predicted cramps badge."
+  },
+  "calendarLegendLayerDots": "Symptom layer dots",
+  "@calendarLegendLayerDots": {
+    "description": "Legend entry keying the symptom-layer colour channel."
+  },
+  "calendarSymptomLayers": "Symptom layers",
+  "@calendarSymptomLayers": {
+    "description": "The symptom-layers summary row when no layer is active."
+  },
+  "calendarLayersSummary": "Layers: {tags}",
+  "@calendarLayersSummary": {
+    "description": "The symptom-layers summary row, listing the active layers.",
+    "placeholders": {
+      "tags": {
+        "type": "String"
+      }
+    }
+  },
+  "calendarShowSymptomLayers": "Show symptom layers",
+  "@calendarShowSymptomLayers": {
+    "description": "Tooltip expanding the symptom-layers chip panel."
+  },
+  "calendarHideSymptomLayers": "Hide symptom layers",
+  "@calendarHideSymptomLayers": {
+    "description": "Tooltip collapsing the symptom-layers chip panel."
+  },
+  "calendarKeepLogging": "Keep logging — predicted bands appear once a few cycles are recorded.",
+  "@calendarKeepLogging": {
+    "description": "Strip shown on quiet months while no estimate is active."
+  },
+  "monthPickerPreviousYear": "Previous year",
+  "@monthPickerPreviousYear": {
+    "description": "Tooltip on the month/year picker's back-year chevron."
+  },
+  "monthPickerNextYear": "Next year",
+  "@monthPickerNextYear": {
+    "description": "Tooltip on the month/year picker's forward-year chevron."
+  },
+  "futureExplainerNoEstimate": "No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.",
+  "@futureExplainerNoEstimate": {
+    "description": "Future-day explainer body when no estimate exists at all."
+  },
+  "futureExplainerNone": "No prediction for this date. Days can be logged once they arrive.",
+  "@futureExplainerNone": {
+    "description": "Future-day explainer body when nothing is predicted for the date."
+  },
+  "futureExplainerBand": "Predicted period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
+  "@futureExplainerBand": {
+    "description": "Future-day explainer body for a predicted bleed day with no cycle-day numeral.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "futureExplainerBandWithCycleDay": "Predicted period day — cycle day {day} of the first predicted cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
+  "@futureExplainerBandWithCycleDay": {
+    "description": "Future-day explainer body for a predicted bleed day inside the first predicted cycle.",
+    "placeholders": {
+      "day": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "futureExplainerPms": "Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.",
+  "@futureExplainerPms": {
+    "description": "Future-day explainer body for a day in the predicted PMS window."
+  },
+  "futureExplainerCramps": "Inside the predicted cramps window — cramps commonly occur within two days of a period start.",
+  "@futureExplainerCramps": {
+    "description": "Future-day explainer body for a day in the predicted cramps window."
+  },
+  "futureExplainerNumeral": "Cycle day {day} of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.",
+  "@futureExplainerNumeral": {
+    "description": "Future-day explainer body for a counted future cycle day that is not a predicted bleed day.",
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "futureExplainerConfidence": "Estimate confidence: {tier}.",
+  "@futureExplainerConfidence": {
+    "description": "Future-day explainer confidence line, e.g. 'Estimate confidence: high.'.",
+    "placeholders": {
+      "tier": {
+        "type": "String"
+      }
+    }
+  },
+  "flowLevelNone": "None",
+  "@flowLevelNone": {
+    "description": "Day sheet flow chip label for no flow."
+  },
+  "flowLevelSpotting": "Spotting",
+  "@flowLevelSpotting": {
+    "description": "Day sheet flow chip label for spotting."
+  },
+  "flowLevelLight": "Light",
+  "@flowLevelLight": {
+    "description": "Day sheet flow chip label for light flow."
+  },
+  "flowLevelMedium": "Medium",
+  "@flowLevelMedium": {
+    "description": "Day sheet flow chip label for medium flow."
+  },
+  "flowLevelHeavy": "Heavy",
+  "@flowLevelHeavy": {
+    "description": "Day sheet flow chip label for heavy flow."
+  },
+  "daySheetDeleteTitle": "Delete this entry?",
+  "@daySheetDeleteTitle": {
+    "description": "Title of the day entry delete confirmation dialog."
+  },
+  "daySheetDeleteBody": "The entry for {date} is removed from the calendar.",
+  "@daySheetDeleteBody": {
+    "description": "Body of the day entry delete confirmation dialog; {date} is an ISO date string.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "daySheetCancel": "Cancel",
+  "@daySheetCancel": {
+    "description": "Cancel action of the day entry delete confirmation dialog."
+  },
+  "daySheetDelete": "Delete",
+  "@daySheetDelete": {
+    "description": "Confirm action of the day entry delete confirmation dialog."
+  },
+  "daySheetFutureDate": "Future dates can't be logged.",
+  "@daySheetFutureDate": {
+    "description": "Day sheet body when opened for a future date."
+  },
+  "daySheetNoteLabel": "Note",
+  "@daySheetNoteLabel": {
+    "description": "Label of the day sheet's free-text note field."
+  },
+  "daySheetSaveError": "Couldn't save — try again",
+  "@daySheetSaveError": {
+    "description": "Inline retry error shown when a day entry save fails."
+  },
+  "daySheetDeleteError": "Couldn't delete — try again",
+  "@daySheetDeleteError": {
+    "description": "Inline retry error shown when a day entry delete fails."
+  },
+  "daySheetDeleteTooltip": "Delete entry",
+  "@daySheetDeleteTooltip": {
+    "description": "Tooltip on the day sheet's delete affordance."
+  },
+  "daySheetSave": "Save",
+  "@daySheetSave": {
+    "description": "The day sheet's save button label."
+  },
+  "daySheetUnrecognised": "Unrecognised",
+  "@daySheetUnrecognised": {
+    "description": "Heading above inert chips for tags this build does not recognise."
+  },
+  "daySheetNoEntry": "No entry for this day.",
+  "@daySheetNoEntry": {
+    "description": "Read-only day sheet body when the day has no entry."
+  },
+  "daySheetFlowLabel": "Flow",
+  "@daySheetFlowLabel": {
+    "description": "Heading above the flow value in the read-only day sheet."
+  },
+  "daySheetTagsLabel": "Tags",
+  "@daySheetTagsLabel": {
+    "description": "Heading above the tag chips in the read-only day sheet."
+  },
+  "daySheetNoNote": "No note",
+  "@daySheetNoNote": {
+    "description": "Placeholder shown for an empty note in the read-only day sheet."
+  },
+  "overviewSeeHistory": "See cycle history",
+  "@overviewSeeHistory": {
+    "description": "Link from the overview panel to the Insights cycle history."
+  },
+  "overviewLoggedSnackbar": "Recorded a medium-flow period start for today.",
+  "@overviewLoggedSnackbar": {
+    "description": "Snackbar confirming the today card's quick-log action."
+  },
+  "overviewUndo": "Undo",
+  "@overviewUndo": {
+    "description": "Snackbar action undoing the today card's quick log."
+  },
+  "overviewExcludedSnackbar": "This cycle is excluded from future averages.",
+  "@overviewExcludedSnackbar": {
+    "description": "Snackbar confirming the long-cycle exclude action."
+  },
+  "overviewLongCycleTitle": "This cycle is unusually long",
+  "@overviewLongCycleTitle": {
+    "description": "Title of the overview's unusually-long-cycle prompt."
+  },
+  "overviewLongCycleBody": "It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.",
+  "@overviewLongCycleBody": {
+    "description": "Body of the overview's unusually-long-cycle prompt."
+  },
+  "overviewLongCycleExclude": "Exclude this cycle",
+  "@overviewLongCycleExclude": {
+    "description": "Action excluding the open cycle from future averages."
+  },
+  "overviewLongCyclePredictionsOff": "Turn off predictions (coming soon)",
+  "@overviewLongCyclePredictionsOff": {
+    "description": "Disabled placeholder action for turning predictions off (issue #225)."
+  },
+  "overviewReminderHint": "Reminders unavailable — notifications are off",
+  "@overviewReminderHint": {
+    "description": "Hint line shown when notification permission is denied."
+  },
+  "overviewTurnOnReminders": "Turn on reminders",
+  "@overviewTurnOnReminders": {
+    "description": "Action on the denied-permission reminder hint."
+  },
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "The settings screen's app bar title."
+  },
+  "settingsSendFeedback": "Send feedback",
+  "@settingsSendFeedback": {
+    "description": "Settings tile opening the in-app feedback form."
+  },
+  "settingsSendFeedbackSubtitle": "Report a bug, ask a question, or share an idea",
+  "@settingsSendFeedbackSubtitle": {
+    "description": "Subtitle of the send-feedback tile."
+  },
+  "settingsContactSupport": "Contact support",
+  "@settingsContactSupport": {
+    "description": "Settings tile (and dialog title) for the email support fallback."
+  },
+  "settingsContactSupportSubtitle": "Email us with a bug or question",
+  "@settingsContactSupportSubtitle": {
+    "description": "Subtitle of the contact-support tile."
+  },
+  "settingsContactSupportDialogBody": "Email us with a bug report, question, or idea:",
+  "@settingsContactSupportDialogBody": {
+    "description": "Body of the contact-support dialog, above the address."
+  },
+  "settingsSupportHistory": "Support history",
+  "@settingsSupportHistory": {
+    "description": "Settings tile opening past feedback conversations."
+  },
+  "settingsSupportHistorySubtitle": "See replies and continue a conversation",
+  "@settingsSupportHistorySubtitle": {
+    "description": "Subtitle of the support-history tile."
+  },
+  "settingsRelockTitle": "Relock after inactivity",
+  "@settingsRelockTitle": {
+    "description": "Settings switch controlling the inactivity auto-relock."
+  },
+  "settingsRelockSubtitle": "Locks the app after 2 minutes without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.",
+  "@settingsRelockSubtitle": {
+    "description": "Subtitle of the inactivity auto-relock switch."
+  },
+  "settingsHealthHeader": "Health",
+  "@settingsHealthHeader": {
+    "description": "Section header above the health-sync settings tile."
+  },
+  "settingsHealthSyncTitle": "Health app sync",
+  "@settingsHealthSyncTitle": {
+    "description": "Settings tile opening per-profile Health app sync."
+  },
+  "settingsHealthSyncSubtitle": "Choose which profile's data may sync to this phone's Health app",
+  "@settingsHealthSyncSubtitle": {
+    "description": "Subtitle of the health-sync tile."
+  },
+  "settingsPrivacyTitle": "Privacy policy",
+  "@settingsPrivacyTitle": {
+    "description": "Settings tile opening the in-app privacy policy dialog."
+  },
+  "settingsPrivacySubtitle": "Sync & family sharing, protected at rest, zero tracking",
+  "@settingsPrivacySubtitle": {
+    "description": "Subtitle of the privacy policy tile."
+  },
+  "settingsPrivacyDialogTitle": "LunarLog Privacy Policy",
+  "@settingsPrivacyDialogTitle": {
+    "description": "Title of the in-app privacy policy dialog."
+  },
+  "settingsPrivacyDialogBody": "LunarLog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Caregiver Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
+  "@settingsPrivacyDialogBody": {
+    "description": "Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary."
+  },
+  "settingsClose": "Close",
+  "@settingsClose": {
+    "description": "Close action of the settings dialogs."
+  }
+}

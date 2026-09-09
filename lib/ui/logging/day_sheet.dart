@@ -29,6 +29,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
@@ -43,6 +44,20 @@ String flowLabel(FlowLevel flow) {
   final name = flow.name;
   return name[0].toUpperCase() + name.substring(1);
 }
+
+/// Issue #160: the localized flow-chip label. Same five strings
+/// [flowLabel] derives from the enum name for `en`; this variant reads them
+/// from [AppLocalizations] so the sheet's chips follow the active locale
+/// (`flowLabel` stays as the `en` fallback for callers outside the four
+/// localized screens, e.g. the activity feed).
+String localizedFlowLabel(FlowLevel flow, AppLocalizations l10n) =>
+    switch (flow) {
+      FlowLevel.none => l10n.flowLevelNone,
+      FlowLevel.spotting => l10n.flowLevelSpotting,
+      FlowLevel.light => l10n.flowLevelLight,
+      FlowLevel.medium => l10n.flowLevelMedium,
+      FlowLevel.heavy => l10n.flowLevelHeavy,
+    };
 
 class DaySheet extends StatefulWidget {
   const DaySheet({
@@ -196,21 +211,22 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   Future<void> _delete() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete this entry?'),
+        title: Text(l10n.daySheetDeleteTitle),
         content: Text(
-          'The entry for ${widget.date.iso} is removed from the calendar.',
+          l10n.daySheetDeleteBody(widget.date.iso),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.daySheetCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
+            child: Text(l10n.daySheetDelete),
           ),
         ],
       ),
@@ -242,7 +258,7 @@ class _DaySheetState extends State<DaySheet> {
       return _sheetShell(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 24),
-          child: const Text("Future dates can't be logged."),
+          child: Text(AppLocalizations.of(context).daySheetFutureDate),
         ),
       );
     }
@@ -267,6 +283,7 @@ class _DaySheetState extends State<DaySheet> {
 
   Widget _editableBody() {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -281,7 +298,8 @@ class _DaySheetState extends State<DaySheet> {
                 if (widget.existing != null)
                   CaregiverAttributionBadge(
                     loggedByUserId: widget.existing!.loggedByUserId,
-                    lastModifiedByUserId: widget.existing!.lastModifiedByUserId,
+                    lastModifiedByUserId:
+                        widget.existing!.lastModifiedByUserId,
                     currentUserId: widget.currentUserId,
                     guardians: widget.guardians,
                     source: widget.existing!.source.toDb(),
@@ -295,7 +313,7 @@ class _DaySheetState extends State<DaySheet> {
             children: [
               for (final level in FlowLevel.values)
                 ChoiceChip(
-                  label: Text(flowLabel(level)),
+                  label: Text(localizedFlowLabel(level, l10n)),
                   selected: _flow == level,
                   onSelected: _busy
                       ? null
@@ -348,8 +366,8 @@ class _DaySheetState extends State<DaySheet> {
               key: const ValueKey('note-field'),
               controller: _noteController,
               enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Note',
+              decoration: InputDecoration(
+                labelText: l10n.daySheetNoteLabel,
                 alignLabelWithHint: true,
               ),
               maxLines: 3,
@@ -363,7 +381,7 @@ class _DaySheetState extends State<DaySheet> {
               padding: const EdgeInsets.only(top: 8),
               child: InlineError(
                 key: const ValueKey('save-error'),
-                message: "Couldn't save — try again",
+                message: l10n.daySheetSaveError,
                 onRetry: _save,
               ),
             ),
@@ -372,7 +390,7 @@ class _DaySheetState extends State<DaySheet> {
               padding: const EdgeInsets.only(top: 8),
               child: InlineError(
                 key: const ValueKey('delete-error'),
-                message: "Couldn't delete — try again",
+                message: l10n.daySheetDeleteError,
                 onRetry: _delete,
               ),
             ),
@@ -385,7 +403,7 @@ class _DaySheetState extends State<DaySheet> {
               children: [
                 if (widget.existing != null)
                   IconButton(
-                    tooltip: 'Delete entry',
+                    tooltip: l10n.daySheetDeleteTooltip,
                     icon: const Icon(Icons.delete_outline),
                     onPressed: _busy ? null : _delete,
                   ),
@@ -398,7 +416,7 @@ class _DaySheetState extends State<DaySheet> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Save'),
+                      : Text(l10n.daySheetSave),
                 ),
               ],
             ),
@@ -416,7 +434,10 @@ class _DaySheetState extends State<DaySheet> {
   List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
         Padding(
           padding: const EdgeInsets.only(top: 12, bottom: 4),
-          child: Text('Unrecognised', style: theme.textTheme.labelMedium),
+          child: Text(
+            AppLocalizations.of(context).daySheetUnrecognised,
+            style: theme.textTheme.labelMedium,
+          ),
         ),
         Wrap(
           spacing: 8,
@@ -445,6 +466,7 @@ class _DaySheetState extends State<DaySheet> {
 
   Widget _readOnlyBody() {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final reason = _readOnlyReason;
     final existing = widget.existing;
     if (existing == null) {
@@ -457,7 +479,7 @@ class _DaySheetState extends State<DaySheet> {
               Text(reason, style: theme.textTheme.bodyMedium),
               const SizedBox(height: 4),
             ],
-            Text('No entry for this day.', style: theme.textTheme.bodyMedium),
+            Text(l10n.daySheetNoEntry, style: theme.textTheme.bodyMedium),
           ],
         ),
       );
@@ -484,11 +506,14 @@ class _DaySheetState extends State<DaySheet> {
           ],
         ),
         const SizedBox(height: 12),
-        Text('Flow', style: theme.textTheme.labelMedium),
-        Text(flowLabel(existing.flow), style: theme.textTheme.titleSmall),
+        Text(l10n.daySheetFlowLabel, style: theme.textTheme.labelMedium),
+        Text(
+          localizedFlowLabel(existing.flow, l10n),
+          style: theme.textTheme.titleSmall,
+        ),
         if (existing.tags.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('Tags', style: theme.textTheme.labelMedium),
+          Text(l10n.daySheetTagsLabel, style: theme.textTheme.labelMedium),
           Wrap(
             spacing: 8,
             runSpacing: 4,
@@ -499,10 +524,10 @@ class _DaySheetState extends State<DaySheet> {
           ),
         ],
         const SizedBox(height: 12),
-        Text('Note', style: theme.textTheme.labelMedium),
+        Text(l10n.daySheetNoteLabel, style: theme.textTheme.labelMedium),
         Text(
           (existing.note == null || existing.note!.isEmpty)
-              ? 'No note'
+              ? l10n.daySheetNoNote
               : existing.note!,
         ),
       ],
