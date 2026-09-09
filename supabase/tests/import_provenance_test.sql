@@ -143,20 +143,29 @@ select is((select category from public.observations where profile_id = tests.uli
 
 -- ---------------------------------------------------------------------------
 -- observations.import_id: round trip and containment guard via sync_push.
+-- Issue #167 gave import_id a real `references import_jobs(id)` FK (this
+-- column was an unconstrained placeholder before that migration), so the
+-- id used below must be a real import_jobs row, not an arbitrary literal
+-- uuid -- a fixed id inserted directly rather than captured, since nothing
+-- else in this file needs to look it back up.
 -- ---------------------------------------------------------------------------
 insert into public.day_entries (id, user_id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(920), tests.get_supabase_uid('imp_mom'), tests.ulid(900), '2026-09-20', 'UTC', 'none', '2026-09-20T00:00:00Z');
+
+insert into public.import_jobs (id, profile_id, source, status, total_rows, created_by)
+values ('99999999-9999-9999-9999-999999999999'::uuid, tests.ulid(900), 'clue_import', 'pending', 1,
+        tests.get_supabase_uid('imp_mom'));
 
 insert into r select 'obs_import_id_insert', public.sync_push('[]'::jsonb, '[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(921), 'day_entry_id', tests.ulid(920), 'profile_id', tests.ulid(900),
     'local_date', '2026-09-20', 'tz', 'UTC', 'category', 'pain', 'source', 'clue_import',
-    'source_id', 'clue-921', 'import_id', '22222222-2222-2222-2222-222222222222',
+    'source_id', 'clue-921', 'import_id', '99999999-9999-9999-9999-999999999999',
     'updated_at', '2026-09-20T10:00:00Z')));
 select is(pg_temp.resp('obs_import_id_insert') -> 'rejected', '[]'::jsonb,
   'an observation push carrying import_id is accepted');
 select is((select import_id::text from public.observations where id = tests.ulid(921)),
-  '22222222-2222-2222-2222-222222222222', 'observations.import_id round-trips through sync_push');
+  '99999999-9999-9999-9999-999999999999', 'observations.import_id round-trips through sync_push');
 
 insert into r select 'obs_import_id_old_client', public.sync_push('[]'::jsonb, '[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
@@ -166,7 +175,7 @@ insert into r select 'obs_import_id_old_client', public.sync_push('[]'::jsonb, '
 select is((select category from public.observations where id = tests.ulid(921)), 'sleep',
   'the old-client push still applies the field it did send');
 select is((select import_id::text from public.observations where id = tests.ulid(921)),
-  '22222222-2222-2222-2222-222222222222',
+  '99999999-9999-9999-9999-999999999999',
   'an old client omitting import_id does not reset the stored value (containment guard)');
 select is((select source from public.observations where id = tests.ulid(921)), 'clue_import',
   '#159 review finding: an old client omitting source does not reset the stored value to manual either -- source now gets the same containment guard as source_id/import_id');
@@ -187,7 +196,7 @@ select is((select category from public.observations where id = tests.ulid(921)),
 select is((select source_id from public.observations where id = tests.ulid(921)), 'clue-921',
   '#159: source_id SURVIVES an observations tombstone (reverses #240''s original clearing)');
 select is((select import_id::text from public.observations where id = tests.ulid(921)),
-  '22222222-2222-2222-2222-222222222222',
+  '99999999-9999-9999-9999-999999999999',
   '#159: import_id survives an observations tombstone');
 select is((select source from public.observations where id = tests.ulid(921)), 'clue_import',
   '#159 review finding: source SURVIVES an observations tombstone too (the tombstone push omits it entirely, and the containment guard added above keeps it from coalescing to manual)');

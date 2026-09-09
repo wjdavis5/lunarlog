@@ -3,7 +3,7 @@
 -- create_supabase_user / authenticate_as handshake and the pg_temp snapshot
 -- idiom already established in account_deletion_test.sql.
 begin;
-select plan(69);
+select plan(73);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -161,6 +161,12 @@ select tests.authenticate_as('user_b');
 insert into public.push_devices (id, user_id, token, platform)
 values ('00000000-0000-0000-0000-0000000000b1'::uuid, tests.get_supabase_uid('user_b'), 'token-family-b-BBBB2222', 'android');
 
+-- Issue #167: B (co_parent, non-owner) creates their own import job on the
+-- shared profile - proves the "caller personally ran" half of import_jobs'
+-- export scoping (mirroring guardian_invitations exactly).
+insert into public.import_jobs (profile_id, source, status, total_rows, processed_rows, created_by)
+values (tests.ulid(1), 'clue_import', 'running', 50, 20, tests.get_supabase_uid('user_b'));
+
 select tests.authenticate_as('user_a');
 select public.upsert_reminder_window(tests.ulid(1), '2026-09-15', false);
 
@@ -169,6 +175,11 @@ select public.create_ownership_transfer(
   'c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0',
   'reserve for B', 72
 );
+
+-- Issue #167: A (owner) creates their own import job on the owned profile -
+-- the "owned profile" half of the scoping.
+insert into public.import_jobs (profile_id, source, status, total_rows, processed_rows, created_by)
+values (tests.ulid(1), 'manual', 'completed', 5, 5, tests.get_supabase_uid('user_a'));
 
 -- missed_entry_alert_state has no authenticated grant at all - owned
 -- exclusively by scan_missed_entry_reminders() - so its fixture rows go in
@@ -245,6 +256,11 @@ select public.create_ownership_transfer(
 insert into public.feedback_tickets (user_id, reply_email, category, message)
 values (tests.get_supabase_uid('user_c'), 'c@test.local', 'support', 'Question about C');
 
+-- Issue #167: family C's own import job - must never leak into A's or B's
+-- export (neither owns nor created it).
+insert into public.import_jobs (profile_id, source, status, total_rows, processed_rows, created_by)
+values (tests.ulid(2), 'clue_import', 'failed', 200, 12, tests.get_supabase_uid('user_c'));
+
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
 insert into public.missed_entry_alert_state (profile_id, user_id, last_enqueued_for)
@@ -264,9 +280,9 @@ select pg_temp.snapshot('a_result', public.export_account_data());
 
 select is(
   (select array_agg(k order by k) from jsonb_object_keys(pg_temp.snap('a_result')) k),
-  array['exported_at', 'feedback_tickets', 'guardian_invitations', 'missed_entry_alert_state',
-        'notification_preferences', 'ownership_transfers', 'profile_guardians',
-        'profile_reminder_windows', 'profiles', 'push_devices', 'schema_version'],
+  array['exported_at', 'feedback_tickets', 'guardian_invitations', 'import_jobs',
+        'missed_entry_alert_state', 'notification_preferences', 'ownership_transfers',
+        'profile_guardians', 'profile_reminder_windows', 'profiles', 'push_devices', 'schema_version'],
   'A: export document has exactly the expected top-level keys'
 );
 
@@ -367,6 +383,19 @@ select is(
   'A: the one ownership_transfers row is on the profile A initiated a transfer for'
 );
 
+-- Issue #167: A's export includes both import_jobs rows on the owned
+-- profile - A's own AND B's (owned-profile scoping catches every job on
+-- that profile regardless of who created it) - but not family C's.
+select is(pg_temp.count_in(pg_temp.snap('a_result'), 'import_jobs'), 2::bigint,
+  'A: import_jobs includes both jobs on the owned profile (A''s own and B''s)');
+
+select is(
+  (select array_agg((value ->> 'created_by')::uuid order by value ->> 'created_by')
+     from jsonb_array_elements(pg_temp.snap('a_result') -> 'import_jobs')),
+  pg_temp.sorted_uuids(tests.get_supabase_uid('user_a'), tests.get_supabase_uid('user_b')),
+  'A: the two import_jobs rows were created by A and B, never C'
+);
+
 select ok(
   position(tests.get_supabase_uid('user_c')::text in pg_temp.snap('a_result')::text) = 0,
   'A: export contains none of family C''s owner id anywhere'
@@ -461,6 +490,18 @@ select is(pg_temp.count_in(pg_temp.snap('b_result'), 'profile_reminder_windows')
 
 select is(pg_temp.count_in(pg_temp.snap('b_result'), 'ownership_transfers'), 0::bigint,
   'B: ownership_transfers is empty (B neither initiated nor accepted a transfer)');
+
+-- Issue #167: B's export includes only the job B personally created
+-- (created_by = v_uid catches it even though B does not own the profile) -
+-- never A's job on the same profile.
+select is(pg_temp.count_in(pg_temp.snap('b_result'), 'import_jobs'), 1::bigint,
+  'B: import_jobs includes only the job B personally created');
+
+select is(
+  ((pg_temp.snap('b_result') -> 'import_jobs') -> 0 ->> 'created_by')::uuid,
+  tests.get_supabase_uid('user_b'),
+  'B: the one import_jobs row was created by B, never A''s'
+);
 
 select ok(
   not jsonb_path_exists(pg_temp.snap('b_result'), '$.**.token_hash'),
