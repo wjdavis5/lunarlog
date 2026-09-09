@@ -258,6 +258,105 @@ void main() {
     });
   });
 
+  // Issue #173: the exclusive-end pair the Health Connect adapter needs
+  // (contract note from the #319/#180 review) — localDayEndExclusive is
+  // the genuinely exclusive next-midnight instant, and endZoneOffsetFor
+  // is that instant's own offset, which on a DST-transition day differs
+  // from zoneOffsetFor's midnight offset.
+  group('localDayEndExclusive', () {
+    test('is exactly one second after localDayInterval\'s inclusive end',
+        () {
+      const tzName = 'America/New_York';
+      for (final date in [
+        LocalDate(2026, 3, 8), // spring-forward day
+        LocalDate(2026, 11, 1), // fall-back day
+        LocalDate(2026, 8, 30), // ordinary day
+      ]) {
+        final interval = localDayInterval(date, tzName);
+        expect(
+          localDayEndExclusive(date, tzName),
+          interval.end.add(const Duration(seconds: 1)),
+          reason: '$date',
+        );
+      }
+    });
+
+    test('a fall-back day spans 25 hours (America/New_York 2026-11-01)',
+        () {
+      final start =
+          localDayInstant(LocalDate(2026, 11, 1), 'America/New_York');
+      final end =
+          localDayEndExclusive(LocalDate(2026, 11, 1), 'America/New_York');
+      expect(end.difference(start), const Duration(hours: 25));
+    });
+
+    test('a spring-forward day spans 23 hours (America/New_York 2026-03-08)',
+        () {
+      final start = localDayInstant(LocalDate(2026, 3, 8), 'America/New_York');
+      final end =
+          localDayEndExclusive(LocalDate(2026, 3, 8), 'America/New_York');
+      expect(end.difference(start), const Duration(hours: 23));
+    });
+
+    test('throws TimeZoneResolutionException for an unknown zone', () {
+      expect(
+        () => localDayEndExclusive(LocalDate(2026, 1, 1), 'Mars/Olympus'),
+        throwsA(isA<TimeZoneResolutionException>()),
+      );
+    });
+  });
+
+  group('endZoneOffsetFor', () {
+    test('on a fall-back day it differs from the midnight offset '
+        '(Health Connect\'s endZoneOffset requirement)', () {
+      // DST ends 2026-11-01 02:00 EDT: midnight Nov 1 is EDT (-4h), but
+      // the exclusive end (midnight Nov 2) is EST (-5h).
+      final date = LocalDate(2026, 11, 1);
+      expect(
+          zoneOffsetFor(date, 'America/New_York'), const Duration(hours: -4));
+      expect(
+        endZoneOffsetFor(date, 'America/New_York'),
+        const Duration(hours: -5),
+      );
+    });
+
+    test('on a spring-forward day it differs from the midnight offset', () {
+      // DST starts 2026-03-08 02:00 EST: midnight Mar 8 is EST (-5h), the
+      // exclusive end (midnight Mar 9) is EDT (-4h).
+      final date = LocalDate(2026, 3, 8);
+      expect(
+          zoneOffsetFor(date, 'America/New_York'), const Duration(hours: -5));
+      expect(
+        endZoneOffsetFor(date, 'America/New_York'),
+        const Duration(hours: -4),
+      );
+    });
+
+    test('on an ordinary day it matches the midnight offset', () {
+      final date = LocalDate(2026, 8, 30);
+      expect(
+        endZoneOffsetFor(date, 'America/New_York'),
+        zoneOffsetFor(date, 'America/New_York'),
+      );
+    });
+
+    test('equals the day-after\'s own midnight offset', () {
+      // Converting the exclusive end back into the zone yields Nov 2
+      // midnight, whose own offset is what endZoneOffsetFor reports.
+      expect(
+        endZoneOffsetFor(LocalDate(2026, 11, 1), 'America/New_York'),
+        zoneOffsetFor(LocalDate(2026, 11, 2), 'America/New_York'),
+      );
+    });
+
+    test('throws TimeZoneResolutionException for an unknown zone', () {
+      expect(
+        () => endZoneOffsetFor(LocalDate(2026, 1, 1), 'Mars/Olympus'),
+        throwsA(isA<TimeZoneResolutionException>()),
+      );
+    });
+  });
+
   group('midnight-boundary instants: DST-gap and DST-ambiguous local '
       'midnights (review addition, Issue #180)', () {
     test(

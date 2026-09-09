@@ -115,6 +115,40 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         '(the ordering/lifecycle logic) is covered directly against a fake '
         'PushTokenSource.',
   ),
+  // Issue #173: the health-channel platform pins. The constructor is the
+  // entire executable surface of each file -- everything real they bind
+  // to is Swift/Kotlin and can never run under flutter test, so they get
+  // the google_sign_in_client.dart treatment. Two deliberate non-exclusions
+  // keep the exclusion honest (the firebase_push_token_source review above
+  // is the cautionary precedent): ALL shared logic -- the guard-ordering
+  // engine, codec, and error mapping -- lives in
+  // lib/data/health/health_channel.dart and health_channel_codec.dart,
+  // which are NOT excluded and are directly tested against a fake
+  // MethodChannel in test/data/health/, so excluding these two pins hides
+  // no testable logic from the gates. The actual Swift/Kotlin adapter
+  // files (ios/Runner/AppDelegate.swift,
+  // android/.../HealthConnectAdapter.kt) never appear in lcov at all --
+  // coverage instruments Dart only -- which is why the issue's
+  // "exclude the native files" checklist item lands on their Dart-side
+  // pins instead.
+  const CoverageExclusion(
+    'lib/data/health/ios_health_channel.dart',
+    'IOSHealthChannel pins the shared MethodChannelHealthPlatform engine '
+        'to the Swift HKHealthStore handler (AppDelegate.swift, issue '
+        '#173); the constructor is the whole file, the behavior is '
+        'native-only, and every piece of shared logic is tested in the '
+        'non-excluded health_channel.dart/health_channel_codec.dart — '
+        'same treatment as google_sign_in_client.dart.',
+  ),
+  const CoverageExclusion(
+    'lib/data/health/android_health_channel.dart',
+    'AndroidHealthChannel pins the shared MethodChannelHealthPlatform '
+        'engine to the Kotlin HealthConnectClient handler '
+        '(HealthConnectAdapter.kt, issue #173); constructor-only, '
+        'native-backed, with all shared logic tested in the non-excluded '
+        'health_channel.dart/health_channel_codec.dart — same treatment '
+        'as google_sign_in_client.dart.',
+  ),
 ];
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');

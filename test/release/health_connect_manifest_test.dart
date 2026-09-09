@@ -2,8 +2,11 @@
 /// `export_compliance_test.dart`/`sentry_symbols_test.dart`'s shape: read the
 /// Android manifest and Gradle file as text and assert the invariants the
 /// permission/rationale plumbing depends on, since none of this compiles or
-/// runs under `flutter test` -- there is no Dart Health Connect call site yet
-/// (see `AppConfig.hasHealthSync`) and won't be until #173.
+/// runs under `flutter test`. Issue #173 replaced the original "no client
+/// dependency yet" assertion with its inverse: the first-party
+/// `lunarlog/health` channel's Kotlin half (HealthConnectAdapter.kt) is a
+/// real compile-time consumer of `connect-client`, so the dependency must
+/// now exist, pinned, rather than be absent.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -100,9 +103,21 @@ void main() {
     });
 
     test(
-        'no Health Connect client dependency was added -- the rationale '
-        'activity does not need it to compile', () {
-      expect(gradle, isNot(contains('"androidx.health.connect:connect-client')));
+        'the Health Connect client dependency exists, pinned to a stable '
+        'version (issue #173: HealthConnectAdapter.kt is a real consumer)',
+        () {
+      // Pinned to a concrete stable version -- never floating and never a
+      // pre-release (-alpha/-beta/-rc), which would track API churn.
+      expect(
+        gradle,
+        contains(RegExp(
+            r'"androidx\.health\.connect:connect-client:\d+\.\d+\.\d+"')),
+      );
+      expect(
+        gradle,
+        isNot(contains(RegExp(
+            r'"androidx\.health\.connect:connect-client:[^"]*-(alpha|beta|rc)'))),
+      );
     });
   });
 }

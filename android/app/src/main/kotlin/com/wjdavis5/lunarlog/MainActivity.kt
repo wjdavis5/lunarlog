@@ -32,5 +32,16 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+        // Issue #173: the Android half of the "lunarlog/health" channel —
+        // the Health Connect adapter, mirroring AppDelegate.swift's iOS
+        // registration of the same channel name. Constructed here (during
+        // onCreate) so its permission launcher is registered before the
+        // activity reaches STARTED; see HealthConnectAdapter.kt for the
+        // native guard mirror every write passes through before any
+        // Health Connect API is touched.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "lunarlog/health"
+        ).setMethodCallHandler(HealthConnectAdapter(this)::handle)
     }
 }
