@@ -27,13 +27,28 @@ illustration set and when to introduce it.
 Once a profile is active, `ProfileHomeGate` (`profiles/profile_home_gate.dart`)
 mounts `AppShell` (`components/app_shell.dart`): a Material 3 bottom
 `NavigationBar` with four destinations — Today (`overview/overview_panel.dart`;
-the cycle wheel is #209), Calendar (`logging/month_calendar.dart`), Insights (a
-placeholder hosting `overview/cycle_history_section.dart` until #223 lands the
-real Analysis tab), and More (`settings/settings_screen.dart`, unmodified,
-including its own app bar). Today is the default/first tab. Each tab is built
-lazily the first time it's selected and then kept alive under an
-`IndexedStack`, so switching tabs preserves that tab's own state without
-starting every tab's live streams and animations up front.
+the cycle wheel is #209), Calendar (`logging/month_calendar.dart`), Insights
+(`insights/analysis_tab.dart`'s `AnalysisTab`, issue #223 — the nav-bar label
+stays "Insights" per #182, the screen's own heading reads "Analysis"), and
+More (`settings/settings_screen.dart`, unmodified, including its own app bar).
+Today is the default/first tab. Each tab is built lazily the first time it's
+selected and then kept alive under an `IndexedStack`, so switching tabs
+preserves that tab's own state without starting every tab's live streams and
+animations up front.
+
+`AnalysisTab` (issue #223, A2-18/A2-19) renders the headline cycle statistics
+`ActivePrediction` already computed but nothing in the UI rendered before this
+issue — average cycle length, average period length, and a variability/tier
+line, all routed through the same `CareModeCopy` decision `OverviewPanel` uses
+so `irregular` mode shows a number-free summary instead of raw digits — the
+same R17 disclaimer, an honest not-enough-history `EmptyState` below three
+valid cycles, and `overview/cycle_history_section.dart`'s existing
+`CycleHistorySection` mounted below the headline as this tab's scrollable
+history list. `OverviewPanel` (Today) still embeds that same
+`CycleHistorySection` too — removing it from there is a follow-up, left alone
+here since #209 is concurrently rewriting that file. `AnalysisTab` builds its
+sections as a list precisely so #135 (statistics/trends) can append another
+entry once it lands, rather than reshaping the widget.
 
 The app bar shared by Today/Calendar/Insights (not shown on More, which is
 Settings' own screen) carries the active profile name as a tappable switcher

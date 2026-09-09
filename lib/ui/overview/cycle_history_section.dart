@@ -7,6 +7,14 @@
 /// Read-only callers (archived profile, viewer-role guardian) see the
 /// history without omit affordances. Every statistic sits under the fixed
 /// non-medical disclaimer (R17), and the vocabulary is cycle-only (R13).
+///
+/// Issue #223 follow-up: `AnalysisTab` also mounts this section, directly
+/// under its own headline statistics card (`ActivePrediction`-derived,
+/// 12-cycle window) — this section's own [_statsRow]/disclaimer (a
+/// 6-cycle window) would otherwise put two disagreeing numbers on one
+/// screen. [showStatistics] and [showDisclaimer] (both default true, so
+/// [OverviewPanel]'s mount is unchanged) let a caller that owns the
+/// numbers elsewhere suppress this section's copies.
 library;
 
 import 'package:flutter/material.dart';
@@ -21,7 +29,9 @@ import 'package:provider/provider.dart';
 String _formatDate(LocalDate date) =>
     '${kMonthNames[date.month - 1]} ${date.day}, ${date.year}';
 
-String _formatDays(double value) => value == value.roundToDouble()
+/// Shared with `AnalysisTab` (issue #223 follow-up) so both headline-stat
+/// renderings format identically without a second copy of this logic.
+String formatDays(double value) => value == value.roundToDouble()
     ? '${value.round()} days'
     : '${value.toStringAsFixed(1)} days';
 
@@ -31,6 +41,8 @@ class CycleHistorySection extends StatefulWidget {
     required this.profileId,
     required this.todayProvider,
     this.readOnly = false,
+    this.showStatistics = true,
+    this.showDisclaimer = true,
   });
 
   final String profileId;
@@ -39,6 +51,19 @@ class CycleHistorySection extends StatefulWidget {
   final LocalDate Function() todayProvider;
 
   final bool readOnly;
+
+  /// Whether this section renders its own statistics row (average cycle
+  /// length, average period length, variation). Default true so
+  /// [OverviewPanel]'s mount is unchanged; `AnalysisTab` passes false
+  /// because its own headline card already owns the numbers on that
+  /// screen (issue #223 follow-up).
+  final bool showStatistics;
+
+  /// Whether this section renders its own R17 disclaimer. Default true so
+  /// [OverviewPanel]'s mount is unchanged; `AnalysisTab` passes false for
+  /// the same reason as [showStatistics] — its headline card already
+  /// carries the disclaimer.
+  final bool showDisclaimer;
 
   @override
   State<CycleHistorySection> createState() => _CycleHistorySectionState();
@@ -108,13 +133,16 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
               ),
             ],
             const SizedBox(height: 12),
-            _statsRow(context, view),
-            const SizedBox(height: 4),
-            Text(
-              kEstimateDisclaimer,
-              key: const ValueKey('history-disclaimer'),
-              style: theme.textTheme.bodySmall,
-            ),
+            if (widget.showStatistics) ...[
+              _statsRow(context, view),
+              const SizedBox(height: 4),
+            ],
+            if (widget.showDisclaimer)
+              Text(
+                kEstimateDisclaimer,
+                key: const ValueKey('history-disclaimer'),
+                style: theme.textTheme.bodySmall,
+              ),
             const Divider(height: 24),
             for (final item in view.items) _itemRow(context, item),
             const SizedBox(height: 4),
@@ -165,14 +193,14 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
           label: 'Avg cycle',
           value: view.meanCycleLengthDays == null
               ? '—'
-              : _formatDays(view.meanCycleLengthDays!),
+              : formatDays(view.meanCycleLengthDays!),
         ),
         _stat(
           theme,
           label: 'Avg period',
           value: view.meanPeriodLengthDays == null
               ? '—'
-              : _formatDays(view.meanPeriodLengthDays!),
+              : formatDays(view.meanPeriodLengthDays!),
         ),
         _stat(
           theme,

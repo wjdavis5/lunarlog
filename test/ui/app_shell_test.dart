@@ -2,7 +2,10 @@
 /// per-tab state preservation across a switch, the sync glyph on every tab
 /// except More, the profile switcher opening the existing picker, and
 /// Settings reachable from every tab without going through "Switch
-/// profile".
+/// profile". Issue #223: the Insights destination now mounts the real
+/// [AnalysisTab] rather than the placeholder `_InsightsTab` #182 shipped —
+/// that widget's own rendering is covered by `test/ui/analysis_tab_test
+/// .dart`, so this file only pins that the placeholder is gone.
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -17,6 +20,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 
@@ -200,6 +204,22 @@ void main() {
     expect(find.byType(SettingsScreen), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget,
         reason: 'still inside the shell (a tab switch, not a picker visit)');
+    await h.dispose();
+  });
+
+  testWidgets(
+      'Insights mounts the real Analysis tab (issue #223), not the old '
+      '#182 placeholder', (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    await tester.tap(tabKey('insights'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AnalysisTab), findsOneWidget);
+    expect(find.text('Analysis'), findsOneWidget);
+    expect(find.text('Insights are on the way'), findsNothing,
+        reason: 'the #182 placeholder copy is gone');
     await h.dispose();
   });
 }
