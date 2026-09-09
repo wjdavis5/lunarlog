@@ -57,6 +57,7 @@ final class RemoteProfileRow extends RemoteRow {
     this.birthYear,
     this.relationship,
     this.transferredAt,
+    this.transferredToUserId,
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
@@ -101,6 +102,12 @@ final class RemoteProfileRow extends RemoteRow {
   /// Issue #4 R5. Server-owned; pulled here but never pushed by
   /// `encodeProfile`.
   final DateTime? transferredAt;
+
+  /// Issue #296. The account that accepted the last ownership transfer —
+  /// the "transferred to whom" signal the health-sync minor gate requires.
+  /// Server-owned like [transferredAt]; pulled here but never pushed by
+  /// `encodeProfile`.
+  final String? transferredToUserId;
 
   /// Issue #218: the onboarding cycle facts, raw and undecoded. The date
   /// is the `yyyy-MM-dd` wire string (same shape as

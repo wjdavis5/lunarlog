@@ -326,6 +326,13 @@ void main() {
       // menstrual-flow write path landed (iOS only via that path's own
       // platform gates).
       expect(AppConfig.hasHealthSync, isTrue);
+      // Issue #296: pinned here (like hasHealthSync above) so flipping
+      // the minor-binding flag is a deliberate, reviewed code change that
+      // must update this pin — the transferred-minor binding path stays
+      // categorically closed until #295 (what "minor" means) and #188
+      // (server-side consent) land and the guard's remaining gap is
+      // closed. Denies-by-default is the safe direction.
+      expect(AppConfig.healthSyncMinorBindingAllowed, isFalse);
     });
 
     test('hasSupabase agrees with the pure function for this platform', () {

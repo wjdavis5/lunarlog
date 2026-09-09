@@ -31,6 +31,14 @@
 /// once per pass purely to avoid building a batch the guard would refuse —
 /// the load-bearing checks stay in the adapter, where #173 put them.
 ///
+/// **Store-compliance note (issue #254):** this service is also why the
+/// written 5.1.3 no-derived-values rule (see `health_channel.dart`'s
+/// library doc) holds in practice — the only inputs it ever feeds the
+/// port are the bound profile's own logged day entries and spotting
+/// observations; the app's on-device predictions (next-period,
+/// fertile-window, ovulation) are computed in `lib/domain/prediction/`
+/// and never touch this path.
+///
 /// Pure Dart (R14/R16): repositories and the platform port are injected
 /// interfaces; time comes from the injectable [now] clock, so every branch
 /// runs under `flutter test`. The debounced trigger that calls [syncNow]

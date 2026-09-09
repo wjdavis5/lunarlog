@@ -122,11 +122,14 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 12 — `pms` on `day_entries` (Issue #220, the first-class PMS
   ///   marker that feeds the 6-cycle PMS averages and the predicted PMS
   ///   band).
-  /// * 13 — `tracking_preferences` on `profiles` (Issue #259, the synced
+  /// * 13 — `transferred_to_user_id` on `profiles` (Issue #296, the
+  ///   "transferred to whom" ownership signal the health-sync minor gate
+  ///   requires).
+  /// * 14 — `tracking_preferences` on `profiles` (Issue #259, the synced
   ///   per-profile category curation document the day sheet reads; JSON
   ///   text mirroring the server's jsonb).
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -299,8 +302,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV11(m, from);
     // Issue #220's v12 step, same shape again.
     await _upgradeToV12(m, from);
-    // Issue #259's v13 step, same shape again.
+    // Issue #296's v13 step, same shape again.
     await _upgradeToV13(m, from);
+    // Issue #259's v14 step, same shape again.
+    await _upgradeToV14(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -409,15 +414,31 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
-  /// The v13 upgrade step (Issue #259): the synced tracking-preferences
+  /// The v13 upgrade step (Issue #296): `transferred_to_user_id` on
+  /// `profiles`, the ownership-transfer target the health-sync minor gate
+  /// requires. `profiles` has existed since v1 on every real device, so
+  /// the addColumn is always safe regardless of `from`; a fresh local row
+  /// is always NULL, and only a remote apply (a real transfer's synced
+  /// profile) ever fills it — matching the server migration's own backfill
+  /// rule ("the current owner of a transferred profile is exactly who
+  /// accepted its last transfer"), which only the server's row carries.
+  Future<void> _upgradeToV13(Migrator m, int from) async {
+    if (from >= 13) return;
+    await transaction(() async {
+      await m.addColumn(profiles, profiles.transferredToUserId);
+      await migrationStepHook?.call('profiles.transferred_to_user_id');
+    });
+  }
+
+  /// The v14 upgrade step (Issue #259): the synced tracking-preferences
   /// document on `profiles`. `profiles` has existed since v1 on every real
   /// device, so the addColumn is always safe regardless of `from`; the
   /// column is nullable with no default, so every existing row reads as
   /// "never customized" — the all-defaults state — until the profile's
   /// guardians curate it (the server migration adds the same-shaped jsonb
   /// column the same way).
-  Future<void> _upgradeToV13(Migrator m, int from) async {
-    if (from >= 13) return;
+  Future<void> _upgradeToV14(Migrator m, int from) async {
+    if (from >= 14) return;
     await transaction(() async {
       await m.addColumn(profiles, profiles.trackingPreferences);
       await migrationStepHook?.call('profiles.tracking_preferences');

@@ -449,11 +449,13 @@ registers no device, and shows no Notifications entry (R17).
       apps declaration form filed before any Health Connect build reaches a
       Play track — see
       [`docs/ops/play-health-declaration.md`](play-health-declaration.md) for
-      the per-permission justification skeleton. Full store-compliance
-      reconciliation (this form plus the Play Data safety section and the
-      iOS `PrivacyInfo.xcprivacy` update once HealthKit ships) is tracked
-      separately as issue #254 — this bullet only flags that the form is a
-      hard gate on shipping, not that it has been filed.
+      the per-permission justification skeleton. The in-repo half of this
+      (the form checklist, the manifest/`PrivacyInfo.xcprivacy` comments,
+      and the written 5.1.3 no-derived-values rule) landed with issue #254,
+      and `play-store-release.yml`'s production gate now fails a
+      `production` dispatch until the `PLAY_HEALTH_DECLARATION_CONFIRMED`
+      variable records the form as filed — this bullet remains for the
+      console-side filing itself, which only the operator can do.
 
 ### Migrations
 
