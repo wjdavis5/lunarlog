@@ -1,12 +1,18 @@
 # lunarlog
 
-Local-first menstrual-cycle tracker built with Flutter: one adult operator
-manages cycle profiles for the family (some profiles are minors). Entries are
-stored on the device encrypted at rest behind a biometric gate, and the app
-works fully without a network. An **optional account** (Supabase Auth) mirrors
-the local store into row-level-secured Postgres and syncs it offline-first
-across the operator's devices; nothing is uploaded until the operator signs in
-and, on a device that already holds data, explicitly consents to the upload.
+Family cycle tracker built with Flutter: an account (Supabase Auth) syncs
+cycle profiles across a household's devices and lets guardians share a
+profile — co-parents, caregivers — each with their own role, invitation,
+and attribution (see "Family sharing" below); sync and multi-guardian
+collaboration are the product's priority and its differentiator, not an
+add-on. One adult operator manages the profiles (some are minors), and the
+account mirrors the local store into row-level-secured Postgres and syncs
+it offline-first across the operator's devices and to accepted guardians;
+nothing is uploaded until the operator signs in and, on a device that
+already holds data, explicitly consents to the upload. Entries are stored
+on the device encrypted at rest behind a biometric gate, and the app keeps
+logging, viewing, and predicting when the network doesn't — offline is a
+reliability property of the app, not its identity.
 Three parties receive data off-device, all only for app functionality:
 **Supabase** (the account email and the synced cycle rows), **Sentry**
 (crash reports reduced to an allowlist — no user, no health content), and
@@ -48,8 +54,10 @@ flutter build web --release     # installable web build
 flutter build ios --release --no-codesign   # unsigned; requires macOS
 ```
 
-Without `--dart-define`s the app is a purely local build: no account section,
-no sync, no crash reporting. See "Config & credentials".
+Without `--dart-define`s the build has no account section, no sync, and no
+crash reporting — a development configuration for iterating without cloud
+credentials, not a supported product mode: the shipped app is built around
+an account, sync, and family sharing. See "Config & credentials".
 
 ### Quality gates
 
@@ -149,7 +157,13 @@ the classification and the operator's recurring filing duties.
 
 ## Accounts
 
-The account is optional and lives in Supabase Auth. Sign-in methods:
+The account (Supabase Auth) is what makes sync and family sharing work:
+signing in is how a device joins the household and how a profile gets
+shared with other guardians. It stays technically optional — an
+unconfigured build has no account section at all, and even in a
+configured build nothing uploads until the operator signs in and, on a
+device that already holds data, explicitly consents — but it is not an
+afterthought; it is the product's core loop. Sign-in methods:
 email/password, Google (iOS and Android, native picker), Apple (iOS), and
 passwordless email — a sign-in link opened on the requesting device or the
 code from the same email typed into the app. Web builds have no Google

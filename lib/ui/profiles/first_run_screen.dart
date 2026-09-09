@@ -40,7 +40,9 @@ import 'package:provider/provider.dart';
 
 /// The revised first-run notice (U6, Approach 2).
 const String kFirstRunNoticeCopy =
-    'Data stays on this device unless you sign in to sync it to your account.';
+    'Signing in syncs this profile across your devices and lets you share '
+    'it with other guardians. Until then, everything you log stays on '
+    'this device.';
 
 class FirstRunScreen extends StatefulWidget {
   const FirstRunScreen({super.key, this.isWebBuild = kIsWeb});
