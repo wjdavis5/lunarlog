@@ -401,7 +401,10 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('activity-item-entry:e-tap')));
     await tester.pumpAndSettle();
-    expect(find.text('2026-08-19'), findsWidgets);
+    // #198: the sheet title is the human-readable label keyed by
+    // 'day-sheet-date-title' (via daySheetDateLabel), never the raw ISO
+    // string the sheet used to render.
+    expect(find.byKey(const ValueKey('day-sheet-date-title')), findsOneWidget);
     expect(find.byKey(const ValueKey('autosave-status')), findsOneWidget,
         reason: 'a non-viewer opens the sheet editable, as from the calendar');
     await dismissSheet(tester);
