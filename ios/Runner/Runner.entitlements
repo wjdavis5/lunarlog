@@ -14,5 +14,14 @@
 	     "production" aps-environment at all. -->
 	<key>aps-environment</key>
 	<string>production</string>
+	<!-- Issue #156: HealthKit platform plumbing only -- no clinical-records
+	     access requested (com.apple.developer.healthkit.access left empty).
+	     Background delivery (com.apple.developer.healthkit.background-delivery)
+	     is deliberately NOT added here; it is scoped to #217 (HS-6)/#186
+	     (HS-11) per A3-16, not needed for v1 write-only parity. -->
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+	<key>com.apple.developer.healthkit.access</key>
+	<array/>
 </dict>
 </plist>

@@ -19,6 +19,15 @@
 		Required-reason API usage is declared by the underlying Flutter plugins
 		(e.g., flutter_secure_storage, shared_preferences, local_auth,
 		sentry_flutter) in their own privacy manifests.
+
+		Issue #156 added the com.apple.developer.healthkit entitlement (no
+		HealthKit call site exists yet -- that lands with #173, HS-4).
+		HealthKit data itself never leaves the device (no third party
+		receives it), so the collected-data-types list below is unchanged by
+		that entitlement; the existing "Health" entry above is the app's own
+		cycle/symptom data synced to Supabase, unrelated to HealthKit. See
+		issue #254 for the fuller reconciliation once real HealthKit reads
+		and writes land.
 	-->
 	<key>NSPrivacyTracking</key>
 	<false/>

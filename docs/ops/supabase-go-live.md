@@ -425,6 +425,18 @@ registers no device, and shows no Notifications entry (R17).
       the Push Notifications capability (`Runner.entitlements` requests
       `aps-environment` too) - do both in one pass, see "Caregiver alerts and
       reminders (issue #5)" above.
+- [ ] **Issue #156 (human step, needs-human-review):** the App ID and App
+      Store provisioning profile must be regenerated again with the
+      HealthKit capability enabled (Certificates, Identifiers & Profiles →
+      Identifiers → `com.wjdavis5.lunarlog` → check HealthKit), the same
+      operational step issue #20 did for Sign in with Apple and issue #5 did
+      for Push Notifications - `Runner.entitlements` and
+      `DebugProfile.entitlements` now both request
+      `com.apple.developer.healthkit`, so a profile that predates this
+      change will fail to sign once Xcode notices the capability mismatch.
+      Do this in the same regeneration trip as any other pending capability
+      above rather than a separate one, and replace
+      `IOS_PROVISION_PROFILE_BASE64` afterward.
 - [ ] App Privacy details in App Store Connect updated to match
       `ios/Runner/PrivacyInfo.xcprivacy`: Health and Email Address collected,
       linked to the user, for app functionality; Crash Data collected, not
