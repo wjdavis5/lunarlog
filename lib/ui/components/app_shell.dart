@@ -1,11 +1,10 @@
 /// The single shell every active profile mounts inside (issue #182): a
 /// Material 3 [NavigationBar] with four destinations -- Today (for now the
 /// existing [OverviewPanel]; the cycle wheel is #209), Calendar (the
-/// existing [MonthCalendar]), Insights (a placeholder hosting the existing
-/// [CycleHistorySection] until #223 lands the real Analysis tab -- no
-/// analysis UI belongs here), and More (the existing [SettingsScreen],
-/// unmodified, including its own app bar). Today is the default/first tab
-/// (paired with #209).
+/// existing [MonthCalendar]), Insights (the real Analysis tab, issue #223's
+/// [AnalysisTab]), and More (the existing [SettingsScreen], unmodified,
+/// including its own app bar). Today is the default/first tab (paired with
+/// #209).
 ///
 /// The app bar shared by Today/Calendar/Insights (not rebuilt per screen,
 /// and not shown at all on More -- [SettingsScreen] carries its own) holds
@@ -35,7 +34,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
-import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
@@ -138,7 +137,12 @@ class _AppShellState extends State<AppShell> {
           timezoneProvider: widget.timezoneProvider,
           guardiansRepository: guardiansRepository,
         ),
-      AppTab.insights => const _InsightsTab(),
+      AppTab.insights => AnalysisTab(
+          profileId: widget.profile.id,
+          mode: widget.profile.mode,
+          todayProvider: widget.todayProvider,
+          guardiansRepository: guardiansRepository,
+        ),
       AppTab.more => const SettingsScreen(),
     };
   }
@@ -252,22 +256,3 @@ class _ProfileSwitcher extends StatelessWidget {
   }
 }
 
-/// Issue #182: a placeholder hosting the existing [CycleHistorySection]
-/// until #223 lands the real Analysis tab -- no analysis UI belongs here.
-class _InsightsTab extends StatelessWidget {
-  const _InsightsTab();
-
-  @override
-  Widget build(BuildContext context) {
-    // A genuine placeholder until #223 lands the Analysis tab: Overview
-    // already embeds CycleHistorySection (#132), so re-mounting it here
-    // would duplicate the card and run a second history stream per profile
-    // (review finding on #182).
-    return const EmptyState(
-      key: ValueKey('insights-placeholder'),
-      title: 'Insights are on the way',
-      body: 'Cycle history lives on Today for now. Statistics and trends '
-          'arrive with the Analysis tab.',
-    );
-  }
-}

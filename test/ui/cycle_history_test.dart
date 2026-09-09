@@ -28,6 +28,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
+import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
@@ -635,6 +636,78 @@ void main() {
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
       expectNoFertilityVocabulary(tester, 'signed-in attribution refresh');
       await disposeHistory(tester, h);
+    });
+  });
+
+  group('showStatistics/showDisclaimer (#223 follow-up)', () {
+    testWidgets(
+        'both false renders neither the stats row nor the disclaimer, '
+        'mounted directly (not through OverviewPanel, whose own mount '
+        'keeps both default-true)', (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final entries = DriftDayEntriesRepository(db.storage);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      for (final start in kSteadyStarts) {
+        for (var i = 0; i < 4; i++) {
+          await entries.save(DayEntry(
+            id: '',
+            profileId: profile.id,
+            localDate: start.addDays(i),
+            tz: 'America/Chicago',
+            flow: FlowLevel.medium,
+            tags: const [],
+            note: null,
+            updatedAt: DateTime.utc(2026, 1, 1),
+            deletedAt: null,
+          ));
+        }
+      }
+
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<CycleHistoryService>.value(
+            value: CycleHistoryService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: CycleHistorySection(
+              profileId: profile.id,
+              todayProvider: () => aug30,
+              showStatistics: false,
+              showDisclaimer: false,
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
+      expect(find.byKey(const ValueKey('history-stats')), findsNothing);
+      expect(find.byKey(const ValueKey('history-disclaimer')), findsNothing);
+      // The rest of the card (item list, device-local note) is unaffected.
+      expect(find.text('Cycle history'), findsOneWidget);
+      expect(
+        find.text(
+          'Omissions stay on this device — other devices are not affected.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
     });
   });
 }
