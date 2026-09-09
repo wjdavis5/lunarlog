@@ -18,6 +18,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
+import 'package:lunarlog/domain/models/flow_level.dart' show flowLabel;
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';

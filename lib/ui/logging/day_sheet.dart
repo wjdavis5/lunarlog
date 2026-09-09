@@ -40,11 +40,6 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 
-String flowLabel(FlowLevel flow) {
-  final name = flow.name;
-  return name[0].toUpperCase() + name.substring(1);
-}
-
 /// Issue #160: the localized flow-chip label. Same five strings
 /// [flowLabel] derives from the enum name for `en`; this variant reads them
 /// from [AppLocalizations] so the sheet's chips follow the active locale

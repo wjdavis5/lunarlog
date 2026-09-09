@@ -183,3 +183,18 @@ repositories when the screen isn't given one directly. Parsing
 and synchronous once bytes are in hand — see
 `lib/domain/import/account_import.dart` for the merge policy those feed
 into.
+
+## Clinical export tile (issue #157)
+
+`settings/clinical_export_tile.dart` (`ClinicalExportTile`) is a standalone
+"Export clinical summary (FHIR)" `ListTile`, not a case inside
+`settings/your_data_section.dart`'s own `build` — that method was mid-flight
+restructuring under PR #325 when this landed, so the two files share one
+insertion line instead of a conflicting diff inside that method. It follows
+`YourDataSection`'s own shape (a `ProfilesRepository.watch()` subscription,
+an injectable `FhirExportCollaborator` seam, `InlineError` on failure) but
+owns its state independently and disables itself with a reason when the
+device's first profile has no day entries yet. Builds the Bundle via
+`lib/domain/export/fhir_bundle.dart`'s `buildFhirDocumentBundle` and hands
+it to `lib/data/export/fhir_bundle_writer.dart`'s `FhirBundleWriter` for
+delivery — see `docs/clinical/fhir-export.md`.
