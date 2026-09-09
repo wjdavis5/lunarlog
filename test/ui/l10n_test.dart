@@ -259,6 +259,32 @@ void main() {
     });
   });
 
+  group('confidence-tier copy (issue #218): the four localized labels and '
+      'summaries match the domain vocabulary they render', () {
+    testWidgets('labels', (tester) async {
+      final l10n = await pumpL10n(tester);
+      expect(l10n.cycleConfidenceHigh, 'High confidence');
+      expect(l10n.cycleConfidenceLearning, 'Learning');
+      expect(l10n.cycleConfidenceIrregular, 'Irregular');
+      expect(l10n.cycleConfidenceProvisional, 'Provisional');
+    });
+
+    testWidgets('summaries', (tester) async {
+      final l10n = await pumpL10n(tester);
+      expect(l10n.cycleConfidenceSummaryHigh,
+          'Recent cycles are steady — estimates are at their most reliable.');
+      expect(l10n.cycleConfidenceSummaryLearning,
+          'Still learning — estimates improve after a few more cycles.');
+      expect(l10n.cycleConfidenceSummaryIrregular,
+          'Cycles vary a lot — treat estimates as rough guides.');
+      expect(
+        l10n.cycleConfidenceSummaryProvisional,
+        'Based on your onboarding answers — estimates improve once real '
+        'cycles are logged.',
+      );
+    });
+  });
+
   group('delegate registration (both MaterialApps)', () {
     testWidgets("LunarLogApp's MaterialApp registers delegates + locales",
         (tester) async {

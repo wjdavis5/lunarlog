@@ -225,6 +225,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetNoNote => 'No note';
 
   @override
+  String get cycleConfidenceHigh => 'High confidence';
+
+  @override
+  String get cycleConfidenceLearning => 'Learning';
+
+  @override
+  String get cycleConfidenceIrregular => 'Irregular';
+
+  @override
+  String get cycleConfidenceProvisional => 'Provisional';
+
+  @override
+  String get cycleConfidenceSummaryHigh =>
+      'Recent cycles are steady — estimates are at their most reliable.';
+
+  @override
+  String get cycleConfidenceSummaryLearning =>
+      'Still learning — estimates improve after a few more cycles.';
+
+  @override
+  String get cycleConfidenceSummaryIrregular =>
+      'Cycles vary a lot — treat estimates as rough guides.';
+
+  @override
+  String get cycleConfidenceSummaryProvisional =>
+      'Based on your onboarding answers — estimates improve once real cycles are logged.';
+
+  @override
   String get overviewSeeHistory => 'See cycle history';
 
   @override

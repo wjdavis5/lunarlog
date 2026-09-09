@@ -1090,6 +1090,9 @@ class _EmptyProfilesRepository implements ProfilesRepository {
     ProfileMode mode = ProfileMode.standard,
     int? birthYear,
     ProfileRelationship? relationship,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
   }) =>
       throw UnimplementedError('not exercised in the empty-edge test');
 

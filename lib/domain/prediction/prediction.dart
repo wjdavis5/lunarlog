@@ -38,6 +38,15 @@
 /// [CycleConfidence.irregular], flagged [ActivePrediction.unusuallyLongCycle])
 /// with the same rolled estimate, so reminder planning (which only ever
 /// sees [ActivePrediction]s) keeps a nudge alive instead of going quiet.
+///
+/// Issue #218 adds the [CycleConfidence.provisional] tier and
+/// [seedProvisionalPrediction]: an [ActivePrediction]-equivalent seeded
+/// from onboarding-supplied cycle facts ([CycleFacts]) for a profile with
+/// fewer than [kMinCompletedValidCycles] logged cycles. The resolver that
+/// decides when the seeded estimate is used (and when real data displaces
+/// it) is the *service* (`prediction_service.dart`); this file's
+/// `computePrediction` path is unchanged by #218 — a profile with no
+/// supplied facts gets exactly the same [NotEnoughHistory] it always did.
 library;
 
 import 'dart:math' show sqrt;
@@ -129,21 +138,39 @@ const double kIrregularValidRatioThreshold = 0.5;
 double _forecastSpreadFor(double baseSpreadDays, int cycleIndex) =>
     (baseSpreadDays < 1.0 ? 1.0 : baseSpreadDays) * sqrt(cycleIndex);
 
+/// PROVISIONAL (issue #218): the fixed nominal spread reported alongside a
+/// seeded ([CycleConfidence.provisional]) estimate. There is no logged
+/// history behind such an estimate to compute a standard deviation from,
+/// and reporting `spreadDays = 0` would render a single exact date — the
+/// dishonest option for a number built from three onboarding answers.
+/// A named calibration constant like the #213 thresholds above, pending
+/// the same calibration against real user histories; the rendering it
+/// drives is the usual `estimatedNextStart ± spreadDays` range.
+const double kProvisionalSpreadDays = 4.0;
+
 /// R5/#132's confidence framing, reused everywhere the app talks about how
 /// much to trust an estimate (the history list, the forward calendar, this
 /// file's own [ActivePrediction.tier]) — issue #213 moved the single
 /// canonical definition here so no second vocabulary exists; `cycle_history
 /// .dart` re-exports this type for its existing importers. `learning` is
 /// also the honest label for thin history where no estimate exists yet.
+/// Issue #218 adds `provisional`: the rung below all of these — an
+/// estimate computed from onboarding answers rather than logged history.
+/// It is never produced by [computePrediction] (which only ever sees
+/// episodes); only [seedProvisionalPrediction] returns it, and only while
+/// the profile has fewer than [kMinCompletedValidCycles] real cycles (the
+/// service in `prediction_service.dart` enforces that displacement).
 enum CycleConfidence {
   high,
   learning,
-  irregular;
+  irregular,
+  provisional;
 
   String get label => switch (this) {
         high => 'High confidence',
         learning => 'Learning',
         irregular => 'Irregular',
+        provisional => 'Provisional',
       };
 
   /// Plain-language summary; deliberately free of numbers so it can sit
@@ -156,6 +183,9 @@ enum CycleConfidence {
           'Still learning — estimates improve after a few more '
               'cycles.',
         irregular => 'Cycles vary a lot — treat estimates as rough guides.',
+        provisional =>
+          'Based on your onboarding answers — estimates improve once '
+              'real cycles are logged.',
       };
 }
 
@@ -191,11 +221,15 @@ CycleConfidence confidenceTierFor({
 }
 
 /// Steps a tier down exactly one level (`high` → `learning` → `irregular`);
-/// `irregular` floors and never degrades further.
+/// `irregular` floors and never degrades further. Issue #218: `provisional`
+/// also floors — it is already the lowest honest claim ("computed from
+/// onboarding answers"), and stepping it down to `irregular` would assert
+/// observed cycle variation a seeded estimate has no data for.
 CycleConfidence _stepTierDown(CycleConfidence tier) => switch (tier) {
       CycleConfidence.high => CycleConfidence.learning,
       CycleConfidence.learning => CycleConfidence.irregular,
       CycleConfidence.irregular => CycleConfidence.irregular,
+      CycleConfidence.provisional => CycleConfidence.provisional,
     };
 
 /// One forecasted future cycle (issue #213, item 4): [cycleIndex] is
@@ -802,6 +836,162 @@ double _meanOf(List<int> values) =>
 
 bool _withinValidWindow(int length) =>
     length >= kMinCycleDays && length <= kMaxCycleDays;
+
+/// The onboarding-collected cycle facts (issue #218): what #216's first-run
+/// form asks and what the profile stores (`Profile.lastPeriodStart` and
+/// friends). A pure value type — the service snapshots the profile's facts
+/// into one of these per emission, which is also what the #197 memoisation
+/// key stamps. All three answers are individually optional; [canSeed]
+/// decides whether they are together sufficient to seed a provisional
+/// estimate.
+class CycleFacts {
+  const CycleFacts({
+    this.lastPeriodStart,
+    this.typicalCycleLengthDays,
+    this.typicalPeriodLengthDays,
+  });
+
+  /// Start date of the most recent period, as supplied at onboarding (or
+  /// edited later from profile settings). Null when skipped.
+  final LocalDate? lastPeriodStart;
+
+  /// The supplied "typical cycle length" answer, in days. Null when
+  /// skipped.
+  final int? typicalCycleLengthDays;
+
+  /// The supplied "typical period length" answer, in days. Null when
+  /// skipped — seeding then falls back to [kDefaultPeriodLengthDays], the
+  /// same honest named fallback the computed path uses for an empty
+  /// episode window.
+  final int? typicalPeriodLengthDays;
+
+  /// The facts of an all-skipped onboarding: every field null.
+  static const CycleFacts empty = CycleFacts();
+
+  /// Whether these facts can seed a provisional estimate (issue #218 AC):
+  /// a last-period date *and* a typical cycle length are both required —
+  /// `estimatedNextStart` cannot be computed without them — and the cycle
+  /// length must lie inside [kMinCycleDays, kMaxCycleDays]. Outside that
+  /// window the engine itself would never treat a *logged* cycle of that
+  /// length as valid, so an estimate seeded from it could never later be
+  /// confirmed by real data; the answer is still stored and synced (for
+  /// #188/#233 to consume) but the profile stays [NotEnoughHistory] until
+  /// real cycles land.
+  bool get canSeed {
+    final start = lastPeriodStart;
+    final cycleLength = typicalCycleLengthDays;
+    return start != null &&
+        cycleLength != null &&
+        _withinValidWindow(cycleLength);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CycleFacts &&
+          other.lastPeriodStart == lastPeriodStart &&
+          other.typicalCycleLengthDays == typicalCycleLengthDays &&
+          other.typicalPeriodLengthDays == typicalPeriodLengthDays;
+
+  @override
+  int get hashCode =>
+      Object.hash(lastPeriodStart, typicalCycleLengthDays,
+          typicalPeriodLengthDays);
+
+  @override
+  String toString() =>
+      'CycleFacts(lastPeriodStart: ${lastPeriodStart?.iso}, '
+      'typicalCycle: $typicalCycleLengthDays, '
+      'typicalPeriod: $typicalPeriodLengthDays)';
+}
+
+/// Seeds a provisional [ActivePrediction] from onboarding-supplied cycle
+/// facts (issue #218): `estimatedNextStart` = [CycleFacts.lastPeriodStart]
+/// + [CycleFacts.typicalCycleLengthDays], `meanCycleLengthDays` /
+/// `meanPeriodLengthDays` = the supplied answers, `tier` =
+/// [CycleConfidence.provisional], spread = [kProvisionalSpreadDays], and a
+/// 12-cycle forecast built by the same `_buildForecast` the computed path
+/// uses. No cycles are claimed to exist: `averagedCycleLengths` is empty
+/// and both history counts are zero — the mean fields carry the supplied
+/// *answers*, not averages over observed data (the one place
+/// `meanCycleLengthDays` is not the mean of `averagedCycleLengths`; the
+/// `provisional` tier is what tells every consumer why).
+///
+/// Like the computed path, a stale estimate never freezes: once the
+/// estimate is more than [kLateGraceDays] past it rolls forward in whole
+/// supplied-cycle-length steps (`_rollLateEstimate`, issue #221), and once
+/// the span since the supplied start exceeds [kMaxOpenCycleDays] the
+/// result is flagged [ActivePrediction.unusuallyLongCycle] with the tier
+/// forced to [CycleConfidence.irregular] — a seeded answer that old is
+/// exactly the "rough guide" case, and `provisional` is displaced rather
+/// than silently kept (the only way `provisional` is *never* returned for
+/// a profile again is real cycles landing, per the issue's displacement
+/// rule, which the service enforces upstream of this function).
+///
+/// Facts that cannot seed ([CycleFacts.canSeed] false) return
+/// [NotEnoughHistory] with zero counts; the *service* keeps the computed
+/// result's counts instead when it falls back here, so an all-skipped
+/// onboarding reads exactly as today.
+CyclePrediction seedProvisionalPrediction({
+  required CycleFacts facts,
+  required LocalDate today,
+}) {
+  final lastStart = facts.lastPeriodStart;
+  final cycleDays = facts.typicalCycleLengthDays;
+  if (lastStart == null || cycleDays == null || !_withinValidWindow(cycleDays)) {
+    return const NotEnoughHistory(
+        episodeCount: 0, completedCycleCount: 0, validCycleCount: 0);
+  }
+
+  final openDays = today.difference(lastStart);
+  final unusuallyLongCycle = openDays > kMaxOpenCycleDays;
+  // The supplied period length is clamped the same way the computed path
+  // clamps its episode-length average (never longer than the cycle, at
+  // least one day); an unsupplied answer falls back to the same named
+  // default `_meanPeriodLength` uses for an empty window.
+  final maxPeriodLengthDays = cycleDays <= 0 ? 1 : cycleDays;
+  final periodLengthDays = (facts.typicalPeriodLengthDays ??
+          kDefaultPeriodLengthDays)
+      .clamp(1, maxPeriodLengthDays);
+
+  final originalEstimate = lastStart.addDays(cycleDays);
+  final rolledStart = _rollLateEstimate(
+    original: originalEstimate,
+    today: today,
+    stepDays: cycleDays,
+  );
+  final tier =
+      unusuallyLongCycle ? CycleConfidence.irregular : CycleConfidence.provisional;
+  final forecast = _buildForecast(
+    firstStart: rolledStart,
+    meanCycleDays: cycleDays,
+    periodLengthDays: periodLengthDays,
+    baseTier: tier,
+    baseSpreadDays: kProvisionalSpreadDays,
+  );
+
+  return ActivePrediction(
+    today: today,
+    lastEpisodeStart: lastStart,
+    estimatedNextStart: forecast.first.start,
+    originalEstimatedNextStart: originalEstimate,
+    averagedCycleLengths: const [],
+    meanCycleLengthDays: cycleDays.toDouble(),
+    // Today on/before the supplied start still reads as day 1 (a future
+    // or same-day start is "the cycle is beginning", not day 0 or a
+    // negative day) — the form bounds the picker, this keeps the value
+    // honest even if it ever slips past one.
+    cycleDay: openDays < 0 ? 1 : openDays + 1,
+    duringEpisode: openDays >= 0 && openDays < periodLengthDays,
+    completedCycleCount: 0,
+    validCycleCount: 0,
+    meanPeriodLengthDays: periodLengthDays.toDouble(),
+    spreadDays: kProvisionalSpreadDays,
+    tier: tier,
+    forecast: forecast,
+    unusuallyLongCycle: unusuallyLongCycle,
+  );
+}
 
 /// Convenience: derives episodes from raw entries first, then predicts.
 CyclePrediction computePredictionFromEntries({

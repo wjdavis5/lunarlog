@@ -9,9 +9,12 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart' show CycleFacts;
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
@@ -19,11 +22,21 @@ class ProfileController extends ChangeNotifier {
   ProfileController({
     required ProfilesRepository profilesRepository,
     required SettingsStore settingsStore,
+    ProfileModesRepository? profileModesRepository,
   })  : _profiles = profilesRepository,
-        _settings = settingsStore;
+        _settings = settingsStore,
+        _profileModes = profileModesRepository;
 
   final ProfilesRepository _profiles;
   final SettingsStore _settings;
+
+  /// Issue #218's persistence seam for the birth-control-method and
+  /// goal/mode answers: #216's onboarding form (and the profile-settings
+  /// editor) hand those answers to [createProfile]/[renameProfile], which
+  /// write them through here into #188's `profile_modes` row so #233
+  /// (PI-10)/#260 can consume them later without a second onboarding
+  /// pass. Optional so existing tests/unconfigured trees keep compiling.
+  final ProfileModesRepository? _profileModes;
 
   List<Profile> _live = const [];
   String? _storedActiveId;
@@ -84,24 +97,49 @@ class ProfileController extends ChangeNotifier {
     return _settings.set(SettingsKeys.firstRunNoticeShown, 'true');
   }
 
+  /// Issue #218's one-call onboarding seam (#216's form calls this after
+  /// its cycle-questions step): [facts] are the three skippable cycle
+  /// answers stored on the profile (feeding the provisional prediction
+  /// seed), and [lifecycleMode]/[birthControlMethod] are the goal/mode and
+  /// birth-control answers persisted into the `profile_modes` row —
+  /// captured and never thrown away, even though their downstream
+  /// consumers (#233 (PI-10)/#260) are separate issues. A null mode keeps
+  /// the lazy default (`tracking`); a null method stays unset.
   Future<Profile> createProfile({
     required String displayName,
     required bool isMinor,
     ProfileMode mode = ProfileMode.standard,
     int? birthYear,
     ProfileRelationship? relationship,
-  }) =>
-      _profiles.create(
-        displayName: _validated(displayName),
-        isMinor: isMinor,
-        mode: mode,
-        birthYear: birthYear,
-        relationship: relationship,
-      );
+    CycleFacts? facts,
+    LifecycleMode? lifecycleMode,
+    String? birthControlMethod,
+  }) async {
+    final profile = await _profiles.create(
+      displayName: _validated(displayName),
+      isMinor: isMinor,
+      mode: mode,
+      birthYear: birthYear,
+      relationship: relationship,
+      lastPeriodStart: facts?.lastPeriodStart,
+      typicalCycleLengthDays: facts?.typicalCycleLengthDays,
+      typicalPeriodLengthDays: facts?.typicalPeriodLengthDays,
+    );
+    await _saveModeAnswer(
+      profileId: profile.id,
+      lifecycleMode: lifecycleMode,
+      birthControlMethod: birthControlMethod,
+    );
+    return profile;
+  }
 
-  /// Persists edits to a profile. An omitted [mode] keeps the profile's
-  /// current mode — switching modes is a deliberate act, never a side
-  /// effect of an unrelated edit.
+  /// The profile-settings edit seam for the same answers (Issue #218:
+  /// "editable later from profile settings, not just at onboarding").
+  /// [facts] rides the ordinary profile update; a null [facts] keeps the
+  /// profile's current answers (pass [CycleFacts.empty] to clear them) —
+  /// unlike [birthYear]/[relationship], whose callers have always passed
+  /// the current value explicitly. [lifecycleMode]/[birthControlMethod],
+  /// when non-null, rewrite the mode row.
   Future<void> renameProfile(
     Profile profile, {
     required String displayName,
@@ -109,14 +147,52 @@ class ProfileController extends ChangeNotifier {
     ProfileMode? mode,
     int? birthYear,
     ProfileRelationship? relationship,
-  }) =>
-      _profiles.update(profile.copyWith(
-        displayName: _validated(displayName),
-        isMinor: isMinor,
-        mode: mode ?? profile.mode,
-        birthYear: birthYear,
-        relationship: relationship,
-      ));
+    CycleFacts? facts,
+    LifecycleMode? lifecycleMode,
+    String? birthControlMethod,
+  }) async {
+    final effectiveFacts = facts ??
+        CycleFacts(
+          lastPeriodStart: profile.lastPeriodStart,
+          typicalCycleLengthDays: profile.typicalCycleLengthDays,
+          typicalPeriodLengthDays: profile.typicalPeriodLengthDays,
+        );
+    await _profiles.update(profile.copyWith(
+      displayName: _validated(displayName),
+      isMinor: isMinor,
+      mode: mode ?? profile.mode,
+      birthYear: birthYear,
+      relationship: relationship,
+      lastPeriodStart: effectiveFacts.lastPeriodStart,
+      typicalCycleLengthDays: effectiveFacts.typicalCycleLengthDays,
+      typicalPeriodLengthDays: effectiveFacts.typicalPeriodLengthDays,
+    ));
+    await _saveModeAnswer(
+      profileId: profile.id,
+      lifecycleMode: lifecycleMode,
+      birthControlMethod: birthControlMethod,
+    );
+  }
+
+  /// Writes the mode/birth-control half of an onboarding or settings edit
+  /// (issue #218): only when both a repository is wired and at least one
+  /// answer is non-null — a row written with every field null would be a
+  /// no-op that still marks data dirty for sync.
+  Future<void> _saveModeAnswer({
+    required String profileId,
+    LifecycleMode? lifecycleMode,
+    String? birthControlMethod,
+  }) async {
+    final modes = _profileModes;
+    if (modes == null || (lifecycleMode == null && birthControlMethod == null)) {
+      return;
+    }
+    await modes.save(
+      profileId: profileId,
+      mode: lifecycleMode ?? LifecycleMode.tracking,
+      birthControlMethod: birthControlMethod,
+    );
+  }
 
   Future<void> selectProfile(String id) async {
     _pickerRequested = false;

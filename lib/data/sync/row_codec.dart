@@ -20,6 +20,10 @@
 ///   normalises to `standard` (presentation-only, never a security field).
 ///   `profiles.transferred_at` (R5) is pulled but never pushed — server-
 ///   owned, written only by `accept_ownership_transfer`.
+/// * `profiles.last_period_start` / `typical_cycle_length_days` /
+///   `typical_period_length_days` (Issue #218, onboarding cycle facts) are
+///   pulled *and* pushed like any other profile column; the date stays a
+///   `yyyy-MM-dd` string, same as `profile_modes.mode_started_on`.
 /// * `observations.category`/`code` (Issue #240) are free text and
 ///   deliberately NOT validated against a closed set here — unlike
 ///   `flow`/`mode`, an unrecognised value round-trips unchanged (the D-10
@@ -187,6 +191,9 @@ JsonRow encodeProfile(Profile row) {
     'mode': row.mode,
     'birth_year': row.birthYear,
     'relationship': row.relationship,
+    'last_period_start': row.lastPeriodStart,
+    'typical_cycle_length_days': row.typicalCycleLengthDays,
+    'typical_period_length_days': row.typicalPeriodLengthDays,
   };
 }
 
@@ -354,6 +361,10 @@ RemoteProfileRow decodeProfile(JsonRow json) {
     birthYear: r.integerOrNull('birth_year'),
     relationship: _decodeRelationship(r.stringOrNull('relationship')),
     transferredAt: r.timestampOrNull('transferred_at'),
+    lastPeriodStart:
+        _decodeIsoDate(r.stringOrNull('last_period_start'), r, 'last_period_start'),
+    typicalCycleLengthDays: r.integerOrNull('typical_cycle_length_days'),
+    typicalPeriodLengthDays: r.integerOrNull('typical_period_length_days'),
   );
 }
 

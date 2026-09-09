@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
     show CycleConfidence;
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/cycle_wheel.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
@@ -20,6 +21,11 @@ import 'package:lunarlog/ui/theme/app_theme.dart';
 Future<void> _pump(WidgetTester tester, Widget child) async {
   await tester.pumpWidget(MaterialApp(
     theme: AppTheme.lightTheme,
+    // Issue #218: the confidence chip's label resolves through
+    // AppLocalizations like every other surfaced string, so this harness
+    // carries the delegates the app's own MaterialApps do.
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(body: Center(child: child)),
   ));
 }
