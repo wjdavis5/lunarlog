@@ -8,11 +8,16 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
+import 'package:provider/provider.dart';
 
 /// Shared profile-name validation: non-blank, and no longer than the
 /// server accepts ([kMaxDisplayNameLength], mirrored from its CHECK).
@@ -55,6 +60,8 @@ class ProfileEditResult {
     this.mode = ProfileMode.standard,
     this.birthYear,
     this.relationship,
+    this.lifecycleMode = LifecycleMode.tracking,
+    this.birthControlChoice = BirthControlChoice.notAnswered,
   });
 
   final String displayName;
@@ -71,6 +78,15 @@ class ProfileEditResult {
   /// Optional closed-set relationship of the subject to the profile
   /// creator (R3).
   final ProfileRelationship? relationship;
+
+  /// Life-stage mode (Issue #188's axis, collected by #216's onboarding
+  /// and editable here — #216's "answers are editable later" AC). The
+  /// default matches the lazy-row contract: absent means `tracking`.
+  final LifecycleMode lifecycleMode;
+
+  /// Birth-control method answer (Issue #216; free-text storage owned by
+  /// #260's future vocabulary). `notAnswered` stores null.
+  final BirthControlChoice birthControlChoice;
 }
 
 Future<ProfileEditResult?> showProfileEditDialog(
@@ -104,6 +120,34 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     text: widget.existing?.birthYear?.toString() ?? '',
   );
   late ProfileRelationship? _relationship = widget.existing?.relationship;
+
+  /// The two #216 onboarding answers that are editable here (Issue #188
+  /// storage). Loaded asynchronously from the profile's `profile_modes`
+  /// row; until it resolves (or on a tree with no storage wired) the
+  /// defaults render — `tracking` / not answered, exactly what an absent
+  /// row means.
+  LifecycleMode _lifecycleMode = LifecycleMode.tracking;
+  BirthControlChoice _birthControl = BirthControlChoice.notAnswered;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileModeRow();
+  }
+
+  Future<void> _loadProfileModeRow() async {
+    final existing = widget.existing;
+    if (existing == null) return;
+    final storage = Provider.of<LunarLogStorage?>(context, listen: false);
+    if (storage == null) return;
+    final row = await storage.getProfileMode(existing.id);
+    if (!mounted || row == null) return;
+    setState(() {
+      _lifecycleMode = LifecycleMode.fromDb(row.mode);
+      _birthControl = birthControlChoiceForStored(
+          row.birthControlMethod, AppLocalizations.of(context));
+    });
+  }
 
   @override
   void dispose() {
@@ -203,6 +247,53 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                     ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  AppLocalizations.of(context).lifeStageModeLabel,
+                  key: const ValueKey('edit-lifecycle-label'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              DropdownButton<LifecycleMode>(
+                key: const ValueKey('edit-lifecycle-dropdown'),
+                value: _lifecycleMode,
+                isExpanded: true,
+                onChanged: (value) => setState(
+                    () => _lifecycleMode = value ?? LifecycleMode.tracking),
+                items: [
+                  for (final mode in LifecycleMode.values)
+                    DropdownMenuItem<LifecycleMode>(
+                      value: mode,
+                      child: Text(mode.label),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  AppLocalizations.of(context).firstRunCycleBirthControlLabel,
+                  key: const ValueKey('edit-birth-control-label'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              DropdownButton<BirthControlChoice>(
+                key: const ValueKey('edit-birth-control-dropdown'),
+                value: _birthControl,
+                isExpanded: true,
+                onChanged: (value) => setState(() =>
+                    _birthControl = value ?? BirthControlChoice.notAnswered),
+                items: [
+                  for (final choice in BirthControlChoice.values)
+                    DropdownMenuItem<BirthControlChoice>(
+                      value: choice,
+                      child: Text(birthControlChoiceLabel(
+                          choice, AppLocalizations.of(context))),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -225,6 +316,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                       ? null
                       : int.tryParse(trimmedBirthYear),
                   relationship: _relationship,
+                  lifecycleMode: _lifecycleMode,
+                  birthControlChoice: _birthControl,
                 ),
               );
             }

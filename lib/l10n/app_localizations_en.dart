@@ -405,4 +405,138 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsClose => 'Close';
+
+  @override
+  String get firstRunValueHeadline => 'A private cycle log for your family';
+
+  @override
+  String get firstRunValueBody =>
+      'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.';
+
+  @override
+  String get firstRunGuardiansTitle => 'Profiles and guardians';
+
+  @override
+  String get firstRunGuardiansBody =>
+      'Each profile holds one person\'s cycle log. After signing in, you can invite another guardian — a co-parent or caregiver — to view or help log it.';
+
+  @override
+  String get firstRunMinorExplainerTitle => 'About the minor checkbox';
+
+  @override
+  String get firstRunMinorExplainerBody =>
+      'It\'s a label with one real effect today: the profile is kept out of this phone\'s Health app sync. It doesn\'t restrict anything else — wording and reminders come from the care mode picked on the next screen, not from this checkbox.';
+
+  @override
+  String get firstRunNoticeBody =>
+      'Signing in syncs this profile across your devices and lets you share it with other guardians. Until then, everything you log stays on this device.';
+
+  @override
+  String get firstRunNext => 'Next';
+
+  @override
+  String get firstRunSkip => 'Skip';
+
+  @override
+  String get firstRunUnderstand => 'I understand';
+
+  @override
+  String get firstRunCreateTitle => 'Create a profile';
+
+  @override
+  String get firstRunNameLabel => 'Name';
+
+  @override
+  String get firstRunMinorLabel => 'This profile is for a minor';
+
+  @override
+  String get firstRunMinorHint =>
+      'A label with one effect: this profile is kept out of this phone\'s Health app sync.';
+
+  @override
+  String get firstRunCareModeLabel => 'Care mode';
+
+  @override
+  String get firstRunContinue => 'Continue';
+
+  @override
+  String get firstRunCycleCaption =>
+      'A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.';
+
+  @override
+  String get firstRunCycleLastPeriodLabel => 'Last period start';
+
+  @override
+  String get firstRunCycleChooseDate => 'Choose date';
+
+  @override
+  String get firstRunCycleChangeDate => 'Change date';
+
+  @override
+  String get firstRunCycleClearDate => 'Clear';
+
+  @override
+  String get firstRunCycleTypicalCycleLabel => 'Typical cycle length (days)';
+
+  @override
+  String get firstRunCycleTypicalCycleHint => 'e.g. 28';
+
+  @override
+  String get firstRunCycleTypicalPeriodLabel => 'Typical period length (days)';
+
+  @override
+  String get firstRunCycleTypicalPeriodHint => 'e.g. 5';
+
+  @override
+  String get firstRunCycleLengthRangeError =>
+      'Enter a number between 10 and 90';
+
+  @override
+  String get firstRunPeriodLengthRangeError =>
+      'Enter a number between 1 and 14';
+
+  @override
+  String get firstRunCycleBirthControlLabel => 'Birth-control method';
+
+  @override
+  String get firstRunCycleGoalLabel => 'Goal / mode';
+
+  @override
+  String get firstRunCreateButton => 'Create profile';
+
+  @override
+  String get lifeStageModeLabel => 'Life-stage mode';
+
+  @override
+  String get birthControlNotAnswered => 'Not answered';
+
+  @override
+  String get birthControlNone => 'None';
+
+  @override
+  String get birthControlPill => 'Pill';
+
+  @override
+  String get birthControlHormonalIud => 'Hormonal IUD';
+
+  @override
+  String get birthControlCopperIud => 'Copper IUD';
+
+  @override
+  String get birthControlImplant => 'Implant';
+
+  @override
+  String get birthControlInjection => 'Injection';
+
+  @override
+  String get birthControlRing => 'Vaginal ring';
+
+  @override
+  String get birthControlPatch => 'Patch';
+
+  @override
+  String get birthControlCondom => 'Condom';
+
+  @override
+  String get birthControlOther => 'Other';
 }

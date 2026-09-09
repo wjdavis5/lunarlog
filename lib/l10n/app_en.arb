@@ -498,5 +498,173 @@
   "settingsClose": "Close",
   "@settingsClose": {
     "description": "Close action of the settings dialogs."
+  },
+  "firstRunValueHeadline": "A private cycle log for your family",
+  "@firstRunValueHeadline": {
+    "description": "Headline of the first onboarding card (identity/value)."
+  },
+  "firstRunValueBody": "Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.",
+  "@firstRunValueBody": {
+    "description": "Body of the identity/value card: the differentiators stated plainly (family co-management, offline-first, no ads/tracking, no paywalled predictions)."
+  },
+  "firstRunGuardiansTitle": "Profiles and guardians",
+  "@firstRunGuardiansTitle": {
+    "description": "Title of the second onboarding card (what a profile and a guardian are)."
+  },
+  "firstRunGuardiansBody": "Each profile holds one person's cycle log. After signing in, you can invite another guardian — a co-parent or caregiver — to view or help log it.",
+  "@firstRunGuardiansBody": {
+    "description": "Body of the profiles/guardians card."
+  },
+  "firstRunMinorExplainerTitle": "About the minor checkbox",
+  "@firstRunMinorExplainerTitle": {
+    "description": "Heading of the minor-checkbox explanation inside the second onboarding card."
+  },
+  "firstRunMinorExplainerBody": "It's a label with one real effect today: the profile is kept out of this phone's Health app sync. It doesn't restrict anything else — wording and reminders come from the care mode picked on the next screen, not from this checkbox.",
+  "@firstRunMinorExplainerBody": {
+    "description": "The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; the health-sync binding is the one real gate)."
+  },
+  "firstRunNoticeBody": "Signing in syncs this profile across your devices and lets you share it with other guardians. Until then, everything you log stays on this device.",
+  "@firstRunNoticeBody": {
+    "description": "The third onboarding card: today's data/sync notice, kept verbatim from the pre-#216 first run (the #334 repositioned copy)."
+  },
+  "firstRunNext": "Next",
+  "@firstRunNext": {
+    "description": "Advance-one-card button on the onboarding cards."
+  },
+  "firstRunSkip": "Skip",
+  "@firstRunSkip": {
+    "description": "Skip button on the onboarding cards; skips the whole introduction."
+  },
+  "firstRunUnderstand": "I understand",
+  "@firstRunUnderstand": {
+    "description": "Advance button on the data/sync notice card (today's label, kept)."
+  },
+  "firstRunCreateTitle": "Create a profile",
+  "@firstRunCreateTitle": {
+    "description": "App bar title of the first-run name form and cycle-questions steps."
+  },
+  "firstRunNameLabel": "Name",
+  "@firstRunNameLabel": {
+    "description": "Label of the profile display-name field in the first-run form."
+  },
+  "firstRunMinorLabel": "This profile is for a minor",
+  "@firstRunMinorLabel": {
+    "description": "The minor checkbox label in the first-run form (kept from the pre-#216 form)."
+  },
+  "firstRunMinorHint": "A label with one effect: this profile is kept out of this phone's Health app sync.",
+  "@firstRunMinorHint": {
+    "description": "One-line hint under the minor checkbox in the first-run form."
+  },
+  "firstRunCareModeLabel": "Care mode",
+  "@firstRunCareModeLabel": {
+    "description": "Label above the care-mode dropdown in the first-run form (kept)."
+  },
+  "firstRunContinue": "Continue",
+  "@firstRunContinue": {
+    "description": "Submit button of the first-run name form; validates and moves to the cycle questions."
+  },
+  "firstRunCycleCaption": "A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.",
+  "@firstRunCycleCaption": {
+    "description": "Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability."
+  },
+  "firstRunCycleLastPeriodLabel": "Last period start",
+  "@firstRunCycleLastPeriodLabel": {
+    "description": "Label of the last-period-start question."
+  },
+  "firstRunCycleChooseDate": "Choose date",
+  "@firstRunCycleChooseDate": {
+    "description": "Button opening the last-period-start date picker when no date is chosen."
+  },
+  "firstRunCycleChangeDate": "Change date",
+  "@firstRunCycleChangeDate": {
+    "description": "Button re-opening the last-period-start date picker once a date is chosen."
+  },
+  "firstRunCycleClearDate": "Clear",
+  "@firstRunCycleClearDate": {
+    "description": "Button clearing the chosen last-period-start date (skips the question)."
+  },
+  "firstRunCycleTypicalCycleLabel": "Typical cycle length (days)",
+  "@firstRunCycleTypicalCycleLabel": {
+    "description": "Label of the typical-cycle-length question."
+  },
+  "firstRunCycleTypicalCycleHint": "e.g. 28",
+  "@firstRunCycleTypicalCycleHint": {
+    "description": "Hint inside the typical-cycle-length field."
+  },
+  "firstRunCycleTypicalPeriodLabel": "Typical period length (days)",
+  "@firstRunCycleTypicalPeriodLabel": {
+    "description": "Label of the typical-period-length question."
+  },
+  "firstRunCycleTypicalPeriodHint": "e.g. 5",
+  "@firstRunCycleTypicalPeriodHint": {
+    "description": "Hint inside the typical-period-length field."
+  },
+  "firstRunCycleLengthRangeError": "Enter a number between 10 and 90",
+  "@firstRunCycleLengthRangeError": {
+    "description": "Validation error for an out-of-range typical cycle length."
+  },
+  "firstRunPeriodLengthRangeError": "Enter a number between 1 and 14",
+  "@firstRunPeriodLengthRangeError": {
+    "description": "Validation error for an out-of-range typical period length."
+  },
+  "firstRunCycleBirthControlLabel": "Birth-control method",
+  "@firstRunCycleBirthControlLabel": {
+    "description": "Label of the birth-control-method question."
+  },
+  "firstRunCycleGoalLabel": "Goal / mode",
+  "@firstRunCycleGoalLabel": {
+    "description": "Label of the goal/life-stage-mode question."
+  },
+  "firstRunCreateButton": "Create profile",
+  "@firstRunCreateButton": {
+    "description": "Final button of the cycle-questions step; creates the profile (today's label, kept)."
+  },
+  "lifeStageModeLabel": "Life-stage mode",
+  "@lifeStageModeLabel": {
+    "description": "Label above the life-stage-mode dropdown in the profile edit dialog."
+  },
+  "birthControlNotAnswered": "Not answered",
+  "@birthControlNotAnswered": {
+    "description": "Birth-control selector option meaning the question was skipped; stores nothing."
+  },
+  "birthControlNone": "None",
+  "@birthControlNone": {
+    "description": "Birth-control selector option: no method in use."
+  },
+  "birthControlPill": "Pill",
+  "@birthControlPill": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlHormonalIud": "Hormonal IUD",
+  "@birthControlHormonalIud": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlCopperIud": "Copper IUD",
+  "@birthControlCopperIud": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlImplant": "Implant",
+  "@birthControlImplant": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlInjection": "Injection",
+  "@birthControlInjection": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlRing": "Vaginal ring",
+  "@birthControlRing": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlPatch": "Patch",
+  "@birthControlPatch": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlCondom": "Condom",
+  "@birthControlCondom": {
+    "description": "Birth-control selector option."
+  },
+  "birthControlOther": "Other",
+  "@birthControlOther": {
+    "description": "Birth-control selector option for a method not listed."
   }
 }
