@@ -12,6 +12,8 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 
+import '../../support/fake_account_export_remote_source.dart';
+
 Profile _profile(
   String id, {
   String displayName = 'Riley',
@@ -277,6 +279,109 @@ void main() {
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
+    });
+  });
+
+  group('mergeAccountExport (Issue #248)', () {
+    test('a null server document falls back to local-only with '
+        'serverIncluded: false and no server key', () {
+      final local = buildAccountExport(
+        profiles: const [],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final merged = mergeAccountExport(
+        localDocument: local,
+        serverDocument: null,
+      );
+
+      expect(merged['serverIncluded'], false);
+      expect(merged.containsKey('server'), isFalse);
+      // The local document's own shape is carried through unchanged.
+      expect(merged['schemaVersion'], local['schemaVersion']);
+      expect(merged['profiles'], local['profiles']);
+    });
+
+    test('a non-null server document is nested under `server` with '
+        'serverIncluded: true, and the local shape is untouched', () {
+      final local = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final serverDoc = <String, Object?>{
+        'profile_guardians': <Object?>[],
+        'guardian_invitations': <Object?>[],
+      };
+
+      final merged = mergeAccountExport(
+        localDocument: local,
+        serverDocument: serverDoc,
+      );
+
+      expect(merged['serverIncluded'], true);
+      expect(merged['server'], serverDoc);
+      expect(merged['profiles'], local['profiles']);
+      expect(() => jsonEncode(merged), returnsNormally);
+    });
+  });
+
+  group('buildMergedAccountExport (Issue #248)', () {
+    test('with no remote source, produces the local document plus '
+        'serverIncluded: false', () async {
+      final doc = await buildMergedAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      expect(doc['serverIncluded'], false);
+      expect(doc.containsKey('server'), isFalse);
+      expect((doc['profiles'] as List), hasLength(1));
+    });
+
+    test('with a remote source that resolves to null (signed out, '
+        'offline, or a failed call), degrades exactly like no remote '
+        'source at all', () async {
+      final remoteSource = FakeAccountExportRemoteSource();
+
+      final doc = await buildMergedAccountExport(
+        profiles: const [],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+        remoteSource: remoteSource,
+      );
+
+      expect(remoteSource.callCount, 1);
+      expect(doc['serverIncluded'], false);
+      expect(doc.containsKey('server'), isFalse);
+    });
+
+    test('with a remote source that resolves to a document, merges it '
+        'under `server` alongside the local document', () async {
+      final remoteSource = FakeAccountExportRemoteSource(result: {
+        'push_devices': <Object?>[
+          {'id': 'd1', 'platform': 'ios', 'token_last4': '1234'},
+        ],
+      });
+
+      final doc = await buildMergedAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+        remoteSource: remoteSource,
+      );
+
+      expect(doc['serverIncluded'], true);
+      expect(doc['server'], remoteSource.result);
+      expect((doc['profiles'] as List), hasLength(1));
+      expect(() => jsonEncode(doc), returnsNormally);
     });
   });
 }

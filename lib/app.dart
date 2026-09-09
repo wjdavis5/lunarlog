@@ -22,6 +22,7 @@ import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
@@ -60,6 +61,7 @@ class LunarLogApp extends StatefulWidget {
     this.accountDeletionService,
     this.ownershipTransferService,
     this.notificationPreferencesService,
+    this.accountExportRemoteSource,
     this.reminderWindowUpsert,
     this.inviteLinks,
     this.initialInviteCode,
@@ -97,6 +99,13 @@ class LunarLogApp extends StatefulWidget {
   /// (an unconfigured build, or push unavailable) it is absent (R17) and
   /// [reminderWindowUpsert] is never called.
   final NotificationPreferencesService? notificationPreferencesService;
+
+  /// Server-side export seam (Issue #248). When present,
+  /// `account_section.dart`'s export tile merges `export_account_data()`'s
+  /// document into the local-only export; when null (an unconfigured
+  /// build) export stays local-only, exactly as it always has (never a
+  /// hard failure either way - see `buildMergedAccountExport`'s doc).
+  final AccountExportRemoteSource? accountExportRemoteSource;
 
   /// Publishes the client's cycle prediction to the server (Issue #5, U6;
   /// R13). Null together with [notificationPreferencesService] on a build
@@ -588,6 +597,9 @@ class _LunarLogAppState extends State<LunarLogApp> {
         if (widget.notificationPreferencesService != null)
           Provider<NotificationPreferencesService>.value(
               value: widget.notificationPreferencesService!),
+        if (widget.accountExportRemoteSource != null)
+          Provider<AccountExportRemoteSource>.value(
+              value: widget.accountExportRemoteSource!),
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<SettingsStore>.value(value: _settings),

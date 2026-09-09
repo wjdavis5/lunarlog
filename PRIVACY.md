@@ -1,7 +1,7 @@
 # LunarLog Privacy Policy
 
 **Effective Date:** September 7, 2026  
-**Last Updated:** September 8, 2026 (account deletion now also removes feedback attachments and tickets explicitly, and discloses the admin notification email's separate retention — see the Change History in Section 10)  
+**Last Updated:** September 8, 2026 (account deletion now also removes feedback attachments and tickets explicitly, and discloses the admin notification email's separate retention; data-portability export now includes a server-side record alongside your on-device data — see the Change History in Section 10)  
 
 LunarLog ("we", "our", or "the app") is a privacy-first, local-first menstrual cycle and symptom tracker designed for individuals and families. We believe that reproductive and menstrual health data is deeply personal and sensitive. LunarLog is architected from the ground up to protect your privacy: your device is the primary source of truth, data is encrypted, and cloud synchronization is strictly optional.
 
@@ -124,7 +124,7 @@ Depending on your jurisdiction (such as the European Economic Area, United Kingd
 - **Rectification:** Correct inaccurate or incomplete information.
 - **Erasure:** Request that your personal data be permanently erased ("Right to be Forgotten").
 - **Restrict or Object to Processing:** Object to or limit specific processing activities.
-- **Data Portability:** Receive your data in a structured, commonly used, and machine-readable format - in-app via "Export my data" (Settings → Account), which produces a JSON file of your profiles and day entries.
+- **Data Portability:** Receive your data in a structured, commonly used, and machine-readable format - in-app via "Export my data" (Settings → Account), which produces a JSON file. When you are signed in and online, the file merges your locally stored profiles and day entries with the server's own record of your account under a `server` section: your guardian memberships and roles, the invitations and ownership transfers you created or accepted, your notification preferences, your registered devices (with each device's push token redacted to its last 4 characters), your feedback tickets and their reply threads, and your reminder settings. For a profile you share rather than own, that section covers only your own memberships, preferences, and the entries you personally logged - never another guardian's private data. The export includes your on-device data even when you are offline; the server section is included only when that network call succeeds, and the file records which happened (`serverIncluded`).
 - **Withdraw Consent:** Withdraw consent for cloud synchronization or error reporting at any time.
 
 To exercise any of these rights, please contact us at `will@wjdavis5.net`.
@@ -146,6 +146,7 @@ We may update this Privacy Policy from time to time to reflect improvements to t
 
 ### Change History
 
+- **September 8, 2026:** Data Portability (Section 8) now describes the server-side half of "Export my data" (Issue #248): when signed in and online, the exported file merges a `server` section - guardian memberships/roles, invitations and ownership transfers you created or accepted, notification preferences, registered devices (push token redacted to its last 4 characters), feedback tickets and replies, and reminder settings - into the existing local export, scoped so a shared (non-owned) profile only ever surfaces your own memberships, preferences, and self-authored entries. The local half of export is unaffected and still works fully offline.
 - **September 8, 2026:** Account deletion now removes the caller's feedback-attachment screenshots from storage and deletes feedback tickets (and their reply threads) explicitly, both as fail-closed steps of account deletion itself, rather than the tickets' removal depending only on a later step (revoking Apple, deleting the Supabase account) that could fail and the screenshots not being removed at all (issues D-24/D-25). Also added the disclosure, in Section 2.C, that submitting a ticket sends a short alert email to the operator with its own retention outside the app's database, separate from the ticket record itself.
 - **September 7, 2026:** Removed the "No Fertility Tracking or Algorithms" Core Principle. The product owner decided (issues #123 and #142) to pursue full parity with a full cycle-tracking product, including ovulation and fertile-window estimation, so this policy no longer guarantees that fertility features will never exist. Those features do not exist in the app as of this date — today the app tracks cycles and flow and estimates the next period — and when they ship, fertility-related data and estimates will follow the same local-first protections and the same guardian-visibility and ownership-transfer rules as all other cycle data (Section 5). Conception and pregnancy features remain outside the product's scope.
 - **September 6, 2026:** Added the Firebase Cloud Messaging disclosure for caregiver push alerts.
