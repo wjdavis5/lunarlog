@@ -105,6 +105,9 @@ files under `docs/coordinator/` (e.g. `opencode-muse/`); never `git add` the dir
 - Migration filenames must sort after the current tip; renumber on the PR branch if a parallel
   merge took the timestamp.
 - Self-approval is impossible on the owner's own PRs: record the review as a comment, then merge.
+- Any schemaVersion bump requires ALL of: build_runner regen, drift_schemas/drift_schema_v<N>.json
+  dump, AND the filename bump in ci.yml's codegen-freshness step (missed twice: #344, #356 — put
+  it in every schema-touching brief).
 - After ANY scripted conflict resolution, `grep -c '<<<<<<<'` before committing — a failed script
   plus a non-`set -e` shell once shipped markers to the remote branch (fixed forward, never
   force-push).
