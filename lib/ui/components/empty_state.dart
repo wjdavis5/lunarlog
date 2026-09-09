@@ -108,7 +108,7 @@ class EmptyState extends StatelessWidget {
           Text(
             body,
             style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.outline),
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             textAlign: textAlign,
           ),
           if (onPrimaryAction != null) ...[

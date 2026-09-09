@@ -142,13 +142,13 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
           key: const ValueKey('support-history-empty'),
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.forum_outlined, size: 48, color: theme.colorScheme.outline),
+            Icon(Icons.forum_outlined, size: 48, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text('No feedback yet', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
               'Reports you send from Settings appear here.',
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),

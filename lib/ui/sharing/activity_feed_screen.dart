@@ -146,7 +146,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.people_outline,
-                size: 48, color: theme.colorScheme.outline),
+                size: 48, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text('Just you for now', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
@@ -156,7 +156,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               'appear here.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.outline),
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -173,7 +173,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.event_note,
-                size: 48, color: theme.colorScheme.outline),
+                size: 48, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text('No activity yet', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
@@ -182,7 +182,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               'here.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.outline),
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
