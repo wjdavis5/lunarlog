@@ -47,6 +47,16 @@ const String kEstimateDisclaimer = 'Estimates only — not medical advice.';
 String _formatDate(LocalDate date) =>
     '${kMonthNames[date.month - 1]} ${date.day}, ${date.year}';
 
+/// Issue #213: `high` confidence keeps the single exact-date estimate
+/// (unchanged from before this issue); any other tier renders the range
+/// `estimatedRangeStart`–`estimatedRangeEnd` instead of one exact date,
+/// per the issue's own display rule.
+String _estimateDateText(ActivePrediction prediction) =>
+    prediction.tier == CycleConfidence.high
+        ? _formatDate(prediction.estimatedNextStart)
+        : '${_formatDate(prediction.estimatedRangeStart)} – '
+            '${_formatDate(prediction.estimatedRangeEnd)}';
+
 class OverviewPanel extends StatefulWidget {
   const OverviewPanel({
     super.key,
@@ -273,11 +283,22 @@ class _OverviewPanelState extends State<OverviewPanel> {
             ),
             const SizedBox(height: 12),
             Text(
-              '${_copy.nextEstimateLabel} '
-              '${_formatDate(prediction.estimatedNextStart)}',
+              '${_copy.nextEstimateLabel} ${_estimateDateText(prediction)}',
               key: const ValueKey('overview-next-period'),
               style: theme.textTheme.titleMedium,
             ),
+            // Issue #213: below `high` confidence, the estimate above is
+            // already a range rather than one exact date; this caption
+            // names why (no numbers, matching the rest of R11's
+            // no-partial-numbers framing).
+            if (prediction.tier != CycleConfidence.high) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${prediction.tier.label} — ${prediction.tier.summary}',
+                key: const ValueKey('overview-tier-caption'),
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: 4),
             if (prediction.isLate)
               _lateSectionFor(prediction, theme)

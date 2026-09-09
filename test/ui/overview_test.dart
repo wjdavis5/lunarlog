@@ -534,8 +534,10 @@ void main() {
           reason: 'the new episode resets the open cycle');
       expect(find.text('Period'), findsOneWidget,
           reason: 'today is now day 1 of the new episode');
-      expect(find.text('≈37 days until next period'), findsOneWidget,
-          reason: 'mean of [28, 28, 56] rounds to 37 from 2026-08-30');
+      expect(find.text('≈34 days until next period'), findsOneWidget,
+          reason: 'issue #213 widened the prediction window to 12 cycles '
+              '(was 3): mean of all five lengths [28, 28, 28, 28, 56] is '
+              '33.6, rounding to 34 from 2026-08-30');
       await disposeOverview(tester, h);
     });
   });

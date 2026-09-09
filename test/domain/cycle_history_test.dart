@@ -107,9 +107,13 @@ void main() {
   });
 
   group('statistics (R5)', () {
-    test('mean cycle length mirrors the prediction average (most recent 3 '
-        'counted lengths)', () {
-      // Lengths 28, 28, 48, 28: the recent-three window is 28, 48, 28.
+    test('mean cycle length uses the issue #213 displayed-averages window '
+        '(6 cycles, not the old 3) — all 4 counted lengths fit inside it',
+        () {
+      // Lengths 28, 28, 48, 28: all four fit inside kAverageWindowCycles
+      // (6), so the mean uses all four. Before issue #213
+      // (kMaxAveragedCycles=3) only the most recent three (28, 48, 28) fed
+      // this number.
       final view = deriveCycleHistory(
         episodes: episodesFromStarts([
           d(2026, 1, 1),
@@ -120,7 +124,7 @@ void main() {
         ]),
       );
       expect(view.averagedCycleCount, 4);
-      expect(view.meanCycleLengthDays, closeTo(104 / 3, 1e-9));
+      expect(view.meanCycleLengthDays, 33.0);
       expect(view.variationDays, 20);
     });
 

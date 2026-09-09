@@ -135,8 +135,14 @@ void main() {
       expect(p.daysUntilNextStart, 24);
     });
 
-    test('only the most recent 3 valid cycles feed the average', () {
-      // Valid lengths 28, 30, 29, 31 -> average uses 30, 29, 31 -> 30.
+    test('issue #213: the prediction window is 12 cycles, not 3 — all 4 '
+        'valid lengths feed the average now', () {
+      // Valid lengths 28, 30, 29, 31, all within kRecencyWindowCycles(12)
+      // and kPredictionWindowCycles(12) -> average uses all four -> 29.5,
+      // which still rounds to 30 (a coincidence of this fixture, not a
+      // general property). Before issue #213 (kMaxAveragedCycles=3), only
+      // the most recent three (30, 29, 31) fed the average; that narrower
+      // window is exactly what this issue replaces (A2-13).
       final result = computePrediction(
         episodes: episodesFromStarts([
           d(2026, 1, 1),
@@ -148,8 +154,8 @@ void main() {
         today: d(2026, 5, 5),
       );
       final p = result as ActivePrediction;
-      expect(p.averagedCycleLengths, [30, 29, 31]);
-      expect(p.meanCycleLengthDays, 30.0);
+      expect(p.averagedCycleLengths, [28, 30, 29, 31]);
+      expect(p.meanCycleLengthDays, 29.5);
       expect(p.estimatedNextStart, d(2026, 5, 29));
     });
 
@@ -368,8 +374,9 @@ void main() {
   group('omit-from-average (issue #132, R4)', () {
     test('omitting a completed cycle start drops its length from the average '
         'and moves the estimate', () {
-      // Lengths 28, 28, 48, 28. Without omission the average of the most
-      // recent three (28, 48, 28) is 34.67 -> 35: May 13 + 35 = Jun 17.
+      // Lengths 28, 28, 48, 28. Issue #213 widened the prediction window
+      // to 12 cycles (was 3), so without omission all four lengths feed
+      // the average: (28+28+48+28)/4 = 33.0 exactly: May 13 + 33 = Jun 15.
       // Omitting the 48-day cycle (start Feb 26) leaves 28, 28, 28 -> 28:
       // May 13 + 28 = Jun 10.
       final starts = [
@@ -383,7 +390,8 @@ void main() {
         episodes: episodesFromStarts(starts),
         today: d(2026, 5, 20),
       ) as ActivePrediction;
-      expect(before.averagedCycleLengths, [28, 48, 28]);
+      expect(before.averagedCycleLengths, [28, 28, 48, 28]);
+      expect(before.meanCycleLengthDays, 33.0);
 
       final after = computePrediction(
         episodes: episodesFromStarts(starts),
@@ -391,9 +399,10 @@ void main() {
         omittedCycleStarts: {d(2026, 2, 26)},
       ) as ActivePrediction;
       expect(after.averagedCycleLengths, [28, 28, 28],
-          reason: 'the omitted length drops out and an older one slides in');
+          reason: 'the omitted length simply drops out (the 12-cycle window '
+              'has room for all the rest already)');
       expect(after.meanCycleLengthDays, 28.0);
-      expect(after.estimatedNextStart, before.estimatedNextStart.addDays(-7));
+      expect(after.estimatedNextStart, before.estimatedNextStart.addDays(-5));
     });
 
     test('omitting below three usable cycles degrades to NotEnoughHistory, '
@@ -530,6 +539,210 @@ void main() {
         omittedCycleStarts: {d(2026, 3, 2)},
       );
       expect(result, isA<PausedAwaitingNextPeriod>());
+    });
+  });
+
+  group('recency bound before validity filtering (issue #213, A2-13 fix)', () {
+    test('stale valid cycles behind a long recent gap of invalid ones no '
+        'longer feed a full-confidence estimate', () {
+      // 3 old valid 28-day cycles, then 12 more (invalid, 90-day) cycles —
+      // 15 completed cycles total. kRecencyWindowCycles (12) is applied to
+      // the raw chronological list *before* validity filtering, so the 12
+      // most recent completed cycles (all invalid here) are the only ones
+      // ever considered; the 3 old valid ones sit entirely outside that
+      // window and must never feed the estimate, however few valid cycles
+      // exist since. Before issue #213 (validity-filter-then-window), the
+      // unwindowed valid list would have surfaced exactly those 3 old
+      // cycles as a full-confidence, badly stale estimate.
+      var start = d(2024, 1, 1);
+      final starts = <LocalDate>[start];
+      for (var i = 0; i < 3; i++) {
+        start = start.addDays(28);
+        starts.add(start);
+      }
+      for (var i = 0; i < 12; i++) {
+        start = start.addDays(90);
+        starts.add(start);
+      }
+      final today = start.addDays(5);
+
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: today,
+      );
+      expect(result, isA<NotEnoughHistory>(),
+          reason: 'the 3 valid cycles are outside the 12-cycle recency '
+              'window; the fix must not reach back for them');
+      final nth = result as NotEnoughHistory;
+      expect(nth.completedCycleCount, 15);
+      expect(nth.validCycleCount, 3,
+          reason: 'full-history validCycleCount is still reported for '
+              'context; only the *usable-for-the-estimate* count is '
+              'recency-windowed');
+    });
+
+    test('the same stale cycles DO feed the estimate once they are still '
+        'inside the 12-cycle window', () {
+      // Same shape as above but with only 8 invalid cycles after the 3
+      // valid ones (11 completed total, all within the 12-cycle window),
+      // so the 3 old valid cycles are still visible to the estimate.
+      var start = d(2024, 1, 1);
+      final starts = <LocalDate>[start];
+      for (var i = 0; i < 3; i++) {
+        start = start.addDays(28);
+        starts.add(start);
+      }
+      for (var i = 0; i < 8; i++) {
+        start = start.addDays(90);
+        starts.add(start);
+      }
+      final today = start.addDays(5);
+
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: today,
+      );
+      expect(result, isA<ActivePrediction>());
+      final p = result as ActivePrediction;
+      expect(p.averagedCycleLengths, [28, 28, 28]);
+    });
+  });
+
+  group('confidence tier thresholds (issue #213, provisional)', () {
+    test('fewer than kMinCompletedValidCycles in the average window always '
+        'reads learning, regardless of spread or ratio', () {
+      expect(
+        confidenceTierFor(
+          validCycleCountInWindow: kMinCompletedValidCycles - 1,
+          spreadDays: 0,
+          validRatio: 1.0,
+        ),
+        CycleConfidence.learning,
+      );
+    });
+
+    test('spread exactly at the threshold still reads high; just over it '
+        'reads irregular', () {
+      expect(
+        confidenceTierFor(
+          validCycleCountInWindow: 6,
+          spreadDays: kIrregularSpreadThresholdDays,
+          validRatio: 1.0,
+        ),
+        CycleConfidence.high,
+        reason: 'the boundary itself is not "over" the threshold',
+      );
+      expect(
+        confidenceTierFor(
+          validCycleCountInWindow: 6,
+          spreadDays: kIrregularSpreadThresholdDays + 0.01,
+          validRatio: 1.0,
+        ),
+        CycleConfidence.irregular,
+      );
+    });
+
+    test('valid ratio exactly at the threshold still reads high; just '
+        'under it reads irregular', () {
+      expect(
+        confidenceTierFor(
+          validCycleCountInWindow: 6,
+          spreadDays: 0,
+          validRatio: kIrregularValidRatioThreshold,
+        ),
+        CycleConfidence.high,
+        reason: 'the boundary itself is not "under" the threshold',
+      );
+      expect(
+        confidenceTierFor(
+          validCycleCountInWindow: 6,
+          spreadDays: 0,
+          validRatio: kIrregularValidRatioThreshold - 0.01,
+        ),
+        CycleConfidence.irregular,
+      );
+    });
+  });
+
+  group('period-length aggregation (issue #213, item 3)', () {
+    test('meanPeriodLengthDays averages Episode.lengthDays over the '
+        '6-cycle average window', () {
+      final starts = [
+        d(2026, 1, 1),
+        d(2026, 1, 29),
+        d(2026, 2, 26),
+        d(2026, 3, 26),
+      ];
+      const bleedLengths = [3, 4, 5, 4];
+      final episodes = [
+        for (var i = 0; i < starts.length; i++)
+          Episode(starts[i], starts[i].addDays(bleedLengths[i] - 1)),
+      ];
+      final result = computePrediction(
+        episodes: episodes,
+        today: starts.last.addDays(5),
+      );
+      final p = result as ActivePrediction;
+      expect(p.meanPeriodLengthDays, closeTo(4.0, 1e-9));
+    });
+  });
+
+  group('forecast sequence (issue #213, item 4)', () {
+    test('a steady, high-tier history forecasts kPredictionWindowCycles '
+        'cycles, all at high tier with zero spread', () {
+      final starts = [for (var i = 0; i < 6; i++) d(2026, 1, 1).addDays(30 * i)];
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: starts.last.addDays(5),
+      );
+      final p = result as ActivePrediction;
+      expect(p.tier, CycleConfidence.high);
+      expect(p.spreadDays, 0);
+      expect(p.forecast, hasLength(kPredictionWindowCycles));
+      expect(p.forecast.first.start, p.estimatedNextStart);
+      for (var i = 0; i < p.forecast.length; i++) {
+        final cycle = p.forecast[i];
+        expect(cycle.cycleIndex, i + 1);
+        expect(cycle.start, p.estimatedNextStart.addDays(30 * i));
+        expect(cycle.spreadDays, 0);
+        expect(cycle.tier, CycleConfidence.high,
+            reason: 'zero spread never crosses the irregular threshold, '
+                'however far out the forecast goes');
+      }
+    });
+
+    test('an irregular-tier history forecasts every cycle at irregular, '
+        'and the spread widens further out', () {
+      // Lengths 90, 95, 100, 65 (all invalid) then 24, 28, 32 (valid,
+      // spread > 0): valid ratio 3/7 ≈ 0.43 < 0.5 reads irregular even
+      // though the 24/28/32 spread alone (≈3.27) would not.
+      final starts = [
+        d(2025, 1, 1),
+        d(2025, 4, 1), // 90: invalid
+        d(2025, 7, 5), // 95: invalid
+        d(2025, 10, 13), // 100: invalid
+        d(2025, 12, 17), // 65: invalid
+        d(2026, 1, 10), // 24: valid
+        d(2026, 2, 7), // 28: valid
+        d(2026, 3, 11), // 32: valid
+      ];
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: starts.last.addDays(5),
+      );
+      final p = result as ActivePrediction;
+      expect(p.tier, CycleConfidence.irregular);
+      expect(p.forecast, hasLength(kPredictionWindowCycles));
+      for (final cycle in p.forecast) {
+        expect(cycle.tier, CycleConfidence.irregular,
+            reason: 'irregular never upgrades with distance');
+      }
+      expect(
+        p.forecast[1].spreadDays,
+        greaterThan(p.forecast[0].spreadDays),
+        reason: 'spread still widens geometrically even once already '
+            'irregular',
+      );
     });
   });
 }

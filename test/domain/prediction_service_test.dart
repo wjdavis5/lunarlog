@@ -180,7 +180,10 @@ void main() {
       addTearDown(sub.cancel);
       await pumpEventQueue();
       expect(seen.last, isA<ActivePrediction>());
-      expect((seen.last as ActivePrediction).averagedCycleLengths, [28, 48, 28]);
+      // Issue #213 widened the prediction window to 12 cycles (was 3), so
+      // all four lengths feed the average before omission.
+      expect((seen.last as ActivePrediction).averagedCycleLengths,
+          [28, 28, 48, 28]);
 
       await CycleExclusionList(settings)
           .omit(profile.id, LocalDate(2026, 2, 26));
@@ -211,8 +214,10 @@ void main() {
 
       await exclusions.include(profile.id, LocalDate(2026, 2, 26));
       await pumpEventQueue();
+      // Issue #213 widened the prediction window to 12 cycles (was 3): all
+      // four lengths average to 33.0 exactly, not the old 3-cycle 34.67.
       expect((seen.last as ActivePrediction).estimatedNextStart,
-          LocalDate(2026, 6, 17));
+          LocalDate(2026, 6, 15));
     });
 
     test('current() reads the omission list too', () async {

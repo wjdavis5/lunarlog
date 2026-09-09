@@ -78,9 +78,10 @@ final List<LocalDate> kIrregularRatioStarts = [
 ];
 
 /// Lengths 28, 28, 20, 28: the 20-day cycle is the one STARTING Apr 5 (it
-/// runs Apr 5 -> Apr 25); it drags the mean to 25.33 -> estimate Jun 17,
-/// and today Jun 21 makes that late. Omitting it restores 28, 28, 28 ->
-/// estimate Jun 20 -> not late.
+/// runs Apr 5 -> Apr 25); with issue #213's 12-cycle prediction window all
+/// four lengths feed the mean (26.0 exactly) -> estimate Jun 18, and today
+/// Jun 21 makes that late. Omitting it restores 28, 28, 28 -> estimate
+/// Jun 20 -> not late.
 final List<LocalDate> kShortOutlierStarts = [
   LocalDate(2026, 2, 8), // 28-day cycle starts here
   LocalDate(2026, 3, 8), // 28
@@ -285,7 +286,7 @@ void main() {
         starts: kShortOutlierStarts,
       );
 
-      expect(find.text('Next period estimate: June 17, 2026'), findsOneWidget);
+      expect(find.text('Next period estimate: June 18, 2026'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('late-resolver')),
         findsOneWidget,
@@ -321,7 +322,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('Next period estimate: June 17, 2026'),
+        find.text('Next period estimate: June 18, 2026'),
         findsOneWidget,
         reason: 'reversible: including it restores the old estimate',
       );
