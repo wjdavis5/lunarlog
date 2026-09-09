@@ -213,7 +213,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                   _mode.hint,
                   key: const ValueKey('care-mode-hint'),
                   style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.outline),
+                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
               TextFormField(

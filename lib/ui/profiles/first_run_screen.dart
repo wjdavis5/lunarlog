@@ -524,7 +524,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.outline),
+                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
               const SizedBox(height: 12),
@@ -556,7 +556,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.outline),
+                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
               const SizedBox(height: 16),

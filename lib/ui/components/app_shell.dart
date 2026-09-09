@@ -48,6 +48,7 @@ import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -289,7 +290,13 @@ class _AppShellState extends State<AppShell> {
   /// glyph (only when a build has one), and a Settings action. Extracted
   /// out of [build] to keep that method's branching low (CRAP gate).
   AppBar _shellAppBar(bool hasSync, LunarLogStorage? storage) => AppBar(
-        title: _ProfileSwitcher(profile: widget.profile, onTap: _openPicker),
+        title: _ProfileSwitcher(
+          profile: widget.profile,
+          onTap: _openPicker,
+          guardiansRepository: storage == null
+              ? null
+              : ProfileGuardiansRepository(storage),
+        ),
         actions: [
           if (storage != null)
             ActivityFeedButton(
@@ -313,14 +320,23 @@ class _AppShellState extends State<AppShell> {
 /// the existing picker via [ProfileController.openPicker], the same
 /// mechanism `ProfileDetailScreen`'s "Switch profile" `IconButton` used --
 /// wrapped in the same [Tooltip] message so it stays findable the same way.
+///
+/// Issue #126: carries the co-managed mark ([_SharedMark]) right after the
+/// name, so a co-managed record always reads as one without opening any
+/// menu. Solo profiles render nothing extra.
 class _ProfileSwitcher extends StatelessWidget {
-  const _ProfileSwitcher({required this.profile, required this.onTap});
+  const _ProfileSwitcher(
+      {required this.profile,
+      required this.onTap,
+      required this.guardiansRepository});
 
   final Profile profile;
   final VoidCallback onTap;
+  final ProfileGuardiansRepository? guardiansRepository;
 
   @override
   Widget build(BuildContext context) {
+    final repository = guardiansRepository;
     return Tooltip(
       message: 'Switch profile',
       child: InkWell(
@@ -338,12 +354,52 @@ class _ProfileSwitcher extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (repository != null)
+                _SharedMark(
+                    repository: repository, profileId: profile.id),
               const SizedBox(width: 4),
               const Icon(Icons.expand_more, size: 20),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Issue #126 co-managed mark: a small, non-alarming indicator next to the
+/// active profile's name whenever the local guardian rows show more than
+/// one accepted guardian. Local rows render offline, so this never errors
+/// or spins — unknown or solo reads as nothing.
+class _SharedMark extends StatelessWidget {
+  const _SharedMark({required this.repository, required this.profileId});
+
+  final ProfileGuardiansRepository repository;
+  final String profileId;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<ProfileGuardian>>(
+      stream: repository.watchForProfile(profileId),
+      builder: (context, snapshot) {
+        final accepted = [
+          for (final guardian
+              in snapshot.data ?? const <ProfileGuardian>[])
+            if (guardian.status == GuardianStatus.accepted) guardian,
+        ];
+        if (accepted.length < 2) return const SizedBox.shrink();
+        return Tooltip(
+          message: 'Shared · ${accepted.length} guardians',
+          child: const Padding(
+            padding: EdgeInsets.only(left: 4),
+            child: Icon(
+              Icons.people_outline,
+              key: ValueKey('profile-shared-indicator'),
+              size: 18,
+            ),
+          ),
+        );
+      },
     );
   }
 }

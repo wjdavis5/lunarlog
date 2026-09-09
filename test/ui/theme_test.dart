@@ -6,6 +6,7 @@
 /// `onSurfaceVariant` on `surface`, and each `onFlow*` on its `flow*`.
 library;
 
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -44,6 +45,19 @@ double _contrast(Color a, Color b) {
   final darker = math.min(luminanceA, luminanceB);
   return (lighter + 0.05) / (darker + 0.05);
 }
+
+/// Strips `//`-style line comments (including `///` doc comments) from
+/// [contents]. Same naive helper as
+/// `test/architecture/theme_wiring_test.dart`'s: a `//` inside a string
+/// literal would also be treated as a comment start, but that only risks
+/// under-scanning a line, never hiding a real `colorScheme.outline` usage.
+String _stripLineComments(String contents) => contents
+    .split('\n')
+    .map((line) {
+      final commentIndex = line.indexOf('//');
+      return commentIndex == -1 ? line : line.substring(0, commentIndex);
+    })
+    .join('\n');
 
 void main() {
   final themes = <String, ThemeData>{
@@ -369,6 +383,79 @@ void main() {
           (effectiveErrorBorder as OutlineInputBorder).borderSide;
       expect(borderSide, isNot(BorderSide.none));
       expect(borderSide.color, AppTheme.lightTheme.colorScheme.error);
+    });
+  });
+
+  // Issue #162 (B-24): every place that used to read de-emphasised text or
+  // icon colour from `colorScheme.outline` (sharing-flow subtitles, the day
+  // sheet's read-only reason, empty states, history labels) and the
+  // reminders-unavailable hint that read it from `tertiary` now uses
+  // `onSurfaceVariant`, and the calendar's generic symptom dot uses the
+  // tertiary-derived `symptomDot` token (its >=3:1-vs-`surface` assertion
+  // lives in the #176 group above -- `surface` *is* the cell background:
+  // the calendar grid renders on the scaffold, not in a Card). This group
+  // pins the replacement role's contrast against every background those
+  // call sites actually render onto, and source-scans `lib/ui` so no
+  // `outline`-as-text regression can land silently. Both themes are walked:
+  // the issue requires light, and reusing these same assertions for the
+  // dark palette is exactly what #137 picks up when it wires `darkTheme`
+  // into the app.
+  group('text-role contrast (#162)', () {
+    test(
+        'onSurfaceVariant clears 4.5:1 against every background the #162 '
+        'call sites render onto',
+        () {
+      for (final themeEntry in themes.entries) {
+        final name = themeEntry.key;
+        final scheme = themeEntry.value.colorScheme;
+        // All affected copy is normal-size text (bodySmall/bodyMedium) and
+        // 18-48px icons, so the 4.5:1 normal-text floor of WCAG 2.1
+        // 1.4.3 applies; it also covers 1.4.11's 3:1 UI-component floor.
+        final backgrounds = <String, Color>{
+          'surface': scheme.surface,
+          'surfaceContainerLow': scheme.surfaceContainerLow,
+          'surfaceContainerHighest': scheme.surfaceContainerHighest,
+        };
+        for (final background in backgrounds.entries) {
+          final ratio = _contrast(
+            scheme.onSurfaceVariant,
+            background.value,
+          );
+          expect(
+            ratio,
+            greaterThanOrEqualTo(4.5),
+            reason:
+                '$name onSurfaceVariant/${background.key} contrast '
+                'was $ratio',
+          );
+        }
+      }
+    });
+
+    test('no text or icon in lib/ui reads its colour from colorScheme.outline',
+        () {
+      // Source-scan in the style of
+      // `test/architecture/theme_wiring_test.dart`: strip `//` line
+      // comments (so a doc comment *mentioning* `colorScheme.outline` --
+      // like this test's own -- never trips the guard), then require zero
+      // matches. `\b` keeps `outlineVariant` (the sanctioned
+      // divider/border role) out of the scan.
+      final pattern = RegExp(r'colorScheme\.outline\b');
+      final offenders = <String>[];
+      for (final entity in Directory('lib/ui').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        final code = _stripLineComments(entity.readAsStringSync());
+        if (pattern.hasMatch(code)) offenders.add(entity.path);
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'colorScheme.outline is a decorative-boundary role (~4.2:1 on '
+            'surface in the light palette -- below AA for normal text), not '
+            'a text role; use colorScheme.onSurfaceVariant for de-emphasised '
+            'copy (issue #162): $offenders',
+      );
     });
   });
 

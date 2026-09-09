@@ -157,7 +157,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
               'Omissions stay on this device — other devices are not affected.',
               key: const ValueKey('history-device-local-note'),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -251,7 +251,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.outline,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           Text(value, style: theme.textTheme.titleSmall),
