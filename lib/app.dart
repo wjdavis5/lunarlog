@@ -37,6 +37,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart'
@@ -644,6 +645,14 @@ class _LunarLogAppState extends State<LunarLogApp> {
         navigatorObservers: _navigatorObservers,
         title: 'lunarlog',
         theme: AppTheme.lightTheme,
+        // Issue #160: localization scaffolding. `en` is the only supported
+        // locale today; the delegates (AppLocalizations plus Flutter's own
+        // material/cupertino/widgets delegates) make every screen's copy
+        // resolve through AppLocalizations and date/month names resolve
+        // through intl. Adding a locale = adding an ARB + listing it here
+        // (via AppLocalizations.supportedLocales).
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         // KTD16: the web wipe is the device reset when one is provided.
         builder: (context, child) => WebGuardrails(
           showBanner: widget.showWebBanner,

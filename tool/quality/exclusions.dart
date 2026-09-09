@@ -119,6 +119,15 @@ final List<CoverageExclusion> excludedLibFilePaths = [
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');
 
+/// `flutter gen-l10n` output (issue #160): `lib/l10n/app_localizations.dart`
+/// and its per-locale implementations (`app_localizations_en.dart`, ...) are
+/// machine-generated from `lib/l10n/app_en.arb` and committed, same
+/// treatment as `**/*.g.dart` above — the suffix glob cannot reach them
+/// because gen-l10n names its outputs after the ARB template. The ARB's own
+/// guard is `test/ui/l10n_test.dart`'s copy-parity suite, which asserts
+/// every generated getter against the exact literal it replaced.
+final RegExp _genL10nPattern = RegExp(r'lib/l10n/app_localizations.*\.dart$');
+
 /// `dart run drift_dev schema generate` output (issue #200): every file
 /// under `test/data/db/generated_migrations/` is machine-generated from the
 /// `drift_schemas/*.json` dumps and rewritten wholesale by that command, same
@@ -135,6 +144,7 @@ final RegExp _driftSchemaMigrationHelperPattern =
 /// generated-code globs — the matcher [isExcluded] actually uses.
 final List<RegExp> coveragePatterns = [
   _generatedCodePattern,
+  _genL10nPattern,
   _driftSchemaMigrationHelperPattern,
   for (final e in excludedLibFilePaths) RegExp('${RegExp.escape(e.path)}\$'),
 ];

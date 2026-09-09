@@ -81,6 +81,11 @@ dependencies:
   # at runtime.
   firebase_core: ^4.1.1
   firebase_messaging: ^16.0.2
+  # Issue #160: localization scaffolding. intl is pinned exactly (not `^`)
+  # to match flutter_localizations' own pin — the two must move together.
+  flutter_localizations:
+    sdk: flutter
+  intl: 0.20.3
 
 dev_dependencies:
   flutter_test:
@@ -107,6 +112,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Issue #160: enables flutter gen-l10n (see l10n.yaml); the generated
+  # lib/l10n/app_localizations*.dart files are committed.
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

@@ -28,8 +28,10 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 /// Fixed "today": 2026-08-30, cycle day 26 of the open cycle below.
@@ -112,6 +114,8 @@ class Harness {
         ),
       ],
       child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(brightness: brightness),
         home: ProfileDetailScreen(
           profile: profile,
@@ -185,7 +189,7 @@ Future<void> disposeForecast(WidgetTester tester, Harness h) async {
 
 /// Walks the calendar forward (from today's month) until [label] shows.
 Future<void> showMonthForward(WidgetTester tester, int year, int month) async {
-  final label = '${kMonthNames[month - 1]} $year';
+  final label = '${monthNames()[month - 1]} $year';
   var guard = 0;
   while (find.text(label).evaluate().isEmpty) {
     expect(guard++, lessThan(40), reason: 'month never reached: $label');

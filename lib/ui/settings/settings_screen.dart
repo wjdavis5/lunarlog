@@ -21,6 +21,7 @@ import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -60,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final authController = Provider.of<AuthController?>(context);
     final hasAccount = authController != null;
     // R23: the in-app form needs a signed-in session (feedback tickets are
@@ -81,7 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         storage != null &&
         profilesRepository != null;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         children: [
           const YourDataSection(),
@@ -93,8 +95,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               key: const ValueKey('send-feedback-tile'),
               leading: const Icon(Icons.feedback_outlined),
-              title: const Text('Send feedback'),
-              subtitle: const Text('Report a bug, ask a question, or share an idea'),
+              title: Text(l10n.settingsSendFeedback),
+              subtitle: Text(l10n.settingsSendFeedbackSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => pushNamedScreen<void>(context, kRouteFeedbackScreen),
             )
@@ -102,8 +104,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               key: const ValueKey('contact-support-tile'),
               leading: const Icon(Icons.feedback_outlined),
-              title: const Text('Contact support'),
-              subtitle: const Text('Email us with a bug or question'),
+              title: Text(l10n.settingsContactSupport),
+              subtitle: Text(l10n.settingsContactSupportSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showContactSupport(context),
             ),
@@ -111,14 +113,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           SwitchListTile(
             key: const ValueKey('relock-toggle'),
-            title: const Text('Relock after inactivity'),
-            subtitle: const Text(
-              'Locks the app after 2 minutes without input. '
-              'Backgrounding relocks immediately. A sign-in or unlock '
-              'prompt this app opened is the one exception: the app stays '
-              'covered while it is on screen, and relocks as soon as it '
-              'closes if you have left.',
-            ),
+            title: Text(l10n.settingsRelockTitle),
+            subtitle: Text(l10n.settingsRelockSubtitle),
             value: _relock,
             onChanged: _loaded
                 ? (value) {
@@ -131,17 +127,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
           if (hasHealthSync) ...[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text('Health', style: TextStyle(fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                l10n.settingsHealthHeader,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
             ListTile(
               key: const ValueKey('health-sync-tile'),
               leading: const Icon(Icons.favorite_outline),
-              title: const Text('Health app sync'),
-              subtitle: const Text(
-                "Choose which profile's data may sync to this phone's Health app",
-              ),
+              title: Text(l10n.settingsHealthSyncTitle),
+              subtitle: Text(l10n.settingsHealthSyncSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _openHealthSync(context, storage, profilesRepository),
             ),
@@ -150,10 +147,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             key: const ValueKey('privacy-policy-tile'),
             leading: const Icon(Icons.shield_outlined),
-            title: const Text('Privacy policy'),
-            subtitle: const Text(
-              'Sync & family sharing, protected at rest, zero tracking',
-            ),
+            title: Text(l10n.settingsPrivacyTitle),
+            subtitle: Text(l10n.settingsPrivacySubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showPrivacyPolicy(context),
           ),
@@ -193,23 +188,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// the account-section gating idiom above). `SelectableText` avoids
   /// adding `url_launcher` for a single `mailto:` link.
   void _showContactSupport(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Contact support'),
-        content: const Column(
+        title: Text(l10n.settingsContactSupport),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Email us with a bug report, question, or idea:'),
-            SizedBox(height: 8),
-            SelectableText(kSupportEmailAddress),
+            Text(l10n.settingsContactSupportDialogBody),
+            const SizedBox(height: 8),
+            const SelectableText(kSupportEmailAddress),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(l10n.settingsClose),
           ),
         ],
       ),
@@ -217,38 +213,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showPrivacyPolicy(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('LunarLog Privacy Policy'),
-        content: const SingleChildScrollView(
-          child: Text(
-            'LunarLog is a family cycle tracker built for sync and sharing.\n\n'
-            '• Sync & Family Sharing: An account (Supabase) syncs a profile '
-            "across your devices and lets it be shared with other guardians, "
-            'each with their own role. No data is uploaded without your '
-            'explicit consent.\n'
-            '• Protected at Rest: Cycle data is protected at rest by your '
-            "device's own operating system encryption and shown only behind "
-            'biometric authentication.\n'
-            '• Works Offline: Logging, viewing, and predictions keep working '
-            'without a network; sharing a profile with another guardian does '
-            'require signing in.\n'
-            '• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n'
-            '• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health '
-            'and personal details on-device.\n'
-            '• Family Custodianship: Minor profiles are managed directly by adult '
-            'guardians with identical privacy protections.\n'
-            '• Caregiver Alerts: Optional push notifications to another guardian '
-            'never carry what was logged - only a generic reminder, via Firebase '
-            'Cloud Messaging.\n\n'
-            'Canonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md',
-          ),
+        title: Text(l10n.settingsPrivacyDialogTitle),
+        content: SingleChildScrollView(
+          child: Text(l10n.settingsPrivacyDialogBody),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(l10n.settingsClose),
           ),
         ],
       ),
@@ -295,11 +271,12 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return ListTile(
       key: const ValueKey('support-history-tile'),
       leading: const Icon(Icons.history_outlined),
-      title: const Text('Support history'),
-      subtitle: const Text('See replies and continue a conversation'),
+      title: Text(l10n.settingsSupportHistory),
+      subtitle: Text(l10n.settingsSupportHistorySubtitle),
       trailing: _unread
           ? Icon(
               Icons.circle,

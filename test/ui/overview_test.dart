@@ -39,6 +39,7 @@ import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
@@ -216,6 +217,8 @@ class Harness {
         ),
       ],
       child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.lightTheme,
         home: ProfileDetailScreen(
           profile: profile,
@@ -1399,6 +1402,8 @@ void main() {
           ),
         ],
         child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
           theme: AppTheme.lightTheme,
           home: Scaffold(
             body: OverviewPanel(

@@ -25,6 +25,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 /// Fixed "today" (same date `test/ui/logging_test.dart` uses) so month
@@ -75,6 +76,8 @@ Future<Harness> pumpCalendar(
     MultiProvider(
       providers: [Provider<DayEntriesRepository>.value(value: entries)],
       child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.lightTheme,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
