@@ -445,6 +445,15 @@ registers no device, and shows no Notifications entry (R17).
       email address, encrypted in transit, user can request deletion —
       now true in-app via "Delete account" in the account section, issue
       #17).
+- [ ] **Issue #166 (human step, needs-human-review):** Play Console's Health
+      apps declaration form filed before any Health Connect build reaches a
+      Play track — see
+      [`docs/ops/play-health-declaration.md`](play-health-declaration.md) for
+      the per-permission justification skeleton. Full store-compliance
+      reconciliation (this form plus the Play Data safety section and the
+      iOS `PrivacyInfo.xcprivacy` update once HealthKit ships) is tracked
+      separately as issue #254 — this bullet only flags that the form is a
+      hard gate on shipping, not that it has been filed.
 
 ### Migrations
 

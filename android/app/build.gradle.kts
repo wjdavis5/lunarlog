@@ -33,8 +33,13 @@ android {
         applicationId = "com.wjdavis5.lunarlog"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // flutter_secure_storage (DB key storage) requires minSdk 23.
-        minSdk = flutter.minSdkVersion
+        // Issue #166: pinned to 26 (Oreo) -- androidx.health.connect:connect-
+        // client's own floor, needed for the Health Connect permission/
+        // rationale plumbing this issue adds. flutter_secure_storage (DB key
+        // storage) only requires 23, so this pin subsumes that floor; do not
+        // lower it back to `flutter.minSdkVersion` while any Health Connect
+        // code path exists.
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
