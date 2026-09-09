@@ -12,6 +12,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// Banner copy for the default web build (no account, no sync).
 const String kWebBannerCopy = 'Development build — not for real data.';
@@ -57,7 +58,7 @@ class WebDevBanner extends StatelessWidget {
               child: Text(
                 webSyncEnabled ? kWebBannerSyncCopy : kWebBannerCopy,
                 key: const ValueKey('web-dev-banner'),
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: LLType.labelLarge.toTextStyle(),
               ),
             ),
             TextButton(

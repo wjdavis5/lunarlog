@@ -4,21 +4,25 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 
 class RestoringScreen extends StatelessWidget {
   const RestoringScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      key: ValueKey('restoring'),
+    return Scaffold(
+      key: const ValueKey('restoring'),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Restoring your data…', style: TextStyle(fontSize: 18)),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              'Restoring your data…',
+              style: LLType.titleMedium.toTextStyle(),
+            ),
           ],
         ),
       ),

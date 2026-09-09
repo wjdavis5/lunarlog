@@ -326,21 +326,21 @@ class _DaySheetState extends State<DaySheet> {
             ),
           ),
           if (_saveFailed)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
               child: Text(
                 "Couldn't save — try again",
-                key: ValueKey('save-error'),
-                style: TextStyle(color: Color(0xFFB3261E)),
+                key: const ValueKey('save-error'),
+                style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
           if (_deleteFailed)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
               child: Text(
                 "Couldn't delete — try again",
-                key: ValueKey('delete-error'),
-                style: TextStyle(color: Color(0xFFB3261E)),
+                key: const ValueKey('delete-error'),
+                style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
           Padding(
