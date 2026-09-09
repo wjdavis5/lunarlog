@@ -83,6 +83,17 @@ const String kRouteHealthSyncScreen = 'HealthSyncScreen';
 /// (U2 Approach 2b).
 const String kRouteHealthSyncBindDialog = 'HealthSyncBindDialog';
 
+/// `lib/ui/sharing/accept_invite_sheet.dart` — pushed by `lib/app.dart` when
+/// an invite deep link (`lunarlog://invite?code=...`) resolves for a
+/// signed-in recipient (issue #182: previously an unnamed
+/// `showModalBottomSheet`, invisible to the Sentry route observer).
+const String kRouteAcceptInviteSheet = 'AcceptInviteSheet';
+
+/// `lib/ui/sharing/claim_profile_sheet.dart` — the `kind=claim` counterpart
+/// of [kRouteAcceptInviteSheet], pushed by the same deep link handler in
+/// `lib/app.dart` (issue #182).
+const String kRouteClaimProfileSheet = 'ClaimProfileSheet';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -105,4 +116,6 @@ const Set<String> kSentryRouteNames = {
   kRouteAccountMismatchDialog,
   kRouteHealthSyncScreen,
   kRouteHealthSyncBindDialog,
+  kRouteAcceptInviteSheet,
+  kRouteClaimProfileSheet,
 };

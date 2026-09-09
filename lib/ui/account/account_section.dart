@@ -79,10 +79,11 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/delete_account_dialog.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
-import 'package:lunarlog/ui/account/sign_in_screen.dart';
+import 'package:lunarlog/ui/account/sign_in_screen.dart' show authFailureCopy;
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
@@ -359,12 +360,7 @@ class _AccountSectionState extends State<AccountSection> {
       title: Text(
           auth.state == AuthSessionState.expired ? 'Sign in again' : 'Sign in'),
       subtitle: const Text('Sync this device\'s data to an account.'),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          settings: const RouteSettings(name: kRouteSignInScreen),
-          builder: (_) => const SignInScreen(),
-        ),
-      ),
+      onTap: () => pushNamedScreen<void>(context, kRouteSignInScreen),
     );
   }
 

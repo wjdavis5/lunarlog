@@ -1707,6 +1707,31 @@ void main() {
       await h2.dispose();
     });
 
+    testWidgets(
+        'issue #182 B-32/AC4: tapping the glyph shows the status as a '
+        'readable SnackBar (not tooltip-only), whose action opens Settings',
+        (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn();
+      h.engine.emitPhase(SyncPhase.pulling);
+      await pumpFew(tester);
+
+      await tester.tap(find.byType(SyncStatusGlyph));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
+      expect(find.text('Syncing…'), findsWidgets,
+          reason: 'the copy is now readable via the SnackBar, not only a '
+              'tooltip that never appears on touch');
+
+      await tester.tap(find.widgetWithText(TextButton, 'Settings'));
+      await pumpFew(tester);
+      expect(find.byType(SettingsScreen), findsOneWidget,
+          reason: "the SnackBar's action is the glyph's original onPressed");
+      await h.dispose();
+    });
+
     test('relative time copy', () {
       final now = DateTime.utc(2026, 9, 2, 12);
       expect(

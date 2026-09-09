@@ -15,6 +15,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
+import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
 const String kSyncingCopy = 'Syncing…';
@@ -29,6 +30,35 @@ const String kAwaitingConfirmationCopy =
 /// (#2 U4; KTD3): same tier as the confirmation copy.
 const String kAwaitingMagicLinkCopy =
     'Sign-in email sent — open the link on this device or enter the code';
+
+/// Issue #182 AC8: shown by `lib/ui/logging/day_sheet.dart` right after a
+/// local save whenever [shouldConfirmOfflineSave] says so — the offline-first
+/// engineering guarantee made visible as a quiet trust signal, on the screen
+/// where the save happened, instead of only discoverable in Settings'
+/// Account section.
+const String kOfflineSaveConfirmationCopy = 'Saved on this device · will sync';
+
+/// Whether a just-completed local save should tell the operator the row is
+/// still waiting to reach the server (issue #182 AC8; pairs with #198's
+/// autosave/confirmation work). True only when a sync engine exists, a
+/// session is signed in (nothing configured to sync to otherwise), and the
+/// last cycle's outcome says the device cannot currently reach the server —
+/// a network failure, or sync deliberately paused (device gate locked or the
+/// database closed, per [SyncPhase.paused]'s own doc comment). False with no
+/// sync engine at all, no signed-in session, or any other phase (an ordinary
+/// push already reaches the server almost immediately, so nothing needs
+/// saying there).
+bool shouldConfirmOfflineSave({
+  required SyncSnapshot? snapshot,
+  required AuthSessionState? authState,
+}) {
+  if (snapshot == null || !_isSignedIn(authState)) return false;
+  return switch (snapshot.phase) {
+    SyncPhase.paused => true,
+    SyncPhase.error => snapshot.lastError == SyncErrorKind.network,
+    _ => false,
+  };
+}
 
 /// "just now", "5 min ago", "3 h ago", "2 d ago".
 String formatRelative(DateTime then, DateTime now) {
@@ -317,9 +347,8 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
             title: Text(copy),
             onTap: pendingConsent
                 ? () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      settings:
-                          const RouteSettings(name: kRouteUploadConsentScreen),
+                    buildNamedRoute<void>(
+                      name: kRouteUploadConsentScreen,
                       builder: (routeContext) => UploadConsentScreen(
                         onNotNow: () => Navigator.of(routeContext).pop(),
                       ),
@@ -333,9 +362,14 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
   }
 }
 
-/// App-bar glyph for the profile picker: the status as a tooltip, tapping
-/// runs [onPressed] (the picker opens Settings). Renders nothing without a
-/// [SyncStatusController] — the caller decides, this is a safety net.
+/// App-bar glyph, shared by the profile picker and [AppShell]'s own app bar
+/// (issue #182). The status still carries a [Tooltip] (hover/long-press),
+/// but B-32 is that a tooltip never appears on touch at all — so tapping the
+/// glyph now shows the same copy as a readable `SnackBar` (AC4), with
+/// [onPressed] (opening Settings, or — from the shell — switching to the
+/// More tab) offered as that SnackBar's action rather than firing blind on
+/// the glyph tap itself. Renders nothing without a [SyncStatusController] —
+/// the caller decides, this is a safety net.
 class SyncStatusGlyph extends StatelessWidget {
   const SyncStatusGlyph({super.key, required this.onPressed, this.now});
 
@@ -356,7 +390,17 @@ class SyncStatusGlyph extends StatelessWidget {
       key: const ValueKey('sync-status-glyph'),
       tooltip: copy,
       icon: Icon(_iconFor(sync.snapshot)),
-      onPressed: onPressed,
+      onPressed: () => _showStatus(context, copy),
+    );
+  }
+
+  void _showStatus(BuildContext context, String copy) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: const ValueKey('sync-status-snackbar'),
+        content: Text(copy),
+        action: SnackBarAction(label: 'Settings', onPressed: onPressed),
+      ),
     );
   }
 }

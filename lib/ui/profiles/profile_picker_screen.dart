@@ -21,7 +21,7 @@ import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
-import 'package:lunarlog/ui/settings/settings_screen.dart';
+import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -41,12 +41,7 @@ class ProfilePickerScreen extends StatelessWidget {
     final active = controller.activeProfiles;
     final archived = controller.archivedProfiles;
     final hasSync = Provider.of<SyncStatusController?>(context) != null;
-    void openSettings() => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            settings: const RouteSettings(name: kRouteSettingsScreen),
-            builder: (_) => const SettingsScreen(),
-          ),
-        );
+    void openSettings() => pushNamedScreen<void>(context, kRouteSettingsScreen);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profiles'),
@@ -104,9 +99,8 @@ class ProfilePickerScreen extends StatelessWidget {
                           subtitle: Text(
                               'Created ${formatCreatedDate(profile.createdAt)}'),
                           onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              settings: const RouteSettings(
-                                  name: kRouteProfileDetailScreen),
+                            buildNamedRoute<void>(
+                              name: kRouteProfileDetailScreen,
                               builder: (_) => ProfileDetailScreen(
                                 profile: profile,
                                 readOnly: true,
@@ -150,9 +144,8 @@ class ProfilePickerScreen extends StatelessWidget {
           Provider.of<OwnershipTransferService?>(context, listen: false);
       if (storage != null && sharing != null) {
         Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            settings:
-                const RouteSettings(name: kRouteManageGuardiansScreen),
+          buildNamedRoute<void>(
+            name: kRouteManageGuardiansScreen,
             builder: (_) => ManageGuardiansScreen(
               profile: profile,
               guardiansRepository: ProfileGuardiansRepository(storage),

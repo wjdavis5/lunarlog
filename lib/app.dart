@@ -405,18 +405,16 @@ class _LunarLogAppState extends State<LunarLogApp> {
       _pendingInviteKind = null;
     });
     unawaited(
-      // U2 Approach 2b: deliberately left unnamed. Every other modal route
-      // in this app is named for a static destination or a trivial
-      // confirm; this one's content varies per invite (a code and an
-      // optional profile), which is closer to the ProfileDetailScreen
-      // shape KTD3 already treats as "one name for the screen, whatever
-      // data it displays" -- naming it `AcceptInviteSheet` would be
-      // consistent with that rule. Left for a follow-up rather than
-      // bundled into this plan's explicit route list.
+      // Issue #182: named `AcceptInviteSheet` (kRouteAcceptInviteSheet) so
+      // it appears in the Sentry route observer -- previously unnamed, on
+      // the reasoning that its content varies per invite (a code and an
+      // optional profile), the same shape ProfileDetailScreen's "one name
+      // for the screen, whatever data it displays" already covers.
       showModalBottomSheet<void>(
         context: ctx,
         isScrollControlled: true,
         showDragHandle: true,
+        routeSettings: const RouteSettings(name: kRouteAcceptInviteSheet),
         builder: (_) => AcceptInviteSheet(
           rawToken: code,
           sharingService: sharing,
@@ -448,10 +446,13 @@ class _LunarLogAppState extends State<LunarLogApp> {
       _pendingInviteKind = null;
     });
     unawaited(
+      // Issue #182: named `ClaimProfileSheet` (kRouteClaimProfileSheet),
+      // the kind=claim counterpart of the AcceptInviteSheet naming above.
       showModalBottomSheet<void>(
         context: ctx,
         isScrollControlled: true,
         showDragHandle: true,
+        routeSettings: const RouteSettings(name: kRouteClaimProfileSheet),
         builder: (_) => ClaimProfileSheet(
           rawToken: code,
           service: service,

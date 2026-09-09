@@ -1,0 +1,205 @@
+/// Widget tests for AppShell (issue #182): four bottom-nav destinations,
+/// per-tab state preservation across a switch, the sync glyph on every tab
+/// except More, the profile switcher opening the existing picker, and
+/// Settings reachable from every tab without going through "Switch
+/// profile".
+library;
+
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/app.dart';
+import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
+import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/settings/settings_screen.dart';
+
+import '../support/fake_auth_service.dart';
+import '../support/fake_sync_engine.dart';
+
+class Harness {
+  Harness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory());
+
+  final WidgetTester tester;
+  final LunarLogDatabase db;
+  final FakeAuthService auth = FakeAuthService();
+  final FakeSyncEngine engine = FakeSyncEngine();
+
+  /// Seeds one profile and marks it active, so the app opens directly on
+  /// its AppShell (no picker in between).
+  Future<void> pump({bool withSync = true}) async {
+    final profile = await DriftProfilesRepository(db.storage)
+        .create(displayName: 'Alice', isMinor: false);
+    await DriftSettingsStore(db.storage)
+        .set(SettingsKeys.lastActiveProfile, profile.id);
+    await tester.pumpWidget(LunarLogApp(
+      db: db,
+      authService: auth,
+      syncEngine: withSync ? engine : null,
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> dispose() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
+    await db.close();
+    await auth.dispose();
+  }
+}
+
+Finder tabKey(String name) => find.byKey(ValueKey('app-shell-tab-$name'));
+
+void main() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
+  testWidgets('renders the four destinations, Today selected by default',
+      (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Calendar'), findsOneWidget);
+    expect(find.text('Insights'), findsOneWidget);
+    expect(find.text('More'), findsOneWidget);
+    // Calendar (a lazily-built tab) is not mounted before it's selected.
+    expect(find.byType(MonthCalendar), findsNothing);
+    await h.dispose();
+  });
+
+  testWidgets(
+      'switching tabs preserves each tab\'s own state (Calendar keeps its '
+      'navigated month across a switch away and back)', (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    await tester.tap(tabKey('calendar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MonthCalendar), findsOneWidget);
+
+    // Two months back from today's real month/year (the calendar defaults
+    // to "today" -- LunarLogApp passes no todayProvider override).
+    final today = LocalDate.today();
+    var year = today.year;
+    var month = today.month - 2;
+    if (month <= 0) {
+      month += 12;
+      year -= 1;
+    }
+    final twoMonthsBackLabel = '${kMonthNames[month - 1]} $year';
+
+    await tester.tap(find.byTooltip('Previous month'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Previous month'));
+    await tester.pumpAndSettle();
+    expect(find.text(twoMonthsBackLabel), findsOneWidget);
+
+    await tester.tap(tabKey('today'));
+    await tester.pumpAndSettle();
+    await tester.tap(tabKey('calendar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(twoMonthsBackLabel), findsOneWidget,
+        reason: 'the calendar kept its navigated month, not reset to today');
+    await h.dispose();
+  });
+
+  testWidgets(
+      'the sync glyph renders on Today, Calendar and Insights but not More',
+      (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    expect(find.byType(SyncStatusGlyph), findsOneWidget,
+        reason: 'Today (the default tab)');
+
+    await tester.tap(tabKey('calendar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncStatusGlyph), findsOneWidget);
+
+    await tester.tap(tabKey('insights'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncStatusGlyph), findsOneWidget);
+
+    await tester.tap(tabKey('more'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncStatusGlyph), findsNothing,
+        reason: "More is Settings' own screen/app bar, not the shell's");
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    await h.dispose();
+  });
+
+  testWidgets('no sync engine: no glyph on any tab, nothing crashes',
+      (tester) async {
+    final h = Harness(tester);
+    await h.pump(withSync: false);
+
+    expect(find.byType(SyncStatusGlyph), findsNothing);
+    await tester.tap(tabKey('calendar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncStatusGlyph), findsNothing);
+    await h.dispose();
+  });
+
+  testWidgets(
+      'tapping the sync glyph shows a readable status via a SnackBar, not '
+      'only a tooltip', (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+    h.engine.emitPhase(SyncPhase.pulling);
+    // Two pumps: notifyListeners() updates the controller field in the
+    // first, and marks its InheritedWidget dependents (the glyph) dirty
+    // for the frame after -- matching account_test.dart's own
+    // emitPhase-then-settle pattern for this exact controller.
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byType(SyncStatusGlyph));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
+    expect(find.text(kSyncingCopy), findsWidgets);
+    await h.dispose();
+  });
+
+  testWidgets(
+      'tapping the profile switcher opens the picker; Settings is reachable '
+      'from the shell app bar without it', (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('app-shell-profile-switcher')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Profiles'), findsOneWidget,
+        reason: 'the profile switcher opened the existing picker');
+    expect(find.byType(NavigationBar), findsNothing,
+        reason: 'the picker is not the shell');
+    await h.dispose();
+  });
+
+  testWidgets(
+      "the shell app bar's Settings action reaches Settings without going "
+      'through Switch profile', (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    await tester.tap(find.byKey(const ValueKey('app-shell-settings-action')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget,
+        reason: 'still inside the shell (a tab switch, not a picker visit)');
+    await h.dispose();
+  });
+}

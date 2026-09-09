@@ -1212,6 +1212,12 @@ void main() {
       expect(find.byType(AcceptInviteSheet), findsNothing);
       expect(find.text('Become the Owner'), findsOneWidget);
       expect(find.text('Join Shared Profile'), findsNothing);
+      // Issue #182: the claim sheet is pushed as a named route, visible to
+      // the Sentry route observer.
+      final claimRoute =
+          ModalRoute.of(tester.element(find.byType(ClaimProfileSheet)));
+      expect(claimRoute?.settings.name, kRouteClaimProfileSheet);
+      expect(kSentryRouteNames, contains(kRouteClaimProfileSheet));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
@@ -1234,6 +1240,11 @@ void main() {
       expect(find.byType(AcceptInviteSheet), findsOneWidget);
       expect(find.byType(ClaimProfileSheet), findsNothing);
       expect(find.text('Join Shared Profile'), findsOneWidget);
+      // Issue #182: the accept sheet is pushed as a named route too.
+      final acceptRoute =
+          ModalRoute.of(tester.element(find.byType(AcceptInviteSheet)));
+      expect(acceptRoute?.settings.name, kRouteAcceptInviteSheet);
+      expect(kSentryRouteNames, contains(kRouteAcceptInviteSheet));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
