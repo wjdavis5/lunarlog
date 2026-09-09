@@ -16,3 +16,4 @@
 2026-09-09T13:26:16Z dispatched wave 5: #138 a11y pass, #197 calendar perf, #216 onboarding. Note: #143 closed by external session (unblocks #218 next wave).
 2026-09-09T13:33:13Z #197 dispatch superseded — already shipped externally as PR #339 (issue closed; coder correctly verified-and-abstained; worktree removed). Lesson: verify issue OPEN at dispatch time. Refilled slot with #218 (provisional tier, domain/data side).
 2026-09-09T14:49:39Z merged PR #349 (#216 onboarding) and PR #351 (#138 a11y). Filed+fixed #352 (actionlint linux-binary-on-mac-runner infra failure; arch-aware download landed via #349's branch). In flight: #218.
+2026-09-09T15:25:44Z wave 5 closed: #216/#349, #138/#351, #218/#356 merged (#197 superseded by #339). Filed+fixed #352 (actionlint arch). Main now PR-only (repo rules) — state syncs via PR (#355 merged). ci.yml drift-dump lesson added to PROCESS.md.
