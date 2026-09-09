@@ -1,4 +1,12 @@
--- Migration: 20260908120000_tombstone_flow_clear.sql
+-- Migration: 20260908140000_tombstone_flow_clear.sql
+-- Renamed from an original 20260908120000_ prefix (this branch's original
+-- timestamp collided with 20260908120000_profile_care_modes.sql, which
+-- merged to main first via PR #277/#131; 20260908121000 and 20260908130000
+-- are separately claimed by PRs #281 and #282) - see AGENTS.md's Migration
+-- Flow section for the full rationale on sorting after whatever is already
+-- on main. The header comment below otherwise reads exactly as it did under
+-- the original name.
+--
 -- Fixes issue #224 (P1, epic: Privacy & Compliance): a tombstoned (soft-
 -- deleted) day_entries row kept its `flow` value on the server forever,
 -- even though both the schema comment on public.day_entries
@@ -10,11 +18,12 @@
 -- is the safety precondition that retention job's design assumes).
 --
 -- Per "do not edit a merged migration in place", this create-or-replaces
--- sync_push from its latest body (20260906200000_same_date_tag_merge.sql)
--- with three tombstone-producing sites touched - every place that can
--- leave a day_entries row with deleted_at not null needs the same fix, not
--- only the direct client soft-delete path the issue called out by line
--- number:
+-- sync_push from its latest body (20260908120000_profile_care_modes.sql,
+-- which itself rebased on 20260906200000_same_date_tag_merge.sql and added
+-- the `mode` column/allowlist/insert/update handling for issue #131) with
+-- three tombstone-producing sites touched - every place that can leave a
+-- day_entries row with deleted_at not null needs the same fix, not only the
+-- direct client soft-delete path the issue called out by line number:
 --   1. The direct tombstone branch (client pushes deleted_at not null):
 --      alongside the existing v_tags := '[]' / v_note := null clearing,
 --      now also sets v_flow := 'none' before the insert/update below it.
@@ -27,10 +36,11 @@
 --      as case 1) - now also sets v_flow := 'none' alongside the existing
 --      v_tags/v_note reset, so the row written for it carries no payload
 --      either.
--- Nothing else changes: winner/loser selection, tombstone stamps, role
--- checks, attribution stamping, the advisory lock, row-count caps, and key
--- allow-lists are all untouched, matching every other create-or-replace of
--- this function.
+-- Nothing else changes, including nothing from the care-modes re-emission:
+-- winner/loser selection, tombstone stamps, role checks, attribution
+-- stamping, the advisory lock, row-count caps, key allow-lists (`mode`
+-- included), and the profiles-side mode handling are all untouched,
+-- matching every other create-or-replace of this function.
 --
 -- The one-off backfill below cleans up every tombstone already sitting on
 -- the server (a payload leak that has existed since the schema shipped),
@@ -60,6 +70,8 @@ declare
     'created_at', 'updated_at', 'deleted_at',
     -- U1: profile subject metadata, syncable like any other profile column
     'birth_year', 'relationship',
+    -- #131: care mode, syncable like any other profile column
+    'mode',
     -- tolerated but never read
     'user_id', 'server_version', 'transferred_at'];
   c_day_entry_keys constant text[] := array[
@@ -84,6 +96,8 @@ declare
   v_sort_order integer;
   v_birth_year smallint;
   v_relationship text;
+  -- #131: care mode; absent key parses to the column default
+  v_mode text;
   v_profile_id text;
   v_local_date date;
   v_tz text;
@@ -158,6 +172,13 @@ begin
       -- entirely does not silently null out an already-stored value.
       v_birth_year := (v_row ->> 'birth_year')::smallint;
       v_relationship := v_row ->> 'relationship';
+      -- #131: mode gets the same treatment except that the column is not
+      -- null with a default - an absent key parses to 'standard' (which the
+      -- INSERT path needs), and an out-of-set value is rejected by
+      -- profiles_mode_check into `rejected` like any other CHECK failure.
+      -- The UPDATE path applies the same `?` containment guard so a
+      -- pre-#131 client's push never touches a stored mode.
+      v_mode := coalesce(v_row ->> 'mode', 'standard');
       if v_deleted_at is not null then
         -- tombstones carry no payload
         v_display_name := '';
@@ -175,10 +196,10 @@ begin
         -- New profile insertion: creator becomes primary_guardian via trigger
         insert into public.profiles
           (id, display_name, is_minor, sort_order, archived_at, created_at, updated_at, deleted_at,
-           birth_year, relationship)
+           birth_year, relationship, mode)
         values
           (v_id, v_display_name, v_is_minor, v_sort_order, v_archived_at, v_created_at, v_updated_at, v_deleted_at,
-           v_birth_year, v_relationship);
+           v_birth_year, v_relationship, v_mode);
       else
         -- Profile exists: check guardian role of caller
         select role into v_caller_role
@@ -227,8 +248,11 @@ begin
                  -- carries the key, so an old client's push preserves
                  -- whatever birth_year/relationship the profile already has
                  -- instead of silently nulling it on every metadata edit.
+                 -- #131: mode gets the identical guard, so a pre-#131
+                 -- client's push never clobbers a stored mode.
                  birth_year = case when v_row ? 'birth_year' then v_birth_year else v_stored_profile.birth_year end,
-                 relationship = case when v_row ? 'relationship' then v_relationship else v_stored_profile.relationship end
+                 relationship = case when v_row ? 'relationship' then v_relationship else v_stored_profile.relationship end,
+                 mode = case when v_row ? 'mode' then v_mode else v_stored_profile.mode end
            where id = v_id;
         elsif v_updated_at = v_stored_profile.updated_at
               and v_deleted_at is not null
@@ -448,7 +472,7 @@ end;
 $$;
 
 comment on function public.sync_push(jsonb, jsonb) is
-  'Batch upsert of profiles then day entries under guardian role permissions with authoritative attribution stamping. U1: profiles carries birth_year/relationship through this path; transferred_at is tolerated-but-never-read (ownership state, written only by accept_ownership_transfer). Same-date collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins - except that a row this resolver or the client itself tombstones always has flow forced to none, same as note/tags (issue #224).';
+  'Batch upsert of profiles then day entries under guardian role permissions with authoritative attribution stamping. U1: profiles carries birth_year/relationship through this path; transferred_at is tolerated-but-never-read (ownership state, written only by accept_ownership_transfer). #131: profiles carries mode through this path (presentation only - the role checks are unchanged). Same-date collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins - except that a row this resolver or the client itself tombstones always has flow forced to none, same as note/tags (issue #224).';
 
 revoke execute on function public.sync_push(jsonb, jsonb) from public, anon;
 grant execute on function public.sync_push(jsonb, jsonb) to authenticated;
@@ -458,6 +482,13 @@ grant execute on function public.sync_push(jsonb, jsonb) to authenticated;
 --    fix and may still carry its pre-deletion flow value.
 -- ---------------------------------------------------------------------------
 
+-- Unlike 20260907010000_tags_element_length_check.sql's backfill, this one
+-- needs no day_entries_after_update_enqueue_alerts disable/enable bracket:
+-- every row this UPDATE touches already has deleted_at is not null, and
+-- enqueue_caregiver_alerts() unconditionally returns null in that case (see
+-- 20260908110000_alert_digest_cadence.sql), so it fans out zero alerts here
+-- regardless of trigger state - pinned by this migration's own pgTAP
+-- assertions, not merely assumed.
 update public.day_entries
    set flow = 'none'
  where deleted_at is not null

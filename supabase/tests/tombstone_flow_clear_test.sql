@@ -1,4 +1,4 @@
--- Coverage for 20260908120000_tombstone_flow_clear.sql (issue #224, P1):
+-- Coverage for 20260908140000_tombstone_flow_clear.sql (issue #224, P1):
 -- a tombstoned day_entries row must always carry flow = 'none', matching
 -- the schema comment ("tombstones keep the id but carry no payload",
 -- 20260903014208_initial_sync_schema.sql) and storage.dart's own doc

@@ -1019,9 +1019,12 @@ void main() {
           profileId: profile.id, includeTombstones: true);
       expect(entryTombstones, isNotEmpty);
       expect(entryTombstones.every((e) => e.deletedAt != null), isTrue);
-      // Issue #224: the revocation wipe clears flow too, same as every
-      // other tombstone-producing path.
-      expect(entryTombstones.every((e) => e.flow == FlowLevel.none), isTrue);
+      // issue #224: the revocation wipe is a tombstone like any other - it
+      // must carry no payload, flow included, not just note/tags.
+      expect(
+        entryTombstones.every((e) => e.flow == FlowLevel.none),
+        isTrue,
+      );
       // The membership row itself is stored (status revoked).
       expect(
         (await storage.getGuardiansForProfile(profile.id))
