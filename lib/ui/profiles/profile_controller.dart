@@ -43,6 +43,7 @@ class ProfileController extends ChangeNotifier {
   bool _loaded = false;
   bool _noticeShown = false;
   bool _pickerRequested = false;
+  bool _disposed = false;
   StreamSubscription<List<Profile>>? _liveSub;
   StreamSubscription<String?>? _activeSub;
 
@@ -74,21 +75,44 @@ class ProfileController extends ChangeNotifier {
 
   bool get pickerVisible => _pickerRequested || activeProfile == null;
 
+  /// Issue #206 (C-17): this future is fire-and-forget from the provider
+  /// `create:` in `lib/app.dart`, and a device reset (`resetDevice`,
+  /// `lib/app_lifecycle.dart`) deliberately unmounts the whole app subtree
+  /// — disposing this controller — while an in-flight `load()` is still
+  /// parked on one of the three storage reads below. Check `_disposed`
+  /// after every `await` and bail before touching [notifyListeners] or the
+  /// watch subscriptions; a subscription created anyway (disposal landing
+  /// between the last await and the listens is impossible in single-threaded
+  /// Dart, but a listener that disposes the controller during the final
+  /// [notifyListeners] is not) is cancelled instead of stored where
+  /// `dispose()` would never see it.
   Future<void> load() async {
+    if (_disposed) return;
     _noticeShown =
         await _settings.get(SettingsKeys.firstRunNoticeShown) == 'true';
+    if (_disposed) return;
     _live = await _profiles.list();
+    if (_disposed) return;
     _storedActiveId = await _settings.get(SettingsKeys.lastActiveProfile);
+    if (_disposed) return;
     _loaded = true;
     notifyListeners();
-    _liveSub = _profiles.watch().listen((rows) {
+    final liveSub = _profiles.watch().listen((rows) {
       _live = rows;
       notifyListeners();
     });
-    _activeSub = _settings.watch(SettingsKeys.lastActiveProfile).listen((value) {
+    final activeSub =
+        _settings.watch(SettingsKeys.lastActiveProfile).listen((value) {
       _storedActiveId = (value == null || value.isEmpty) ? null : value;
       notifyListeners();
     });
+    if (_disposed) {
+      unawaited(liveSub.cancel());
+      unawaited(activeSub.cancel());
+      return;
+    }
+    _liveSub = liveSub;
+    _activeSub = activeSub;
   }
 
   Future<void> markFirstRunNoticeShown() {
@@ -221,6 +245,7 @@ class ProfileController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(_liveSub?.cancel());
     unawaited(_activeSub?.cancel());
     super.dispose();
