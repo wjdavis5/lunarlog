@@ -29,11 +29,17 @@ removed if the declared use doesn't match actual behavior.
 ## Current permission set (issue #166 baseline)
 
 Scoped to the menstruation data types [#202](https://github.com/wjdavis5/lunarlog/issues/202)
-(HS-7) needs for v1. No code path reads or writes through Health Connect
-yet — `AppConfig.hasHealthSync` is hardcoded `false` until
-[#173](https://github.com/wjdavis5/lunarlog/issues/173) lands the platform
-adapter. Extend the table below (never widen the manifest silently) as
-later HS issues ([#186](https://github.com/wjdavis5/lunarlog/issues/186),
+(HS-7) needs for v1. The [#173](https://github.com/wjdavis5/lunarlog/issues/173)
+platform-channel adapter and the [#193](https://github.com/wjdavis5/lunarlog/issues/193)/#374
+opt-in, forward-only write paths are now live (`AppConfig.hasHealthSync`
+is `true`): a bound profile's user-logged flow and spotting records are
+written into the on-device Health Connect store, and nothing is
+transmitted off-device through this feature. Writes carry user-logged or
+imported data only — never a predicted or derived cycle value (the
+written rule in `lib/data/health/health_channel.dart`'s library doc,
+issue [#254](https://github.com/wjdavis5/lunarlog/issues/254). Extend the
+table below (never widen the manifest silently) as later HS issues
+([#186](https://github.com/wjdavis5/lunarlog/issues/186),
 [#210](https://github.com/wjdavis5/lunarlog/issues/210),
 [#228](https://github.com/wjdavis5/lunarlog/issues/228)) add data types.
 
@@ -71,11 +77,17 @@ this as a skeleton to walk through, not a verbatim transcript.
       same one `PermissionsRationaleActivity` deep-links to.
 - [ ] **Screenshots / demonstration of the permission-request flow:**
       capture the `PermissionsRationaleActivity` screen and the system
-      Health Connect grant dialog once #173 lands an actual call site to
-      trigger them (this issue's plumbing alone doesn't yet produce a
-      request Google can screenshot end-to-end).
+      Health Connect grant dialog on a device with Health Connect
+      installed (the call site exists since #173/#193 — bind a profile in
+      Settings and run one sync pass to trigger them).
 - [ ] Submit and record the review outcome here (approved / rejected +
       reason, never the submission id or account credentials).
+- [ ] **Open the release gate:** once the form is filed and approved, set
+      the `PLAY_HEALTH_DECLARATION_CONFIRMED` repository variable to
+      `true` (Settings → Secrets and variables → Actions → Variables).
+      `play-store-release.yml`'s production-track gate fails every
+      `production` dispatch until this is set — the fail-closed
+      enforcement of this checklist (issue #254).
 
 ## Consistency anchor
 
@@ -84,11 +96,27 @@ claims and with the per-permission comment in
 `android/app/src/main/AndroidManifest.xml`. If either changes which health
 data types lunarlog reads or writes, re-open this checklist.
 
+## Release-gate enforcement (issue #254)
+
+`play-store-release.yml`'s `production-gate` job checks this checklist's
+enabler before any `production` dispatch builds: when the manifest
+requests any `android.permission.health.*` permission and the
+`PLAY_HEALTH_DECLARATION_CONFIRMED` repository variable is not `true`,
+the dispatch fails before any build runs. The variable is the recorded
+"form filed and approved" switch — flip it only after the declaration
+above has actually been submitted and accepted, and leave it in place
+across re-declarations (re-review is triggered by the manifest change
+itself, tracked in "Re-check triggers" below, not by re-flipping).
+
 ## Re-check triggers
 
 - A new `android.permission.health.*` permission is added or removed from
   the manifest (issues #186, #210, #228, #246 will each do this).
-- `AppConfig.hasHealthSync` flips to `true` for the first time (#173) —
-  that's the point the "Screenshots" item above becomes achievable and the
-  form should actually be submitted, not just drafted.
+  Adding a data type re-triggers Play's Health apps declaration review —
+  update the per-permission table above and re-file before the build
+  that carries it ships to any track Google reviews.
+- `AppConfig.hasHealthSync` flipped to `true` with #173 and the #193/#374
+  writes — the form is no longer a draft exercise: it must actually be
+  filed (and the release-gate variable above set) before any
+  production-track ship.
 - `PRIVACY.md`'s description of Health Connect / platform sync changes.

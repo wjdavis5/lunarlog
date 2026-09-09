@@ -145,6 +145,14 @@ import UIKit
 // Dart-side settings store and this UserDefaults copy name the written
 // profile.
 //
+// App Review guideline 5.1.3 (issue #254): this handler saves only
+// user-logged or imported data — a flow level, a spotting marker, and
+// the cycle-start metadata flag derived from that same logged bleed
+// history. It must never write a predicted or derived cycle value (no
+// next-period prediction, no fertile-window or ovulation estimate);
+// the written rule lives in lib/data/health/health_channel.dart's
+// library doc and both halves of the channel are bound by it.
+//
 // Keeping this handler inside AppDelegate.swift (rather than its own
 // file) is deliberate: a new .swift file requires an Xcode project-file
 // edit that cannot be safely hand-written without a Mac, and the

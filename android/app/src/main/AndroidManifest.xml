@@ -11,12 +11,18 @@
          earlier builds had no network at all. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Issue #166: Health Connect permissions for the v1 (menstruation-only)
-         baseline scoped by #202 (HS-7). No Dart call site reads or writes
-         through these yet; AppConfig.hasHealthSync stays false until #173
-         lands the platform-channel adapter. Extend this list (never widen it
-         silently) as later HS issues add data types; do NOT add history,
-         background, sexual-activity, or BBT permissions here; those belong
-         to #186/#210/#228. -->
+         baseline scoped by #202 (HS-7). The #173 platform-channel adapter and
+         the #193/#374 opt-in write paths are live behind the bound-profile
+         gate (AppConfig.hasHealthSync is true). Writes go only into the
+         on-device Health Connect store — nothing is transmitted off-device
+         through this feature, and no predicted or derived cycle value is
+         ever written (issue #254's written rule; see
+         docs/ops/play-health-declaration.md for the Play Console Health apps
+         declaration these permissions require before any production-track
+         ship). Extend this list (never widen it silently) as later HS issues
+         add data types — adding one re-triggers Play's Health apps
+         declaration review; do NOT add history, background, sexual-activity,
+         or BBT permissions here; those belong to #186/#210/#228. -->
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.READ_INTERMENSTRUAL_BLEEDING"/>
