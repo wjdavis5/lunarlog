@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/export_account_collaborator.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
@@ -694,70 +695,35 @@ void main() {
     });
   });
 
-  group('AE4: export', () {
-    testWidgets('tapping export invokes the injected collaborator once', (
-      tester,
-    ) async {
-      var exportCalls = 0;
-      final h = DeletionHarness(
-        exportAccount: ({
-          required profiles,
-          required entriesByProfile,
-          required appVersion,
-        }) async {
-          exportCalls++;
-        },
-      );
+  group('Issue #222: "Export my data" is no longer a tile in this section',
+      () {
+    testWidgets(
+        'account-export never renders here, signed in or out, regardless '
+        'of showExportAndDelete - it moved to YourDataSection', (tester) async {
+      final h = DeletionHarness();
       addTearDown(h.dispose);
       await h.pump(tester);
+      expect(key('account-export'), findsNothing);
 
-      await tester.tap(key('account-export'));
+      h.auth.emit(AuthSessionState.signedOut);
       await tester.pumpAndSettle();
-
-      expect(exportCalls, 1);
-      expect(key('account-export-error'), findsNothing);
-    });
-
-    testWidgets('a failed export surfaces copy, not an exception', (
-      tester,
-    ) async {
-      final h = DeletionHarness(
-        exportAccount: ({
-          required profiles,
-          required entriesByProfile,
-          required appVersion,
-        }) async {
-          throw StateError('disk full');
-        },
-      );
-      addTearDown(h.dispose);
-      await h.pump(tester);
-
-      // Must not throw out of the tap handler.
-      await tester.tap(key('account-export'));
-      await tester.pumpAndSettle();
-
-      expect(key('account-export-error'), findsOneWidget);
-      expect(
-        tester.widget<Text>(key('account-export-error')).data,
-        kAccountExportFailureCopy,
-      );
+      expect(key('account-export'), findsNothing);
     });
   });
 
-  group('R11: signed out / unconfigured / web absence', () {
-    testWidgets('signed out: neither tile renders', (tester) async {
+  group('R11: signed out / unconfigured / web absence (delete tile only - '
+      '"Export my data" moved out of this section, Issue #222)', () {
+    testWidgets('signed out: the delete tile does not render', (tester) async {
       final h = DeletionHarness();
       addTearDown(h.dispose);
       h.auth.emit(AuthSessionState.signedOut);
       await h.pump(tester);
 
-      expect(key('account-export'), findsNothing);
       expect(key('account-delete'), findsNothing);
     });
 
-    testWidgets('showExportAndDelete: false (simulated web) hides both '
-        'tiles', (tester) async {
+    testWidgets('showExportAndDelete: false (simulated web) hides the '
+        'delete tile', (tester) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
       auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
@@ -780,7 +746,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(key('account-export'), findsNothing);
       expect(key('account-delete'), findsNothing);
     });
   });

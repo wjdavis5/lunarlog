@@ -35,10 +35,15 @@
 /// disposed and rebuilt each time `SettingsScreen` is popped and pushed
 /// again).
 ///
-/// Export and delete (Issue #17 U6; R1-R3, R6, R10, R11): "Export my data"
-/// (`account-export`) and "Delete account" (`account-delete`, destructive)
-/// render only when `signedIn`; delete additionally needs an
-/// [AccountDeletionService] (R11). Deletion runs a fresh device credential
+/// Delete (Issue #17 U6; R1-R3, R6, R10, R11): "Delete account"
+/// (`account-delete`, destructive) renders only when `signedIn` and an
+/// [AccountDeletionService] is provided (R11). "Export my data" moved out
+/// to `lib/ui/settings/your_data_section.dart` (Issue #222) - it no longer
+/// needs an account, so it no longer lives in this sign-in-gated section;
+/// this file keeps only the "Export first" affordance inside the delete
+/// confirmation dialog below, wired through the same
+/// [ExportAccountCollaborator] seam ([_runExport]) independently of that
+/// other section. Deletion runs a fresh device credential
 /// check first (`gate.duringSystemUi(gate.reauthenticate)`, mirroring the
 /// add-method ceremony, KTD7) - a decline cancels silently (AE5) - then the
 /// confirmation naming the server rows, the account, and this device's data
@@ -64,28 +69,21 @@ import 'package:lunarlog/app_lifecycle.dart'
         GateController,
         RemoveAllPushRegistrationsCallback;
 import 'package:lunarlog/config.dart';
-import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
-import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/delete_account_dialog.dart';
+import 'package:lunarlog/ui/account/export_account_collaborator.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-
-/// The app's version string as carried into an export document (Issue #17
-/// U5/U6). Kept in step with `pubspec.yaml`'s `version:` by hand - `lib/ui`
-/// must not read it from a plugin (KTD6 keeps that off the pure builder,
-/// and there is no reason to add the dependency just for this one string).
-const String kAppVersionForExport = '1.0.0+1';
 
 /// Generic, provider-free copy per [AccountDeletionFailure] kind (Issue #17
 /// U6; R10), the same shape as [authFailureCopy]. [AccountDeletionFailure
@@ -134,44 +132,6 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
             'again.',
     };
 
-/// One line, no email/token/exception text (Issue #17 U6; R10).
-const String kAccountExportFailureCopy =
-    'Could not export your data. Please try again.';
-
-/// The action currently in flight in [AccountSection], if any - one at a
-/// time (R11's spinner rule extended to export/delete).
-enum _AccountAction { export, delete }
-
-/// Injectable seam for the export step (Issue #17 U5/U6): the default
-/// builds the real platform writer; tests substitute a fake that just
-/// records the call (or throws) without touching `path_provider`/
-/// `share_plus`.
-typedef ExportAccountCollaborator = Future<void> Function({
-  required List<Profile> profiles,
-  required Map<String, List<DayEntry>> entriesByProfile,
-  required String appVersion,
-});
-
-/// Builds the default collaborator around whatever [AccountExportRemoteSource]
-/// is available (Issue #248; `null` for an unconfigured build - see
-/// `AccountExportWriter`'s own doc). A factory, not a bare top-level
-/// function, so [_runExport] can read the remote source from `context` at
-/// call time without widening [ExportAccountCollaborator]'s own signature
-/// (existing test doubles for that typedef stay unchanged).
-ExportAccountCollaborator _defaultExportAccountCollaborator(
-  AccountExportRemoteSource? remoteSource,
-) =>
-    ({
-      required List<Profile> profiles,
-      required Map<String, List<DayEntry>> entriesByProfile,
-      required String appVersion,
-    }) =>
-        AccountExportWriter(remoteSource: remoteSource).exportAndShare(
-          profiles: profiles,
-          entriesByProfile: entriesByProfile,
-          appVersion: appVersion,
-        );
-
 /// Injectable seam for the Apple authorization-code fetch (Issue #17 U6;
 /// KTD3): the default calls the real native dialog with no scopes (only
 /// the `authorizationCode` is needed for revocation - not an email or full
@@ -218,15 +178,21 @@ class AccountSection extends StatefulWidget {
   /// though [AppConfig] is compile-time const.
   final bool? showAddPasskey;
 
-  /// Whether "Export my data" and "Delete account" may render at all; null
-  /// means "not web" (Issue #17 R11 - neither tile ships on web, regardless
-  /// of `LUNARLOG_WEB_SYNC`). Injectable so tests simulate web without
-  /// actually running on it.
+  /// Whether "Delete account" may render at all; null means "not web"
+  /// (Issue #17 R11 - it never ships on web, regardless of
+  /// `LUNARLOG_WEB_SYNC`). Named for the tile it used to gate alongside
+  /// "Export my data" before that tile moved out (Issue #222) - kept as-is
+  /// rather than renamed, since existing callers already pass it by name.
+  /// Injectable so tests simulate web without actually running on it.
   final bool? showExportAndDelete;
 
-  /// Export collaborator (Issue #17 U5/U6); null means
-  /// [_defaultExportAccountCollaborator] (the real platform writer).
-  /// Injectable so tests never touch `path_provider`/`share_plus`.
+  /// Export collaborator for the delete-confirmation dialog's "Export
+  /// first" step (Issue #17 U5/U6); null means
+  /// [defaultExportAccountCollaborator] (the real platform writer).
+  /// Injectable so tests never touch `path_provider`/`share_plus`. Not
+  /// related to `YourDataSection`'s own, independently injectable
+  /// collaborator (Issue #222) - the two sections share the typedef, not an
+  /// instance.
   final ExportAccountCollaborator? exportAccount;
 
   /// Apple authorization-code fetch (Issue #17 U6; KTD3); null means
@@ -251,10 +217,10 @@ class _AccountSectionState extends State<AccountSection> {
   String? _busyProvider;
   String? _linkError;
 
-  /// Export/delete's shared busy flag (Issue #17 U6): one of those two
-  /// actions at a time, independent of [_linking].
-  _AccountAction? _action;
-  String? _exportError;
+  /// Delete's busy flag (Issue #17 U6; narrowed from a shared export/delete
+  /// enum by Issue #222, since export no longer has a tile in this section
+  /// to race against).
+  bool _deleting = false;
   String? _deleteError;
 
   bool get _canAddGoogle => widget.showAddGoogle ?? AppConfig.hasGoogle;
@@ -292,8 +258,7 @@ class _AccountSectionState extends State<AccountSection> {
         if (signedIn && sync != null) _buildSyncNowTile(sync),
         if (signedIn) ..._buildSignOutTiles(context),
         if (signedIn && _canExportAndDelete)
-          ..._buildExportAndDeleteTiles(
-              context, theme, deletionService, providers),
+          ..._buildDeleteTile(context, theme, deletionService, providers),
       ],
     );
   }
@@ -433,39 +398,16 @@ class _AccountSectionState extends State<AccountSection> {
     ];
   }
 
-  /// The export/delete tiles and their inline error copy (Issue #17 U6).
-  List<Widget> _buildExportAndDeleteTiles(
+  /// The delete tile and its inline error copy (Issue #17 U6). "Export my
+  /// data" used to sit alongside this before Issue #222 moved it to
+  /// `YourDataSection`.
+  List<Widget> _buildDeleteTile(
     BuildContext context,
     ThemeData theme,
     AccountDeletionService? deletionService,
     List<String> providers,
   ) {
     return [
-      ListTile(
-        key: const ValueKey('account-export'),
-        leading: const Icon(Icons.file_download_outlined),
-        title: const Text('Export my data'),
-        subtitle: const Text(
-            'Save your profiles and day entries as a JSON file.'),
-        enabled: _action == null,
-        trailing: _action == _AccountAction.export
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : null,
-        onTap: _action == null ? () => _exportAccount(context) : null,
-      ),
-      if (_exportError != null)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(
-            _exportError!,
-            key: const ValueKey('account-export-error'),
-            style: TextStyle(color: theme.colorScheme.error),
-          ),
-        ),
       if (deletionService != null)
         ListTile(
           key: const ValueKey('account-delete'),
@@ -474,17 +416,15 @@ class _AccountSectionState extends State<AccountSection> {
               style: TextStyle(color: theme.colorScheme.error)),
           subtitle: const Text(
               'Removes the account, its server rows, and this device\'s data.'),
-          enabled: _action == null,
-          trailing: _action == _AccountAction.delete
+          enabled: !_deleting,
+          trailing: _deleting
               ? const SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : null,
-          onTap: _action == null
-              ? () => _deleteAccount(context, providers)
-              : null,
+          onTap: !_deleting ? () => _deleteAccount(context, providers) : null,
         ),
       if (_deleteError != null)
         Padding(
@@ -795,9 +735,11 @@ class _AccountSectionState extends State<AccountSection> {
   }
 
   /// Collects this device's profiles and their entries and hands them to
-  /// the export collaborator (Issue #17 U5/U6; KTD5). Does not catch: the
-  /// two callers (the standalone tile and the delete dialog's "Export
-  /// first") each render the failure their own way.
+  /// the export collaborator (Issue #17 U5/U6; KTD5). Does not catch: its
+  /// one remaining caller, the delete dialog's "Export first" (Issue #222
+  /// moved the standalone tile to `YourDataSection`, which calls the same
+  /// collaborator independently rather than through this method), renders
+  /// the failure its own way.
   Future<void> _runExport(BuildContext context) async {
     final profilesRepo = context.read<ProfilesRepository>();
     final entriesRepo = context.read<DayEntriesRepository>();
@@ -814,29 +756,11 @@ class _AccountSectionState extends State<AccountSection> {
           await entriesRepo.listForProfile(profile.id);
     }
     await (widget.exportAccount ??
-        _defaultExportAccountCollaborator(remoteSource))(
+        defaultExportAccountCollaborator(remoteSource))(
       profiles: profiles,
       entriesByProfile: entriesByProfile,
       appVersion: kAppVersionForExport,
     );
-  }
-
-  /// "Export my data" (R8): one action at a time, failures render as copy
-  /// beneath the tile rather than an exception (AE4, R10).
-  Future<void> _exportAccount(BuildContext context) async {
-    if (_action != null) return;
-    setState(() {
-      _action = _AccountAction.export;
-      _exportError = null;
-    });
-    try {
-      await _runExport(context);
-    } catch (error) {
-      debugPrint('lunarlog account: export failed (${error.runtimeType})');
-      if (mounted) setState(() => _exportError = kAccountExportFailureCopy);
-    } finally {
-      if (mounted) setState(() => _action = null);
-    }
   }
 
   /// Delete flow (Issue #17 U6; R1-R3, R6, R12, KTD7). In order: a fresh
@@ -848,7 +772,7 @@ class _AccountSectionState extends State<AccountSection> {
   /// device reset (KTD16). No reset runs on any failure (R12).
   Future<void> _deleteAccount(
       BuildContext context, List<String> providers) async {
-    if (_action != null) return;
+    if (_deleting) return;
     final gate = context.read<GateController?>();
     if (gate == null) {
       debugPrint('lunarlog account: no gate to re-authenticate with');
@@ -893,7 +817,7 @@ class _AccountSectionState extends State<AccountSection> {
     List<String> providers,
   ) async {
     final resetCallback = context.read<DeviceResetCallback?>();
-    setState(() => _action = _AccountAction.delete);
+    setState(() => _deleting = true);
     try {
       String? appleCode;
       if (providers.contains(AuthProviders.apple)) {
@@ -914,7 +838,7 @@ class _AccountSectionState extends State<AccountSection> {
       }
       return;
     } finally {
-      if (mounted) setState(() => _action = null);
+      if (mounted) setState(() => _deleting = false);
     }
     // context is intentionally used here whether or not it is still mounted
     // (Issue #17 P1 fix): _reset only ever uses it for the UI pop, gated on

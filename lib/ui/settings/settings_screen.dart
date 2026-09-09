@@ -1,8 +1,9 @@
 /// Settings screen: the inactivity auto-relock toggle (default on, fixed
 /// 2-minute timeout, persisted via [SettingsKeys.relockEnabled];
-/// backgrounding always re-locks regardless) and, when the build provides
-/// an [AuthController], the Account section (U6). Reachable from the
-/// profile picker.
+/// backgrounding always re-locks regardless), the "Your data" section
+/// (Issue #222 - reachable whenever a profile exists, regardless of
+/// sign-in state) and, when the build provides an [AuthController], the
+/// Account section (U6) beneath it. Reachable from the profile picker.
 ///
 /// Route naming (U2 Approach 2b): the "Contact support" and "Privacy
 /// policy" `showDialog` calls are deliberately left unnamed — both are
@@ -26,6 +27,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
 import 'package:lunarlog/ui/feedback/support_history_screen.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
+import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -79,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          const YourDataSection(),
           if (hasAccount) ...[
             const AccountSection(),
             const Divider(),
