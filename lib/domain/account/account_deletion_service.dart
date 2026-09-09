@@ -48,6 +48,17 @@ sealed class AccountDeletionFailure implements Exception {
   const factory AccountDeletionFailure.appleRevokeFailed() =
       AccountDeletionAppleRevokeFailedFailure;
 
+  /// The Edge Function's own `attachment_cleanup_failed` code (Issue #243
+  /// round 2 fix, 2026-09-08): the caller's feedback-attachments Storage
+  /// listing or removal failed. This step now runs *before* the
+  /// destructive `delete_account_data()` RPC and Apple revocation (the same
+  /// reordering rationale as [AccountDeletionFailure.appleCodeRequired]),
+  /// so unlike [AccountDeletionFailure.appleRevokeFailed] nothing was
+  /// touched at all when this fires - no row, no Apple grant, no
+  /// `auth.users` row. The operator just needs to retry.
+  const factory AccountDeletionFailure.attachmentCleanupFailed() =
+      AccountDeletionAttachmentCleanupFailedFailure;
+
   /// The client-side call to the Edge Function timed out (#17 P1 fix):
   /// `functions_client` 2.7.1's `invoke()` has no default deadline, so
   /// [SupabaseAccountDeletionService] applies its own via `abortSignal`.
@@ -109,6 +120,15 @@ final class AccountDeletionAppleRevokeFailedFailure
 
   @override
   String toString() => 'AccountDeletionFailure.appleRevokeFailed';
+}
+
+/// See [AccountDeletionFailure.attachmentCleanupFailed].
+final class AccountDeletionAttachmentCleanupFailedFailure
+    extends AccountDeletionFailure {
+  const AccountDeletionAttachmentCleanupFailedFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.attachmentCleanupFailed';
 }
 
 /// See [AccountDeletionFailure.timeout].

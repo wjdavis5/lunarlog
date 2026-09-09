@@ -101,6 +101,9 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
     if (code == 'apple_revoke_failed') {
       return const AccountDeletionFailure.appleRevokeFailed();
     }
+    if (code == 'attachment_cleanup_failed') {
+      return const AccountDeletionFailure.attachmentCleanupFailed();
+    }
     if (code == 'unauthorized') {
       return const AccountDeletionFailure.unauthorized();
     }
