@@ -19,6 +19,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -115,6 +116,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () => _showContactSupport(context),
             ),
           if (hasFeedback) const _SupportHistoryTile(),
+          const Divider(),
+          // Issue #136: the per-profile local reminder configuration.
+          // Present whenever the app provides the reminder configuration
+          // store (i.e. reminders exist — a scheduler was wired); hidden
+          // in harnesses that never built one.
+          if (Provider.of<ReminderConfigService?>(context) != null)
+            ListTile(
+              key: const ValueKey('reminder-settings-tile'),
+              leading: const Icon(Icons.notifications_outlined),
+              title: const Text('Reminders'),
+              subtitle: const Text(
+                  'Choose which reminders fire, when, and for whom'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () =>
+                  pushNamedScreen<void>(context, kRouteReminderSettingsScreen),
+            ),
           const Divider(),
           SwitchListTile(
             key: const ValueKey('relock-toggle'),

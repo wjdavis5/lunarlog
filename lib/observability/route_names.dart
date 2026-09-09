@@ -120,6 +120,10 @@ const String kRouteNotificationPreferencesScreen =
 /// screen's app bar.
 const String kRouteCareNotesScreen = 'CareNotesScreen';
 
+/// `lib/ui/settings/reminder_settings_screen.dart` (Issue #136) — the
+/// per-profile local reminder configuration, pushed from Settings.
+const String kRouteReminderSettingsScreen = 'ReminderSettingsScreen';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -149,4 +153,5 @@ const Set<String> kSentryRouteNames = {
   kRouteTransferOwnershipScreen,
   kRouteNotificationPreferencesScreen,
   kRouteCareNotesScreen,
+  kRouteReminderSettingsScreen,
 };

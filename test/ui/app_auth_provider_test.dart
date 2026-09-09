@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -24,8 +25,11 @@ import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_config.dart'
+    show decodeLateSnoozes, kNotYetSnoozeDays;
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -288,6 +292,48 @@ void main() {
       () => teardown!.timeout(const Duration(seconds: 10)),
     );
     await db.close();
+  });
+
+  testWidgets('a reminder action tap writes after the coordinator starts '
+      'the executor (Issue #136)', (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    final seedProfiles = DriftProfilesRepository(db.storage);
+    final profile =
+        await seedProfiles.create(displayName: 'Alice', isMinor: false);
+
+    final scheduler = FakeReminderScheduler();
+    await tester.pumpWidget(LunarLogApp(db: db, scheduler: scheduler));
+    await tester.pumpAndSettle();
+
+    // The "Not yet" action: writes nothing, snoozes the late reminders
+    // through the same settings store the coordinator replans from.
+    scheduler.launchSink!(ReminderLaunch(
+      profileId: profile.id,
+      kind: ReminderKind.late,
+      actionId: kReminderActionNotYet,
+    ));
+    await tester.pumpAndSettle();
+
+    final store = DriftSettingsStore(db.storage);
+    final snoozes =
+        decodeLateSnoozes(await store.get(SettingsKeys.reminderLateSnoozes));
+    expect(snoozes[profile.id], LocalDate.today().addDays(kNotYetSnoozeDays));
+
+    // The "Started" action: upserts today's entry through the same
+    // database the tree reads.
+    scheduler.launchSink!(ReminderLaunch(
+      profileId: profile.id,
+      kind: ReminderKind.upcoming,
+      actionId: kReminderActionStarted,
+    ));
+    await tester.pumpAndSettle();
+
+    final entry = await DriftDayEntriesRepository(db.storage)
+        .find(profile.id, LocalDate.today());
+    expect(entry, isNotNull);
+    expect(entry!.flow, FlowLevel.medium, reason: 'the quick-log default');
+
+    await disposeApp(tester, db);
   });
 
   testWidgets('a signed-in session clears both awaiting-confirmation '

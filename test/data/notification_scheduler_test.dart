@@ -55,11 +55,17 @@ void main() {
       expect(fireSydney.toUtc(), DateTime.utc(2026, 8, 29, 23, 0));
     });
 
-    test('supports custom reminder hours', () {
+    test('supports custom reminder times (minutes since local midnight)', () {
       final utc = tz.getLocation('UTC');
-      final fire = calculateReminderFireAt(fireOn: date, location: utc, hour: 8);
+      final fire =
+          calculateReminderFireAt(fireOn: date, location: utc, minuteOfDay: 8 * 60);
       expect(fire.hour, 8);
       expect(fire.toUtc(), DateTime.utc(2026, 8, 30, 8, 0));
+
+      final afternoon =
+          calculateReminderFireAt(fireOn: date, location: utc, minuteOfDay: 20 * 60 + 30);
+      expect(afternoon.hour, 20);
+      expect(afternoon.minute, 30);
     });
   });
 

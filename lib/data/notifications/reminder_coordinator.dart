@@ -18,11 +18,14 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_config.dart';
+import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
@@ -35,12 +38,14 @@ class ReminderCoordinator with WidgetsBindingObserver {
     required NotificationAvailabilitySink permissionState,
     required ActiveProfilesStream activeProfiles,
     required PredictionStream predictionFor,
+    ReminderConfigService? localSettings,
     LocalDate Function()? today,
     this.replanDebounce = const Duration(milliseconds: 250),
   })  : _scheduler = scheduler,
         _permissionState = permissionState,
         _activeProfiles = activeProfiles,
         _predictionFor = predictionFor,
+        _localSettings = localSettings,
         today = today ?? LocalDate.today {
     WidgetsBinding.instance.addObserver(this);
   }
@@ -49,6 +54,16 @@ class ReminderCoordinator with WidgetsBindingObserver {
   final NotificationAvailabilitySink _permissionState;
   final ActiveProfilesStream _activeProfiles;
   final PredictionStream _predictionFor;
+
+  /// Per-profile local reminder configuration and late snoozes (Issue
+  /// #136, R10/R11). Null keeps the pre-#136 shape: every profile plans
+  /// from its care-mode preset defaults with no snoozes. When present,
+  /// every replan re-reads the stored configs and snoozes (a cheap,
+  /// always-current device-local read), and the service's `changes`
+  /// stream triggers a replan — so a settings edit takes effect at the
+  /// next coordinator pass exactly like a care-mode switch does.
+  final ReminderConfigService? _localSettings;
+  StreamSubscription<void>? _localSettingsSub;
   final LocalDate Function() today;
 
   @visibleForTesting
@@ -81,20 +96,27 @@ class ReminderCoordinator with WidgetsBindingObserver {
   bool _disposed = false;
 
   Future<void> start({
-    void Function(String profileId)? onLaunchFromNotification,
+    void Function(ReminderLaunch launch)? onLaunchFromNotification,
   }) async {
     final generation = ++_permissionProbeGeneration;
     final availability =
-        await _scheduler.initialize(onLaunchFromNotification: (id) {
-      onLaunchFromNotification?.call(id);
+        await _scheduler.initialize(onLaunchFromNotification: (launch) {
+      onLaunchFromNotification?.call(launch);
       // A tap that lands while the app is backgrounded re-locks the gate;
       // the payload is consumed by the home gate after the next unlock.
+      // An action-button tap (Issue #136) rides the same callback and is
+      // executed after the gate by the ReminderActionExecutor.
     });
     if (_disposed) return;
     if (generation == _permissionProbeGeneration) {
       _setAvailability(availability);
     }
     _profilesSub = _activeProfiles.listen(_onProfilesChanged);
+    // Issue #136: a reminder-settings edit (or a "Not yet" snooze) replans
+    // at the next debounced pass.
+    _localSettingsSub = _localSettings?.changes.listen((_) {
+      _scheduleReplan();
+    });
     _started = true;
   }
 
@@ -156,6 +178,18 @@ class ReminderCoordinator with WidgetsBindingObserver {
       await _scheduler.cancelAll();
       return;
     }
+    // Issue #136: the stored per-profile configs and late snoozes are
+    // re-read on every replan rather than mirrored in memory — a settings
+    // edit (or a "Not yet" tap) is then live at the very next pass with
+    // no cache to invalidate, and a profile with nothing stored still
+    // plans from its care-mode preset defaults via planReminders.
+    Map<String, ReminderConfig> configs = const {};
+    Map<String, LocalDate> lateSnoozes = const {};
+    final localSettings = _localSettings;
+    if (localSettings != null) {
+      configs = await localSettings.loadAll();
+      lateSnoozes = await localSettings.loadLateSnoozes();
+    }
     await _scheduler.rescheduleAll(
       planReminders(
         today: today(),
@@ -164,6 +198,8 @@ class ReminderCoordinator with WidgetsBindingObserver {
           for (final entry in _modes.entries)
             entry.key: reminderPresetFor(entry.value),
         },
+        configs: configs,
+        lateSnoozes: lateSnoozes,
       ),
     );
   }
@@ -215,6 +251,8 @@ class ReminderCoordinator with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _replanTimer?.cancel();
     await _profilesSub?.cancel();
+    await _localSettingsSub?.cancel();
+    _localSettingsSub = null;
     for (final sub in _predictionSubs.values) {
       await sub.cancel();
     }
