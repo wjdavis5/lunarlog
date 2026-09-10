@@ -196,6 +196,12 @@ Write `docs/coordinator/opencode-muse/briefs/<n>.md`:
   - If the issue touches anything under `supabase/`: the pgTAP flow from `AGENTS.md` — `npx
     --yes supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,
     logflare,vector,supavisor`, then `db reset --local`, then `test db --local`.
+  - If the issue bumps `schemaVersion`, ALL of: `dart run build_runner build
+    --delete-conflicting-outputs`, `dart run drift_dev schema dump lib/data/db/db.dart
+    drift_schemas/drift_schema_v<N>.json`, `dart run drift_dev schema generate drift_schemas/
+    test/data/db/generated_migrations/`, the `_kOlderSchemaVersions`/`_kCurrentSchemaVersion` bump
+    in `test/data/db/schema_migration_test.dart`, and the `ci.yml` codegen-freshness filename bump
+    (missed twice: #344, #356 — put it in every schema-touching brief).
 - The PR body template:
 
 ```
