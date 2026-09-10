@@ -1805,6 +1805,51 @@ void main() {
     );
 
     testWidgets(
+      'equal logged-by and last-modified-by ids render only the single '
+      '"Logged by" segment (#89)',
+      (tester) async {
+        final auth = FakeAuthService()
+          ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-mom'));
+        final h = await pumpLogging(
+          tester,
+          authService: auth,
+          withStorage: true,
+          seed: (db, profileId) async {
+            await db.storage.applyRemoteRows([
+              dayEntryRow(
+                profileId,
+                'e-1',
+                kToday,
+                loggedByUserId: 'user-mom',
+                lastModifiedByUserId: 'user-mom',
+              ),
+            ]);
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Logged by you'), findsOneWidget);
+        expect(
+          find.textContaining('Modified by'),
+          findsNothing,
+          reason:
+              'equal logged-by/last-modified-by ids must not set isModified; '
+              'a refactor dropping the != check would render a second '
+              '"Modified by" segment here',
+        );
+        expect(
+          find.textContaining('•'),
+          findsNothing,
+          reason:
+              'no second segment means no " • " separator may render either',
+        );
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
       'signed-out (no AuthController, storage still wired as it always '
       'is per app.dart) resolves a matching guardian\'s display name but '
       'never "you" (R4)',
