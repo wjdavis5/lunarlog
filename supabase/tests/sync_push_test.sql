@@ -285,7 +285,11 @@ select is((select count(*) from public.day_entries where id = tests.ulid(115)), 
   'per-row: the valid day entry in the same batch lands');
 select is((select count(*) from public.day_entries where id in (tests.ulid(110), tests.ulid(111), tests.ulid(112), tests.ulid(113), tests.ulid(114))),
   0::bigint, 'per-row: none of the rejected day entries land');
-select is(pg_temp.resp('bad_rows') -> 'rejected' -> 0, jsonb_build_object('id', 'not-a-ulid', 'rejected', true),
+-- Issue #95 processes each payload loop in row-key order (deterministic lock
+-- acquisition), so the rejected array follows key order, not payload order -
+-- assert containment, not position.
+select ok(pg_temp.resp('bad_rows') -> 'rejected'
+    @> jsonb_build_array(jsonb_build_object('id', 'not-a-ulid', 'rejected', true)),
   'a rejected entry is exactly {id, rejected: true}');
 select is((select count(*) from jsonb_array_elements(pg_temp.resp('bad_rows') -> 'rejected') e
             where e - 'id' <> '{"rejected": true}'::jsonb or not (e ? 'id')),
