@@ -124,6 +124,12 @@ const Set<int> _transientStatuses = {408, 425, 429};
 /// * `SocketException`, any other `IOException`, `http.ClientException`,
 ///   `TimeoutException`, and HTTP 5xx / 408 / 425 / 429 →
 ///   [SyncTransportError.network].
+/// * SQLSTATE `40P01` (deadlock detected), `40001` (serialization failure)
+///   and `55P03` (lock timeout) — transient concurrency errors the server
+///   deliberately re-raises out of `sync_push`'s per-row handlers instead of
+///   swallowing them as rejected rows (issue #95) →
+///   [SyncTransportError.network], so the engine's exponential backoff
+///   retries the batch instead of waiting for the periodic tick.
 /// * Everything else, including SQLSTATE `22023` (batch over 500 rows — a
 ///   client bug) → [SyncTransportError.other].
 SyncTransportError mapSyncTransportError(Object error) {
@@ -141,11 +147,31 @@ SyncTransportError mapSyncTransportError(Object error) {
   return const SyncTransportError.other();
 }
 
-SyncTransportError _mapPostgrest(PostgrestException error) {
-  final code = error.code ?? '';
+/// SQLSTATEs for transient concurrency failures the server deliberately
+/// re-raises out of `sync_push`'s per-row handlers instead of swallowing
+/// them as rejected rows (issue #95): deadlock detected, serialization
+/// failure, lock timeout. A push that dies on one of these means "retry the
+/// batch", not "the payload is bad".
+const Set<String> _transientConcurrencyCodes = {'40P01', '40001', '55P03'};
+
+/// Maps a PostgREST code that is a SQLSTATE (or a `PGRST3xx` JWT error) to
+/// its [SyncTransportError], or `null` when the code is an HTTP status (or
+/// unrecognized) and the caller should fall through to status mapping.
+/// Split out of [_mapPostgrest] so each half stays under the CRAP gate.
+SyncTransportError? _mapSqlState(String code) {
   if (code.startsWith('PGRST3') || code == '42501') {
     return const SyncTransportError.auth();
   }
+  if (_transientConcurrencyCodes.contains(code)) {
+    return const SyncTransportError.network();
+  }
+  return null;
+}
+
+SyncTransportError _mapPostgrest(PostgrestException error) {
+  final code = error.code ?? '';
+  final sqlState = _mapSqlState(code);
+  if (sqlState != null) return sqlState;
   // postgrest stores the HTTP status as the code when the body carries no
   // SQLSTATE; a SQLSTATE is five characters (`22023`), a status three.
   final status = code.length == 3 ? int.tryParse(code) : null;

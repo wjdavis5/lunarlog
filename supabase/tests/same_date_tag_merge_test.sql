@@ -6,7 +6,7 @@
 -- assertions, untouched) are the characterization suite for everything else
 -- sync_push does and must keep passing unmodified.
 begin;
-select plan(28);
+select plan(35);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -305,6 +305,66 @@ select is(
   (select jsonb_array_length(tags) from public.day_entries where id = tests.ulid(951)),
   32,
   'surviving row carries exactly 32 tags'
+);
+
+-- ---------------------------------------------------------------------------
+-- Issue #95: deterministic lock order. sync_push takes every per-row
+-- SELECT ... FOR UPDATE in a globally deterministic order (each payload
+-- loop iterates its input in row-key order; both same-date resolvers lock
+-- with ORDER BY id), so two guardians pushing the same profile's rows
+-- concurrently serialize instead of deadlocking - the revocation
+-- migration's lock-ordering technique, applied to sync_push. The resolver
+-- outcomes themselves stay order-independent (the updated_at comparison
+-- decides, never arrival order), pinned by the batch below.
+-- ---------------------------------------------------------------------------
+select ok(
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+    ilike '%jsonb_array_elements(p_profiles) order by value ->> ''id''%',
+  'issue #95: the profiles payload loop takes row locks in id order'
+);
+select ok(
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+    ilike '%jsonb_array_elements(p_day_entries) order by value ->> ''id''%',
+  'issue #95: the day_entries payload loop takes row locks in id order'
+);
+select ok(
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+    ilike '%jsonb_array_elements(p_observations) order by value ->> ''id''%',
+  'issue #95: the observations payload loop takes row locks in id order'
+);
+select ok(
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+    ilike '%and local_date = v_local_date%and deleted_at is null%and id <> v_id%order by id%for update;%',
+  'issue #95: the day_entries same-date resolver takes its row lock in id order'
+);
+select ok(
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+    ilike '%and code = v_code%and deleted_at is null%and id <> v_id%order by id%for update;%',
+  'issue #95: the observations same-date resolver takes its row lock in id order'
+);
+
+-- A batch whose payload order is the reverse of id order still converges:
+-- the smaller id carries the newer timestamp, so key-ordered processing
+-- lands the winner first and tombstones the loser on arrival.
+select tests.authenticate_as('mom');
+insert into r select 'lock_order_batch', public.sync_push('[]'::jsonb,
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(962), 'profile_id', tests.ulid(901), 'local_date', '2026-09-11',
+      'tz', 'UTC', 'flow', 'none', 'tags', '["b"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(961), 'profile_id', tests.ulid(901), 'local_date', '2026-09-11',
+      'tz', 'UTC', 'flow', 'none', 'tags', '["a"]'::jsonb, 'updated_at', pg_temp.ts_txt('t2'))
+  ));
+select is(
+  (select count(*) from public.day_entries
+    where profile_id = tests.ulid(901) and local_date = '2026-09-11' and deleted_at is null),
+  1::bigint,
+  'issue #95: a batch in reverse id order still converges to exactly one live row'
+);
+select is(
+  (select tags from public.day_entries
+    where profile_id = tests.ulid(901) and local_date = '2026-09-11' and deleted_at is null),
+  '["a", "b"]'::jsonb,
+  'issue #95: the reverse-id-order batch converges to the identical union (newer updated_at wins)'
 );
 
 rollback;

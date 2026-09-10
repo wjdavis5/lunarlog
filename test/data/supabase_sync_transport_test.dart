@@ -486,6 +486,18 @@ void main() {
       );
     });
 
+    test('a deadlock SQLSTATE is `network`, for a prompt backoff retry '
+        '(issue #95)', () async {
+      client = makeClient((_) async => json(
+            {'message': 'deadlock detected', 'code': '40P01'},
+            status: 500,
+          ));
+      expect(
+        () => SupabaseSyncTransport(client!).push(PushBatch()),
+        throwsA(isA<SyncTransportNetworkError>()),
+      );
+    });
+
     test('typed errors never expose provider text', () async {
       client = makeClient((_) async => json(
             {'message': 'secret provider detail', 'code': 'PGRST301'},
@@ -546,6 +558,18 @@ void main() {
           mapSyncTransportError(
               const PostgrestException(message: 'x', code: '22023')),
           isA<SyncTransportOtherError>());
+      expect(
+          mapSyncTransportError(
+              const PostgrestException(message: 'x', code: '40P01')),
+          isA<SyncTransportNetworkError>());
+      expect(
+          mapSyncTransportError(
+              const PostgrestException(message: 'x', code: '40001')),
+          isA<SyncTransportNetworkError>());
+      expect(
+          mapSyncTransportError(
+              const PostgrestException(message: 'x', code: '55P03')),
+          isA<SyncTransportNetworkError>());
       expect(
           mapSyncTransportError(
               const PostgrestException(message: 'x', code: '400')),
