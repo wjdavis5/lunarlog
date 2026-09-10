@@ -1243,8 +1243,8 @@ void main() {
       });
 
       testWidgets(
-          'an expired invitation returned by a stale load renders without '
-          'crashing (negative time remaining is clamped)', (tester) async {
+          'an expired invitation renders as an Expired row with Resend '
+          '(negative time remaining is never shown)', (tester) async {
         await storage.applyRemoteRows([
           guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
         ]);
@@ -1269,7 +1269,43 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);
-        expect(find.textContaining('expired'), findsOneWidget);
+        expect(find.textContaining('Expired'), findsOneWidget);
+        expect(find.textContaining('expires in'), findsNothing);
+        expect(find.byIcon(Icons.cancel_outlined), findsNothing);
+        expect(find.widgetWithText(TextButton, 'Resend'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets('Resend on an expired row re-opens the invite flow',
+          (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+        sharingService.scriptedPendingInvites = [
+          pendingInvite(
+            id: 'inv-1',
+            recipientLabel: 'Sitter',
+            expiresAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
+          ),
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(TextButton, 'Resend'));
+        await tester.pumpAndSettle();
+        expect(find.text('Invite Caregiver to Luna'), findsOneWidget);
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));

@@ -526,6 +526,23 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     final label = invite.recipientLabel?.isNotEmpty == true
         ? invite.recipientLabel!
         : invite.role.label;
+    // Issue #362: a recently expired invitation renders as a distinct row
+    // state - an `Expired` subtitle (never a negative countdown) with a
+    // Resend action that re-opens the existing invite flow, then reloads.
+    if (invite.isExpired) {
+      return ListTile(
+        key: ValueKey('pending-invite-${invite.invitationId}'),
+        leading: const Icon(Icons.mail_outline),
+        title: Text(label),
+        subtitle: Text('${invite.role.label} • Expired'),
+        trailing: _canCancelInvite(invite, callerRole)
+            ? TextButton(
+                onPressed: _openInviteDialog,
+                child: const Text('Resend'),
+              )
+            : null,
+      );
+    }
     return ListTile(
       key: ValueKey('pending-invite-${invite.invitationId}'),
       leading: const Icon(Icons.mail_outline),
