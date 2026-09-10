@@ -130,6 +130,30 @@ class ReminderTypeConfig {
     timeOfDayMinutes: kDefaultReminderTimeMinutes,
   );
 
+  /// Issue #183's birth-control adherence kinds, all shipping **off** like
+  /// every other opt-in kind: enabling one is a deliberate act for a
+  /// profile whose recorded method matches (the planner plans a
+  /// birth-control kind only for the method the profile currently uses).
+  /// None of them carries lead days — they anchor on the method's recorded
+  /// start date (the pill on nothing but its own daily cadence), not on a
+  /// cycle estimate, so there is nothing to lead.
+  static const ReminderTypeConfig birthControlPill = ReminderTypeConfig(
+    enabled: false,
+    timeOfDayMinutes: kDefaultReminderTimeMinutes,
+  );
+  static const ReminderTypeConfig birthControlPatch = ReminderTypeConfig(
+    enabled: false,
+    timeOfDayMinutes: kDefaultReminderTimeMinutes,
+  );
+  static const ReminderTypeConfig birthControlRing = ReminderTypeConfig(
+    enabled: false,
+    timeOfDayMinutes: kDefaultReminderTimeMinutes,
+  );
+  static const ReminderTypeConfig birthControlShot = ReminderTypeConfig(
+    enabled: false,
+    timeOfDayMinutes: kDefaultReminderTimeMinutes,
+  );
+
   final bool enabled;
 
   /// Days before their anchor this reminder fires. Only the
@@ -215,6 +239,10 @@ class ReminderConfig {
     this.late = ReminderTypeConfig.late,
     this.cycleStatisticChange = ReminderTypeConfig.cycleStatisticChange,
     this.log = ReminderTypeConfig.log,
+    this.birthControlPill = ReminderTypeConfig.birthControlPill,
+    this.birthControlPatch = ReminderTypeConfig.birthControlPatch,
+    this.birthControlRing = ReminderTypeConfig.birthControlRing,
+    this.birthControlShot = ReminderTypeConfig.birthControlShot,
     this.quietHours,
   });
 
@@ -240,6 +268,22 @@ class ReminderConfig {
   /// displayed-statistic change is observed — no forward anchor.
   final ReminderTypeConfig cycleStatisticChange;
   final ReminderTypeConfig log;
+
+  /// Issue #183: the four method-cadence adherence kinds, anchored on the
+  /// profile's recorded birth-control method (issue #260's vocabulary).
+  /// The planner plans a kind only while the profile's method in effect
+  /// matches it — a method change therefore re-routes the reminder without
+  /// any stored-config edit.
+  final ReminderTypeConfig birthControlPill;
+
+  /// Issue #183: weekly patch-change reminder.
+  final ReminderTypeConfig birthControlPatch;
+
+  /// Issue #183: monthly (28-day) ring-change reminder.
+  final ReminderTypeConfig birthControlRing;
+
+  /// Issue #183: 12-weekly (84-day) injection reminder.
+  final ReminderTypeConfig birthControlShot;
 
   /// Local quiet hours: a fire that would land inside the window shifts to
   /// the window's end boundary instead of being dropped (R10; see
@@ -267,6 +311,17 @@ class ReminderConfig {
   static ReminderConfig fromMode(ProfileMode mode) =>
       fromPreset(reminderPresetFor(mode));
 
+  /// Resolves a `copyWith` parameter: an unpassed argument (null) keeps
+  /// the current value. Pulling the `??` out of [copyWith] keeps that
+  /// method's complexity — and so its CRAP-gate score — flat as fields
+  /// are added, the same move `Profile.copyWith` made.
+  static ReminderTypeConfig _resolveType(
+          ReminderTypeConfig? next, ReminderTypeConfig current) =>
+      next ?? current;
+
+  static QuietHours? _resolveQuiet(QuietHours? next, QuietHours? current) =>
+      next ?? current;
+
   ReminderConfig copyWith({
     ReminderTypeConfig? upcoming,
     ReminderTypeConfig? periodStartingSoon,
@@ -275,42 +330,73 @@ class ReminderConfig {
     ReminderTypeConfig? late,
     ReminderTypeConfig? cycleStatisticChange,
     ReminderTypeConfig? log,
+    ReminderTypeConfig? birthControlPill,
+    ReminderTypeConfig? birthControlPatch,
+    ReminderTypeConfig? birthControlRing,
+    ReminderTypeConfig? birthControlShot,
     QuietHours? quietHours,
     bool clearQuietHours = false,
   }) =>
       ReminderConfig(
-        upcoming: upcoming ?? this.upcoming,
-        periodStartingSoon: periodStartingSoon ?? this.periodStartingSoon,
-        pms: pms ?? this.pms,
-        fertileWindowSoon: fertileWindowSoon ?? this.fertileWindowSoon,
-        late: late ?? this.late,
-        cycleStatisticChange: cycleStatisticChange ?? this.cycleStatisticChange,
-        log: log ?? this.log,
-        quietHours: clearQuietHours ? null : (quietHours ?? this.quietHours),
+        upcoming: _resolveType(upcoming, this.upcoming),
+        periodStartingSoon:
+            _resolveType(periodStartingSoon, this.periodStartingSoon),
+        pms: _resolveType(pms, this.pms),
+        fertileWindowSoon: _resolveType(fertileWindowSoon, this.fertileWindowSoon),
+        late: _resolveType(late, this.late),
+        cycleStatisticChange:
+            _resolveType(cycleStatisticChange, this.cycleStatisticChange),
+        log: _resolveType(log, this.log),
+        birthControlPill: _resolveType(birthControlPill, this.birthControlPill),
+        birthControlPatch:
+            _resolveType(birthControlPatch, this.birthControlPatch),
+        birthControlRing: _resolveType(birthControlRing, this.birthControlRing),
+        birthControlShot: _resolveType(birthControlShot, this.birthControlShot),
+        quietHours: clearQuietHours
+            ? null
+            : _resolveQuiet(quietHours, this.quietHours),
       );
 
-  /// The type config for [kind]. Exhaustive switch (no `_` wildcard):
-  /// adding a kind without a config mapping is a compile error.
-  ReminderTypeConfig typeConfig(ReminderKind kind) => switch (kind) {
-        ReminderKind.upcoming => upcoming,
-        ReminderKind.periodStartingSoon => periodStartingSoon,
-        ReminderKind.pms => pms,
-        ReminderKind.fertileWindowSoon => fertileWindowSoon,
-        ReminderKind.late => late,
-        ReminderKind.cycleStatisticChange => cycleStatisticChange,
-        ReminderKind.log => log,
+  /// Every type config keyed by its kind — the one mapping [typeConfig]
+  /// and [withTypeConfig] both read, kept as a single literal so a new
+  /// [ReminderKind] has exactly one place to join (the
+  /// `ReminderConfig plumbing` test walks `ReminderKind.values` through
+  /// [typeConfig], so a missing entry fails the suite loudly).
+  Map<ReminderKind, ReminderTypeConfig> get _configs => {
+        ReminderKind.upcoming: upcoming,
+        ReminderKind.periodStartingSoon: periodStartingSoon,
+        ReminderKind.pms: pms,
+        ReminderKind.fertileWindowSoon: fertileWindowSoon,
+        ReminderKind.late: late,
+        ReminderKind.cycleStatisticChange: cycleStatisticChange,
+        ReminderKind.log: log,
+        ReminderKind.birthControlPill: birthControlPill,
+        ReminderKind.birthControlPatch: birthControlPatch,
+        ReminderKind.birthControlRing: birthControlRing,
+        ReminderKind.birthControlShot: birthControlShot,
       };
 
-  ReminderConfig withTypeConfig(ReminderKind kind, ReminderTypeConfig c) =>
-      switch (kind) {
-        ReminderKind.upcoming => copyWith(upcoming: c),
-        ReminderKind.periodStartingSoon => copyWith(periodStartingSoon: c),
-        ReminderKind.pms => copyWith(pms: c),
-        ReminderKind.fertileWindowSoon => copyWith(fertileWindowSoon: c),
-        ReminderKind.late => copyWith(late: c),
-        ReminderKind.cycleStatisticChange => copyWith(cycleStatisticChange: c),
-        ReminderKind.log => copyWith(log: c),
-      };
+  /// The type config for [kind]. A kind with no config entry here throws
+  /// (the map is total over the enum — see [_configs]).
+  ReminderTypeConfig typeConfig(ReminderKind kind) => _configs[kind]!;
+
+  ReminderConfig withTypeConfig(ReminderKind kind, ReminderTypeConfig c) {
+    final configs = _configs..[kind] = c;
+    return ReminderConfig(
+      upcoming: configs[ReminderKind.upcoming]!,
+      periodStartingSoon: configs[ReminderKind.periodStartingSoon]!,
+      pms: configs[ReminderKind.pms]!,
+      fertileWindowSoon: configs[ReminderKind.fertileWindowSoon]!,
+      late: configs[ReminderKind.late]!,
+      cycleStatisticChange: configs[ReminderKind.cycleStatisticChange]!,
+      log: configs[ReminderKind.log]!,
+      birthControlPill: configs[ReminderKind.birthControlPill]!,
+      birthControlPatch: configs[ReminderKind.birthControlPatch]!,
+      birthControlRing: configs[ReminderKind.birthControlRing]!,
+      birthControlShot: configs[ReminderKind.birthControlShot]!,
+      quietHours: quietHours,
+    );
+  }
 
   Map<String, Object?> toJson() => {
         'upcoming': upcoming.toJson(),
@@ -320,6 +406,10 @@ class ReminderConfig {
         'late': late.toJson(),
         'cycleStatisticChange': cycleStatisticChange.toJson(),
         'log': log.toJson(),
+        'birthControlPill': birthControlPill.toJson(),
+        'birthControlPatch': birthControlPatch.toJson(),
+        'birthControlRing': birthControlRing.toJson(),
+        'birthControlShot': birthControlShot.toJson(),
         if (quietHours != null) ...{
           'quietStart': quietHours!.startMinutes,
           'quietEnd': quietHours!.endMinutes,
@@ -359,34 +449,70 @@ class ReminderConfig {
           ReminderTypeConfig.cycleStatisticChange),
       log: ReminderTypeConfig.fromJson(
           section('log', ReminderTypeConfig.log), ReminderTypeConfig.log),
+      birthControlPill: ReminderTypeConfig.fromJson(
+          section('birthControlPill', ReminderTypeConfig.birthControlPill),
+          ReminderTypeConfig.birthControlPill),
+      birthControlPatch: ReminderTypeConfig.fromJson(
+          section('birthControlPatch', ReminderTypeConfig.birthControlPatch),
+          ReminderTypeConfig.birthControlPatch),
+      birthControlRing: ReminderTypeConfig.fromJson(
+          section('birthControlRing', ReminderTypeConfig.birthControlRing),
+          ReminderTypeConfig.birthControlRing),
+      birthControlShot: ReminderTypeConfig.fromJson(
+          section('birthControlShot', ReminderTypeConfig.birthControlShot),
+          ReminderTypeConfig.birthControlShot),
       quietHours: quietStart is int && quietEnd is int
           ? QuietHours(startMinutes: quietStart, endMinutes: quietEnd)
           : null,
     );
   }
 
-  @override
-  bool operator ==(Object other) =>
-      other is ReminderConfig &&
-      other.upcoming == upcoming &&
-      other.periodStartingSoon == periodStartingSoon &&
-      other.pms == pms &&
-      other.fertileWindowSoon == fertileWindowSoon &&
-      other.late == late &&
-      other.cycleStatisticChange == cycleStatisticChange &&
-      other.log == log &&
-      other.quietHours == quietHours;
+  /// Every field as one structural record: [==] and [hashCode] compare
+  /// records, so adding a field means adding it to the record once instead
+  /// of growing an `&&` chain past the CRAP gate's complexity bound.
+  (
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    ReminderTypeConfig,
+    QuietHours?
+  ) get _fields => (
+        upcoming,
+        periodStartingSoon,
+        pms,
+        fertileWindowSoon,
+        late,
+        cycleStatisticChange,
+        log,
+        birthControlPill,
+        birthControlPatch,
+        birthControlRing,
+        birthControlShot,
+        quietHours,
+      );
 
   @override
-  int get hashCode => Object.hash(upcoming, periodStartingSoon, pms,
-      fertileWindowSoon, late, cycleStatisticChange, log, quietHours);
+  bool operator ==(Object other) =>
+      other is ReminderConfig && other._fields == _fields;
+
+  @override
+  int get hashCode => _fields.hashCode;
 
   @override
   String toString() =>
       'ReminderConfig(upcoming: $upcoming, periodStartingSoon: '
       '$periodStartingSoon, pms: $pms, fertileWindowSoon: $fertileWindowSoon, '
       'late: $late, cycleStatisticChange: $cycleStatisticChange, log: $log, '
-      'quietHours: $quietHours)';
+      'birthControlPill: $birthControlPill, birthControlPatch: '
+      '$birthControlPatch, birthControlRing: $birthControlRing, '
+      'birthControlShot: $birthControlShot, quietHours: $quietHours)';
 }
 
 /// The reminder kinds (Issue #136; Issue #178 adds the rest of the Clue
@@ -405,6 +531,14 @@ class ReminderConfig {
 ///   statistic change is observed; event-driven, no forward anchor
 ///   (Issue #178).
 /// * [log] — the daily log nudge, prediction-independent.
+/// * [birthControlPill]/[birthControlPatch]/[birthControlRing]/
+///   [birthControlShot] — the birth-control adherence kinds (Issue #183),
+///   anchored on the profile's recorded method (issue #260's vocabulary)
+///   and its effective-date columns, at the pill's daily, the patch's
+///   weekly, the ring's 28-day, and the injection's 84-day cadence. The
+///   implant and both IUD flavors have no kind: they are not
+///   user-administered on a schedule, so no recurring adherence reminder
+///   exists to configure for them.
 enum ReminderKind {
   upcoming,
   periodStartingSoon,
@@ -413,6 +547,10 @@ enum ReminderKind {
   late,
   cycleStatisticChange,
   log,
+  birthControlPill,
+  birthControlPatch,
+  birthControlRing,
+  birthControlShot,
 }
 
 /// Encodes a [ReminderConfig] map as the JSON string the settings store

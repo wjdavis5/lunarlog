@@ -17,9 +17,16 @@ import '../models/lifecycle_mode.dart';
 
 /// The read shape of a profile's mode row: the life-stage mode (never
 /// null — an absent row means [LifecycleMode.tracking], the server's
-/// lazy-default contract) plus the optional free-text birth-control
-/// method answer.
-typedef ProfileLifecycleMode = ({LifecycleMode mode, String? birthControlMethod});
+/// lazy-default contract), the optional free-text birth-control method
+/// answer, and its raw effective-date columns (`yyyy-MM-dd` or null —
+/// issue #260's `birth_control_started_on`/`birth_control_stopped_on`,
+/// consumed by the #183 reminders and #233's prediction adaptation).
+typedef ProfileLifecycleMode = ({
+  LifecycleMode mode,
+  String? birthControlMethod,
+  String? birthControlStartedOn,
+  String? birthControlStoppedOn,
+});
 
 abstract interface class ProfileModesRepository {
   /// Creates or updates the profile's single mode row. Null parameters on
@@ -30,6 +37,16 @@ abstract interface class ProfileModesRepository {
   /// [modeStartedOn] is the date the mode took effect (today for an
   /// onboarding answer that named a non-default mode; null keeps the
   /// column unset).
+  ///
+  /// The birth-control effective dates are owned by this save (issue
+  /// #183's anchor requirement): when the recorded method changes to a
+  /// tracked one, `birth_control_started_on` is stamped with today and
+  /// `birth_control_stopped_on` cleared; when the answer is unchanged,
+  /// both are preserved as-is (an unrelated edit never rewrites method
+  /// history); when the answer becomes a non-tracked one (or is cleared),
+  /// both are cleared. The raw columns stay writable only through
+  /// `LunarLogStorage.upsertProfileMode` for the callers that own them
+  /// (the sync pull).
   Future<void> save({
     required String profileId,
     required LifecycleMode mode,

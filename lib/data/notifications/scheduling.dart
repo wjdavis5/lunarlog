@@ -25,6 +25,16 @@
 /// coordinator observed a meaningful displayed-statistic change, see
 /// `lib/domain/notifications/statistic_change.dart`). All three ship off.
 ///
+/// Issue #183 completes the "Your Birth Control" catalogue the same way,
+/// anchored on issue #260's recorded-method vocabulary instead of the
+/// cycle estimate: `birthControlPill` (daily), `birthControlPatch`
+/// (weekly), `birthControlRing` (every 28 days), and `birthControlShot`
+/// (every 84 days) plan from the profile's `profile_modes` effective dates
+/// — the due dates the method itself defines, at the type's configured
+/// time-of-day. The implant and both IUD flavors have no kind: they are
+/// not user-administered on a schedule, so no adherence reminder exists
+/// for them (the issue's own cadence table). All four kinds ship off.
+///
 /// Transition-driven, not pre-computed (Issue #136): the coordinator
 /// replans on every prediction emission (becoming active, becoming late,
 /// any estimate shift — however small) and every app resume, and every
@@ -35,6 +45,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart'
     show QuietHours;
@@ -61,20 +72,38 @@ const int kLatePreArmDays = 7;
 /// Hard cap on pending lunarlog notifications (iOS allows 64 per app).
 const int kMaxPendingReminders = 60;
 
+/// How many days ahead the daily pill adherence reminder (Issue #183) is
+/// pre-armed at every replan — the same posture as the log nudge's
+/// [kLogNudgePreArmDays]: iOS delivers local notifications with no Dart
+/// callback, so each replan arms a bounded daily window.
+const int kBirthControlPillPreArmDays = 7;
+
+/// How many forward due dates the anchored birth-control kinds (Issue
+/// #183: patch, ring, shot) are pre-armed with at every replan. Cadence
+/// periods are long (7/28/84 days), so a single-occurrence arm would go
+/// silent the first time the app stays closed past one due date; three
+/// occurrences keep the reminder alive across skipped opens while staying
+/// a small, bounded share of the [kMaxPendingReminders] cap.
+const int kBirthControlPreArmOccurrences = 3;
+
 /// Generic content only (KTD7): these exact strings are what the lock
 /// screen shows — never a profile name, date, or health detail.
 const String kReminderTitle = 'A reminder from Lunarlog';
 const String kReminderBody = 'Open Lunarlog to see what it is about.';
 
 /// Eviction priority under the [kMaxPendingReminders] cap (Issue #136,
-/// widened by Issue #178): lower is kept longer. The documented eviction
-/// order is late over upcoming over period-starting-soon over PMS-watch
-/// over fertile-window-soon over statistic-change over log-nudge — the
-/// daily nudge, the most reproducible of the seven, is still the first
-/// thing dropped when the cap binds, and the event-driven statistic-change
-/// nudge ranks below the date-anchored kinds because its signal can be
-/// re-observed (a later replan over the same change) while a past date
-/// anchor cannot.
+/// widened by Issue #178 and Issue #183): lower is kept longer. The
+/// documented eviction order is late over upcoming over
+/// period-starting-soon over PMS-watch over fertile-window-soon over
+/// statistic-change over the birth-control cadences over the log nudge —
+/// the daily nudge, the most reproducible of them all, is still the first
+/// thing dropped when the cap binds, and the event-driven
+/// statistic-change nudge ranks below the date-anchored kinds because its
+/// signal can be re-observed (a later replan over the same change) while
+/// a past date anchor cannot. The birth-control cadences rank below the
+/// cycle kinds (a missed estimate is scarcer than a dose that recurs
+/// tomorrow) but above the bare log nudge, whose content the dose
+/// reminder would otherwise shadow on every shared fire date.
 int evictionPriority(ReminderKind kind) => switch (kind) {
       ReminderKind.late => 0,
       ReminderKind.upcoming => 1,
@@ -82,7 +111,12 @@ int evictionPriority(ReminderKind kind) => switch (kind) {
       ReminderKind.pms => 3,
       ReminderKind.fertileWindowSoon => 4,
       ReminderKind.cycleStatisticChange => 5,
-      ReminderKind.log => 6,
+      ReminderKind.birthControlPill ||
+      ReminderKind.birthControlPatch ||
+      ReminderKind.birthControlRing ||
+      ReminderKind.birthControlShot =>
+        6,
+      ReminderKind.log => 7,
     };
 
 /// A deterministic 31-bit notification id derived from the reminder's
@@ -167,12 +201,26 @@ class PlannedReminder {
 /// `cycleStatisticChange` kind plans a single reminder on that date when
 /// enabled; a signal dated before [today] is stale and plans nothing.
 ///
+/// [birthControlModes] (Issue #183) carries, per profile, the raw
+/// `profile_modes` birth-control state ([BirthControlState]) the
+/// coordinator last observed on its row stream. The birth-control kinds
+/// plan only while the method in effect on [today] (via
+/// [birthControlMethodInEffectOn]) matches the kind's cadence — pill/
+/// patch/ring/shot — so a method change re-routes the reminder at the
+/// next replan and nothing stale keeps firing for the old method. The
+/// anchored kinds (patch/ring/shot) additionally need a recorded
+/// `started_on` to anchor their due dates on; without one they plan
+/// nothing rather than inventing an anchor. All birth-control kinds are
+/// prediction-independent: a profile with no estimate still gets its
+/// enabled adherence reminder.
+///
 /// Same-day duplicates coalesce per profile: after quiet-hours shifting,
 /// at most one reminder per profile per fire date survives, the winner
 /// decided by the eviction priority (late over upcoming over
 /// period-starting-soon over PMS-watch over fertile-window-soon over
-/// statistic-change over log-nudge). The result is sorted by fire date and
-/// capped at [kMaxPendingReminders], evicting in the same priority order.
+/// statistic-change over the birth-control cadences over log-nudge). The
+/// result is sorted by fire date and capped at [kMaxPendingReminders],
+/// evicting in the same priority order.
 List<PlannedReminder> planReminders({
   required LocalDate today,
   required Map<String, ActivePrediction> predictions,
@@ -180,12 +228,13 @@ List<PlannedReminder> planReminders({
   Map<String, ReminderConfig> configs = const {},
   Map<String, LocalDate> lateSnoozes = const {},
   Map<String, LocalDate> statisticChangeSignals = const {},
+  Map<String, BirthControlState> birthControlModes = const {},
 }) {
   final planned = <PlannedReminder>[];
   // The prediction-independent types plan even without a prediction (a
   // config entry can name a profile the prediction stream has nothing for
   // yet).
-  final ids = {...predictions.keys, ...configs.keys};
+  final ids = {...predictions.keys, ...configs.keys, ...birthControlModes.keys};
   for (final id in ids) {
     final preset = presets[id] ?? ReminderPreset.all;
     final config = configs[id] ?? ReminderConfig.fromPreset(preset);
@@ -196,14 +245,15 @@ List<PlannedReminder> planReminders({
       config: config,
       snoozeUntil: lateSnoozes[id],
       statisticSignal: statisticChangeSignals[id],
+      birthControlState: birthControlModes[id],
     ));
   }
   return _coalesceAndCap(planned);
 }
 
 /// One profile's plan: the prediction-independent types (log nudge,
-/// statistic-change signal), then — when a live prediction exists — the
-/// estimate-relative types.
+/// statistic-change signal, birth-control adherence — Issue #183), then —
+/// when a live prediction exists — the estimate-relative types.
 List<PlannedReminder> _planProfile({
   required String profileId,
   required LocalDate today,
@@ -211,6 +261,7 @@ List<PlannedReminder> _planProfile({
   required ReminderConfig config,
   required LocalDate? snoozeUntil,
   required LocalDate? statisticSignal,
+  required BirthControlState? birthControlState,
 }) {
   final planned = <PlannedReminder>[];
   if (config.log.enabled) {
@@ -238,6 +289,14 @@ List<PlannedReminder> _planProfile({
       config.quietHours,
     ));
   }
+  // Issue #183: the method-cadence adherence kinds, anchored on the
+  // profile's recorded birth-control method rather than on any estimate.
+  planned.addAll(_planBirthControl(
+    profileId: profileId,
+    today: today,
+    config: config,
+    state: birthControlState,
+  ));
   if (prediction == null) return planned;
   final snoozed = snoozeUntil != null && snoozeUntil.compareTo(today) >= 0;
   planned.addAll(_planEstimateRelative(
@@ -249,6 +308,140 @@ List<PlannedReminder> _planProfile({
   ));
   return planned;
 }
+
+/// The birth-control adherence kinds (Issue #183). A profile plans a kind
+/// only while the method in effect matches it; the pill pre-arms a daily
+/// window and the other three anchor their due dates on the method's
+/// recorded start date (start day + n × cadence, n ≥ 1 — the start day
+/// itself is the day the operator acted, not a change day).
+List<PlannedReminder> _planBirthControl({
+  required String profileId,
+  required LocalDate today,
+  required ReminderConfig config,
+  required BirthControlState? state,
+}) {
+  final method = _birthControlMethodInEffect(state, today);
+  if (method == null) return const [];
+  final kind = birthControlReminderKindFor(method);
+  if (kind == null) return const [];
+  final typeConfig = config.typeConfig(kind);
+  if (!typeConfig.enabled) return const [];
+  final cadenceDays = birthControlCadenceDays(method)!;
+  final startedOn = _tryParseIso(state!.startedOn);
+  if (kind == ReminderKind.birthControlPill) {
+    // The pill needs no anchor: while the method is in effect every day
+    // is a dose day, so the reminder pre-arms the same bounded daily
+    // window the log nudge does (a method recorded as started today is in
+    // effect from today — `birthControlMethodInEffectOn` guarantees
+    // startedOn ≤ today here).
+    return [
+      for (var i = 0; i < kBirthControlPillPreArmDays; i++)
+        _planOne(
+          profileId,
+          kind,
+          today.addDays(i),
+          typeConfig.timeOfDayMinutes,
+          config.quietHours,
+        ),
+    ];
+  }
+  if (startedOn == null) {
+    // A cadence without a recorded start date has no knowable due date —
+    // plan nothing rather than inventing an anchor (the settings row says
+    // what is missing).
+    return const [];
+  }
+  final offsetDays = today.difference(startedOn);
+  // Smallest n ≥ 1 whose due date (startedOn + n × cadence) is today or
+  // later: ceil(offsetDays / cadence), floored at 1. A due date already
+  // past is not re-fired retroactively.
+  var firstN = (offsetDays + cadenceDays - 1) ~/ cadenceDays;
+  if (firstN < 1) firstN = 1;
+  return [
+    for (var i = 0; i < kBirthControlPreArmOccurrences; i++)
+      _planOne(
+        profileId,
+        kind,
+        startedOn.addDays((firstN + i) * cadenceDays),
+        typeConfig.timeOfDayMinutes,
+        config.quietHours,
+      ),
+  ];
+}
+
+/// Resolves the method in effect on [today] from a raw state, failing
+/// closed: a malformed effective date (storage validates ISO shape, but a
+/// hand-edited or future-schema value must never take reminder planning
+/// down) degrades to "no method in effect".
+BirthControlMethod? _birthControlMethodInEffect(
+  BirthControlState? state,
+  LocalDate today,
+) {
+  if (state == null) return null;
+  try {
+    return birthControlMethodInEffectOn(
+      storedMethod: state.method,
+      startedOn: state.startedOn,
+      stoppedOn: state.stoppedOn,
+      date: today,
+    );
+  } on ArgumentError {
+    return null;
+  }
+}
+
+/// Tolerant `yyyy-MM-dd` parse: null (or a malformed value) degrades to
+/// null instead of throwing — see [_birthControlMethodInEffect].
+LocalDate? _tryParseIso(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  try {
+    return LocalDate.fromIso(raw);
+  } on ArgumentError {
+    return null;
+  }
+}
+
+/// The adherence reminder kind (Issue #183) a recorded method plans, or
+/// null for the methods with no user-administered cadence: the implant
+/// and both IUD flavors are clinician-administered and must never grow a
+/// spurious recurring reminder (the issue's own assumption), and the
+/// non-tracked answers (`none`/`condom`/`other`/unknown) have nothing to
+/// remind about. Exhaustive: adding a [BirthControlMethod] without a
+/// mapping is a compile error.
+ReminderKind? birthControlReminderKindFor(BirthControlMethod method) =>
+    switch (method) {
+      BirthControlMethod.pill => ReminderKind.birthControlPill,
+      BirthControlMethod.patch => ReminderKind.birthControlPatch,
+      BirthControlMethod.ring => ReminderKind.birthControlRing,
+      BirthControlMethod.shot => ReminderKind.birthControlShot,
+      BirthControlMethod.none ||
+      BirthControlMethod.implant ||
+      BirthControlMethod.hormonalIud ||
+      BirthControlMethod.copperIud ||
+      BirthControlMethod.condom ||
+      BirthControlMethod.other ||
+      BirthControlMethod.unknown =>
+        null,
+    };
+
+/// The cadence in days between due dates for [method]'s adherence kind
+/// (Issue #183's table: pill daily, patch weekly, ring monthly — the
+/// 28-day ring cycle — and injection every 12 weeks = 84 days), or null
+/// for the methods with no kind.
+int? birthControlCadenceDays(BirthControlMethod method) => switch (method) {
+      BirthControlMethod.pill => 1,
+      BirthControlMethod.patch => 7,
+      BirthControlMethod.ring => 28,
+      BirthControlMethod.shot => 84,
+      BirthControlMethod.none ||
+      BirthControlMethod.implant ||
+      BirthControlMethod.hormonalIud ||
+      BirthControlMethod.copperIud ||
+      BirthControlMethod.condom ||
+      BirthControlMethod.other ||
+      BirthControlMethod.unknown =>
+        null,
+    };
 
 /// The prediction-anchored types: period-due, period-starting-soon,
 /// PMS-watch, and fertile-window-soon fire only when their configured

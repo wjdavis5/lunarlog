@@ -253,6 +253,13 @@ const Map<String, BirthControlMethod> _legacyStoredValues = {
   'Other': BirthControlMethod.other,
 };
 
+/// The reminder-facing read shape of a `profile_modes` row (issue #183):
+/// the raw stored method string plus the raw effective-date columns —
+/// exactly the three inputs [birthControlMethodInEffectOn] needs. A
+/// structural record, so any producer (the drift row watcher, a test) can
+/// build one without a factory.
+typedef BirthControlState = ({String? method, String? startedOn, String? stoppedOn});
+
 /// The birth-control method in effect on [date] — the consumption seam
 /// #233 (birth-control-aware predictions), #183 (method reminders), and
 /// #152 (clinical-export medications section) read instead of re-parsing

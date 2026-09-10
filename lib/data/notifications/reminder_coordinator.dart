@@ -13,6 +13,14 @@
 /// pass (see [_detectStatisticChanges]) — the prediction emissions this
 /// class already consumes are the change signal the statistic-change
 /// reminder fires on.
+///
+/// Issue #183: each active profile's birth-control state (the raw
+/// `profile_modes` columns, via [birthControlStateFor]) is watched the
+/// same way the predictions are — a recorded-method change lands as a row
+/// emission and takes effect at the next debounced replan, so the plan
+/// re-routes onto the new method's cadence (or drops it) with no stale
+/// reminder left armed for the old method (`rescheduleAll` cancels every
+/// pending notification before re-arming the fresh plan).
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -25,6 +33,7 @@ import 'package:flutter/widgets.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -38,6 +47,16 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 
+/// The per-profile birth-control state stream (Issue #183): the raw
+/// `profile_modes` birth-control columns for [profileId], or null when no
+/// row exists. The production source is the drift row watcher
+/// (`LunarLogStorage.watchProfileMode`); the reminder seam deliberately
+/// reads the raw strings and lets the planner resolve them through
+/// `birthControlMethodInEffectOn`, so coordinator and planner share one
+/// interpretation of the row.
+typedef BirthControlStateStream = Stream<BirthControlState?> Function(
+    String profileId);
+
 class ReminderCoordinator with WidgetsBindingObserver {
   ReminderCoordinator({
     required ReminderScheduler scheduler,
@@ -45,6 +64,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
     required ActiveProfilesStream activeProfiles,
     required PredictionStream predictionFor,
     ReminderConfigService? localSettings,
+    BirthControlStateStream? birthControlStateFor,
     LocalDate Function()? today,
     this.replanDebounce = const Duration(milliseconds: 250),
   })  : _scheduler = scheduler,
@@ -52,6 +72,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
         _activeProfiles = activeProfiles,
         _predictionFor = predictionFor,
         _localSettings = localSettings,
+        _birthControlStateFor = birthControlStateFor,
         today = today ?? LocalDate.today {
     WidgetsBinding.instance.addObserver(this);
   }
@@ -60,6 +81,13 @@ class ReminderCoordinator with WidgetsBindingObserver {
   final NotificationAvailabilitySink _permissionState;
   final ActiveProfilesStream _activeProfiles;
   final PredictionStream _predictionFor;
+
+  /// Issue #183: the per-profile birth-control row watcher. Null keeps the
+  /// pre-#183 shape (no birth-control reminders are planned); when
+  /// present, each active profile gets a subscription like its prediction
+  /// one, and a row emission schedules a replan so a recorded-method
+  /// change re-routes the adherence reminder at the next pass.
+  final BirthControlStateStream? _birthControlStateFor;
 
   /// Per-profile local reminder configuration and late snoozes (Issue
   /// #136, R10/R11). Null keeps the pre-#136 shape: every profile plans
@@ -89,7 +117,14 @@ class ReminderCoordinator with WidgetsBindingObserver {
 
   StreamSubscription<List<Profile>>? _profilesSub;
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
+  final Map<String, StreamSubscription<BirthControlState?>> _birthControlSubs =
+      {};
   final Map<String, ActivePrediction> _latest = {};
+
+  /// Each active profile's last-observed birth-control state (Issue #183),
+  /// carried into every replan for [planReminders]'s
+  /// `birthControlModes`. Null rows (no mode row yet) leave no entry.
+  final Map<String, BirthControlState> _birthControlStates = {};
 
   /// Each active profile's care mode (Issue #131), carried from the active-
   /// profiles stream into every replan as a [ReminderPreset]. Refreshed by
@@ -139,6 +174,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
           _modes.remove(id);
           return true;
         });
+    _syncBirthControlSubs(activeIds);
     for (final profile in profiles) {
       // Mode is carried on the same stream the replan rides: a mode switch
       // (any profile write) lands here and the scheduled replan below
@@ -160,6 +196,36 @@ class ReminderCoordinator with WidgetsBindingObserver {
       );
     }
     _scheduleReplan();
+  }
+
+  /// Keeps the per-profile birth-control row subscriptions (Issue #183) in
+  /// step with the active set: an archived profile's subscription is
+  /// cancelled and its cached state dropped so its adherence reminders
+  /// stop at the next replan; each still-active profile without one gets a
+  /// subscription. Extracted from [_onProfilesChanged] for the same
+  /// complexity reason as every other seam hook there.
+  void _syncBirthControlSubs(Set<String> activeIds) {
+    _birthControlSubs.removeWhere((id, sub) {
+      if (activeIds.contains(id)) return false;
+      unawaited(sub.cancel());
+      _birthControlStates.remove(id);
+      return true;
+    });
+    final birthControlStateFor = _birthControlStateFor;
+    if (birthControlStateFor == null) return;
+    for (final id in activeIds) {
+      _birthControlSubs.putIfAbsent(
+        id,
+        () => birthControlStateFor(id).listen((state) {
+          if (state == null) {
+            _birthControlStates.remove(id);
+          } else {
+            _birthControlStates[id] = state;
+          }
+          _scheduleReplan();
+        }),
+      );
+    }
   }
 
   void _scheduleReplan() {
@@ -209,6 +275,10 @@ class ReminderCoordinator with WidgetsBindingObserver {
         configs: configs,
         lateSnoozes: lateSnoozes,
         statisticChangeSignals: statisticSignals,
+        // Issue #183: the birth-control row watcher's last-observed
+        // state. An empty map (no watcher wired, or no rows yet) plans
+        // no adherence reminders.
+        birthControlModes: Map.of(_birthControlStates),
       ),
     );
   }
@@ -310,5 +380,9 @@ class ReminderCoordinator with WidgetsBindingObserver {
       await sub.cancel();
     }
     _predictionSubs.clear();
+    for (final sub in _birthControlSubs.values) {
+      await sub.cancel();
+    }
+    _birthControlSubs.clear();
   }
 }

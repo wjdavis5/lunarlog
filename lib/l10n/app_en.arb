@@ -828,10 +828,46 @@
   },
   "reminderBirthControlTitle": "Birth-control reminders",
   "@reminderBirthControlTitle": {
-    "description": "The disabled birth-control reminders placeholder row title (Issue #178; the reminder itself is issue #183's scope)."
+    "description": "The birth-control reminders explainer row title, shown when the profile has no method-cadence reminder to configure (Issue #183)."
   },
-  "reminderBirthControlComingSoon": "Coming in a future update",
-  "@reminderBirthControlComingSoon": {
-    "description": "The disabled birth-control reminders placeholder row subtitle (Issue #178)."
+  "reminderBirthControlFollowsMethod": "Follows the birth-control method recorded in this profile's settings.",
+  "@reminderBirthControlFollowsMethod": {
+    "description": "The birth-control reminders explainer row subtitle (Issue #183): no adherence reminder applies because no tracked method is in effect (none recorded, a non-tracked answer, or an implant/IUD, which are not user-administered on a schedule)."
+  },
+  "reminderKindBirthControlPill": "Pill reminder",
+  "@reminderKindBirthControlPill": {
+    "description": "The daily pill adherence reminder's settings row title (Issue #183; Clue's 'Your Birth Control' catalogue)."
+  },
+  "reminderKindBirthControlPillSubtitle": "Daily, at the chosen time",
+  "@reminderKindBirthControlPillSubtitle": {
+    "description": "The pill reminder's settings row subtitle (Issue #183)."
+  },
+  "reminderKindBirthControlPatch": "Patch reminder",
+  "@reminderKindBirthControlPatch": {
+    "description": "The weekly patch-change reminder's settings row title (Issue #183)."
+  },
+  "reminderKindBirthControlPatchSubtitle": "Weekly, on change day",
+  "@reminderKindBirthControlPatchSubtitle": {
+    "description": "The patch reminder's settings row subtitle (Issue #183)."
+  },
+  "reminderKindBirthControlRing": "Ring reminder",
+  "@reminderKindBirthControlRing": {
+    "description": "The monthly ring-change reminder's settings row title (Issue #183)."
+  },
+  "reminderKindBirthControlRingSubtitle": "Monthly, on change day",
+  "@reminderKindBirthControlRingSubtitle": {
+    "description": "The ring reminder's settings row subtitle (Issue #183)."
+  },
+  "reminderKindBirthControlShot": "Injection reminder",
+  "@reminderKindBirthControlShot": {
+    "description": "The 12-weekly injection reminder's settings row title (Issue #183)."
+  },
+  "reminderKindBirthControlShotSubtitle": "Every 12 weeks",
+  "@reminderKindBirthControlShotSubtitle": {
+    "description": "The injection reminder's settings row subtitle (Issue #183)."
+  },
+  "reminderBirthControlNeedsStartDate": "Waits for a start date on the recorded method — re-record the method in profile settings to set one",
+  "@reminderBirthControlNeedsStartDate": {
+    "description": "Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183)."
   }
 }

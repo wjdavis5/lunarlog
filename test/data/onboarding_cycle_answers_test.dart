@@ -185,4 +185,50 @@ void main() {
         reason: 're-recording must not clobber #153\'s consent with the '
             'upsert default');
   });
+
+  test('re-recording the same method keeps its effective dates (issue '
+      '#183: the recorder never wipes the reminder anchor)', () async {
+    final profileId = await seedProfile();
+    await db.storage.upsertProfileMode(
+      profileId: profileId,
+      mode: 'tracking',
+      birthControlMethod: 'patch',
+      birthControlStartedOn: '2026-08-15',
+    );
+    // A write does happen (the mode answer changes), but the unchanged
+    // method keeps its anchor.
+    await recorder.record(
+      profileId,
+      const OnboardingCycleAnswers(
+        lifecycleMode: LifecycleMode.conceive,
+        birthControlMethod: 'patch',
+      ),
+    );
+    final row = await db.storage.getProfileMode(profileId);
+    expect(row!.mode, 'conceive');
+    expect(row.birthControlStartedOn, '2026-08-15',
+        reason: 'before issue #183 this write cleared the column and '
+            'orphaned the patch cadence');
+    expect(row.birthControlStoppedOn, isNull);
+  });
+
+  test('a method change to a tracked one stamps today; a non-tracked '
+      'answer clears the dates (issue #183)', () async {
+    final profileId = await seedProfile();
+    await recorder.record(
+      profileId,
+      const OnboardingCycleAnswers(birthControlMethod: 'Injection'),
+    );
+    var row = await db.storage.getProfileMode(profileId);
+    expect(row!.birthControlStartedOn, today.iso,
+        reason: 'the shot is tracked from today');
+    await recorder.record(
+      profileId,
+      const OnboardingCycleAnswers(birthControlMethod: 'None'),
+    );
+    row = await db.storage.getProfileMode(profileId);
+    expect(row!.birthControlMethod, 'None');
+    expect(row.birthControlStartedOn, isNull);
+    expect(row.birthControlStoppedOn, isNull);
+  });
 }

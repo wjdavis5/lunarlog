@@ -1246,17 +1246,71 @@ abstract class AppLocalizations {
   /// **'Days before predicted fertile window'**
   String get reminderLeadDaysBeforeFertileWindow;
 
-  /// The disabled birth-control reminders placeholder row title (Issue #178; the reminder itself is issue #183's scope).
+  /// The birth-control reminders explainer row title, shown when the profile has no method-cadence reminder to configure (Issue #183).
   ///
   /// In en, this message translates to:
   /// **'Birth-control reminders'**
   String get reminderBirthControlTitle;
 
-  /// The disabled birth-control reminders placeholder row subtitle (Issue #178).
+  /// The birth-control reminders explainer row subtitle (Issue #183): no adherence reminder applies because no tracked method is in effect (none recorded, a non-tracked answer, or an implant/IUD, which are not user-administered on a schedule).
   ///
   /// In en, this message translates to:
-  /// **'Coming in a future update'**
-  String get reminderBirthControlComingSoon;
+  /// **'Follows the birth-control method recorded in this profile\'s settings.'**
+  String get reminderBirthControlFollowsMethod;
+
+  /// The daily pill adherence reminder's settings row title (Issue #183; Clue's 'Your Birth Control' catalogue).
+  ///
+  /// In en, this message translates to:
+  /// **'Pill reminder'**
+  String get reminderKindBirthControlPill;
+
+  /// The pill reminder's settings row subtitle (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Daily, at the chosen time'**
+  String get reminderKindBirthControlPillSubtitle;
+
+  /// The weekly patch-change reminder's settings row title (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Patch reminder'**
+  String get reminderKindBirthControlPatch;
+
+  /// The patch reminder's settings row subtitle (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Weekly, on change day'**
+  String get reminderKindBirthControlPatchSubtitle;
+
+  /// The monthly ring-change reminder's settings row title (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Ring reminder'**
+  String get reminderKindBirthControlRing;
+
+  /// The ring reminder's settings row subtitle (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly, on change day'**
+  String get reminderKindBirthControlRingSubtitle;
+
+  /// The 12-weekly injection reminder's settings row title (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Injection reminder'**
+  String get reminderKindBirthControlShot;
+
+  /// The injection reminder's settings row subtitle (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Every 12 weeks'**
+  String get reminderKindBirthControlShotSubtitle;
+
+  /// Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Waits for a start date on the recorded method — re-record the method in profile settings to set one'**
+  String get reminderBirthControlNeedsStartDate;
 }
 
 class _AppLocalizationsDelegate

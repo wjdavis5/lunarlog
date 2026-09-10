@@ -367,6 +367,20 @@ class _LunarLogAppState extends State<LunarLogApp>
       activeProfiles: _profiles.watch(),
       predictionFor: _prediction.watch,
       localSettings: configService,
+      // Issue #183: the raw profile_modes birth-control row feeds the
+      // adherence kinds. The watcher rides the drift row stream, so a
+      // recorded-method change (onboarding answer, profile-settings edit,
+      // sync pull) replans and re-routes the reminder onto the new
+      // method's cadence.
+      birthControlStateFor: (profileId) => widget.db.storage
+          .watchProfileMode(profileId)
+          .map((row) => row == null
+              ? null
+              : (
+                    method: row.birthControlMethod,
+                    startedOn: row.birthControlStartedOn,
+                    stoppedOn: row.birthControlStoppedOn,
+                  )),
     );
     _coordinator = coordinator;
     _scheduleReminderStart(coordinator);

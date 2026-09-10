@@ -8,10 +8,11 @@
 /// Issue #178 restructures the surface into Clue's three named groups —
 /// **Your Cycle** (period starting soon, period due, PMS watch, period
 /// late, fertile window soon, cycle statistic changes), **Your Birth
-/// Control** (the method reminders are issue #183's scope; the group
-/// renders its placeholder until then), and **Other Reminders** (the daily
-/// log nudge) — each item independently toggleable with its own
-/// lead-time/time-of-day per the existing per-type model.
+/// Control** (issue #183: the method-cadence adherence reminder matching
+/// the profile's recorded birth-control method, or an explainer row when
+/// no reminder applies), and **Other Reminders** (the daily log nudge) —
+/// each item independently toggleable with its own time-of-day per the
+/// existing per-type model.
 ///
 /// The profile picker at the top is what makes the configuration
 /// per-profile (the issue's routing requirement): each active profile
@@ -24,11 +25,16 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/data/notifications/scheduling.dart'
+    show birthControlReminderKindFor;
+import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart'
     show QuietHours;
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:provider/provider.dart';
@@ -77,28 +83,89 @@ String _formatTimeOfDay(int minutes) {
   return '$hour:$minute';
 }
 
-String _kindLabel(AppLocalizations l10n, ReminderKind kind) => switch (kind) {
-      ReminderKind.periodStartingSoon => l10n.reminderKindPeriodStartingSoon,
-      ReminderKind.upcoming => l10n.reminderKindPeriodDue,
-      ReminderKind.pms => l10n.reminderKindPmsWatch,
-      ReminderKind.late => l10n.reminderKindPeriodLate,
-      ReminderKind.fertileWindowSoon => l10n.reminderKindFertileWindowSoon,
-      ReminderKind.cycleStatisticChange => l10n.reminderKindCycleStats,
-      ReminderKind.log => l10n.reminderKindLogNudge,
+/// Localized label for each kind. A map (not a switch) keeps the
+/// per-kind complexity out of the CRAP gate's reach — one literal per
+/// kind, exercised exhaustively by the reminder settings screen tests —
+/// the same shape [birthControlChoiceLabels] uses.
+Map<ReminderKind, String> _kindLabels(AppLocalizations l10n) => {
+      ReminderKind.periodStartingSoon: l10n.reminderKindPeriodStartingSoon,
+      ReminderKind.upcoming: l10n.reminderKindPeriodDue,
+      ReminderKind.pms: l10n.reminderKindPmsWatch,
+      ReminderKind.late: l10n.reminderKindPeriodLate,
+      ReminderKind.fertileWindowSoon: l10n.reminderKindFertileWindowSoon,
+      ReminderKind.cycleStatisticChange: l10n.reminderKindCycleStats,
+      ReminderKind.log: l10n.reminderKindLogNudge,
+      ReminderKind.birthControlPill: l10n.reminderKindBirthControlPill,
+      ReminderKind.birthControlPatch: l10n.reminderKindBirthControlPatch,
+      ReminderKind.birthControlRing: l10n.reminderKindBirthControlRing,
+      ReminderKind.birthControlShot: l10n.reminderKindBirthControlShot,
     };
 
-String _kindSubtitle(AppLocalizations l10n, ReminderKind kind) =>
-    switch (kind) {
-      ReminderKind.periodStartingSoon =>
-        l10n.reminderKindPeriodStartingSoonSubtitle,
-      ReminderKind.upcoming => l10n.reminderKindPeriodDueSubtitle,
-      ReminderKind.pms => l10n.reminderKindPmsWatchSubtitle,
-      ReminderKind.late => l10n.reminderKindPeriodLateSubtitle,
-      ReminderKind.fertileWindowSoon =>
-        l10n.reminderKindFertileWindowSoonSubtitle,
-      ReminderKind.cycleStatisticChange => l10n.reminderKindCycleStatsSubtitle,
-      ReminderKind.log => l10n.reminderKindLogNudgeSubtitle,
+/// Localized subtitle for each kind (see [_kindLabels] for the map
+/// rationale).
+Map<ReminderKind, String> _kindSubtitles(AppLocalizations l10n) => {
+      ReminderKind.periodStartingSoon:
+          l10n.reminderKindPeriodStartingSoonSubtitle,
+      ReminderKind.upcoming: l10n.reminderKindPeriodDueSubtitle,
+      ReminderKind.pms: l10n.reminderKindPmsWatchSubtitle,
+      ReminderKind.late: l10n.reminderKindPeriodLateSubtitle,
+      ReminderKind.fertileWindowSoon: l10n.reminderKindFertileWindowSoonSubtitle,
+      ReminderKind.cycleStatisticChange: l10n.reminderKindCycleStatsSubtitle,
+      ReminderKind.log: l10n.reminderKindLogNudgeSubtitle,
+      ReminderKind.birthControlPill: l10n.reminderKindBirthControlPillSubtitle,
+      ReminderKind.birthControlPatch:
+          l10n.reminderKindBirthControlPatchSubtitle,
+      ReminderKind.birthControlRing: l10n.reminderKindBirthControlRingSubtitle,
+      ReminderKind.birthControlShot: l10n.reminderKindBirthControlShotSubtitle,
     };
+
+String _kindLabel(AppLocalizations l10n, ReminderKind kind) =>
+    _kindLabels(l10n)[kind]!;
+
+String _kindSubtitle(AppLocalizations l10n, ReminderKind kind) =>
+    _kindSubtitles(l10n)[kind]!;
+
+/// Whether [kind]'s adherence reminder anchors on the method's recorded
+/// start date (issue #183): the patch, ring, and shot cadences count
+/// their due dates from `birth_control_started_on`, so without one they
+/// plan nothing and the settings row says so. The pill needs no anchor —
+/// while the method is in effect every day is a dose day.
+bool _birthControlKindNeedsStartDate(ReminderKind kind) => switch (kind) {
+      ReminderKind.birthControlPatch ||
+      ReminderKind.birthControlRing ||
+      ReminderKind.birthControlShot =>
+        true,
+      ReminderKind.birthControlPill ||
+      ReminderKind.upcoming ||
+      ReminderKind.periodStartingSoon ||
+      ReminderKind.pms ||
+      ReminderKind.fertileWindowSoon ||
+      ReminderKind.late ||
+      ReminderKind.cycleStatisticChange ||
+      ReminderKind.log =>
+        false,
+    };
+
+/// The profile's birth-control method in effect today, from its raw
+/// `profile_modes` state. A malformed effective date (storage validates
+/// the ISO shape, but the row must never crash a settings render)
+/// degrades to no method.
+BirthControlMethod? _birthControlMethodInEffect(
+  BirthControlState? state,
+  LocalDate today,
+) {
+  if (state == null) return null;
+  try {
+    return birthControlMethodInEffectOn(
+      storedMethod: state.method,
+      startedOn: state.startedOn,
+      stoppedOn: state.stoppedOn,
+      date: today,
+    );
+  } on ArgumentError {
+    return null;
+  }
+}
 
 class ReminderSettingsScreen extends StatefulWidget {
   const ReminderSettingsScreen({
@@ -127,6 +194,11 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   /// [build]'s "ensure loaded" kick from re-running on every rebuild.
   String? _loadedForId;
 
+  /// The selected profile's raw birth-control state (issue #183), loaded
+  /// alongside the config: it decides which adherence kind — or the
+  /// explainer row — the "Your Birth Control" group renders.
+  BirthControlState? _birthControlState;
+
   @override
   void initState() {
     super.initState();
@@ -142,14 +214,26 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   /// microtask, after the frame.
   void _ensureLoaded(Profile profile) {
     final service = context.read<ReminderConfigService>();
+    final modes = context.read<ProfileModesRepository>();
     _selectedId = profile.id;
     _loadedForId = profile.id;
     _config = null;
+    _birthControlState = null;
     unawaited(() async {
-      final stored = await service.load(profile.id);
+      final results =
+          await Future.wait([service.load(profile.id), modes.find(profile.id)]);
       if (!mounted) return;
       setState(() {
-        _config = stored ?? ReminderConfig.fromMode(profile.mode);
+        final row = results[1] as ProfileLifecycleMode?;
+        _birthControlState = row == null
+            ? null
+            : (
+                method: row.birthControlMethod,
+                startedOn: row.birthControlStartedOn,
+                stoppedOn: row.birthControlStoppedOn,
+              );
+        _config = (results[0] as ReminderConfig?) ??
+            ReminderConfig.fromMode(profile.mode);
       });
     }());
   }
@@ -170,6 +254,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       _selectedId = profile.id;
       _loadedForId = null;
       _config = null;
+      _birthControlState = null;
     });
   }
 
@@ -259,7 +344,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         _profileTile(profiles, profile),
         const Divider(),
         ..._group(l10n.reminderSectionCycle, kCycleGroupKinds, config),
-        ..._birthControlGroup(l10n),
+        ..._birthControlGroup(l10n, config),
         ..._group(l10n.reminderSectionOther, kOtherGroupKinds, config),
         ..._quietTiles(config),
         const Padding(
@@ -299,26 +384,52 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         ],
       ];
 
-  /// The "Your Birth Control" group (Issue #178): its reminder kind does
-  /// not exist yet (issue #183's method-appropriate cadences), so the
-  /// group renders a disabled placeholder row under its header — the
-  /// layout matches Clue's IA today, without faking a configurable kind.
-  List<Widget> _birthControlGroup(AppLocalizations l10n) => [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            l10n.reminderSectionBirthControl,
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+  /// The "Your Birth Control" group (Issue #178's layout, Issue #183's
+  /// content): the adherence reminder matching the profile's recorded
+  /// method — the pill's daily, the patch's weekly, the ring's monthly,
+  /// the injection's 12-weekly cadence — toggleable exactly like every
+  /// other type; or an explainer row when no reminder applies (no method
+  /// recorded, the method has no user-administered cadence — implant and
+  /// both IUD flavors — or it is not in effect today). A method change in
+  /// profile settings swaps the row the next time the screen is opened,
+  /// while the planner re-routes the armed reminders at the coordinator's
+  /// next replan.
+  List<Widget> _birthControlGroup(AppLocalizations l10n, ReminderConfig config) {
+    final method = _birthControlMethodInEffect(
+      _birthControlState,
+      LocalDate.today(),
+    );
+    final kind = method == null ? null : birthControlReminderKindFor(method);
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Text(
+          l10n.reminderSectionBirthControl,
+          style: Theme.of(context).textTheme.titleSmall,
         ),
+      ),
+      if (kind == null)
         ListTile(
-          key: const ValueKey('reminder-birth-control-placeholder'),
+          key: const ValueKey('reminder-birth-control-none'),
           title: Text(l10n.reminderBirthControlTitle),
-          subtitle: Text(l10n.reminderBirthControlComingSoon),
+          subtitle: Text(l10n.reminderBirthControlFollowsMethod),
           enabled: false,
+        )
+      else ...[
+        _typeTile(
+          kind,
+          config,
+          subtitleOverride:
+              _birthControlKindNeedsStartDate(kind) &&
+                  (_birthControlState?.startedOn ?? '').isEmpty
+              ? l10n.reminderBirthControlNeedsStartDate
+              : null,
         ),
-        const Divider(),
-      ];
+        _timeTile(kind, config),
+      ],
+      const Divider(),
+    ];
+  }
 
   /// The profile the screen is editing, resolved against [profiles].
   Profile? _resolve(List<Profile> profiles) {
@@ -358,13 +469,17 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     }
   }
 
-  Widget _typeTile(ReminderKind kind, ReminderConfig config) {
+  Widget _typeTile(
+    ReminderKind kind,
+    ReminderConfig config, {
+    String? subtitleOverride,
+  }) {
     final typeConfig = config.typeConfig(kind);
     final l10n = AppLocalizations.of(context);
     return SwitchListTile(
       key: ValueKey('reminder-${kind.name}-switch'),
       title: Text(_kindLabel(l10n, kind)),
-      subtitle: Text(_kindSubtitle(l10n, kind)),
+      subtitle: Text(subtitleOverride ?? _kindSubtitle(l10n, kind)),
       value: typeConfig.enabled,
       onChanged: (on) => _update(config.withTypeConfig(
         kind,
@@ -376,7 +491,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   /// Whether [kind]'s row set includes a lead-days picker: exactly the
   /// types with a forward anchor (the estimate-anchored kinds and the
   /// fertile-window-anchored kind). The late window, the daily log nudge,
-  /// and the event-driven statistic-change kind have nothing to lead.
+  /// the event-driven statistic-change kind, and issue #183's
+  /// birth-control cadences (anchored on the method's own due dates, not
+  /// ahead of them) have nothing to lead.
   static bool _hasLead(ReminderKind kind) => switch (kind) {
         ReminderKind.upcoming ||
         ReminderKind.periodStartingSoon ||
@@ -385,7 +502,11 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
           true,
         ReminderKind.late ||
         ReminderKind.cycleStatisticChange ||
-        ReminderKind.log =>
+        ReminderKind.log ||
+        ReminderKind.birthControlPill ||
+        ReminderKind.birthControlPatch ||
+        ReminderKind.birthControlRing ||
+        ReminderKind.birthControlShot =>
           false,
       };
 
