@@ -821,7 +821,8 @@ class LunarLogRoot extends StatefulWidget {
   /// builds.
   final SupabaseClient? supabaseClient;
 
-  /// `lunarlog://invite?code=...` links (U8; R9), filtered upstream by
+  /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
+  /// `https://<domain>/invite?code=...` (issue #129) — filtered upstream by
   /// main.dart. Null in tests and unconfigured builds.
   final Stream<Uri>? inviteLinks;
 

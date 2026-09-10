@@ -8,6 +8,8 @@
   "GOOGLE_WEB_CLIENT_ID": "",
   "_PASSKEY_RP_ID_NOTE": "PASSKEY_RP_ID is a bare HTTPS domain, immutable once a passkey is enrolled - do not set until docs/ops/supabase-go-live.md's Passkeys checklist is complete",
   "PASSKEY_RP_ID": "",
+  "_LUNARLOG_LINK_DOMAIN_NOTE": "LUNARLOG_LINK_DOMAIN is a bare HTTPS domain for invite/claim universal links - do not set until issue #384 provisions the hosted domain, DNS, and AASA/assetlinks hosting",
+  "LUNARLOG_LINK_DOMAIN": "",
   "FCM_PROJECT_ID": "",
   "FCM_SENDER_ID": "",
   "FCM_ANDROID_API_KEY": "",

@@ -17,6 +17,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'app_lifecycle.dart';
 import 'config.dart';
 import 'data/gate/gate.dart';
+import 'domain/sharing/invite_links.dart';
 import 'data/notifications/notification_scheduler.dart';
 import 'data/sync/supabase_sync_transport.dart';
 import 'data/sync/sync_transport.dart';
@@ -27,14 +28,13 @@ import 'startup/supabase_bootstrap.dart';
 
 Future<void> main() => runWithSentry(appRunner: _runLunarlog);
 
-/// `lunarlog://invite?code=...` (U8; R9): the pairing deep link. Anything
-/// else on the custom scheme belongs to the auth service's own link
-/// observer and is ignored here.
+/// `lunarlog://invite?code=...` (U8; R9) or its HTTPS universal-link twin
+/// `https://<domain>/invite?code=...` (issue #129): the pairing deep link.
+/// Anything else on the custom scheme belongs to the auth service's own
+/// link observer and is ignored here. With no hosted domain configured
+/// (`AppConfig.linkDomain` empty) only the custom-scheme form is honoured.
 bool _isInviteLink(Uri? uri) =>
-    uri != null &&
-    uri.scheme == 'lunarlog' &&
-    uri.host == 'invite' &&
-    (uri.queryParameters['code']?.isNotEmpty ?? false);
+    isInviteLink(uri, linkDomain: AppConfig.linkDomain);
 
 Future<void> _runLunarlog() async {
   WidgetsFlutterBinding.ensureInitialized();
