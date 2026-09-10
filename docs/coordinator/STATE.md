@@ -3,6 +3,8 @@
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
+| 208 | feat/208-flutter-pin | ../lunarlog-wt/208-flutter-pin | 2026-09-10T06:20Z | — | coding |
+| 264 | feat/264-delete-profile-rpc | ../lunarlog-wt/264-delete-profile-rpc | 2026-09-10T05:30Z | — | coding |
 | 255 | feat/255-numeric-measurements | ../lunarlog-wt/255-numeric-measurements | 2026-09-10T03:00Z | — | coding |
 | 259 | feat/259-tracking-prefs | ../lunarlog-wt/259-tracking-prefs | 2026-09-10T03:00Z | — | coding |
 | 218 | feat/218-provisional-seeding | ../lunarlog-wt/218-provisional-seeding | 2026-09-09T14:35Z | — | coding (domain/data side; #216 owns the form) |
@@ -37,6 +39,10 @@
 | 193 | 374 | 2026-09-10T02:40Z |
 | 249 | 371 | 2026-09-10T02:50Z |
 | 254 | 375 | 2026-09-10T03:30Z |
+| 256 | 383 | 2026-09-10T05:10Z |
+| 251 | 381 | 2026-09-10T05:15Z |
+| 207 | 380 | 2026-09-10T05:15Z |
+| 206 | 382 | 2026-09-10T05:20Z |
 | 296 | 376 | 2026-09-10T04:00Z |
 | 136 | 367 | 2026-09-10T01:20Z |
 
