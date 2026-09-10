@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -1222,6 +1223,171 @@ void main() {
     });
   });
 
+  group('pain intensity (Issue #256)', () {
+    testWidgets(
+        'grading a selected pain code writes the day pain observation '
+        'carrying that intensity', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Cramps'));
+      await tester.pump();
+      // The selector row appears under the Pain section once the code is
+      // chip-selected; grade it 4.
+      expect(find.byKey(const ValueKey('pain-intensity-cramps-4')),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-4')));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final painRows = [
+        for (final o in await h.observations.listForDayEntry(saved!.id))
+          if (o.category == 'pain') o,
+      ];
+      expect(painRows, hasLength(1));
+      expect(painRows.single.code, 'cramps');
+      expect(painRows.single.intensity, 4);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'an ungraded pain code writes no intensity row (intensity null '
+        'means no severity recorded, never low)', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Cramps'));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        [
+          for (final o in await h.observations.listForDayEntry(saved!.id))
+            if (o.category == 'pain') o,
+        ],
+        isEmpty,
+        reason: 'a pain code with no chosen grade records no observation '
+            'row at all in this release — the day-entry tag is the '
+            'symptom, the graded row only exists once a grade is chosen',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'reopening a graded day seeds the selector, raising the grade '
+        'updates the row, and Clear tombstones it', (tester) async {
+      final h = await pumpLogging(tester);
+
+      // First session: cramps graded 4.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Cramps'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-4')));
+      await pumpAutosave(tester);
+      var saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .singleWhere((o) => o.category == 'pain')
+            .intensity,
+        4,
+      );
+      await dismissDaySheet(tester);
+
+      // Second session: the loaded grade seeds the selector (an existing
+      // grade is never silently dropped), raising it rewrites the same
+      // row, and Clear tombstones it.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ChoiceChip>(
+                find.byKey(const ValueKey('pain-intensity-cramps-4')))
+            .selected,
+        isTrue,
+        reason: 'the intensity selector re-seeds from the persisted '
+            'observation on reopen',
+      );
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-5')));
+      await pumpAutosave(tester);
+      saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .singleWhere((o) => o.category == 'pain')
+            .intensity,
+        5,
+      );
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-clear')));
+      await pumpAutosave(tester);
+      expect(
+        [
+          for (final o in await h.observations.listForDayEntry(saved.id))
+            if (o.category == 'pain') o,
+        ],
+        isEmpty,
+        reason: 'Clear removes the recorded intensity — ungraded means '
+            '"no severity recorded", never "low"',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'an imported graded row keeps its grade through an unrelated '
+        'autosave and stays editable', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage).save(
+            entryFor(profileId, kToday, flow: FlowLevel.none),
+          );
+          final entry =
+              await DriftDayEntriesRepository(db.storage)
+                  .find(profileId, kToday);
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry!.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              category: 'pain',
+              code: 'migraine',
+              intensity: 5,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      // The imported migraine grade shows on its own selector row.
+      expect(
+        tester
+            .widget<ChoiceChip>(
+                find.byKey(const ValueKey('pain-intensity-migraine-5')))
+            .selected,
+        isTrue,
+      );
+      // An unrelated change (a note) must not disturb the graded row.
+      await tester.enterText(
+          find.byKey(const ValueKey('note-field')), 'rough day');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .singleWhere((o) => o.category == 'pain')
+            .intensity,
+        5,
+        reason: 'an autosave the operator directed at something else never '
+            'touches a graded row they did not',
+      );
+      await disposeLogging(tester, h);
+    });
+  });
+
   group('autosave provenance carry-forward (#198 x #159)', () {
     testWidgets(
         'an imported entry\'s source/sourceId/importId survive an autosave '
@@ -2239,7 +2405,16 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-12')));
       await tester.pumpAndSettle();
       expect(find.text('Heavy'), findsOneWidget);
-      expect(find.text('Cramps'), findsOneWidget);
+      // Issue #256: the selected cramps code also surfaces its intensity
+      // selector row (labelled with the same display string), so the chip
+      // itself is what must stay unique — and the day's stored row carries
+      // no grade, so no intensity chip is selected ("no severity
+      // recorded", never "low").
+      expect(find.widgetWithText(FilterChip, 'Cramps'), findsOneWidget);
+      expect(find.byKey(const ValueKey('pain-intensity-cramps-1')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('pain-intensity-cramps-clear')),
+          findsOneWidget);
       expect(find.text('Anxious'), findsOneWidget);
       expect(find.text('verbatim note'), findsOneWidget);
       await disposeLogging(tester, h);
