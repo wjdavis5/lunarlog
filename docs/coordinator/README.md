@@ -66,6 +66,12 @@ Atomically, in this order:
 
 `tool/coord/claim.py` implements this exactly (see below).
 
+A coder is dispatched only **after** the claim succeeds and the issue carries both `in-progress`
+and `owner:<id>`. The coder re-verifies both labels before starting and refuses to work an
+unclaimed issue; no coder ever adds, removes, or edits labels itself — claiming is the
+coordinator's job. Every dispatched coder also gets its **own unique worktree and branch**; no two
+coders ever share a worktree, branch, or working directory.
+
 ## Stale-issue handling is scoped to self
 
 A coordinator may reconcile only rows in its own `STATE.md`. If it sees a

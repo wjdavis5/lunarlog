@@ -82,6 +82,13 @@ label won the race) and exits 0 (claimed), 1 (lost the race / already claimed �
 do not retry it this iteration), or 2 (error — log and skip). Only create the worktree after a `0`
 exit.
 
+**A coder is never dispatched for an issue that is not already claimed.** Before creating the
+worktree, writing the brief, or dispatching, confirm `claim.py` exited 0 **and** the issue now
+carries both `in-progress` and `owner:opencode-muse` (`python tool/coord/issue_labels.py <n>`).
+If either label is missing, re-claim or skip — never dispatch. The brief states the issue's claim
+state, and the coder re-verifies both labels itself before starting (see `coder.md`), so an issue
+can never be worked without being marked in-progress and owned.
+
 ## Worktrees — mandatory
 
 - **Every coder MUST work inside a dedicated git worktree at all times.** No exceptions for small
@@ -93,7 +100,12 @@ exit.
   above the repo root — those layouts belong to a different coordinator's convention, not yours.
 - The `main` checkout at the repo root is not yours to touch. You never check out a feature branch
   there.
-- One worktree per issue. Never reuse a worktree for a different issue.
+- **Every coder gets its own unique worktree and branch. No two coders ever share a worktree,
+  branch, or working directory** — including coders you dispatch in parallel in the same turn. One
+  worktree per issue, never reused for a different issue; each dispatch's brief names exactly one
+  absolute path and branch, and the coder refuses to run anywhere else (`coder.md` hard-checks the
+  path and prefix). If a worktree for an issue already exists from an earlier attempt, re-dispatch
+  that coder into the *same* existing worktree rather than creating a second one.
 - Pass the absolute worktree path in the brief and instruct the coder to `cd` there as its first
   action and to verify with `git rev-parse --show-toplevel` before touching anything (see
   `coder.md` — it also hard-checks the path contains `.worktrees/opencode-muse/`).
@@ -166,7 +178,11 @@ add the STATE.md row with `attempt: 1`.
 Write `docs/coordinator/opencode-muse/briefs/<n>.md`:
 
 - Issue number, title, full body.
-- Absolute worktree path (from `worktree_add.py`'s output) and branch name.
+- Absolute worktree path (from `worktree_add.py`'s output) and branch name — this is the coder's
+  only allowed working directory.
+- The issue's claim state: confirm `#<n>` carries `in-progress` + `owner:opencode-muse` (verified
+  after `claim.py` exited 0). The coder re-verifies both labels before starting and stops with
+  "ISSUE NOT CLAIMED" if either is missing.
 - Acceptance criteria as a numbered checklist. If the issue has prose criteria, restate them as a
   checklist and post your restatement as a comment on the issue so a human can correct it.
 - Starting-point file paths located with `rg`. Confirm each with `ls` before including it. Give the
@@ -209,7 +225,7 @@ For PRs that are yours, in this order, logging the outcome:
 4. Codebase-specific correctness: mobile state and navigation, offline and sync behavior, error handling. Anything touching Supabase: RLS is not weakened, no user health data in logs, migrations are additive, generated types updated. Widened data access is always a blocker.
 5. Tests exist for every behavior change. None → request changes.
 6. PR title is a good squash-commit subject; fix it with `gh pr edit` if not.
-7. All clear → `gh pr review <pr> --approve` → `gh pr merge <pr> --squash --delete-branch` → confirm the issue closed (close manually with a comment if the `Closes #n` didn't fire) → confirm `in-progress` and `owner:opencode-muse` are gone from the issue → `python tool/coord/worktree_rm.py <path> --owner opencode-muse` → move row to Done.
+7. All clear → `gh pr review <pr> --approve` → `gh pr merge <pr> --squash --delete-branch` → confirm the issue closed (close manually with a comment if the `Closes #n` didn't fire) → remove the claim labels if still present (`python tool/coord/release.py <n> --owner opencode-muse`; the merge closes the issue but does not strip `in-progress`/`owner:opencode-muse`) → `python tool/coord/worktree_rm.py <path> --owner opencode-muse` → move row to Done.
 8. Not clear → `gh pr review <pr> --request-changes --body "<numbered list of exact fixes>"` → re-dispatch `coder` with the brief plus your review body, same worktree, same branch → increment `attempt`.
 
 **Attempt 3 is never dispatched.** After two failed attempts: close the PR with an explanation,
