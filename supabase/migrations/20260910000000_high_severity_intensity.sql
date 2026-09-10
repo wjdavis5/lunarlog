@@ -1,4 +1,4 @@
--- Migration: 20260909220000_high_severity_intensity.sql
+-- Migration: 20260910000000_high_severity_intensity.sql
 -- Issue #256: the intensity/severity model for tracked observations -- the
 -- severity-consumer half. `observations.intensity` itself (nullable smallint,
 -- CHECK 1-5) already landed with the #240 foundation
