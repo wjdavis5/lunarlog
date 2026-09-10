@@ -5,6 +5,9 @@ Run with: python -m unittest discover -s tool/coord/tests
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import os
 import sys
 import unittest
@@ -160,6 +163,81 @@ class NoJsonFlagTests(unittest.TestCase):
             release,
             ["release.py", "5", "--owner", "opencode-muse", "--json"],
         )
+
+
+class StuckIssuesTests(unittest.TestCase):
+    def _issue(self, number, title, labels):
+        return {
+            "number": number,
+            "title": title,
+            "labels": [{"name": name} for name in labels],
+            "body": "",
+        }
+
+    def _run(self, argv, issues):
+        old_gh = list_issues.run_gh_json
+        old_argv = sys.argv
+        list_issues.run_gh_json = lambda args: issues
+        sys.argv = argv
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = list_issues.main()
+        finally:
+            list_issues.run_gh_json = old_gh
+            sys.argv = old_argv
+        return rc, buf.getvalue()
+
+    def test_stuck_selects_unowned_in_progress_only(self):
+        issues = [
+            self._issue(1, "stuck", ["in-progress"]),
+            self._issue(2, "owned", ["in-progress", "owner:opencode-deepseek"]),
+            self._issue(3, "owned-idle", ["owner:opencode-deepseek"]),
+            self._issue(4, "plain", ["P0"]),
+        ]
+        rc, out = self._run(["list_issues.py", "--stuck"], issues)
+        self.assertEqual(rc, 0)
+        self.assertIn("#1\tin-progress\tstuck\n", out)
+        self.assertNotIn("#2\t", out)
+        self.assertNotIn("#3\t", out)
+        self.assertNotIn("#4\t", out)
+
+    def test_is_stuck_predicate(self):
+        self.assertTrue(list_issues.is_stuck(["in-progress"]))
+        self.assertFalse(list_issues.is_stuck(["in-progress", "owner:opencode-deepseek"]))
+        self.assertFalse(list_issues.is_stuck(["owner:opencode-deepseek"]))
+        self.assertFalse(list_issues.is_stuck([]))
+
+    def test_stuck_wins_over_eligible(self):
+        issues = [
+            self._issue(1, "stuck", ["in-progress"]),
+            self._issue(4, "plain", ["P0"]),
+        ]
+        old_pr = list_issues.open_pr_issue_numbers
+        list_issues.open_pr_issue_numbers = lambda: (_ for _ in ()).throw(
+            AssertionError("eligible filter must not run with --stuck")
+        )
+        try:
+            rc, out = self._run(
+                ["list_issues.py", "--stuck", "--eligible", "opencode-deepseek"],
+                issues,
+            )
+        finally:
+            list_issues.open_pr_issue_numbers = old_pr
+        self.assertEqual(rc, 0)
+        self.assertIn("#1\t", out)
+        self.assertNotIn("#4\t", out)
+
+    def test_stuck_json_and_empty(self):
+        rc, out = self._run(
+            ["list_issues.py", "--stuck", "--json"],
+            [self._issue(1, "stuck", ["in-progress"])],
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)[0]["number"], 1)
+        rc, out = self._run(["list_issues.py", "--stuck"], [])
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "")
 
 
 if __name__ == "__main__":

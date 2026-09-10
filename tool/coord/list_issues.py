@@ -8,6 +8,11 @@ anything an open PR already closes) and sorts P0 -> P1 -> P2 -> P3 -> unlabeled,
 then by issue number. The coordinator's OWN owner:<id> label without in-progress
 is reclaimable, not excluded.
 
+With --stuck, lists stuck claims: open issues carrying `in-progress` with no
+`owner:*` label (the mutual-backoff edge in claim.py). If both --stuck and
+--eligible are passed, --stuck wins and --eligible is ignored. Run
+`list_issues.py --stuck` to reconcile a stuck claim.
+
 Repo priority labels are P0-P3, not priority:P0.
 """
 
@@ -39,6 +44,13 @@ def is_excluded(labels: list[str], self_owner: str | None = None) -> bool:
         if name.startswith("owner:") and name != own:
             return True
     return False
+
+
+def is_stuck(labels: list[str]) -> bool:
+    """True for a stuck claim: `in-progress` with no `owner:*` label."""
+    return "in-progress" in labels and not any(
+        name.startswith("owner:") for name in labels
+    )
 
 
 def dependency_numbers(body: str) -> set[int]:
@@ -78,6 +90,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--eligible", metavar="COORDINATOR_ID", default=None,
                      help="apply the pick filter and priority sort for this coordinator")
+    ap.add_argument("--stuck", action="store_true",
+                     help="list stuck claims (in-progress with no owner:* label); "
+                     "wins over --eligible, which is ignored when both are passed")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args()
 
@@ -99,7 +114,9 @@ def main() -> int:
             "body": issue.get("body") or "",
         })
 
-    if args.eligible:
+    if args.stuck:
+        rows = [r for r in rows if is_stuck(r["labels"])]
+    elif args.eligible:
         open_numbers = {r["number"] for r in rows}
         claimed_by_pr = open_pr_issue_numbers()
         filtered = []

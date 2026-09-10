@@ -17,8 +17,9 @@ either has added a label), both can pass the check and both add their owner:
 label. The re-check in step 4 then sees a foreign owner: label from both sides,
 and both back off -- leaving the issue `in-progress` with no owner label. This is
 an accepted, documented edge case (see the PR that introduced this script): the
-issue simply will not be re-picked (in-progress excludes it), and shows up as a
-stuck claim for a human to notice. It is not silently lost.
+issue simply will not be re-picked (in-progress excludes it from --eligible),
+and shows up via `list_issues.py --stuck` as a stuck claim to reconcile.
+It is not silently lost.
 """
 
 from __future__ import annotations
