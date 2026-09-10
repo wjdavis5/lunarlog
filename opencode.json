@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "opencode/muse-spark-1.3-contributor-free",
+  "model": "deepseek/deepseek-v4-flash",
   "instructions": ["AGENTS.md", "CLAUDE.md"],
   "agent": {
     "general": {
@@ -8,8 +8,8 @@
     },
     "coordinator": {
       "mode": "primary",
-      "description": "Engineering coordinator: picks GitHub issues by priority, dispatches coders into worktrees, reviews and merges PRs. Owns everything labeled owner:opencode-muse.",
-      "model": "opencode/muse-spark-1.3-contributor-free",
+      "description": "Engineering coordinator: picks GitHub issues by priority, dispatches coders into worktrees, reviews and merges PRs. Owns everything labeled owner:opencode-deepseek.",
+      "model": "deepseek/deepseek-v4-flash",
       "prompt": "{file:./.opencode/prompts/coordinator.md}",
       "permission": {
         "edit": "allow",
@@ -21,7 +21,7 @@
     },
     "coder": {
       "mode": "subagent",
-      "description": "Implements exactly one claimed GitHub issue (carrying in-progress + owner:opencode-muse) inside its own unique git worktree under .worktrees/opencode-muse/, then opens a PR labeled owner:opencode-muse. Never touches main or any other worktree.",
+      "description": "Implements exactly one claimed GitHub issue (carrying in-progress + owner:opencode-deepseek) inside its own unique git worktree under .worktrees/opencode-deepseek/, then opens a PR labeled owner:opencode-deepseek. Never touches main or any other worktree.",
       "model": "opencode/muse-spark-1.3-contributor-free",
       "prompt": "{file:./.opencode/prompts/coder.md}",
       "permission": {

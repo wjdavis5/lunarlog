@@ -1,4 +1,4 @@
-"""Bridge from Claude Code to the opencode-muse coordinator.
+"""Bridge from Claude Code to the opencode-deepseek coordinator.
 
 Start an iteration, then read the resulting session transcript. Every real
 subprocess call is injectable so the logic is unit-testable without a live

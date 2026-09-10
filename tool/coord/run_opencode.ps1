@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Outer loop for the opencode-muse coordinator.
+  Outer loop for the opencode-deepseek coordinator.
 
 .DESCRIPTION
   A single `opencode run` turn ends when the agent replies, so unattended
@@ -8,7 +8,7 @@
   script does exactly that: it invokes the `coordinator` agent for one loop
   iteration, sleeps, and repeats -- forever, until a STOP file appears.
 
-  Stop the loop by creating docs/coordinator/opencode-muse/STOP (any content,
+  Stop the loop by creating docs/coordinator/opencode-deepseek/STOP (any content,
   even empty) in the repo. The loop checks for it before every iteration and
   exits cleanly if found. It does NOT delete the STOP file for you -- remove it
   yourself before restarting the loop.
@@ -58,17 +58,17 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Single-instance guard: a scheduled task plus a manual start must never run two
 # coordinator loops against the same labels and worktrees.
-$mutex = New-Object System.Threading.Mutex($false, "Global\lunarlog-opencode-muse-coordinator")
+$mutex = New-Object System.Threading.Mutex($false, "Global\lunarlog-opencode-deepseek-coordinator")
 if (-not $mutex.WaitOne(0)) {
-    Write-Host "another lunarlog-opencode-muse coordinator loop is already running -- exiting."
+    Write-Host "another lunarlog-opencode-deepseek coordinator loop is already running -- exiting."
     exit 1
 }
 
-$stateDir = Join-Path $RepoRoot "docs\coordinator\opencode-muse"
+$stateDir = Join-Path $RepoRoot "docs\coordinator\opencode-deepseek"
 $stopFile = Join-Path $stateDir "STOP"
-$prompt = "Resume from docs/coordinator/opencode-muse/STATE.md. Run one loop iteration, then stop."
+$prompt = "Resume from docs/coordinator/opencode-deepseek/STATE.md. Run one loop iteration, then stop."
 
-Write-Host "lunarlog opencode-muse coordinator loop starting. Interval: ${IntervalSeconds}s. Stop file: $stopFile"
+Write-Host "lunarlog opencode-deepseek coordinator loop starting. Interval: ${IntervalSeconds}s. Stop file: $stopFile"
 
 $consecutiveFailures = 0
 

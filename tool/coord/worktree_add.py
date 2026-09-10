@@ -5,7 +5,7 @@
 
 Pass --fix to name the branch `<owner>/fix-<n>-<slug>` instead (the worktree
 path is unchanged -- it stays keyed on the issue number, only the branch name
-gets the fix- infix). This matches the opencode-muse convention in
+gets the fix- infix). This matches the opencode-deepseek convention in
 .opencode/prompts/coordinator.md; other coordinators may ignore --fix.
 """
 

@@ -10,7 +10,7 @@ is not stale.
 
 ## Steps
 
-1. `python3 tool/coord/pr_status.py --owner opencode-muse --mine` and the same
+1. `python3 tool/coord/pr_status.py --owner opencode-deepseek --mine` and the same
    for `claude-orch`.
 2. `git worktree list` — flag any worktree whose PR is merged or closed.
 3. For each directive in `docs/coordinator/orchestrator-directives.md`, check its

@@ -1,6 +1,6 @@
 ---
 name: opencode-bridge
-description: Invoke the opencode-muse coordinator and read back its session. Use when the master planner needs to start or inspect an opencode run.
+description: Invoke the opencode-deepseek coordinator and read back its session. Use when the master planner needs to start or inspect an opencode run.
 ---
 
 # opencode bridge

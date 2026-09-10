@@ -92,7 +92,7 @@ rejected. Coordinator state (`STATE.md`, `log.md`, `briefs/`) moves via a small
 `chore/coordinator-state-sync` branch + PR; batch updates rather than one PR per action.
 When committing state in the shared checkout: stage ONLY `docs/coordinator/STATE.md`,
 `log.md`, and the specific `briefs/<n>.md` you wrote — other sessions keep their own
-files under `docs/coordinator/` (e.g. `opencode-muse/`); never `git add` the directory.
+files under `docs/coordinator/` (e.g. `opencode-deepseek/`); never `git add` the directory.
 
 ## Session-recovery notes (learned the hard way)
 

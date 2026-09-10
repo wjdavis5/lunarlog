@@ -21,7 +21,7 @@ from _common import GhError, under, validate_owner, validate_slug  # noqa: E402
 
 class ValidationTests(unittest.TestCase):
     def test_owner_accepts_safe_ids(self):
-        for owner in ("opencode-muse", "claude-orch", "a1"):
+        for owner in ("opencode-deepseek", "claude-orch", "a1"):
             self.assertEqual(validate_owner(owner), owner)
 
     def test_owner_rejects_escape_and_separators(self):
@@ -35,7 +35,7 @@ class ValidationTests(unittest.TestCase):
                 validate_slug(slug)
 
     def test_under_pins_to_prefix(self):
-        root = Path("/repo/.worktrees/opencode-muse")
+        root = Path("/repo/.worktrees/opencode-deepseek")
         self.assertTrue(under(root / "7-foo", root))
         self.assertFalse(under(Path("/repo/.worktrees/claude-orch/7-foo"), root))
         self.assertFalse(under(Path("/repo"), root))
@@ -77,9 +77,9 @@ class CiRollupTests(unittest.TestCase):
 
 class ListIssuesTests(unittest.TestCase):
     def test_foreign_owner_excluded_own_owner_reclaimable(self):
-        self.assertTrue(list_issues.is_excluded(["owner:claude-orch"], "opencode-muse"))
-        self.assertFalse(list_issues.is_excluded(["owner:opencode-muse"], "opencode-muse"))
-        self.assertTrue(list_issues.is_excluded(["in-progress"], "opencode-muse"))
+        self.assertTrue(list_issues.is_excluded(["owner:claude-orch"], "opencode-deepseek"))
+        self.assertFalse(list_issues.is_excluded(["owner:opencode-deepseek"], "opencode-deepseek"))
+        self.assertTrue(list_issues.is_excluded(["in-progress"], "opencode-deepseek"))
 
     def test_dependency_numbers_captures_all_refs(self):
         self.assertEqual(
@@ -99,7 +99,7 @@ class ClaimTests(unittest.TestCase):
         claim.run_gh_json = lambda args: {"labels": [{"name": "owner:claude-orch"}]}
         claim.run_gh = lambda args, *a, **k: mutated.append(args)
         old = sys.argv
-        sys.argv = ["claim.py", "5", "--owner", "opencode-muse", "--branch", "opencode-muse/5-x"]
+        sys.argv = ["claim.py", "5", "--owner", "opencode-deepseek", "--branch", "opencode-deepseek/5-x"]
         try:
             rc = claim.main()
         finally:
@@ -119,14 +119,14 @@ class ClaimTests(unittest.TestCase):
         claim.run_gh_json = lambda args: {"labels": []}
         claim.run_gh = fake_gh
         old = sys.argv
-        sys.argv = ["claim.py", "5", "--owner", "opencode-muse", "--branch", "opencode-muse/5-x"]
+        sys.argv = ["claim.py", "5", "--owner", "opencode-deepseek", "--branch", "opencode-deepseek/5-x"]
         try:
             rc = claim.main()
         finally:
             sys.argv = old
         self.assertEqual(rc, 2)
         self.assertIn(
-            ["issue", "edit", "5", "--remove-label", "owner:opencode-muse"],
+            ["issue", "edit", "5", "--remove-label", "owner:opencode-deepseek"],
             calls,
         )
 

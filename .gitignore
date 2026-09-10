@@ -71,10 +71,13 @@ key.properties
 supabase/tests/manual/node_modules/
 supabase/tests/manual/package-lock.json
 
-# OpenCode's own local install (plugin/SDK deps for the opencode-muse coordinator)
+# OpenCode's own local install (plugin/SDK deps for the opencode-deepseek coordinator)
 .opencode/node_modules/
 
-# opencode-muse coordinator state is local-only (GitHub labels are the source of truth)
+# opencode-deepseek coordinator state is local-only (GitHub labels are the source of truth).
+# The pre-rename opencode-muse path stays ignored so an un-migrated local checkout never
+# accidentally tracks it.
+docs/coordinator/opencode-deepseek/
 docs/coordinator/opencode-muse/
 
 # Retired Antigravity/orchestrator agent definitions are local-only. `.opencode/prompts/` is the
