@@ -80,6 +80,8 @@ void main() {
         AuthFailure.identityTaken(),
         AuthFailure.signUpClosed(),
         AuthFailure.lastSignInMethod(),
+        AuthFailure.rateLimited(),
+        AuthFailure.misconfigured(),
       ];
       for (final failure in failures) {
         // Exhaustive switch over the sealed hierarchy: fails to *compile*
@@ -97,9 +99,11 @@ void main() {
           case AuthIdentityTakenFailure():
           case AuthSignUpClosedFailure():
           case AuthLastSignInMethodFailure():
+          case AuthRateLimitedFailure():
+          case AuthMisconfiguredFailure():
         }
       }
-      expect(failures.length, 10);
+      expect(failures.length, 12);
     });
   });
 

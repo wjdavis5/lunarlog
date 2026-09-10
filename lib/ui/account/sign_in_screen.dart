@@ -17,8 +17,9 @@
 /// counts; a screen opened while already signed in does not auto-complete.
 ///
 /// [authFailureCopy] is the single, exhaustive copy table for every
-/// [AuthFailure], including the provider, identity, and closed-sign-up kinds
-/// (#2 U2; KTD4, R14) and the last-remaining-method kind a removal can hit
+/// [AuthFailure], including the provider, identity, closed-sign-up,
+/// rate-limited, and misconfigured kinds (#2 U2; KTD4, R14; #32 AC2, AC4)
+/// and the last-remaining-method kind a removal can hit
 /// (#31 KTD5, R9).
 ///
 /// Provider buttons (#2 U4; KTD6, KTD8): the providers render above the
@@ -72,6 +73,15 @@ String authFailureCopy(AuthFailure failure) => switch (failure) {
       AuthProviderUnavailableFailure() =>
         "That sign-in method isn't available on this device. Use email "
             'instead.',
+      // Issue #32 AC2: throttled, not rejected — the copy names waiting,
+      // never a bad code.
+      AuthRateLimitedFailure() =>
+        'Too many attempts. Wait a little while, then try again.',
+      // Issue #32 AC4: the dashboard is not set up for this operation —
+      // a project-setup problem, not a bug in-app.
+      AuthMisconfiguredFailure() =>
+        'That sign-in method is not set up for this app right now. Try '
+            'another way to sign in.',
       AuthExpiredLinkFailure() ||
       AuthInvalidCodeFailure() ||
       AuthIdentityTakenFailure() ||
@@ -261,7 +271,9 @@ class _SignInScreenState extends State<SignInScreen> {
         if (mounted) {
           setState(() => _info =
               'If an account exists for that email, a reset link is on its '
-              'way. Open it on this device.');
+              'way. Open it on this device. If you request another email, '
+              'only the newest link works — an earlier one stops working '
+              '(issue #32).');
         }
       });
 

@@ -247,6 +247,11 @@ class _AccountSectionState extends State<AccountSection> {
     final sync = Provider.of<SyncStatusController?>(context);
     final deletionService = Provider.of<AccountDeletionService?>(context);
     final signedIn = auth.state.hasUsableSession;
+    // Issue #32 AC1: linking runs [_requireSignedInUser], which accepts
+    // `signedIn` only — under `passwordRecovery` the tile would render and
+    // then fail after the credential prompt. The add/remove-method tiles
+    // render only for a strictly signed-in session.
+    final canLink = auth.state == AuthSessionState.signedIn;
     final theme = Theme.of(context);
     final user = auth.currentUser;
     final providers = user?.providers ?? const <String>[];
@@ -258,7 +263,7 @@ class _AccountSectionState extends State<AccountSection> {
           child: Text('Account', style: theme.textTheme.titleSmall),
         ),
         if (signedIn)
-          ..._buildSignedInIdentityTiles(auth, user, providers)
+          ..._buildSignedInIdentityTiles(auth, user, providers, canLink)
         else
           _buildSignInTile(context, auth),
         const SyncStatusTile(),
@@ -272,11 +277,18 @@ class _AccountSectionState extends State<AccountSection> {
 
   /// The identity tile, any link-failure copy, the "Remove Apple"/"Remove
   /// Google" tiles (#31 U4), and the "Add Apple"/"Add Google" tiles for a
-  /// signed-in operator.
+  /// signed-in operator. The method tiles additionally require [canLink] —
+  /// a strict `signedIn` session (issue #32 AC1): the link/unlink calls
+  /// reject any other state, so under `passwordRecovery` the tiles stay
+  /// hidden instead of failing after the credential prompt. Split into
+  /// this dispatcher plus [_buildRemoveMethodTiles]/[_buildAddMethodTiles]
+  /// — same tiles, same conditions, no behavior change — so no one method
+  /// trips the CRAP gate's per-method complexity threshold.
   List<Widget> _buildSignedInIdentityTiles(
     AuthController auth,
     AuthUser? user,
     List<String> providers,
+    bool canLink,
   ) {
     final linkError = _linkError;
     return [
@@ -298,43 +310,55 @@ class _AccountSectionState extends State<AccountSection> {
             message: linkError,
           ),
         ),
-      if (_isRemovable(AuthProviders.apple, providers))
-        _removeMethodTile(
-          provider: AuthProviders.apple,
-          onTap: () => _removeMethod(AuthProviders.apple),
-        ),
-      if (_isRemovable(AuthProviders.google, providers))
-        _removeMethodTile(
-          provider: AuthProviders.google,
-          onTap: () => _removeMethod(AuthProviders.google),
-        ),
-      if (_canAddApple && !providers.contains(AuthProviders.apple))
-        _addMethodTile(
-          key: 'account-add-apple',
-          provider: AuthProviders.apple,
-          icon: Icons.apple,
-          label: 'Add Apple',
-          onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
-        ),
-      if (_canAddGoogle && !providers.contains(AuthProviders.google))
-        _addMethodTile(
-          key: 'account-add-google',
-          provider: AuthProviders.google,
-          icon: Icons.add_link,
-          label: 'Add Google',
-          onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
-        ),
-      if (_canAddPasskey)
-        _addMethodTile(
-          key: 'account-add-passkey',
-          provider: _kPasskeyBusyKey,
-          icon: Icons.fingerprint,
-          label: 'Add a passkey',
-          onTap: () =>
-              _addMethod(_kPasskeyBusyKey, () => _registerPasskey(auth)),
-        ),
+      if (canLink) ..._buildRemoveMethodTiles(providers),
+      if (canLink) ..._buildAddMethodTiles(auth, providers),
     ];
   }
+
+  /// The "Remove Apple"/"Remove Google" tiles (#31 U4).
+  List<Widget> _buildRemoveMethodTiles(List<String> providers) => [
+        if (_isRemovable(AuthProviders.apple, providers))
+          _removeMethodTile(
+            provider: AuthProviders.apple,
+            onTap: () => _removeMethod(AuthProviders.apple),
+          ),
+        if (_isRemovable(AuthProviders.google, providers))
+          _removeMethodTile(
+            provider: AuthProviders.google,
+            onTap: () => _removeMethod(AuthProviders.google),
+          ),
+      ];
+
+  /// The "Add Apple"/"Add Google"/"Add a passkey" tiles for a strictly
+  /// signed-in operator (issue #32 AC1).
+  List<Widget> _buildAddMethodTiles(
+      AuthController auth, List<String> providers) => [
+        if (_canAddApple && !providers.contains(AuthProviders.apple))
+          _addMethodTile(
+            key: 'account-add-apple',
+            provider: AuthProviders.apple,
+            icon: Icons.apple,
+            label: 'Add Apple',
+            onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
+          ),
+        if (_canAddGoogle && !providers.contains(AuthProviders.google))
+          _addMethodTile(
+            key: 'account-add-google',
+            provider: AuthProviders.google,
+            icon: Icons.add_link,
+            label: 'Add Google',
+            onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
+          ),
+        if (_canAddPasskey)
+          _addMethodTile(
+            key: 'account-add-passkey',
+            provider: _kPasskeyBusyKey,
+            icon: Icons.fingerprint,
+            label: 'Add a passkey',
+            onTap: () =>
+                _addMethod(_kPasskeyBusyKey, () => _registerPasskey(auth)),
+          ),
+      ];
 
   /// Adapts [AuthController.registerPasskey]'s
   /// [PasskeyRegistrationResult] to the `Future<AuthUser>` shape

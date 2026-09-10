@@ -28,6 +28,15 @@ void main() {
       'That is the only way left to sign in to this account. Add '
           'another method first.',
     );
+    expect(
+      authFailureCopy(const AuthFailure.rateLimited()),
+      'Too many attempts. Wait a little while, then try again.',
+    );
+    expect(
+      authFailureCopy(const AuthFailure.misconfigured()),
+      'That sign-in method is not set up for this app right now. Try '
+          'another way to sign in.',
+    );
   });
 
   test('every kind has non-empty, email-free copy', () {
@@ -42,6 +51,8 @@ void main() {
       AuthFailure.identityTaken(),
       AuthFailure.signUpClosed(),
       AuthFailure.lastSignInMethod(),
+      AuthFailure.rateLimited(),
+      AuthFailure.misconfigured(),
     ];
     for (final failure in failures) {
       final copy = authFailureCopy(failure);
