@@ -129,11 +129,9 @@ class _YourDataSectionState extends State<YourDataSection> {
       return const SizedBox.shrink();
     }
     final auth = Provider.of<AuthController?>(context);
-    // Matches `AccountSection._isSignedIn`: a `passwordRecovery` session
-    // counts as signed in for rendering purposes here too, a pre-existing
-    // soft bucket this section inherits rather than fixes.
-    final signedIn = auth?.state == AuthSessionState.signedIn ||
-        auth?.state == AuthSessionState.passwordRecovery;
+    // A `passwordRecovery` session counts as signed in for rendering
+    // purposes here too (issue #23, AC4).
+    final signedIn = auth?.state.hasUsableSession ?? false;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: _sectionChildren(context, profiles, signedIn),

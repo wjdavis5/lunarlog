@@ -19,6 +19,7 @@ import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
+import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
 

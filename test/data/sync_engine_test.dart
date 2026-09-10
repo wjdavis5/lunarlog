@@ -21,6 +21,8 @@ import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/ui/account/sync_status_tile.dart'
+    show kRejectedCopy, syncStatusCopy;
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_sync_transport.dart';
@@ -816,6 +818,15 @@ void main() {
       expect(rig.engine.snapshot.phase, SyncPhase.idle,
           reason: 'a whole-batch rejection is not a cycle failure');
       expect(rig.engine.snapshot.rejectedCount, 2);
+      expect(
+        syncStatusCopy(
+          snapshot: rig.engine.snapshot,
+          authState: AuthSessionState.signedIn,
+          now: t0,
+        ),
+        kRejectedCopy,
+        reason: 'the status reflects "some entries could not be uploaded"',
+      );
 
       await rig.sync();
       expect(rig.transport.pushes, hasLength(1),
