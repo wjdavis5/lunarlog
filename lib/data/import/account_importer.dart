@@ -226,6 +226,7 @@ class AccountImportCoordinator
     required this.storage,
     this.guardiansForProfile,
     this.currentUserId,
+    this.currentUserIdProvider,
   });
 
   final ProfilesRepository profilesRepository;
@@ -240,6 +241,13 @@ class AccountImportCoordinator
 
   final String? currentUserId;
 
+  /// Resolves the acting user's id at call time, taking precedence over
+  /// [currentUserId] when present. A single coordinator instance provided
+  /// from the composition root uses this so an import that happens after a
+  /// later sign-in still gates on the signed-in user (the UI no longer
+  /// builds a fresh coordinator per pick).
+  final String? Function()? currentUserIdProvider;
+
   /// Builds the plan for [document] against the local store's current
   /// state (Issue #140). Only fetches entries/observations/guardians for
   /// profile ids the document and the local store both hold — a profile
@@ -253,6 +261,7 @@ class AccountImportCoordinator
   /// [planImport]'s and `ProfilePlan.restoredFromTombstone`'s doc comments.
   @override
   Future<ImportPlan> buildPlan(AccountImportDocument document) async {
+    final currentUserId = currentUserIdProvider?.call() ?? this.currentUserId;
     final existingProfiles = await profilesRepository.list();
     final existingIds = {for (final p in existingProfiles) p.id};
     final matchedIds = <String>{};

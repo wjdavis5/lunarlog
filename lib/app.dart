@@ -14,27 +14,49 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart'
+    as data;
+import 'package:lunarlog/data/export/account_export_writer.dart' as data;
+import 'package:lunarlog/data/export/fhir_bundle_writer.dart' as data;
+import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart'
+    as data;
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
+import 'package:lunarlog/data/import/account_importer.dart' as data;
+import 'package:lunarlog/data/import/import_file_picker.dart' as data;
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
-import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
+    as data;
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
+    as data;
+import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart'
+    as data;
+import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart'
+    as data;
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
+import 'package:lunarlog/domain/export/account_export_writer.dart';
+import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
+import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
+import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
@@ -228,6 +250,19 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// birth-control/method persistence seam (`ProfileController` writes
   /// through it; #216's form is the UI half).
   late final ProfileModesRepository _profileModes;
+
+  // Domain-typed contracts `lib/ui` reads instead of constructing the
+  // concrete `lib/data` implementations inline (R1/R7/R8). Built once here
+  // in [initState] and provided to the tree below.
+  late final ProfileGuardiansRepository _profileGuardians;
+  late final ActivityFeedRepository _activityFeed;
+  late final OnboardingCycleAnswersRecorder _onboardingCycleAnswers;
+  late final DeviceDiagnosticsCollector _deviceDiagnostics;
+  late final AccountExportWriter _accountExportWriter;
+  late final FhirBundleWriter _fhirBundleWriter;
+  late final AttachmentSource _attachmentSource;
+  late final ImportFileReader _importFileReader;
+  late final AccountImportCoordinator _accountImportCoordinator;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   // U2 Approach 1b: allocated once, not per build. `build` re-runs on every
   // `setState` (the invite-link and auth-change paths both trigger one),
@@ -295,6 +330,27 @@ class _LunarLogAppState extends State<LunarLogApp>
     _cycleExclusions = CycleExclusionList(_settings);
     _permissionState = NotificationPermissionState(
       NotificationAvailability.available,
+    );
+    // R1/R7/R8: the concrete implementations `lib/ui` used to construct
+    // inline, built once here and provided to the tree as domain contracts.
+    _profileGuardians = data.ProfileGuardiansRepository(storage);
+    _activityFeed = data.ActivityFeedRepository(storage);
+    _onboardingCycleAnswers =
+        data.DriftOnboardingCycleAnswersRecorder(storage);
+    _deviceDiagnostics = data.DeviceDiagnosticsCollector();
+    _accountExportWriter = data.AccountExportWriter(
+      remoteSource: widget.accountExportRemoteSource,
+    );
+    _fhirBundleWriter = const data.FhirBundleWriter();
+    _attachmentSource = data.ImagePickerAttachmentSource();
+    _importFileReader = const data.PickImportFileReader();
+    _accountImportCoordinator = data.AccountImportCoordinator(
+      profilesRepository: _profiles,
+      dayEntriesRepository: _dayEntries,
+      observationsRepository: _observations,
+      storage: storage,
+      guardiansForProfile: _profileGuardians.getForProfile,
+      currentUserIdProvider: () => _authController?.currentUserId,
     );
     _initAuthController();
     _initHealthFlowWriter();
@@ -432,7 +488,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   void _startPredictionProjectionPublisher() {
     final service = widget.predictionConnectionService;
     if (service == null) return;
-    final publisher = PredictionProjectionPublisher(
+    final publisher = data.PredictionProjectionPublisher(
       activeProfiles: _profiles.watch(),
       predictionFor: _prediction.watch,
       service: service,
@@ -480,7 +536,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       observations: _observations,
       settings: _settings,
       guardiansForProfile:
-          ProfileGuardiansRepository(widget.db.storage).getForProfile,
+          _profileGuardians.getForProfile,
       // The Settings picker's own tested resolver (issue #153): null
       // unless a session is actually signed in — the same guard fact both
       // call sites must agree on.
@@ -846,7 +902,20 @@ class _LunarLogAppState extends State<LunarLogApp>
           ChangeNotifierProvider<SyncStatusController>(
             create: (_) => SyncStatusController(engine: syncEngine),
           ),
-        Provider<LunarLogStorage>.value(value: widget.db.storage),
+        // R1/R7/R8: domain-typed seams `lib/ui` reads instead of resolving
+        // the raw storage object or constructing the concrete `lib/data`
+        // implementations itself.
+        Provider<ProfileGuardiansRepository>.value(value: _profileGuardians),
+        Provider<ActivityFeedRepository>.value(value: _activityFeed),
+        Provider<OnboardingCycleAnswersRecorder>.value(
+            value: _onboardingCycleAnswers),
+        Provider<DeviceDiagnosticsCollector>.value(value: _deviceDiagnostics),
+        Provider<AccountExportWriter>.value(value: _accountExportWriter),
+        Provider<FhirBundleWriter>.value(value: _fhirBundleWriter),
+        Provider<AttachmentSource>.value(value: _attachmentSource),
+        Provider<ImportFileReader>.value(value: _importFileReader),
+        Provider<AccountImportCoordinator>.value(
+            value: _accountImportCoordinator),
         if (widget.sharingService != null)
           Provider<SharingService>.value(value: widget.sharingService!),
         if (widget.ownershipTransferService != null)

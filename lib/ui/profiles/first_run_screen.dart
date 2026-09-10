@@ -29,8 +29,6 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
@@ -303,15 +301,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     await recorder?.record(profile.id, _collectedAnswers(l10n));
   }
 
-  /// The recorder seam, or null on a tree with no storage wired (the
-  /// local-only test-harness shape; see [ProfileDetailScreen]'s precedent).
-  OnboardingCycleAnswersRecorder? _resolveRecorder() {
-    final storage = context.read<LunarLogStorage?>();
-    return storage == null
-        ? null
-        : DriftOnboardingCycleAnswersRecorder(storage,
-            todayProvider: widget.todayProvider);
-  }
+  /// The recorder seam, or null on a tree with none wired (the local-only
+  /// test-harness shape; see [ProfileDetailScreen]'s precedent).
+  OnboardingCycleAnswersRecorder? _resolveRecorder() =>
+      context.read<OnboardingCycleAnswersRecorder?>();
 
   OnboardingCycleAnswers _collectedAnswers(AppLocalizations l10n) =>
       OnboardingCycleAnswers(

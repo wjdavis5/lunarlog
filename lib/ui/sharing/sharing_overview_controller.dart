@@ -10,18 +10,17 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
-import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 
 class SharingOverviewController extends ChangeNotifier {
   SharingOverviewController({
-    required this.storage,
+    required this.guardiansRepository,
     required this.currentUserId,
   });
 
-  final LunarLogStorage storage;
+  final ProfileGuardiansRepository guardiansRepository;
 
   /// The signed-in operator's id, or null when signed out or unknown.
   final String? currentUserId;
@@ -50,7 +49,7 @@ class SharingOverviewController extends ChangeNotifier {
         _infos.remove(id);
       }
     }
-    final repository = ProfileGuardiansRepository(storage);
+    final repository = guardiansRepository;
     for (final id in wanted) {
       if (_subs.containsKey(id)) continue;
       _infos[id] = const SharingProfileInfo.unknown();

@@ -70,7 +70,7 @@ import 'package:lunarlog/app_lifecycle.dart'
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
-import 'package:lunarlog/domain/export/account_export_remote_source.dart';
+import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -762,11 +762,13 @@ class _AccountSectionState extends State<AccountSection> {
     final observationsRepo = context.read<ObservationsRepository>();
     final careContentRepo = context.read<CareContentRepository>();
     // Issue #248: read before the first `await` below (not after -
-    // `use_build_context_synchronously`); null for an unconfigured build
-    // (no Supabase client) - the same "nothing to merge" degrade as a
-    // configured remote source that itself resolves to null (signed out,
-    // offline, a server error).
-    final remoteSource = context.read<AccountExportRemoteSource?>();
+    // `use_build_context_synchronously`). The writer already carries its
+    // optional server-side remote source from construction; an
+    // unconfigured build (no Supabase client) resolves to a local-only
+    // document - the same "nothing to merge" degrade as a configured
+    // remote source that itself resolves to null (signed out, offline, a
+    // server error).
+    final exportWriter = context.read<AccountExportWriter>();
     final profiles = await profilesRepo.list();
     final entriesByProfile = <String, List<DayEntry>>{};
     final observationsByProfile = <String, List<Observation>>{};
@@ -783,7 +785,7 @@ class _AccountSectionState extends State<AccountSection> {
           await careContentRepo.listPrepItems(profile.id);
     }
     await (widget.exportAccount ??
-        defaultExportAccountCollaborator(remoteSource))(
+        defaultExportAccountCollaborator(exportWriter))(
       profiles: profiles,
       entriesByProfile: entriesByProfile,
       observationsByProfile: observationsByProfile,

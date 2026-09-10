@@ -42,7 +42,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart'
     show RequestNotificationPermissionCallback;
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';

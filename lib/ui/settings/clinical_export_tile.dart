@@ -24,8 +24,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/export/fhir_bundle_writer.dart';
 import '../../domain/export/fhir_bundle.dart';
+import '../../domain/export/fhir_bundle_writer.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/prediction/prediction.dart';
@@ -36,7 +36,7 @@ import '../account/export_account_collaborator.dart' show kAppVersionForExport;
 import '../components/inline_error.dart';
 
 /// Injectable seam for FHIR delivery (mirrors
-/// `ExportAccountCollaborator`): the default builds the real
+/// `ExportAccountCollaborator`): the default uses the tree-provided
 /// [FhirBundleWriter]; tests substitute a fake that just records the call.
 typedef FhirExportCollaborator = Future<void> Function({
   required Map<String, Object?> bundle,
@@ -47,15 +47,6 @@ typedef FhirExportCollaborator = Future<void> Function({
 /// `kAccountExportFailureCopy`'s R10 discipline).
 const String kClinicalExportFailureCopy =
     'Could not export your clinical summary. Please try again.';
-
-Future<void> _defaultFhirExportCollaborator({
-  required Map<String, Object?> bundle,
-  required DateTime exportedAt,
-}) =>
-    const FhirBundleWriter().exportAndShare(
-      bundle: bundle,
-      exportedAt: exportedAt,
-    );
 
 /// [liveProfiles] excludes archived profiles (see [_liveProfiles]). With
 /// exactly one, its name goes straight into the subtitle (#157 review fix,
@@ -83,9 +74,9 @@ List<Profile> _liveProfiles(List<Profile> profiles) =>
 class ClinicalExportTile extends StatefulWidget {
   const ClinicalExportTile({super.key, this.exportFhir});
 
-  /// FHIR export collaborator; null means [_defaultFhirExportCollaborator]
-  /// (the real platform writer). Injectable so tests never touch
-  /// `path_provider`/`share_plus`.
+  /// FHIR export collaborator; null means the tree-provided
+  /// [FhirBundleWriter] (the real platform writer). Injectable so tests
+  /// never touch `path_provider`/`share_plus`.
   final FhirExportCollaborator? exportFhir;
 
   @override
@@ -249,6 +240,8 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
   /// the tile, mirroring `YourDataSection._export`.
   Future<void> _export(BuildContext context, Profile profile) async {
     if (_exporting) return;
+    // Read before the first `await` below (`use_build_context_synchronously`).
+    final fhirWriter = context.read<FhirBundleWriter>();
     setState(() {
       _exporting = true;
       _error = null;
@@ -271,7 +264,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
         exportedAt: exportedAt,
         appVersion: kAppVersionForExport,
       );
-      await (widget.exportFhir ?? _defaultFhirExportCollaborator)(
+      await (widget.exportFhir ?? fhirWriter.exportAndShare)(
         bundle: bundle,
         exportedAt: exportedAt,
       );

@@ -21,7 +21,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/profile.dart';

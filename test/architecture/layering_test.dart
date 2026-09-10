@@ -1,7 +1,8 @@
-/// KTD2 layering guard (R4): `lib/data` must never depend on `lib/ui`, and
-/// `lib/domain` must stay pure Dart (no `package:flutter`). Enforced by
-/// walking the source tree with `dart:io` — no lint plugin, no new
-/// dependency.
+/// KTD2 layering guard (R4/R11): the full layer matrix — `lib/data` must
+/// never depend on `lib/ui`; `lib/ui` must never depend on `lib/data`;
+/// `lib/domain` must never depend on `lib/data`; and `lib/domain` must stay
+/// pure Dart (no `package:flutter`). Enforced by walking the source tree
+/// with `dart:io` — no lint plugin, no new dependency.
 ///
 /// Detection matches whole `import`/`export` **directives** and inspects
 /// every quoted URI inside each one, rather than regex-matching raw file
@@ -71,6 +72,15 @@ bool dependsOnUiLayer(String contents, String filePath) =>
         uri == 'lib/ui' ||
         uri.startsWith('lib/ui/'));
 
+/// Whether [contents] of [filePath] depends on the `lib/data` layer. Covers
+/// the package URI and relative escapes resolved against the file's
+/// directory (`../data/...`, `../../data/...`).
+bool dependsOnDataLayer(String contents, String filePath) =>
+    _referencedUris(contents, filePath).any((uri) =>
+        uri.startsWith('package:lunarlog/data/') ||
+        uri == 'lib/data' ||
+        uri.startsWith('lib/data/'));
+
 /// Whether [contents] depends on Flutter.
 bool dependsOnFlutter(String contents, String filePath) =>
     _referencedUris(contents, filePath)
@@ -113,6 +123,20 @@ void main() {
     test('no lib/domain file depends on package:flutter', () {
       _expectNoOffenders(
           'lib/domain', dependsOnFlutter, 'lib/domain must stay pure Dart');
+    });
+
+    // R11: the two edges the guard never enforced before issue #100's
+    // follow-up. `_expectNoOffenders` asserts a non-zero scanned-file count
+    // on each, so a wrong path cannot make them pass vacuously.
+    test('no lib/ui file depends on lib/data', () {
+      _expectNoOffenders('lib/ui', dependsOnDataLayer,
+          'lib/ui must not depend on lib/data',
+          excludeGenerated: true);
+    });
+
+    test('no lib/domain file depends on lib/data', () {
+      _expectNoOffenders(
+          'lib/domain', dependsOnDataLayer, 'lib/domain must not depend on lib/data');
     });
 
     // Gives the guard above its own teeth: without this, a detector that
@@ -174,6 +198,35 @@ void main() {
               'lib/domain/models/profile.dart'),
           isTrue,
           reason: 'the domain guard must cover conditional branches too');
+
+      // Falsification coverage for the `lib/ui -/-> lib/data` scan: a
+      // synthetic lib/ui file importing the data layer is flagged in both
+      // package-URI and resolved-relative form, while a domain import and a
+      // sibling directory that merely starts with "data" are not.
+      const uiPath = 'lib/ui/overview/overview_panel.dart';
+      expect(
+          dependsOnDataLayer(
+              "import 'package:lunarlog/data/repositories/"
+                  "drift_profiles_repository.dart';",
+              uiPath),
+          isTrue,
+          reason: 'a lib/ui file importing package:lunarlog/data/... must flag');
+      expect(
+          dependsOnDataLayer(
+              "import '../../data/repositories/drift_profiles_repository.dart';",
+              uiPath),
+          isTrue,
+          reason: 'a relative escape into lib/data must flag');
+      expect(
+          dependsOnDataLayer(
+              "import 'package:lunarlog/domain/models/profile.dart';", uiPath),
+          isFalse,
+          reason: 'a domain import is not a data-layer dependency');
+      expect(
+          dependsOnDataLayer(
+              "import '../data_helpers/format.dart';", 'lib/ui/probe.dart'),
+          isFalse,
+          reason: 'a sibling directory that merely starts with "data" is fine');
     });
   });
 }

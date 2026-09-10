@@ -4,7 +4,7 @@
 library;
 
 import 'package:flutter/foundation.dart';
-import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
+import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 
 class FeedbackController extends ChangeNotifier {

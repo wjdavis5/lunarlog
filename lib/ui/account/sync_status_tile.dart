@@ -7,9 +7,9 @@ library;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
-import 'package:lunarlog/data/sync/sync_transport.dart' show PushBatch;
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sync/sync_batch_limits.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -177,7 +177,9 @@ String? _fixedPhaseCopy(SyncSnapshot snapshot) {
 /// `totalDirtyRows` so a stale or racing snapshot never reads e.g.
 /// "Uploading 600 of 500".
 String _pushingCopy(SyncSnapshot snapshot) {
-  if (snapshot.totalDirtyRows <= PushBatch.maxRows) return kSyncingCopy;
+  if (snapshot.totalDirtyRows <= SyncBatchLimits.maxRowsPerTable) {
+    return kSyncingCopy;
+  }
   final pushedRows = snapshot.pushedRows > snapshot.totalDirtyRows
       ? snapshot.totalDirtyRows
       : snapshot.pushedRows;

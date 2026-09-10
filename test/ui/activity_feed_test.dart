@@ -9,14 +9,16 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
+    as data;
+import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
+    as data;
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -24,8 +26,11 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
@@ -128,7 +133,7 @@ Future<Harness> pumpActivity(
     await seed(db, profile.id);
   }
   final authController = auth == null ? null : AuthController(authService: auth);
-  final activity = ActivityFeedRepository(db.storage);
+  final activity = data.ActivityFeedRepository(db.storage);
 
   await tester.pumpWidget(
     MultiProvider(
@@ -142,7 +147,15 @@ Future<Harness> pumpActivity(
         Provider<SettingsStore>.value(value: settings),
         if (authController != null)
           ChangeNotifierProvider<AuthController>.value(value: authController),
-        Provider<LunarLogStorage>.value(value: db.storage),
+        // Domain-typed seams `ProfileDetailScreen` reads instead of raw
+        // storage (mirrors `lib/app.dart`).
+        Provider<ProfileGuardiansRepository>.value(
+          value: data.ProfileGuardiansRepository(db.storage),
+        ),
+        Provider<ActivityFeedRepository>.value(value: activity),
+        Provider<CareContentRepository>.value(
+          value: DriftCareContentRepository(db.storage),
+        ),
         // ProfileDetailScreen reads this (switch-profile action).
         ChangeNotifierProvider(
           create: (_) => ProfileController(
@@ -622,7 +635,7 @@ void main() {
       tester,
       screen: (profile, repository, db) => ManageGuardiansScreen(
         profile: profile,
-        guardiansRepository: ProfileGuardiansRepository(db.storage),
+        guardiansRepository: data.ProfileGuardiansRepository(db.storage),
         sharingService: _StubSharingService(),
         currentUserId: null,
         activityRepository: repository,
@@ -641,7 +654,7 @@ void main() {
       tester,
       screen: (profile, repository, db) => ManageGuardiansScreen(
         profile: profile,
-        guardiansRepository: ProfileGuardiansRepository(db.storage),
+        guardiansRepository: data.ProfileGuardiansRepository(db.storage),
         sharingService: _StubSharingService(),
         currentUserId: null,
       ),

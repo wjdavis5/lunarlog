@@ -62,7 +62,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/repositories/profile_guardians_repository.dart';
+import '../../domain/repositories/profile_guardians_repository.dart';
 import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile_guardian.dart';

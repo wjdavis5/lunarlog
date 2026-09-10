@@ -16,7 +16,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
 import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
 import 'package:lunarlog/domain/models/flow_level.dart' show flowLabel;

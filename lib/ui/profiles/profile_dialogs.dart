@@ -8,12 +8,12 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
-import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
@@ -138,12 +138,13 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   Future<void> _loadProfileModeRow() async {
     final existing = widget.existing;
     if (existing == null) return;
-    final storage = Provider.of<LunarLogStorage?>(context, listen: false);
-    if (storage == null) return;
-    final row = await storage.getProfileMode(existing.id);
+    final repository =
+        Provider.of<ProfileModesRepository?>(context, listen: false);
+    if (repository == null) return;
+    final row = await repository.find(existing.id);
     if (!mounted || row == null) return;
     setState(() {
-      _lifecycleMode = LifecycleMode.fromDb(row.mode);
+      _lifecycleMode = row.mode;
       _birthControl = birthControlChoiceForStored(row.birthControlMethod);
     });
   }

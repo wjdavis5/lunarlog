@@ -12,8 +12,8 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
@@ -36,10 +36,11 @@ class _FamilySharingSectionState extends State<FamilySharingSection> {
   @override
   void initState() {
     super.initState();
-    final storage = Provider.of<LunarLogStorage?>(context, listen: false);
-    if (storage != null) {
+    final guardiansRepository =
+        Provider.of<ProfileGuardiansRepository?>(context, listen: false);
+    if (guardiansRepository != null) {
       final controller = SharingOverviewController(
-        storage: storage,
+        guardiansRepository: guardiansRepository,
         currentUserId: Provider.of<AuthController?>(context, listen: false)
             ?.currentUserId,
       );

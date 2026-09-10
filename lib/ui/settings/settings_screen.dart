@@ -16,11 +16,10 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -80,16 +79,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // comment. Since #193 the write flow behind it is real, but only on
     // iOS: the Health Connect half's device checklist is #202's, so the
     // tile stays hidden on Android rather than binding a profile nothing
-    // syncs yet. Also needs the storage/profiles wiring a fully
-    // unconfigured build (e.g. tests with no LunarLogStorage provided)
-    // may not have.
-    final storage = Provider.of<LunarLogStorage?>(context);
+    // syncs yet. Also needs the repository wiring a fully unconfigured
+    // build (e.g. tests with no repositories provided) may not have.
     final profilesRepository = Provider.of<ProfilesRepository?>(context);
+    final guardiansRepository =
+        Provider.of<ProfileGuardiansRepository?>(context);
     final hasHealthSync = AppConfig.hasHealthSync &&
         !kIsWeb &&
         defaultTargetPlatform == TargetPlatform.iOS &&
-        storage != null &&
-        profilesRepository != null;
+        profilesRepository != null &&
+        guardiansRepository != null;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
@@ -168,7 +167,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: Text(l10n.settingsHealthSyncTitle),
               subtitle: Text(l10n.settingsHealthSyncSubtitle),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openHealthSync(context, storage, profilesRepository),
+              onTap: () =>
+                  _openHealthSync(context, profilesRepository, guardiansRepository),
             ),
             const Divider(),
           ],
@@ -185,14 +185,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Issue #153: pushes [HealthSyncScreen] with dependencies constructed
-  /// the same ad hoc way `profile_picker_screen.dart` builds
-  /// [ProfileGuardiansRepository] for [ManageGuardiansScreen] — no
-  /// app-wide provider for it, since only this one entry point needs it.
+  /// Issue #153: pushes [HealthSyncScreen] with the tree-provided
+  /// [ProfileGuardiansRepository] (the same contract the rest of the UI
+  /// reads) rather than a repository constructed from raw storage.
   void _openHealthSync(
     BuildContext context,
-    LunarLogStorage storage,
     ProfilesRepository profilesRepository,
+    ProfileGuardiansRepository guardiansRepository,
   ) {
     final signedInUserId = confirmedHealthSyncUserId(
       Provider.of<AuthController?>(context, listen: false),
@@ -202,7 +201,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         name: kRouteHealthSyncScreen,
         builder: (_) => HealthSyncScreen(
           profilesRepository: profilesRepository,
-          guardiansForProfile: ProfileGuardiansRepository(storage).getForProfile,
+          guardiansForProfile: guardiansRepository.getForProfile,
           binding: HealthSyncBinding(context.read<SettingsStore>()),
           signedInUserId: signedInUserId,
         ),

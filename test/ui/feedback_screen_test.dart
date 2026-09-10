@@ -3,13 +3,16 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
+import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart'
+    as data;
+import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
+import '../support/fake_attachment_source.dart';
 import '../support/fake_feedback_service.dart';
 
 class _FakeAttachmentSource implements AttachmentSource {
@@ -28,7 +31,7 @@ class _FakeAttachmentSource implements AttachmentSource {
 /// pre-populated one, since an always-empty log can never catch a
 /// regression in how the diagnostics preview renders breadcrumb entries.
 DeviceDiagnosticsCollector _fakeCollector({BreadcrumbLog? breadcrumbLog}) =>
-    DeviceDiagnosticsCollector(
+    data.DeviceDiagnosticsCollector(
       packageInfoReader: () async => PackageInfo(
         appName: 'lunarlog',
         packageName: 'com.wjdavis5.lunarlog',
@@ -49,8 +52,16 @@ Future<void> pumpFeedbackScreen(
 }) async {
   await tester.pumpWidget(
     MaterialApp(
-      home: Provider<FeedbackService>.value(
-        value: service,
+      home: MultiProvider(
+        providers: [
+          Provider<FeedbackService>.value(value: service),
+          // The tree-provided seams `FeedbackScreen` falls back to when its
+          // own test-seam params are null (mirrors `lib/app.dart`).
+          Provider<DeviceDiagnosticsCollector>.value(
+              value: _fakeCollector(breadcrumbLog: breadcrumbLog)),
+          Provider<AttachmentSource>.value(
+              value: attachmentSource ?? FakeAttachmentSource()),
+        ],
         child: FeedbackScreen(
           diagnosticsCollector: _fakeCollector(breadcrumbLog: breadcrumbLog),
           attachmentSource: attachmentSource,

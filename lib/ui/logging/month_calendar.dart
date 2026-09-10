@@ -42,7 +42,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';

@@ -28,15 +28,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/import/account_importer.dart';
-import 'package:lunarlog/data/import/import_file_picker.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
-import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
-import 'package:lunarlog/domain/repositories/observations_repository.dart';
-import 'package:lunarlog/domain/repositories/profiles_repository.dart';
-import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 
@@ -69,11 +63,12 @@ class ImportScreen extends StatefulWidget {
   const ImportScreen({super.key, this.pickFile, this.coordinator});
 
   /// Reads the picked file's bytes; null means "not provided by the
-  /// caller" (default [pickImportFile]). Injectable for tests.
-  final ImportFileReader? pickFile;
+  /// caller" (default: the tree-provided [ImportFileReader]). Injectable
+  /// for tests, which pass a plain function of the same shape.
+  final Future<Uint8List?> Function()? pickFile;
 
-  /// Plans and applies imports; null means "build the real one from
-  /// `Provider`-supplied repositories" (see `_ImportScreenState._coordinator`).
+  /// Plans and applies imports; null means "read the tree-provided
+  /// [AccountImportCoordinator]" (see `_ImportScreenState._coordinator`).
   /// Injectable for tests.
   final AccountImportCoordinator? coordinator;
 
@@ -92,22 +87,13 @@ class _ImportScreenState extends State<ImportScreen> {
   AccountImportCoordinator _coordinator(BuildContext context) {
     final injected = widget.coordinator;
     if (injected != null) return injected;
-    final storage = context.read<LunarLogStorage>();
-    return AccountImportCoordinator(
-      profilesRepository: context.read<ProfilesRepository>(),
-      dayEntriesRepository: context.read<DayEntriesRepository>(),
-      observationsRepository: context.read<ObservationsRepository>(),
-      storage: storage,
-      guardiansForProfile: ProfileGuardiansRepository(storage).getForProfile,
-      currentUserId: Provider.of<AuthController?>(context, listen: false)
-          ?.currentUserId,
-    );
+    return context.read<AccountImportCoordinator>();
   }
 
   Future<void> _pickAndPlan() async {
     setState(() => _error = null);
     try {
-      final reader = widget.pickFile ?? pickImportFile;
+      final reader = widget.pickFile ?? context.read<ImportFileReader>().read;
       final bytes = await reader();
       if (bytes == null || !mounted) return;
       final parsed = await _parse(bytes);
@@ -121,10 +107,9 @@ class _ImportScreenState extends State<ImportScreen> {
         case AccountImportParsed(:final document):
           // Only reached (and only reads `context` here) once bytes were
           // actually picked and this state is still mounted — cancelling
-          // the picker never needs a coordinator at all, and an
-          // unconfigured build (no `Provider<LunarLogStorage>`, e.g. a
-          // test that only exercises the pick/cancel step) never sees
-          // this line run.
+          // the picker never needs a coordinator at all, and a test that
+          // only exercises the pick/cancel step injects its own
+          // coordinator and never sees this line run.
           await _buildPlan(_coordinator(context), document);
       }
     } catch (error) {

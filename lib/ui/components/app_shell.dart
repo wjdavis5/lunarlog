@@ -43,12 +43,11 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -144,7 +143,6 @@ class _AppShellState extends State<AppShell> {
   /// [build] to keep that method's branching low (CRAP gate).
   Widget _tabContent(
     AppTab tab,
-    LunarLogStorage? storage,
     ProfileGuardiansRepository? guardiansRepository,
   ) {
     if (!_everShown.contains(tab)) return const SizedBox.shrink();
@@ -202,9 +200,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final storage = context.read<LunarLogStorage?>();
-    final guardiansRepository =
-        storage == null ? null : ProfileGuardiansRepository(storage);
+    final guardiansRepository = context.read<ProfileGuardiansRepository?>();
+    final activityRepository = context.read<ActivityFeedRepository?>();
     // listen: false -- only existence is read here; the glyph does its own
     // watch, and listening would rebuild the whole IndexedStack on every
     // sync snapshot (review finding on #182).
@@ -227,12 +224,14 @@ class _AppShellState extends State<AppShell> {
         current: _tab,
         select: _selectTab,
         child: Scaffold(
-          appBar: _tab == AppTab.more ? null : _shellAppBar(hasSync, storage),
+          appBar: _tab == AppTab.more
+              ? null
+              : _shellAppBar(hasSync, guardiansRepository, activityRepository),
           body: IndexedStack(
             index: _tab.index,
             children: [
               for (final tab in AppTab.values)
-                _tabContent(tab, storage, guardiansRepository),
+                _tabContent(tab, guardiansRepository),
             ],
           ),
           // Issue #209 item 4a: "Log today" opens the day sheet directly,
@@ -289,19 +288,22 @@ class _AppShellState extends State<AppShell> {
   /// `ProfileDetailScreen` as where the active profile lives), the sync
   /// glyph (only when a build has one), and a Settings action. Extracted
   /// out of [build] to keep that method's branching low (CRAP gate).
-  AppBar _shellAppBar(bool hasSync, LunarLogStorage? storage) => AppBar(
+  AppBar _shellAppBar(
+    bool hasSync,
+    ProfileGuardiansRepository? guardiansRepository,
+    ActivityFeedRepository? activityRepository,
+  ) =>
+      AppBar(
         title: _ProfileSwitcher(
           profile: widget.profile,
           onTap: _openPicker,
-          guardiansRepository: storage == null
-              ? null
-              : ProfileGuardiansRepository(storage),
+          guardiansRepository: guardiansRepository,
         ),
         actions: [
-          if (storage != null)
+          if (activityRepository != null)
             ActivityFeedButton(
               profile: widget.profile,
-              repository: ActivityFeedRepository(storage),
+              repository: activityRepository,
               todayProvider: widget.todayProvider,
               timezoneProvider: widget.timezoneProvider,
             ),
