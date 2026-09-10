@@ -17,7 +17,6 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("number", type=int)
     ap.add_argument("--owner", required=True)
-    ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     n = str(args.number)

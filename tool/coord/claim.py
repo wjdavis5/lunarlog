@@ -35,7 +35,6 @@ def main() -> int:
     ap.add_argument("number", type=int, help="issue number")
     ap.add_argument("--owner", required=True, help="this coordinator's id")
     ap.add_argument("--branch", required=True, help="branch name to record in the claim comment")
-    ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     n = str(args.number)
