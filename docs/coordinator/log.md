@@ -27,3 +27,4 @@
 2026-09-10T03:00Z merged PR #372 (#178) and PR #374 (#193; projection conflict resolved in favor of main's engine-phase). Fleet bumped to 4 per owner: dispatched #255 #254 #259 #296 (all deps verified closed at dispatch).
 2026-09-10T03:30Z merged PR #375 (#254 closed). Note for operator: Play production dispatches now fail closed until PLAY_HEALTH_DECLARATION_CONFIRMED repo variable is set (by design, #254). In flight: #255 #259 #296.
 2026-09-10T04:10Z merged PR #376 (#296 closed). Fleet at 4: #255, #378-integration (259 worktree), #206, #207.
+2026-09-10T05:20Z merged PR #380 (#207), #382 (#206), #381 (#251), #383 (#256 — three migration-renumber rounds vs parallel landings; final name 20260910000000). Also merged #372 (#178), #374 (#193), #375 (#254), #376 (#296) earlier. In flight: #255, #378-integration, #206?? no — #206 merged. Running: #255, #378-integration only + PR #381 merged. Verify slot count next dispatch.
