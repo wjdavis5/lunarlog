@@ -52,6 +52,14 @@ abstract interface class GoogleSignInClient {
 }
 
 /// Production adapter over [GoogleSignIn.instance].
+///
+/// Untestable by design (issue #32): every path through this class calls
+/// the platform plugin (`initialize`, `authenticate`, the silent
+/// access-token read), which has no fake under `flutter test` — the
+/// service-level tests inject a [GoogleSignInClient] fake instead and never
+/// touch this class. Verified by the device checklist in
+/// `docs/ops/supabase-go-live.md` ("Social logins and passwordless"),
+/// which drives the real picker on iPhone and Android builds.
 class PluginGoogleSignInClient implements GoogleSignInClient {
   PluginGoogleSignInClient({GoogleSignIn? plugin, TargetPlatform? platform})
       : _plugin = plugin ?? GoogleSignIn.instance,

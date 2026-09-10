@@ -28,6 +28,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
+import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
@@ -1223,6 +1224,70 @@ void main() {
           find.text(
               'Could not reach the server. Check your connection and try again.'),
           findsOneWidget);
+      expect(auth.linkFailureConsumed, 1);
+      await harness.dispose();
+    });
+
+    testWidgets('issue #32 AC8: a link failure surfaces while a pushed '
+        'SignInScreen is on top, without popping it', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      // No stored last-active id, so the picker (with its Settings push)
+      // is home.
+      final harness = Harness(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+      });
+      await harness.pump(authService: auth);
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('account-sign-in')));
+      await tester.pumpAndSettle();
+      expect(find.byType(SignInScreen), findsOneWidget);
+
+      auth.emitLinkFailure(const AuthFailure.expiredLink());
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(linkFailure, findsOneWidget);
+      expect(find.text(expiredCopy), findsOneWidget);
+      expect(find.byType(SignInScreen), findsOneWidget,
+          reason: 'the failure surfaces over the pushed screen, '
+              'not by popping it');
+      expect(auth.linkFailureConsumed, 1);
+      await harness.dispose();
+    });
+
+    testWidgets('issue #32 AC8: a failure latched while locked with '
+        'Settings pushed waits for the unlock and surfaces with Settings '
+        'still on top', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final harness = Harness(tester, seed: (db) async {
+        await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+      });
+      await harness.pump(authService: auth);
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+
+      // Lock with Settings still pushed.
+      await harness.background(AppLifecycleState.paused);
+      expect(lockScreen, findsOneWidget);
+      auth.emitLinkFailure(const AuthFailure.expiredLink());
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(linkFailure, findsNothing);
+      expect(auth.linkFailureConsumed, 0);
+
+      // Unlock: the failure surfaces, Settings still on top.
+      await harness.background(AppLifecycleState.resumed);
+      await harness.unlockViaButton();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      expect(linkFailure, findsOneWidget);
+      expect(find.text(expiredCopy), findsOneWidget);
       expect(auth.linkFailureConsumed, 1);
       await harness.dispose();
     });
