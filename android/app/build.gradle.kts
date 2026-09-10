@@ -75,6 +75,23 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // Issue #211: R8 minification/resource shrinking for release.
+            // NOTE: the Flutter Gradle plugin already force-enables both
+            // (FlutterPlugin.shouldShrinkResources defaults to true) and
+            // appends its own flutter_proguard_rules.pro; these explicit
+            // settings pin the posture in-repo so a future toolchain change
+            // cannot silently flip it back to unminified, and register this
+            // app's proguard-rules.pro alongside the plugin's defaults.
+            // Dart-side obfuscation is enabled in the release workflow via
+            // `flutter build appbundle --obfuscate --split-debug-info`
+            // (issue #211); the ProGuard mapping this produces is uploaded
+            // to Sentry by play-store-release.yml.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

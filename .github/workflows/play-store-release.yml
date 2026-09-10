@@ -207,8 +207,16 @@ jobs:
         run: flutter pub get
 
       - name: Build Android App Bundle (AAB)
+        # Issue #211: --obfuscate strips Dart symbol names from the AOT
+        # snapshot and --split-debug-info writes the corresponding
+        # app.<abi>.symbols ELF debug files to build/symbols, which the Sentry
+        # upload step below ships so release crashes deobfuscate. R8/ProGuard
+        # minification itself is enabled in android/app/build.gradle.kts
+        # (also issue #211); the workflow edit here is Dart-side only.
         run: |
           flutter build appbundle --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
             --build-name=${{ steps.version.outputs.marketing }} \
             --build-number=${{ steps.version.outputs.build }} \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
@@ -278,16 +286,21 @@ jobs:
           SENTRY_CLI_CHECKSUM_TOOL: sha256sum
         run: bash .github/scripts/upload-sentry-symbols-setup.sh
 
-      - name: Upload Sentry debug symbols (native + ProGuard mapping)
+      - name: Upload Sentry debug symbols (native + Dart + ProGuard mapping)
         # continue-on-error (R15): once issue #19 provisions the secrets, a
         # Sentry-side outage on these upload calls must degrade telemetry,
         # never block a signed Play upload -- this is symbol upload, not the
         # release artifact itself. Scoped to just these network calls, not
         # the checksum verification in the previous step (round 2 of issue
-        # #7's review). The ProGuard upload is a documented no-op today:
-        # R8/minification is not enabled by this plan (see Scope
-        # Boundaries), so no mapping.txt exists yet; the conditional exists
-        # so enabling R8 later needs no workflow edit.
+        # #7's review). Three kinds of symbols, all three live since issue
+        # #211 turned R8 on in android/app/build.gradle.kts and added
+        # --obfuscate --split-debug-info to the AAB build above:
+        #   1. native ELF libs from the merged-native-libs intermediates,
+        #   2. Dart app.<abi>.symbols ELF debug files from build/symbols
+        #      (gen_snapshot's --save-debugging-info output -- uploading
+        #      these is what deobfuscates Dart frames in release crashes),
+        #   3. the R8 ProGuard mapping (mapping.txt now exists post-build,
+        #      so this previously-dead branch fires on every release).
         continue-on-error: true
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -306,9 +319,21 @@ jobs:
               echo "::warning::No native libs directory found at $native_libs_dir -- skipping native symbol upload."
             fi
 
+            # Issue #211: Dart obfuscation symbols (--split-debug-info output).
+            symbols_dir="build/symbols"
+            if [ -d "$symbols_dir" ]; then
+              ./sentry-cli debug-files upload "$symbols_dir"
+            else
+              echo "::warning::No split-debug-info directory found at $symbols_dir -- obfuscated Dart stack traces will not deobfuscate."
+            fi
+
             mapping="build/app/outputs/mapping/release/mapping.txt"
             if [ -f "$mapping" ]; then
               ./sentry-cli upload-proguard "$mapping"
+            else
+              # A release build with R8 on must always produce this; a miss
+              # means the Gradle config changed out from under this workflow.
+              echo "::warning::No ProGuard mapping found at $mapping -- Kotlin/Java stack traces will not retrace."
             fi
           fi
 
