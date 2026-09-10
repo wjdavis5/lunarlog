@@ -92,6 +92,11 @@ class FakeAuthGateway implements AuthGateway {
 
   Object? nextError;
 
+  /// When set, thrown (once) by the next [updateUser] call instead of the
+  /// shared [nextError] — so a test can fail the Apple full-name write
+  /// without failing the sign-in exchange that precedes it (issue #23).
+  Object? nextUpdateUserError;
+
   AuthResponse? signUpResponse;
 
   /// When set, every sign-in path (password, ID token, code) yields a
@@ -265,6 +270,11 @@ class FakeAuthGateway implements AuthGateway {
   @override
   Future<UserResponse> updateUser(UserAttributes attributes) async {
     updateUserCalls.add(attributes);
+    final updateError = nextUpdateUserError;
+    if (updateError != null) {
+      nextUpdateUserError = null;
+      throw updateError;
+    }
     _maybeThrow();
     emit(AuthChangeEvent.userUpdated);
     return UserResponse.fromJson({'user': session?.user.toJson()});
@@ -1213,6 +1223,25 @@ void main() {
       expect((gateway.updateUserCalls.single.data as Map)['full_name'],
           'Ada Lovelace');
       expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('a failed full-name update after a first Apple sign-in still '
+        'signs in: the session stays valid and no sign-in error surfaces',
+        () async {
+      final service = await started(
+        appleAvailable: true,
+        requestAppleCredential: ({required hashedNonce}) async =>
+            credential(givenName: 'Ada', familyName: 'Lovelace'),
+      );
+      gateway.nextUpdateUserError = Exception('name write failed');
+      final result = await service.signInWithAppleNative();
+      await settle();
+      expect(result, isA<AppleSignInSession>());
+      expect((result as AppleSignInSession).user.id, 'apple');
+      expect(gateway.updateUserCalls, hasLength(1),
+          reason: 'the name write was attempted');
+      expect(service.state, AuthSessionState.signedIn);
+      expect(service.currentUser?.id, 'apple');
     });
 
     test('a later credential without a name does not touch the profile',

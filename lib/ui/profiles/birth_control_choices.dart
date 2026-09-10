@@ -2,16 +2,18 @@
 /// #216's cycle questions, reused by the profile edit dialog for AC
 /// editability).
 ///
-/// Deliberately *not* a domain enum and deliberately stored as free
-/// text: the server column is `profile_modes.birth_control_method`
-/// (free text bounded by `kMaxBirthControlMethodLength`), and #260 owns
-/// the canonical tracked-method vocabulary — this list only feeds the
-/// onboarding/edit selector until that lands. Labels are localized in
-/// the ARB (`birthControl*`), so the list needs the resolved
-/// [AppLocalizations] to render or to map a stored value back to a
-/// choice.
+/// Since Issue #260 the canonical vocabulary lives in the domain
+/// (`lib/domain/birth_control.dart`'s [BirthControlMethod]); the selector
+/// stores those canonical ids into
+/// `profile_modes.birth_control_method` and parses stored values back
+/// through [BirthControlMethod.fromDb]'s total read (so labels written by
+/// the pre-#260 builds keep loading). This list remains the *picker
+/// order*, richer than the six tracked methods: the IUD question
+/// distinguishes hormonal vs copper, which the six-method tracking model
+/// deliberately does not.
 library;
 
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 
 /// The selector's options. [notAnswered] is the "skipped" state and
@@ -54,28 +56,57 @@ String birthControlChoiceLabel(
         BirthControlChoice choice, AppLocalizations l10n) =>
     birthControlChoiceLabels(l10n)[choice]!;
 
-/// What [choice] persists into `birth_control_method`: the localized
-/// label, or null for the not-answered state.
-String? birthControlStoredValue(
-        BirthControlChoice choice, AppLocalizations l10n) =>
-    choice == BirthControlChoice.notAnswered
-        ? null
-        : birthControlChoiceLabel(choice, l10n);
+/// What [choice] persists into `birth_control_method`: the canonical
+/// #260 id ([BirthControlMethod.toDb]), or null for the not-answered
+/// state. Before Issue #260 this returned the localized label — legacy
+/// rows keep parsing via [BirthControlMethod.fromDb]'s legacy table.
+String? birthControlStoredValue(BirthControlChoice choice) {
+  final method = _choiceToMethod[choice];
+  if (method == null) return null; // notAnswered stores nothing.
+  return method.toDb();
+}
 
 /// Reverse mapping for loading a stored value back into the selector.
-/// A value this build's list does not produce (e.g. written by a future
-/// #260 vocabulary) degrades to [BirthControlChoice.notAnswered] rather
-/// than crashing — the dropdown never lies about selecting it, and #260
-/// owns the surface that will represent it properly.
-BirthControlChoice birthControlChoiceForStored(
-    String? stored, AppLocalizations l10n) {
-  if (stored == null) return BirthControlChoice.notAnswered;
-  final labels = birthControlChoiceLabels(l10n);
-  for (final entry in labels.entries) {
-    if (entry.key != BirthControlChoice.notAnswered &&
-        entry.value == stored) {
-      return entry.key;
-    }
-  }
-  return BirthControlChoice.notAnswered;
+/// Parsing goes through [BirthControlMethod.fromDb]'s total read
+/// (canonical ids, pre-#260 labels, legacy ids); a value that still does
+/// not map onto a choice this build offers degrades to
+/// [BirthControlChoice.notAnswered] rather than crashing — the dropdown
+/// never lies about selecting it.
+BirthControlChoice birthControlChoiceForStored(String? stored) {
+  final method = BirthControlMethod.fromDb(stored);
+  return _methodToChoice[method] ?? BirthControlChoice.notAnswered;
 }
+
+/// Selector choice -> canonical method. Both IUD flavors and every
+/// non-tracked answer keep their own member so a stored answer never
+/// degrades on reload.
+const Map<BirthControlChoice, BirthControlMethod?> _choiceToMethod = {
+  BirthControlChoice.notAnswered: null,
+  BirthControlChoice.none: BirthControlMethod.none,
+  BirthControlChoice.pill: BirthControlMethod.pill,
+  BirthControlChoice.hormonalIud: BirthControlMethod.hormonalIud,
+  BirthControlChoice.copperIud: BirthControlMethod.copperIud,
+  BirthControlChoice.implant: BirthControlMethod.implant,
+  BirthControlChoice.injection: BirthControlMethod.shot,
+  BirthControlChoice.ring: BirthControlMethod.ring,
+  BirthControlChoice.patch: BirthControlMethod.patch,
+  BirthControlChoice.condom: BirthControlMethod.condom,
+  BirthControlChoice.other: BirthControlMethod.other,
+};
+
+/// Canonical method -> the selector choice that represents it. The two
+/// IUD flavors map to their own choices; [BirthControlMethod.unknown] has
+/// none (the dropdown cannot offer an option it cannot name).
+const Map<BirthControlMethod?, BirthControlChoice> _methodToChoice = {
+  null: BirthControlChoice.notAnswered,
+  BirthControlMethod.none: BirthControlChoice.none,
+  BirthControlMethod.pill: BirthControlChoice.pill,
+  BirthControlMethod.hormonalIud: BirthControlChoice.hormonalIud,
+  BirthControlMethod.copperIud: BirthControlChoice.copperIud,
+  BirthControlMethod.implant: BirthControlChoice.implant,
+  BirthControlMethod.shot: BirthControlChoice.injection,
+  BirthControlMethod.ring: BirthControlChoice.ring,
+  BirthControlMethod.patch: BirthControlChoice.patch,
+  BirthControlMethod.condom: BirthControlChoice.condom,
+  BirthControlMethod.other: BirthControlChoice.other,
+};

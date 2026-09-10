@@ -19,7 +19,6 @@ import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_record
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
-import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
@@ -288,13 +287,12 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
   ) async {
     final storage = Provider.of<LunarLogStorage?>(context, listen: false);
     if (storage == null) return;
-    final l10n = AppLocalizations.of(context);
     await DriftOnboardingCycleAnswersRecorder(storage).record(
       profileId,
       OnboardingCycleAnswers(
         lifecycleMode: result.lifecycleMode,
         birthControlMethod:
-            birthControlStoredValue(result.birthControlChoice, l10n),
+            birthControlStoredValue(result.birthControlChoice),
       ),
     );
   }

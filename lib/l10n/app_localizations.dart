@@ -1072,6 +1072,24 @@ abstract class AppLocalizations {
   /// **'Other'**
   String get birthControlOther;
 
+  /// Per-day pill-intake value (Issue #260): the dose was taken on time. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'taken', never this label.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken'**
+  String get birthControlIntakeTaken;
+
+  /// Per-day pill-intake value (Issue #260): the dose was taken late. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'late', never this label.
+  ///
+  /// In en, this message translates to:
+  /// **'Late'**
+  String get birthControlIntakeLate;
+
+  /// Per-day pill-intake value (Issue #260): the dose was missed. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'missed', never this label.
+  ///
+  /// In en, this message translates to:
+  /// **'Missed'**
+  String get birthControlIntakeMissed;
+
   /// Day-sheet toggle for the first-class PMS marker (Issue #220) — deliberately not one of the taxonomy chips, mirroring Clue's own separation of the PMS phase from the individual symptoms that may co-occur with it.
   ///
   /// In en, this message translates to:
