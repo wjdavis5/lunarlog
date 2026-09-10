@@ -23,5 +23,16 @@
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
 	<array/>
+	<!-- Issue #129: HTTPS universal-link fallback for invite/claim links.
+	     The human provisioning the hosted domain (issue #384) replaces
+	     __LUNARLOG_LINK_DOMAIN__ with that domain (e.g.
+	     `applinks:links.example.com`) once DNS/hosting exist and the
+	     AASA file in docs/links/ is served. Until then this placeholder
+	     matches nothing and the custom `lunarlog://` scheme below is the
+	     only working link form. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:__LUNARLOG_LINK_DOMAIN__</string>
+	</array>
 </dict>
 </plist>

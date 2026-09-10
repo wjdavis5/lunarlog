@@ -130,6 +130,33 @@ abstract final class AppConfig {
   static const bool hasPasskeys =
       hasSupabase && !kIsWeb && passkeyRelyingPartyId != '';
 
+  /// HTTPS universal-link host for invite/claim links (issue #129): a bare
+  /// domain (e.g. `links.example.com`, no scheme), supplied by
+  /// `LUNARLOG_LINK_DOMAIN`.
+  ///
+  /// Client-safe (it is already public the moment the first link is
+  /// shared), but still a define so unconfigured builds — CI, forks, PR
+  /// builds, and every build today — compile with an empty value and stay
+  /// custom-scheme-only. The hosted domain, DNS, and hosting themselves are
+  /// human work tracked in issue #384; this value only decides which form
+  /// the app's own link builders emit and which form its link filter
+  /// honours. Do **not** "fix" the empty default by adding the define to a
+  /// workflow; turning the feature on is a deliberate, separate release
+  /// action gated on those human prerequisites.
+  ///
+  /// The client never sends this value to the server.
+  static const String linkDomain =
+      String.fromEnvironment('LUNARLOG_LINK_DOMAIN');
+
+  /// True when this build emits and honours the HTTPS universal-link form
+  /// alongside the custom scheme: any non-empty [linkDomain].
+  ///
+  /// Kept as a `const` expression (Dart forbids function calls in constant
+  /// initializers) so unconfigured code paths tree-shake;
+  /// [computeHasUniversalLinks] is the same rule as a testable function,
+  /// and `test/config_test.dart` asserts the two agree.
+  static const bool hasUniversalLinks = linkDomain != '';
+
   /// Firebase project id, shared by both platforms (Issue #5, U7).
   static const String fcmProjectId = String.fromEnvironment('FCM_PROJECT_ID');
 
@@ -276,8 +303,15 @@ bool computeHasPasskeys({
   return true;
 }
 
-/// Pure decision behind [AppConfig.hasPush] (Issue #5, U7).
+/// Pure decision behind [AppConfig.hasUniversalLinks] (issue #129).
 ///
+/// Any non-empty link domain opts the build into the HTTPS universal-link
+/// form; empty keeps the custom scheme only. Exposed as a function so the
+/// rule is unit-testable even though the production input is a
+/// compile-time constant.
+bool computeHasUniversalLinks(String linkDomain) => linkDomain.isNotEmpty;
+
+/// Pure decision behind [AppConfig.hasPush] (Issue #5, U7).///
 /// Requires [hasSupabase], a non-web platform, and every `FCM_*` value
 /// non-empty. Exposed as a function so the rule is unit-testable even
 /// though the production inputs are compile-time constants.

@@ -259,6 +259,16 @@ void main() {
     });
   });
 
+  group('computeHasUniversalLinks (issue #129)', () {
+    test('is false for an empty link domain', () {
+      expect(computeHasUniversalLinks(''), isFalse);
+    });
+
+    test('is true for any non-empty link domain', () {
+      expect(computeHasUniversalLinks('links.example.com'), isTrue);
+    });
+  });
+
   group('computeHasPush', () {
     Map<String, String> fullSet() => {
           'projectId': 'proj-1',
@@ -315,6 +325,10 @@ void main() {
       expect(AppConfig.hasGoogle, isFalse);
       expect(AppConfig.passkeyRelyingPartyId, isEmpty);
       expect(AppConfig.hasPasskeys, isFalse);
+      // Issue #129: no LUNARLOG_LINK_DOMAIN in this test run, so the build
+      // stays custom-scheme-only (AC5).
+      expect(AppConfig.linkDomain, isEmpty);
+      expect(AppConfig.hasUniversalLinks, isFalse);
       expect(AppConfig.fcmProjectId, isEmpty);
       expect(AppConfig.fcmSenderId, isEmpty);
       expect(AppConfig.fcmAndroidApiKey, isEmpty);
@@ -390,6 +404,13 @@ void main() {
           iosApiKey: AppConfig.fcmIosApiKey,
           iosAppId: AppConfig.fcmIosAppId,
         ),
+      );
+    });
+
+    test('hasUniversalLinks agrees with the pure function', () {
+      expect(
+        AppConfig.hasUniversalLinks,
+        computeHasUniversalLinks(AppConfig.linkDomain),
       );
     });
   });

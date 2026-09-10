@@ -38,7 +38,9 @@ class GeneratedPredictionInvite {
   /// SHA-256 hex digest of [rawToken] — the only form the server holds.
   final String tokenHash;
 
-  /// Deep link to redeem: `lunarlog://invite?code=<rawToken>&kind=prediction`.
+  /// Deep link to redeem: `lunarlog://invite?code=<rawToken>&kind=prediction`,
+  /// or the `https://<domain>/invite?...` universal-link form when a hosted
+  /// domain is configured (issue #129).
   final Uri inviteUri;
 
   final DateTime expiresAt;

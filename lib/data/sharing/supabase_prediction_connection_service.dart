@@ -19,6 +19,8 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config.dart';
+import '../../domain/sharing/invite_links.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../domain/sharing/prediction_projection.dart';
 
@@ -63,18 +65,18 @@ class SupabasePredictionConnectionService
       final id = res['id'] as String;
       final expiresAt = DateTime.parse(res['expires_at'] as String).toUtc();
 
+      // Issue #129: the HTTPS universal-link form when a hosted domain is
+      // configured, the custom scheme otherwise (unchanged default). The
+      // kind=prediction query rides the same invite host either way.
       return GeneratedPredictionInvite(
         connectionId: id,
         profileId: profileId,
         rawToken: rawToken,
         tokenHash: tokenHash,
-        inviteUri: Uri(
-          scheme: 'lunarlog',
-          host: 'invite',
-          queryParameters: {
-            'code': rawToken,
-            'kind': 'prediction',
-          },
+        inviteUri: buildInviteLink(
+          code: rawToken,
+          kind: kInviteLinkKindPrediction,
+          linkDomain: AppConfig.linkDomain,
         ),
         expiresAt: expiresAt,
       );

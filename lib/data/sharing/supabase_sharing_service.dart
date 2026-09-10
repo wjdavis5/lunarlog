@@ -9,7 +9,9 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config.dart';
 import '../../domain/models/profile_guardian.dart';
+import '../../domain/sharing/invite_links.dart';
 import '../../domain/sharing/sharing_service.dart';
 import '../../domain/sync/sync_engine.dart';
 
@@ -56,13 +58,12 @@ class SupabaseSharingService implements SharingService {
       final expiresAtStr = res['expires_at'] as String;
       final expiresAt = DateTime.parse(expiresAtStr).toUtc();
 
-      final inviteUri = Uri(
-        scheme: 'lunarlog',
-        host: 'invite',
-        queryParameters: {
-          'code': rawToken,
-          'profile': profileId,
-        },
+      // Issue #129: the HTTPS universal-link form when a hosted domain is
+      // configured, the custom scheme otherwise (unchanged default).
+      final inviteUri = buildInviteLink(
+        code: rawToken,
+        profileId: profileId,
+        linkDomain: AppConfig.linkDomain,
       );
 
       return GeneratedInvite(

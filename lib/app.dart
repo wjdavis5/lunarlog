@@ -144,7 +144,8 @@ class LunarLogApp extends StatefulWidget {
   /// without push.
   final ReminderWindowUpsert? reminderWindowUpsert;
 
-  /// `lunarlog://invite?code=...` links (U8; R9/F2), filtered by main.dart
+  /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
+  /// `https://<domain>/invite?code=...` (issue #129) — filtered by main.dart
   /// (or injected by tests). When present and a sharing service exists,
   /// an incoming link presents [AcceptInviteSheet] - after sign-in if the
   /// recipient is not authenticated yet (the code is latched across the

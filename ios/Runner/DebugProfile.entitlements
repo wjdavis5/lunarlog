@@ -24,5 +24,15 @@
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
 	<array/>
+	<!-- Issue #129: HTTPS universal-link fallback for invite/claim links.
+	     Same placeholder as Runner.entitlements (the Release
+	     configuration's file): the human provisioning the hosted domain
+	     (issue #384) replaces __LUNARLOG_LINK_DOMAIN__ in both files at
+	     once, so Debug/Profile device builds and the App Store build
+	     associate the same domain. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:__LUNARLOG_LINK_DOMAIN__</string>
+	</array>
 </dict>
 </plist>
