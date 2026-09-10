@@ -87,7 +87,7 @@ trigger, and the day-sheet graded input.
 
 ## Implementation units
 
-- U1 `supabase/migrations/20260909220000_high_severity_intensity.sql` — the
+- U1 `supabase/migrations/20260910000000_high_severity_intensity.sql` — the
   predicate replacement + observations trigger/WHEN clauses + comments.
 - U2 `supabase/tests/notification_outbox_test.sql` — Groups F/G: the four
   AC cases (neither / high-intensity-only / heavy-flow-only / both), legacy
