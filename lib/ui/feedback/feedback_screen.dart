@@ -13,8 +13,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
-import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart';
+import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/feedback/attachment_field.dart';
@@ -41,7 +40,7 @@ class FeedbackScreen extends StatefulWidget {
   @visibleForTesting
   final DeviceDiagnosticsCollector? diagnosticsCollector;
 
-  /// Test seam: defaults to [ImagePickerAttachmentSource] (U7).
+  /// Test seam: defaults to the tree-provided [AttachmentSource] (U7).
   @visibleForTesting
   final AttachmentSource? attachmentSource;
 
@@ -77,9 +76,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     final service = context.read<FeedbackService>();
     _controller = FeedbackController(
       feedbackService: service,
-      diagnosticsCollector: widget.diagnosticsCollector ?? DeviceDiagnosticsCollector(),
+      diagnosticsCollector: widget.diagnosticsCollector ??
+          context.read<DeviceDiagnosticsCollector>(),
     )..addListener(_onControllerChanged);
-    _attachmentSource = widget.attachmentSource ?? ImagePickerAttachmentSource();
+    _attachmentSource =
+        widget.attachmentSource ?? context.read<AttachmentSource>();
     _replyEmail.text = context.read<AuthController?>()?.currentUser?.email ?? '';
     unawaited(_controller.loadDiagnostics());
   }

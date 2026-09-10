@@ -15,11 +15,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
+    as data;
+import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
+    as data;
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -29,7 +34,10 @@ import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -182,7 +190,21 @@ List<SingleChildWidget> loggingProviders({
   ),
   if (authController != null)
     ChangeNotifierProvider<AuthController>.value(value: authController),
-  if (storage != null) Provider<LunarLogStorage>.value(value: storage),
+  // `ProfileDetailScreen` reads these domain-typed seams instead of the raw
+  // storage object (mirrors `lib/app.dart`); a local-only tree (storage
+  // null) provides none of them and the screen renders without the
+  // guardians/activity/care affordances, exactly as before.
+  if (storage != null) ...[
+    Provider<ProfileGuardiansRepository>.value(
+      value: data.ProfileGuardiansRepository(storage),
+    ),
+    Provider<ActivityFeedRepository>.value(
+      value: data.ActivityFeedRepository(storage),
+    ),
+    Provider<CareContentRepository>.value(
+      value: DriftCareContentRepository(storage),
+    ),
+  ],
 ];
 
 Future<Harness> pumpLogging(

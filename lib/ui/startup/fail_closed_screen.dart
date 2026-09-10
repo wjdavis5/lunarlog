@@ -8,7 +8,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lunarlog/data/db/errors.dart';
+import 'package:lunarlog/domain/models/database_error.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 
 class FailClosedApp extends StatelessWidget {

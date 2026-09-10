@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -18,7 +19,9 @@ import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../support/fake_attachment_source.dart';
 import '../support/fake_auth_service.dart';
+import '../support/fake_device_diagnostics_collector.dart';
 import '../support/fake_feedback_service.dart';
 
 /// A [ProfilesRepository] whose [watch] emits [profiles] immediately on
@@ -334,6 +337,11 @@ void main() {
           providers: [
             Provider<SettingsStore>.value(value: settingsStore),
             Provider<FeedbackService>.value(value: FakeFeedbackService()),
+            // `FeedbackScreen` (pushed below) reads these from the tree
+            // rather than constructing plugin-backed instances inline.
+            Provider<DeviceDiagnosticsCollector>.value(
+                value: FakeDeviceDiagnosticsCollector()),
+            Provider<AttachmentSource>.value(value: FakeAttachmentSource()),
             ChangeNotifierProvider<AuthController>.value(value: signedInAuth()),
           ],
           // Providers must sit above MaterialApp/Navigator, not inside

@@ -17,7 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart';
-import 'package:lunarlog/data/gate/app_gate.dart';
+import 'package:lunarlog/domain/gate/app_gate.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/app.dart';

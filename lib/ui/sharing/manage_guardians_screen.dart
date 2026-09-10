@@ -18,8 +18,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../data/repositories/activity_feed_repository.dart';
-import '../../data/repositories/profile_guardians_repository.dart';
+import '../../domain/repositories/activity_feed_repository.dart';
+import '../../domain/repositories/profile_guardians_repository.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/notifications/notification_preferences_service.dart';

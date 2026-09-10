@@ -12,6 +12,8 @@ import 'dart:ui' show Locale, PlatformDispatcher;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart'
+    as domain;
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/scrub.dart';
@@ -55,7 +57,8 @@ String osVersionFrom(BaseDeviceInfo info) {
   return kUnknownDiagnosticValue;
 }
 
-class DeviceDiagnosticsCollector {
+class DeviceDiagnosticsCollector
+    implements domain.DeviceDiagnosticsCollector {
   DeviceDiagnosticsCollector({
     this.packageInfoReader = _defaultPackageInfoReader,
     this.deviceInfoReader = _defaultDeviceInfoReader,
@@ -74,6 +77,7 @@ class DeviceDiagnosticsCollector {
   /// Collects the current diagnostics payload. Never throws: a plugin
   /// failure is caught, logged as its type only, and yields an all-unknown
   /// device/app payload rather than failing the caller's submission.
+  @override
   Future<DeviceDiagnostics> collect() async {
     var osVersion = kUnknownDiagnosticValue;
     var model = kUnknownDiagnosticValue;

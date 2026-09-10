@@ -1,6 +1,7 @@
 /// Pure decision logic for issue #168's "Turn on reminders" affordance.
-/// Deliberately split out of `lib/data/notifications/notification_scheduler.dart`
-/// (a platform seam excluded from the coverage/CRAP gate — see
+/// Deliberately split out of
+/// `lib/data/notifications/notification_scheduler.dart` (a platform seam
+/// excluded from the coverage/CRAP gate — see
 /// `tool/quality/exclusions.dart`) so this branch stays directly
 /// unit-tested rather than riding along, untested, inside the wrapper.
 library;

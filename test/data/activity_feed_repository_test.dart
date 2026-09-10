@@ -14,6 +14,7 @@ import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
+import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 
 void main() {

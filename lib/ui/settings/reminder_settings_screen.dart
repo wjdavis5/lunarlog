@@ -25,11 +25,11 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart'
-    show birthControlReminderKindFor;
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/birth_control_reminder_kind.dart'
+    show birthControlReminderKindFor;
 import 'package:lunarlog/domain/notifications/notification_preferences.dart'
     show QuietHours;
 import 'package:lunarlog/domain/notifications/reminder_config.dart';

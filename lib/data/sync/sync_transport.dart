@@ -10,6 +10,8 @@ library;
 
 import 'package:meta/meta.dart';
 
+import 'package:lunarlog/domain/sync/sync_batch_limits.dart';
+
 import 'remote_rows.dart';
 import 'row_codec.dart' show JsonRow;
 
@@ -64,8 +66,9 @@ class PushBatch {
     }
   }
 
-  /// The RPC's per-array limit (KTD3).
-  static const int maxRows = 500;
+  /// The RPC's per-array limit (KTD3). Linked to the domain read model so
+  /// the two cannot drift.
+  static const int maxRows = SyncBatchLimits.maxRowsPerTable;
 
   final List<JsonRow> profiles;
   final List<JsonRow> dayEntries;

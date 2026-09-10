@@ -30,22 +30,24 @@ library;
 
 import 'dart:async';
 
+import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart'
+    as domain;
+import 'package:lunarlog/domain/health/health_flow_write_service.dart'
+    as service;
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
-
-import 'health_flow_write_service.dart';
 
 // Named required parameters cannot be initializing formals; the private
 // finals below are assigned through the constructor's initializer list
 // (the prediction-projection publisher's declared pattern).
 // ignore_for_file: prefer_initializing_formals
 
-class HealthFlowWriteCoordinator {
+class HealthFlowWriteCoordinator implements domain.HealthFlowWriteCoordinator {
   HealthFlowWriteCoordinator({
     required HealthSyncBinding binding,
     required DayEntriesRepository dayEntries,
-    required HealthFlowWriteService service,
+    required service.HealthFlowWriteService service,
     this.debounce = const Duration(milliseconds: 500),
   })  : _binding = binding,
         _dayEntries = dayEntries,
@@ -53,7 +55,7 @@ class HealthFlowWriteCoordinator {
 
   final HealthSyncBinding _binding;
   final DayEntriesRepository _dayEntries;
-  final HealthFlowWriteService _service;
+  final service.HealthFlowWriteService _service;
   final Duration debounce;
 
   StreamSubscription<String?>? _boundSub;
@@ -62,6 +64,7 @@ class HealthFlowWriteCoordinator {
   String? _lastBoundId;
   bool _disposed = false;
 
+  @override
   void start() {
     if (_disposed) return;
     _boundSub = _binding.watchBoundProfileId().listen(_onBoundProfileChanged);
@@ -121,6 +124,7 @@ class HealthFlowWriteCoordinator {
     }
   }
 
+  @override
   Future<void> dispose() async {
     _disposed = true;
     await _boundSub?.cancel();

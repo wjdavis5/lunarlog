@@ -20,12 +20,13 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/db/storage.dart' show LunarLogStorage;
+import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -69,6 +70,12 @@ class Harness {
     settingsStore: settings,
   );
 
+  /// The onboarding-answers seam `FirstRunScreen` reads from the tree
+  /// (mirrors `lib/app.dart`); the injected `todayProvider` keeps the
+  /// `mode_started_on` stamp deterministic.
+  late final OnboardingCycleAnswersRecorder recorder =
+      DriftOnboardingCycleAnswersRecorder(db.storage, todayProvider: () => kToday);
+
   Future<void> pump({
     bool isWebBuild = false,
     AuthController? auth,
@@ -82,7 +89,7 @@ class Harness {
         providers: [
           ChangeNotifierProvider<ProfileController>.value(value: profiles),
           Provider<SettingsStore>.value(value: settings),
-          Provider<LunarLogStorage>.value(value: db.storage),
+          Provider<OnboardingCycleAnswersRecorder>.value(value: recorder),
           if (auth != null)
             ChangeNotifierProvider<AuthController>.value(value: auth),
           if (sync != null)

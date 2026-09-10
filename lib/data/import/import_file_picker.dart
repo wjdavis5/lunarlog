@@ -20,11 +20,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
-
-/// Reads the operator-picked file's bytes, or null when they cancel the
-/// picker. Production wiring is [pickImportFile]; tests inject a fake that
-/// returns canned bytes without touching `file_picker`.
-typedef ImportFileReader = Future<Uint8List?> Function();
+import 'package:lunarlog/domain/import/import_file_reader.dart' as domain;
 
 /// Opens the platform file picker scoped to `.json` files and returns the
 /// picked file's bytes. [PlatformFile.readAsBytes] is the package's own
@@ -37,4 +33,14 @@ Future<Uint8List?> pickImportFile() async {
   );
   if (file == null) return null;
   return file.readAsBytes();
+}
+
+/// The domain `ImportFileReader` contract's production implementation,
+/// backed by [pickImportFile]. The composition root provides this so `lib/ui`
+/// can depend on the domain contract without naming the `file_picker` plugin.
+class PickImportFileReader implements domain.ImportFileReader {
+  const PickImportFileReader();
+
+  @override
+  Future<Uint8List?> read() => pickImportFile();
 }

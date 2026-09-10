@@ -14,40 +14,14 @@ import 'dart:async';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
+import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart'
+    as contract;
 
-/// Everything one render of the feed needs, derived at emission time.
-class ActivityFeedSnapshot {
-  const ActivityFeedSnapshot({
-    required this.items,
-    required this.guardians,
-    required this.lastSeen,
-    required this.isShared,
-  });
-
-  /// Newest first ([buildActivityFeed]).
-  final List<ActivityItem> items;
-
-  /// This profile's guardian rows, any status — the source for actor-name
-  /// resolution and the viewer read-only gate.
-  final List<domain.ProfileGuardian> guardians;
-
-  /// The device-local last-opened stamp, or null when never opened.
-  final DateTime? lastSeen;
-
-  /// Whether two or more accepted guardians exist (the feed vs. the
-  /// single-guardian quiet state).
-  final bool isShared;
-
-  /// Whether any row is newer than [lastSeen] — drives the entry-point
-  /// "new" dot. Null [lastSeen] (never opened) is never "new".
-  bool get hasNewItems =>
-      lastSeen != null && items.any((item) => isActivityNew(item, lastSeen));
-}
-
-class ActivityFeedRepository {
+class ActivityFeedRepository implements contract.ActivityFeedRepository {
   const ActivityFeedRepository(this._storage);
 
   final LunarLogStorage _storage;
@@ -58,6 +32,7 @@ class ActivityFeedRepository {
   /// and the UI shows its waiting state. Because the underlying Drift
   /// streams re-emit on every write, a change another guardian pushed and
   /// this device synced appears here without any restart (issue #124 AC3).
+  @override
   Stream<ActivityFeedSnapshot> watch(String profileId) {
     late StreamController<ActivityFeedSnapshot> controller;
     final subscriptions = <StreamSubscription<Object?>>[];
@@ -132,6 +107,7 @@ class ActivityFeedRepository {
   /// Stamps this device's "feed opened" instant for [profileId] (R8). The
   /// caller snapshots the *previous* value for its in-visit "New" chips
   /// before this overwrites it.
+  @override
   Future<void> markSeen(String profileId) => _storage.setSetting(
         key: activityLastSeenKey(profileId),
         value: DateTime.now().toUtc().toIso8601String(),

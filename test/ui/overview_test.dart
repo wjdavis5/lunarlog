@@ -14,9 +14,14 @@ import 'package:lunarlog/app_lifecycle.dart'
     show RequestNotificationPermissionCallback;
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
+    as data;
+import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
+    as data;
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -28,7 +33,10 @@ import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -206,7 +214,16 @@ class Harness {
           Provider<RequestNotificationPermissionCallback>.value(
             value: requestPermission,
           ),
-        if (withStorage) Provider<LunarLogStorage>.value(value: db.storage),
+        // `ProfileDetailScreen` reads these domain-typed seams instead of
+        // the raw storage object (mirrors `lib/app.dart`).
+        if (withStorage) ...[
+          Provider<ProfileGuardiansRepository>.value(
+              value: data.ProfileGuardiansRepository(db.storage)),
+          Provider<ActivityFeedRepository>.value(
+              value: data.ActivityFeedRepository(db.storage)),
+          Provider<CareContentRepository>.value(
+              value: DriftCareContentRepository(db.storage)),
+        ],
         if (authController != null)
           ChangeNotifierProvider<AuthController>.value(value: authController),
         ChangeNotifierProvider(

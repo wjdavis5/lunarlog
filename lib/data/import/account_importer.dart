@@ -17,6 +17,9 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/ulid.dart' show isValidUlid;
 import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
+import 'package:lunarlog/domain/import/account_import_coordinator.dart'
+    as coordinator;
+import 'package:lunarlog/domain/import/account_importer.dart' as importer;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
@@ -36,7 +39,7 @@ typedef GuardiansForProfileFn = Future<List<ProfileGuardian>> Function(
 
 /// Applies one already-built [ImportPlan] (Issue #140). See this file's
 /// own doc comment for the transactional guarantee.
-class AccountImporter {
+class AccountImporter implements importer.AccountImporter {
   const AccountImporter(this._storage);
 
   final LunarLogStorage _storage;
@@ -45,6 +48,7 @@ class AccountImporter {
   /// summary (accurate because the transaction is all-or-nothing: either
   /// every planned write lands, matching the summary exactly, or none of
   /// them do and this throws).
+  @override
   Future<ImportPlanSummary> apply(ImportPlan plan) async {
     await _storage.db.transaction(() async {
       for (final profilePlan in plan.profiles) {
@@ -215,7 +219,8 @@ class AccountImporter {
 /// The glue between a UI caller and [AccountImporter]/`planImport`:
 /// reads just enough of the current local store to plan against, then
 /// applies the plan. See this file's own doc comment.
-class AccountImportCoordinator {
+class AccountImportCoordinator
+    implements coordinator.AccountImportCoordinator {
   const AccountImportCoordinator({
     required this.profilesRepository,
     required this.dayEntriesRepository,
@@ -223,6 +228,7 @@ class AccountImportCoordinator {
     required this.storage,
     this.guardiansForProfile,
     this.currentUserId,
+    this.currentUserIdProvider,
   });
 
   final ProfilesRepository profilesRepository;
@@ -237,6 +243,13 @@ class AccountImportCoordinator {
 
   final String? currentUserId;
 
+  /// Resolves the acting user's id at call time, taking precedence over
+  /// [currentUserId] when present. A single coordinator instance provided
+  /// from the composition root uses this so an import that happens after a
+  /// later sign-in still gates on the signed-in user (the UI no longer
+  /// builds a fresh coordinator per pick).
+  final String? Function()? currentUserIdProvider;
+
   /// Builds the plan for [document] against the local store's current
   /// state (Issue #140). Only fetches entries/observations/guardians for
   /// profile ids the document and the local store both hold — a profile
@@ -248,7 +261,19 @@ class AccountImportCoordinator {
   /// soft-deleted profile the account import file is restoring, which must
   /// plan as `matched` (with `restoredFromTombstone`), not `created`; see
   /// [planImport]'s and `ProfilePlan.restoredFromTombstone`'s doc comments.
+  ///
+  /// The acting user id: a live [currentUserIdProvider] wins over the
+  /// captured [currentUserId], so one coordinator can be reused across
+  /// sign-ins. Extracted from [buildPlan] to keep its complexity down.
+  String? _resolveCurrentUserId() {
+    final provider = currentUserIdProvider;
+    if (provider != null) return provider();
+    return currentUserId;
+  }
+
+  @override
   Future<ImportPlan> buildPlan(AccountImportDocument document) async {
+    final currentUserId = _resolveCurrentUserId();
     final existingProfiles = await profilesRepository.list();
     final existingIds = {for (final p in existingProfiles) p.id};
     final matchedIds = <String>{};
@@ -303,6 +328,7 @@ class AccountImportCoordinator {
   }
 
   /// Applies [plan] via [AccountImporter].
+  @override
   Future<ImportPlanSummary> apply(ImportPlan plan) =>
       AccountImporter(storage).apply(plan);
 }

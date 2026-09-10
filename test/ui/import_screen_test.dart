@@ -15,14 +15,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/import/account_importer.dart';
-import 'package:lunarlog/data/import/import_file_picker.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
+import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/settings/import_screen.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
+
+/// An [ImportFileReader] over a test-supplied closure, so every pick step
+/// drives canned bytes (or a throw) without touching `file_picker`.
+class _FakeReader implements ImportFileReader {
+  const _FakeReader(this._read);
+
+  final Future<Uint8List?> Function() _read;
+
+  @override
+  Future<Uint8List?> read() => _read();
+}
 
 class _UnusedProfilesRepository implements ProfilesRepository {
   @override
@@ -158,7 +169,7 @@ void main() {
 
   group('pick step', () {
     testWidgets('renders with no error initially', (tester) async {
-      await _pump(tester, pickFile: () async => null);
+      await _pump(tester, pickFile: _FakeReader(() async => null));
       expect(key('import-pick-button'), findsOneWidget);
       expect(key('import-pick-error'), findsNothing);
     });
@@ -166,10 +177,10 @@ void main() {
     testWidgets('cancelling the picker (null bytes) stays on the pick step',
         (tester) async {
       var calls = 0;
-      await _pump(tester, pickFile: () async {
+      await _pump(tester, pickFile: _FakeReader(() async {
         calls++;
         return null;
-      });
+      }));
       await tester.tap(key('import-pick-button'));
       await tester.pumpAndSettle();
       expect(calls, 1);
@@ -182,7 +193,8 @@ void main() {
       var buildPlanCalls = 0;
       await _pump(
         tester,
-        pickFile: () async => Uint8List.fromList(utf8.encode('not json')),
+        pickFile:
+            _FakeReader(() async => Uint8List.fromList(utf8.encode('not json'))),
         coordinator: _FakeCoordinator(storage, planResult: _plan()),
       );
       await tester.tap(key('import-pick-button'));
@@ -196,7 +208,7 @@ void main() {
         (tester) async {
       await _pump(
         tester,
-        pickFile: () async => _validBytes(),
+        pickFile: _FakeReader(() async => _validBytes()),
         coordinator: _FakeCoordinator(storage, planError: StateError('db locked')),
       );
       await tester.tap(key('import-pick-button'));
@@ -215,7 +227,7 @@ void main() {
         'error instead of an unhandled exception', (tester) async {
       await _pump(
         tester,
-        pickFile: () async => throw StateError('picker crashed'),
+        pickFile: _FakeReader(() async => throw StateError('picker crashed')),
       );
       await tester.tap(key('import-pick-button'));
       await tester.pumpAndSettle();
@@ -236,7 +248,7 @@ void main() {
         'plan breakdown', (tester) async {
       await _pump(
         tester,
-        pickFile: () async => _validBytes(),
+        pickFile: _FakeReader(() async => _validBytes()),
         coordinator: _FakeCoordinator(storage, planResult: _plan()),
       );
       await tester.tap(key('import-pick-button'));
@@ -251,7 +263,7 @@ void main() {
     testWidgets('skipped profiles render their reasons', (tester) async {
       await _pump(
         tester,
-        pickFile: () async => _validBytes(),
+        pickFile: _FakeReader(() async => _validBytes()),
         coordinator: _FakeCoordinator(
           storage,
           planResult: _plan(skipped: const [
@@ -280,7 +292,7 @@ void main() {
       ]);
       await _pump(
         tester,
-        pickFile: () async => _validBytes(),
+        pickFile: _FakeReader(() async => _validBytes()),
         coordinator: _FakeCoordinator(storage, planResult: plan),
       );
       await tester.tap(key('import-pick-button'));
@@ -294,7 +306,7 @@ void main() {
         (tester) async {
       await _pump(
         tester,
-        pickFile: () async => _validBytes(),
+        pickFile: _FakeReader(() async => _validBytes()),
         coordinator: _FakeCoordinator(storage, planResult: _plan()),
       );
       await tester.tap(key('import-pick-button'));
@@ -306,7 +318,7 @@ void main() {
     testWidgets('Cancel returns to the pick step', (tester) async {
       await _pump(
         tester,
-        pickFile: () async => _validBytes(),
+        pickFile: _FakeReader(() async => _validBytes()),
         coordinator: _FakeCoordinator(storage, planResult: _plan()),
       );
       await tester.tap(key('import-pick-button'));
@@ -323,7 +335,7 @@ void main() {
         'preview step', (tester) async {
       await _pump(
         tester,
-        pickFile: () async => _validBytes(),
+        pickFile: _FakeReader(() async => _validBytes()),
         coordinator: _FakeCoordinator(
           storage,
           planResult: _plan(),
@@ -366,7 +378,7 @@ void main() {
         home: Navigator(
           onGenerateRoute: (settings) => MaterialPageRoute(
             builder: (context) => ImportScreen(
-              pickFile: () async => _validBytes(),
+              pickFile: _FakeReader(() async => _validBytes()),
               coordinator: _FakeCoordinator(
                 storage,
                 planResult: _plan(),

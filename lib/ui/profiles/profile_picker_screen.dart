@@ -14,10 +14,9 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
@@ -57,10 +56,11 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
   @override
   void initState() {
     super.initState();
-    final storage = Provider.of<LunarLogStorage?>(context, listen: false);
-    if (storage != null) {
+    final guardiansRepository =
+        Provider.of<ProfileGuardiansRepository?>(context, listen: false);
+    if (guardiansRepository != null) {
       final controller = SharingOverviewController(
-        storage: storage,
+        guardiansRepository: guardiansRepository,
         currentUserId: Provider.of<AuthController?>(context, listen: false)
             ?.currentUserId,
       );
@@ -285,9 +285,10 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     String profileId,
     ProfileEditResult result,
   ) async {
-    final storage = Provider.of<LunarLogStorage?>(context, listen: false);
-    if (storage == null) return;
-    await DriftOnboardingCycleAnswersRecorder(storage).record(
+    final recorder =
+        Provider.of<OnboardingCycleAnswersRecorder?>(context, listen: false);
+    if (recorder == null) return;
+    await recorder.record(
       profileId,
       OnboardingCycleAnswers(
         lifecycleMode: result.lifecycleMode,

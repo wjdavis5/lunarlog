@@ -92,7 +92,7 @@ Future<void> deleteLocalDatabase() async => deleteRelocationArtifacts(
 /// — which creates a fresh file that needs the same protection reapplied).
 ///
 /// **Why `Complete`, not `CompleteUntilFirstUserAuthentication`:** the gate
-/// (`lib/data/gate/`) already keeps the database closed until the operator
+/// (`lib/startup/gate/`) already keeps the database closed until the operator
 /// unlocks the app (AE4) — nothing opens or writes to this file before that
 /// happens on any code path today, including sync (`SupabaseSyncEngine`
 /// only starts once the database is open). So there is no existing path

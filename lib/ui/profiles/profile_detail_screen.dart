@@ -17,13 +17,12 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
-import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -94,34 +93,34 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<ProfileController>();
-    final storage = context.read<LunarLogStorage?>();
-    final guardiansRepository =
-        storage == null ? null : ProfileGuardiansRepository(storage);
+    final guardiansRepository = context.read<ProfileGuardiansRepository?>();
+    final activityRepository = context.read<ActivityFeedRepository?>();
+    final careContentRepository = context.read<CareContentRepository?>();
     return Scaffold(
       appBar: AppBar(
         title: Text(
             '${widget.profile.displayName}${widget.readOnly ? ' (archived)' : ''}'),
         actions: [
           // Issue #124: the per-profile Activity feed, reachable from the
-          // profile itself. Hidden when no storage is wired (local-only
-          // test trees), exactly like the guardians repository above.
-          if (storage != null)
+          // profile itself. Hidden when no feed repository is wired
+          // (local-only test trees), exactly like the guardians repository
+          // above.
+          if (activityRepository != null)
             ActivityFeedButton(
               profile: widget.profile,
-              repository: ActivityFeedRepository(storage),
+              repository: activityRepository,
               readOnly: widget.readOnly,
               todayProvider: widget.todayProvider,
               timezoneProvider: widget.timezoneProvider,
             ),
           // Issue #128: the profile's shared care notes and visit-prep
-          // checklist, reachable from the profile itself. Same storage
+          // checklist, reachable from the profile itself. Same repository
           // gating as the Activity feed button above.
-          if (storage != null)
+          if (careContentRepository != null && guardiansRepository != null)
             CareNotesButton(
               profile: widget.profile,
-              repository: DriftCareContentRepository(storage),
-              guardiansRepository:
-                  guardiansRepository ?? ProfileGuardiansRepository(storage),
+              repository: careContentRepository,
+              guardiansRepository: guardiansRepository,
               readOnly: widget.readOnly,
             ),
           if (widget.readOnly)

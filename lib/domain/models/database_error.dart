@@ -1,8 +1,9 @@
-/// Typed fail-closed errors for the data layer.
+/// Typed fail-closed database-open error, owned by the domain so the UI can
+/// pattern-match it without importing `lib/data`.
 ///
-/// These are deliberately separate types (not [Exception] subclasses of a
-/// common base) so callers cannot accidentally catch-and-continue: every one
-/// of these means "stop; do not use the database".
+/// Deliberately a standalone type (not an [Exception] subclass of a common
+/// base) so callers cannot accidentally catch-and-continue: it means "stop;
+/// do not use the database".
 library;
 
 /// Opening or migrating an *existing* database file failed. The file is left

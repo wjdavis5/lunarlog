@@ -6,8 +6,7 @@
 /// from exactly one place instead of two copies drifting apart.
 library;
 
-import '../../data/export/account_export_writer.dart';
-import '../../domain/export/account_export_remote_source.dart';
+import '../../domain/export/account_export_writer.dart';
 import '../../domain/models/care_note.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/observation.dart';
@@ -37,16 +36,17 @@ typedef ExportAccountCollaborator = Future<void> Function({
   required String appVersion,
 });
 
-/// Builds the default collaborator around whatever [AccountExportRemoteSource]
-/// is available (Issue #248; `null` for an unconfigured build - see
-/// `AccountExportWriter`'s own doc). A factory, not a bare top-level
-/// function, so a caller can read the remote source from `context` at call
-/// time. Issue #240 widened [ExportAccountCollaborator] with an optional
-/// `observationsByProfile` parameter (default `const {}`), so existing test
-/// doubles only need that parameter declared, not necessarily used. Issue
-/// #128 widens it the same way with `careNotesByProfile`/`visitPrepByProfile`.
+/// Builds the default collaborator around the tree-provided
+/// [AccountExportWriter] (Issue #248's remote source is already baked into
+/// that writer at construction - see `AccountExportWriter`'s own doc). A
+/// factory, not a bare top-level function, so a caller can read the writer
+/// from `context` at call time. Issue #240 widened
+/// [ExportAccountCollaborator] with an optional `observationsByProfile`
+/// parameter (default `const {}`), so existing test doubles only need that
+/// parameter declared, not necessarily used. Issue #128 widens it the same
+/// way with `careNotesByProfile`/`visitPrepByProfile`.
 ExportAccountCollaborator defaultExportAccountCollaborator(
-  AccountExportRemoteSource? remoteSource,
+  AccountExportWriter writer,
 ) =>
     ({
       required List<Profile> profiles,
@@ -56,7 +56,7 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
       Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
       required String appVersion,
     }) =>
-        AccountExportWriter(remoteSource: remoteSource).exportAndShare(
+        writer.exportAndShare(
           profiles: profiles,
           entriesByProfile: entriesByProfile,
           observationsByProfile: observationsByProfile,

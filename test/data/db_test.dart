@@ -5,7 +5,6 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/db_factory.dart';
-import 'package:lunarlog/data/db/errors.dart';
 import 'package:lunarlog/data/db/native_db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
@@ -13,6 +12,7 @@ import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/data/sync/row_codec.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/models/database_error.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 

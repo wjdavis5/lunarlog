@@ -40,7 +40,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
-import 'package:lunarlog/domain/export/account_export_remote_source.dart';
+import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/observation.dart';
@@ -239,10 +239,10 @@ class _YourDataSectionState extends State<YourDataSection> {
       final careContentRepo = context.read<CareContentRepository>();
       // Read before the first `await` below (not after -
       // `use_build_context_synchronously`), same as `AccountSection`'s
-      // `_runExport`; null for an unconfigured build or a caller that
-      // chooses to skip it, which `buildMergedAccountExport` treats as
-      // "local-only document, no `server` key".
-      final remoteSource = context.read<AccountExportRemoteSource?>();
+      // `_runExport`. The writer already carries its optional server-side
+      // remote source from construction; an unconfigured build's writer
+      // resolves to a local-only document (no `server` key).
+      final exportWriter = context.read<AccountExportWriter>();
       final profiles = await profilesRepo.list();
       final entriesByProfile = <String, List<DayEntry>>{};
       final observationsByProfile = <String, List<Observation>>{};
@@ -259,7 +259,7 @@ class _YourDataSectionState extends State<YourDataSection> {
             await careContentRepo.listPrepItems(profile.id);
       }
       await (widget.exportAccount ??
-          defaultExportAccountCollaborator(remoteSource))(
+          defaultExportAccountCollaborator(exportWriter))(
         profiles: profiles,
         entriesByProfile: entriesByProfile,
         observationsByProfile: observationsByProfile,

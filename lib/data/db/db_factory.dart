@@ -9,7 +9,7 @@
 /// Neither platform encrypts the database file itself at the app layer —
 /// at-rest protection is the OS's (iOS Data Protection / Android's platform
 /// encryption); see docs/ops/ios-export-compliance.md. The device-credential
-/// gate (`lib/data/gate/`) is a separate, independent control: it blocks the
+/// gate (`lib/startup/gate/`) is a separate, independent control: it blocks the
 /// UI from showing any data until the device owner authenticates, regardless
 /// of how the underlying file is stored.
 library;
@@ -17,9 +17,9 @@ library;
 import 'dart:async';
 
 import 'package:drift/drift.dart';
+import 'package:lunarlog/domain/models/database_error.dart';
 
 import 'db.dart';
-import 'errors.dart';
 
 /// Builds the database's [QueryExecutor].
 typedef ExecutorBuilder = FutureOr<QueryExecutor> Function();

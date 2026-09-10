@@ -8,7 +8,8 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart';
+import 'package:lunarlog/domain/notifications/birth_control_reminder_kind.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart';

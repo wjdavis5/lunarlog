@@ -18,24 +18,17 @@ library;
 import 'dart:async';
 
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 
-/// Publishes one profile's window. [estimatedNextStartIso] is the civil
-/// `yyyy-MM-dd` date the server's `date` column expects.
-typedef ReminderWindowUpsert = Future<void> Function(
-  String profileId,
-  String estimatedNextStartIso,
-  bool episodeOpen,
-);
-
 class ReminderWindowPublisher {
   ReminderWindowPublisher({
     required ActiveProfilesStream activeProfiles,
     required PredictionStream predictionFor,
-    required ReminderWindowUpsert upsert,
+    required ReminderWindowRemote upsert,
     required bool Function() isSignedIn,
     this.debounce = const Duration(milliseconds: 500),
     this.retryDelay = const Duration(minutes: 5),
@@ -46,7 +39,7 @@ class ReminderWindowPublisher {
 
   final ActiveProfilesStream _activeProfiles;
   final PredictionStream _predictionFor;
-  final ReminderWindowUpsert _upsert;
+  final ReminderWindowRemote _upsert;
   final bool Function() _isSignedIn;
   final Duration debounce;
 
@@ -124,10 +117,10 @@ class ReminderWindowPublisher {
       // grace) out of every mean-cycle-length days -- roughly 25 of every 28
       // for a typical cycle. originalEstimatedNextStart never rolls, so once
       // it is in the past the gate stays open every day after.
-      await _upsert(
-        profileId,
-        prediction.originalEstimatedNextStart.iso,
-        prediction.duringEpisode,
+      await _upsert.upsert(
+        profileId: profileId,
+        estimatedNextStartIso: prediction.originalEstimatedNextStart.iso,
+        episodeOpen: prediction.duringEpisode,
       );
     } catch (_) {
       // Best-effort background upkeep (R13): a failed publish must never

@@ -11,20 +11,25 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
+    as data;
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
+    as data;
 import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -101,13 +106,12 @@ Future<Harness> pumpCare(
       providers: <SingleChildWidget>[
         Provider<ProfilesRepository>.value(value: profiles),
         ChangeNotifierProvider<AuthController>.value(value: authController),
-        Provider<LunarLogStorage>.value(value: db.storage),
       ],
       child: MaterialApp(
         home: CareNotesScreen(
           profile: profile,
           repository: care,
-          guardiansRepository: ProfileGuardiansRepository(db.storage),
+          guardiansRepository: data.ProfileGuardiansRepository(db.storage),
           readOnly: readOnly,
         ),
       ),
@@ -371,7 +375,14 @@ void main() {
                 value: DriftSettingsStore(db.storage)),
             ChangeNotifierProvider<AuthController>.value(
                 value: authController),
-            Provider<LunarLogStorage>.value(value: db.storage),
+            // Domain-typed seams `ProfileDetailScreen` reads instead of raw
+            // storage (mirrors `lib/app.dart`).
+            Provider<ProfileGuardiansRepository>.value(
+                value: data.ProfileGuardiansRepository(db.storage)),
+            Provider<ActivityFeedRepository>.value(
+                value: data.ActivityFeedRepository(db.storage)),
+            Provider<CareContentRepository>.value(
+                value: DriftCareContentRepository(db.storage)),
             ChangeNotifierProvider(
               create: (_) => ProfileController(
                 profilesRepository: profiles,

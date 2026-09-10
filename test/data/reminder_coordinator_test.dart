@@ -8,7 +8,6 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -16,6 +15,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 

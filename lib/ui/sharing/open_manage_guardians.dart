@@ -15,14 +15,13 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
-import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
+import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -31,9 +30,10 @@ import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:provider/provider.dart';
 
 Future<void>? openManageGuardians(BuildContext context, Profile profile) {
-  final storage = Provider.of<LunarLogStorage?>(context, listen: false);
+  final guardiansRepository =
+      Provider.of<ProfileGuardiansRepository?>(context, listen: false);
   final sharing = Provider.of<SharingService?>(context, listen: false);
-  if (storage == null || sharing == null) return null;
+  if (guardiansRepository == null || sharing == null) return null;
   final ownershipTransfer =
       Provider.of<OwnershipTransferService?>(context, listen: false);
   final notificationPreferences =
@@ -43,7 +43,7 @@ Future<void>? openManageGuardians(BuildContext context, Profile profile) {
       name: kRouteManageGuardiansScreen,
       builder: (_) => ManageGuardiansScreen(
         profile: profile,
-        guardiansRepository: ProfileGuardiansRepository(storage),
+        guardiansRepository: guardiansRepository,
         sharingService: sharing,
         currentUserId:
             Provider.of<AuthController?>(context, listen: false)?.currentUserId,
@@ -57,7 +57,8 @@ Future<void>? openManageGuardians(BuildContext context, Profile profile) {
                 )
                 ?.publishNow(profileId),
         notificationPreferencesService: notificationPreferences,
-        activityRepository: ActivityFeedRepository(storage),
+        activityRepository:
+            Provider.of<ActivityFeedRepository?>(context, listen: false),
       ),
     ),
   );

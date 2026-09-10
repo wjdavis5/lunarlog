@@ -8,7 +8,7 @@ library;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:local_auth/local_auth.dart';
 
-import 'app_gate.dart';
+import 'package:lunarlog/domain/gate/app_gate.dart';
 
 /// Native factory: the shell imports `gate.dart` and calls this without
 /// branching on platform.

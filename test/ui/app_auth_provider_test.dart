@@ -17,17 +17,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart';
+import 'package:lunarlog/data/import/account_importer.dart' as data;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart'
     show decodeLateSnoozes, kNotYetSnoozeDays;
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -124,6 +126,31 @@ void main() {
     expect(controller, isNotNull);
     expect(controller!.pendingRecovery, isTrue,
         reason: 'latched in the service before the widget tree existed');
+
+    await disposeApp(tester, db);
+  });
+
+  testWidgets('LunarLogRoot gives the shared import coordinator the '
+      'signed-in user id', (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    final service = FakeAuthService();
+    addTearDown(service.dispose);
+    await tester.pumpWidget(LunarLogRoot(
+      gate: FakeGate(requiresUnlock: false),
+      dbOpener: () async => db,
+      authService: service,
+    ));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    service.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
+    await tester.pump();
+
+    final coordinator = homeContext(tester).read<AccountImportCoordinator>()
+        as data.AccountImportCoordinator;
+    expect(coordinator.currentUserIdProvider?.call(), 'u1',
+        reason: 'the view-only guard and sharing notice key off the acting '
+            'user; the root-built bundle must resolve it live');
 
     await disposeApp(tester, db);
   });
