@@ -125,6 +125,15 @@ class Profiles extends Table with TableInfo {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> transferredToUserId =
+      GeneratedColumn<String>(
+        'transferred_to_user_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        $customConstraints: 'NULL',
+      );
   late final GeneratedColumn<String> lastPeriodStart = GeneratedColumn<String>(
     'last_period_start',
     aliasedName,
@@ -184,6 +193,7 @@ class Profiles extends Table with TableInfo {
     relationship,
     mode,
     transferredAt,
+    transferredToUserId,
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,

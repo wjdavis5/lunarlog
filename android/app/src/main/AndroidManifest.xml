@@ -11,12 +11,18 @@
          earlier builds had no network at all. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Issue #166: Health Connect permissions for the v1 (menstruation-only)
-         baseline scoped by #202 (HS-7). No Dart call site reads or writes
-         through these yet; AppConfig.hasHealthSync stays false until #173
-         lands the platform-channel adapter. Extend this list (never widen it
-         silently) as later HS issues add data types; do NOT add history,
-         background, sexual-activity, or BBT permissions here; those belong
-         to #186/#210/#228. -->
+         baseline scoped by #202 (HS-7). The #173 platform-channel adapter and
+         the #193/#374 opt-in write paths are live behind the bound-profile
+         gate (AppConfig.hasHealthSync is true). Writes go only into the
+         on-device Health Connect store — nothing is transmitted off-device
+         through this feature, and no predicted or derived cycle value is
+         ever written (issue #254's written rule; see
+         docs/ops/play-health-declaration.md for the Play Console Health apps
+         declaration these permissions require before any production-track
+         ship). Extend this list (never widen it silently) as later HS issues
+         add data types — adding one re-triggers Play's Health apps
+         declaration review; do NOT add history, background, sexual-activity,
+         or BBT permissions here; those belong to #186/#210/#228. -->
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.READ_INTERMENSTRUAL_BLEEDING"/>
@@ -63,6 +69,21 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="lunarlog" android:host="auth-callback"/>
                 <data android:scheme="lunarlog" android:host="invite"/>
+            </intent-filter>
+            <!-- Issue #129: HTTPS App Link fallback for invite/claim links
+                 (https://<domain>/invite?code=...). The human provisioning
+                 the hosted domain (issue #384) replaces
+                 __LUNARLOG_LINK_DOMAIN__ with that domain once DNS/hosting
+                 exist and the assetlinks.json in docs/links/ is served.
+                 Until then this placeholder matches nothing and the custom
+                 `lunarlog://` scheme above is the only working link form.
+                 autoVerify makes an installed, verified app open these links
+                 directly instead of showing a chooser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="__LUNARLOG_LINK_DOMAIN__" android:pathPrefix="/invite"/>
             </intent-filter>
         </activity>
         <!-- Issue #166: minimal, standalone activity (not Flutter; Health

@@ -38,7 +38,9 @@ class GeneratedPredictionInvite {
   /// SHA-256 hex digest of [rawToken] — the only form the server holds.
   final String tokenHash;
 
-  /// Deep link to redeem: `lunarlog://invite?code=<rawToken>&kind=prediction`.
+  /// Deep link to redeem: `lunarlog://invite?code=<rawToken>&kind=prediction`,
+  /// or the `https://<domain>/invite?...` universal-link form when a hosted
+  /// domain is configured (issue #129).
   final Uri inviteUri;
 
   final DateTime expiresAt;
@@ -196,6 +198,8 @@ sealed class PredictionConnectionFailure implements Exception {
       _PredictionAlreadyConnectedFailure;
   const factory PredictionConnectionFailure.oneDirectional() =
       _PredictionOneDirectionalFailure;
+  const factory PredictionConnectionFailure.minorProfile() =
+      _PredictionMinorProfileFailure;
   const factory PredictionConnectionFailure.other() = _PredictionOtherFailure;
 
   String get userFacingMessage;
@@ -298,6 +302,19 @@ final class _PredictionOneDirectionalFailure
       'same time.';
   @override
   String toString() => 'PredictionConnectionFailure.oneDirectional';
+}
+
+/// Issue #373: PRIVACY.md's "minor profiles are never shared" rule, which
+/// the server enforces at create AND at accept (`is_minor` can change
+/// between arming a code and its redemption, like the life-stage mode).
+final class _PredictionMinorProfileFailure
+    extends PredictionConnectionFailure {
+  const _PredictionMinorProfileFailure();
+  @override
+  String get userFacingMessage =>
+      "Prediction sharing is not available for a minor's profile.";
+  @override
+  String toString() => 'PredictionConnectionFailure.minorProfile';
 }
 
 final class _PredictionOtherFailure extends PredictionConnectionFailure {

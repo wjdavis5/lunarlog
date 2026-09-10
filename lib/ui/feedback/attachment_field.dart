@@ -13,9 +13,6 @@ import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:provider/provider.dart';
 
-/// 5 MiB, matching `feedback_attachments` bucket's `file_size_limit` (U2).
-const int kMaxAttachmentBytes = 5 * 1024 * 1024;
-
 const Set<String> kAllowedAttachmentMimeTypes = {'image/png', 'image/jpeg', 'image/webp'};
 
 class AttachmentField extends StatefulWidget {
@@ -44,6 +41,34 @@ class _AttachmentFieldState extends State<AttachmentField> {
   Future<T> _duringSystemUi<T>(Future<T> Function() action) {
     final gate = context.read<GateController?>();
     return gate == null ? action() : gate.duringSystemUi(action);
+  }
+
+  /// Clears any attachment, shows [message], and reports the removal to the
+  /// caller — the one recoverable-rejection outcome every cap shares.
+  void _rejectWith(String message) {
+    setState(() {
+      _attachment = null;
+      _error = message;
+    });
+    widget.onChanged(null);
+  }
+
+  /// Applies the post-read caps (5 MiB, PNG/JPEG/WebP) to a pick that has
+  /// already crossed into Dart — the belt-and-braces twin of the source's
+  /// pre-read length rejection (#207): the source check keeps oversized
+  /// files from ever being read, and this one still guards sources that
+  /// bypass it. Returns the attachment unchanged, or null after having
+  /// shown the rejection.
+  FeedbackAttachment? _validate(FeedbackAttachment picked) {
+    if (picked.sizeBytes > kMaxAttachmentBytes) {
+      _rejectWith('That image is too large. Choose one under 5 MB.');
+      return null;
+    }
+    if (!kAllowedAttachmentMimeTypes.contains(picked.mimeType)) {
+      _rejectWith('That file type is not supported. Choose a PNG, JPEG, or WebP image.');
+      return null;
+    }
+    return picked;
   }
 
   Future<void> _addScreenshot() async {
@@ -85,32 +110,29 @@ class _AttachmentFieldState extends State<AttachmentField> {
     // picker is still open, `_duringSystemUi` still lets the pick resolve,
     // but its result belongs to a session the gate already closed and must
     // not be stored into the form behind the (now re-locked) screen.
-    final picked = await _duringSystemUi(widget.source.pickImage);
+    FeedbackAttachment? picked;
+    try {
+      picked = await _duringSystemUi(widget.source.pickImage);
+    } on AttachmentTooLargeException {
+      // The source rejected the pick on the file's length *before* reading
+      // its bytes (#207). Same recoverable copy as the post-read cap in
+      // `_validate`, which stays as the guard for sources that bypass the
+      // pre-read check.
+      if (gate != null && gate.generation != generation) return;
+      _rejectWith('That image is too large. Choose one under 5 MB.');
+      return;
+    }
     if (gate != null && gate.generation != generation) return;
     if (picked == null) return;
 
-    if (picked.sizeBytes > kMaxAttachmentBytes) {
-      setState(() {
-        _attachment = null;
-        _error = 'That image is too large. Choose one under 5 MB.';
-      });
-      widget.onChanged(null);
-      return;
-    }
-    if (!kAllowedAttachmentMimeTypes.contains(picked.mimeType)) {
-      setState(() {
-        _attachment = null;
-        _error = 'That file type is not supported. Choose a PNG, JPEG, or WebP image.';
-      });
-      widget.onChanged(null);
-      return;
-    }
+    final validated = _validate(picked);
+    if (validated == null) return;
 
     setState(() {
-      _attachment = picked;
+      _attachment = validated;
       _error = null;
     });
-    widget.onChanged(picked);
+    widget.onChanged(validated);
   }
 
   void _remove() {

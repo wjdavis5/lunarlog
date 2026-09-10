@@ -343,7 +343,7 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 11 and database opens with the expected tables',
+    test('schema version is 13 and database opens with the expected tables',
         () async {
       expect(db.schemaVersion, 13);
       expect(await userVersion(db), 13);
@@ -999,10 +999,11 @@ void main() {
           tz: 'UTC',
           flow: FlowLevel.none);
 
-      // The curated taxonomy passes the bounds check. Issue #249 grew the
-      // taxonomy to 45 codes — more than the 32-element day_entries.tags
-      // cap — so the round-trip covers the first kMaxTagCount of them
-      // (longest code still well under kMaxTagLength).
+      // The curated taxonomy passes the bounds check. Issue #249/#251 grew
+      // the taxonomy to 67 codes — more than the 32-element
+      // day_entries.tags cap — so the round-trip covers the first
+      // kMaxTagCount of them (longest code still well under
+      // kMaxTagLength).
       final taxonomyCodes = kTagTaxonomy.map((t) => t.code).toList();
       expect(taxonomyCodes.length, greaterThan(kMaxTagCount),
           reason: 'this test exists to pin taxonomy codes against the '

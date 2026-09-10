@@ -10,6 +10,8 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config.dart';
+import '../../domain/sharing/invite_links.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sync/sync_engine.dart';
 
@@ -56,14 +58,13 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
       final expiresAtStr = res['expires_at'] as String;
       final expiresAt = DateTime.parse(expiresAtStr).toUtc();
 
-      final claimUri = Uri(
-        scheme: 'lunarlog',
-        host: 'invite',
-        queryParameters: {
-          'code': rawToken,
-          'profile': profileId,
-          'kind': 'claim',
-        },
+      // Issue #129: the HTTPS universal-link form when a hosted domain is
+      // configured, the custom scheme otherwise (unchanged default).
+      final claimUri = buildInviteLink(
+        code: rawToken,
+        profileId: profileId,
+        kind: kInviteLinkKindClaim,
+        linkDomain: AppConfig.linkDomain,
       );
 
       return GeneratedTransfer(

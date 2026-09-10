@@ -4,7 +4,7 @@
 -- handover transaction, sovereignty after transfer, the attribution-guard
 -- bypass, and the cascade proofs that motivated R15.
 begin;
-select plan(90);
+select plan(94);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -853,6 +853,41 @@ select is(
   (select user_id from public.profiles where id = tests.ulid(408)),
   tests.get_supabase_uid('kim'),
   'The handover actually happened - lifecycle end to end (#242)'
+);
+
+-- ---------------------------------------------------------------------------
+-- 15. Issue #296: the transfer-target signal
+--     (profiles.transferred_to_user_id) - stamped by
+--     accept_ownership_transfer, never client-writable, tolerated-but-
+--     never-read by sync_push. This is the "transferred to whom" signal
+--     the client-side health-sync minor gate (#153) requires before
+--     AppConfig.healthSyncMinorBindingAllowed may ever be flipped.
+-- ---------------------------------------------------------------------------
+select tests.clear_authentication();
+select is(
+  (select transferred_to_user_id from public.profiles where id = tests.ulid(401)),
+  tests.get_supabase_uid('kid'),
+  '#296: accept_ownership_transfer stamps transferred_to_user_id with the accepting user'
+);
+select is(
+  (select transferred_to_user_id from public.profiles where id = tests.ulid(408)),
+  tests.get_supabase_uid('kim'),
+  '#296: a second, independent transfer re-stamps the target on its own profile'
+);
+
+select tests.authenticate_as('kid');
+insert into r select 'aot296_push', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(401), 'display_name', 'Riley', 'is_minor', true,
+    'updated_at', '2030-01-01T00:00:00Z',
+    'transferred_to_user_id', tests.get_supabase_uid('eve'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('aot296_push') -> 'rejected', '[]'::jsonb,
+  '#296: a push carrying transferred_to_user_id is tolerated');
+select is(
+  (select transferred_to_user_id from public.profiles where id = tests.ulid(401)),
+  tests.get_supabase_uid('kid'),
+  '#296: sync_push never writes transferred_to_user_id, regardless of the pushed value'
 );
 
 select * from finish();

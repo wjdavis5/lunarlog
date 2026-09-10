@@ -17,16 +17,24 @@ void main() {
     'fatigue',
     'cravings',
     'sleep_trouble',
+    // Issue #251: the five pre-#251 mood codes keep their exact strings
+    // too — only their category grouping changes (see the re-parenting
+    // test below).
+    'irritable',
+    'sad',
+    'anxious',
+    'calm',
+    'sensitive',
   ];
 
-  test('taxonomy has exactly 45 codes across 15 categories', () {
-    expect(kTagTaxonomy, hasLength(45));
-    // Codes exist for the 10 attested categories; the 5 unverified ones
+  test('taxonomy has exactly 67 codes across 22 categories', () {
+    expect(kTagTaxonomy, hasLength(67));
+    // Codes exist for the 14 attested categories; the 8 unverified ones
     // (kUnverifiedTagCategories) deliberately carry none — see their own
     // test below.
-    expect(kTagTaxonomy.map((t) => t.category).toSet(), hasLength(10));
-    expect(TagCategory.values, hasLength(15));
-    expect(kTagTaxonomy.map((t) => t.code).toSet(), hasLength(45),
+    expect(kTagTaxonomy.map((t) => t.category).toSet(), hasLength(14));
+    expect(TagCategory.values, hasLength(22));
+    expect(kTagTaxonomy.map((t) => t.code).toSet(), hasLength(67),
         reason: 'codes must be unique');
   });
 
@@ -70,10 +78,49 @@ void main() {
     expect(codes(TagCategory.cravings).toSet(),
         {'cravings', 'sweet', 'salty', 'carbs', 'chocolate'});
     expect(codes(TagCategory.body).toSet(), {'dizziness'});
+    // Issue #251: the old `mood` grouping is rebuilt as feelings/mind —
+    // its codes re-parented with their exact strings, and the `mood`
+    // enum value itself removed (a zero-code category that is not
+    // option-set-unverified would render the unverified caption
+    // dishonestly).
     expect(
-      codes(TagCategory.mood).toSet(),
-      {'irritable', 'sad', 'anxious', 'calm', 'sensitive'},
+      codes(TagCategory.feelings).toSet(),
+      {
+        'irritable',
+        'happy',
+        'sad',
+        'angry',
+        'anxious',
+        'indifferent',
+        'sensitive',
+        'mood_swings',
+        'excited',
+        'insecure',
+        'grateful',
+      },
     );
+    expect(codes(TagCategory.mind).toSet(),
+        {'calm', 'distracted', 'focused', 'stressed'});
+    expect(codes(TagCategory.motivation).toSet(),
+        {'motivated', 'unmotivated', 'productive', 'unproductive'});
+    expect(codes(TagCategory.socialLife).toSet(),
+        {'sociable', 'withdrawn', 'supportive', 'conflict'});
+    expect(codes(TagCategory.partying).toSet(),
+        {'drinks', 'cigarettes', 'big_night', 'hangover'});
+  });
+
+  test('issue #251 re-parenting moves categories, never code strings', () {
+    expect(tagByCode('sad')!.category, TagCategory.feelings,
+        reason: 'sad keeps its exact code; only the grouping changes');
+    expect(tagByCode('anxious')!.category, TagCategory.feelings);
+    expect(tagByCode('sensitive')!.category, TagCategory.feelings);
+    expect(tagByCode('irritable')!.category, TagCategory.feelings,
+        reason: 'irritable is preserved as the lunarlog-specific extra '
+            'under feelings — no Clue equivalent, never dropped');
+    expect(tagByCode('calm')!.category, TagCategory.mind,
+        reason: 'calm was misfiled under mood; Clue files it under Mind');
+    // And the pre-#249 re-parents are untouched.
+    expect(tagByCode('energetic')!.category, TagCategory.energy);
   });
 
   test('re-parenting moves categories, never code strings', () {
@@ -118,7 +165,7 @@ void main() {
   });
 
   test('unverified categories exist in the enum but carry no codes', () {
-    expect(kUnverifiedTagCategories, hasLength(5));
+    expect(kUnverifiedTagCategories, hasLength(8));
     expect(
       kUnverifiedTagCategories.toSet(),
       {
@@ -127,6 +174,12 @@ void main() {
         TagCategory.hotFlashes,
         TagCategory.urine,
         TagCategory.vulvaVagina,
+        // Issue #251's three: pms (presence-based; the presence marker
+        // itself rides day_entries.pms per issue #220, outside this
+        // taxonomy), meditation, and leisure (option sets undocumented).
+        TagCategory.pms,
+        TagCategory.meditation,
+        TagCategory.leisure,
       },
     );
     for (final category in kUnverifiedTagCategories) {
@@ -145,6 +198,9 @@ void main() {
     expect(tagByCode('back_pain')!.display, 'Back pain');
     expect(tagByCode('sleep_trouble')!.display, 'Sleep trouble');
     expect(tagByCode('cravings')!.display, 'Cravings (unspecified)');
+    // Issue #251: Clue's attested "big night" option is snake_cased for
+    // the flat code namespace, display keeps the attested phrasing.
+    expect(tagByCode('big_night')!.display, 'Big night');
   });
 
   test('displays are unique across the taxonomy (no ambiguous chips)', () {
@@ -162,6 +218,9 @@ void main() {
         reason: 'ovulation pain is an attested pain option (issue #249)');
     expect(() => validateTagCodes(['cramps', 'not-a-tag']), throwsArgumentError);
     expect(() => validateTagCodes(['cramps', 'calm', 'cravings']),
+        returnsNormally);
+    // Issue #251 codes validate like any other.
+    expect(() => validateTagCodes(['happy', 'stressed', 'big_night']),
         returnsNormally);
     expect(() => validateTagCodes(const []), returnsNormally);
   });

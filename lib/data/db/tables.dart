@@ -133,6 +133,14 @@ class Profiles extends Table {
   DateTimeColumn get transferredAt =>
       dateTime().named('transferred_at').nullable()();
 
+  /// The account that accepted this profile's last ownership transfer, or
+  /// null if it never has (Issue #296). Same server-owned, pulled-never-
+  /// pushed treatment as [transferredAt]: the health-sync minor gate
+  /// requires this to equal the signed-in user id before a transferred
+  /// minor profile may bind, and null fails closed.
+  TextColumn get transferredToUserId =>
+      text().named('transferred_to_user_id').nullable()();
+
   /// Onboarding-collected cycle facts (Issue #218), mirrored by the
   /// server's `profiles` columns added in
   /// `20260909120000_provisional_cycle_facts.sql`. ISO calendar date

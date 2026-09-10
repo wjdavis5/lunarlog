@@ -175,9 +175,10 @@ const List<String> kUnverifiedLoincCodes = [
   '3151-8',
 ];
 
-/// The clinical coding for every code in [tags.kTagTaxonomy] (all 45 —
-/// #152's A3-45 pass over the original 17, plus issue #249's 28 new codes
-/// as explicit local decisions; see docs/clinical/terminology.md).
+/// The clinical coding for every code in [tags.kTagTaxonomy] (all 67 —
+/// #152's A3-45 pass over the original 17, plus issue #249's 28 and
+/// issue #251's 22 new codes as explicit local decisions; see
+/// docs/clinical/terminology.md).
 ///
 /// Rows are one of two kinds:
 /// - A verified SNOMED CT finding ([kSystemSnomed]): the concept id and
@@ -495,6 +496,146 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
     system: kSystemLunarlogLocal,
     code: 'chocolate',
     display: 'Chocolate',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+
+  // Issue #251's feelings/mind/lifestyle categories. Same rule as #249's
+  // block above: every new code is an explicit local decision, no SNOMED
+  // CT concept fetch-verified in this pass, so each carries the lunarlog
+  // local coding only — `dualCodingFor` degrades each to it exactly as
+  // designed. The five re-parented mood codes (irritable/sad/anxious/
+  // calm/sensitive) keep their existing rows above untouched —
+  // re-parenting changes a code's category, never its coding.
+  'happy':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'happy',
+    display: 'Happy',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'angry':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'angry',
+    display: 'Angry',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'indifferent':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'indifferent',
+    display: 'Indifferent',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'mood_swings':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'mood_swings',
+    display: 'Mood swings',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'excited':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'excited',
+    display: 'Excited',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'insecure':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'insecure',
+    display: 'Insecure',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'grateful':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'grateful',
+    display: 'Grateful',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'distracted':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'distracted',
+    display: 'Distracted',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'focused':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'focused',
+    display: 'Focused',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'stressed':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'stressed',
+    display: 'Stressed',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'motivated':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'motivated',
+    display: 'Motivated',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'unmotivated':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'unmotivated',
+    display: 'Unmotivated',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'productive':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'productive',
+    display: 'Productive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'unproductive':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'unproductive',
+    display: 'Unproductive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'sociable':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'sociable',
+    display: 'Sociable',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'withdrawn':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'withdrawn',
+    display: 'Withdrawn',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'supportive':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'supportive',
+    display: 'Supportive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'conflict':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'conflict',
+    display: 'Conflict',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'drinks':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'drinks',
+    display: 'Drinks',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'cigarettes':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'cigarettes',
+    display: 'Cigarettes',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'big_night':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'big_night',
+    display: 'Big night',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'hangover':  ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'hangover',
+    display: 'Hangover',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
 };

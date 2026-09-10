@@ -322,11 +322,14 @@ class LunarLogStorage {
   /// `updated_at` strictly after the stored value. Throws [ArgumentError]
   /// for a [displayName] over [kMaxDisplayNameLength].
   ///
-  /// [birthYear] and [relationship] are optional, display/context-only
-  /// subject metadata (Issue #4 R1, R3); [relationship] is the raw
+  /// [birthYear] and [relationship] are optional subject metadata
+  /// (Issue #4 R1, R3); [relationship] is the raw
   /// `toDb()` string, not validated here (the domain enum's closed set and
   /// the server's check constraint are the enforcement points). Neither is
   /// device-local bookkeeping: both sync like any other profile column.
+  /// (`birthYear` is no longer display-only — it feeds the #153 health-sync
+  /// minor gate's fail-closed year check; this method never writes the
+  /// gate's server-owned `transferredToUserId` input.)
   /// [mode] (Issue #131) is the raw `toDb()` care-mode string, same
   /// treatment: presentation-only, synced like any other profile column.
   /// The three cycle-fact parameters (Issue #218) are the onboarding
@@ -1899,6 +1902,7 @@ class LunarLogStorage {
             birthYear: Value(remote.birthYear),
             relationship: Value(remote.relationship),
             transferredAt: Value(remote.transferredAt?.toUtc()),
+            transferredToUserId: Value(remote.transferredToUserId),
             lastPeriodStart: Value(remote.lastPeriodStart),
             typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
             typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
@@ -1921,6 +1925,7 @@ class LunarLogStorage {
         birthYear: Value(remote.birthYear),
         relationship: Value(remote.relationship),
         transferredAt: Value(remote.transferredAt?.toUtc()),
+        transferredToUserId: Value(remote.transferredToUserId),
         lastPeriodStart: Value(remote.lastPeriodStart),
         typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
         typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),

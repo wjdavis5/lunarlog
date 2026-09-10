@@ -9,7 +9,12 @@ name: Play Store Release
 # additionally gated: it requires the account-deletion release gate
 # (issue #17) to be open AND a typed `confirm_production` confirmation, both
 # enforced by the `production-gate` job before any build runs. See
-# .github/scripts/check-release-gate.sh (issue #41, finding #7).
+# .github/scripts/check-release-gate.sh (issue #41, finding #7). While the
+# manifest requests android.permission.health.* permissions, a `production`
+# dispatch further requires the Play Console Health apps declaration to be
+# recorded as filed (the PLAY_HEALTH_DECLARATION_CONFIRMED repository
+# variable; fails closed until it is set) -- issue #254, checklist in
+# docs/ops/play-health-declaration.md.
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
 #   ANDROID_KEYSTORE_BASE64       Base64-encoded release keystore (.jks or .keystore)
@@ -112,6 +117,23 @@ jobs:
           REQUIRE_PRODUCTION_CONFIRMATION: 'true'
           CONFIRM_PRODUCTION: ${{ inputs.confirm_production }}
         run: bash .github/scripts/check-release-gate.sh
+
+      - name: Enforce the Play health declaration gate (issue #254)
+        if: inputs.track == 'production'
+        env:
+          PLAY_HEALTH_DECLARATION_CONFIRMED: ${{ vars.PLAY_HEALTH_DECLARATION_CONFIRMED }}
+        run: |
+          set -euo pipefail
+          if ! grep -q "android.permission.health\." android/app/src/main/AndroidManifest.xml; then
+            echo "No health permissions in the manifest; nothing to gate."
+            exit 0
+          fi
+          if [ "$PLAY_HEALTH_DECLARATION_CONFIRMED" != "true" ]; then
+            echo "::error::The manifest requests android.permission.health.* permissions, but the Play Console Health apps declaration is not recorded as filed and approved."
+            echo "::error::Complete docs/ops/play-health-declaration.md (the Health apps declaration form, per-permission justifications, privacy-policy URL), then set the PLAY_HEALTH_DECLARATION_CONFIRMED repository variable to 'true'."
+            exit 1
+          fi
+          echo "Health permissions present and PLAY_HEALTH_DECLARATION_CONFIRMED=true; health declaration gate satisfied (issue #254)."
 
   release:
     name: Build, sign, and publish to Play Store

@@ -1,4 +1,4 @@
--- Migration: 20260909210000_numeric_measurement_units.sql
+-- Migration: 20260910110000_numeric_measurement_units.sql
 -- Issue #255 (P1, epic: tracking-model): BBT and weight as numeric
 -- measurements -- the per-profile display-unit preference plus the
 -- same-date source-discipline guarantee.
@@ -46,12 +46,18 @@
 -- per-datapoint `excluded` flag also already round-trips (#240's
 -- `excluded` column and the Clue importer's `ClueNumericDatapoint`).
 --
--- Filename ordering (AGENTS.md Migration Flow item 7): sorts after
--- 20260909200000_prediction_connections.sql (main's current tip). The
--- latest sync_push body before this file was 20260909160000_pms_day_marker.sql
--- (the #220 PMS marker); no migration after it re-emitted the function,
--- so this file carries that body forward verbatim other than the three
--- deltas called out inline below.
+-- Filename ordering (AGENTS.md Migration Flow item 7): the original
+-- 20260909210000_ prefix collided with main's
+-- 20260909210000_profile_transferred_to_user_id.sql (a schema_migrations
+-- primary-key collision), and main has since added
+-- 20260909220000_prediction_connections_minor_gate.sql and
+-- 20260910000000_high_severity_intensity.sql, so this file was renamed to
+-- sort after main's current tip. The latest sync_push body before this
+-- file is 20260909210000_profile_transferred_to_user_id.sql (#296, which
+-- added the tolerated-not-read transferred_to_user_id key); the two
+-- migrations after it touch neither sync_push nor any table this file
+-- alters, so this file carries that #296 body forward verbatim other than
+-- the unit-column deltas called out inline below.
 
 -- ---------------------------------------------------------------------------
 -- 1. New columns -- display-unit preferences, not storage units.
@@ -95,8 +101,10 @@ grant update (bbt_unit, weight_unit)
 -- 3. sync_push: the two keys join the profile allowlist, the parse block,
 -- the INSERT, and the UPDATE (behind `v_row ? 'key'` containment guards,
 -- the PR #108 item #3 lesson). Full function body carried forward
--- verbatim from 20260909160000_pms_day_marker.sql (the current
--- definition) other than the additions called out inline below; the
+-- verbatim from 20260909210000_profile_transferred_to_user_id.sql (main's
+-- current definition, whose tolerated-not-read transferred_to_user_id key
+-- and every other carried section this re-emission keeps intact) other
+-- than the additions called out inline below; the
 -- signature is unchanged, so a plain create-or-replace applies (no
 -- overload fork -- the parameter type list did not change).
 -- ---------------------------------------------------------------------------
@@ -132,7 +140,12 @@ declare
     -- any other profile column
     'bbt_unit', 'weight_unit',
     -- tolerated but never read
-    'user_id', 'server_version', 'transferred_at'];
+    'user_id', 'server_version', 'transferred_at',
+    -- #296: same treatment as transferred_at - ownership state written
+    -- only by accept_ownership_transfer, admitted only so a client that
+    -- pulls the column back down and echoes it is not rejected for
+    -- carrying an "unknown key".
+    'transferred_to_user_id'];
   c_day_entry_keys constant text[] := array[
     'id', 'profile_id', 'local_date', 'tz', 'flow', 'tags', 'note',
     -- Issue #220: the first-class PMS marker.

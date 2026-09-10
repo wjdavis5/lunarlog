@@ -24,6 +24,25 @@
 /// on disagreement (a write only proceeds when BOTH the Dart-stored and
 /// natively-stored bindings name the written profile).
 ///
+/// **App Review guideline 5.1.3 — the no-derived-values rule (issue
+/// #254, the written form of the rule every 5.1.3 review will ask
+/// about):** everything this adapter writes to HealthKit or Health
+/// Connect is a record of something the user actually logged or
+/// imported and can see in the app — a day's flow level, a spotting
+/// observation, or the `HKMetadataKeyMenstrualCycleStart` flag derived
+/// from that same logged bleed history (episodes.dart). lunarlog NEVER
+/// writes a predicted or estimated value into the health store — no
+/// next-period prediction, no fertile-window or ovulation estimate, no
+/// other derived cycle value — because a prediction presented to the
+/// OS as a recorded observation is exactly the "false or inaccurate
+/// data" 5.1.3 forbids. The write surface is deliberately tiny (the
+/// two write methods below, mirrored by the Swift and Kotlin handlers)
+/// so the rule stays checkable by inspection; any future feature that
+/// wants to write a predicted or derived value must route through one
+/// of them and therefore fails this rule — per issue #254's stated
+/// assumption, that feature needs its own 5.1.3 review, not an
+/// extension of this rule.
+///
 /// Not coverage-excluded: every branch here is driven under `flutter
 /// test` through `TestDefaultBinaryMessengerBinding`'s mock channel
 /// handler (the same technique `notification_scheduler_test.dart` uses),

@@ -238,4 +238,53 @@ void main() {
     await pumpEventQueue();
     expect(service.publishedFor, ['p1'], reason: 'the bounded retry fired');
   });
+
+  group('republishConnected (issue #373, the resume hook)', () {
+    test('publishes the current prediction for every connected profile '
+        'and skips one with nothing derived', () async {
+      final service = _FakeService(connectedProfileIds: {'p1', 'p2', 'p3'});
+      final today = LocalDate(2026, 8, 30);
+
+      final publisher = PredictionProjectionPublisher(
+        activeProfiles: const Stream.empty(),
+        predictionFor: (id) => Stream<CyclePrediction>.value(
+            id == 'p2' ? _notEnoughHistory : _active(today)),
+        service: service,
+        isSignedIn: () => true,
+      );
+      addTearDown(() => publisher.dispose());
+
+      await publisher.republishConnected();
+      expect(service.publishedFor, unorderedEquals(['p1', 'p3']));
+      for (final projection in service.published) {
+        expect(projection.generatedAt, today);
+      }
+    });
+
+    test('is a no-op while signed out, after dispose, and on a failing '
+        'service', () async {
+      final service = _FakeService(connectedProfileIds: {'p1'});
+      var signedIn = false;
+      final publisher = PredictionProjectionPublisher(
+        activeProfiles: const Stream.empty(),
+        predictionFor: (id) =>
+            Stream<CyclePrediction>.value(_active(LocalDate(2026, 8, 30))),
+        service: service,
+        isSignedIn: () => signedIn,
+      );
+
+      await publisher.republishConnected();
+      expect(service.publishedFor, isEmpty, reason: 'signed out');
+
+      signedIn = true;
+      service.publishError = Exception('network down');
+      await publisher.republishConnected();
+      expect(service.publishedFor, isEmpty, reason: 'best-effort, swallowed');
+
+      service.publishError = null;
+      await publisher.dispose();
+      await publisher.republishConnected();
+      expect(service.publishedFor, isEmpty, reason: 'disposed');
+    });
+  });
 }

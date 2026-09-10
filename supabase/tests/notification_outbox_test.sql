@@ -1,7 +1,12 @@
 -- Coverage for public.notification_outbox and the day_entries enqueue
--- trigger (Issue #5, Unit U2).
+-- trigger (Issue #5, Unit U2). Issue #256 added Groups F/G: the
+-- intensity/severity predicate (flow OR a graded severity-bearing
+-- observation) on the day_entries trigger, the new
+-- enqueue_observation_high_severity_alerts() triggers on observations
+-- themselves, and the legacy `intensity IS NULL` = "no severity recorded"
+-- semantics.
 begin;
-select plan(30);
+select plan(62);
 
 -- Issue #125 added a coalescing window to the immediate alert path: one
 -- push per (recipient, profile, kind) per alert_coalesce_window() (30
@@ -27,6 +32,15 @@ language sql security definer set search_path = '' as $$
   select kind from public.notification_outbox
    where profile_id = p_profile and recipient_user_id = p_recipient
    order by created_at desc limit 1;
+$$;
+
+-- Issue #256: per-kind count -- same-transaction rows all share one
+-- now(), so "latest row's kind" is not a stable probe; count by kind.
+create function pg_temp.outbox_kind_count(p_profile text, p_recipient uuid, p_kind text)
+returns bigint
+language sql security definer set search_path = '' as $$
+  select count(*) from public.notification_outbox
+   where profile_id = p_profile and recipient_user_id = p_recipient and kind = p_kind;
 $$;
 
 create function pg_temp.resolve_deliver_after(p_now timestamptz, p_start time, p_end time, p_zone text)
@@ -417,6 +431,391 @@ select is(pg_temp.outbox_count(tests.ulid(405), tests.get_supabase_uid('dad_e'))
 -- ---------------------------------------------------------------------------
 -- Structural stop-condition guard, service_role, and pure-function coverage.
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- Group F (profile 406, Issue #256): the day_entries trigger's severity
+-- predicate -- the four AC cases (heavy-flow-only, high-intensity-only,
+-- both, neither) plus the legacy semantics: an observations row with
+-- intensity IS NULL means "no severity recorded" and never alerts, and a
+-- severity-bearing category at intensity < 4 never alerts either. dad_f
+-- is narrowed to alert_on_high_severity, so only high_severity events
+-- ever reach him -- every count below is exactly a severity
+-- classification, never a plain logged event.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('mom_f');
+select tests.create_supabase_user('dad_f');
+
+select tests.authenticate_as('mom_f');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(406), 'Faye', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_guardian_invitation(
+  tests.ulid(406), 'co_parent', 'Dad',
+  '6666666666666666666666666666666666666666666666666666666666666666', 48
+);
+select tests.authenticate_as('dad_f');
+select public.accept_guardian_invitation(
+  '6666666666666666666666666666666666666666666666666666666666666666', 'Dad'
+);
+insert into public.notification_preferences
+  (user_id, profile_id, alert_on_log, alert_on_high_severity)
+values (tests.get_supabase_uid('dad_f'), tests.ulid(406), true, true);
+
+select tests.authenticate_as('mom_f');
+
+-- Neither: a light-flow day with no graded observation is not high
+-- severity -- a high-severity-narrowed guardian gets nothing.
+insert into public.day_entries
+  (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(460), tests.ulid(406), '2026-09-01', 'UTC', 'light', now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 0::bigint,
+  '#256 neither: a light-flow day with no observation produces no high-severity row');
+
+-- High-intensity-only, day_entries arm: the day's entry was light and
+-- alerted nobody; grading a pain observation at 4 on the same day makes
+-- the day high severity. First the (unremarkable) light day entry -- no
+-- row, nothing observed yet -- then the observation insert fans out its
+-- own alert (the observations trigger), ...
+insert into public.day_entries
+  (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(461), tests.ulid(406), '2026-09-02', 'UTC', 'light', now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 0::bigint,
+  '#256 high-intensity-only: the light day entry alone alerts nothing');
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(470), tests.ulid(461), tests.ulid(406), '2026-09-02', 'UTC',
+   'pain', 'cramps', 4, now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 1::bigint,
+  '#256 high-intensity-only: the graded pain observation itself enqueues one alert');
+select is(pg_temp.outbox_kind_count(tests.ulid(406), tests.get_supabase_uid('dad_f'), 'high_severity'),
+  1::bigint, '#256 and that alert is kind high_severity');
+-- ... then a content edit on the light-flow day entry re-runs the
+-- day_entries trigger, whose severity predicate must now see the graded
+-- observation even though flow is only light (the AC's replacement
+-- predicate; the pre-#256 proxy would have skipped this day).
+update public.day_entries set note = 'severe pain today' where id = tests.ulid(461);
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 2::bigint,
+  '#256 high-intensity-only: a light-flow day with a graded pain observation is high severity to the day_entries trigger');
+
+-- Heavy-flow-only (existing case, preserved): a heavy day with no
+-- observations still alerts.
+insert into public.day_entries
+  (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(462), tests.ulid(406), '2026-09-03', 'UTC', 'heavy', now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 3::bigint,
+  '#256 heavy-flow-only: a heavy day with no graded observation still alerts');
+
+-- Both: heavy flow AND a graded pain observation on the same day alert
+-- once per trigger (coalescing is disabled for this transaction).
+insert into public.day_entries
+  (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(463), tests.ulid(406), '2026-09-04', 'UTC', 'heavy', now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 4::bigint,
+  '#256 both: the heavy flow arm alerts');
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(471), tests.ulid(463), tests.ulid(406), '2026-09-04', 'UTC',
+   'pain', 'migraine', 4, now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 5::bigint,
+  '#256 both: the graded observation arm alerts in addition');
+
+-- Legacy semantics: an observation with intensity IS NULL is "no severity
+-- recorded" -- it never makes the day high severity (the day_entries
+-- content edit below re-runs the predicate against it).
+insert into public.day_entries
+  (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(464), tests.ulid(406), '2026-09-05', 'UTC', 'light', now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(472), tests.ulid(464), tests.ulid(406), '2026-09-05', 'UTC',
+   'pain', 'back_pain', null, now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+update public.day_entries set note = 'ungraded pain row present' where id = tests.ulid(464);
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 5::bigint,
+  '#256 legacy: an intensity NULL observation means no severity recorded -- never high severity');
+
+-- Below threshold: intensity 3 on a severity-bearing category never fires
+-- (observations arm) and never re-classifies the day (day_entries arm).
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(473), tests.ulid(464), tests.ulid(406), '2026-09-05', 'UTC',
+   'pain', 'headache', 3, now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 5::bigint,
+  '#256 below threshold: intensity 3 on pain enqueues nothing');
+update public.day_entries set note = 'mild pain today' where id = tests.ulid(464);
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 5::bigint,
+  '#256 below threshold: a day whose only graded pain row is intensity 3 stays non-severe');
+
+-- Wrong category: even intensity 5 on a non-severity-bearing category
+-- ('mood') is never high severity, on either trigger.
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(474), tests.ulid(464), tests.ulid(406), '2026-09-05', 'UTC',
+   'mood', 'sad', 5, now(),
+   tests.get_supabase_uid('mom_f'), tests.get_supabase_uid('mom_f'));
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 5::bigint,
+  '#256 wrong category: intensity 5 on mood enqueues nothing');
+update public.day_entries set note = 'intense mood entry present' where id = tests.ulid(464);
+select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 5::bigint,
+  '#256 wrong category: a day with only a non-severity intensity 5 row stays non-severe');
+
+-- ---------------------------------------------------------------------------
+-- Group G (profile 407, Issue #256): the observations-side trigger's own
+-- guards -- preference ladder, writer exclusion, cadence, no-op resaves,
+-- the crossing update, downgrades, tombstones, the bulk-import guard, and
+-- the alert_on_cycle_start_only narrowing evaluated against the day's
+-- stored cycle-start state.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('mom_g');
+select tests.create_supabase_user('dad_g');
+select tests.create_supabase_user('carol_g');
+select tests.create_supabase_user('ed_g');
+select tests.create_supabase_user('frank_g');
+select tests.create_supabase_user('hank_g');
+
+select tests.authenticate_as('mom_g');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(407), 'Gus', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_guardian_invitation(
+  tests.ulid(407), 'co_parent', 'Dad',
+  '6161616161616161616161616161616161616161616161616161616161616161', 48
+);
+select tests.authenticate_as('dad_g');
+select public.accept_guardian_invitation(
+  '6161616161616161616161616161616161616161616161616161616161616161', 'Dad'
+);
+
+select tests.authenticate_as('mom_g');
+select public.create_guardian_invitation(
+  tests.ulid(407), 'caregiver', 'Carol',
+  '6262626262626262626262626262626262626262626262626262626262626262', 48
+);
+select tests.authenticate_as('carol_g');
+select public.accept_guardian_invitation(
+  '6262626262626262626262626262626262626262626262626262626262626262', 'Carol'
+);
+
+select tests.authenticate_as('mom_g');
+select public.create_guardian_invitation(
+  tests.ulid(407), 'caregiver', 'Ed',
+  '6363636363636363636363636363636363636363636363636363636363636363', 48
+);
+select tests.authenticate_as('ed_g');
+select public.accept_guardian_invitation(
+  '6363636363636363636363636363636363636363636363636363636363636363', 'Ed'
+);
+
+select tests.authenticate_as('mom_g');
+select public.create_guardian_invitation(
+  tests.ulid(407), 'caregiver', 'Frank',
+  '6464646464646464646464646464646464646464646464646464646464646464', 48
+);
+select tests.authenticate_as('frank_g');
+select public.accept_guardian_invitation(
+  '6464646464646464646464646464646464646464646464646464646464646464', 'Frank'
+);
+
+select tests.authenticate_as('mom_g');
+select public.create_guardian_invitation(
+  tests.ulid(407), 'caregiver', 'Hank',
+  '6565656565656565656565656565656565656565656565656565656565656565', 48
+);
+select tests.authenticate_as('hank_g');
+select public.accept_guardian_invitation(
+  '6565656565656565656565656565656565656565656565656565656565656565', 'Hank'
+);
+
+-- dad_g: plain alert_on_log (gets every log event). carol_g: narrowed to
+-- high severity. ed_g: high-severity cadence off (#125's per-kind kill
+-- switch, reused by the observations trigger). frank_g: master switch
+-- off. hank_g: cycle-start-only narrowing.
+select tests.authenticate_as('dad_g');
+insert into public.notification_preferences (user_id, profile_id, alert_on_log)
+values (tests.get_supabase_uid('dad_g'), tests.ulid(407), true);
+select tests.authenticate_as('carol_g');
+insert into public.notification_preferences
+  (user_id, profile_id, alert_on_log, alert_on_high_severity)
+values (tests.get_supabase_uid('carol_g'), tests.ulid(407), true, true);
+select tests.authenticate_as('ed_g');
+insert into public.notification_preferences
+  (user_id, profile_id, alert_on_log, high_severity_cadence)
+values (tests.get_supabase_uid('ed_g'), tests.ulid(407), true, 'off');
+select tests.authenticate_as('frank_g');
+insert into public.notification_preferences
+  (user_id, profile_id, alert_on_log, alert_on_high_severity)
+values (tests.get_supabase_uid('frank_g'), tests.ulid(407), false, true);
+select tests.authenticate_as('hank_g');
+insert into public.notification_preferences
+  (user_id, profile_id, alert_on_log, alert_on_cycle_start_only)
+values (tests.get_supabase_uid('hank_g'), tests.ulid(407), true, true);
+
+select tests.authenticate_as('mom_g');
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(480), tests.ulid(407), '2026-09-01', 'UTC', 'none', now());
+
+-- G1: mom grades a pain observation at 4. dad_g (alert_on_log) and
+-- carol_g (high-severity narrowing) are alerted; ed_g's high_severity
+-- cadence is off; frank_g's master switch is off.
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(490), tests.ulid(480), tests.ulid(407), '2026-09-01', 'UTC',
+   'pain', 'cramps', 4, now(),
+   tests.get_supabase_uid('mom_g'), tests.get_supabase_uid('mom_g'));
+
+-- The plain day-entry insert above also legitimately produced one
+-- 'logged' row for this un-narrowed guardian (Group A's base rule); the
+-- graded observation must add exactly one high_severity row on top of it.
+select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('dad_g'), 'logged'),
+  1::bigint, '#256 observation trigger: the day-entry insert still logs one plain logged row');
+select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('dad_g'), 'high_severity'),
+  1::bigint, '#256 observation trigger: an alert_on_log guardian is alerted with kind high_severity');
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('carol_g')), 1::bigint,
+  '#256 observation trigger: a high-severity-narrowed guardian is alerted');
+select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('ed_g'), 'high_severity'),
+  0::bigint,
+  '#256 observation trigger: high_severity_cadence off (#125) receives no high_severity row');
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('frank_g')), 0::bigint,
+  '#256 observation trigger: alert_on_log false (master switch) receives nothing');
+
+-- G2: writer exclusion -- dad's own severe observation never pages
+-- himself, but still pages carol.
+select tests.authenticate_as('dad_g');
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(491), tests.ulid(480), tests.ulid(407), '2026-09-01', 'UTC',
+   'pain', 'migraine', 5, now(),
+   tests.get_supabase_uid('dad_g'), tests.get_supabase_uid('dad_g'));
+select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('dad_g'), 'high_severity'),
+  1::bigint, '#256 observation trigger: the writer is never alerted by their own write');
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('carol_g')), 2::bigint,
+  '#256 observation trigger: a second severe observation still alerts the other guardian');
+
+-- G3: a no-op resave (every payload column identical, only updated_at and
+-- attribution stamped -- the sync engine's re-save shape) fires nothing
+-- (#7's rationale, observations side).
+select tests.authenticate_as('mom_g');
+update public.observations
+   set intensity = 4, code = 'cramps', category = 'pain', local_date = local_date,
+       value_num = value_num, value_text = value_text, unit = unit,
+       excluded = excluded, observed_at = observed_at,
+       last_modified_by_user_id = tests.get_supabase_uid('mom_g'),
+       updated_at = now()
+ where id = tests.ulid(490);
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('carol_g')), 2::bigint,
+  '#256 observation trigger: a no-op resave produces no new row');
+
+-- G4: crossing deeper (4 -> 5) is a new, more severe event.
+update public.observations set intensity = 5, last_modified_by_user_id = tests.get_supabase_uid('mom_g'),
+  updated_at = now() where id = tests.ulid(490);
+select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('dad_g'), 'high_severity'),
+  2::bigint, '#256 observation trigger: an intensity increase is a new alert');
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('carol_g')), 3::bigint,
+  '#256 observation trigger: an intensity increase alerts the narrowed guardian too');
+
+-- G5: a downgrade out of severity (5 -> 2) fires nothing -- the event is
+-- "severe pain logged", never "severity changed".
+update public.observations set intensity = 2, last_modified_by_user_id = tests.get_supabase_uid('mom_g'),
+  updated_at = now() where id = tests.ulid(490);
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('carol_g')), 3::bigint,
+  '#256 observation trigger: dropping below the threshold enqueues nothing');
+
+-- G6: a tombstone (payload cleared per observations_tombstone_payload_check)
+-- fires nothing.
+update public.observations
+   set deleted_at = now(), category = null, code = null, intensity = null,
+       value_num = null, value_text = null, unit = null, excluded = false,
+       source_id = null, raw = null, observed_at = null,
+       last_modified_by_user_id = tests.get_supabase_uid('mom_g'),
+       updated_at = now()
+ where id = tests.ulid(490);
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('carol_g')), 3::bigint,
+  '#256 observation trigger: a tombstoned write enqueues nothing');
+
+-- G7: the #167 bulk-import guard is shared -- no outbox rows while
+-- lunarlog.bulk_import = 'on'.
+select set_config('lunarlog.bulk_import', 'on', true);
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(492), tests.ulid(480), tests.ulid(407), '2026-09-01', 'UTC',
+   'pain', 'back_pain', 5, now(),
+   tests.get_supabase_uid('mom_g'), tests.get_supabase_uid('mom_g'));
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('carol_g')), 3::bigint,
+  '#256 observation trigger: a bulk-import write (lunarlog.bulk_import = on) enqueues nothing');
+select set_config('lunarlog.bulk_import', '', true);
+
+-- G8: the alert_on_cycle_start_only narrowing, evaluated against the
+-- day's stored day_entries cycle-start state. Sept 1 (flow none) is not a
+-- cycle start: hank's severe-pain day so far produced nothing for him.
+select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('hank_g')), 0::bigint,
+  '#256 cycle_start_only: a severe observation on a non-cycle-start day produces nothing');
+
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(481), tests.ulid(407), '2026-09-10', 'UTC', 'heavy', now());
+select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('hank_g'), 'cycle_start'),
+  1::bigint, '#256 cycle_start_only: the day_entries trigger still delivers the cycle start itself');
+
+-- ... and a severe pain observation on that same cycle-start day passes
+-- hank's narrowing (it is a cycle-start day), enqueuing its own
+-- high_severity row on top.
+insert into public.observations
+  (id, day_entry_id, profile_id, local_date, tz, category, code, intensity,
+   updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(493), tests.ulid(481), tests.ulid(407), '2026-09-10', 'UTC',
+   'pain', 'nausea', 4, now(),
+   tests.get_supabase_uid('mom_g'), tests.get_supabase_uid('mom_g'));
+select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('hank_g'), 'high_severity'),
+  1::bigint,
+  '#256 cycle_start_only: a severe observation on a cycle-start day passes the narrowing');
+
+-- Structural guards: the new trigger function is security definer, never
+-- executable by authenticated, and both of its triggers exist.
+select is(
+  (select prosecdef from pg_proc
+    where proname = 'enqueue_observation_high_severity_alerts'
+      and pronamespace = 'public'::regnamespace),
+  true,
+  '#256 enqueue_observation_high_severity_alerts is security definer'
+);
+select is(
+  has_function_privilege('authenticated', 'public.enqueue_observation_high_severity_alerts()', 'execute'),
+  false,
+  '#256 authenticated has no execute grant on enqueue_observation_high_severity_alerts'
+);
+select is(
+  (select count(*) from pg_trigger
+    where tgrelid = 'public.observations'::regclass
+      and tgname in ('observations_after_insert_high_severity_alert',
+                     'observations_after_update_high_severity_alert')
+      and not tgisinternal),
+  2::bigint,
+  '#256 both high-severity alert triggers exist on observations'
+);
+
 select is(
   (select count(*) from information_schema.columns
     where table_schema = 'public' and table_name = 'notification_outbox'

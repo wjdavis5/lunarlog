@@ -18,8 +18,9 @@
 ///   `profiles.mode` (Issue #131) gets the same closed-set treatment except
 ///   that it is non-null by default: an absent or unrecognised value
 ///   normalises to `standard` (presentation-only, never a security field).
-///   `profiles.transferred_at` (R5) is pulled but never pushed — server-
-///   owned, written only by `accept_ownership_transfer`.
+///   `profiles.transferred_at` (R5) and
+///   `profiles.transferred_to_user_id` (Issue #296) are pulled but never
+///   pushed — server-owned, written only by `accept_ownership_transfer`.
 /// * `profiles.last_period_start` / `typical_cycle_length_days` /
 ///   `typical_period_length_days` (Issue #218, onboarding cycle facts) are
 ///   pulled *and* pushed like any other profile column; the date stays a
@@ -181,10 +182,10 @@ DateTime decodeTimestamp(
 
 /// The `p_profiles` element for [row]. Emits exactly the keys `sync_push`
 /// accepts; `dirty` and `local_rev` are device-local and never leave.
-/// `transferred_at` is deliberately omitted (Issue #4 R5/R21): it is
-/// server-owned, written only by `accept_ownership_transfer`, and
-/// `sync_push` tolerates but never reads it, so the client keeps the
-/// payload honest by never sending it.
+/// `transferred_at` and `transferred_to_user_id` are deliberately omitted
+/// (Issue #4 R5/R21; Issue #296): they are server-owned, written only by
+/// `accept_ownership_transfer`, and `sync_push` tolerates but never reads
+/// them, so the client keeps the payload honest by never sending them.
 JsonRow encodeProfile(Profile row) {
   if (!isValidUlid(row.id)) {
     throw const RowCodecError(RowCodecErrorKind.invalidId,
@@ -436,6 +437,7 @@ RemoteProfileRow decodeProfile(JsonRow json) {
     birthYear: r.integerOrNull('birth_year'),
     relationship: _decodeRelationship(r.stringOrNull('relationship')),
     transferredAt: r.timestampOrNull('transferred_at'),
+    transferredToUserId: r.stringOrNull('transferred_to_user_id'),
     lastPeriodStart:
         _decodeIsoDate(r.stringOrNull('last_period_start'), r, 'last_period_start'),
     typicalCycleLengthDays: r.integerOrNull('typical_cycle_length_days'),

@@ -122,8 +122,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 12 — `pms` on `day_entries` (Issue #220, the first-class PMS
   ///   marker that feeds the 6-cycle PMS averages and the predicted PMS
   ///   band).
-  /// * 13 — `bbt_unit` + `weight_unit` on `profiles` (Issue #255, the
-  ///   per-profile display-unit preferences for numeric measurements).
+  /// * 13 — `transferred_to_user_id` on `profiles` (Issue #296, the
+  ///   "transferred to whom" ownership signal the health-sync minor gate
+  ///   requires) and `bbt_unit` + `weight_unit` on `profiles` (Issue #255,
+  ///   the per-profile display-unit preferences for numeric measurements).
+  ///   Both landed as v13 bumps (main's #376 and this branch's #255), so
+  ///   one step block carries all three columns.
   @override
   int get schemaVersion => 13;
 
@@ -168,7 +172,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `sync_state.cursor_care_notes`, `sync_state.cursor_visit_prep_items`,
   /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
   /// Issue #220 adds `day_entries.pms`.
-  /// Issue #255 adds `profiles.bbt_unit`, `profiles.weight_unit`.
+  /// Issue #296 adds `profiles.transferred_to_user_id`; Issue #255 adds
+  /// `profiles.bbt_unit`, `profiles.weight_unit`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -298,7 +303,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV11(m, from);
     // Issue #220's v12 step, same shape again.
     await _upgradeToV12(m, from);
-    // Issue #255's v13 step, same shape again.
+    // Issue #296's and Issue #255's v13 columns, one step block (both
+    // bumps are v13 — main's #376 and this branch's #255 landed as
+    // competing v13s, woven into a single upgrade step).
     await _upgradeToV13(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
@@ -408,15 +415,24 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
-  /// The v13 upgrade step (Issue #255): the two per-profile display-unit
-  /// preferences on `profiles`. `profiles` has existed since v1 on every
-  /// real device, so the addColumns are always safe regardless of `from`;
-  /// each column's own default (`'celsius'`/`'kg'`) back-fills every
-  /// already-stored row, exactly like the server migration's
-  /// `add column ... not null default`.
+  /// The v13 upgrade step (Issues #296 and #255): one step block carrying
+  /// both sides' column additions, since both bumps claimed schemaVersion
+  /// 13 (main's #376 for `transferred_to_user_id`, this branch's #255 for
+  /// the two per-profile display-unit preferences on `profiles`).
+  /// `profiles` has existed since v1 on every real device, so the
+  /// addColumns are always safe regardless of `from`; the unit columns'
+  /// own defaults (`'celsius'`/`'kg'`) back-fill every already-stored row,
+  /// exactly like the server migration's `add column ... not null default`.
+  /// A fresh `transferred_to_user_id` is always NULL, and only a remote
+  /// apply (a real transfer's synced profile) ever fills it — matching the
+  /// server migration's own backfill rule ("the current owner of a
+  /// transferred profile is exactly who accepted its last transfer"),
+  /// which only the server's row carries.
   Future<void> _upgradeToV13(Migrator m, int from) async {
     if (from >= 13) return;
     await transaction(() async {
+      await m.addColumn(profiles, profiles.transferredToUserId);
+      await migrationStepHook?.call('profiles.transferred_to_user_id');
       await m.addColumn(profiles, profiles.bbtUnit);
       await migrationStepHook?.call('profiles.bbt_unit');
       await m.addColumn(profiles, profiles.weightUnit);

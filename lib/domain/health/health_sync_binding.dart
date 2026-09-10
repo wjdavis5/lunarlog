@@ -48,10 +48,29 @@ import '../models/profile.dart';
 import '../repositories/settings_store.dart';
 import 'health_sync_policy.dart';
 
+/// The wall clock [HealthSyncBinding]'s minor gate evaluates against when
+/// no clock is injected. A top-level function (not a `DateTime.now`
+/// constructor tear-off) so the `const` constructor's default value stays
+/// a plain constant tear-off.
+DateTime _systemNow() => DateTime.now();
+
 class HealthSyncBinding {
-  const HealthSyncBinding(this._settings);
+  /// [now] is the clock seam for the minor gate's coarse birth-year check
+  /// (Issue #296): production wiring passes nothing and gets the real
+  /// wall clock; tests pin a fixed instant so the under-18 boundary is
+  /// deterministic and the fail-closed direction is provable by test. The
+  /// clock lives on the instance rather than on `canBind`/`canWrite`
+  /// parameters on purpose — a per-call clock would hand a future adapter
+  /// a parameter it could set to `birthYear + 19` and age every minor out
+  /// of the gate, the same per-call bypass the `minorBindingAllowed`
+  /// parameter's doc warns against.
+  const HealthSyncBinding(this._settings, {DateTime Function()? now})
+      : _now = now ?? _systemNow;
 
   final SettingsStore _settings;
+
+  /// The injected clock the minor gate evaluates against.
+  final DateTime Function() _now;
 
   /// The bound profile id, or null when none is set (the default: health
   /// sync off for every profile on this device).
@@ -91,6 +110,7 @@ class HealthSyncBinding {
         signedInUserId: signedInUserId,
         ownerUserId: ownerUserId,
         minorBindingAllowed: minorBindingAllowed,
+        now: _now(),
       );
 
   /// Whether [profile]'s data may be written to this device's OS health
@@ -116,30 +136,32 @@ class HealthSyncBinding {
         signedInUserId: signedInUserId,
         ownerUserId: ownerUserId,
         minorBindingAllowed: minorBindingAllowed,
+        now: _now(),
       );
 
   /// The pure decision [canBind] and [canWrite] share. Private to this
   /// file — see the class doc and `health_sync_policy.dart`'s library doc
   /// for why nothing else may call this or construct its inputs directly.
-  /// Total — never throws.
+  /// Total — never throws. (The two conjunct clusters below live in their
+  /// own helpers purely to keep this method's cyclomatic complexity — and
+  /// so its CRAP score, which the quality gate charges even at 100%
+  /// coverage — under the gate.)
   static HealthSyncCheck _evaluate({
     required Profile profile,
     required String? boundProfileId,
     required String? signedInUserId,
     required String? ownerUserId,
     required bool minorBindingAllowed,
+    required DateTime now,
   }) {
     if (boundProfileId == null) return HealthSyncCheck.noBinding;
     if (profile.id != boundProfileId) return HealthSyncCheck.profileNotBound;
 
-    final isOwner = signedInUserId != null &&
-        ownerUserId != null &&
-        signedInUserId == ownerUserId;
+    final isOwner = _isResolvedOwner(signedInUserId, ownerUserId);
 
-    if (_isMinorNow(profile)) {
-      final transferredToOwnAccount =
-          profile.transferredAt != null && isOwner;
-      if (!minorBindingAllowed || !transferredToOwnAccount) {
+    if (_isMinorNow(profile, now)) {
+      if (!_minorTransferExceptionHolds(
+          profile, signedInUserId, isOwner, minorBindingAllowed)) {
         return HealthSyncCheck.minorRequiresOwnershipTransfer;
       }
       return HealthSyncCheck.allowed;
@@ -149,17 +171,54 @@ class HealthSyncBinding {
     return HealthSyncCheck.allowed;
   }
 
+  /// Whether the signed-in account holds the profile's resolved ownership
+  /// (an accepted `primary_guardian` row naming exactly this account).
+  static bool _isResolvedOwner(String? signedInUserId, String? ownerUserId) =>
+      signedInUserId != null &&
+      ownerUserId != null &&
+      signedInUserId == ownerUserId;
+
+  /// Every leg of the transferred-minor exception (Issue #153 condition 3,
+  /// tightened by Issue #296): the feature flag is on, a transfer actually
+  /// happened, the caller is the resolved owner, AND the server-stamped
+  /// transfer target names the signed-in account itself — not merely "a
+  /// transfer happened somewhere and the caller happens to be the
+  /// resolved owner". `transferredAt` and `transferredToUserId` are
+  /// stamped together by `accept_ownership_transfer`, so a null target (a
+  /// pre-#296 row, a row from a not-yet-migrated server, or any future
+  /// ownership path that forgets to stamp) fails closed.
+  static bool _minorTransferExceptionHolds(
+    Profile profile,
+    String? signedInUserId,
+    bool isOwner,
+    bool minorBindingAllowed,
+  ) {
+    if (!minorBindingAllowed) return false;
+    if (profile.transferredAt == null) return false;
+    if (!isOwner) return false;
+    final target = profile.transferredToUserId;
+    return target != null && target == signedInUserId;
+  }
+
   /// Whether [profile] counts as a minor for the gate above: either
-  /// flagged directly via [Profile.isMinor], or not flagged but under 18
-  /// by [Profile.birthYear] — unticking "Minor" in the profile dialog must
-  /// never by itself clear this deny. [Profile.birthYear] is a year-only
-  /// field (no month/day), so this is a coarse same-calendar-year
-  /// comparison against the current year, not an exact birthday check.
-  static bool _isMinorNow(Profile profile) {
+  /// flagged directly via [Profile.isMinor], or not flagged but at most 18
+  /// whole years since [Profile.birthYear], evaluated against [now]'s
+  /// year — unticking "Minor" in the profile dialog must never by itself
+  /// clear this deny. [Profile.birthYear] is a year-only field (no
+  /// month/day), so this is a coarse same-calendar-year comparison, not an
+  /// exact birthday check — and the comparison is deliberately `<= 18`
+  /// (Issue #296), not `< 18`: someone born late in year Y is still 17 for
+  /// most of year Y+18, and a year-only check can't see the birthday, so
+  /// the whole calendar year Y+18 fails closed. The cost — an actual
+  /// 18-year-old is denied for up to that one extra year (or allowed
+  /// through the transfer exception, which is consented, not automatic) —
+  /// is the safe direction; the previous `< 18` let a 17-year-old born in
+  /// December compute as 18 and skip the gate entirely.
+  static bool _isMinorNow(Profile profile, DateTime now) {
     if (profile.isMinor) return true;
     final birthYear = profile.birthYear;
     if (birthYear == null) return false;
-    return DateTime.now().year - birthYear < 18;
+    return now.year - birthYear <= 18;
   }
 
   /// Attempts to bind [profile] as this device's sole health-store

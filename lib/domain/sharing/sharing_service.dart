@@ -30,7 +30,9 @@ class GeneratedInvite {
   /// SHA-256 hex digest of [rawToken] stored on the server.
   final String tokenHash;
 
-  /// Deep link URI to redeem this invite: `lunarlog://invite?code=<rawToken>&profile=<profileId>`.
+  /// Deep link URI to redeem this invite: `lunarlog://invite?code=<rawToken>&profile=<profileId>`,
+  /// or the `https://<domain>/invite?...` universal-link form when a hosted
+  /// domain is configured (issue #129).
   final Uri inviteUri;
 
   final DateTime expiresAt;
