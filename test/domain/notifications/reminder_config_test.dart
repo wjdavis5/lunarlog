@@ -82,6 +82,34 @@ void main() {
       }
     });
 
+    test('the #183 birth-control kinds ship off with no lead days', () {
+      const config = ReminderConfig.standard;
+      expect(config.birthControlPill.enabled, isFalse,
+          reason: 'an opt-in adherence reminder, not default behavior');
+      expect(config.birthControlPatch.enabled, isFalse);
+      expect(config.birthControlRing.enabled, isFalse);
+      expect(config.birthControlShot.enabled, isFalse);
+      for (final kind in [
+        ReminderKind.birthControlPill,
+        ReminderKind.birthControlPatch,
+        ReminderKind.birthControlRing,
+        ReminderKind.birthControlShot,
+      ]) {
+        expect(config.typeConfig(kind).leadDays, isNull,
+            reason: 'anchored on the method\'s own due dates, nothing to '
+                'lead ($kind)');
+        expect(config.typeConfig(kind).timeOfDayMinutes, 9 * 60);
+      }
+      // ... and never preset-defaulted on for any mode.
+      for (final mode in ProfileMode.values) {
+        final fromMode = ReminderConfig.fromMode(mode);
+        expect(fromMode.birthControlPill.enabled, isFalse, reason: '$mode');
+        expect(fromMode.birthControlPatch.enabled, isFalse, reason: '$mode');
+        expect(fromMode.birthControlRing.enabled, isFalse, reason: '$mode');
+        expect(fromMode.birthControlShot.enabled, isFalse, reason: '$mode');
+      }
+    });
+
     test('fromPreset matches reminderPresetFor exhaustively', () {
       for (final mode in ProfileMode.values) {
         final preset = reminderPresetFor(mode);
@@ -188,6 +216,41 @@ void main() {
           ReminderTypeConfig.cycleStatisticChange);
       expect(legacy['p1']!.upcoming.enabled, isTrue);
     });
+
+    test('#183 birth-control fields round-trip, and a pre-#183 document '
+        'decodes to the off defaults', () {
+      const config = ReminderConfig(
+        birthControlPill:
+            ReminderTypeConfig(enabled: true, timeOfDayMinutes: 8 * 60),
+        birthControlPatch:
+            ReminderTypeConfig(enabled: true, timeOfDayMinutes: 20 * 60),
+        birthControlRing:
+            ReminderTypeConfig(enabled: false, timeOfDayMinutes: 7 * 60),
+        birthControlShot:
+            ReminderTypeConfig(enabled: true, timeOfDayMinutes: 12 * 60),
+      );
+      final decoded =
+          decodeReminderConfigs(encodeReminderConfigs({'p1': config}));
+      expect(decoded['p1'], config);
+
+      // A stored document from before #183 has none of the new keys; they
+      // decode to their off-by-default stock configs.
+      final legacy = decodeReminderConfigs('''
+{
+  "v": 1,
+  "profiles": {"p1": {"log": {"enabled": true, "timeOfDay": 600}}}
+}
+''');
+      expect(legacy['p1']!.birthControlPill,
+          ReminderTypeConfig.birthControlPill);
+      expect(legacy['p1']!.birthControlPatch,
+          ReminderTypeConfig.birthControlPatch);
+      expect(legacy['p1']!.birthControlRing,
+          ReminderTypeConfig.birthControlRing);
+      expect(legacy['p1']!.birthControlShot,
+          ReminderTypeConfig.birthControlShot);
+      expect(legacy['p1']!.log.enabled, isTrue);
+    });
   });
 
   group('late-snooze JSON', () {
@@ -271,6 +334,17 @@ void main() {
       expect(updated.log.enabled, isTrue);
       expect(updated.upcoming, config.upcoming,
           reason: 'the other types are untouched');
+      // A birth-control kind rides the same plumbing (Issue #183).
+      final pillOn = config.withTypeConfig(
+        ReminderKind.birthControlPill,
+        config
+            .typeConfig(ReminderKind.birthControlPill)
+            .copyWith(enabled: true, timeOfDayMinutes: 21 * 60),
+      );
+      expect(pillOn.birthControlPill.enabled, isTrue);
+      expect(pillOn.birthControlPill.timeOfDayMinutes, 21 * 60);
+      expect(pillOn.birthControlPatch, config.birthControlPatch,
+          reason: 'the sibling cadences are untouched');
     });
 
     test('equality is field-wise', () {
@@ -286,6 +360,14 @@ void main() {
           quietHours: const QuietHours(startMinutes: 1, endMinutes: 2),
         ),
         isNot(ReminderConfig.standard),
+      );
+      expect(
+        ReminderConfig.standard.copyWith(
+          birthControlRing:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        ),
+        isNot(ReminderConfig.standard),
+        reason: 'the #183 kinds take part in equality (Issue #183)',
       );
     });
   });

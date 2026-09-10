@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -979,6 +980,194 @@ void main() {
         plan.any((r) => r.profileId == 'bea'),
         isTrue,
       );
+    });
+  });
+
+  group('birth-control state watcher (Issue #183)', () {
+    test('a recorded method flows into the plan; enabling the kind arms '
+        'its cadence without any prediction', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1Mode = StreamController<BirthControlState?>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          birthControlPill:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (_) => const Stream.empty(),
+        localSettings: configService,
+        birthControlStateFor: (id) =>
+            id == 'p1' ? p1Mode.stream : const Stream.empty(),
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1Mode.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      await pumpEventQueue();
+      // No row yet: the enabled kind has nothing to anchor on.
+      expect(
+        scheduler.rescheduleCalls.last
+            .where((r) => r.kind == ReminderKind.birthControlPill),
+        isEmpty,
+      );
+
+      p1Mode.add((method: 'pill', startedOn: null, stoppedOn: null));
+      await pumpEventQueue();
+      final kinds = scheduler.rescheduleCalls.last
+          .where((r) => r.profileId == 'p1')
+          .map((r) => r.kind)
+          .toSet();
+      expect(kinds, {ReminderKind.birthControlPill},
+          reason: 'prediction-independent: the pill window plans from the '
+              'method alone');
+    });
+
+    test('changing the recorded method re-routes the reminder; nothing '
+        'stale keeps firing for the old method', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1Mode = StreamController<BirthControlState?>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+      // Both kinds enabled: only the current method's may ever plan.
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          birthControlPill:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          birthControlPatch:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (_) => const Stream.empty(),
+        localSettings: configService,
+        birthControlStateFor: (_) => p1Mode.stream,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1Mode.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1Mode.add((
+        method: 'pill',
+        startedOn: today.addDays(-30).iso,
+        stoppedOn: null,
+      ));
+      await pumpEventQueue();
+      var kinds = scheduler.rescheduleCalls.last
+          .where((r) => r.profileId == 'p1')
+          .map((r) => r.kind)
+          .toSet();
+      expect(kinds, {ReminderKind.birthControlPill});
+
+      // Switch to the patch: the row emission replans and the pill
+      // reminders are gone from the fresh plan (rescheduleAll cancels all
+      // pending first, so the armed pill notifications die with it).
+      p1Mode.add((method: 'patch', startedOn: today.iso, stoppedOn: null));
+      await pumpEventQueue();
+      kinds = scheduler.rescheduleCalls.last
+          .where((r) => r.profileId == 'p1')
+          .map((r) => r.kind)
+          .toSet();
+      expect(kinds, {ReminderKind.birthControlPatch},
+          reason: 'the pill kind vanished with the method');
+
+      // Stopping the method (a stop date as of today) clears the
+      // adherence reminder entirely.
+      p1Mode.add((
+        method: 'patch',
+        startedOn: today.addDays(-7).iso,
+        stoppedOn: today.iso,
+      ));
+      await pumpEventQueue();
+      kinds = scheduler.rescheduleCalls.last
+          .where((r) => r.profileId == 'p1')
+          .map((r) => r.kind)
+          .toSet();
+      expect(kinds, isEmpty,
+          reason: 'a stopped method is not in effect, so no adherence '
+              'reminder plans');
+    });
+
+    test('no watcher wired keeps the pre-#183 shape (no adherence '
+        'reminders)', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          birthControlPill:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_upcoming(today, today.addDays(10)));
+      await pumpEventQueue();
+
+      final kinds = scheduler.rescheduleCalls.last
+          .where((r) => r.profileId == 'p1')
+          .map((r) => r.kind)
+          .toSet();
+      expect(kinds, {ReminderKind.upcoming},
+          reason: 'without a birth-control stream the plan is exactly what '
+              'pre-#183 code produced');
     });
   });
 }

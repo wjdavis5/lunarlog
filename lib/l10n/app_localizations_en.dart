@@ -673,5 +673,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reminderBirthControlTitle => 'Birth-control reminders';
 
   @override
-  String get reminderBirthControlComingSoon => 'Coming in a future update';
+  String get reminderBirthControlFollowsMethod =>
+      'Follows the birth-control method recorded in this profile\'s settings.';
+
+  @override
+  String get reminderKindBirthControlPill => 'Pill reminder';
+
+  @override
+  String get reminderKindBirthControlPillSubtitle =>
+      'Daily, at the chosen time';
+
+  @override
+  String get reminderKindBirthControlPatch => 'Patch reminder';
+
+  @override
+  String get reminderKindBirthControlPatchSubtitle => 'Weekly, on change day';
+
+  @override
+  String get reminderKindBirthControlRing => 'Ring reminder';
+
+  @override
+  String get reminderKindBirthControlRingSubtitle => 'Monthly, on change day';
+
+  @override
+  String get reminderKindBirthControlShot => 'Injection reminder';
+
+  @override
+  String get reminderKindBirthControlShotSubtitle => 'Every 12 weeks';
+
+  @override
+  String get reminderBirthControlNeedsStartDate =>
+      'Waits for a start date on the recorded method — re-record the method in profile settings to set one';
 }

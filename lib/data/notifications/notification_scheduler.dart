@@ -28,10 +28,11 @@ const String kReminderCategoryId = 'lunarlog_reminder';
 /// Which reminder kinds carry the Started / Spotting / Not yet action
 /// buttons (Issue #136, widened by Issue #178): the period-anchored kinds
 /// do — their "period may be starting" semantics is what the buttons
-/// assert. The daily log nudge, the fertile-window-soon kind, and the
-/// statistic-change kind carry none: their reminders make no period-start
-/// claim, so "Started" would log a period the notification never suggested
-/// (and "Not yet" would pre-snooze a late window it says nothing about).
+/// assert. The daily log nudge, the fertile-window-soon kind, the
+/// statistic-change kind, and Issue #183's birth-control adherence kinds
+/// carry none: their reminders make no period-start claim, so "Started"
+/// would log a period the notification never suggested (and "Not yet"
+/// would pre-snooze a late window it says nothing about).
 bool reminderHasActions(ReminderKind kind) => switch (kind) {
       ReminderKind.upcoming ||
       ReminderKind.periodStartingSoon ||
@@ -40,7 +41,11 @@ bool reminderHasActions(ReminderKind kind) => switch (kind) {
         true,
       ReminderKind.fertileWindowSoon ||
       ReminderKind.cycleStatisticChange ||
-      ReminderKind.log =>
+      ReminderKind.log ||
+      ReminderKind.birthControlPill ||
+      ReminderKind.birthControlPatch ||
+      ReminderKind.birthControlRing ||
+      ReminderKind.birthControlShot =>
         false,
     };
 

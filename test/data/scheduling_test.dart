@@ -3,10 +3,13 @@
 /// Issue #136 adds the per-type configuration: enable toggles, lead days,
 /// per-type time-of-day, quiet hours, same-day coalescing, the eviction
 /// order under the cap, stable ids, and the "Not yet" late snooze.
+/// Issue #183 adds the birth-control adherence kinds: per-method cadence
+/// anchored on the profile's recorded method and its effective dates.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/scheduling.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
@@ -842,6 +845,308 @@ void main() {
           plan.where((r) => r.kind == ReminderKind.periodStartingSoon).length;
       expect(lateCount, kLatePreArmDays);
       expect(lateCount + soonCount, kMaxPendingReminders);
+    });
+  });
+
+  group('birth-control adherence reminders (Issue #183)', () {
+    /// Every adherence kind on — each test below enables what its scenario
+    /// needs so a stray plan proves the gate that let it through.
+    ReminderConfig bcConfig() => ReminderConfig.standard.copyWith(
+          birthControlPill:
+              const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          birthControlPatch:
+              const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          birthControlRing:
+              const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          birthControlShot:
+              const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        );
+
+    test('kind/cadence mapping covers exactly the four self-administered '
+        'cadences', () {
+      expect(birthControlReminderKindFor(BirthControlMethod.pill),
+          ReminderKind.birthControlPill);
+      expect(birthControlReminderKindFor(BirthControlMethod.patch),
+          ReminderKind.birthControlPatch);
+      expect(birthControlReminderKindFor(BirthControlMethod.ring),
+          ReminderKind.birthControlRing);
+      expect(birthControlReminderKindFor(BirthControlMethod.shot),
+          ReminderKind.birthControlShot);
+      // No user-administered schedule: no kind, no cadence.
+      for (final method in [
+        BirthControlMethod.none,
+        BirthControlMethod.implant,
+        BirthControlMethod.hormonalIud,
+        BirthControlMethod.copperIud,
+        BirthControlMethod.condom,
+        BirthControlMethod.other,
+        BirthControlMethod.unknown,
+      ]) {
+        expect(birthControlReminderKindFor(method), isNull,
+            reason: '${method.name} must never grow an adherence reminder');
+        expect(birthControlCadenceDays(method), isNull);
+      }
+      expect(birthControlCadenceDays(BirthControlMethod.pill), 1);
+      expect(birthControlCadenceDays(BirthControlMethod.patch), 7);
+      expect(birthControlCadenceDays(BirthControlMethod.ring), 28);
+      expect(birthControlCadenceDays(BirthControlMethod.shot), 84);
+    });
+
+    test('the four kinds ship off: a default config plans nothing', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        birthControlModes: {
+          'p1': (method: 'pill', startedOn: null, stoppedOn: null),
+        },
+      );
+      expect(plan, isEmpty, reason: 'opt-in kinds, like every #178 kind');
+    });
+
+    test('daily pill reminder arms a bounded daily window, no anchor '
+        'needed', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'pill', startedOn: '2025-01-01', stoppedOn: null),
+        },
+      );
+      expect(plan, hasLength(kBirthControlPillPreArmDays));
+      expect(plan.every((r) => r.kind == ReminderKind.birthControlPill),
+          isTrue);
+      expect(plan.first.fireOn, today);
+      expect(plan.last.fireOn, today.addDays(kBirthControlPillPreArmDays - 1));
+      expect(plan.map((r) => r.timeOfDayMinutes), everyElement(9 * 60));
+    });
+
+    test('weekly patch reminder anchors on the recorded start date', () {
+      // Started exactly one week ago: the first due change is today (n=1).
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (
+            method: 'patch',
+            startedOn: today.addDays(-7).iso,
+            stoppedOn: null,
+          ),
+        },
+      );
+      expect(plan, hasLength(kBirthControlPreArmOccurrences));
+      expect(
+          plan.map((r) => r.fireOn).toList(),
+          [today, today.addDays(7), today.addDays(14)]);
+    });
+
+    test('monthly ring and 12-weekly injection cadences count from the '
+        'start date', () {
+      // Started today: the first change is one cadence out (n=1), never
+      // the start day itself.
+      final ring = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'ring', startedOn: today.iso, stoppedOn: null),
+        },
+      );
+      expect(ring.map((r) => r.fireOn).toList(),
+          [today.addDays(28), today.addDays(56), today.addDays(84)]);
+      final shot = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'shot', startedOn: today.iso, stoppedOn: null),
+        },
+      );
+      expect(shot.map((r) => r.fireOn).toList(),
+          [today.addDays(84), today.addDays(168), today.addDays(252)]);
+    });
+
+    test('past due dates are not re-fired retroactively; the next three '
+        'forward dates are armed', () {
+      // Started 30 days ago, weekly patch: n=1..4 are past; n=5 is
+      // startedOn+35 = today+5.
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (
+            method: 'patch',
+            startedOn: today.addDays(-30).iso,
+            stoppedOn: null,
+          ),
+        },
+      );
+      expect(plan.map((r) => r.fireOn).toList(),
+          [today.addDays(5), today.addDays(12), today.addDays(19)]);
+    });
+
+    test('an anchor-based kind without a recorded start date plans '
+        'nothing', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'patch', startedOn: null, stoppedOn: null),
+        },
+      );
+      expect(plan, isEmpty,
+          reason: 'no knowable due date; never invent an anchor');
+    });
+
+    test('implant and IUD never plan a reminder, even with every kind '
+        'enabled', () {
+      for (final method in ['implant', 'hormonal_iud', 'copper_iud']) {
+        final plan = planReminders(
+          today: today,
+          predictions: {},
+          configs: {'p1': bcConfig()},
+          birthControlModes: {
+            'p1': (
+              method: method,
+              startedOn: today.addDays(-10).iso,
+              stoppedOn: null,
+            ),
+          },
+        );
+        expect(plan, isEmpty,
+            reason: '$method is not user-administered on a schedule');
+      }
+    });
+
+    test('a method recorded as none/unknown plans nothing', () {
+      for (final stored in ['none', 'condom', 'other', 'something_new']) {
+        final plan = planReminders(
+          today: today,
+          predictions: {},
+          configs: {'p1': bcConfig()},
+          birthControlModes: {
+            'p1': (method: stored, startedOn: today.iso, stoppedOn: null),
+          },
+        );
+        expect(plan, isEmpty, reason: '$stored has no adherence cadence');
+      }
+    });
+
+    test('a method whose stop date has passed plans nothing', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (
+            method: 'pill',
+            startedOn: today.addDays(-30).iso,
+            stoppedOn: today.iso,
+          ),
+        },
+      );
+      expect(plan, isEmpty, reason: 'stopped today means not in effect');
+    });
+
+    test('changing the recorded method re-routes the reminder: nothing '
+        'stale survives a replan', () {
+      final onPill = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'pill', startedOn: null, stoppedOn: null),
+        },
+      );
+      expect(onPill.map((r) => r.kind),
+          everyElement(ReminderKind.birthControlPill));
+      final onPatch = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'patch', startedOn: today.iso, stoppedOn: null),
+        },
+      );
+      expect(onPatch.map((r) => r.kind),
+          everyElement(ReminderKind.birthControlPatch),
+          reason: 'the pill kind vanished with the method; the patch kind '
+              'appeared without a config edit');
+    });
+
+    test('birth-control kinds are prediction-independent', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'pill', startedOn: null, stoppedOn: null),
+        },
+      );
+      expect(plan, isNotEmpty,
+          reason: 'an adherence reminder is exactly what a profile with '
+              'thin history still needs');
+    });
+
+    test('quiet hours shift a birth-control fire like any other', () {
+      final config = ReminderConfig.standard.copyWith(
+        birthControlPatch:
+            const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        quietHours:
+            const QuietHours(startMinutes: 8 * 60, endMinutes: 12 * 60),
+      );
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': config},
+        birthControlModes: {
+          'p1': (method: 'patch', startedOn: today.iso, stoppedOn: null),
+        },
+      );
+      expect(
+          plan.map((r) => r.fireOn).toList(),
+          [today.addDays(7), today.addDays(14), today.addDays(21)],
+          reason: 'all three occurrences keep their dates');
+      expect(plan.map((r) => r.timeOfDayMinutes), everyElement(12 * 60),
+          reason: '09:00 sits inside 08:00-12:00, so every fire shifts to '
+              'the boundary');
+    });
+
+    test('on a shared fire date the adherence reminder outranks the log '
+        'nudge', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {
+          'p1': bcConfig().copyWith(
+            log:
+                const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+        birthControlModes: {
+          'p1': (method: 'pill', startedOn: null, stoppedOn: null),
+        },
+      );
+      final todayPlan =
+          plan.where((r) => r.fireOn == today).toList(growable: false);
+      expect(todayPlan, hasLength(1),
+          reason: 'same-day duplicates coalesce per profile');
+      expect(todayPlan.single.kind, ReminderKind.birthControlPill);
+    });
+
+    test('a malformed start date degrades to no anchor, never a crash', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'patch', startedOn: 'not-a-date', stoppedOn: null),
+        },
+      );
+      expect(plan, isEmpty);
     });
   });
 }

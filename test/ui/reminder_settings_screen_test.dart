@@ -1,6 +1,8 @@
 /// Widget tests for the per-profile reminder settings screen (Issue #136):
 /// the four type toggles, per-profile persistence through
-/// [ReminderConfigService], and the profile switcher.
+/// [ReminderConfigService], and the profile switcher. Issue #183 adds the
+/// "Your Birth Control" group: the method-cadence row matching the
+/// profile's recorded method, or the explainer row when none applies.
 ///
 /// The screen is a lazy ListView, so every below-the-fold lookup first
 /// scrolls the target into view.
@@ -8,9 +10,12 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -34,6 +39,25 @@ class _FakeProfilesRepository implements ProfilesRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// The profile_modes fake backing the birth-control group (Issue #183):
+/// answers `find` with the single row every test seeds.
+class _FakeModesRepository implements ProfileModesRepository {
+  _FakeModesRepository(this.row);
+
+  final ProfileLifecycleMode? row;
+
+  @override
+  Future<ProfileLifecycleMode?> find(String profileId) async => row;
+
+  @override
+  Future<void> save({
+    required String profileId,
+    required LifecycleMode mode,
+    String? modeStartedOn,
+    String? birthControlMethod,
+  }) async {}
+}
+
 Profile _profile(String id, String name) => Profile(
       id: id,
       displayName: name,
@@ -47,12 +71,16 @@ Future<void> _pump(
   List<Profile> profiles,
   FakeSettingsStore store, {
   ReminderTimePicker? timePicker,
+  ProfileLifecycleMode? modeRow,
 }) async {
   await tester.pumpWidget(
     MultiProvider(
       providers: [
         Provider<ProfilesRepository>.value(
           value: _FakeProfilesRepository(profiles),
+        ),
+        Provider<ProfileModesRepository>.value(
+          value: _FakeModesRepository(modeRow),
         ),
         Provider<SettingsStore>.value(value: store),
         ChangeNotifierProvider(
@@ -150,8 +178,9 @@ void main() {
     }
   });
 
-  testWidgets('AC4: the three Clue groups render with their kinds and the '
-      'birth-control placeholder (Issue #178)', (tester) async {
+  testWidgets('AC4/#183: the three Clue groups render; the birth-control '
+      'group shows the explainer row when no method is in effect',
+      (tester) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await _pump(tester, [_profile('p1', 'Alice')], store);
@@ -163,16 +192,144 @@ void main() {
     expect(
         find.text('Days before predicted fertile window'), findsOneWidget);
 
-    await _scrollTo(
-        tester, const ValueKey('reminder-birth-control-placeholder'));
+    // No birth-control method recorded: the group renders its explainer
+    // row, not a toggle for a reminder that could never plan.
+    await _scrollTo(tester, const ValueKey('reminder-birth-control-none'));
     expect(find.text('Your birth control'), findsOneWidget);
     expect(find.text('Birth-control reminders'), findsOneWidget);
-    expect(find.text('Coming in a future update'), findsOneWidget);
+    expect(find.text(
+        'Follows the birth-control method recorded in this profile\'s '
+        'settings.'), findsOneWidget);
 
     await _scrollTo(tester, const ValueKey('reminder-log-switch'));
     expect(find.text('Other reminders'), findsOneWidget);
     expect(await service.load('p1'), isNull,
         reason: 'rendering the groups stored nothing');
+  });
+
+  testWidgets('#183: the recorded method decides which adherence row the '
+      'birth-control group renders', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    final today = LocalDate.today();
+    await _pump(
+      tester,
+      [_profile('p1', 'Alice')],
+      store,
+      modeRow: (
+        mode: LifecycleMode.tracking,
+        birthControlMethod: 'patch',
+        birthControlStartedOn: today.addDays(-7).iso,
+        birthControlStoppedOn: null,
+      ),
+    );
+
+    // The patch is the method in effect: its weekly row renders (and the
+    // pill's does not — one method, one method-appropriate reminder).
+    await _scrollTo(tester, const ValueKey('reminder-birthControlPatch-switch'));
+    expect(find.byKey(const ValueKey('reminder-birthControlPatch-switch')),
+        findsOneWidget);
+    expect(find.text('Patch reminder'), findsOneWidget);
+    expect(find.text('Weekly, on change day'), findsOneWidget);
+    expect(find.byKey(const ValueKey('reminder-birthControlPill-switch')),
+        findsNothing);
+    // Anchor-based kinds carry no lead row — their due dates come from
+    // the method, not a lead setting.
+    expect(find.byKey(const ValueKey('reminder-birthControlPatch-lead')),
+        findsNothing);
+
+    // The toggle rides the ordinary per-type persistence.
+    await tester.tap(find.byKey(const ValueKey('reminder-birthControlPatch-switch')));
+    await tester.pumpAndSettle();
+    final stored = await service.load('p1');
+    expect(stored!.birthControlPatch.enabled, isTrue);
+  });
+
+  testWidgets('#183: an anchor-based method without a start date says so '
+      'instead of promising a reminder that cannot fire', (tester) async {
+    final store = FakeSettingsStore();
+    await _pump(
+      tester,
+      [_profile('p1', 'Alice')],
+      store,
+      modeRow: (
+        mode: LifecycleMode.tracking,
+        birthControlMethod: 'ring',
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      ),
+    );
+
+    await _scrollTo(tester, const ValueKey('reminder-birthControlRing-switch'));
+    final row = tester.widget<SwitchListTile>(
+      find.byKey(const ValueKey('reminder-birthControlRing-switch')),
+    );
+    expect((row.subtitle as Text).data,
+        'Waits for a start date on the recorded method — re-record the '
+        'method in profile settings to set one');
+  });
+
+  testWidgets('#183: implant and IUD get no adherence row — the explainer '
+      'renders instead (AC6)', (tester) async {
+    for (final method in ['implant', 'hormonal_iud', 'copper_iud']) {
+      final store = FakeSettingsStore();
+      await _pump(
+        tester,
+        [_profile('p1', 'Alice')],
+        store,
+        modeRow: (
+          mode: LifecycleMode.tracking,
+          birthControlMethod: method,
+          birthControlStartedOn: LocalDate.today().iso,
+          birthControlStoppedOn: null,
+        ),
+      );
+      await _scrollTo(tester, const ValueKey('reminder-birth-control-none'));
+      expect(find.text('Birth-control reminders'), findsOneWidget,
+          reason: '$method is not user-administered on a schedule');
+      expect(
+          find.byKey(const ValueKey('reminder-birthControlPill-switch')),
+          findsNothing);
+      expect(
+          find.byKey(const ValueKey('reminder-birthControlPatch-switch')),
+          findsNothing);
+      expect(
+          find.byKey(const ValueKey('reminder-birthControlRing-switch')),
+          findsNothing);
+      expect(
+          find.byKey(const ValueKey('reminder-birthControlShot-switch')),
+          findsNothing);
+    }
+  });
+
+  testWidgets('#183: the pill row is toggleable and carries its time row '
+      '(the daily cadence needs no start date)', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await _pump(
+      tester,
+      [_profile('p1', 'Alice')],
+      store,
+      modeRow: (
+        mode: LifecycleMode.tracking,
+        birthControlMethod: 'pill',
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      ),
+    );
+
+    await _scrollTo(tester, const ValueKey('reminder-birthControlPill-switch'));
+    expect(find.text('Pill reminder'), findsOneWidget);
+    expect(find.text('Daily, at the chosen time'), findsOneWidget);
+    expect(_switchOf(tester, 'reminder-birthControlPill-switch').value,
+        isFalse,
+        reason: 'the adherence kinds ship off');
+    expect(find.byKey(const ValueKey('reminder-time-birthControlPill')),
+        findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('reminder-birthControlPill-switch')));
+    await tester.pumpAndSettle();
+    expect((await service.load('p1'))!.birthControlPill.enabled, isTrue);
   });
 
   testWidgets('the #178 toggles persist per profile like the #136 ones',
