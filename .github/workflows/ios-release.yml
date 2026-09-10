@@ -482,7 +482,11 @@ jobs:
           DELIVER_APP_VERSION: ${{ steps.version.outputs.marketing }}
         run: |
           set -euo pipefail
-          fastlane ios submit
+          # The root Gemfile/Gemfile.lock pin fastlane (issue #208) so the
+          # runner's preinstalled fastlane cannot change deliver's behaviour
+          # between releases.
+          bundle install
+          bundle exec fastlane ios submit
 
       - name: Clean up signing material and secrets
         if: always()
