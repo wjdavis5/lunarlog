@@ -356,6 +356,36 @@ void main() {
     await disposeApp(tester, db);
   });
 
+  testWidgets('issue #32 AC9: an unknown-email sign-in-mode request '
+      'followed by a successful sign-in via another method clears '
+      'awaitingMagicLinkEmail', (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    final store = DriftSettingsStore(db.storage);
+    // The pending note for a sign-in email request to an unknown address.
+    await store.set(SettingsKeys.awaitingMagicLinkEmail, 'unknown@b.c');
+    final service = FakeAuthService();
+    addTearDown(service.dispose);
+
+    await tester.pumpWidget(LunarLogApp(db: db, authService: service));
+    await tester.pumpAndSettle();
+
+    // The unknown-email request itself completes silently, exactly like a
+    // known one (no account created, no failure): the note stays put.
+    await service.sendMagicLink(email: 'unknown@b.c', createAccount: false);
+    await tester.pumpAndSettle();
+    expect(service.magicLinkCalls.single,
+        (email: 'unknown@b.c', createAccount: false));
+    expect(
+        await store.get(SettingsKeys.awaitingMagicLinkEmail), 'unknown@b.c');
+
+    // A later successful sign-in via another method retires the note.
+    await service.signInWithPassword(email: 'known@b.c', password: 'x');
+    await tester.pumpAndSettle();
+    expect(await store.get(SettingsKeys.awaitingMagicLinkEmail), isEmpty);
+
+    await disposeApp(tester, db);
+  });
+
   testWidgets('LunarLogApp without a scheduler touches no notification '
       'machinery', (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());

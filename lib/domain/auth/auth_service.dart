@@ -261,6 +261,20 @@ sealed class AuthFailure implements Exception {
 
   const factory AuthFailure.lastSignInMethod() = AuthLastSignInMethodFailure;
 
+  /// Issue #32: the provider throttled the request (`over_request_rate_limit`
+  /// / HTTP 429). Distinct from [AuthInvalidCodeFailure] so a throttled
+  /// code verification never reads as "that code was not accepted", and
+  /// distinct from [AuthNetworkFailure] so the copy can name waiting rather
+  /// than connectivity.
+  const factory AuthFailure.rateLimited() = AuthRateLimitedFailure;
+
+  /// Issue #32: the dashboard is not set up for the attempted operation
+  /// (`manual_linking_disabled` for linking/unlinking with "Allow manual
+  /// linking" off, `email_provider_disabled` for passwordless email with the
+  /// email provider off). Distinct from [AuthUnknownFailure] so a
+  /// misconfigured project is distinguishable from a bug in-app.
+  const factory AuthFailure.misconfigured() = AuthMisconfiguredFailure;
+
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -355,6 +369,26 @@ final class AuthLastSignInMethodFailure extends AuthFailure {
   String toString() => 'AuthFailure.lastSignInMethod';
 }
 
+/// The Supabase dashboard is misconfigured for this operation (issue #32):
+/// manual linking off (`manual_linking_disabled`) or the email provider
+/// off (`email_provider_disabled`). Distinct from [AuthUnknownFailure] so
+/// the UI can name the dashboard setting instead of a generic failure.
+final class AuthMisconfiguredFailure extends AuthFailure {
+  const AuthMisconfiguredFailure();
+
+  @override
+  String toString() => 'AuthFailure.misconfigured';
+}
+
+/// The provider throttled the request (issue #32): too many attempts in a
+/// short window. Retryable after a wait, unlike [AuthInvalidCodeFailure].
+final class AuthRateLimitedFailure extends AuthFailure {
+  const AuthRateLimitedFailure();
+
+  @override
+  String toString() => 'AuthFailure.rateLimited';
+}
+
 /// The account seam. Constructed before the first frame by the bootstrap
 /// (KTD8) so a cold-start recovery link is latched before any widget
 /// exists; `null` in `lib/main.dart` when the build has no Supabase
@@ -376,7 +410,9 @@ abstract interface class AuthService {
   });
 
   /// Sends the reset email; the link must be opened on this device (R2).
-  /// Throws [AuthFailure].
+  /// Only the newest emailed link/code works (issue #32 AC3): requesting
+  /// another email — a reset or a sign-in link — invalidates the earlier
+  /// one. Throws [AuthFailure].
   Future<void> sendPasswordReset(String email);
 
   /// Sets a new password for the current session (recovery or signed-in).
@@ -401,7 +437,9 @@ abstract interface class AuthService {
   /// completes exactly like a known one — no account is created and no
   /// failure is thrown (R6, AE3); with it true a new account is created,
   /// or [AuthSignUpClosedFailure] is thrown while sign-ups are closed.
-  /// Throws [AuthFailure].
+  /// Only the newest emailed link/code works (issue #32 AC3): requesting
+  /// another email — a sign-in link or a reset — invalidates the earlier
+  /// one. Throws [AuthFailure].
   Future<void> sendMagicLink({
     required String email,
     required bool createAccount,

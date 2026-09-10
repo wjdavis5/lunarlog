@@ -1442,6 +1442,26 @@ void main() {
           isA<AuthIdentityTakenFailure>());
     });
 
+    test('mapAuthError maps over_request_rate_limit, a bare 429, '
+        'manual_linking_disabled, and email_provider_disabled (issue #32)', () {
+      expect(
+          mapAuthError(const AuthApiException('Rate limit exceeded',
+              statusCode: '429', code: 'over_request_rate_limit')),
+          isA<AuthRateLimitedFailure>());
+      expect(
+          mapAuthError(const AuthApiException('Rate limit exceeded',
+              statusCode: '429')),
+          isA<AuthRateLimitedFailure>());
+      expect(
+          mapAuthError(const AuthApiException('Manual linking is disabled',
+              code: 'manual_linking_disabled')),
+          isA<AuthMisconfiguredFailure>());
+      expect(
+          mapAuthError(const AuthApiException('Email provider is disabled',
+              code: 'email_provider_disabled')),
+          isA<AuthMisconfiguredFailure>());
+    });
+
     test('every new failure is fieldless, equal by type, and text-free', () {
       const failures = <AuthFailure>[
         AuthFailure.expiredLink(),
@@ -1449,8 +1469,10 @@ void main() {
         AuthFailure.providerUnavailable(),
         AuthFailure.identityTaken(),
         AuthFailure.signUpClosed(),
+        AuthFailure.rateLimited(),
+        AuthFailure.misconfigured(),
       ];
-      expect(failures.map((f) => f.runtimeType).toSet(), hasLength(5));
+      expect(failures.map((f) => f.runtimeType).toSet(), hasLength(7));
       expect(const AuthFailure.expiredLink(), const AuthFailure.expiredLink());
       expect(const AuthFailure.expiredLink(),
           isNot(const AuthFailure.invalidCode()));
@@ -1579,6 +1601,35 @@ void main() {
           await failureOf(
               service.verifyEmailCode(email: 'a@b.c', code: '00000000')),
           isA<AuthNetworkFailure>());
+    });
+
+    test('a throttled verify (over_request_rate_limit/429) throws '
+        'rateLimited, not invalidCode (issue #32 AC2)', () async {
+      for (final error in [
+        const AuthApiException('Rate limit exceeded',
+            statusCode: '429', code: 'over_request_rate_limit'),
+        const AuthApiException('Rate limit exceeded', statusCode: '429'),
+      ]) {
+        final service = await started();
+        gateway.nextError = error;
+        final failure = await failureOf(
+            service.verifyEmailCode(email: 'a@b.c', code: '00000000'));
+        expect(failure, isA<AuthRateLimitedFailure>());
+        expect(service.state, AuthSessionState.signedOut);
+      }
+    });
+
+    test('a misconfigured verify (email_provider_disabled) throws '
+        'misconfigured, not invalidCode (issue #32 AC4)', () async {
+      final service = await started();
+      gateway.nextError = const AuthApiException(
+          'Email provider is disabled',
+          statusCode: '422',
+          code: 'email_provider_disabled');
+      final failure = await failureOf(
+          service.verifyEmailCode(email: 'a@b.c', code: '00000000'));
+      expect(failure, isA<AuthMisconfiguredFailure>());
+      expect(service.state, AuthSessionState.signedOut);
     });
 
     test('a server error while verifying stays unknown, not invalidCode',
@@ -1815,6 +1866,25 @@ void main() {
       expect(
           service.currentUser, const AuthUser(id: 'u1', providers: ['email']));
       expect(service.currentUserId, 'u1');
+      expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('manual_linking_disabled during linking throws misconfigured, not '
+        'unknown (issue #32 AC4)', () async {
+      gateway.session = makeSession('u1', identities: ['email']);
+      final client = FakeGoogleSignInClient();
+      final service =
+          await started(googleAvailable: true, googleClient: client);
+      gateway.nextError = const AuthApiException(
+          'Manual linking is disabled',
+          statusCode: '422',
+          code: 'manual_linking_disabled');
+      final error = await service
+          .linkGoogle()
+          .then<Object?>((_) => null, onError: (Object e) => e);
+      expect(error, const AuthFailure.misconfigured());
+      expect(
+          service.currentUser, const AuthUser(id: 'u1', providers: ['email']));
       expect(service.state, AuthSessionState.signedIn);
     });
 

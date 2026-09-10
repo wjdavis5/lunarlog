@@ -265,6 +265,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(h.auth.passwordResetCalls, ['who@b.c']);
       expect(find.textContaining('If an account exists'), findsOneWidget);
+      // Issue #32 AC3: gotrue keeps one recovery token, so a newer request
+      // invalidates the earlier email's link — the confirmation says so.
+      expect(
+        find.textContaining('only the newest link works'),
+        findsOneWidget,
+      );
       expect(key('auth-error'), findsNothing);
       await h.dispose();
     });
@@ -1032,6 +1038,45 @@ void main() {
       );
       expect(find.text('Sign-in methods: Email, Apple'), findsOneWidget);
       expect(key('account-add-apple'), findsNothing);
+    });
+
+    testWidgets('issue #32 AC1: under passwordRecovery the add-method '
+        'tiles stay hidden instead of failing after the credential prompt',
+        (tester) async {
+      final s = await pumpSection(
+        tester,
+        providers: ['email'],
+        showAddGoogle: true,
+        showAddApple: true,
+      );
+      expect(key('account-add-google'), findsOneWidget);
+      expect(key('account-add-apple'), findsOneWidget);
+
+      s.auth.latchRecovery();
+      await tester.pumpAndSettle();
+
+      // The section still treats recovery as signed in for rendering …
+      expect(find.textContaining('Signed in'), findsOneWidget);
+      // … but the link calls reject any non-signedIn state, so the tiles
+      // that would fail after the credential prompt stay hidden.
+      expect(key('account-add-google'), findsNothing);
+      expect(key('account-add-apple'), findsNothing);
+      expect(s.auth.linkCalls, isEmpty);
+
+      // Remove tiles gate the same way: unlink rejects any non-signedIn
+      // state too, so they stay hidden under recovery as well.
+      final r = await pumpSection(
+        tester,
+        providers: ['email', 'google'],
+        showAddGoogle: true,
+      );
+      expect(key('account-remove-google'), findsOneWidget);
+      r.auth.latchRecovery();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Signed in'), findsOneWidget);
+      expect(key('account-remove-google'), findsNothing);
+      expect(key('account-add-google'), findsNothing);
+      expect(r.auth.unlinkCalls, isEmpty);
     });
 
     testWidgets('#65 AE5: adding a method does not re-lock the app when the '

@@ -104,12 +104,38 @@ AuthFailure _mapGoTrueAuthException(AuthException error) {
     case 'single_identity_not_deletable':
       return const AuthFailure.lastSignInMethod();
   }
+  final bucketed = _mapThrottlingOrMisconfigured(error);
+  if (bucketed != null) return bucketed;
   // Older GoTrue servers send no code for a bad login, only the message.
   if (error.statusCode == '400' &&
       error.message.toLowerCase().contains('invalid login credentials')) {
     return const AuthFailure.wrongPassword();
   }
   return const AuthFailure.unknown();
+}
+
+/// Issue #32's soft-bucket codes (AC2, AC4), split out of
+/// [_mapGoTrueAuthException] purely to keep that method's cyclomatic
+/// complexity under the CRAP gate's threshold — same mapping, no behavior
+/// change. Null when neither applies.
+///
+/// * `over_request_rate_limit` (or a code-less 429) is throttled, not
+///   rejected — kept distinct from invalidCode so a 429 on verifyOTP never
+///   reads as a bad code.
+/// * `manual_linking_disabled` / `email_provider_disabled` mean the
+///   dashboard is not set up for this operation — kept distinct from
+///   unknown so a misconfigured project does not read as a bug in-app.
+AuthFailure? _mapThrottlingOrMisconfigured(AuthException error) {
+  switch (error.code) {
+    case 'over_request_rate_limit':
+      return const AuthFailure.rateLimited();
+    case 'manual_linking_disabled':
+    case 'email_provider_disabled':
+      return const AuthFailure.misconfigured();
+  }
+  // Some GoTrue rate-limit responses carry no code, only the 429 status.
+  if (error.statusCode == '429') return const AuthFailure.rateLimited();
+  return null;
 }
 
 bool _isNetworkShapedError(Object error) =>
@@ -769,9 +795,11 @@ class SupabaseAuthService implements AuthService {
   /// Verifies the emailed code (#2 U7; KTD3, KTD4). Mapping is by
   /// operation: any client-side rejection of the code (`otp_expired`,
   /// `otp_disabled`, or another 4xx) is [AuthInvalidCodeFailure]; a
-  /// network failure, a closed sign-up, and a server error keep their own
-  /// kinds. The `signedIn` state arrives through `onAuthStateChange`, as
-  /// for a password sign-in.
+  /// network failure, a closed sign-up, a throttled request (issue #32
+  /// AC2: `over_request_rate_limit`/429 keeps its own kind so it never
+  /// reads as a bad code), a misconfigured dashboard (issue #32 AC4), and
+  /// a server error keep their own kinds. The `signedIn` state arrives
+  /// through `onAuthStateChange`, as for a password sign-in.
   @override
   Future<AuthUser> verifyEmailCode({
     required String email,
@@ -800,7 +828,10 @@ class SupabaseAuthService implements AuthService {
 
   static bool _isRejectedCode(Object error, AuthFailure mapped) {
     if (error is! AuthException) return false;
-    if (mapped is AuthNetworkFailure || mapped is AuthSignUpClosedFailure) {
+    if (mapped is AuthNetworkFailure ||
+        mapped is AuthSignUpClosedFailure ||
+        mapped is AuthRateLimitedFailure ||
+        mapped is AuthMisconfiguredFailure) {
       return false;
     }
     if (error.code == 'otp_expired' || error.code == 'otp_disabled') {
