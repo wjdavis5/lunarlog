@@ -22,12 +22,15 @@ import 'dart:async';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
+import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart'
+    as domain;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 
-class PredictionProjectionPublisher {
+class PredictionProjectionPublisher
+    implements domain.PredictionProjectionPublisher {
   PredictionProjectionPublisher({
     required ActiveProfilesStream activeProfiles,
     required PredictionStream predictionFor,
@@ -44,6 +47,8 @@ class PredictionProjectionPublisher {
   final PredictionStream _predictionFor;
   final PredictionConnectionService _service;
   final bool Function() _isSignedIn;
+
+  @override
   final Duration debounce;
 
   /// How long to wait before retrying a failed publish of an
@@ -51,6 +56,7 @@ class PredictionProjectionPublisher {
   /// review fix): the recipient's calendar stays stale until something
   /// re-arms, and "the next prediction change or app restart" is not
   /// bounded.
+  @override
   final Duration retryDelay;
 
   StreamSubscription<List<Profile>>? _profilesSub;
@@ -59,6 +65,7 @@ class PredictionProjectionPublisher {
   final Map<String, ActivePrediction> _pending = {};
   bool _disposed = false;
 
+  @override
   void start() {
     if (_disposed) return;
     _profilesSub = _activeProfiles.listen(_onProfilesChanged);
@@ -131,6 +138,7 @@ class PredictionProjectionPublisher {
   /// data without waiting for the sharer's next prediction change.
   /// Best-effort: a failure here leaves the publish to the regular
   /// stream-driven path.
+  @override
   Future<void> publishNow(String profileId) async {
     if (_disposed || !_isSignedIn()) return;
     try {
@@ -149,6 +157,7 @@ class PredictionProjectionPublisher {
   /// background would otherwise see no snapshot until the sharer's next
   /// cycle event. One narrow select, then one idempotent upsert per
   /// connected profile; best-effort like [publishNow].
+  @override
   Future<void> republishConnected() async {
     if (_disposed || !_isSignedIn()) return;
     try {
@@ -175,6 +184,7 @@ class PredictionProjectionPublisher {
     );
   }
 
+  @override
   Future<void> dispose() async {
     _disposed = true;
     await _profilesSub?.cancel();

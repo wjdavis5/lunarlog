@@ -17,6 +17,8 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/ulid.dart' show isValidUlid;
 import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
+import 'package:lunarlog/domain/import/account_import_coordinator.dart'
+    as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
@@ -215,7 +217,8 @@ class AccountImporter {
 /// The glue between a UI caller and [AccountImporter]/`planImport`:
 /// reads just enough of the current local store to plan against, then
 /// applies the plan. See this file's own doc comment.
-class AccountImportCoordinator {
+class AccountImportCoordinator
+    implements domain.AccountImportCoordinator {
   const AccountImportCoordinator({
     required this.profilesRepository,
     required this.dayEntriesRepository,
@@ -248,6 +251,7 @@ class AccountImportCoordinator {
   /// soft-deleted profile the account import file is restoring, which must
   /// plan as `matched` (with `restoredFromTombstone`), not `created`; see
   /// [planImport]'s and `ProfilePlan.restoredFromTombstone`'s doc comments.
+  @override
   Future<ImportPlan> buildPlan(AccountImportDocument document) async {
     final existingProfiles = await profilesRepository.list();
     final existingIds = {for (final p in existingProfiles) p.id};
@@ -303,6 +307,7 @@ class AccountImportCoordinator {
   }
 
   /// Applies [plan] via [AccountImporter].
+  @override
   Future<ImportPlanSummary> apply(ImportPlan plan) =>
       AccountImporter(storage).apply(plan);
 }

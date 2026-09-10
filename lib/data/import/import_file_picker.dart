@@ -20,6 +20,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:lunarlog/domain/import/import_file_reader.dart' as domain;
 
 /// Reads the operator-picked file's bytes, or null when they cancel the
 /// picker. Production wiring is [pickImportFile]; tests inject a fake that
@@ -37,4 +38,14 @@ Future<Uint8List?> pickImportFile() async {
   );
   if (file == null) return null;
   return file.readAsBytes();
+}
+
+/// The domain `ImportFileReader` contract's production implementation,
+/// backed by [pickImportFile]. The composition root provides this so `lib/ui`
+/// can depend on the domain contract without naming the `file_picker` plugin.
+class PickImportFileReader implements domain.ImportFileReader {
+  const PickImportFileReader();
+
+  @override
+  Future<Uint8List?> read() => pickImportFile();
 }

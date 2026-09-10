@@ -26,20 +26,23 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/export/account_export.dart';
 import '../../domain/export/account_export_remote_source.dart';
+import '../../domain/export/account_export_writer.dart' as domain;
 import '../../domain/models/care_note.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/visit_prep_item.dart';
 
-class AccountExportWriter {
+class AccountExportWriter implements domain.AccountExportWriter {
   const AccountExportWriter({this.remoteSource});
 
+  @override
   final AccountExportRemoteSource? remoteSource;
 
   /// Builds the export (see [buildMergedAccountExport]), writes it to
   /// `lunarlog-export-<yyyyMMdd-HHmmss>.json` under the temp directory, and
   /// hands that file to the platform share sheet.
+  @override
   Future<void> exportAndShare({
     required List<Profile> profiles,
     required Map<String, List<DayEntry>> entriesByProfile,
