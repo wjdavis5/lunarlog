@@ -987,12 +987,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
       predictionConnectionService: widget.predictionConnectionService,
       notificationPreferencesService: widget.notificationPreferencesService,
       accountExportRemoteSource: widget.accountExportRemoteSource,
-      scheduler: widget.scheduler,
-      // The import coordinator is built once here and reused across sign-ins,
-      // so it resolves the acting user id at call time (a live provider beats
-      // the null captured at construction) — without this the viewer import
-      // gate would fail open in production.
+      // The shared import coordinator resolves the acting user live, so its
+      // view-only guard and sharing notice see the signed-in account — the
+      // same source `LunarLogApp`'s own fallback bundle uses.
       currentUserIdProvider: () => authService?.currentUserId,
+      scheduler: widget.scheduler,
       // R17/R18: push-backed services exist only when push is configured and
       // this is not web — the same gate `_startPushRegistration` uses below.
       pushEnabled: AppConfig.hasPush && !widget.isWeb,
