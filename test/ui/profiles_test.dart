@@ -1026,7 +1026,9 @@ void main() {
       final row = await db.storage.getProfileMode(profileId);
       expect(row!.mode, 'conceive',
           reason: 'the goal/mode answer is editable later (#216 AC)');
-      expect(row.birthControlMethod, 'Pill');
+      expect(row.birthControlMethod, 'pill',
+          reason: 'Issue #260 canonicalizes the stored value to the '
+              'vocabulary id, not the localized label');
       await disposeApp(tester, db);
     });
 

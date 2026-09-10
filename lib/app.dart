@@ -54,6 +54,7 @@ import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;

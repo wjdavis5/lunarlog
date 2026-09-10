@@ -65,9 +65,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart'
     show
-        DeviceResetCallback,
         GateController,
         RemoveAllPushRegistrationsCallback;
+import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
@@ -246,11 +246,11 @@ class _AccountSectionState extends State<AccountSection> {
     if (auth == null) return const SizedBox.shrink();
     final sync = Provider.of<SyncStatusController?>(context);
     final deletionService = Provider.of<AccountDeletionService?>(context);
-    final signedIn = _isSignedIn(auth.state);
+    final signedIn = auth.state.hasUsableSession;
     // Issue #32 AC1: linking runs [_requireSignedInUser], which accepts
     // `signedIn` only — under `passwordRecovery` the tile would render and
-    // then fail after the credential prompt. The add-method tiles render
-    // only for a strictly signed-in session.
+    // then fail after the credential prompt. The add/remove-method tiles
+    // render only for a strictly signed-in session.
     final canLink = auth.state == AuthSessionState.signedIn;
     final theme = Theme.of(context);
     final user = auth.currentUser;
@@ -274,15 +274,6 @@ class _AccountSectionState extends State<AccountSection> {
       ],
     );
   }
-
-  /// `signedIn` also covers `passwordRecovery` for rendering purposes
-  /// (Scope Boundaries: the section treats recovery as signed in, a
-  /// pre-existing soft bucket this change inherits rather than fixes).
-  /// Linking is the exception: the add-method tiles need a strict
-  /// `signedIn` session (issue #32 AC1) and take their own flag.
-  bool _isSignedIn(AuthSessionState state) =>
-      state == AuthSessionState.signedIn ||
-      state == AuthSessionState.passwordRecovery;
 
   /// The identity tile, any link-failure copy, the "Remove Apple"/"Remove
   /// Google" tiles (#31 U4), and the "Add Apple"/"Add Google" tiles for a

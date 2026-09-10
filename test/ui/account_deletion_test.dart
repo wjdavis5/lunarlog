@@ -9,7 +9,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/app_lifecycle.dart' show DeviceResetCallback, GateController;
+import 'package:lunarlog/app_lifecycle.dart' show GateController;
+import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/care_note.dart';

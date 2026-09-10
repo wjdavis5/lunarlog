@@ -329,7 +329,8 @@ void main() {
       expect(modeRow, isNotNull,
           reason: 'a non-default goal creates the lazy row');
       expect(modeRow!.mode, 'conceive');
-      expect(modeRow.birthControlMethod, 'Pill');
+      expect(modeRow.birthControlMethod, 'pill',
+          reason: 'Issue #260 stores the canonical vocabulary id');
       expect(modeRow.modeStartedOn, '2026-09-01',
           reason: 'a mode change stamps today (injected clock)');
       await h.dispose();

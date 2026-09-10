@@ -347,7 +347,7 @@ void main() {
 
     testWidgets(
         'password recovery: counts as signed in for the subtitle, matching '
-        "AccountSection's _isSignedIn", (tester) async {
+        'hasUsableSession', (tester) async {
       final profiles = FakeProfilesRepository([_profile('p1')]);
       await _pump(tester, profiles: profiles, auth: _passwordRecovery());
 

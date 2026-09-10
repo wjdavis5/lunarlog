@@ -554,3 +554,17 @@ extension ConfirmedIdentity on AuthService {
   String? get confirmedUserId =>
       state == AuthSessionState.signedIn ? currentUserId : null;
 }
+
+/// Whether the session counts as usable for rendering purposes (issue #23):
+/// [AuthSessionState.signedIn] and [AuthSessionState.passwordRecovery] both
+/// hold a session, so account and sync surfaces treat both as "signed in".
+/// [AuthSessionState.expired] deliberately does not count — sync needs a new
+/// sign-in there (AE9) — and neither does [AuthSessionState.signedOut].
+///
+/// Nullable receiver so call sites holding an `AuthSessionState?` (e.g. the
+/// sync status tile, which renders with no controller) need no null check.
+extension UsableAuthSession on AuthSessionState? {
+  bool get hasUsableSession =>
+      this == AuthSessionState.signedIn ||
+      this == AuthSessionState.passwordRecovery;
+}

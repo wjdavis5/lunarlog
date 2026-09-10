@@ -137,7 +137,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     super.initState();
     _noticePending = !context.read<ProfileController>().firstRunNoticeShown;
     final auth = context.read<AuthController?>();
-    _accountPending = auth != null && !_hasSession(auth.state);
+    _accountPending = auth != null && !auth.state.hasUsableSession;
     // Cold-start link session (#2 U3): wait for the restore like a
     // sign-in made here would; without an engine there is nothing to
     // restore from.
@@ -150,10 +150,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       _checkWebAcknowledgment();
     }
   }
-
-  static bool _hasSession(AuthSessionState state) =>
-      state == AuthSessionState.signedIn ||
-      state == AuthSessionState.passwordRecovery;
 
   Future<void> _checkWebAcknowledgment() async {
     final store = context.read<SettingsStore>();
@@ -230,7 +226,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// the session went away.
   bool _restoreDone(SyncStatusController? sync, AuthController? auth) {
     if (sync == null) return true;
-    if (auth != null && !_hasSession(auth.state)) return true;
+    if (auth != null && !auth.state.hasUsableSession) return true;
     return _restoreDoneForPhase(sync.snapshot);
   }
 
@@ -325,7 +321,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         typicalPeriodLengthDays:
             _optionalInt(_typicalPeriodController.text),
         birthControlMethod:
-            birthControlStoredValue(_birthControl, l10n),
+            birthControlStoredValue(_birthControl),
         lifecycleMode: _lifecycleMode,
       );
 

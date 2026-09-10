@@ -52,7 +52,7 @@ bool shouldConfirmOfflineSave({
   required SyncSnapshot? snapshot,
   required AuthSessionState? authState,
 }) {
-  if (snapshot == null || !_isSignedIn(authState)) return false;
+  if (snapshot == null || !authState.hasUsableSession) return false;
   return switch (snapshot.phase) {
     SyncPhase.paused => true,
     SyncPhase.error => snapshot.lastError == SyncErrorKind.network,
@@ -74,17 +74,14 @@ String formatRelative(DateTime then, DateTime now) {
 /// passwordless sign-in email (#2 U4); an auth error; a wrong account;
 /// pending upload consent; a running cycle; rejected rows; then the
 /// resting states.
-bool _isSignedIn(AuthSessionState? authState) =>
-    authState == AuthSessionState.signedIn ||
-    authState == AuthSessionState.passwordRecovery;
-
+///
 /// Whether the tile should show the "waiting for email confirmation" state:
 /// a sign-up is pending on this device and no session has arrived (AS10).
 bool isAwaitingConfirmation({
   required AuthSessionState? authState,
   required String? awaitingConfirmationEmail,
 }) =>
-    !_isSignedIn(authState) &&
+    !authState.hasUsableSession &&
     awaitingConfirmationEmail != null &&
     awaitingConfirmationEmail.isNotEmpty;
 
@@ -124,7 +121,7 @@ String syncStatusCopy({
   return _snapshotCopy(
     snapshot: snapshot,
     authState: authState,
-    signedIn: _isSignedIn(authState),
+    signedIn: authState.hasUsableSession,
     now: now,
   );
 }
