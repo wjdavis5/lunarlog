@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import claim  # noqa: E402
 import list_issues  # noqa: E402
 import pr_status  # noqa: E402
+import release  # noqa: E402
 import worktree_add  # noqa: E402
 from _common import GhError, under, validate_owner, validate_slug  # noqa: E402
 
@@ -128,6 +129,36 @@ class ClaimTests(unittest.TestCase):
         self.assertIn(
             ["issue", "edit", "5", "--remove-label", "owner:opencode-muse"],
             calls,
+        )
+
+
+class NoJsonFlagTests(unittest.TestCase):
+    """Residual of #403: claim.py/release.py accepted --json but never emitted
+    JSON. The flags were removed; this pins that neither parser defines --json
+    so a future flag cannot be added without output again (#417)."""
+
+    def _assert_rejects_json(self, module, argv):
+        old = sys.argv
+        sys.argv = argv
+        try:
+            with self.assertRaises(SystemExit) as cm:
+                module.main()
+        finally:
+            sys.argv = old
+        # argparse exits 2 on an unrecognized argument.
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_claim_rejects_json_flag(self):
+        self._assert_rejects_json(
+            claim,
+            ["claim.py", "5", "--owner", "opencode-muse",
+             "--branch", "opencode-muse/5-x", "--json"],
+        )
+
+    def test_release_rejects_json_flag(self):
+        self._assert_rejects_json(
+            release,
+            ["release.py", "5", "--owner", "opencode-muse", "--json"],
         )
 
 
