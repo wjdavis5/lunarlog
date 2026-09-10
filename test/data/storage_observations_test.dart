@@ -37,7 +37,11 @@ void main() {
     clock = FixedClock(t0);
     storage = LunarLogStorage(db, clock: clock.call);
     await storage.upsertProfile(
-        id: 'p1', displayName: 'Riley', isMinor: true, updatedAt: t0);
+      id: 'p1',
+      displayName: 'Riley',
+      isMinor: true,
+      updatedAt: t0,
+    );
     await storage.upsertDayEntry(
       profileId: 'p1',
       localDate: '2026-09-01',
@@ -47,9 +51,9 @@ void main() {
     );
   });
 
-  Future<Observation?> observationById(String id) => (db.select(db.observations)
-        ..where((t) => t.id.equals(id)))
-      .getSingleOrNull();
+  Future<Observation?> observationById(String id) => (db.select(
+    db.observations,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<String> entryId() async =>
       (await storage.getDayEntries(profileId: 'p1')).single.id;
@@ -64,19 +68,18 @@ void main() {
     int? intensity = 3,
     required DateTime updatedAt,
     DateTime? deletedAt,
-  }) =>
-      RemoteObservationRow(
-        id: id,
-        dayEntryId: dayEntryId,
-        profileId: profileId,
-        localDate: localDate,
-        tz: 'UTC',
-        category: category,
-        code: code,
-        intensity: intensity,
-        updatedAt: updatedAt,
-        deletedAt: deletedAt,
-      );
+  }) => RemoteObservationRow(
+    id: id,
+    dayEntryId: dayEntryId,
+    profileId: profileId,
+    localDate: localDate,
+    tz: 'UTC',
+    category: category,
+    code: code,
+    intensity: intensity,
+    updatedAt: updatedAt,
+    deletedAt: deletedAt,
+  );
 
   group('upsertObservation', () {
     test('inserts a new observation, dirty, local_rev 1', () async {
@@ -98,35 +101,63 @@ void main() {
       expect(o.dayEntryId, dayEntryId);
     });
 
-    test('updating by id in place bumps updated_at strictly and local_rev',
-        () async {
+    test('issue #252: an appointments (single-event) observation round-'
+        'trips a non-null observed_at', () async {
       final dayEntryId = await entryId();
-      final first = await storage.upsertObservation(
-        id: 'o1',
+      // Appointments are issue #252's clearest single-event category: the
+      // observation carries the exact moment (#240's nullable observed_at
+      // column), not just the entry's local date.
+      final at = DateTime.utc(2026, 9, 1, 14, 30);
+      final o = await storage.upsertObservation(
         dayEntryId: dayEntryId,
         profileId: 'p1',
         localDate: '2026-09-01',
+        observedAt: at,
         tz: 'UTC',
-        category: 'pain',
-        code: 'migraine',
-        updatedAt: t0,
+        category: 'appointments',
+        code: 'doctor_appt',
       );
-      clock.now = t0; // same instant: the strict-bump rule must still apply
-      final second = await storage.upsertObservation(
-        id: 'o1',
-        dayEntryId: dayEntryId,
-        profileId: 'p1',
-        localDate: '2026-09-01',
-        tz: 'UTC',
-        category: 'pain',
-        code: 'headache',
-        updatedAt: t0,
+      expect(o.category, 'appointments');
+      expect(o.observedAt, at);
+      final reread = await observationById(o.id);
+      expect(
+        reread!.observedAt,
+        at,
+        reason: 'the exact time survives the write, not just the date',
       );
-      expect(second.id, first.id);
-      expect(second.code, 'headache');
-      expect(second.localRev, 2);
-      expect(second.updatedAt.isAfter(first.updatedAt), isTrue);
     });
+
+    test(
+      'updating by id in place bumps updated_at strictly and local_rev',
+      () async {
+        final dayEntryId = await entryId();
+        final first = await storage.upsertObservation(
+          id: 'o1',
+          dayEntryId: dayEntryId,
+          profileId: 'p1',
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          category: 'pain',
+          code: 'migraine',
+          updatedAt: t0,
+        );
+        clock.now = t0; // same instant: the strict-bump rule must still apply
+        final second = await storage.upsertObservation(
+          id: 'o1',
+          dayEntryId: dayEntryId,
+          profileId: 'p1',
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          category: 'pain',
+          code: 'headache',
+          updatedAt: t0,
+        );
+        expect(second.id, first.id);
+        expect(second.code, 'headache');
+        expect(second.localRev, 2);
+        expect(second.updatedAt.isAfter(first.updatedAt), isTrue);
+      },
+    );
 
     test('multiple live rows for the same (profile, date, category) are '
         'allowed — no same-date resolver, unlike day entries', () async {
@@ -352,9 +383,13 @@ void main() {
       expect(row.code, isNull);
       expect(row.intensity, isNull);
       expect(row.valueText, isNull);
-      expect(row.category, isNull,
-          reason: 'review finding: category is cleared on tombstone too, '
-              'no longer the exception to the tombstone-payload rule');
+      expect(
+        row.category,
+        isNull,
+        reason:
+            'review finding: category is cleared on tombstone too, '
+            'no longer the exception to the tombstone-payload rule',
+      );
       expect(row.localDate, '2026-09-01');
       expect(row.dayEntryId, dayEntryId);
       expect(row.dirty, isTrue);
@@ -418,8 +453,10 @@ void main() {
       );
       final page1 = await storage.readDirtyObservations(limit: 1);
       expect(page1, hasLength(1));
-      final page2 =
-          await storage.readDirtyObservations(limit: 1, afterId: page1.single.id);
+      final page2 = await storage.readDirtyObservations(
+        limit: 1,
+        afterId: page1.single.id,
+      );
       expect(page2, hasLength(1));
       expect(page2.single.id, isNot(page1.single.id));
 
@@ -428,8 +465,7 @@ void main() {
       expect(all.map((o) => o.id), containsAll([a.id]));
     });
 
-    test('markPushed clears dirty only when local_rev still matches',
-        () async {
+    test('markPushed clears dirty only when local_rev still matches', () async {
       final dayEntryId = await entryId();
       final o = await storage.upsertObservation(
         dayEntryId: dayEntryId,
@@ -439,7 +475,10 @@ void main() {
         category: 'pain',
       );
       final cleared = await storage.markPushed(
-          table: SyncTable.observations, id: o.id, localRevAtPush: o.localRev);
+        table: SyncTable.observations,
+        id: o.id,
+        localRevAtPush: o.localRev,
+      );
       expect(cleared, isTrue);
       expect((await observationById(o.id))!.dirty, isFalse);
     });
@@ -456,21 +495,24 @@ void main() {
       );
       final staleRev = o.localRev;
       await storage.upsertObservation(
-          id: o.id,
-          dayEntryId: dayEntryId,
-          profileId: 'p1',
-          localDate: '2026-09-01',
-          tz: 'UTC',
-          category: 'pain',
-          code: 'migraine');
+        id: o.id,
+        dayEntryId: dayEntryId,
+        profileId: 'p1',
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        category: 'pain',
+        code: 'migraine',
+      );
       final cleared = await storage.markPushed(
-          table: SyncTable.observations, id: o.id, localRevAtPush: staleRev);
+        table: SyncTable.observations,
+        id: o.id,
+        localRevAtPush: staleRev,
+      );
       expect(cleared, isFalse);
       expect((await observationById(o.id))!.dirty, isTrue);
     });
 
-    test('markAllDirty flags every observation and bumps local_rev',
-        () async {
+    test('markAllDirty flags every observation and bumps local_rev', () async {
       final dayEntryId = await entryId();
       final o = await storage.upsertObservation(
         dayEntryId: dayEntryId,
@@ -480,7 +522,10 @@ void main() {
         category: 'pain',
       );
       await storage.markPushed(
-          table: SyncTable.observations, id: o.id, localRevAtPush: o.localRev);
+        table: SyncTable.observations,
+        id: o.id,
+        localRevAtPush: o.localRev,
+      );
       expect((await observationById(o.id))!.dirty, isFalse);
       await storage.markAllDirty();
       final row = await observationById(o.id);
@@ -516,7 +561,8 @@ void main() {
     test('inserts a new remote row not dirty', () async {
       final dayEntryId = await entryId();
       final applied = await storage.applyRemoteObservation(
-          remoteObservation('r1', dayEntryId: dayEntryId, updatedAt: t0));
+        remoteObservation('r1', dayEntryId: dayEntryId, updatedAt: t0),
+      );
       expect(applied, isTrue);
       final row = await observationById('r1');
       expect(row!.dirty, isFalse);
@@ -527,57 +573,94 @@ void main() {
     test('per-id LWW: an older remote row is declined, keeping the local '
         'copy', () async {
       final dayEntryId = await entryId();
-      await storage.applyRemoteObservation(remoteObservation('r1',
+      await storage.applyRemoteObservation(
+        remoteObservation(
+          'r1',
           dayEntryId: dayEntryId,
           code: 'newer',
-          updatedAt: t0.add(const Duration(hours: 1))));
-      final applied = await storage.applyRemoteObservation(remoteObservation(
+          updatedAt: t0.add(const Duration(hours: 1)),
+        ),
+      );
+      final applied = await storage.applyRemoteObservation(
+        remoteObservation(
           'r1',
           dayEntryId: dayEntryId,
           code: 'older',
-          updatedAt: t0));
+          updatedAt: t0,
+        ),
+      );
       expect(applied, isFalse);
       expect((await observationById('r1'))!.code, 'newer');
     });
 
     test('the remote copy wins a tie', () async {
       final dayEntryId = await entryId();
-      await storage.applyRemoteObservation(remoteObservation('r1',
-          dayEntryId: dayEntryId, code: 'first', updatedAt: t0));
-      final applied = await storage.applyRemoteObservation(remoteObservation(
+      await storage.applyRemoteObservation(
+        remoteObservation(
+          'r1',
+          dayEntryId: dayEntryId,
+          code: 'first',
+          updatedAt: t0,
+        ),
+      );
+      final applied = await storage.applyRemoteObservation(
+        remoteObservation(
           'r1',
           dayEntryId: dayEntryId,
           code: 'second',
-          updatedAt: t0));
+          updatedAt: t0,
+        ),
+      );
       expect(applied, isTrue);
       expect((await observationById('r1'))!.code, 'second');
     });
 
-    test('a tombstoned remote row clears the payload, category included',
-        () async {
-      final dayEntryId = await entryId();
-      await storage.applyRemoteObservation(remoteObservation('r1',
-          dayEntryId: dayEntryId, code: 'migraine', updatedAt: t0));
-      await storage.applyRemoteObservation(remoteObservation('r1',
-          dayEntryId: dayEntryId,
-          category: null,
-          code: null,
-          intensity: null,
-          updatedAt: t0.add(const Duration(hours: 1)),
-          deletedAt: t0.add(const Duration(hours: 1))));
-      final row = await observationById('r1');
-      expect(row!.deletedAt, isNotNull);
-      expect(row.code, isNull);
-      expect(row.category, isNull,
-          reason: 'review finding: category is cleared on tombstone too, '
-              'no longer the exception to the tombstone-payload rule');
-    });
+    test(
+      'a tombstoned remote row clears the payload, category included',
+      () async {
+        final dayEntryId = await entryId();
+        await storage.applyRemoteObservation(
+          remoteObservation(
+            'r1',
+            dayEntryId: dayEntryId,
+            code: 'migraine',
+            updatedAt: t0,
+          ),
+        );
+        await storage.applyRemoteObservation(
+          remoteObservation(
+            'r1',
+            dayEntryId: dayEntryId,
+            category: null,
+            code: null,
+            intensity: null,
+            updatedAt: t0.add(const Duration(hours: 1)),
+            deletedAt: t0.add(const Duration(hours: 1)),
+          ),
+        );
+        final row = await observationById('r1');
+        expect(row!.deletedAt, isNotNull);
+        expect(row.code, isNull);
+        expect(
+          row.category,
+          isNull,
+          reason:
+              'review finding: category is cleared on tombstone too, '
+              'no longer the exception to the tombstone-payload rule',
+        );
+      },
+    );
 
     test('throws RetryableSyncApplyError when the day entry is not held '
         'locally', () async {
       expect(
-        () => storage.applyRemoteObservation(remoteObservation('r1',
-            dayEntryId: 'nonexistent-day-entry', updatedAt: t0)),
+        () => storage.applyRemoteObservation(
+          remoteObservation(
+            'r1',
+            dayEntryId: 'nonexistent-day-entry',
+            updatedAt: t0,
+          ),
+        ),
         throwsA(isA<RetryableSyncApplyError>()),
       );
     });
@@ -613,8 +696,7 @@ void main() {
       expect(await observationById('never-seen'), isNull);
     });
 
-    test('applyResolved overwrites a held row with dirty = false',
-        () async {
+    test('applyResolved overwrites a held row with dirty = false', () async {
       final dayEntryId = await entryId();
       final o = await storage.upsertObservation(
         dayEntryId: dayEntryId,
@@ -626,10 +708,12 @@ void main() {
         updatedAt: t0,
       );
       await storage.applyResolved([
-        remoteObservation(o.id,
-            dayEntryId: dayEntryId,
-            code: 'servers',
-            updatedAt: t0.add(const Duration(hours: 1))),
+        remoteObservation(
+          o.id,
+          dayEntryId: dayEntryId,
+          code: 'servers',
+          updatedAt: t0.add(const Duration(hours: 1)),
+        ),
       ]);
       final row = await observationById(o.id);
       expect(row!.code, 'servers');

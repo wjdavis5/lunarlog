@@ -93,9 +93,7 @@ final Map<String, ClueTypeSpec> kClueTypeMap = {
 
   'sex_life': const ClueTypeSpec(
     'sex_life',
-    options: {
-      'no_sex_today': ClueOptionSpec(negative: true),
-    },
+    options: {'no_sex_today': ClueOptionSpec(negative: true)},
   ),
 
   // Issue #249: Clue's legacy `fatigue` energy option maps onto the
@@ -103,9 +101,7 @@ final Map<String, ClueTypeSpec> kClueTypeMap = {
   // through (energetic/fully_energized/tired/exhausted already match).
   'energy': const ClueTypeSpec(
     'energy',
-    options: {
-      'fatigue': ClueOptionSpec(code: 'tired'),
-    },
+    options: {'fatigue': ClueOptionSpec(code: 'tired')},
   ),
   'pms': const ClueTypeSpec('pms'),
 
@@ -120,11 +116,15 @@ final Map<String, ClueTypeSpec> kClueTypeMap = {
 
   'discharge': const ClueTypeSpec(
     'discharge',
-    options: {
-      'none': ClueOptionSpec(negative: true),
-    },
+    options: {'none': ClueOptionSpec(negative: true)},
   ),
 
+  // Issue #252: the four documented options (pad/tampon/panty_liner/
+  // menstrual_cup) are taxonomy codes now and pass through verbatim,
+  // matching option-for-option. Period underwear stays unmapped
+  // ("widely reported but unverified") — if a real export ever carries
+  // it, it still passes through verbatim (unknown-never-drop) and only
+  // the picker lacks a chip for it until a code is added.
   'collection_method': const ClueTypeSpec('collection_method'),
   'social_life': const ClueTypeSpec('social_life'),
   'craving': const ClueTypeSpec('craving'),
@@ -134,6 +134,9 @@ final Map<String, ClueTypeSpec> kClueTypeMap = {
   'motivation': const ClueTypeSpec('motivation'),
   // MEDIUM confidence, single-parser (A1-10).
   'sleep': const ClueTypeSpec('sleep'),
+  // Issue #252: all seven attested options (running/yoga/biking/swimming
+  // legacy + walking/pilates/rest_day redesign) are taxonomy codes now
+  // and pass through verbatim.
   'exercise': const ClueTypeSpec('exercise'),
   'stool': const ClueTypeSpec('stool'),
   // Option set not publicly documented (A1-22) — unknown option strings
@@ -150,16 +153,35 @@ final Map<String, ClueTypeSpec> kClueTypeMap = {
   // period_cramps -> cramps gets; the rest pass through verbatim.
   'partying': const ClueTypeSpec(
     'partying',
-    options: {
-      'big night': ClueOptionSpec(code: 'big_night'),
-    },
+    options: {'big night': ClueOptionSpec(code: 'big_night')},
   ),
   'hair': const ClueTypeSpec('hair'),
   // MEDIUM confidence, single-parser (A1-14).
   'skin': const ClueTypeSpec('skin'),
-  'medication': const ClueTypeSpec('medication'),
+  // Issue #252: `cold/flu` is an attested option of BOTH medication and
+  // ailments, and the day-entry tag namespace is flat — so each instance
+  // is category-qualified (the great_digestion/great_stool pattern). Both
+  // documented spellings (`cold/flu` per the issue's legacy table,
+  // `cold_flu` per real-export fixtures) rename onto the qualified code;
+  // pain/antihistamine/antibiotic are taxonomy codes and pass through.
+  'medication': const ClueTypeSpec(
+    'medication',
+    options: {
+      'cold/flu': ClueOptionSpec(code: 'cold_flu_medication'),
+      'cold_flu': ClueOptionSpec(code: 'cold_flu_medication'),
+    },
+  ),
+  // Single-event data per Clue's own treatment (issue #252) — exact
+  // option strings not publicly enumerated, so everything passes through
+  // verbatim until a real export pins the set.
   'appointments': const ClueTypeSpec('appointments'),
-  'ailments': const ClueTypeSpec('ailments'),
+  'ailments': const ClueTypeSpec(
+    'ailments',
+    options: {
+      'cold/flu': ClueOptionSpec(code: 'cold_flu_ailments'),
+      'cold_flu': ClueOptionSpec(code: 'cold_flu_ailments'),
+    },
+  ),
   // Free text (`[{"option": "<raw user free text>"}]`) — never
   // snake_cased or normalized; this table applies no transform to any
   // type's option strings unless explicitly listed above, so `tags`

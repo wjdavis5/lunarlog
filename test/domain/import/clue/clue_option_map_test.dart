@@ -46,8 +46,11 @@ void main() {
 
     for (final type in [...attestedTypes, ...mediumConfidenceTypes]) {
       test('$type has a mapping entry', () {
-        expect(kClueTypeMap.containsKey(type), isTrue,
-            reason: '$type is missing from kClueTypeMap');
+        expect(
+          kClueTypeMap.containsKey(type),
+          isTrue,
+          reason: '$type is missing from kClueTypeMap',
+        );
       });
     }
 
@@ -65,7 +68,9 @@ void main() {
     test('negative-assertion options are flagged', () {
       expect(kClueTypeMap['pain']!.options['pain_free']!.negative, isTrue);
       expect(
-          kClueTypeMap['sex_life']!.options['no_sex_today']!.negative, isTrue);
+        kClueTypeMap['sex_life']!.options['no_sex_today']!.negative,
+        isTrue,
+      );
       expect(kClueTypeMap['discharge']!.options['none']!.negative, isTrue);
     });
 
@@ -81,23 +86,54 @@ void main() {
       // Issue #251: the attested "big night" partying option snake_cases
       // for the flat tag namespace; drinks/cigarettes/hangover pass
       // through with no entry at all.
-      expect(
-          kClueTypeMap['partying']!.options['big night']!.code, 'big_night');
+      expect(kClueTypeMap['partying']!.options['big night']!.code, 'big_night');
       expect(kClueTypeMap['partying']!.options.containsKey('drinks'), isFalse);
       expect(
-          kClueTypeMap['partying']!.options.containsKey('hangover'), isFalse);
+        kClueTypeMap['partying']!.options.containsKey('hangover'),
+        isFalse,
+      );
+      // Issue #252: `cold/flu` is attested under BOTH medication and
+      // ailments, so both instances rename onto their category-qualified
+      // codes (the great_digestion/great_stool pattern). Both documented
+      // spellings map; everything else in the two types passes through.
+      expect(
+        kClueTypeMap['medication']!.options['cold/flu']!.code,
+        'cold_flu_medication',
+      );
+      expect(
+        kClueTypeMap['medication']!.options['cold_flu']!.code,
+        'cold_flu_medication',
+      );
+      expect(
+        kClueTypeMap['ailments']!.options['cold/flu']!.code,
+        'cold_flu_ailments',
+      );
+      expect(
+        kClueTypeMap['ailments']!.options['cold_flu']!.code,
+        'cold_flu_ailments',
+      );
+      expect(kClueTypeMap['medication']!.options.containsKey('pain'), isFalse);
+      expect(
+        kClueTypeMap['medication']!.options.containsKey('antihistamine'),
+        isFalse,
+      );
+      expect(kClueTypeMap['ailments']!.options.containsKey('allergy'), isFalse);
     });
 
-    test('an option absent from a type\'s spec passes through (no entry)',
-        () {
+    test('an option absent from a type\'s spec passes through (no entry)', () {
       expect(kClueTypeMap['pain']!.options.containsKey('headache'), isFalse);
     });
   });
 
   group('kCluePeriodLevels', () {
     test('covers all four bleed levels plus the not-bleeding assertion', () {
-      expect(kCluePeriodLevels.keys.toSet(),
-          {'none', 'light', 'medium', 'heavy', 'very_heavy'});
+      expect(kCluePeriodLevels.keys.toSet(), {
+        'none',
+        'light',
+        'medium',
+        'heavy',
+        'very_heavy',
+      });
     });
 
     test('very_heavy maps to superHeavy (Clue\'s "Super heavy")', () {
@@ -116,8 +152,10 @@ void main() {
 
     test('value-key variants are tried celsius first', () {
       expect(kClueBbtValueKeys.first, 'celsius');
-      expect(kClueBbtValueKeys,
-          containsAll(['celsius', 'fahrenheit', 'temperature', 'value']));
+      expect(
+        kClueBbtValueKeys,
+        containsAll(['celsius', 'fahrenheit', 'temperature', 'value']),
+      );
     });
   });
 }

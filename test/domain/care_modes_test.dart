@@ -21,8 +21,11 @@ void main() {
         expect(copy.notEnoughBody, isNotEmpty, reason: '$mode body');
         expect(copy.nextEstimateLabel, isNotEmpty, reason: '$mode estimate');
         for (final category in TagCategory.values) {
-          expect(copy.categoryLabel(category), isNotEmpty,
-              reason: '$mode heading for $category');
+          expect(
+            copy.categoryLabel(category),
+            isNotEmpty,
+            reason: '$mode heading for $category',
+          );
         }
       }
     });
@@ -33,30 +36,31 @@ void main() {
       expect(teen.categoriesInOrder.toSet(), TagCategory.values.toSet());
       expect(teen.categoriesInOrder, hasLength(TagCategory.values.length));
       // And it genuinely reorders (that is the point of "surfaced first").
-      expect(teen.categoriesInOrder, isNot(TagCategory.values),
-          reason: 'teen surfaces body-literacy categories first');
+      expect(
+        teen.categoriesInOrder,
+        isNot(TagCategory.values),
+        reason: 'teen surfaces body-literacy categories first',
+      );
       expect(teen.categoriesInOrder.first, TagCategory.body);
     });
 
     test('only irregular silences the late banner (Issue #131)', () {
-      expect(careModeCopyFor(ProfileMode.irregular).silencesLateBanner,
-          isTrue);
-      expect(careModeCopyFor(ProfileMode.standard).silencesLateBanner,
-          isFalse);
+      expect(careModeCopyFor(ProfileMode.irregular).silencesLateBanner, isTrue);
+      expect(careModeCopyFor(ProfileMode.standard).silencesLateBanner, isFalse);
       expect(careModeCopyFor(ProfileMode.teen).silencesLateBanner, isFalse);
-      expect(careModeCopyFor(ProfileMode.caregiver).silencesLateBanner,
-          isFalse);
+      expect(
+        careModeCopyFor(ProfileMode.caregiver).silencesLateBanner,
+        isFalse,
+      );
     });
 
     test('only irregular hides the tier caption — its overdue status '
         'label already carries the "variation is expected" framing '
         '(Issue #131)', () {
-      expect(careModeCopyFor(ProfileMode.irregular).showsTierCaption,
-          isFalse);
+      expect(careModeCopyFor(ProfileMode.irregular).showsTierCaption, isFalse);
       expect(careModeCopyFor(ProfileMode.standard).showsTierCaption, isTrue);
       expect(careModeCopyFor(ProfileMode.teen).showsTierCaption, isTrue);
-      expect(careModeCopyFor(ProfileMode.caregiver).showsTierCaption,
-          isTrue);
+      expect(careModeCopyFor(ProfileMode.caregiver).showsTierCaption, isTrue);
     });
 
     test('only irregular hides the fertile-window row; every mode carries '
@@ -67,15 +71,9 @@ void main() {
         careModeCopyFor(ProfileMode.irregular).showsFertileWindow,
         isFalse,
       );
-      expect(
-        careModeCopyFor(ProfileMode.standard).showsFertileWindow,
-        isTrue,
-      );
+      expect(careModeCopyFor(ProfileMode.standard).showsFertileWindow, isTrue);
       expect(careModeCopyFor(ProfileMode.teen).showsFertileWindow, isTrue);
-      expect(
-        careModeCopyFor(ProfileMode.caregiver).showsFertileWindow,
-        isTrue,
-      );
+      expect(careModeCopyFor(ProfileMode.caregiver).showsFertileWindow, isTrue);
 
       for (final mode in ProfileMode.values) {
         final copy = careModeCopyFor(mode);
@@ -107,18 +105,24 @@ void main() {
     test('teen and caregiver overview copy differ from standard '
         '(vocabulary actually varies by mode)', () {
       final standard = careModeCopyFor(ProfileMode.standard);
-      expect(careModeCopyFor(ProfileMode.teen).notEnoughTitle,
-          isNot(standard.notEnoughTitle));
-      expect(careModeCopyFor(ProfileMode.teen).notEnoughBody,
-          isNot(standard.notEnoughBody));
+      expect(
+        careModeCopyFor(ProfileMode.teen).notEnoughTitle,
+        isNot(standard.notEnoughTitle),
+      );
+      expect(
+        careModeCopyFor(ProfileMode.teen).notEnoughBody,
+        isNot(standard.notEnoughBody),
+      );
     });
 
     test('teen day-sheet headings differ from standard for at least the '
         'body category', () {
       final standard = careModeCopyFor(ProfileMode.standard);
       final teen = careModeCopyFor(ProfileMode.teen);
-      expect(teen.categoryLabel(TagCategory.body),
-          isNot(standard.categoryLabel(TagCategory.body)));
+      expect(
+        teen.categoryLabel(TagCategory.body),
+        isNot(standard.categoryLabel(TagCategory.body)),
+      );
     });
 
     test('issue #251: every mode surfaces all eight feelings/mind/lifestyle '
@@ -137,10 +141,16 @@ void main() {
       for (final mode in ProfileMode.values) {
         final copy = careModeCopyFor(mode);
         for (final category in newCategories) {
-          expect(copy.categoriesInOrder, contains(category),
-              reason: '$mode must still surface $category (never a subset)');
-          expect(copy.categoryLabel(category), isNotEmpty,
-              reason: '$mode heading for $category');
+          expect(
+            copy.categoriesInOrder,
+            contains(category),
+            reason: '$mode must still surface $category (never a subset)',
+          );
+          expect(
+            copy.categoryLabel(category),
+            isNotEmpty,
+            reason: '$mode heading for $category',
+          );
         }
       }
       final teenOrder = careModeCopyFor(ProfileMode.teen).categoriesInOrder;
@@ -148,10 +158,50 @@ void main() {
       expect(teenOrder[1], TagCategory.feelings);
       expect(teenOrder[2], TagCategory.mind);
       // And standard keeps the appended cluster after body, in enum order.
-      final standardOrder =
-          careModeCopyFor(ProfileMode.standard).categoriesInOrder;
-      expect(standardOrder.indexOf(TagCategory.body) + 1,
-          standardOrder.indexOf(TagCategory.feelings));
+      final standardOrder = careModeCopyFor(ProfileMode.standard)
+          .categoriesInOrder;
+      expect(
+        standardOrder.indexOf(TagCategory.body) + 1,
+        standardOrder.indexOf(TagCategory.feelings),
+      );
+    });
+
+    test('issue #252: every mode surfaces all six events/care categories; '
+        'they append after the lifestyle cluster in every order', () {
+      const newCategories = [
+        TagCategory.collectionMethod,
+        TagCategory.exercise,
+        TagCategory.appointments,
+        TagCategory.medication,
+        TagCategory.ailments,
+        TagCategory.supplements,
+      ];
+      for (final mode in ProfileMode.values) {
+        final copy = careModeCopyFor(mode);
+        for (final category in newCategories) {
+          expect(
+            copy.categoriesInOrder,
+            contains(category),
+            reason: '$mode must still surface $category (never a subset)',
+          );
+          expect(
+            copy.categoryLabel(category),
+            isNotEmpty,
+            reason: '$mode heading for $category',
+          );
+        }
+      }
+      // Standard/caregiver/irregular surface every category in enum
+      // order, so the six append after partying; teen appends them after
+      // partying too, keeping its body-literacy reorder untouched.
+      for (final mode in ProfileMode.values) {
+        final order = careModeCopyFor(mode).categoriesInOrder;
+        expect(
+          order.indexOf(TagCategory.partying) + 1,
+          order.indexOf(TagCategory.collectionMethod),
+          reason: '$mode appends the events/care cluster after partying',
+        );
+      }
     });
   });
 

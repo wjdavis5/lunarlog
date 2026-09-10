@@ -73,9 +73,10 @@ one (SNOMED, when verified) and the lunarlog local one, always, so an
 importer can recover the exact original tag without reversing a clinical
 code (`dualCodingFor` in the Dart module implements this).
 
-All 67 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
-rows plus issue #249's 28 and issue #251's 22 explicit local decisions
-(see the sections at the end of this document). Every SNOMED
+All 86 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
+rows plus issue #249's 28, issue #251's 22, and issue #252's 19 explicit
+local decisions (see the sections at the end of this document). Every
+SNOMED
 row was checked live against the HL7 FHIR terminology server
 (`https://tx.fhir.org`, R4, SNOMED CT edition `900000000000207008`
 version `20250201`) via its `CodeSystem/$lookup` operation, confirming
@@ -287,3 +288,27 @@ New codes carrying local rows: `happy`, `angry`, `indifferent`,
 `big_night`, `hangover` (partying). The `pms`, `meditation`, and
 `leisure` categories ship no codes yet (option sets unverified —
 `kUnverifiedTagCategories`), so they add no rows here.
+
+## Issue #252's events/care taxonomy — local decisions (2026-09)
+
+Issue #252 grew `lib/domain/tags.dart` from 67 codes to 86 across 28
+categories, adding `collection_method` (pad/tampon/panty_liner/
+menstrual_cup), `exercise` (running/yoga/biking/swimming/walking/pilates/
+rest_day), `medication` (pain/cold_flu_medication/antihistamine/
+antibiotic), and `ailments` (cold_flu_ailments/allergy/injury/fever),
+plus the option-set-unverified `appointments` and `supplements`. The same
+rule as #249's and #251's sections above: every new code gets an
+**explicit local decision**, no SNOMED CT concept fetch-verified in this
+pass — `dualCodingFor` degrades each to its single local coding, which is
+valid FHIR and round-trips exactly. Fetch-verify against `tx.fhir.org`
+and promote clean resolves in the same follow-up pass as #249's/#251's
+candidates (`fever`, `allergy`, and `injury` are the likeliest).
+
+`cold/flu` is an attested option of BOTH the medication and ailments
+categories, and the day-entry tag namespace is flat, so both instances
+are category-qualified codes (`cold_flu_medication` /
+`cold_flu_ailments`); medication's `pain` option keeps the attested code
+`pain` with a qualified display ("Pain (medication)") so it never reads
+as the Pain category. The `appointments` and `supplements` categories
+ship no codes yet (option sets unverified — `kUnverifiedTagCategories`),
+so they add no rows here.

@@ -34,15 +34,20 @@ void main() {
       expect(codes.toSet(), hasLength(codes.length));
     });
 
-    test('every row uses the LOINC system and an https loinc.org provenance',
-        () {
-      for (final row in kLoincCodes) {
-        expect(row.system, kSystemLoinc, reason: row.code);
-        expect(row.provenanceUrl, startsWith('https://loinc.org/'),
-            reason: row.code);
-        expect(row.display.trim(), isNotEmpty, reason: row.code);
-      }
-    });
+    test(
+      'every row uses the LOINC system and an https loinc.org provenance',
+      () {
+        for (final row in kLoincCodes) {
+          expect(row.system, kSystemLoinc, reason: row.code);
+          expect(
+            row.provenanceUrl,
+            startsWith('https://loinc.org/'),
+            reason: row.code,
+          );
+          expect(row.display.trim(), isNotEmpty, reason: row.code);
+        }
+      },
+    );
   });
 
   group('kLoincCodes — golden table (BLOCKING: fails loudly on any edit to '
@@ -77,17 +82,27 @@ void main() {
       expect(kRefutedLoincCodes, ['3141-9']);
     });
 
-    test('kUnverifiedLoincCodes contains exactly the five unresolved codes',
-        () {
-      expect(kUnverifiedLoincCodes.toSet(),
-          {'49033-4', '63871-7', '21840-4', '8708-3', '3151-8'});
-    });
+    test(
+      'kUnverifiedLoincCodes contains exactly the five unresolved codes',
+      () {
+        expect(kUnverifiedLoincCodes.toSet(), {
+          '49033-4',
+          '63871-7',
+          '21840-4',
+          '8708-3',
+          '3151-8',
+        });
+      },
+    );
 
     test('no refuted or unverified code appears in kLoincCodes', () {
       final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
       for (final row in kLoincCodes) {
-        expect(forbidden.contains(row.code), isFalse,
-            reason: '${row.code} must never be a usable LOINC row');
+        expect(
+          forbidden.contains(row.code),
+          isFalse,
+          reason: '${row.code} must never be a usable LOINC row',
+        );
       }
     });
 
@@ -95,8 +110,11 @@ void main() {
         'kTagClinicalCodes', () {
       final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
       for (final entry in kTagClinicalCodes.entries) {
-        expect(forbidden.contains(entry.value.code), isFalse,
-            reason: '${entry.key} must not carry a refuted/unverified code');
+        expect(
+          forbidden.contains(entry.value.code),
+          isFalse,
+          reason: '${entry.key} must not carry a refuted/unverified code',
+        );
       }
     });
 
@@ -105,8 +123,11 @@ void main() {
       final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
       for (final tag in kTagTaxonomy) {
         for (final coding in dualCodingFor(tag.code)) {
-          expect(forbidden.contains(coding.code), isFalse,
-              reason: '${tag.code} must not carry a refuted/unverified code');
+          expect(
+            forbidden.contains(coding.code),
+            isFalse,
+            reason: '${tag.code} must not carry a refuted/unverified code',
+          );
         }
       }
     });
@@ -115,8 +136,11 @@ void main() {
         'cycleLengthCodes', () {
       final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
       for (final coding in [...menstrualStatusCodes, ...cycleLengthCodes]) {
-        expect(forbidden.contains(coding.code), isFalse,
-            reason: '${coding.code} must not be refuted/unverified');
+        expect(
+          forbidden.contains(coding.code),
+          isFalse,
+          reason: '${coding.code} must not be refuted/unverified',
+        );
       }
     });
 
@@ -131,33 +155,40 @@ void main() {
   group('kTagClinicalCodes covers every kTagTaxonomy code exactly once', () {
     test('every taxonomy code has a row', () {
       for (final tag in kTagTaxonomy) {
-        expect(kTagClinicalCodes.containsKey(tag.code), isTrue,
-            reason:
-                '${tag.code} has no clinical-terminology mapping row and '
-                'no explicit local decision');
+        expect(
+          kTagClinicalCodes.containsKey(tag.code),
+          isTrue,
+          reason:
+              '${tag.code} has no clinical-terminology mapping row and '
+              'no explicit local decision',
+        );
       }
     });
 
     test('no row exists for a code outside the taxonomy', () {
       final taxonomyCodes = kTagTaxonomy.map((t) => t.code).toSet();
       for (final code in kTagClinicalCodes.keys) {
-        expect(taxonomyCodes.contains(code), isTrue,
-            reason: '$code in kTagClinicalCodes is not a known tag code');
+        expect(
+          taxonomyCodes.contains(code),
+          isTrue,
+          reason: '$code in kTagClinicalCodes is not a known tag code',
+        );
       }
     });
 
-    test('row count matches taxonomy size exactly (67, issue #251)', () {
-      expect(kTagClinicalCodes, hasLength(67));
-      expect(kTagTaxonomy, hasLength(67));
+    test('row count matches taxonomy size exactly (86, issue #252)', () {
+      expect(kTagClinicalCodes, hasLength(86));
+      expect(kTagTaxonomy, hasLength(86));
     });
   });
 
   group('kTagClinicalCodes — golden table (BLOCKING: fails loudly on any '
       'edit to a verified tag mapping)', () {
     test('matches the full expected (system, code, display) triple for all '
-        '67 tags', () {
+        '86 tags', () {
       const snomed = 'http://snomed.info/sct';
-      const local = 'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
+      const local =
+          'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
           'tag';
       // (system, code, display) as literals for every taxonomy tag - a
       // re-verified copy of each mapping decision, not derived from the
@@ -189,8 +220,11 @@ void main() {
         // docs/clinical/terminology.md's #249 section).
         'ovulation': (local, 'ovulation', 'Ovulation pain'),
         'migraine': (local, 'migraine', 'Migraine'),
-        'migraine_with_aura': (local, 'migraine_with_aura',
-            'Migraine with aura'),
+        'migraine_with_aura': (
+          local,
+          'migraine_with_aura',
+          'Migraine with aura',
+        ),
         'pain_free': (local, 'pain_free', 'Pain free'),
         'fully_energized': (local, 'fully_energized', 'Fully energized'),
         'tired': (local, 'tired', 'Tired'),
@@ -242,6 +276,36 @@ void main() {
         'cigarettes': (local, 'cigarettes', 'Cigarettes'),
         'big_night': (local, 'big_night', 'Big night'),
         'hangover': (local, 'hangover', 'Hangover'),
+        // issue #252's 19 new codes - every one an explicit local decision
+        // (no SNOMED concept fetch-verified yet; see
+        // docs/clinical/terminology.md's #252 section).
+        'pad': (local, 'pad', 'Pad'),
+        'tampon': (local, 'tampon', 'Tampon'),
+        'panty_liner': (local, 'panty_liner', 'Panty liner'),
+        'menstrual_cup': (local, 'menstrual_cup', 'Menstrual cup'),
+        'running': (local, 'running', 'Running'),
+        'yoga': (local, 'yoga', 'Yoga'),
+        'biking': (local, 'biking', 'Biking'),
+        'swimming': (local, 'swimming', 'Swimming'),
+        'walking': (local, 'walking', 'Walking'),
+        'pilates': (local, 'pilates', 'Pilates'),
+        'rest_day': (local, 'rest_day', 'Rest day'),
+        'pain': (local, 'pain', 'Pain (medication)'),
+        'cold_flu_medication': (
+          local,
+          'cold_flu_medication',
+          'Cold/flu (medication)',
+        ),
+        'antihistamine': (local, 'antihistamine', 'Antihistamine'),
+        'antibiotic': (local, 'antibiotic', 'Antibiotic'),
+        'cold_flu_ailments': (
+          local,
+          'cold_flu_ailments',
+          'Cold/flu (ailments)',
+        ),
+        'allergy': (local, 'allergy', 'Allergy'),
+        'injury': (local, 'injury', 'Injury'),
+        'fever': (local, 'fever', 'Fever'),
       };
       expect(kTagClinicalCodes, hasLength(expected.length));
       expect(kTagClinicalCodes.keys.toSet(), expected.keys.toSet());
@@ -259,8 +323,11 @@ void main() {
   group('mood tags — the four expected-local ones stay local', () {
     test('irritable, calm, energetic, sensitive are local-coded', () {
       for (final code in ['irritable', 'calm', 'energetic', 'sensitive']) {
-        expect(kTagClinicalCodes[code]!.system, kSystemLunarlogLocal,
-            reason: code);
+        expect(
+          kTagClinicalCodes[code]!.system,
+          kSystemLunarlogLocal,
+          reason: code,
+        );
       }
     });
   });
@@ -269,8 +336,11 @@ void main() {
     test('every SNOMED row has a non-empty https provenanceUrl', () {
       for (final entry in kTagClinicalCodes.entries) {
         if (entry.value.system == kSystemSnomed) {
-          expect(entry.value.provenanceUrl, startsWith('https://'),
-              reason: entry.key);
+          expect(
+            entry.value.provenanceUrl,
+            startsWith('https://'),
+            reason: entry.key,
+          );
           expect(entry.value.code, isNotEmpty, reason: entry.key);
           expect(entry.value.display.trim(), isNotEmpty, reason: entry.key);
         }
@@ -290,26 +360,27 @@ void main() {
     });
 
     test('localTagCoding cites the same exact anchor', () {
-      expect(localTagCoding('cramps').provenanceUrl,
-          'docs/clinical/terminology.md#local-code-policy');
+      expect(
+        localTagCoding('cramps').provenanceUrl,
+        'docs/clinical/terminology.md#local-code-policy',
+      );
     });
   });
 
   group('system URIs are the canonical FHIR ones', () {
-    test('constants match the FHIR-registered / lunarlog-controlled URIs',
-        () {
+    test('constants match the FHIR-registered / lunarlog-controlled URIs', () {
       expect(kSystemLoinc, 'http://loinc.org');
       expect(kSystemSnomed, 'http://snomed.info/sct');
-      expect(kSystemLunarlogLocal,
-          'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag');
+      expect(
+        kSystemLunarlogLocal,
+        'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag',
+      );
     });
 
-    test('every kTagClinicalCodes row uses one of the three known systems',
-        () {
+    test('every kTagClinicalCodes row uses one of the three known systems', () {
       const known = {kSystemLoinc, kSystemSnomed, kSystemLunarlogLocal};
       for (final entry in kTagClinicalCodes.entries) {
-        expect(known.contains(entry.value.system), isTrue,
-            reason: entry.key);
+        expect(known.contains(entry.value.system), isTrue, reason: entry.key);
       }
     });
 
@@ -337,13 +408,19 @@ void main() {
     test('always includes the local coding, for every taxonomy tag', () {
       for (final tag in kTagTaxonomy) {
         final codings = dualCodingFor(tag.code);
-        final hasLocal = codings.any((c) =>
-            c.system == kSystemLunarlogLocal &&
-            c.code == tag.code &&
-            c.display == tag.display);
-        expect(hasLocal, isTrue,
-            reason: '${tag.code} dual coding must always carry the local '
-                'coding for round-trip fidelity');
+        final hasLocal = codings.any(
+          (c) =>
+              c.system == kSystemLunarlogLocal &&
+              c.code == tag.code &&
+              c.display == tag.display,
+        );
+        expect(
+          hasLocal,
+          isTrue,
+          reason:
+              '${tag.code} dual coding must always carry the local '
+              'coding for round-trip fidelity',
+        );
       }
     });
 
@@ -356,8 +433,7 @@ void main() {
       expect(codings[1].code, 'headache');
     });
 
-    test('a local-only tag returns a single coding, not a duplicate pair',
-        () {
+    test('a local-only tag returns a single coding, not a duplicate pair', () {
       final codings = dualCodingFor('calm');
       expect(codings, hasLength(1));
       expect(codings.single.system, kSystemLunarlogLocal);
@@ -370,8 +446,10 @@ void main() {
 
     test('degrades to the local coding (not a throw) when a taxonomy tag '
         'has no row in clinicalCodes', () {
-      final codings =
-          dualCodingFor('cramps', clinicalCodes: const <String, ClinicalCode>{});
+      final codings = dualCodingFor(
+        'cramps',
+        clinicalCodes: const <String, ClinicalCode>{},
+      );
       expect(codings, hasLength(1));
       expect(codings.single, localTagCoding('cramps'));
       expect(codings.single.system, kSystemLunarlogLocal);
@@ -380,22 +458,27 @@ void main() {
     test('still throws for a code outside the taxonomy even with an empty '
         'clinicalCodes override', () {
       expect(
-        () => dualCodingFor('not-a-tag',
-            clinicalCodes: const <String, ClinicalCode>{}),
+        () => dualCodingFor(
+          'not-a-tag',
+          clinicalCodes: const <String, ClinicalCode>{},
+        ),
         throwsArgumentError,
       );
     });
 
     test('an explicit clinicalCodes override is honored over the default '
         'table', () {
-      final codings = dualCodingFor('headache', clinicalCodes: const {
-        'headache': ClinicalCode(
-          system: kSystemSnomed,
-          code: '999999',
-          display: 'Overridden',
-          provenanceUrl: 'https://example.test/999999',
-        ),
-      });
+      final codings = dualCodingFor(
+        'headache',
+        clinicalCodes: const {
+          'headache': ClinicalCode(
+            system: kSystemSnomed,
+            code: '999999',
+            display: 'Overridden',
+            provenanceUrl: 'https://example.test/999999',
+          ),
+        },
+      );
       expect(codings, hasLength(2));
       expect(codings[0].code, '999999');
       expect(codings[1].system, kSystemLunarlogLocal);
@@ -404,8 +487,10 @@ void main() {
 
   group('loincByCode', () {
     test('finds a known code', () {
-      expect(loincByCode('8665-2')!.display,
-          'Last menstrual period start date');
+      expect(
+        loincByCode('8665-2')!.display,
+        'Last menstrual period start date',
+      );
     });
 
     test('returns null for an unknown code', () {
@@ -420,8 +505,10 @@ void main() {
 
   group('menstrualStatusCodes and cycleLengthCodes (#157 helpers)', () {
     test('menstrualStatusCodes exposes 8678-5 and 3146-8', () {
-      expect(menstrualStatusCodes.map((c) => c.code).toSet(),
-          {'8678-5', '3146-8'});
+      expect(menstrualStatusCodes.map((c) => c.code).toSet(), {
+        '8678-5',
+        '3146-8',
+      });
       for (final row in menstrualStatusCodes) {
         expect(row.system, kSystemLoinc);
       }

@@ -970,8 +970,8 @@ void main() {
           tz: 'UTC',
           flow: FlowLevel.none);
 
-      // The curated taxonomy passes the bounds check. Issue #249/#251 grew
-      // the taxonomy to 67 codes — more than the 32-element
+      // The curated taxonomy passes the bounds check. Issue #249/#251/#252
+      // grew the taxonomy to 86 codes — more than the 32-element
       // day_entries.tags cap — so the round-trip covers the first
       // kMaxTagCount of them (longest code still well under
       // kMaxTagLength).

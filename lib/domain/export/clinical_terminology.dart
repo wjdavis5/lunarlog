@@ -175,10 +175,10 @@ const List<String> kUnverifiedLoincCodes = [
   '3151-8',
 ];
 
-/// The clinical coding for every code in [tags.kTagTaxonomy] (all 67 —
-/// #152's A3-45 pass over the original 17, plus issue #249's 28 and
-/// issue #251's 22 new codes as explicit local decisions; see
-/// docs/clinical/terminology.md).
+/// The clinical coding for every code in [tags.kTagTaxonomy] (all 86 —
+/// #152's A3-45 pass over the original 17, plus issue #249's 28, issue
+/// #251's 22, and issue #252's 19 new codes as explicit local decisions;
+/// see docs/clinical/terminology.md).
 ///
 /// Rows are one of two kinds:
 /// - A verified SNOMED CT finding ([kSystemSnomed]): the concept id and
@@ -200,126 +200,114 @@ const List<String> kUnverifiedLoincCodes = [
 /// anyway (see its doc comment).
 const Map<String, ClinicalCode> kTagClinicalCodes = {
   // pain
-  'cramps':  ClinicalCode(
+  'cramps': ClinicalCode(
     system: kSystemSnomed,
     code: '266599000',
     display: 'Dysmenorrhea',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=266599000',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=266599000',
   ),
-  'headache':  ClinicalCode(
+  'headache': ClinicalCode(
     system: kSystemSnomed,
     code: '25064002',
     display: 'Headache',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=25064002',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=25064002',
   ),
-  'back_pain':  ClinicalCode(
+  'back_pain': ClinicalCode(
     system: kSystemSnomed,
     code: '161891005',
     display: 'Backache',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=161891005',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=161891005',
   ),
-  'breast_tenderness':  ClinicalCode(
+  'breast_tenderness': ClinicalCode(
     system: kSystemSnomed,
     code: '55222007',
     display: 'Tenderness of breast',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=55222007',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=55222007',
   ),
   // body
-  'bloating':  ClinicalCode(
+  'bloating': ClinicalCode(
     system: kSystemSnomed,
     code: '116289008',
     display: 'Abdominal bloating',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=116289008',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=116289008',
   ),
-  'acne':  ClinicalCode(
+  'acne': ClinicalCode(
     system: kSystemSnomed,
     code: '11381005',
     display: 'Acne',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=11381005',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=11381005',
   ),
-  'nausea':  ClinicalCode(
+  'nausea': ClinicalCode(
     system: kSystemSnomed,
     code: '422587007',
     display: 'Nausea',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=422587007',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=422587007',
   ),
-  'fatigue':  ClinicalCode(
+  'fatigue': ClinicalCode(
     system: kSystemSnomed,
     code: '84229001',
     display: 'Fatigue',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=84229001',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=84229001',
   ),
-  'dizziness':  ClinicalCode(
+  'dizziness': ClinicalCode(
     system: kSystemSnomed,
     code: '404640003',
     display: 'Dizziness',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=404640003',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=404640003',
   ),
   // mood - irritable/calm/energetic/sensitive stay local per #152's own
   // assumption (mood tags should not be forced into a match); sad stays
   // local because the closest verified concept (SNOMED 366979004
   // "Depressed mood") overstates a self-reported mood-log tag with a
   // clinical-disorder-adjacent term - see docs/clinical/terminology.md.
-  'irritable':  ClinicalCode(
+  'irritable': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'irritable',
     display: 'Irritable',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'sad':  ClinicalCode(
+  'sad': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'sad',
     display: 'Sad',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'anxious':  ClinicalCode(
+  'anxious': ClinicalCode(
     system: kSystemSnomed,
     code: '48694002',
     display: 'Anxiety',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=48694002',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=48694002',
   ),
-  'calm':  ClinicalCode(
+  'calm': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'calm',
     display: 'Calm',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'energetic':  ClinicalCode(
+  'energetic': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'energetic',
     display: 'Energetic',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'sensitive':  ClinicalCode(
+  'sensitive': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'sensitive',
     display: 'Sensitive',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
   // other
-  'sleep_trouble':  ClinicalCode(
+  'sleep_trouble': ClinicalCode(
     system: kSystemSnomed,
     code: '301345002',
     display: 'Difficulty sleeping',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=301345002',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=301345002',
   ),
-  'cravings':  ClinicalCode(
+  'cravings': ClinicalCode(
     system: kSystemSnomed,
     code: '248132003',
     display: 'Craving for food or drink',
-    provenanceUrl:
-        'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=248132003',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=248132003',
   ),
 
   // Issue #249's expanded physical categories. Every new code is an
@@ -330,169 +318,169 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
   // concepts (e.g. migraine) is deferred follow-up work, tracked on
   // docs/clinical/terminology.md; until then `dualCodingFor` degrades each
   // to its single local coding exactly as designed.
-  'ovulation':  ClinicalCode(
+  'ovulation': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'ovulation',
     display: 'Ovulation pain',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'migraine':  ClinicalCode(
+  'migraine': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'migraine',
     display: 'Migraine',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'migraine_with_aura':  ClinicalCode(
+  'migraine_with_aura': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'migraine_with_aura',
     display: 'Migraine with aura',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'pain_free':  ClinicalCode(
+  'pain_free': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'pain_free',
     display: 'Pain free',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'fully_energized':  ClinicalCode(
+  'fully_energized': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'fully_energized',
     display: 'Fully energized',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'tired':  ClinicalCode(
+  'tired': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'tired',
     display: 'Tired',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'exhausted':  ClinicalCode(
+  'exhausted': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'exhausted',
     display: 'Exhausted',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  '0_to_3_hours':  ClinicalCode(
+  '0_to_3_hours': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: '0_to_3_hours',
     display: '0-3 hours',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  '3_to_6_hours':  ClinicalCode(
+  '3_to_6_hours': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: '3_to_6_hours',
     display: '3-6 hours',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  '6_to_9_hours':  ClinicalCode(
+  '6_to_9_hours': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: '6_to_9_hours',
     display: '6-9 hours',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  '9_or_more_hours':  ClinicalCode(
+  '9_or_more_hours': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: '9_or_more_hours',
     display: '9+ hours',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'good_skin':  ClinicalCode(
+  'good_skin': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'good_skin',
     display: 'Good skin',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'oily_skin':  ClinicalCode(
+  'oily_skin': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'oily_skin',
     display: 'Oily skin',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'dry_skin':  ClinicalCode(
+  'dry_skin': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'dry_skin',
     display: 'Dry skin',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'good_hair':  ClinicalCode(
+  'good_hair': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'good_hair',
     display: 'Good hair',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'bad_hair':  ClinicalCode(
+  'bad_hair': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'bad_hair',
     display: 'Bad hair',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'oily_hair':  ClinicalCode(
+  'oily_hair': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'oily_hair',
     display: 'Oily hair',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'dry_hair':  ClinicalCode(
+  'dry_hair': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'dry_hair',
     display: 'Dry hair',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'gassy':  ClinicalCode(
+  'gassy': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'gassy',
     display: 'Gassy',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'great_digestion':  ClinicalCode(
+  'great_digestion': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'great_digestion',
     display: 'Great digestion',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'normal':  ClinicalCode(
+  'normal': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'normal',
     display: 'Normal',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'constipated':  ClinicalCode(
+  'constipated': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'constipated',
     display: 'Constipated',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'great_stool':  ClinicalCode(
+  'great_stool': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'great_stool',
     display: 'Great stool',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'diarrhea':  ClinicalCode(
+  'diarrhea': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'diarrhea',
     display: 'Diarrhea',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'sweet':  ClinicalCode(
+  'sweet': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'sweet',
     display: 'Sweet',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'salty':  ClinicalCode(
+  'salty': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'salty',
     display: 'Salty',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'carbs':  ClinicalCode(
+  'carbs': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'carbs',
     display: 'Carbs',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'chocolate':  ClinicalCode(
+  'chocolate': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'chocolate',
     display: 'Chocolate',
@@ -506,136 +494,257 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
   // designed. The five re-parented mood codes (irritable/sad/anxious/
   // calm/sensitive) keep their existing rows above untouched —
   // re-parenting changes a code's category, never its coding.
-  'happy':  ClinicalCode(
+  'happy': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'happy',
     display: 'Happy',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'angry':  ClinicalCode(
+  'angry': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'angry',
     display: 'Angry',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'indifferent':  ClinicalCode(
+  'indifferent': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'indifferent',
     display: 'Indifferent',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'mood_swings':  ClinicalCode(
+  'mood_swings': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'mood_swings',
     display: 'Mood swings',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'excited':  ClinicalCode(
+  'excited': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'excited',
     display: 'Excited',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'insecure':  ClinicalCode(
+  'insecure': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'insecure',
     display: 'Insecure',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'grateful':  ClinicalCode(
+  'grateful': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'grateful',
     display: 'Grateful',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'distracted':  ClinicalCode(
+  'distracted': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'distracted',
     display: 'Distracted',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'focused':  ClinicalCode(
+  'focused': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'focused',
     display: 'Focused',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'stressed':  ClinicalCode(
+  'stressed': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'stressed',
     display: 'Stressed',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'motivated':  ClinicalCode(
+  'motivated': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'motivated',
     display: 'Motivated',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'unmotivated':  ClinicalCode(
+  'unmotivated': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'unmotivated',
     display: 'Unmotivated',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'productive':  ClinicalCode(
+  'productive': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'productive',
     display: 'Productive',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'unproductive':  ClinicalCode(
+  'unproductive': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'unproductive',
     display: 'Unproductive',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'sociable':  ClinicalCode(
+  'sociable': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'sociable',
     display: 'Sociable',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'withdrawn':  ClinicalCode(
+  'withdrawn': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'withdrawn',
     display: 'Withdrawn',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'supportive':  ClinicalCode(
+  'supportive': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'supportive',
     display: 'Supportive',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'conflict':  ClinicalCode(
+  'conflict': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'conflict',
     display: 'Conflict',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'drinks':  ClinicalCode(
+  'drinks': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'drinks',
     display: 'Drinks',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'cigarettes':  ClinicalCode(
+  'cigarettes': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'cigarettes',
     display: 'Cigarettes',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'big_night':  ClinicalCode(
+  'big_night': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'big_night',
     display: 'Big night',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
-  'hangover':  ClinicalCode(
+  'hangover': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'hangover',
     display: 'Hangover',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+
+  // Issue #252's events-and-care categories. Same rule as #249's and
+  // #251's blocks above: every new code is an explicit local decision, no
+  // SNOMED CT concept fetch-verified in this pass, so each carries the
+  // lunarlog local coding only — `dualCodingFor` degrades each to it
+  // exactly as designed. (fever/allergy/injury are the likeliest
+  // candidates for the follow-up tx.fhir.org verification pass.)
+  'pad': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pad',
+    display: 'Pad',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'tampon': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'tampon',
+    display: 'Tampon',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'panty_liner': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'panty_liner',
+    display: 'Panty liner',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'menstrual_cup': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'menstrual_cup',
+    display: 'Menstrual cup',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'running': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'running',
+    display: 'Running',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'yoga': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'yoga',
+    display: 'Yoga',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'biking': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'biking',
+    display: 'Biking',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'swimming': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'swimming',
+    display: 'Swimming',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'walking': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'walking',
+    display: 'Walking',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'pilates': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pilates',
+    display: 'Pilates',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'rest_day': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'rest_day',
+    display: 'Rest day',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'pain': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pain',
+    display: 'Pain (medication)',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'cold_flu_medication': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'cold_flu_medication',
+    display: 'Cold/flu (medication)',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'antihistamine': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'antihistamine',
+    display: 'Antihistamine',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'antibiotic': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'antibiotic',
+    display: 'Antibiotic',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'cold_flu_ailments': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'cold_flu_ailments',
+    display: 'Cold/flu (ailments)',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'allergy': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'allergy',
+    display: 'Allergy',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'injury': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'injury',
+    display: 'Injury',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'fever': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'fever',
+    display: 'Fever',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
 };
@@ -651,8 +760,8 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
 ClinicalCode localTagCoding(String tagCode) {
   final tag = tags.kTagTaxonomy.firstWhere(
     (tags.TagCode t) => t.code == tagCode,
-    orElse: () => throw ArgumentError.value(
-        tagCode, 'tagCode', 'not a known tag code'),
+    orElse: () =>
+        throw ArgumentError.value(tagCode, 'tagCode', 'not a known tag code'),
   );
   return ClinicalCode(
     system: kSystemLunarlogLocal,
@@ -712,12 +821,10 @@ ClinicalCode? loincByCode(String code) {
 /// status observations: `8678-5` (patient-reported) and `3146-8` (the
 /// general "Menstrual status" question).
 List<ClinicalCode> get menstrualStatusCodes => [
-      loincByCode('8678-5')!,
-      loincByCode('3146-8')!,
-    ];
+  loincByCode('8678-5')!,
+  loincByCode('3146-8')!,
+];
 
 /// The LOINC row #157's FHIR Bundle builder should use for typical cycle
 /// length: `64700-8`.
-List<ClinicalCode> get cycleLengthCodes => [
-      loincByCode('64700-8')!,
-    ];
+List<ClinicalCode> get cycleLengthCodes => [loincByCode('64700-8')!];

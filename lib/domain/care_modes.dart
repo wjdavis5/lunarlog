@@ -134,11 +134,19 @@ const Map<TagCategory, String> _standardCategoryLabels = {
   TagCategory.meditation: 'Meditation',
   TagCategory.pms: 'PMS',
   TagCategory.partying: 'Partying',
+  // Issue #252's events-and-care categories.
+  TagCategory.collectionMethod: 'Collection method',
+  TagCategory.exercise: 'Exercise',
+  TagCategory.appointments: 'Appointments',
+  TagCategory.medication: 'Medication',
+  TagCategory.ailments: 'Ailments',
+  TagCategory.supplements: 'Supplements',
 };
 
 const CareModeCopy _standard = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
-  notEnoughBody: 'Keep logging — estimates appear once a few cycles are recorded.',
+  notEnoughBody:
+      'Keep logging — estimates appear once a few cycles are recorded.',
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
@@ -152,7 +160,8 @@ const CareModeCopy _standard = CareModeCopy(
 
 const CareModeCopy _teen = CareModeCopy(
   notEnoughTitle: 'Your record is just getting started',
-  notEnoughBody: 'Every entry builds the picture of your cycle. Estimates '
+  notEnoughBody:
+      'Every entry builds the picture of your cycle. Estimates '
       'appear once a few cycles are recorded.',
   nextEstimateLabel: 'Your next period is estimated around:',
   overdueStatusLabel: '',
@@ -190,6 +199,15 @@ const CareModeCopy _teen = CareModeCopy(
     TagCategory.meditation,
     TagCategory.pms,
     TagCategory.partying,
+    // Issue #252's events-and-care categories, appended after the
+    // lifestyle cluster (every standard category is still here — the
+    // order stays a permutation, never a subset).
+    TagCategory.collectionMethod,
+    TagCategory.exercise,
+    TagCategory.appointments,
+    TagCategory.medication,
+    TagCategory.ailments,
+    TagCategory.supplements,
   ],
   categoryLabels: {
     TagCategory.pain: 'Pain',
@@ -214,12 +232,21 @@ const CareModeCopy _teen = CareModeCopy(
     TagCategory.meditation: 'Meditation',
     TagCategory.pms: 'PMS',
     TagCategory.partying: 'Partying',
+    // Issue #252's events-and-care categories (same headings as
+    // standard — only body gets teen-specific vocabulary).
+    TagCategory.collectionMethod: 'Collection method',
+    TagCategory.exercise: 'Exercise',
+    TagCategory.appointments: 'Appointments',
+    TagCategory.medication: 'Medication',
+    TagCategory.ailments: 'Ailments',
+    TagCategory.supplements: 'Supplements',
   },
 );
 
 const CareModeCopy _caregiver = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
-  notEnoughBody: 'Estimates appear once a few cycles are recorded — regular '
+  notEnoughBody:
+      'Estimates appear once a few cycles are recorded — regular '
       'logging helps.',
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
@@ -234,10 +261,12 @@ const CareModeCopy _caregiver = CareModeCopy(
 
 const CareModeCopy _irregular = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
-  notEnoughBody: 'Keep logging — estimates appear once a few cycles are '
+  notEnoughBody:
+      'Keep logging — estimates appear once a few cycles are '
       'recorded, and yours may stay ranges rather than dates.',
   nextEstimateLabel: 'Next period may start around:',
-  overdueStatusLabel: 'No new period logged yet — with irregular cycles, '
+  overdueStatusLabel:
+      'No new period logged yet — with irregular cycles, '
       'variation like this is common and expected.',
   silencesLateBanner: true,
   // Issue #131 cheap fix: the overdue status line above already carries
@@ -263,8 +292,8 @@ const CareModeCopy _irregular = CareModeCopy(
 /// wildcard): adding a [ProfileMode] without copy is a compile error, not a
 /// silently-wrong screen.
 CareModeCopy careModeCopyFor(ProfileMode mode) => switch (mode) {
-      ProfileMode.standard => _standard,
-      ProfileMode.teen => _teen,
-      ProfileMode.caregiver => _caregiver,
-      ProfileMode.irregular => _irregular,
-    };
+  ProfileMode.standard => _standard,
+  ProfileMode.teen => _teen,
+  ProfileMode.caregiver => _caregiver,
+  ProfileMode.irregular => _irregular,
+};
