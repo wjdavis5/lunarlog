@@ -1,17 +1,21 @@
-/// Symptom tag taxonomy (KTD6): 45 codes in 15 categories, expanded from
-/// the original 17-code cycle/flow-only set by Issue #249 (the physical
+/// Symptom tag taxonomy (KTD6): 67 codes in 22 categories, grown from the
+/// original 17-code cycle/flow-only set by Issue #249 (the physical
 /// categories of Clue's attested taxonomy — pain, energy, sleep, skin,
 /// hair, digestion, stool, cravings, plus the option-set-unverified
-/// categories).
+/// categories) and Issue #251 (the feelings/mind/lifestyle categories —
+/// `feelings`, `mind`, `motivation`, `social_life`, `partying`, plus the
+/// option-set-unverified `pms`, `meditation`, `leisure`).
 ///
 /// Codes are stable identifiers (stored on day entries); [TagCode.display]
-/// is the default UI string. **The code-stability rule (Issue #249): an
-/// existing code is never renamed or recoded.** Re-parenting changes only
-/// the code's [TagCode.category]; the code string itself is untouched, so
-/// historical rows referencing it stay valid without any data migration.
-/// The 11 pre-#249 physical codes (`cramps`, `headache`, `back_pain`,
-/// `breast_tenderness`, `bloating`, `nausea`, `acne`, `energetic`,
-/// `fatigue`, `cravings`, `sleep_trouble`) all keep their exact strings.
+/// is the default UI string. **The code-stability rule (Issues #249 and
+/// #251): an existing code is never renamed or recoded.** Re-parenting
+/// changes only the code's [TagCode.category]; the code string itself is
+/// untouched, so historical rows referencing it stay valid without any
+/// data migration. The 11 pre-#249 physical codes (`cramps`, `headache`,
+/// `back_pain`, `breast_tenderness`, `bloating`, `nausea`, `acne`,
+/// `energetic`, `fatigue`, `cravings`, `sleep_trouble`) and the 5
+/// pre-#251 mood codes (`irritable`, `sad`, `anxious`, `calm`,
+/// `sensitive`) all keep their exact strings.
 ///
 /// Category-scoped option strings that would collide across categories in
 /// this flat, day-entry-tag namespace are qualified with a suffix —
@@ -45,7 +49,14 @@ enum TagCategory {
   urine,
   vulvaVagina,
   body,
-  mood,
+  feelings,
+  mind,
+  motivation,
+  socialLife,
+  leisure,
+  meditation,
+  pms,
+  partying,
 }
 
 class TagCode {
@@ -135,27 +146,73 @@ const List<TagCode> kTagTaxonomy = [
   // body — dizziness is the one pre-existing physical code Issue #249
   // does not re-parent; it keeps its category and code.
   TagCode('dizziness', TagCategory.body, 'Dizziness'),
-  // mood — #251 (feelings/mind/lifestyle) owns any further growth here.
-  TagCode('irritable', TagCategory.mood, 'Irritable'),
-  TagCode('sad', TagCategory.mood, 'Sad'),
-  TagCode('anxious', TagCategory.mood, 'Anxious'),
-  TagCode('calm', TagCategory.mood, 'Calm'),
-  TagCode('sensitive', TagCategory.mood, 'Sensitive'),
+  // feelings — Issue #251 rebuilds the old `mood` grouping as `feelings`:
+  // irritable/sad/anxious/sensitive re-parent in place (same codes, new
+  // category); irritable stays as the lunarlog-specific extra (no Clue
+  // equivalent, never dropped); happy/angry/indifferent are the attested
+  // export set, mood_swings the medium-confidence addition, and
+  // excited/insecure/grateful the redesign additions.
+  TagCode('irritable', TagCategory.feelings, 'Irritable'),
+  TagCode('happy', TagCategory.feelings, 'Happy'),
+  TagCode('sad', TagCategory.feelings, 'Sad'),
+  TagCode('angry', TagCategory.feelings, 'Angry'),
+  TagCode('anxious', TagCategory.feelings, 'Anxious'),
+  TagCode('indifferent', TagCategory.feelings, 'Indifferent'),
+  TagCode('sensitive', TagCategory.feelings, 'Sensitive'),
+  TagCode('mood_swings', TagCategory.feelings, 'Mood swings'),
+  TagCode('excited', TagCategory.feelings, 'Excited'),
+  TagCode('insecure', TagCategory.feelings, 'Insecure'),
+  TagCode('grateful', TagCategory.feelings, 'Grateful'),
+  // mind — calm re-parented from mood (same code); distracted/focused/
+  // stressed are the attested Mind set.
+  TagCode('calm', TagCategory.mind, 'Calm'),
+  TagCode('distracted', TagCategory.mind, 'Distracted'),
+  TagCode('focused', TagCategory.mind, 'Focused'),
+  TagCode('stressed', TagCategory.mind, 'Stressed'),
+  // motivation — legacy Clue category (A1-8), likely folded into Mind in
+  // the current app; the option set is attested, so the picker carries it
+  // without claiming current-app parity (issue #251's motivation row).
+  TagCode('motivated', TagCategory.motivation, 'Motivated'),
+  TagCode('unmotivated', TagCategory.motivation, 'Unmotivated'),
+  TagCode('productive', TagCategory.motivation, 'Productive'),
+  TagCode('unproductive', TagCategory.motivation, 'Unproductive'),
+  // social_life
+  TagCode('sociable', TagCategory.socialLife, 'Sociable'),
+  TagCode('withdrawn', TagCategory.socialLife, 'Withdrawn'),
+  TagCode('supportive', TagCategory.socialLife, 'Supportive'),
+  TagCode('conflict', TagCategory.socialLife, 'Conflict'),
+  // partying — substance-use data on a shared family record: the category
+  // exists in the taxonomy and import path for every profile (lossless
+  // import); its UI visibility on minor profiles is #259's per-profile
+  // tracking-preference mechanism (default hidden, guardian-revealed).
+  // `big_night` is Clue's attested "big night" option snake_cased for this
+  // flat namespace — the importer's option map renames the raw string.
+  TagCode('drinks', TagCategory.partying, 'Drinks'),
+  TagCode('cigarettes', TagCategory.partying, 'Cigarettes'),
+  TagCode('big_night', TagCategory.partying, 'Big night'),
+  TagCode('hangover', TagCategory.partying, 'Hangover'),
 ];
 
-/// Issue #249 categories whose Clue option set is not publicly attested
-/// (Clue Plus-only or undocumented; `hotFlashes`' category itself is
-/// attested, its perimenopause option cluster is not). Each exists in the
-/// enum so the schema and picker framework are real, but carries **no
-/// codes** in [kTagTaxonomy] — the picker marks them
-/// "unverified — pin before shipping" instead of inventing options, until
-/// a real Clue export pins each set.
+/// Issue #249/#251 categories whose Clue option set is not publicly
+/// attested (Clue Plus-only, undocumented, or — for #251's `pms` —
+/// presence-based with the option set not publicly enumerated;
+/// `hotFlashes`' category itself is attested, its perimenopause option
+/// cluster is not). Each exists in the enum so the schema and picker
+/// framework are real, but carries **no codes** in [kTagTaxonomy] — the
+/// picker marks them "unverified — pin before shipping" instead of
+/// inventing options, until a real Clue export pins each set. `pms` the
+/// *presence* marker is deliberately separate: it rides `day_entries.pms`
+/// (issue #220) outside this taxonomy, exactly as Clue separates the PMS
+/// phase from the PMS option set.
 const List<TagCategory> kUnverifiedTagCategories = [
   TagCategory.sleepQuality,
   TagCategory.breastsChest,
   TagCategory.hotFlashes,
   TagCategory.urine,
   TagCategory.vulvaVagina,
+  TagCategory.pms,
+  TagCategory.meditation,
+  TagCategory.leisure,
 ];
 
 /// The `pain_free` code (Issue #249): a positive per-category "none today"

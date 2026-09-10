@@ -120,6 +120,39 @@ void main() {
       expect(teen.categoryLabel(TagCategory.body),
           isNot(standard.categoryLabel(TagCategory.body)));
     });
+
+    test('issue #251: every mode surfaces all eight feelings/mind/lifestyle '
+        'categories; teen keeps the feelings/mind cluster right after body '
+        '(the old mood position)', () {
+      const newCategories = [
+        TagCategory.feelings,
+        TagCategory.mind,
+        TagCategory.motivation,
+        TagCategory.socialLife,
+        TagCategory.leisure,
+        TagCategory.meditation,
+        TagCategory.pms,
+        TagCategory.partying,
+      ];
+      for (final mode in ProfileMode.values) {
+        final copy = careModeCopyFor(mode);
+        for (final category in newCategories) {
+          expect(copy.categoriesInOrder, contains(category),
+              reason: '$mode must still surface $category (never a subset)');
+          expect(copy.categoryLabel(category), isNotEmpty,
+              reason: '$mode heading for $category');
+        }
+      }
+      final teenOrder = careModeCopyFor(ProfileMode.teen).categoriesInOrder;
+      expect(teenOrder[0], TagCategory.body);
+      expect(teenOrder[1], TagCategory.feelings);
+      expect(teenOrder[2], TagCategory.mind);
+      // And standard keeps the appended cluster after body, in enum order.
+      final standardOrder =
+          careModeCopyFor(ProfileMode.standard).categoriesInOrder;
+      expect(standardOrder.indexOf(TagCategory.body) + 1,
+          standardOrder.indexOf(TagCategory.feelings));
+    });
   });
 
   group('reminderPresetFor (Issue #131)', () {

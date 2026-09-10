@@ -26,5 +26,7 @@
   {"date": "2026-01-25", "type": "tags", "value": {"option": "My Vacation Trip!"}},
   {"date": "2026-01-26T00:00:00.000Z", "type": "birth_control", "value": {"option": "pill"}},
   {"date": "2026-01-27", "type": "mucus", "value": {"option": "egg_white"}},
-  {"date": "2026-01-28T00:00:00.000Z", "type": "tests", "value": {"option": "negative"}}
+  {"date": "2026-01-28T00:00:00.000Z", "type": "tests", "value": {"option": "negative"}},
+  {"date": "2026-01-29", "type": "meditation", "value": {"option": "meditated_10_min"}},
+  {"date": "2026-01-30T00:00:00.000Z", "type": "partying", "value": [{"option": "drinks"}, {"option": "big night"}]}
 ]

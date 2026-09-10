@@ -461,7 +461,7 @@ String _dateCodeKey(String isoDate, String code) => '$isoDate|$code';
 /// is a known tag code from `lib/domain/tags.dart`; otherwise falls back to
 /// a [kSystemLunarlogLocal] coding built from `category`/`code` — the
 /// ~200-option Clue-model observation vocabulary (Issue #240) is not the
-/// same closed set as the 45-tag taxonomy `dualCodingFor` covers, and a
+/// same closed set as the 67-tag taxonomy `dualCodingFor` covers, and a
 /// gap there must degrade to a local coding rather than guess a clinical
 /// code (mirrors `dualCodingFor`'s own "no guessed codes" degrade).
 List<_ResourceEntry> _rowSymptomEntries(
