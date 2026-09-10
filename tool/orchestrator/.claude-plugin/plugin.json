@@ -1,6 +1,6 @@
 {
   "name": "lunarlog-orchestrator",
-  "description": "Claude Code central orchestrator for lunarlog: master planner over the opencode-muse coordinator, main-branch CI-failure triage, and the daily product-manager loop.",
+  "description": "Claude Code central orchestrator for lunarlog: master planner over the opencode-<model> coordinator, main-branch CI-failure triage, and the daily product-manager loop.",
   "version": "0.1.0",
   "author": {
     "name": "lunarlog"

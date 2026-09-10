@@ -1,15 +1,22 @@
-"""Bridge from Claude Code to the opencode-muse coordinator.
+"""Bridge from Claude Code to an `opencode-<model>` coordinator.
 
 Start an iteration, then read the resulting session transcript. Every real
 subprocess call is injectable so the logic is unit-testable without a live
-opencode.
+opencode. The coordinator id is derived from the dispatched model, never
+hard-coded.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "coord"))
+from coordinator_id import coordinator_id  # noqa: E402
 
 TIMEOUT_SECONDS = 3600
 
@@ -44,7 +51,13 @@ def _first_json(text: str) -> dict:
 
 def run_iteration(prompt: str, agent: str = "coordinator", model: str | None = None,
                   runner=_runner) -> dict:
-    """Run one coordinator iteration. Returns {session_id, raw}."""
+    """Run one coordinator iteration. Returns {session_id, raw}.
+
+    When `model` is given, the coordinator id (`opencode-<model>`) is exported as
+    LUNARLOG_COORDINATOR_ID so opencode.json injects it into the coordinator and
+    coder prompts."""
+    if model:
+        os.environ["LUNARLOG_COORDINATOR_ID"] = coordinator_id(model)
     cmd = ["opencode", "run", "--agent", agent, "--format", "json"]
     if model:
         cmd += ["--model", model]

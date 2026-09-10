@@ -19,7 +19,7 @@ not write feature code and you do not merge.
 
 A short, decision-first recommendation:
 
-- For `opencode-muse` and `claude-orch`: the next issue to pick, the model to
+- For `opencode-<model>` and `claude-orch`: the next issue to pick, the model to
   use, and the priority/epic labels that apply.
 - Any red `main` run with no tracking issue (the CI watcher should have filed
   one; if not, say so).

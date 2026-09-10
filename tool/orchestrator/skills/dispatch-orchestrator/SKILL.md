@@ -1,11 +1,11 @@
 ---
 name: dispatch-orchestrator
-description: Start one opencode-muse coordinator iteration for a chosen issue. Use after the master planner has chosen work.
+description: Start one opencode-<model> coordinator iteration for a chosen issue. Use after the master planner has chosen work.
 ---
 
 # Dispatch an orchestrator
 
-Start exactly one opencode-muse iteration for a chosen issue, or steer it to a
+Start exactly one opencode-<model> iteration for a chosen issue, or steer it to a
 different issue. GitHub labels remain the claim mechanism — the coordinator
 claims the issue itself.
 

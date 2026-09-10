@@ -14,7 +14,7 @@ Inputs to read:
   (`gh pr list`), and recent `main` runs (`gh run list --branch main`).
 
 Produce a short, decision-first recommendation:
-- For each coordinator (`claude-orch`, `opencode-muse`): what it should pick up
+- For each coordinator (`claude-orch`, `opencode-<model>`): what it should pick up
   next, why, and which priority/epic labels apply.
 - Any red `main` run that has no tracking issue.
 - Any directive that is stale because its issue closed or its PR merged.

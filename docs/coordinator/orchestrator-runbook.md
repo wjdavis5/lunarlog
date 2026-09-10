@@ -9,7 +9,7 @@ interactive sessions and the headless product-manager loop.
 | Path | Purpose |
 |---|---|
 | `tool/orchestrator/skills/master-planner` | Read the control plane and GitHub, recommend next work |
-| `tool/orchestrator/skills/dispatch-orchestrator` | Start one opencode-muse iteration for a chosen issue |
+| `tool/orchestrator/skills/dispatch-orchestrator` | Start one opencode-<model> iteration for a chosen issue |
 | `tool/orchestrator/skills/reconcile-orchestrators` | Reconcile each coordinator's PRs and worktrees |
 | `tool/orchestrator/skills/opencode-bridge` | Invoke opencode and read its sessions |
 | `tool/orchestrator/skills/ci-triage` | Triage the issue the CI watcher filed |

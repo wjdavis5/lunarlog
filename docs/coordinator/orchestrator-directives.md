@@ -12,7 +12,7 @@ and a short reason.
 
 | coordinator | issue | model | intent | set at |
 |---|---|---|---|---|
-| `opencode-muse` | — | `opencode/muse-spark-1.3-contributor-free` | none — awaiting first directive | — |
+| `opencode-<model>` | — | (the model that coordinator runs) | none — awaiting first directive | — |
 | `claude-orch` | — | — | none — awaiting first directive | — |
 
 ## Model roster
