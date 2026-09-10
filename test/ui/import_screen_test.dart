@@ -16,6 +16,7 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
+import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -53,7 +54,7 @@ class _UnusedObservationsRepository implements ObservationsRepository {
 /// A fully controllable [AccountImportCoordinator]: [buildPlan]/[apply]
 /// never touch the base class's real repositories/storage (never called),
 /// so the widget test controls exactly what each step returns or throws.
-class _FakeCoordinator extends AccountImportCoordinator {
+class _FakeCoordinator extends DriftAccountImportCoordinator {
   _FakeCoordinator(
     LunarLogStorage storage, {
     this.planResult,

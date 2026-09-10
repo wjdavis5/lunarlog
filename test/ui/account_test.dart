@@ -70,7 +70,7 @@ class AccountHarness {
   }) async {
     if (seed != null) await seed(db);
     await tester.pumpWidget(
-      LunarLogApp(
+      LunarLogApp.withCollaborators(
         db: db,
         authService: auth,
         syncEngine: withEngine ? engine : null,
@@ -2169,7 +2169,7 @@ void main() {
         (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       await AccountHarness.seedOneProfile(db);
-      await tester.pumpWidget(LunarLogApp(db: db));
+      await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();

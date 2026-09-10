@@ -9,16 +9,14 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -133,7 +131,7 @@ Future<Harness> pumpActivity(
     await seed(db, profile.id);
   }
   final authController = auth == null ? null : AuthController(authService: auth);
-  final activity = data.ActivityFeedRepository(db.storage);
+  final activity = DriftActivityFeedRepository(db.storage);
 
   await tester.pumpWidget(
     MultiProvider(
@@ -150,7 +148,7 @@ Future<Harness> pumpActivity(
         // Domain-typed seams `ProfileDetailScreen` reads instead of raw
         // storage (mirrors `lib/app.dart`).
         Provider<ProfileGuardiansRepository>.value(
-          value: data.ProfileGuardiansRepository(db.storage),
+          value: DriftProfileGuardiansRepository(db.storage),
         ),
         Provider<ActivityFeedRepository>.value(value: activity),
         Provider<CareContentRepository>.value(
@@ -635,7 +633,7 @@ void main() {
       tester,
       screen: (profile, repository, db) => ManageGuardiansScreen(
         profile: profile,
-        guardiansRepository: data.ProfileGuardiansRepository(db.storage),
+        guardiansRepository: DriftProfileGuardiansRepository(db.storage),
         sharingService: _StubSharingService(),
         currentUserId: null,
         activityRepository: repository,
@@ -654,7 +652,7 @@ void main() {
       tester,
       screen: (profile, repository, db) => ManageGuardiansScreen(
         profile: profile,
-        guardiansRepository: data.ProfileGuardiansRepository(db.storage),
+        guardiansRepository: DriftProfileGuardiansRepository(db.storage),
         sharingService: _StubSharingService(),
         currentUserId: null,
       ),

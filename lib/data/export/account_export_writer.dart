@@ -26,15 +26,15 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/export/account_export.dart';
 import '../../domain/export/account_export_remote_source.dart';
-import '../../domain/export/account_export_writer.dart' as domain;
+import '../../domain/export/account_export_writer.dart';
 import '../../domain/models/care_note.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/visit_prep_item.dart';
 
-class AccountExportWriter implements domain.AccountExportWriter {
-  const AccountExportWriter({this.remoteSource});
+class PlatformAccountExportWriter implements AccountExportWriter {
+  const PlatformAccountExportWriter({this.remoteSource});
 
   @override
   final AccountExportRemoteSource? remoteSource;

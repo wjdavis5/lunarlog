@@ -7,7 +7,7 @@ import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart' hide Profile, DayEntry;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/mappers.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -331,7 +331,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -372,7 +372,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-sitter',
           ),
@@ -402,7 +402,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-dad',
           ),
@@ -444,7 +444,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -497,7 +497,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -532,7 +532,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -569,7 +569,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-dad',
           ),
@@ -598,7 +598,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -634,7 +634,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-doc',
           ),
@@ -660,7 +660,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -695,7 +695,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -733,7 +733,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: failingService,
             currentUserId: 'user-mom',
           ),
@@ -773,7 +773,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: failingService,
             currentUserId: 'user-mom',
           ),
@@ -807,7 +807,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-aunt',
           ),
@@ -835,7 +835,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-stranger',
           ),
@@ -859,7 +859,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -907,7 +907,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -940,7 +940,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-dad',
             ),
@@ -969,7 +969,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-sitter',
             ),
@@ -995,7 +995,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-aunt',
             ),
@@ -1020,7 +1020,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -1048,7 +1048,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -1086,7 +1086,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -1123,7 +1123,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-dad',
             ),
@@ -1154,7 +1154,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -1186,7 +1186,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -1226,7 +1226,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -1260,7 +1260,7 @@ void main() {
           MaterialApp(
             home: ManageGuardiansScreen(
               profile: testProfile,
-              guardiansRepository: ProfileGuardiansRepository(storage),
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
               sharingService: sharingService,
               currentUserId: 'user-mom',
             ),
@@ -1286,7 +1286,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
             notificationPreferencesService: notificationPreferencesService,
@@ -1319,7 +1319,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
           ),
@@ -1357,7 +1357,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: sharingService,
             currentUserId: 'user-mom',
             ownershipTransferService: transferService,
@@ -1395,7 +1395,7 @@ void main() {
       bool useSharing = true,
       OwnershipTransferService? ownershipTransferService,
     }) async {
-      await tester.pumpWidget(LunarLogApp(
+      await tester.pumpWidget(LunarLogApp.withCollaborators(
         db: db,
         authService: auth,
         sharingService: useSharing ? sharingService : null,
@@ -1641,7 +1641,7 @@ void main() {
         ),
       ]);
 
-      await tester.pumpWidget(LunarLogApp(
+      await tester.pumpWidget(LunarLogApp.withCollaborators(
         db: db,
         authService: auth,
         sharingService: sharingService,

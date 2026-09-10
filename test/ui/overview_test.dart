@@ -14,14 +14,12 @@ import 'package:lunarlog/app_lifecycle.dart'
     show RequestNotificationPermissionCallback;
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -218,9 +216,9 @@ class Harness {
         // the raw storage object (mirrors `lib/app.dart`).
         if (withStorage) ...[
           Provider<ProfileGuardiansRepository>.value(
-              value: data.ProfileGuardiansRepository(db.storage)),
+              value: DriftProfileGuardiansRepository(db.storage)),
           Provider<ActivityFeedRepository>.value(
-              value: data.ActivityFeedRepository(db.storage)),
+              value: DriftActivityFeedRepository(db.storage)),
           Provider<CareContentRepository>.value(
               value: DriftCareContentRepository(db.storage)),
         ],

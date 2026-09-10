@@ -21,7 +21,7 @@ import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart' hide Profile, DayEntry;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/mappers.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -647,7 +647,7 @@ void main() {
         MaterialApp(
           home: ManageGuardiansScreen(
             profile: profile ?? testProfile,
-            guardiansRepository: ProfileGuardiansRepository(storage),
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
             sharingService: _NoInvitesSharingService(),
             currentUserId: 'user-mom',
             predictionConnectionService: connectionService,
@@ -897,7 +897,7 @@ void main() {
       bool withService = true,
     }) async {
       await tester.pumpWidget(
-        LunarLogApp(
+        LunarLogApp.withCollaborators(
           db: db,
           authService: auth,
           predictionConnectionService: withService ? service : null,

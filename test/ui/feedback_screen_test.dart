@@ -3,8 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart'
-    as data;
+import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
@@ -31,7 +30,7 @@ class _FakeAttachmentSource implements AttachmentSource {
 /// pre-populated one, since an always-empty log can never catch a
 /// regression in how the diagnostics preview renders breadcrumb entries.
 DeviceDiagnosticsCollector _fakeCollector({BreadcrumbLog? breadcrumbLog}) =>
-    data.DeviceDiagnosticsCollector(
+    PlatformDeviceDiagnosticsCollector(
       packageInfoReader: () async => PackageInfo(
         appName: 'lunarlog',
         packageName: 'com.wjdavis5.lunarlog',

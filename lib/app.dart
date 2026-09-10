@@ -1,30 +1,28 @@
 /// App composition root: consumes the [AppDependencies] bundle — built by
-/// the composition module (`lib/composition/app_dependencies.dart`), or a
-/// fallback built here from this widget's own test-injectable collaborators
-/// when none is supplied — and provides those contracts plus the profile
+/// the composition module (`lib/composition/app_dependencies.dart`) and
+/// passed by `LunarLogRoot` — and provides those contracts plus the profile
 /// controller (KTD4), the reminder coordinator (KTD7/U8) and the web
-/// guardrails (KTD9). Concrete data-layer repository/service construction
-/// moved to `lib/composition/`; this file still imports `lib/data` types
-/// for the lifecycle coordinators it owns (reminder, health, publishers),
-/// which are deliberately not part of the bundle.
+/// guardrails (KTD9). Issue #418 (AC1): this widget takes exactly one
+/// injection idiom — the bundle, always supplied by the production path.
+/// Tests build the bundle explicitly via `buildAppDependencies` (see
+/// `test/composition/app_dependencies_test.dart`); there is no implicit
+/// fallback construction here. Lifecycle coordinators below are consumed
+/// from `lib/composition/` builders (AC2), never constructed inline.
 library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/composition/app_dependencies.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
-import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
-import 'package:lunarlog/data/health/health_flow_write_service.dart';
-import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
-import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart'
-    as data;
+import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
@@ -49,9 +47,6 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
-import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart'
-    as domain_health;
-import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
 import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
@@ -86,18 +81,7 @@ class LunarLogApp extends StatefulWidget {
   const LunarLogApp({
     super.key,
     required this.db,
-    this.dependencies,
-    this.scheduler,
-    this.authService,
-    this.syncEngine,
-    this.sharingService,
-    this.feedbackService,
-    this.accountDeletionService,
-    this.ownershipTransferService,
-    this.predictionConnectionService,
-    this.notificationPreferencesService,
-    this.accountExportRemoteSource,
-    this.reminderWindowUpsert,
+    required this.dependencies,
     this.inviteLinks,
     this.initialInviteCode,
     this.initialInviteProfileId,
@@ -111,62 +95,80 @@ class LunarLogApp extends StatefulWidget {
 
   final LunarLogDatabase db;
 
-  /// A pre-built dependency bundle, supplied by the composition root
-  /// (`LunarLogRoot`) once the database is open. When null (tests that mount
-  /// this widget directly), [initState] builds one from the collaborators
-  /// below via `buildAppDependencies`.
-  final AppDependencies? dependencies;
+  /// The dependency bundle, built by the composition module
+  /// (`buildAppDependencies`) and supplied by `LunarLogRoot` once the
+  /// database is open (Issue #418, AC1: the single injection idiom).
+  /// Production always passes it; tests build it explicitly via
+  /// `buildAppDependencies` with the collaborators under test.
+  final AppDependencies dependencies;
 
-  final SharingService? sharingService;
-
-  /// In-app feedback service (Issue #6, U6). When present, Settings gains a
-  /// "Send feedback" entry (R24); when null, Settings shows the
-  /// contact-support fallback tile instead (R23).
-  final FeedbackService? feedbackService;
-
-  /// Account deletion seam (#17 U4). When present,
-  /// `lib/ui/account/account_section.dart` renders a "Delete account" tile
-  /// (R11); when null (an unconfigured build, or web unless
-  /// `LUNARLOG_WEB_SYNC=true`) the tile is absent.
-  final AccountDeletionService? accountDeletionService;
-
-  /// Child ownership transfer seam (Issue #4, U7). Provided down the tree
-  /// when present so the arm/cancel/claim UI (a later unit) can reach it via
-  /// `context.read<OwnershipTransferService>()`; when null nothing
-  /// ownership-transfer-related is provided.
-  final OwnershipTransferService? ownershipTransferService;
-
-  /// Prediction-only connection seam (Issue #151). When present, the
-  /// connection UI (Manage guardians' sharing section, the "Shared with
-  /// me" screen, and kind=prediction invite links) is live; when null
-  /// (an unconfigured build) none of it is reachable, the same
-  /// null-gating discipline as [ownershipTransferService].
-  final PredictionConnectionService? predictionConnectionService;
-
-  /// Caregiver alert preference service (Issue #5, U8). When present,
-  /// Manage guardians gains a "Notifications" entry (R1, R3, R4); when null
-  /// (an unconfigured build, or push unavailable) it is absent (R17) and
-  /// [reminderWindowUpsert] is never called.
-  final NotificationPreferencesService? notificationPreferencesService;
-
-  /// Server-side export seam (Issue #248). When present,
-  /// `account_section.dart`'s export tile merges `export_account_data()`'s
-  /// document into the local-only export; when null (an unconfigured
-  /// build) export stays local-only, exactly as it always has (never a
-  /// hard failure either way - see `buildMergedAccountExport`'s doc).
-  final AccountExportRemoteSource? accountExportRemoteSource;
-
-  /// Publishes the client's cycle prediction to the server (Issue #5, U6;
-  /// R13). Null together with [notificationPreferencesService] on a build
-  /// without push.
-  final ReminderWindowRemote? reminderWindowUpsert;
+  /// Test-only construction path (Issue #418, AC1): builds [dependencies]
+  /// from individual collaborators via `buildAppDependencies`, so widget
+  /// tests can mount this widget without a `LunarLogRoot`. Explicit and
+  /// documented — production never uses this; `LunarLogRoot` always passes
+  /// a pre-built bundle to the default constructor above.
+  @visibleForTesting
+  factory LunarLogApp.withCollaborators({
+    Key? key,
+    required LunarLogDatabase db,
+    AuthService? authService,
+    SyncEngine? syncEngine,
+    SharingService? sharingService,
+    FeedbackService? feedbackService,
+    AccountDeletionService? accountDeletionService,
+    OwnershipTransferService? ownershipTransferService,
+    PredictionConnectionService? predictionConnectionService,
+    NotificationPreferencesService? notificationPreferencesService,
+    AccountExportRemoteSource? accountExportRemoteSource,
+    ReminderWindowRemote? reminderWindowUpsert,
+    ReminderScheduler? scheduler,
+    Stream<Uri>? inviteLinks,
+    String? initialInviteCode,
+    String? initialInviteProfileId,
+    String? initialInviteKind,
+    void Function(Future<void> teardown)? onTeardown,
+    DeviceResetCallback? resetDevice,
+    RemovePushRegistrationCallback? removePushRegistration,
+    RemoveAllPushRegistrationsCallback? removeAllPushRegistrations,
+    bool showWebBanner = kIsWeb,
+  }) =>
+      LunarLogApp(
+        key: key,
+        db: db,
+        dependencies: buildAppDependencies(
+          db: db,
+          authService: authService,
+          syncEngine: syncEngine,
+          sharingService: sharingService,
+          feedbackService: feedbackService,
+          accountDeletionService: accountDeletionService,
+          ownershipTransferService: ownershipTransferService,
+          predictionConnectionService: predictionConnectionService,
+          notificationPreferencesService: notificationPreferencesService,
+          accountExportRemoteSource: accountExportRemoteSource,
+          reminderWindowUpsert: reminderWindowUpsert,
+          scheduler: scheduler,
+          currentUserIdProvider: () => authService?.currentUserId,
+          pushEnabled: AppConfig.hasPush && !kIsWeb,
+          buildDefaultScheduler: false,
+        ),
+        inviteLinks: inviteLinks,
+        initialInviteCode: initialInviteCode,
+        initialInviteProfileId: initialInviteProfileId,
+        initialInviteKind: initialInviteKind,
+        onTeardown: onTeardown,
+        resetDevice: resetDevice,
+        removePushRegistration: removePushRegistration,
+        removeAllPushRegistrations: removeAllPushRegistrations,
+        showWebBanner: showWebBanner,
+      );
 
   /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
   /// `https://<domain>/invite?code=...` (issue #129) — filtered by main.dart
-  /// (or injected by tests). When present and a sharing service exists,
-  /// an incoming link presents [AcceptInviteSheet] - after sign-in if the
-  /// recipient is not authenticated yet (the code is latched across the
-  /// gate in between).
+  /// (or injected by tests). When present and the bundle carries a sharing
+  /// service, an incoming link presents [AcceptInviteSheet] - after sign-in
+  /// if the recipient is not authenticated yet (the code is latched across
+  /// the gate in between).
   final Stream<Uri>? inviteLinks;
 
   /// The invite code from a cold-start link, if any (R9).
@@ -178,20 +180,6 @@ class LunarLogApp extends StatefulWidget {
   /// The `kind` parameter of the cold-start invite link, if any (`claim`
   /// routes to [ClaimProfileSheet] instead of [AcceptInviteSheet]; U10).
   final String? initialInviteKind;
-
-  /// Reminder scheduler; defaults to the flutter_local_notifications
-  /// implementation on native platforms and the no-op on web (KTD9).
-  final ReminderScheduler? scheduler;
-
-  /// Account auth service (U4). When present an [AuthController] is
-  /// provided to the subtree; when null nothing account-related is
-  /// provided and the tree is exactly the pre-U4 one.
-  final AuthService? authService;
-
-  /// Cloud sync engine (U5), owned by `LunarLogRoot`. When present a
-  /// [SyncStatusController] is provided to the subtree; when null nothing
-  /// sync-related is provided.
-  final SyncEngine? syncEngine;
 
   /// Receives this widget's asynchronous teardown (the reminder
   /// coordinator's disposal) when it unmounts, so the root can await it
@@ -227,9 +215,9 @@ class LunarLogApp extends StatefulWidget {
 
 class _LunarLogAppState extends State<LunarLogApp>
     with WidgetsBindingObserver {
-  // The dependency bundle this widget's lifetime is bound to. Supplied by
-  // the composition root, or built once in [initState] from the (stable)
-  // database and the injectable collaborators below.
+  // The dependency bundle this widget's lifetime is bound to, supplied by
+  // the composition root (`LunarLogRoot`). AC1: the single injection idiom
+  // — production always passes it; tests build it via `buildAppDependencies`.
   late final AppDependencies _deps;
 
   // KTD3/R5: one instance of each repository for this widget's lifetime,
@@ -283,7 +271,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   ReminderConfigService? _reminderConfigService;
   ReminderWindowPublisher? _reminderWindowPublisher;
   PredictionProjectionPublisher? _predictionProjectionPublisher;
-  domain_health.HealthFlowWriteCoordinator? _healthFlowCoordinator;
+  HealthFlowWriteCoordinator? _healthFlowCoordinator;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
@@ -310,29 +298,9 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   void initState() {
     super.initState();
-    // Composition root: build (or accept) the one bundle of concrete
-    // data-layer implementations this widget's lifetime is bound to. When
-    // the shell (`LunarLogRoot`) supplies one, use it verbatim; otherwise
-    // build it from this widget's own collaborators (tests, and the direct
-    // `LunarLogApp` mounts that pass none).
-    _deps = widget.dependencies ??
-        buildAppDependencies(
-          db: widget.db,
-          authService: widget.authService,
-          syncEngine: widget.syncEngine,
-          sharingService: widget.sharingService,
-          feedbackService: widget.feedbackService,
-          accountDeletionService: widget.accountDeletionService,
-          ownershipTransferService: widget.ownershipTransferService,
-          predictionConnectionService: widget.predictionConnectionService,
-          notificationPreferencesService: widget.notificationPreferencesService,
-          accountExportRemoteSource: widget.accountExportRemoteSource,
-          reminderWindowUpsert: widget.reminderWindowUpsert,
-          scheduler: widget.scheduler,
-          currentUserIdProvider: () => _authController?.currentUserId,
-          pushEnabled: AppConfig.hasPush && !kIsWeb,
-          buildDefaultScheduler: false,
-        );
+    // AC1: the one bundle this widget's lifetime is bound to, supplied by
+    // the composition root. No fallback construction here.
+    _deps = widget.dependencies;
     _profiles = _deps.profiles;
     _dayEntries = _deps.dayEntries;
     _observations = _deps.observations;
@@ -383,7 +351,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// provided one. Extracted out of [initState] (issue #168 CRAP gate) so
   /// this branching doesn't count against that method's complexity.
   void _initAuthController() {
-    final authService = widget.authService;
+    final authService = _deps.authService;
     if (authService == null) return;
     final controller = AuthController(authService: authService)
       ..addListener(_onAuthChanged);
@@ -404,11 +372,12 @@ class _LunarLogAppState extends State<LunarLogApp>
     // Issue #136: the per-profile reminder configuration service and the
     // action executor live exactly as long as the coordinator does — no
     // scheduler (widget-test harnesses, web) means neither is built and
-    // no provider is registered.
-    final configService = ReminderConfigService(_settings);
+    // no provider is registered. AC2: construction lives in
+    // `lib/composition/`; this method only wires the gate callbacks.
+    final configService = buildReminderConfigService(_settings);
     _reminderConfigService = configService;
     final gate = context.read<GateController?>();
-    _actionExecutor = ReminderActionExecutor(
+    _actionExecutor = buildReminderActionExecutor(
       dayEntries: _dayEntries,
       observations: _observations,
       configService: configService,
@@ -421,7 +390,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // non-null instance on this very first build. Only the actual
     // `start()` call is deferred to a post-frame callback (see
     // [_scheduleReminderStart]).
-    final coordinator = ReminderCoordinator(
+    final coordinator = buildReminderCoordinator(
       scheduler: scheduler,
       permissionState: _permissionState,
       activeProfiles: _profiles.watch(),
@@ -466,17 +435,16 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// CRAP gate) so this branching doesn't count against that method's
   /// complexity.
   void _initReminderWindowPublisher() {
-    final reminderWindowUpsert = _deps.reminderWindowUpsert;
-    if (_deps.notificationPreferencesService == null ||
-        reminderWindowUpsert == null) {
-      return;
-    }
-    final publisher = ReminderWindowPublisher(
+    // AC2: construction lives in `lib/composition/`; this method only
+    // starts the returned instance.
+    final publisher = buildReminderWindowPublisher(
+      notificationPreferencesService: _deps.notificationPreferencesService,
+      reminderWindowUpsert: _deps.reminderWindowUpsert,
       activeProfiles: _profiles.watch(),
       predictionFor: _prediction.watch,
-      upsert: reminderWindowUpsert,
       isSignedIn: _isSignedIn,
     );
+    if (publisher == null) return;
     _reminderWindowPublisher = publisher;
     publisher.start();
   }
@@ -490,14 +458,15 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// `AppConfig.hasPush`/web gate the reminder publisher sits behind,
   /// because the service (and so the whole sharing UI) exists without push.
   void _startPredictionProjectionPublisher() {
-    final service = _deps.predictionConnectionService;
-    if (service == null) return;
-    final publisher = data.PredictionProjectionPublisher(
+    // AC2: construction lives in `lib/composition/`; this method only
+    // starts the returned instance.
+    final publisher = buildPredictionProjectionPublisher(
+      service: _deps.predictionConnectionService,
       activeProfiles: _profiles.watch(),
       predictionFor: _prediction.watch,
-      service: service,
       isSignedIn: _isSignedIn,
     );
+    if (publisher == null) return;
     _predictionProjectionPublisher = publisher;
     publisher.start();
   }
@@ -515,42 +484,23 @@ class _LunarLogAppState extends State<LunarLogApp>
   }
 
   /// Issue #193: the one-way, opt-in, forward-only menstrual-flow write
-  /// path. Starts iOS-only — `AppConfig.hasHealthSync` gates the feature
-  /// overall, and the Health Connect half's device checklist is #202's,
-  /// so Android stays with no write coordinator (and no Settings tile)
-  /// rather than binding a profile nothing syncs. Widget-test harnesses
-  /// and web (the other `UnsupportedHealthPlatform` surfaces) never
-  /// construct it either. Same zero-conditional gating posture as the
-  /// publishers above.
+  /// path. AC2: construction lives in `lib/composition/` (which owns the
+  /// iOS-only gating too); this method only starts the returned instance.
+  /// Widget-test harnesses and web never get one.
   void _initHealthFlowWriter() {
-    if (!AppConfig.hasHealthSync) return;
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
-    final binding = HealthSyncBinding(_settings);
-    final platform = createHealthPlatform(
-      defaultTargetPlatform,
-      binding: binding,
-      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
-    );
-    final service = HealthFlowWriteService(
-      platform: platform,
-      binding: binding,
-      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+    final coordinator = buildHealthFlowWriteCoordinator(
+      settings: _settings,
       profiles: _profiles,
       dayEntries: _dayEntries,
       observations: _observations,
-      settings: _settings,
-      guardiansForProfile:
-          _profileGuardians.getForProfile,
+      guardiansForProfile: _profileGuardians.getForProfile,
       // The Settings picker's own tested resolver (issue #153): null
       // unless a session is actually signed in — the same guard fact both
       // call sites must agree on.
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
+      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
     );
-    final coordinator = HealthFlowWriteCoordinator(
-      binding: binding,
-      dayEntries: _dayEntries,
-      service: service,
-    );
+    if (coordinator == null) return;
     _healthFlowCoordinator = coordinator;
     coordinator.start();
   }
@@ -585,12 +535,12 @@ class _LunarLogAppState extends State<LunarLogApp>
     );
   }
 
-  /// U10: `kind == 'claim'` routes to [ClaimProfileSheet] (needs
-  /// [widget.ownershipTransferService]); issue #151: `kind ==
-  /// 'prediction'` routes to [AcceptPredictionConnectionSheet] (needs
-  /// [widget.predictionConnectionService]); anything else (null or
-  /// unrecognised) keeps the ordinary [AcceptInviteSheet] path (needs
-  /// [widget.sharingService]) unchanged.
+  /// U10: `kind == 'claim'` routes to [ClaimProfileSheet] (needs the
+  /// bundle's [OwnershipTransferService]); issue #151: `kind ==
+  /// 'prediction'` routes to [AcceptPredictionConnectionSheet] (needs the
+  /// bundle's [PredictionConnectionService]); anything else (null or
+  /// unrecognised) keeps the ordinary [AcceptInviteSheet] path (needs the
+  /// bundle's [SharingService]) unchanged.
   void _maybePresentInvite(String code, String? profileId, String? kind) {
     final isClaim = kind == 'claim';
     final isPrediction = kind == 'prediction';
@@ -869,7 +819,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   Widget build(BuildContext context) {
     final authController = _authController;
-    final syncEngine = widget.syncEngine;
+    final syncEngine = _deps.syncEngine;
     final resetDevice = widget.resetDevice ??
         Provider.of<DeviceResetCallback?>(context, listen: false);
     final removePushRegistration = widget.removePushRegistration ??

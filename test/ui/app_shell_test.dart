@@ -122,7 +122,7 @@ class Harness {
     if (seedEntries != null) {
       await seedEntries(db, profile.id);
     }
-    await tester.pumpWidget(LunarLogApp(
+    await tester.pumpWidget(LunarLogApp.withCollaborators(
       db: db,
       authService: auth,
       syncEngine: withSync ? engine : null,
@@ -624,7 +624,7 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<GateController>.value(
           value: gate,
-          child: LunarLogApp(db: h.db, authService: h.auth, syncEngine: h.engine),
+          child: LunarLogApp.withCollaborators(db: h.db, authService: h.auth, syncEngine: h.engine),
         ),
       );
       await tester.pumpAndSettle();
@@ -658,7 +658,7 @@ void main() {
           .set(SettingsKeys.lastActiveProfile, alice.id);
 
       await tester.pumpWidget(
-          LunarLogApp(db: h.db, authService: h.auth, syncEngine: h.engine));
+          LunarLogApp.withCollaborators(db: h.db, authService: h.auth, syncEngine: h.engine));
       await tester.pumpAndSettle();
 
       await tester.tap(tabKey('calendar'));
@@ -718,7 +718,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-          LunarLogApp(db: h.db, authService: h.auth, syncEngine: h.engine));
+          LunarLogApp.withCollaborators(db: h.db, authService: h.auth, syncEngine: h.engine));
       await tester.pumpAndSettle();
 
       expect(find.text('Alice'), findsOneWidget);

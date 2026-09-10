@@ -1,4 +1,4 @@
-/// `HealthFlowWriteCoordinator`'s trigger contract: an already-bound
+/// `LocalHealthFlowWriteCoordinator`'s trigger contract: an already-bound
 /// profile syncs under its existing cursor (restart-safe), entry changes
 /// debounce into one pass, an unbind retires the cursor via the service's
 /// unbind path, and a bind-while-bound replace retires the *old* binding's
@@ -10,7 +10,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart'
-    show HealthFlowWriteCoordinator;
+    show LocalHealthFlowWriteCoordinator;
 import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -85,13 +85,13 @@ void main() {
   late FakeSettingsStore settings;
   late _FakeDayEntries dayEntries;
   late _RecordingService service;
-  late HealthFlowWriteCoordinator coordinator;
+  late LocalHealthFlowWriteCoordinator coordinator;
 
   setUp(() {
     settings = FakeSettingsStore();
     dayEntries = _FakeDayEntries();
     service = _RecordingService(settings);
-    coordinator = HealthFlowWriteCoordinator(
+    coordinator = LocalHealthFlowWriteCoordinator(
       binding: HealthSyncBinding(settings),
       dayEntries: dayEntries,
       service: service,
@@ -199,7 +199,7 @@ void main() {
     // next change.
     final failing = _ThrowingService();
     settings.setSilently(_bindingKey, 'p1');
-    final flakyCoordinator = HealthFlowWriteCoordinator(
+    final flakyCoordinator = LocalHealthFlowWriteCoordinator(
       binding: HealthSyncBinding(settings),
       dayEntries: dayEntries,
       service: failing,

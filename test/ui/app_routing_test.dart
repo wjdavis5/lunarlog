@@ -19,7 +19,7 @@ void main() {
       'flutter test (no SENTRY_DSN, matching sentryNavigatorObservers())',
       (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -33,7 +33,7 @@ void main() {
       'which would pass vacuously under the pre-U2 home: wiring',
       (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
 
     final route = ModalRoute.of(homeContext(tester));
@@ -48,7 +48,7 @@ void main() {
       'across a rebuild triggered by setState (Approach 1b) -- proving the '
       'observer list is allocated once, not per build', (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
 
     final before =
@@ -73,7 +73,7 @@ void main() {
       "Flutter's own unknown-route handling, not silently render home",
       (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
 
     final onGenerateRoute =

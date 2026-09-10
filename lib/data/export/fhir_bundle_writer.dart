@@ -21,7 +21,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:lunarlog/domain/export/fhir_bundle_writer.dart' as domain;
+import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
 
 /// `application/fhir+json` — the FHIR JSON media type (FHIR R4 spec §1.8,
 /// distinct from the plain `application/json` `AccountExportWriter` uses
@@ -53,8 +53,8 @@ typedef FhirBundleShareCollaborator = Future<void> Function({
   required String mimeType,
 });
 
-class FhirBundleWriter implements domain.FhirBundleWriter {
-  const FhirBundleWriter({FhirBundleShareCollaborator? shareCollaborator})
+class PlatformFhirBundleWriter implements FhirBundleWriter {
+  const PlatformFhirBundleWriter({FhirBundleShareCollaborator? shareCollaborator})
       : _share = shareCollaborator ?? _platformShare;
 
   final FhirBundleShareCollaborator _share;

@@ -98,10 +98,10 @@ void main() {
     });
   });
 
-  group('DeviceDiagnosticsCollector', () {
+  group('PlatformDeviceDiagnosticsCollector', () {
     test('happy path: toJson keys equal the allowlist exactly', () async {
       final log = BreadcrumbLog()..record('nav', 'overview');
-      final collector = DeviceDiagnosticsCollector(
+      final collector = PlatformDeviceDiagnosticsCollector(
         packageInfoReader: () async => PackageInfo(
           appName: 'lunarlog',
           packageName: 'com.wjdavis5.lunarlog',
@@ -131,7 +131,7 @@ void main() {
     });
 
     test('error path: a plugin seam throws, yielding an all-unknown payload with no escaped exception', () async {
-      final collector = DeviceDiagnosticsCollector(
+      final collector = PlatformDeviceDiagnosticsCollector(
         packageInfoReader: () async => throw StateError('plugin unavailable'),
         deviceInfoReader: () async => _fakeAndroidDeviceInfo(),
         localeSupplier: () => const Locale('en', 'US'),
@@ -149,7 +149,7 @@ void main() {
     });
 
     test('edge case: an empty breadcrumb log yields an empty breadcrumbs array', () async {
-      final collector = DeviceDiagnosticsCollector(
+      final collector = PlatformDeviceDiagnosticsCollector(
         packageInfoReader: () async => PackageInfo(
           appName: 'lunarlog',
           packageName: 'com.wjdavis5.lunarlog',
@@ -171,7 +171,7 @@ void main() {
       final log = BreadcrumbLog()
         ..record('nav', 'overview')
         ..record('http', 'GET /rest/v1/feedback_tickets');
-      final collector = DeviceDiagnosticsCollector(
+      final collector = PlatformDeviceDiagnosticsCollector(
         packageInfoReader: () async => PackageInfo(
           appName: 'lunarlog',
           packageName: 'com.wjdavis5.lunarlog',

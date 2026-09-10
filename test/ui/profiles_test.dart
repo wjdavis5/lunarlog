@@ -53,7 +53,7 @@ Future<LunarLogDatabase> pumpApp(
   if (seed != null) {
     await seed(db);
   }
-  await tester.pumpWidget(LunarLogApp(db: db));
+  await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
   await tester.pumpAndSettle();
   return db;
 }
@@ -183,7 +183,7 @@ void main() {
       await tester.tap(find.text('Luna'));
       await tester.pumpAndSettle();
 
-      await tester.pumpWidget(LunarLogApp(db: db));
+      await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pumpAndSettle();
 
       expect(find.text(kNoticeText), findsNothing);
@@ -221,7 +221,7 @@ void main() {
       final engine = FakeSyncEngine();
       final db = LunarLogDatabase(NativeDatabase.memory());
       await tester.pumpWidget(
-          LunarLogApp(db: db, authService: auth, syncEngine: engine));
+          LunarLogApp.withCollaborators(db: db, authService: auth, syncEngine: engine));
       await tester.pumpAndSettle();
       expect(find.text('A private cycle log for your family'),
           findsOneWidget,
@@ -260,7 +260,7 @@ void main() {
       );
       addTearDown(auth2.dispose);
       final db2 = LunarLogDatabase(NativeDatabase.memory());
-      await tester.pumpWidget(LunarLogApp(db: db2, authService: auth2));
+      await tester.pumpWidget(LunarLogApp.withCollaborators(db: db2, authService: auth2));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
