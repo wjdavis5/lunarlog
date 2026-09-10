@@ -110,7 +110,7 @@ jobs:
     # above cannot see a macOS-only shell incompatibility. Same three test
     # scripts, no actionlint (that check is OS-independent).
     name: Release guard scripts on macOS (bash 3.2 compatibility)
-    runs-on: macos-latest
+    runs-on: self-hosted
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -282,7 +282,7 @@ jobs:
 
   ios:
     name: Build iOS (unsigned)
-    runs-on: macos-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
