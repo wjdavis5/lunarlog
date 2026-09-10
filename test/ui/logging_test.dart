@@ -1859,6 +1859,13 @@ void main() {
           withStorage: true,
           seed: (db, profileId) async {
             await db.storage.applyRemoteRows([
+              guardianRow(
+                profileId,
+                'g-mom',
+                'user-mom',
+                'primary_guardian',
+                displayName: 'Mom',
+              ),
               dayEntryRow(
                 profileId,
                 'e-1',
@@ -1874,6 +1881,13 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.textContaining('Logged by you'), findsOneWidget);
+        expect(
+          find.text('Logged by you'),
+          findsOneWidget,
+          reason:
+              'the full attribution text equals the single-segment form '
+              '(#89 AC2)',
+        );
         expect(
           find.textContaining('Modified by'),
           findsNothing,
