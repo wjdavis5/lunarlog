@@ -68,11 +68,6 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 
 import 'health_flow_mapping.dart';
 
-/// Re-exported so existing importers of this file keep resolving the report
-/// type after it moved to `lib/domain` with the contract (U9).
-export 'package:lunarlog/domain/health/health_flow_write_service.dart'
-    show HealthFlowSyncReport;
-
 /// Resolves the guardian rows for one profile, mapped to the domain model
 /// (`ownerUserIdFor` turns them into the guard's owner fact). Production
 /// wiring passes `ProfileGuardiansRepository.getForProfile` as a tear-off;

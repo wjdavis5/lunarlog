@@ -9,8 +9,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
-import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/data/health/health_flow_write_coordinator.dart'
+    show HealthFlowWriteCoordinator;
+import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';

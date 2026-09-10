@@ -64,8 +64,8 @@ class ImportScreen extends StatefulWidget {
 
   /// Reads the picked file's bytes; null means "not provided by the
   /// caller" (default: the tree-provided [ImportFileReader]). Injectable
-  /// for tests, which pass a plain function of the same shape.
-  final Future<Uint8List?> Function()? pickFile;
+  /// for tests, which pass an [ImportFileReader] implementation.
+  final ImportFileReader? pickFile;
 
   /// Plans and applies imports; null means "read the tree-provided
   /// [AccountImportCoordinator]" (see `_ImportScreenState._coordinator`).
@@ -93,8 +93,9 @@ class _ImportScreenState extends State<ImportScreen> {
   Future<void> _pickAndPlan() async {
     setState(() => _error = null);
     try {
-      final reader = widget.pickFile ?? context.read<ImportFileReader>().read;
-      final bytes = await reader();
+      final read =
+          widget.pickFile?.read ?? context.read<ImportFileReader>().read;
+      final bytes = await read();
       if (bytes == null || !mounted) return;
       final parsed = await _parse(bytes);
       // A second `mounted` re-check (`_parse` is itself an `await` gap,

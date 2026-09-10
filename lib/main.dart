@@ -9,7 +9,6 @@
 library;
 
 import 'package:app_links/app_links.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryHttpClient;
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
@@ -18,7 +17,6 @@ import 'app_lifecycle.dart';
 import 'config.dart';
 import 'startup/gate/gate.dart';
 import 'domain/sharing/invite_links.dart';
-import 'data/notifications/notification_scheduler.dart';
 import 'data/sync/supabase_sync_transport.dart';
 import 'data/sync/sync_transport.dart';
 import 'domain/auth/auth_service.dart';
@@ -92,9 +90,10 @@ Future<void> _runLunarlog() async {
       await protectDatabaseFile();
       return db;
     },
-    // KTD7/KTD9: reminders are a native-only surface; web gets the no-op.
-    scheduler:
-        kIsWeb ? NoopReminderScheduler() : FlutterLocalNotificationsScheduler(),
+    // KTD7/KTD9: reminders are a native-only surface. The composition
+    // factory builds the platform default (with its settings store) after
+    // the database opens; web gets the no-op.
+    buildDefaultScheduler: true,
     authService: authService,
     syncTransport: syncTransport,
     // U5/U6: with a client present the root also builds the sharing

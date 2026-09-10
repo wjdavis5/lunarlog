@@ -725,6 +725,7 @@ class LunarLogRoot extends StatefulWidget {
     required this.dbOpener,
     this.launchProfileId,
     this.scheduler,
+    this.buildDefaultScheduler = false,
     this.authService,
     this.syncTransport,
     this.sharingService,
@@ -757,6 +758,12 @@ class LunarLogRoot extends StatefulWidget {
   /// Reminder scheduler (U8); null disables reminders entirely.
   final ReminderScheduler? scheduler;
 
+  /// When true and no [scheduler] is injected, the composition factory
+  /// builds the platform default (with its settings store) after the
+  /// database opens. `main.dart` sets this for production; tests leave it
+  /// false so they get no scheduler unless they inject one.
+  final bool buildDefaultScheduler;
+
   /// Account auth service (U4), started by the bootstrap before the first
   /// frame; null when the build has no Supabase configuration (KTD11), in
   /// which case no account UI is provided at all.
@@ -770,53 +777,52 @@ class LunarLogRoot extends StatefulWidget {
   final SharingService? sharingService;
 
   /// In-app feedback service (Issue #6, U6), injectable for tests. When
-  /// null (and a Supabase client is present) the root constructs the
-  /// production [SupabaseFeedbackService] alongside [sharingService].
+  /// null (and a Supabase client is present) the composition factory
+  /// constructs the production [SupabaseFeedbackService].
   final FeedbackService? feedbackService;
 
   /// Account deletion seam (#17 U4; KTD8), injectable for tests. When null
-  /// (and [supabaseClient] is present) the root constructs the production
-  /// [SupabaseAccountDeletionService] alongside the sync engine, exactly as
-  /// it does for [sharingService] - see issue #76/PR #83, the precedent
-  /// behind building both in the same place a `SupabaseClient` is in scope.
+  /// (and [supabaseClient] is present) the composition factory constructs
+  /// the production [SupabaseAccountDeletionService], exactly as it does
+  /// for [sharingService] - see issue #76/PR #83, the precedent behind
+  /// building both in the same place a `SupabaseClient` is in scope.
   final AccountDeletionService? accountDeletionService;
 
   /// Child ownership transfer seam (Issue #4, U7), injectable for tests.
-  /// When null (and [supabaseClient] is present) the root constructs the
-  /// production [SupabaseOwnershipTransferService] alongside
-  /// [sharingService] — see issue #76/PR #83, the precedent behind
-  /// building both in the same place a `SupabaseClient` is in scope.
+  /// When null (and [supabaseClient] is present) the composition factory
+  /// constructs the production [SupabaseOwnershipTransferService] — see
+  /// issue #76/PR #83, the precedent behind building both in the same place
+  /// a `SupabaseClient` is in scope.
   final OwnershipTransferService? ownershipTransferService;
 
   /// Prediction-only connection seam (Issue #151), injectable for tests.
-  /// When null (and [supabaseClient] is present) the root constructs the
-  /// production [SupabasePredictionConnectionService] alongside the other
-  /// Supabase services - same KTD8 precedent.
+  /// When null (and [supabaseClient] is present) the composition factory
+  /// constructs the production [SupabasePredictionConnectionService] - same
+  /// KTD8 precedent.
   final PredictionConnectionService? predictionConnectionService;
 
   /// Caregiver alert preference service (Issue #5, U6/U8), injectable for
-  /// tests. When null the root constructs the production
-  /// [SupabaseNotificationPreferencesService] only when `AppConfig.hasPush`
-  /// (R17) - an unconfigured build never provides one, so Manage guardians'
-  /// Notifications tile is absent with zero conditionals in the caller.
+  /// tests. When null the composition factory constructs the production
+  /// [SupabaseNotificationPreferencesService] only when push is enabled and
+  /// a Supabase client is present (R17) - an unconfigured build never
+  /// provides one, so Manage guardians' Notifications tile is absent with
+  /// zero conditionals in the caller.
   final NotificationPreferencesService? notificationPreferencesService;
 
   /// Server-side export seam (Issue #248), injectable for tests. When null
-  /// (and [supabaseClient] is present) the root constructs the production
-  /// [SupabaseAccountExportRemoteSource] alongside the other Supabase
-  /// services below - same KTD8 precedent.
+  /// (and [supabaseClient] is present) the composition factory constructs
+  /// the production [SupabaseAccountExportRemoteSource] - same KTD8
+  /// precedent.
   final AccountExportRemoteSource? accountExportRemoteSource;
 
-  /// The Supabase client from the successful bootstrap. When present (and
-  /// [sharingService]/[feedbackService]/[accountDeletionService]/
-  /// [ownershipTransferService]/[predictionConnectionService]/
-  /// [accountExportRemoteSource] were not injected) the root constructs the
-  /// production [SupabaseSharingService], [SupabaseFeedbackService],
+  /// The Supabase client from the successful bootstrap. When present it is
+  /// handed to the composition factory, which constructs the production
+  /// [SupabaseSharingService], [SupabaseFeedbackService],
   /// [SupabaseAccountDeletionService], [SupabaseOwnershipTransferService],
-  /// [SupabasePredictionConnectionService],
-  /// [SupabaseAccountExportRemoteSource], and [RealtimeSyncCoordinator]
-  /// alongside the sync engine, so those features are live in production
-  /// builds.
+  /// [SupabasePredictionConnectionService], and
+  /// [SupabaseAccountExportRemoteSource] (unless each was injected), so
+  /// those features are live in production builds. The root itself still
+  /// constructs the [RealtimeSyncCoordinator] alongside the sync engine.
   final SupabaseClient? supabaseClient;
 
   /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
@@ -926,10 +932,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
 
   /// KTD11: the engine exists only when the build has both collaborators;
   /// null collaborators build nothing, so harnesses without them are
-  /// untouched. When a Supabase client is present the production sharing
-  /// service (U5), feedback service (Issue #6, U6), account deletion
-  /// service (#17 U4; KTD8), and realtime coordinator (U6) are built here
-  /// too, so all of those features are reachable in production builds.
+  /// untouched. The composition factory (`buildAppDependencies`) builds the
+  /// bundle, including every Supabase-backed service; the realtime
+  /// coordinator (U6) is still constructed here, next to the engine it
+  /// drives.
   void _startSyncEngine(LunarLogDatabase db) {
     final authService = widget.authService;
     final transport = widget.syncTransport;
@@ -973,7 +979,6 @@ class LunarLogRootState extends State<LunarLogRoot> {
       db: db,
       client: client,
       authService: authService,
-      syncTransport: transport,
       syncEngine: engine,
       sharingService: widget.sharingService,
       feedbackService: widget.feedbackService,
@@ -983,9 +988,17 @@ class LunarLogRootState extends State<LunarLogRoot> {
       notificationPreferencesService: widget.notificationPreferencesService,
       accountExportRemoteSource: widget.accountExportRemoteSource,
       scheduler: widget.scheduler,
+      // The import coordinator is built once here and reused across sign-ins,
+      // so it resolves the acting user id at call time (a live provider beats
+      // the null captured at construction) — without this the viewer import
+      // gate would fail open in production.
+      currentUserIdProvider: () => authService?.currentUserId,
       // R17/R18: push-backed services exist only when push is configured and
       // this is not web — the same gate `_startPushRegistration` uses below.
       pushEnabled: AppConfig.hasPush && !widget.isWeb,
+      // The shell owns the platform default scheduler; build it here, with
+      // the settings store, rather than constructing a throwaway in main.
+      buildDefaultScheduler: widget.buildDefaultScheduler,
     );
   }
 

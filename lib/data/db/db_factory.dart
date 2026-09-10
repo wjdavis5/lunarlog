@@ -17,9 +17,9 @@ library;
 import 'dart:async';
 
 import 'package:drift/drift.dart';
+import 'package:lunarlog/domain/models/database_error.dart';
 
 import 'db.dart';
-import 'errors.dart';
 
 /// Builds the database's [QueryExecutor].
 typedef ExecutorBuilder = FutureOr<QueryExecutor> Function();

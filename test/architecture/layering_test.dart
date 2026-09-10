@@ -81,6 +81,19 @@ bool dependsOnDataLayer(String contents, String filePath) =>
         uri == 'lib/data' ||
         uri.startsWith('lib/data/'));
 
+/// Whether [contents] of [filePath] depends on the composition
+/// (`lib/composition/`) or bootstrap (`lib/startup/`) layer. R16: `lib/ui`
+/// must never see the `AppDependencies` bundle the composition module
+/// builds, nor the startup bootstrap that produces the Supabase client.
+bool dependsOnCompositionOrStartup(String contents, String filePath) =>
+    _referencedUris(contents, filePath).any((uri) =>
+        uri.startsWith('package:lunarlog/composition/') ||
+        uri == 'lib/composition' ||
+        uri.startsWith('lib/composition/') ||
+        uri.startsWith('package:lunarlog/startup/') ||
+        uri == 'lib/startup' ||
+        uri.startsWith('lib/startup/'));
+
 /// Whether [contents] depends on Flutter.
 bool dependsOnFlutter(String contents, String filePath) =>
     _referencedUris(contents, filePath)
@@ -131,6 +144,15 @@ void main() {
     test('no lib/ui file depends on lib/data', () {
       _expectNoOffenders('lib/ui', dependsOnDataLayer,
           'lib/ui must not depend on lib/data',
+          excludeGenerated: true);
+    });
+
+    // R16: `lib/ui` must never see the composition bundle (`AppDependencies`)
+    // or the startup bootstrap. `_expectNoOffenders` asserts a non-zero
+    // scanned-file count, so a wrong path cannot make it pass vacuously.
+    test('no lib/ui file depends on lib/composition or lib/startup', () {
+      _expectNoOffenders('lib/ui', dependsOnCompositionOrStartup,
+          'lib/ui must not depend on lib/composition or lib/startup',
           excludeGenerated: true);
     });
 
@@ -227,6 +249,38 @@ void main() {
               "import '../data_helpers/format.dart';", 'lib/ui/probe.dart'),
           isFalse,
           reason: 'a sibling directory that merely starts with "data" is fine');
+
+      // Falsification coverage for the `lib/ui -/-> lib/composition` and
+      // `lib/ui -/-> lib/startup` scans: a synthetic lib/ui file importing
+      // either layer is flagged in package-URI and resolved-relative form,
+      // while a domain import and a sibling directory that merely starts
+      // with "composition" are not.
+      const compositionUiPath = 'lib/ui/settings/settings_screen.dart';
+      expect(
+          dependsOnCompositionOrStartup(
+              "import 'package:lunarlog/composition/app_dependencies.dart';",
+              compositionUiPath),
+          isTrue,
+          reason: 'a lib/ui file importing the composition bundle must flag');
+      expect(
+          dependsOnCompositionOrStartup(
+              "import '../../startup/startup.dart';", compositionUiPath),
+          isTrue,
+          reason: 'a relative escape into lib/startup must flag');
+      expect(
+          dependsOnCompositionOrStartup(
+              "import 'package:lunarlog/domain/notifications/"
+                  "reminder_scheduler.dart';",
+              compositionUiPath),
+          isFalse,
+          reason: 'a domain import is not a composition/startup dependency');
+      expect(
+          dependsOnCompositionOrStartup(
+              "import '../composition_helpers/format.dart';",
+              'lib/ui/probe.dart'),
+          isFalse,
+          reason: 'a sibling directory that merely starts with "composition" '
+              'is fine');
     });
   });
 }

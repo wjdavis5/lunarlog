@@ -8,6 +8,7 @@
 /// individual domain contracts from the provider tree.
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
@@ -23,6 +24,7 @@ import 'package:lunarlog/data/import/account_importer.dart' as data;
 import 'package:lunarlog/data/import/import_file_picker.dart' as data;
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
+import 'package:lunarlog/data/notifications/supabase_reminder_window_remote.dart';
 import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
     as data;
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
@@ -37,7 +39,6 @@ import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
-import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
@@ -154,7 +155,6 @@ AppDependencies buildAppDependencies({
   required LunarLogDatabase db,
   SupabaseClient? client,
   AuthService? authService,
-  SyncTransport? syncTransport,
   SyncEngine? syncEngine,
   SharingService? sharingService,
   FeedbackService? feedbackService,
@@ -167,6 +167,7 @@ AppDependencies buildAppDependencies({
   ReminderScheduler? scheduler,
   String? Function()? currentUserIdProvider,
   bool pushEnabled = false,
+  bool buildDefaultScheduler = false,
 }) {
   final storage = db.storage;
   final profiles = DriftProfilesRepository(storage);
@@ -175,8 +176,11 @@ AppDependencies buildAppDependencies({
   final settings = DriftSettingsStore(storage);
   final profileGuardians = data.ProfileGuardiansRepository(storage);
 
-  final builtAccountExportRemoteSource =
-      _resolveAccountExportRemoteSource(accountExportRemoteSource, client);
+  final builtAccountExportRemoteSource = _resolve(
+    accountExportRemoteSource,
+    client != null,
+    () => SupabaseAccountExportRemoteSource(client: client!),
+  );
 
   return AppDependencies(
     profiles: profiles,
@@ -209,137 +213,58 @@ AppDependencies buildAppDependencies({
     cycleExclusions: CycleExclusionList(settings),
     authService: authService,
     syncEngine: syncEngine,
-    sharingService: _resolveSharingService(sharingService, client, syncEngine),
-    feedbackService: _resolveFeedbackService(feedbackService, client),
-    accountDeletionService:
-        _resolveAccountDeletionService(accountDeletionService, client),
-    ownershipTransferService:
-        _resolveOwnershipTransferService(ownershipTransferService, client,
-            syncEngine),
-    predictionConnectionService:
-        _resolvePredictionConnectionService(predictionConnectionService, client),
-    notificationPreferencesService: _resolveNotificationPreferencesService(
-        notificationPreferencesService, client, pushEnabled),
+    sharingService: _resolve(
+      sharingService,
+      client != null && syncEngine != null,
+      () => SupabaseSharingService(client: client!, syncEngine: syncEngine!),
+    ),
+    feedbackService: _resolve(
+      feedbackService,
+      client != null,
+      () => SupabaseFeedbackService(client: client!),
+    ),
+    accountDeletionService: _resolve(
+      accountDeletionService,
+      client != null,
+      () => SupabaseAccountDeletionService(client: client!),
+    ),
+    ownershipTransferService: _resolve(
+      ownershipTransferService,
+      client != null && syncEngine != null,
+      () => SupabaseOwnershipTransferService(
+          client: client!, syncEngine: syncEngine!),
+    ),
+    predictionConnectionService: _resolve(
+      predictionConnectionService,
+      client != null,
+      () => SupabasePredictionConnectionService(client: client!),
+    ),
+    notificationPreferencesService: _resolve(
+      notificationPreferencesService,
+      client != null && pushEnabled,
+      () => SupabaseNotificationPreferencesService(client: client!),
+    ),
     accountExportRemoteSource: builtAccountExportRemoteSource,
-    reminderWindowUpsert:
-        _resolveReminderWindowUpsert(reminderWindowUpsert, client, pushEnabled),
-    scheduler: _resolveScheduler(scheduler, settings),
+    reminderWindowUpsert: _resolve(
+      reminderWindowUpsert,
+      client != null && pushEnabled,
+      () => SupabaseReminderWindowRemote(client!),
+    ),
+    // R9: the scheduler's settings store is constructor-injected here, once
+    // the database (and so the settings store) exists. `buildDefaultScheduler`
+    // lets the shell opt into the platform default without `main.dart`
+    // constructing a throwaway instance first; tests leave it false.
+    scheduler: _resolve(
+      scheduler,
+      buildDefaultScheduler,
+      () => kIsWeb
+          ? NoopReminderScheduler()
+          : FlutterLocalNotificationsScheduler(settingsStore: settings),
+    ),
   );
 }
 
-/// R9: the scheduler's settings store is constructor-injected. `main.dart`
-/// builds the platform scheduler before the database (and so the settings
-/// store) exists; rebuild it here with the store attached so no
-/// post-construction mutation is needed. A fake injected by a test passes
-/// through untouched.
-ReminderScheduler? _resolveScheduler(
-  ReminderScheduler? scheduler,
-  SettingsStore settings,
-) {
-  if (scheduler is FlutterLocalNotificationsScheduler &&
-      scheduler.settingsStore == null) {
-    return FlutterLocalNotificationsScheduler(settingsStore: settings);
-  }
-  return scheduler;
-}
-
-AccountExportRemoteSource? _resolveAccountExportRemoteSource(
-  AccountExportRemoteSource? override,
-  SupabaseClient? client,
-) {
-  if (override != null) return override;
-  if (client == null) return null;
-  return SupabaseAccountExportRemoteSource(client: client);
-}
-
-SharingService? _resolveSharingService(
-  SharingService? override,
-  SupabaseClient? client,
-  SyncEngine? syncEngine,
-) {
-  if (override != null) return override;
-  if (client == null || syncEngine == null) return null;
-  return SupabaseSharingService(client: client, syncEngine: syncEngine);
-}
-
-OwnershipTransferService? _resolveOwnershipTransferService(
-  OwnershipTransferService? override,
-  SupabaseClient? client,
-  SyncEngine? syncEngine,
-) {
-  if (override != null) return override;
-  if (client == null || syncEngine == null) return null;
-  return SupabaseOwnershipTransferService(client: client, syncEngine: syncEngine);
-}
-
-FeedbackService? _resolveFeedbackService(
-  FeedbackService? override,
-  SupabaseClient? client,
-) {
-  if (override != null) return override;
-  if (client == null) return null;
-  return SupabaseFeedbackService(client: client);
-}
-
-AccountDeletionService? _resolveAccountDeletionService(
-  AccountDeletionService? override,
-  SupabaseClient? client,
-) {
-  if (override != null) return override;
-  if (client == null) return null;
-  return SupabaseAccountDeletionService(client: client);
-}
-
-PredictionConnectionService? _resolvePredictionConnectionService(
-  PredictionConnectionService? override,
-  SupabaseClient? client,
-) {
-  if (override != null) return override;
-  if (client == null) return null;
-  return SupabasePredictionConnectionService(client: client);
-}
-
-NotificationPreferencesService? _resolveNotificationPreferencesService(
-  NotificationPreferencesService? override,
-  SupabaseClient? client,
-  bool pushEnabled,
-) {
-  if (override != null) return override;
-  if (client == null || !pushEnabled) return null;
-  return SupabaseNotificationPreferencesService(client: client);
-}
-
-ReminderWindowRemote? _resolveReminderWindowUpsert(
-  ReminderWindowRemote? override,
-  SupabaseClient? client,
-  bool pushEnabled,
-) {
-  if (override != null) return override;
-  if (client == null || !pushEnabled) return null;
-  return _supabaseReminderWindowUpsert(client);
-}
-
-/// The `upsert_reminder_window` RPC (Issue #5, U6): one narrow write, no
-/// content. The named [ReminderWindowRemote] contract's Supabase-backed
-/// implementation.
-ReminderWindowRemote _supabaseReminderWindowUpsert(SupabaseClient client) =>
-    _SupabaseReminderWindowRemote(client);
-
-class _SupabaseReminderWindowRemote implements ReminderWindowRemote {
-  _SupabaseReminderWindowRemote(this._client);
-
-  final SupabaseClient _client;
-
-  @override
-  Future<void> upsert({
-    required String profileId,
-    required String estimatedNextStartIso,
-    required bool episodeOpen,
-  }) async {
-    await _client.rpc<dynamic>('upsert_reminder_window', params: {
-      'p_profile_id': profileId,
-      'p_estimated_next_start': estimatedNextStartIso,
-      'p_episode_open': episodeOpen,
-    });
-  }
-}
+/// Resolves one optional service: an explicit [override] always wins,
+/// otherwise [build] runs only when [enabled] says its inputs are present.
+T? _resolve<T>(T? override, bool enabled, T Function() build) =>
+    override ?? (enabled ? build() : null);

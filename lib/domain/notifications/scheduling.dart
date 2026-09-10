@@ -55,8 +55,6 @@ import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/prediction/fertile_window.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
-export 'package:lunarlog/domain/notifications/birth_control_reminder_kind.dart'
-    show birthControlReminderKindFor;
 export 'package:lunarlog/domain/notifications/reminder_config.dart'
     show ReminderKind;
 

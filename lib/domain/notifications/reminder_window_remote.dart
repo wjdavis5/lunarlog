@@ -2,8 +2,7 @@
 /// KTD4, R13). The named domain contract that replaces the
 /// `ReminderWindowUpsert` function typedef: the publisher speaks in this
 /// interface, and the Supabase-backed implementation lives in
-/// `lib/data/notifications/reminder_window_publisher.dart`'s composition
-/// wiring.
+/// `lib/data/notifications/supabase_reminder_window_remote.dart`.
 ///
 /// The contract is pure Dart — no Supabase type crosses it.
 library;

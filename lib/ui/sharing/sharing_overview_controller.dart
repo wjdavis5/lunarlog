@@ -49,11 +49,10 @@ class SharingOverviewController extends ChangeNotifier {
         _infos.remove(id);
       }
     }
-    final repository = guardiansRepository;
     for (final id in wanted) {
       if (_subs.containsKey(id)) continue;
       _infos[id] = const SharingProfileInfo.unknown();
-      _subs[id] = repository.watchForProfile(id).listen(
+      _subs[id] = guardiansRepository.watchForProfile(id).listen(
         (rows) {
           _infos[id] = SharingProfileInfo.fromGuardians(rows, currentUserId);
           notifyListeners();

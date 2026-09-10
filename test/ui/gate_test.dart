@@ -15,7 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/db/errors.dart';
+import 'package:lunarlog/domain/models/database_error.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/domain/gate/app_gate.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -1425,7 +1425,7 @@ void main() {
       expect(controller, isNotNull);
       expect(controller!.snapshot, SyncSnapshot.initial);
       // #76: a sync engine with no supabaseClient still builds no sharing
-      // service — the two are wired independently in _startSyncEngine.
+      // service — the two are wired independently in buildAppDependencies.
       expect(
           tester.element(find.byType(ProfileHomeGate)).read<SharingService?>(),
           isNull);
@@ -1516,7 +1516,7 @@ void main() {
       expect(sharing, isA<SupabaseSharingService>());
       // Same composition-root gap the (#76) fix closed for sharing,
       // reopened for feedback (Issue #6): a regression here would delete or
-      // break `_startSyncEngine`'s `_builtFeedbackService` construction
+      // break `buildAppDependencies`'s feedback-service construction
       // without any test failing.
       final feedback = tester
           .element(find.byType(ProfileHomeGate))

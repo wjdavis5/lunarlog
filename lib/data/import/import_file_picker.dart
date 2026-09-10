@@ -22,11 +22,6 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:lunarlog/domain/import/import_file_reader.dart' as domain;
 
-/// Reads the operator-picked file's bytes, or null when they cancel the
-/// picker. Production wiring is [pickImportFile]; tests inject a fake that
-/// returns canned bytes without touching `file_picker`.
-typedef ImportFileReader = Future<Uint8List?> Function();
-
 /// Opens the platform file picker scoped to `.json` files and returns the
 /// picked file's bytes. [PlatformFile.readAsBytes] is the package's own
 /// cross-platform read (bytes in memory where the platform already

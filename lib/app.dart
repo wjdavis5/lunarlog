@@ -1,10 +1,12 @@
-/// App composition root: constructs the drift-backed repositories over the
-/// opened database and provides them plus the profile controller (KTD4),
-/// the reminder coordinator (KTD7/U8) and the web guardrails (KTD9).
-/// This file wires the `lib/data` repositories for the rest of the app;
-/// it is not the only place `lib/data` types are imported — UI screens,
-/// `lib/app_lifecycle.dart`, `lib/main.dart`, and `lib/startup/*` import
-/// them directly where they need them.
+/// App composition root: consumes the [AppDependencies] bundle — built by
+/// the composition module (`lib/composition/app_dependencies.dart`), or a
+/// fallback built here from this widget's own test-injectable collaborators
+/// when none is supplied — and provides those contracts plus the profile
+/// controller (KTD4), the reminder coordinator (KTD7/U8) and the web
+/// guardrails (KTD9). Concrete data-layer repository/service construction
+/// moved to `lib/composition/`; this file still imports `lib/data` types
+/// for the lifecycle coordinators it owns (reminder, health, publishers),
+/// which are deliberately not part of the bundle.
 library;
 
 import 'dart:async';
@@ -329,6 +331,7 @@ class _LunarLogAppState extends State<LunarLogApp>
           scheduler: widget.scheduler,
           currentUserIdProvider: () => _authController?.currentUserId,
           pushEnabled: AppConfig.hasPush && !kIsWeb,
+          buildDefaultScheduler: false,
         );
     _profiles = _deps.profiles;
     _dayEntries = _deps.dayEntries;
