@@ -56,14 +56,17 @@ concurrency:
   group: ios-release
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Analyze and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
@@ -103,7 +106,7 @@ jobs:
       PGSSLMODE: require
       PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check gate credentials
         run: |
@@ -180,7 +183,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.submit_for_review != true
         run: echo "Not an explicit submit_for_review dispatch; nothing to gate here."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: github.event_name == 'workflow_dispatch' && inputs.submit_for_review == true
 
       - name: Enforce the release gate
@@ -195,14 +198,14 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Reading pubspec.yaml at an arbitrary before-commit (see the
           # `Detect a version bump` step below) needs full history --
           # fetch-depth: 2 only has the tip and its parent.
           fetch-depth: 0
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
@@ -317,7 +320,7 @@ jobs:
           echo "Installed profile '$name' ($uuid)"
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -500,7 +503,7 @@ jobs:
 
       - name: Upload the IPA as a build artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ios-release-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.build }}
           path: build/ios/ipa/*.ipa
