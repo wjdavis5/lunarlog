@@ -10,8 +10,9 @@ is not stale.
 
 ## Steps
 
-1. `python3 tool/coord/pr_status.py --owner opencode-muse --mine` and the same
-   for `claude-orch`.
+1. For every OpenCode coordinator id in play (`opencode-<model>` — derive it from a
+   running model with `python3 tool/coord/coordinator_id.py --model <id>`) run
+   `python3 tool/coord/pr_status.py --owner <id> --mine`; do the same for `claude-orch`.
 2. `git worktree list` — flag any worktree whose PR is merged or closed.
 3. For each directive in `docs/coordinator/orchestrator-directives.md`, check its
    issue state (`gh issue view <n> --json state,labels`). Clear a directive whose

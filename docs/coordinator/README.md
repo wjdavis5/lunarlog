@@ -21,7 +21,7 @@ else.
 | id | Engine | Branch prefix | Worktree root | State dir |
 |---|---|---|---|---|
 | `claude-orch` | Claude Code (interactive, owner-driven sessions) | `feat/<n>-<slug>` / `fix/<n>-<slug>` (pre-existing branches keep this until they merge — see `claude-orch`'s `PROCESS.md`) | `../lunarlog-wt/<n>-<slug>` (legacy; new worktrees go to `.worktrees/claude-orch/<n>-<slug>`) | [`STATE.md`](STATE.md)/[`log.md`](log.md)/[`briefs/`](briefs/) — flat, **not** `docs/coordinator/claude-orch/`; see "Why one coordinator's state isn't in its own directory" below |
-| `opencode-muse` | OpenCode (`opencode/muse-spark-1.3-contributor-free`) | `opencode-muse/<n>-<slug>` (`opencode-muse/fix-<n>-<slug>` for bugs) | `.worktrees/opencode-muse/<n>-<slug>` | [`docs/coordinator/opencode-muse/`](opencode-muse/) |
+| `opencode-<model>` | OpenCode — one coordinator per model; the id is `opencode-` + the model's family (`opencode/muse-spark-1.3-contributor-free` → `opencode-muse`, `deepseek/deepseek-v4-flash` → `opencode-deepseek`) | `opencode-<model>/<n>-<slug>` (`opencode-<model>/fix-<n>-<slug>` for bugs) | `.worktrees/opencode-<model>/<n>-<slug>` | `docs/coordinator/opencode-<model>/` |
 
 ### Why one coordinator's state isn't in its own directory
 
@@ -33,7 +33,7 @@ every few minutes always outraces a competing PR touching the same paths. So `cl
 keeps its state at the flat `docs/coordinator/` path it already used — a grandfathered
 exception — while still following every ownership rule below (issue/PR/worktree markers,
 never touching another coordinator's things). A coordinator that starts *after* this
-model exists, like `opencode-muse`, gets a clean per-id directory from day one and has no
+model exists, like `opencode-<model>`, gets a clean per-id directory from day one and has no
 reason to ever deviate from it.
 
 ## Supported agent surfaces
@@ -90,7 +90,7 @@ the claim is stale.
 |---|---|
 | `in-progress` | Claimed by some coordinator. Which one is `owner:<id>`, not this label. |
 | `owner:claude-orch` | Owned by the `claude-orch` coordinator. |
-| `owner:opencode-muse` | Owned by the `opencode-muse` coordinator. |
+| `owner:opencode-<model>` | Owned by the OpenCode coordinator running that model (`owner:opencode-muse`, `owner:opencode-deepseek`, …). The id is derived from the running model, never hard-coded — see `tool/coord/coordinator_id.py`. |
 | `needs-human-review` | A coordinator hit a product question, an abandoned foreign claim, or something it isn't equipped to resolve. |
 
 Labels are cheap — one `owner:` label exists per coordinator, created once.

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Outer loop for the opencode-muse coordinator.
+  Outer loop for an `opencode-<model>` coordinator.
 
 .DESCRIPTION
   A single `opencode run` turn ends when the agent replies, so unattended
@@ -8,13 +8,25 @@
   script does exactly that: it invokes the `coordinator` agent for one loop
   iteration, sleeps, and repeats -- forever, until a STOP file appears.
 
-  Stop the loop by creating docs/coordinator/opencode-muse/STOP (any content,
-  even empty) in the repo. The loop checks for it before every iteration and
-  exits cleanly if found. It does NOT delete the STOP file for you -- remove it
-  yourself before restarting the loop.
+  The coordinator id is `opencode-<model>` for the `-Model` this loop runs. It is
+  derived by `tool/coord/coordinator_id.py` and exported as
+  LUNARLOG_COORDINATOR_ID, which `opencode.json` injects into the coordinator and
+  coder prompts as `COORDINATOR_ID=<id>`. Several coordinators, one per model, can
+  therefore run at once -- each with its own `owner:<id>` label, `.worktrees/<id>/`
+  worktree prefix, and `docs/coordinator/<id>/` state directory.
+
+  Stop the loop by creating docs/coordinator/<id>/STOP (any content, even empty)
+  in the repo. The loop checks for it before every iteration and exits cleanly if
+  found. It does NOT delete the STOP file for you -- remove it yourself before
+  restarting the loop.
 
 .PARAMETER IntervalSeconds
   Delay between iterations. Default 300 (5 minutes).
+
+.PARAMETER Model
+  The model this coordinator runs, e.g. `opencode/muse-spark-1.3-contributor-free`
+  or `deepseek/deepseek-v4-flash`. The id is derived from it as `opencode-<model>`.
+  Default: opencode/muse-spark-1.3-contributor-free.
 
 .PARAMETER RepoRoot
   Path to the lunarlog repo root. Defaults to two levels up from this script
@@ -26,6 +38,9 @@
 
 .EXAMPLE
   pwsh -File tool/coord/run_opencode.ps1 -IntervalSeconds 600
+
+.EXAMPLE
+  pwsh -File tool/coord/run_opencode.ps1 -Model deepseek/deepseek-v4-flash
 
 .NOTES
   Registering as a Windows scheduled task (do this manually -- it is not done
@@ -47,6 +62,7 @@
 
 param(
     [int]$IntervalSeconds = 300,
+    [string]$Model = "opencode/muse-spark-1.3-contributor-free",
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 )
 
@@ -56,19 +72,28 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Derive `opencode-<model>` -- never hard-coded, so one loop per model can run at
+# once. Exported so opencode.json injects it into the prompts as COORDINATOR_ID.
+$CoordinatorId = (& python (Join-Path $PSScriptRoot "coordinator_id.py") --model $Model | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $CoordinatorId) {
+    Write-Error "could not derive a coordinator id from model '$Model'"
+    exit 2
+}
+$env:LUNARLOG_COORDINATOR_ID = $CoordinatorId
+
 # Single-instance guard: a scheduled task plus a manual start must never run two
-# coordinator loops against the same labels and worktrees.
-$mutex = New-Object System.Threading.Mutex($false, "Global\lunarlog-opencode-muse-coordinator")
+# loops for the SAME coordinator id against the same labels and worktrees.
+$mutex = New-Object System.Threading.Mutex($false, "Global\lunarlog-$CoordinatorId-coordinator")
 if (-not $mutex.WaitOne(0)) {
-    Write-Host "another lunarlog-opencode-muse coordinator loop is already running -- exiting."
+    Write-Host "another $CoordinatorId coordinator loop is already running -- exiting."
     exit 1
 }
 
-$stateDir = Join-Path $RepoRoot "docs\coordinator\opencode-muse"
+$stateDir = Join-Path $RepoRoot "docs\coordinator\$CoordinatorId"
 $stopFile = Join-Path $stateDir "STOP"
-$prompt = "Resume from docs/coordinator/opencode-muse/STATE.md. Run one loop iteration, then stop."
+$prompt = "Resume from docs/coordinator/$CoordinatorId/STATE.md. Run one loop iteration, then stop."
 
-Write-Host "lunarlog opencode-muse coordinator loop starting. Interval: ${IntervalSeconds}s. Stop file: $stopFile"
+Write-Host "lunarlog $CoordinatorId coordinator loop starting (model: $Model). Interval: ${IntervalSeconds}s. Stop file: $stopFile"
 
 $consecutiveFailures = 0
 
@@ -84,7 +109,7 @@ while ($true) {
     Push-Location $RepoRoot
     $failed = $false
     try {
-        & opencode run --agent coordinator $prompt
+        & opencode run --agent coordinator --model $Model $prompt
         $exitCode = $LASTEXITCODE
         if ($exitCode -ne 0) {
             $failed = $true
