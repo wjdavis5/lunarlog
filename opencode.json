@@ -2,12 +2,10 @@
   "$schema": "https://opencode.ai/config.json",
   "model": "opencode/muse-spark-1.3-contributor-free",
   "instructions": ["AGENTS.md", "CLAUDE.md"],
-  "subagents": {
+  "agent": {
     "general": {
       "disable": true
-    }
-  },
-  "agent": {
+    },
     "coordinator": {
       "mode": "primary",
       "description": "Engineering coordinator: picks GitHub issues by priority, dispatches coders into worktrees, reviews and merges PRs. Owns everything labeled owner:opencode-muse.",
