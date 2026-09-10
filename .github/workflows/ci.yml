@@ -57,6 +57,14 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
 
+      - name: Run tool/coord tests
+        if: always()
+        run: python3 -m unittest discover -s tool/coord/tests
+
+      - name: Run tool/orchestrator tests
+        if: always()
+        run: python3 -m unittest discover -s tool/orchestrator/tests
+
       - name: Cache actionlint
         id: actionlint-cache
         if: always()

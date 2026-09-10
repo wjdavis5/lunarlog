@@ -76,3 +76,9 @@ supabase/tests/manual/package-lock.json
 
 # opencode-muse coordinator state is local-only (GitHub labels are the source of truth)
 docs/coordinator/opencode-muse/
+
+# Retired Antigravity/orchestrator agent definitions are local-only. `.opencode/prompts/` is the
+# only supported agent surface; these must never be tracked or dispatched.
+.agents/agents/
+.agents/hooks.json
+.orchestrator/

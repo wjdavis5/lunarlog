@@ -18,14 +18,21 @@ sys.path.insert(0, __import__("os").path.dirname(__file__))
 from _common import GhError, fail, label_names, run_gh_json  # noqa: E402
 
 
+FAILING_STATES = {"FAILURE", "ERROR", "CANCELLED", "STALE", "TIMED_OUT", "ACTION_REQUIRED"}
+NON_FAILING_STATES = {"SUCCESS", "NEUTRAL", "SKIPPED"}
+
+
 def ci_rollup(pr) -> str:
     rollup = pr.get("statusCheckRollup") or []
     if not rollup:
         return "none"
-    states = {c.get("conclusion") or c.get("state") or "PENDING" for c in rollup}
-    if "FAILURE" in states or "ERROR" in states:
+    states = {
+        str(c.get("conclusion") or c.get("state") or "PENDING").upper()
+        for c in rollup
+    }
+    if states & FAILING_STATES:
         return "FAILURE"
-    if states - {"SUCCESS"}:
+    if states - NON_FAILING_STATES:
         return "PENDING"
     return "SUCCESS"
 

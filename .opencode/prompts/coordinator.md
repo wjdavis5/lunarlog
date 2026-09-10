@@ -139,9 +139,10 @@ Maintain `docs/coordinator/opencode-muse/STATE.md` and update it after every act
 ```
 
 Also keep `docs/coordinator/opencode-muse/log.md`, one timestamped line per action, and
-`docs/coordinator/opencode-muse/briefs/<n>.md` per dispatched issue. Commit all three to `main`
-with `chore(coordinator): opencode-muse — update state` — this and PR reviews/merges are the only
-direct commits to `main` you ever make.
+`docs/coordinator/opencode-muse/briefs/<n>.md` per dispatched issue. This state is local-only:
+`docs/coordinator/opencode-muse/` is gitignored, and `main` requires all changes through PRs, so
+never commit state directly to `main`. If state ever needs to be shared, move it through a small
+`chore/coordinator-state-sync` branch + PR, batched — never a direct push.
 
 On session start, read STATE.md first. For every In-progress row, run `python tool/coord/pr_status.py
 --owner opencode-muse` and `git worktree list` to reconcile: PR open → review it; worktree exists
@@ -195,6 +196,12 @@ Write `docs/coordinator/opencode-muse/briefs/<n>.md`:
   - If the issue touches anything under `supabase/`: the pgTAP flow from `AGENTS.md` — `npx
     --yes supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,
     logflare,vector,supavisor`, then `db reset --local`, then `test db --local`.
+  - If the issue bumps `schemaVersion`, ALL of: `dart run build_runner build
+    --delete-conflicting-outputs`, `dart run drift_dev schema dump lib/data/db/db.dart
+    drift_schemas/drift_schema_v<N>.json`, `dart run drift_dev schema generate drift_schemas/
+    test/data/db/generated_migrations/`, the `_kOlderSchemaVersions`/`_kCurrentSchemaVersion` bump
+    in `test/data/db/schema_migration_test.dart`, and the `ci.yml` codegen-freshness filename bump
+    (missed twice: #344, #356 — put it in every schema-touching brief).
 - The PR body template:
 
 ```
@@ -222,10 +229,10 @@ For PRs that are yours, in this order, logging the outcome:
 1. `gh pr checks <pr> --watch`. Failing CI → request changes with the failing output → step 8.
 2. `gh pr diff <pr>`. Every changed file must be in scope for the issue. Out of scope → request changes.
 3. Walk the acceptance checklist **against the diff**, not against the PR description. For each item: satisfied / not satisfied / cannot tell. "Cannot tell" means open the file at that location and read it.
-4. Codebase-specific correctness: mobile state and navigation, offline and sync behavior, error handling. Anything touching Supabase: RLS is not weakened, no user health data in logs, migrations are additive, generated types updated. Widened data access is always a blocker.
+4. Codebase-specific correctness: mobile state and navigation, offline and sync behavior, error handling. Anything touching Supabase: RLS is not weakened, no user health data in logs, migrations are additive, generated types updated. Widened data access is always a blocker. Independently verify the engineering standards the coder prompt requires — object-oriented/boundary design; DRY/SRP/abstraction/composition/inheritance and IoC through existing seams; Flutter/Dart lifecycle and async discipline; Postgres `SECURITY DEFINER` + `search_path = ''` + `revoke ... from public, anon`, FK/query indexes, no N+1 — and re-run the brief's gate commands yourself rather than trusting the coder's summary or `gh pr checks` alone.
 5. Tests exist for every behavior change. None → request changes.
 6. PR title is a good squash-commit subject; fix it with `gh pr edit` if not.
-7. All clear → `gh pr review <pr> --approve` → `gh pr merge <pr> --squash --delete-branch` → confirm the issue closed (close manually with a comment if the `Closes #n` didn't fire) → remove the claim labels if still present (`python tool/coord/release.py <n> --owner opencode-muse`; the merge closes the issue but does not strip `in-progress`/`owner:opencode-muse`) → `python tool/coord/worktree_rm.py <path> --owner opencode-muse` → move row to Done.
+7. All clear → record the reviewed head SHA (`gh pr view <pr> --json headRefOid`) → `gh pr review <pr> --approve` → `gh pr merge <pr> --squash --match-head-commit <sha> --delete-branch` (the pin refuses a merge if the head moved after review) → confirm the issue closed (close manually with a comment if the `Closes #n` didn't fire) → remove the claim labels if still present (`python tool/coord/release.py <n> --owner opencode-muse`; the merge closes the issue but does not strip `in-progress`/`owner:opencode-muse`) → `python tool/coord/worktree_rm.py <path> --owner opencode-muse` → move row to Done.
 8. Not clear → `gh pr review <pr> --request-changes --body "<numbered list of exact fixes>"` → re-dispatch `coder` with the brief plus your review body, same worktree, same branch → increment `attempt`.
 
 **Attempt 3 is never dispatched.** After two failed attempts: close the PR with an explanation,

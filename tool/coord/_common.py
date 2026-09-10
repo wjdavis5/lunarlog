@@ -5,14 +5,26 @@ via subprocess argument lists (never a shell string), which is the whole point o
 this package: PowerShell/`gh --jq` quoting was the single biggest time sink in the
 first coordinator run. Passing argv lists sidesteps shell quoting entirely, on
 Windows or anywhere else.
+
+All child processes are UTF-8 decoded with replacement and time-bounded so a
+non-ASCII issue title cannot crash a run and a hung `gh`/`git` cannot block an
+iteration forever (the coordinator's 90-second rule).
 """
 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+# Matches the coordinator's 90-second rule: a child that has not returned in this
+# long is treated as a failure, not waited on.
+SUBPROCESS_TIMEOUT = 90
+
+OWNER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 class GhError(RuntimeError):
@@ -20,31 +32,41 @@ class GhError(RuntimeError):
 
 
 def repo_root() -> Path:
-    """Resolve the repo root from any cwd, so these scripts work from anywhere."""
+    """Resolve the MAIN worktree root from any cwd, so these scripts work from
+    anywhere -- including from inside a linked worktree, where
+    `git rev-parse --show-toplevel` would return the worktree itself."""
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=SUBPROCESS_TIMEOUT,
             check=True,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
         raise GhError(f"not inside a git repo: {e}") from e
-    return Path(out.stdout.strip())
+    return Path(out.stdout.strip()).parent
 
 
 def run_gh(args: list[str], input_text: str | None = None) -> str:
     """Run `gh <args...>`, return stdout (stripped). Raises GhError with a short
-    stderr-derived message on non-zero exit."""
+    stderr-derived message on non-zero exit, timeout, or a missing CLI."""
     try:
         proc = subprocess.run(
             ["gh", *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             input=input_text,
+            timeout=SUBPROCESS_TIMEOUT,
         )
     except FileNotFoundError as e:
         raise GhError(f"gh CLI not found on PATH: {e}") from e
+    except subprocess.TimeoutExpired as e:
+        raise GhError(f"gh {' '.join(args[:2])} timed out after {SUBPROCESS_TIMEOUT}s") from e
     if proc.returncode != 0:
         msg = (proc.stderr or proc.stdout or "").strip().splitlines()
         short = msg[-1] if msg else f"gh exited {proc.returncode}"
@@ -67,10 +89,15 @@ def run_git(args: list[str], cwd: Path | None = None) -> str:
             ["git", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(cwd) if cwd else None,
+            timeout=SUBPROCESS_TIMEOUT,
         )
     except FileNotFoundError as e:
         raise GhError(f"git not found on PATH: {e}") from e
+    except subprocess.TimeoutExpired as e:
+        raise GhError(f"git {' '.join(args[:2])} timed out after {SUBPROCESS_TIMEOUT}s") from e
     if proc.returncode != 0:
         msg = (proc.stderr or proc.stdout or "").strip().splitlines()
         short = msg[-1] if msg else f"git exited {proc.returncode}"
@@ -86,3 +113,26 @@ def fail(message: str, code: int = 2) -> "int":
 def label_names(labels) -> list[str]:
     """`gh --json labels` returns a list of {name, ...} objects; flatten to names."""
     return [lbl["name"] for lbl in (labels or [])]
+
+
+def validate_owner(owner: str) -> str:
+    """Reject an owner id that could escape `.worktrees/<owner>/`. Returns the id."""
+    if not OWNER_RE.match(owner or ""):
+        raise GhError(f"invalid owner id {owner!r}: must match {OWNER_RE.pattern}")
+    return owner
+
+
+def validate_slug(slug: str) -> str:
+    """Reject a slug that could inject path separators or traverse upward."""
+    if not SLUG_RE.match(slug or ""):
+        raise GhError(f"invalid slug {slug!r}: must match {SLUG_RE.pattern}")
+    return slug
+
+
+def under(path: Path, prefix: Path) -> bool:
+    """True when `path` is `prefix` or inside it (both resolved)."""
+    try:
+        path.resolve().relative_to(prefix.resolve())
+        return True
+    except ValueError:
+        return False

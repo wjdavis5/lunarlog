@@ -36,6 +36,10 @@ never touching another coordinator's things). A coordinator that starts *after* 
 model exists, like `opencode-muse`, gets a clean per-id directory from day one and has no
 reason to ever deviate from it.
 
+## Supported agent surfaces
+
+Only two agent surfaces are supported: the OpenCode agents defined in `opencode.json` (`.opencode/prompts/coordinator.md` and `.opencode/prompts/coder.md`) and Claude Code's own configuration. The retired Antigravity/`agy` orchestrator's role files (`.agents/agents/*.md`, `.agents/hooks.json`) and its runtime state (`.orchestrator/`) are local-only and gitignored; they bypass the claim, ownership, and PR-label rules and must never be dispatched. The tracked `.agents/skills/` remain the standards source the coder prompt loads.
+
 ## The three markers
 
 | Thing | Marker | Rule |

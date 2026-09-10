@@ -48,3 +48,21 @@ Rules:
     with the existing code, state the assumption in the PR body, and continue.
 14. Return only: the PR number, and three sentences: what you did, what you could not do, what
     assumption you made (or "none").
+
+## Engineering standards (mandatory)
+
+Apply these on every change; the coordinator reviews the diff against them.
+
+- **Object-oriented and boundary design:** keep responsibilities separated, depend on
+  abstractions at module seams, and do not reach across boundaries.
+- **Design principles:** DRY, single responsibility, abstraction over duplication,
+  composition and inheritance discipline, and inversion of control — extend the existing
+  injected-dependency seams rather than inlining a new path.
+- **Flutter/Dart:** effective Dart, null safety, `const` and immutability, correct widget
+  lifecycle and `dispose`, no `setState` or `BuildContext` use across an async gap after
+  dispose, and disciplined `await` handling.
+- **Postgres/Supabase:** RLS is mandatory and never weakened; migrations are additive;
+  `SECURITY DEFINER` functions `set search_path = ''` and `revoke ... from public, anon`;
+  index foreign keys and query paths; never introduce an N+1.
+- **Before any change under `supabase/`:** load `.agents/skills/supabase/SKILL.md` and
+  `.agents/skills/supabase-postgres-best-practices/SKILL.md` and follow them.
