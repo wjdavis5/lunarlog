@@ -23,7 +23,7 @@
     },
     "coder": {
       "mode": "subagent",
-      "description": "Implements exactly one GitHub issue inside an assigned git worktree under .worktrees/opencode-muse/ and opens a PR. Never touches main or any other worktree.",
+      "description": "Implements exactly one claimed GitHub issue (carrying in-progress + owner:opencode-muse) inside its own unique git worktree under .worktrees/opencode-muse/, then opens a PR labeled owner:opencode-muse. Never touches main or any other worktree.",
       "model": "opencode/muse-spark-1.3-contributor-free",
       "prompt": "{file:./.opencode/prompts/coder.md}",
       "permission": {
