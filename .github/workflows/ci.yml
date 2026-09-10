@@ -15,6 +15,10 @@ permissions:
 
 env:
   FLUTTER_CHANNEL: stable
+  # Pinned so a new stable release cannot change CI results (or the shipped
+  # app) without a commit here (issue #208). Keep in sync with AGENTS.md's
+  # "Flutter SDK" note and the build Mac.
+  FLUTTER_VERSION: '3.47.2'
 
 concurrency:
   # Supersede in-flight checks when a branch is pushed to again.
@@ -130,6 +134,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
@@ -245,6 +250,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
@@ -275,6 +281,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
