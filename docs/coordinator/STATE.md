@@ -3,10 +3,7 @@
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
-| 211 | feat/211-android-hardening | ../lunarlog-wt/211-android-hardening | 2026-09-10T06:20Z | — | coding |
 | 208 | feat/208-flutter-pin | ../lunarlog-wt/208-flutter-pin | 2026-09-10T06:20Z | — | coding |
-| 183 | claude-orch/183-bc-reminders | .worktrees/claude-orch/183-bc-reminders | 2026-09-10T06:35Z | — | coding (new ownership model) |
-| 252 | claude-orch/252-taxonomy-events-care | .worktrees/claude-orch/252-taxonomy-events-care | 2026-09-10T06:35Z | — | coding (new ownership model) |
 | 264 | feat/264-delete-profile-rpc | ../lunarlog-wt/264-delete-profile-rpc | 2026-09-10T05:30Z | — | coding |
 | 255 | feat/255-numeric-measurements | ../lunarlog-wt/255-numeric-measurements | 2026-09-10T03:00Z | — | coding |
 | 259 | feat/259-tracking-prefs | ../lunarlog-wt/259-tracking-prefs | 2026-09-10T03:00Z | — | coding |
