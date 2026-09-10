@@ -41,6 +41,7 @@ def main() -> int:
     n = str(args.number)
     owner_label = f"owner:{args.owner}"
 
+    added = False
     try:
         issue = run_gh_json(["issue", "view", n, "--json", "labels"])
         labels = label_names(issue.get("labels"))
@@ -48,7 +49,21 @@ def main() -> int:
             print(f"issue #{n} already has in-progress -- not claiming", file=sys.stderr)
             return 1
 
+        # Never mutate an issue another coordinator already owns, even if it
+        # carries no in-progress label. Abort before adding anything.
+        foreign = [
+            lbl for lbl in labels
+            if lbl.startswith("owner:") and lbl != owner_label
+        ]
+        if foreign:
+            print(
+                f"issue #{n}: already owned by {', '.join(foreign)} -- not claiming",
+                file=sys.stderr,
+            )
+            return 1
+
         run_gh(["issue", "edit", n, "--add-label", "in-progress", "--add-label", owner_label])
+        added = True
         run_gh(["issue", "comment", n, "--body", f"Claimed by {args.owner}. Branch: {args.branch}"])
 
         recheck = run_gh_json(["issue", "view", n, "--json", "labels"])
@@ -59,6 +74,7 @@ def main() -> int:
         ]
         if foreign_owners:
             run_gh(["issue", "edit", n, "--remove-label", owner_label])
+            added = False
             print(
                 f"issue #{n}: lost the race to {', '.join(foreign_owners)} -- "
                 f"removed {owner_label}, left in-progress in place",
@@ -66,6 +82,13 @@ def main() -> int:
             )
             return 1
     except GhError as e:
+        # Roll back our own label so a partial claim never leaves the issue
+        # stuck with an owner and no STATE row to reconcile.
+        if added:
+            try:
+                run_gh(["issue", "edit", n, "--remove-label", owner_label])
+            except GhError:
+                pass
         return fail(str(e))
 
     print(f"claimed #{n} for {args.owner} on {args.branch}")

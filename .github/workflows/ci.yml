@@ -57,6 +57,16 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
 
+      - name: Set up Python
+        if: always()
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tool/coord tests
+        if: always()
+        run: python -m unittest discover -s tool/coord/tests
+
       - name: Cache actionlint
         id: actionlint-cache
         if: always()
