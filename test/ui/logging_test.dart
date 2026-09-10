@@ -9,6 +9,8 @@
 /// discard guard, and human-readable sheet dates.
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -30,7 +32,8 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
-import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
+import 'package:lunarlog/domain/models/profile_guardian.dart'
+    show GuardianRole, GuardianStatus, ProfileGuardian;
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
@@ -175,6 +178,10 @@ List<SingleChildWidget> loggingProviders({
   required ObservationsRepository observations,
   AuthController? authController,
   LunarLogStorage? storage,
+  // Issue #90: lets a test hold a profile's guardian stream closed so the
+  // transient window between a profile switch and the new stream's first
+  // tick stays observable instead of settling before the first assertion.
+  ProfileGuardiansRepository? guardiansRepositoryOverride,
 }) => [
   Provider<ProfilesRepository>.value(value: profiles),
   Provider<DayEntriesRepository>.value(value: dayEntries),
@@ -194,7 +201,9 @@ List<SingleChildWidget> loggingProviders({
   // guardians/activity/care affordances, exactly as before.
   if (storage != null) ...[
     Provider<ProfileGuardiansRepository>.value(
-      value: DriftProfileGuardiansRepository(storage),
+      value:
+          guardiansRepositoryOverride ??
+          DriftProfileGuardiansRepository(storage),
     ),
     Provider<ActivityFeedRepository>.value(
       value: DriftActivityFeedRepository(storage),
@@ -216,6 +225,9 @@ Future<Harness> pumpLogging(
   // test keeps exercising the local-only fallback unchanged (R4).
   FakeAuthService? authService,
   bool withStorage = false,
+  // Issue #90: forwarded to [loggingProviders] so the R6 profile-switch
+  // rebuild can reuse the same gated instance.
+  ProfileGuardiansRepository? guardiansRepositoryOverride,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -252,6 +264,7 @@ Future<Harness> pumpLogging(
         // what ProfileDetailScreen reads to decide whether MonthCalendar
         // gets a ProfileGuardiansRepository (R5) at all.
         storage: withStorage ? db.storage : null,
+        guardiansRepositoryOverride: guardiansRepositoryOverride,
       ),
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -357,6 +370,40 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
     deleteCalls++;
     if (failDelete) throw Exception('simulated delete failure');
   }
+}
+
+/// Guardians repository whose per-profile streams only emit when a test says
+/// so (issue #90). `MonthCalendar._watchGuardians` subscribes on every
+/// profile switch; holding profile B's stream closed keeps the transient
+/// window — after the switch, before the new stream's first tick —
+/// observable for as long as the test needs, so the R6 transient assertion
+/// below cannot be drained away by a `pumpAndSettle` the way the settled
+/// assertions are. One-shot reads delegate to the real storage-backed
+/// repository.
+class GatedGuardiansRepository implements ProfileGuardiansRepository {
+  GatedGuardiansRepository([this._inner]);
+
+  ProfileGuardiansRepository? _inner;
+
+  // ignore: avoid_setters_without_getters
+  set inner(ProfileGuardiansRepository repo) => _inner = repo;
+
+  final Map<String, StreamController<List<ProfileGuardian>>> _controllers = {};
+
+  /// Publishes [guardians] to the stream for [profileId], delivering to the
+  /// current subscriber (if any). A profile with no call is a stream that
+  /// never emits — the transient window under test.
+  void emitFor(String profileId, List<ProfileGuardian> guardians) {
+    (_controllers[profileId] ??= StreamController.broadcast()).add(guardians);
+  }
+
+  @override
+  Stream<List<ProfileGuardian>> watchForProfile(String profileId) =>
+      (_controllers[profileId] ??= StreamController.broadcast()).stream;
+
+  @override
+  Future<List<ProfileGuardian>> getForProfile(String profileId) =>
+      _inner?.getForProfile(profileId) ?? Future.value(const []);
 }
 
 void main() {
@@ -1997,10 +2044,16 @@ void main() {
         'guardians (R6)', (tester) async {
       final auth = FakeAuthService()
         ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-mom'));
+      // Issue #90: profile B's stream stays silent until the test releases
+      // it, so the transient window between the switch and the new stream's
+      // first tick stays observable instead of settling before the first
+      // assertion can see it.
+      final gatedGuardians = GatedGuardiansRepository();
       final h = await pumpLogging(
         tester,
         authService: auth,
         withStorage: true,
+        guardiansRepositoryOverride: gatedGuardians,
         seed: (db, profileId) async {
           await db.storage.applyRemoteRows([
             guardianRow(
@@ -2014,6 +2067,22 @@ void main() {
           ]);
         },
       );
+      gatedGuardians.inner = DriftProfileGuardiansRepository(h.db.storage);
+      // Publish profile A's guardians through the gate — what the live
+      // storage stream would have emitted on its own first tick.
+      gatedGuardians.emitFor(h.profile.id, [
+        ProfileGuardian(
+          id: 'g-dad',
+          profileId: h.profile.id,
+          userId: 'user-dad',
+          role: GuardianRole.coParent,
+          status: GuardianStatus.accepted,
+          displayName: 'Dad',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
@@ -2056,7 +2125,8 @@ void main() {
       // profile, mirroring how the home gate swaps the active profile
       // in-place (see ProfileDetailScreen's own didUpdateWidget doc). Reuses
       // loggingProviders so this tree shape can never silently drift from
-      // pumpLogging's — a like-for-like update, not a remount.
+      // pumpLogging's — a like-for-like update, not a remount. Reuses the
+      // same gated instance, so profile B's stream is still silent here.
       await tester.pumpWidget(
         MultiProvider(
           providers: loggingProviders(
@@ -2066,6 +2136,7 @@ void main() {
             observations: h.observations,
             authController: h.authController,
             storage: h.db.storage,
+            guardiansRepositoryOverride: gatedGuardians,
           ),
           child: MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -2077,6 +2148,53 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+
+      // TRANSIENT (issue #90): exactly one pump after the switch — profile
+      // B's guardian stream has not emitted (the gate is still holding it),
+      // so the sheet opened here snapshots whatever `_guardians` holds right
+      // now: `[]` with the synchronous reset, profile A's `["Dad"]` without
+      // it. No `pumpAndSettle` before the tap — settling is what let the old
+      // test observe only drained state and miss the leak entirely.
+      await tester.pump();
+
+      await tester.tap(find.byKey(ValueKey('day-cell-${dadLeakDate.iso}')));
+      await tester.pump();
+      expect(find.byType(DaySheet), findsOneWidget);
+      expect(
+        find.textContaining('Logged by Dad'),
+        findsNothing,
+        reason:
+            'in the transient window before profile B\'s guardian stream '
+            'emits, the previous profile\'s guardians must already be gone '
+            '(MonthCalendar._watchGuardians resets synchronously on switch)',
+      );
+      expect(
+        find.textContaining('Dad'),
+        findsNothing,
+        reason: "profile B must never render profile A's guardian names, "
+            'not even before its own guardians load',
+      );
+      // The generic fallback proves the sheet resolved attribution against
+      // an empty list rather than rendering nothing at all.
+      expect(find.textContaining('Logged by Caregiver'), findsOneWidget);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      // Release the gate: profile B's own guardians arrive late, exactly as
+      // a slow stream would deliver them after the reset.
+      gatedGuardians.emitFor(profileB.id, [
+        ProfileGuardian(
+          id: 'g-aunt',
+          profileId: profileB.id,
+          userId: 'user-aunt',
+          role: GuardianRole.viewer,
+          status: GuardianStatus.accepted,
+          displayName: 'Aunt',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
