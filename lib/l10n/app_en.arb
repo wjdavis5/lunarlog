@@ -703,6 +703,18 @@
   "@birthControlOther": {
     "description": "Birth-control selector option for a method not listed."
   },
+  "birthControlIntakeTaken": "Taken",
+  "@birthControlIntakeTaken": {
+    "description": "Per-day pill-intake value (Issue #260): the dose was taken on time. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'taken', never this label."
+  },
+  "birthControlIntakeLate": "Late",
+  "@birthControlIntakeLate": {
+    "description": "Per-day pill-intake value (Issue #260): the dose was taken late. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'late', never this label."
+  },
+  "birthControlIntakeMissed": "Missed",
+  "@birthControlIntakeMissed": {
+    "description": "Per-day pill-intake value (Issue #260): the dose was missed. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'missed', never this label."
+  },
   "daySheetPmsChip": "PMS",
   "@daySheetPmsChip": {
     "description": "Day-sheet toggle for the first-class PMS marker (Issue #220) — deliberately not one of the taxonomy chips, mirroring Clue's own separation of the PMS phase from the individual symptoms that may co-occur with it."

@@ -325,7 +325,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         typicalPeriodLengthDays:
             _optionalInt(_typicalPeriodController.text),
         birthControlMethod:
-            birthControlStoredValue(_birthControl, l10n),
+            birthControlStoredValue(_birthControl),
         lifecycleMode: _lifecycleMode,
       );
 

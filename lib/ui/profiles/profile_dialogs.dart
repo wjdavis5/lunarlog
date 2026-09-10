@@ -144,8 +144,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     if (!mounted || row == null) return;
     setState(() {
       _lifecycleMode = LifecycleMode.fromDb(row.mode);
-      _birthControl = birthControlChoiceForStored(
-          row.birthControlMethod, AppLocalizations.of(context));
+      _birthControl = birthControlChoiceForStored(row.birthControlMethod);
     });
   }
 
