@@ -3,6 +3,8 @@
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
+| 211 | feat/211-android-hardening | ../lunarlog-wt/211-android-hardening | 2026-09-10T06:20Z | — | coding |
+| 208 | feat/208-flutter-pin | ../lunarlog-wt/208-flutter-pin | 2026-09-10T06:20Z | — | coding |
 | 260 | feat/260-birth-control | ../lunarlog-wt/260-birth-control | 2026-09-10T05:30Z | — | coding |
 | 264 | feat/264-delete-profile-rpc | ../lunarlog-wt/264-delete-profile-rpc | 2026-09-10T05:30Z | — | coding |
 | 255 | feat/255-numeric-measurements | ../lunarlog-wt/255-numeric-measurements | 2026-09-10T03:00Z | — | coding |
