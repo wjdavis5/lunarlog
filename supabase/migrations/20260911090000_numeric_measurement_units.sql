@@ -1,4 +1,4 @@
--- Migration: 20260910110000_numeric_measurement_units.sql
+-- Migration: 20260911090000_numeric_measurement_units.sql
 -- Issue #255 (P1, epic: tracking-model): BBT and weight as numeric
 -- measurements -- the per-profile display-unit preference plus the
 -- same-date source-discipline guarantee.
