@@ -159,9 +159,11 @@ plan's "Hard dependency on issue #19" section.
       credential in this document. Without these three, both release
       workflows' symbol-upload steps warn and skip (they never fail the
       release); with them, iOS `.dSYM` bundles and Android native `.so`
-      symbols upload automatically on every release build, and an Android
-      ProGuard `mapping.txt` uploads too once R8/minification is separately
-      enabled (not yet — see issue #7's Scope Boundaries).
+      symbols upload automatically on every release build, plus — since
+      issue #211 enabled R8 in `android/app/build.gradle.kts` and added
+      `--obfuscate --split-debug-info` to the Play AAB build — the Android
+      ProGuard `mapping.txt` and the Dart `.symbols` obfuscation files both
+      upload too (the workflow warns if either goes missing).
 - [ ] **Alert rules**: a "new issue in this release" alert and an
       error-rate-spike alert, both routed to the maintainer's email (no
       Slack/Discord integration — see issue #7's Scope Boundaries on why).
@@ -1094,9 +1096,12 @@ pgTAP tests.
   release workflows carry a guarded upload step; it activates once issue
   #19 provisions `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` (see the
   "Sentry" checklist above). Android ProGuard mapping upload is implemented
-  alongside it but is **a no-op until R8/minification is separately
-  enabled** — issue #7's Scope Boundaries defers that and no issue tracks
-  it yet.
+  alongside it and **has been live since issue #211** enabled R8
+  minification in `android/app/build.gradle.kts` (with
+  `android/app/proguard-rules.pro`) and Dart obfuscation via the Play AAB
+  build's `--obfuscate --split-debug-info` — every release build now
+  produces `mapping.txt` and `build/symbols/app.*.symbols`, and the upload
+  step ships all three symbol kinds to Sentry.
 - **Deferred from the social-logins plan** (issue #2, Scope Boundaries):
   **passkeys** — Supabase passkeys are beta and the Dart API is
   `@experimental`; a native flow needs the `passkeys` plugin, a relying-party
