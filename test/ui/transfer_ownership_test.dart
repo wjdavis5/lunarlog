@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' hide Profile, DayEntry;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/mappers.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
@@ -126,7 +126,7 @@ void main() {
       MaterialApp(
         home: ManageGuardiansScreen(
           profile: testProfile,
-          guardiansRepository: ProfileGuardiansRepository(storage),
+          guardiansRepository: DriftProfileGuardiansRepository(storage),
           sharingService: sharingService,
           currentUserId: currentUserId,
           ownershipTransferService: ownershipTransferService,

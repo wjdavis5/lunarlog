@@ -33,7 +33,7 @@ import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -830,7 +830,7 @@ void main() {
             serverVersion: 1,
           ),
         ]);
-        final guardiansRepo = ProfileGuardiansRepository(storage);
+        final guardiansRepo = DriftProfileGuardiansRepository(storage);
 
         await tester.pumpWidget(
           MaterialApp(

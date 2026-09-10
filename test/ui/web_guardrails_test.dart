@@ -36,7 +36,7 @@ void main() {
       (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());
     var resets = 0;
-    await tester.pumpWidget(LunarLogApp(
+    await tester.pumpWidget(LunarLogApp.withCollaborators(
       db: db,
       showWebBanner: true,
       resetDevice: () async {

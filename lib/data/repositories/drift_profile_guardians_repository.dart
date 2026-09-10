@@ -10,12 +10,11 @@ library;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
-import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
-    as domain;
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 
-class ProfileGuardiansRepository
-    implements domain.ProfileGuardiansRepository {
-  const ProfileGuardiansRepository(this._storage);
+class DriftProfileGuardiansRepository
+    implements ProfileGuardiansRepository {
+  const DriftProfileGuardiansRepository(this._storage);
 
   final LunarLogStorage _storage;
 

@@ -30,10 +30,8 @@ library;
 
 import 'dart:async';
 
-import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart'
-    as domain;
-import 'package:lunarlog/domain/health/health_flow_write_service.dart'
-    as service;
+import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -43,11 +41,11 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 // (the prediction-projection publisher's declared pattern).
 // ignore_for_file: prefer_initializing_formals
 
-class HealthFlowWriteCoordinator implements domain.HealthFlowWriteCoordinator {
-  HealthFlowWriteCoordinator({
+class LocalHealthFlowWriteCoordinator implements HealthFlowWriteCoordinator {
+  LocalHealthFlowWriteCoordinator({
     required HealthSyncBinding binding,
     required DayEntriesRepository dayEntries,
-    required service.HealthFlowWriteService service,
+    required HealthFlowWriteService service,
     this.debounce = const Duration(milliseconds: 500),
   })  : _binding = binding,
         _dayEntries = dayEntries,
@@ -55,7 +53,7 @@ class HealthFlowWriteCoordinator implements domain.HealthFlowWriteCoordinator {
 
   final HealthSyncBinding _binding;
   final DayEntriesRepository _dayEntries;
-  final service.HealthFlowWriteService _service;
+  final HealthFlowWriteService _service;
   final Duration debounce;
 
   StreamSubscription<String?>? _boundSub;

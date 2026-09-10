@@ -46,12 +46,9 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
 import 'package:lunarlog/domain/gate/app_gate.dart';
-import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
-import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
-import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
-import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
@@ -915,7 +912,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
     try {
       final db = await widget.dbOpener();
       _db = db;
-      _gate.attachSettings(DriftSettingsStore(db.storage));
+      // AC2: the settings store is built in `lib/composition/`, never here.
+      _gate.attachSettings(buildCompositionSettingsStore(db));
       _startSyncEngine(db);
     } catch (error, stackTrace) {
       // U7 (KTD12): the message can embed a database path or SQL; log the
@@ -933,9 +931,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
   /// KTD11: the engine exists only when the build has both collaborators;
   /// null collaborators build nothing, so harnesses without them are
   /// untouched. The composition factory (`buildAppDependencies`) builds the
-  /// bundle, including every Supabase-backed service; the realtime
-  /// coordinator (U6) is still constructed here, next to the engine it
-  /// drives.
+  /// bundle, including every Supabase-backed service. AC2: the realtime
+  /// and push coordinators are constructed in `lib/composition/` and only
+  /// started here, next to the engine they drive.
   void _startSyncEngine(LunarLogDatabase db) {
     final authService = widget.authService;
     final transport = widget.syncTransport;
@@ -953,7 +951,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       engine.start();
 
       if (client != null) {
-        final coordinator = RealtimeSyncCoordinator(
+        final coordinator = buildRealtimeSyncCoordinator(
           client: client,
           syncEngine: engine,
           storage: db.storage,
@@ -1012,13 +1010,15 @@ class LunarLogRootState extends State<LunarLogRoot> {
     AuthService authService,
     SupabaseClient client,
   ) async {
-    final deviceId =
-        await resolvePushDeviceId(DriftSettingsStore(db.storage));
+    // AC2: the settings store and the coordinator are built in
+    // `lib/composition/`; this method only resolves the device id and
+    // starts the returned instance.
+    final deviceId = await resolvePushDeviceId(
+        buildCompositionSettingsStore(db));
     if (!mounted) return;
 
-    final coordinator = PushRegistrationCoordinator(
-      tokenSource: FirebasePushTokenSource(),
-      registry: SupabasePushDeviceRegistry(client: client),
+    final coordinator = buildPushRegistrationCoordinator(
+      client: client,
       deviceId: deviceId,
       platform: pushPlatformName(),
       authStates: authService.states,
@@ -1191,13 +1191,12 @@ class LunarLogRootState extends State<LunarLogRoot> {
     final Widget content;
     if (_error != null) {
       content = FailClosedApp(error: _error!);
-    } else if (_db != null) {
+    } else if (_db != null && _deps != null) {
+      // AC1: the production path always passes the bundle — no separate
+      // scheduler/auth/engine params.
       content = LunarLogApp(
         db: _db!,
-        dependencies: _deps,
-        scheduler: widget.scheduler,
-        authService: widget.authService,
-        syncEngine: _syncEngine,
+        dependencies: _deps!,
         inviteLinks: widget.inviteLinks,
         initialInviteCode: widget.initialInviteCode,
         initialInviteProfileId: widget.initialInviteProfileId,

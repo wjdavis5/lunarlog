@@ -7,19 +7,19 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' hide Profile;
 import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 
 void main() {
   late LunarLogDatabase db;
   late LunarLogStorage storage;
-  late ProfileGuardiansRepository repository;
+  late DriftProfileGuardiansRepository repository;
 
   setUp(() {
     db = LunarLogDatabase(NativeDatabase.memory());
     storage = LunarLogStorage(db);
-    repository = ProfileGuardiansRepository(storage);
+    repository = DriftProfileGuardiansRepository(storage);
   });
 
   tearDown(() => db.close());

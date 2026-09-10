@@ -22,16 +22,15 @@ import 'dart:async';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
-import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart'
-    as domain;
+import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 
-class PredictionProjectionPublisher
-    implements domain.PredictionProjectionPublisher {
-  PredictionProjectionPublisher({
+class LocalPredictionProjectionPublisher
+    implements PredictionProjectionPublisher {
+  LocalPredictionProjectionPublisher({
     required ActiveProfilesStream activeProfiles,
     required PredictionStream predictionFor,
     required PredictionConnectionService service,

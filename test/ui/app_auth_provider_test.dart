@@ -17,7 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/import/account_importer.dart' as data;
+import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
@@ -77,7 +77,7 @@ void main() {
   testWidgets('LunarLogApp without an auth service provides no '
       'AuthController and still renders first-run', (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
 
     expect(find.byType(ProfileHomeGate), findsOneWidget);
@@ -94,7 +94,7 @@ void main() {
     final db = LunarLogDatabase(NativeDatabase.memory());
     final service = FakeAuthService();
     addTearDown(service.dispose);
-    await tester.pumpWidget(LunarLogApp(db: db, authService: service));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db, authService: service));
     await tester.pumpAndSettle();
 
     final controller = homeContext(tester).read<AuthController?>();
@@ -147,7 +147,7 @@ void main() {
     await tester.pump();
 
     final coordinator = homeContext(tester).read<AccountImportCoordinator>()
-        as data.AccountImportCoordinator;
+        as DriftAccountImportCoordinator;
     expect(coordinator.currentUserIdProvider?.call(), 'u1',
         reason: 'the view-only guard and sharing notice key off the acting '
             'user; the root-built bundle must resolve it live');
@@ -227,7 +227,7 @@ void main() {
   testWidgets('LunarLogApp provides one repository instance for the '
       "widget's lifetime, not a fresh one per rebuild", (tester) async {
     final db = LunarLogDatabase(NativeDatabase.memory());
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
 
     final before = homeContext(tester);
@@ -239,7 +239,7 @@ void main() {
     // Pumping an equivalent widget reuses the element and runs `build()`
     // again — the rebuild that used to reallocate every repository while
     // telling Provider the value was stable.
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
 
     final after = homeContext(tester);
@@ -265,7 +265,7 @@ void main() {
         DriftDayEntriesRepository(db.storage), profile.id);
 
     final scheduler = FakeReminderScheduler();
-    await tester.pumpWidget(LunarLogApp(db: db, scheduler: scheduler));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db, scheduler: scheduler));
     await tester.pumpAndSettle();
     // The coordinator's replan is debounced; let the timer fire.
     await tester.pump(const Duration(milliseconds: 400));
@@ -301,7 +301,7 @@ void main() {
     final db = LunarLogDatabase(NativeDatabase.memory());
     final scheduler = FakeReminderScheduler();
     Future<void>? teardown;
-    await tester.pumpWidget(LunarLogApp(
+    await tester.pumpWidget(LunarLogApp.withCollaborators(
       db: db,
       scheduler: scheduler,
       onTeardown: (done) => teardown = done,
@@ -329,7 +329,7 @@ void main() {
         await seedProfiles.create(displayName: 'Alice', isMinor: false);
 
     final scheduler = FakeReminderScheduler();
-    await tester.pumpWidget(LunarLogApp(db: db, scheduler: scheduler));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db, scheduler: scheduler));
     await tester.pumpAndSettle();
 
     // The "Not yet" action: writes nothing, snoozes the late reminders
@@ -372,7 +372,7 @@ void main() {
     final service = FakeAuthService();
     addTearDown(service.dispose);
 
-    await tester.pumpWidget(LunarLogApp(db: db, authService: service));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db, authService: service));
     await tester.pumpAndSettle();
     service.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
     await tester.pumpAndSettle();
@@ -393,7 +393,7 @@ void main() {
     final service = FakeAuthService();
     addTearDown(service.dispose);
 
-    await tester.pumpWidget(LunarLogApp(db: db, authService: service));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db, authService: service));
     await tester.pumpAndSettle();
 
     // The unknown-email request itself completes silently, exactly like a
@@ -419,7 +419,7 @@ void main() {
     // Deliberately not passed to the widget: the default (widget tests,
     // web) must leave the scheduler seam untouched.
     final scheduler = FakeReminderScheduler();
-    await tester.pumpWidget(LunarLogApp(db: db));
+    await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 400));
 

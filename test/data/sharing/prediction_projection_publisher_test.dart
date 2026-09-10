@@ -91,7 +91,7 @@ void main() {
     final service = _FakeService(connectedProfileIds: {'p1'});
     final today = LocalDate(2026, 8, 30);
 
-    final publisher = PredictionProjectionPublisher(
+    final publisher = LocalPredictionProjectionPublisher(
       activeProfiles: profiles.stream,
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
@@ -124,7 +124,7 @@ void main() {
     final predictions = <String, StreamController<CyclePrediction>>{};
     final service = _FakeService(connectedProfileIds: {});
 
-    final publisher = PredictionProjectionPublisher(
+    final publisher = LocalPredictionProjectionPublisher(
       activeProfiles: profiles.stream,
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
@@ -155,7 +155,7 @@ void main() {
     var signedIn = false;
     final service = _FakeService(connectedProfileIds: {'p1'});
 
-    final publisher = PredictionProjectionPublisher(
+    final publisher = LocalPredictionProjectionPublisher(
       activeProfiles: profiles.stream,
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
@@ -188,7 +188,7 @@ void main() {
     final service = _FakeService(connectedProfileIds: {'p1'});
     final today = LocalDate(2026, 8, 30);
 
-    final publisher = PredictionProjectionPublisher(
+    final publisher = LocalPredictionProjectionPublisher(
       activeProfiles: const Stream.empty(),
       predictionFor: (id) => Stream<CyclePrediction>.value(_active(today)),
       service: service,
@@ -209,7 +209,7 @@ void main() {
     final service = _FakeService(connectedProfileIds: {'p1'});
     final today = LocalDate(2026, 8, 30);
 
-    final publisher = PredictionProjectionPublisher(
+    final publisher = LocalPredictionProjectionPublisher(
       activeProfiles: profiles.stream,
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
@@ -245,7 +245,7 @@ void main() {
       final service = _FakeService(connectedProfileIds: {'p1', 'p2', 'p3'});
       final today = LocalDate(2026, 8, 30);
 
-      final publisher = PredictionProjectionPublisher(
+      final publisher = LocalPredictionProjectionPublisher(
         activeProfiles: const Stream.empty(),
         predictionFor: (id) => Stream<CyclePrediction>.value(
             id == 'p2' ? _notEnoughHistory : _active(today)),
@@ -265,7 +265,7 @@ void main() {
         'service', () async {
       final service = _FakeService(connectedProfileIds: {'p1'});
       var signedIn = false;
-      final publisher = PredictionProjectionPublisher(
+      final publisher = LocalPredictionProjectionPublisher(
         activeProfiles: const Stream.empty(),
         predictionFor: (id) =>
             Stream<CyclePrediction>.value(_active(LocalDate(2026, 8, 30))),

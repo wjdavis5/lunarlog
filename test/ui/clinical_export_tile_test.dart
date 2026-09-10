@@ -9,7 +9,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/export/fhir_bundle_writer.dart' as data;
+import 'package:lunarlog/data/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -112,7 +112,7 @@ Future<void> _pump(
               value: observations ?? FakeObservationsRepository()),
           // The tree-provided FHIR writer the tile reads before falling back
           // to the injected collaborator (mirrors `lib/app.dart`).
-          Provider<FhirBundleWriter>.value(value: const data.FhirBundleWriter()),
+          Provider<FhirBundleWriter>.value(value: const PlatformFhirBundleWriter()),
         ],
         child: Scaffold(
           body: ClinicalExportTile(exportFhir: exportFhir),

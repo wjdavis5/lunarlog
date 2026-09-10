@@ -8,25 +8,35 @@
 /// individual domain contracts from the provider tree.
 library;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
-import 'package:lunarlog/data/db/db.dart';
-import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart'
-    as data;
-import 'package:lunarlog/data/export/account_export_writer.dart' as data;
-import 'package:lunarlog/data/export/fhir_bundle_writer.dart' as data;
+import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
+import 'package:lunarlog/data/export/account_export_writer.dart';
+import 'package:lunarlog/data/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
 import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
-import 'package:lunarlog/data/import/account_importer.dart' as data;
-import 'package:lunarlog/data/import/import_file_picker.dart' as data;
+import 'package:lunarlog/data/health/health_channel.dart';
+import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/data/import/account_importer.dart';
+import 'package:lunarlog/data/import/import_file_picker.dart';
+import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
+import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
+import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
+import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
+import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/notifications/supabase_reminder_window_remote.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
@@ -34,13 +44,15 @@ import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_record
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
+import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
+import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
@@ -63,8 +75,16 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
+import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 
@@ -174,11 +194,17 @@ AppDependencies buildAppDependencies({
   final dayEntries = DriftDayEntriesRepository(storage);
   final observations = DriftObservationsRepository(storage);
   final settings = DriftSettingsStore(storage);
-  final profileGuardians = data.ProfileGuardiansRepository(storage);
+  final profileGuardians = DriftProfileGuardiansRepository(storage);
+  final accountImporter = DriftAccountImporter(storage);
+
+  // Issue #418, AC5: client-derived services gate on `client != null &&
+  // authService != null` — the old `_startSyncEngine` required auth (and
+  // transport, via the engine) alongside the client, not the client alone.
+  final cloudEnabled = client != null && authService != null;
 
   final builtAccountExportRemoteSource = _resolve(
     accountExportRemoteSource,
-    client != null,
+    cloudEnabled,
     () => SupabaseAccountExportRemoteSource(client: client!),
   );
 
@@ -190,22 +216,23 @@ AppDependencies buildAppDependencies({
     settings: settings,
     profileModes: DriftProfileModesRepository(storage),
     profileGuardians: profileGuardians,
-    activityFeed: data.ActivityFeedRepository(storage),
+    activityFeed: DriftActivityFeedRepository(storage),
     onboardingCycleAnswers: DriftOnboardingCycleAnswersRecorder(storage),
-    deviceDiagnostics: data.DeviceDiagnosticsCollector(),
-    accountExportWriter: data.AccountExportWriter(
+    deviceDiagnostics: PlatformDeviceDiagnosticsCollector(),
+    accountExportWriter: PlatformAccountExportWriter(
       remoteSource: builtAccountExportRemoteSource,
     ),
-    fhirBundleWriter: const data.FhirBundleWriter(),
+    fhirBundleWriter: const PlatformFhirBundleWriter(),
     attachmentSource: ImagePickerAttachmentSource(),
-    importFileReader: const data.PickImportFileReader(),
-    accountImportCoordinator: data.AccountImportCoordinator(
+    importFileReader: const PickImportFileReader(),
+    accountImportCoordinator: DriftAccountImportCoordinator(
       profilesRepository: profiles,
       dayEntriesRepository: dayEntries,
       observationsRepository: observations,
       storage: storage,
       guardiansForProfile: profileGuardians.getForProfile,
       currentUserIdProvider: currentUserIdProvider,
+      importer: accountImporter,
     ),
     prediction: CyclePredictionService(dayEntries,
         settings: settings, profiles: profiles),
@@ -215,39 +242,39 @@ AppDependencies buildAppDependencies({
     syncEngine: syncEngine,
     sharingService: _resolve(
       sharingService,
-      client != null && syncEngine != null,
+      cloudEnabled && syncEngine != null,
       () => SupabaseSharingService(client: client!, syncEngine: syncEngine!),
     ),
     feedbackService: _resolve(
       feedbackService,
-      client != null,
+      cloudEnabled,
       () => SupabaseFeedbackService(client: client!),
     ),
     accountDeletionService: _resolve(
       accountDeletionService,
-      client != null,
+      cloudEnabled,
       () => SupabaseAccountDeletionService(client: client!),
     ),
     ownershipTransferService: _resolve(
       ownershipTransferService,
-      client != null && syncEngine != null,
+      cloudEnabled && syncEngine != null,
       () => SupabaseOwnershipTransferService(
           client: client!, syncEngine: syncEngine!),
     ),
     predictionConnectionService: _resolve(
       predictionConnectionService,
-      client != null,
+      cloudEnabled,
       () => SupabasePredictionConnectionService(client: client!),
     ),
     notificationPreferencesService: _resolve(
       notificationPreferencesService,
-      client != null && pushEnabled,
+      cloudEnabled && pushEnabled,
       () => SupabaseNotificationPreferencesService(client: client!),
     ),
     accountExportRemoteSource: builtAccountExportRemoteSource,
     reminderWindowUpsert: _resolve(
       reminderWindowUpsert,
-      client != null && pushEnabled,
+      cloudEnabled && pushEnabled,
       () => SupabaseReminderWindowRemote(client!),
     ),
     // R9: the scheduler's settings store is constructor-injected here, once
@@ -268,3 +295,174 @@ AppDependencies buildAppDependencies({
 /// otherwise [build] runs only when [enabled] says its inputs are present.
 T? _resolve<T>(T? override, bool enabled, T Function() build) =>
     override ?? (enabled ? build() : null);
+
+// ---------------------------------------------------------------------------
+// Issue #418 (AC2): lifecycle-coordinator construction sites.
+//
+// Every concrete lifecycle coordinator/publisher the roots own is constructed
+// here — `lib/app.dart` and `lib/app_lifecycle.dart` only consume the
+// returned instances (and start/dispose them). Each builder is pure
+// construction: no `start()`/`dispose()` inside, so the roots keep owning
+// the lifecycle while composition owns the `new` expression.
+
+/// The drift settings store for [db] (AC2: `lib/app_lifecycle.dart` must not
+/// construct `DriftSettingsStore` itself).
+SettingsStore buildCompositionSettingsStore(LunarLogDatabase db) =>
+    DriftSettingsStore(db.storage);
+
+/// The per-profile reminder configuration store backing the coordinator.
+ReminderConfigService buildReminderConfigService(SettingsStore settings) =>
+    ReminderConfigService(settings);
+
+/// Constructs the reminder action executor (Issue #136). Gate callbacks are
+/// plain closures so this module never names `GateController` (which lives
+/// in `lib/app_lifecycle.dart`).
+ReminderActionExecutor buildReminderActionExecutor({
+  required DayEntriesRepository dayEntries,
+  required ObservationsRepository observations,
+  required ReminderConfigService configService,
+  required bool Function()? isUnlocked,
+  required void Function(void Function() callback)? addUnlockListener,
+  required void Function(void Function() callback)? removeUnlockListener,
+}) =>
+    ReminderActionExecutor(
+      dayEntries: dayEntries,
+      observations: observations,
+      configService: configService,
+      isUnlocked: isUnlocked,
+      addUnlockListener: addUnlockListener,
+      removeUnlockListener: removeUnlockListener,
+    );
+
+/// Constructs the reminder coordinator. The caller owns the deferred
+/// `start()` (post-frame, inside the gate's system-UI window).
+ReminderCoordinator buildReminderCoordinator({
+  required ReminderScheduler scheduler,
+  required NotificationAvailabilitySink permissionState,
+  required Stream<List<Profile>> activeProfiles,
+  required Stream<CyclePrediction> Function(String profileId) predictionFor,
+  required ReminderConfigService localSettings,
+  required Stream<BirthControlState?> Function(String profileId)?
+      birthControlStateFor,
+}) =>
+    ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: activeProfiles,
+      predictionFor: predictionFor,
+      localSettings: localSettings,
+      birthControlStateFor: birthControlStateFor,
+    );
+
+/// Constructs the reminder-window publisher, or null when either
+/// collaborator is absent (the R17 zero-conditional gating posture).
+ReminderWindowPublisher? buildReminderWindowPublisher({
+  required NotificationPreferencesService? notificationPreferencesService,
+  required ReminderWindowRemote? reminderWindowUpsert,
+  required Stream<List<Profile>> activeProfiles,
+  required Stream<CyclePrediction> Function(String profileId) predictionFor,
+  required bool Function() isSignedIn,
+}) {
+  if (notificationPreferencesService == null || reminderWindowUpsert == null) {
+    return null;
+  }
+  return ReminderWindowPublisher(
+    activeProfiles: activeProfiles,
+    predictionFor: predictionFor,
+    upsert: reminderWindowUpsert,
+    isSignedIn: isSignedIn,
+  );
+}
+
+/// Constructs the prediction-projection publisher, or null when no
+/// prediction-connection service is configured (Issue #151/#373: the only
+/// gate — deliberately not the push gate).
+PredictionProjectionPublisher? buildPredictionProjectionPublisher({
+  required PredictionConnectionService? service,
+  required Stream<List<Profile>> activeProfiles,
+  required Stream<CyclePrediction> Function(String profileId) predictionFor,
+  required bool Function() isSignedIn,
+}) {
+  if (service == null) return null;
+  return LocalPredictionProjectionPublisher(
+    activeProfiles: activeProfiles,
+    predictionFor: predictionFor,
+    service: service,
+    isSignedIn: isSignedIn,
+  );
+}
+
+/// Constructs the health-flow write coordinator, or null when the feature
+/// is gated off (Issue #193: `AppConfig.hasHealthSync`, iOS-only until
+/// #202; widget-test harnesses and web never construct it).
+HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required DayEntriesRepository dayEntries,
+  required ObservationsRepository observations,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+      guardiansForProfile,
+  required String? Function() signedInUserId,
+  required bool minorBindingAllowed,
+}) {
+  if (!AppConfig.hasHealthSync) return null;
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+  final binding = HealthSyncBinding(settings);
+  final platform = createHealthPlatform(
+    defaultTargetPlatform,
+    binding: binding,
+    minorBindingAllowed: minorBindingAllowed,
+  );
+  final service = LocalHealthFlowWriteService(
+    platform: platform,
+    binding: binding,
+    minorBindingAllowed: minorBindingAllowed,
+    profiles: profiles,
+    dayEntries: dayEntries,
+    observations: observations,
+    settings: settings,
+    guardiansForProfile: guardiansForProfile,
+    signedInUserId: signedInUserId,
+  );
+  return LocalHealthFlowWriteCoordinator(
+    binding: binding,
+    dayEntries: dayEntries,
+    service: service,
+  );
+}
+
+/// Constructs the realtime sync coordinator (AC2: `lib/app_lifecycle.dart`
+/// must not construct it itself). The caller owns `start()`/`dispose()`.
+RealtimeSyncCoordinator buildRealtimeSyncCoordinator({
+  required SupabaseClient client,
+  required SyncEngine syncEngine,
+  required LunarLogStorage storage,
+  required AuthService auth,
+}) =>
+    RealtimeSyncCoordinator(
+      client: client,
+      syncEngine: syncEngine,
+      storage: storage,
+      auth: auth,
+    );
+
+/// Constructs the push-registration coordinator (AC2). The caller resolves
+/// [deviceId] (via [buildCompositionSettingsStore] +
+/// `resolvePushDeviceId`) and owns `start()`/`dispose()`.
+PushRegistrationCoordinator buildPushRegistrationCoordinator({
+  required SupabaseClient client,
+  required String deviceId,
+  required String platform,
+  required Stream<AuthSessionState> authStates,
+  required AuthSessionState Function() currentAuthState,
+  required void Function(String profileId)? onTap,
+}) =>
+    PushRegistrationCoordinator(
+      tokenSource: FirebasePushTokenSource(),
+      registry: SupabasePushDeviceRegistry(client: client),
+      deviceId: deviceId,
+      platform: platform,
+      authStates: authStates,
+      currentAuthState: currentAuthState,
+      onTap: onTap,
+    );

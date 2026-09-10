@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
 import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
@@ -22,14 +22,14 @@ void main() {
 
   late LunarLogDatabase db;
   late LunarLogStorage storage;
-  late ActivityFeedRepository repository;
+  late DriftActivityFeedRepository repository;
   final t0 = DateTime.utc(2026, 1, 15, 8);
 
   setUp(() {
     db = LunarLogDatabase(NativeDatabase.memory());
     addTearDown(() => db.close());
     storage = LunarLogStorage(db, clock: () => t0);
-    repository = ActivityFeedRepository(storage);
+    repository = DriftActivityFeedRepository(storage);
   });
 
   /// Lets Drift's stream notifications (async, microtask-delivered) settle.

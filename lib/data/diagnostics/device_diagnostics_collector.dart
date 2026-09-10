@@ -12,8 +12,7 @@ import 'dart:ui' show Locale, PlatformDispatcher;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart'
-    as domain;
+import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/scrub.dart';
@@ -57,9 +56,9 @@ String osVersionFrom(BaseDeviceInfo info) {
   return kUnknownDiagnosticValue;
 }
 
-class DeviceDiagnosticsCollector
-    implements domain.DeviceDiagnosticsCollector {
-  DeviceDiagnosticsCollector({
+class PlatformDeviceDiagnosticsCollector
+    implements DeviceDiagnosticsCollector {
+  PlatformDeviceDiagnosticsCollector({
     this.packageInfoReader = _defaultPackageInfoReader,
     this.deviceInfoReader = _defaultDeviceInfoReader,
     this.localeSupplier = _defaultLocaleSupplier,

@@ -17,16 +17,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/mappers.dart' show flowFromDomain;
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -205,10 +203,10 @@ List<SingleChildWidget> loggingProviders({
     Provider<ProfileGuardiansRepository>.value(
       value:
           guardiansRepositoryOverride ??
-          data.ProfileGuardiansRepository(storage),
+          DriftProfileGuardiansRepository(storage),
     ),
     Provider<ActivityFeedRepository>.value(
-      value: data.ActivityFeedRepository(storage),
+      value: DriftActivityFeedRepository(storage),
     ),
     Provider<CareContentRepository>.value(
       value: DriftCareContentRepository(storage),
@@ -1725,6 +1723,49 @@ void main() {
     );
 
     testWidgets(
+      'entry logged by a guardian with an empty display name falls back '
+      'to the role label (#88)',
+      (tester) async {
+        final auth = FakeAuthService()
+          ..emit(
+            AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'),
+          );
+        final h = await pumpLogging(
+          tester,
+          authService: auth,
+          withStorage: true,
+          seed: (db, profileId) async {
+            await db.storage.applyRemoteRows([
+              guardianRow(
+                profileId,
+                'g-dad',
+                'user-dad',
+                'co_parent',
+                displayName: '',
+              ),
+              dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-dad'),
+            ]);
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Logged by Co-Parent'), findsOneWidget);
+        expect(
+          find.textContaining('Logged by '),
+          findsOneWidget,
+          reason:
+              'the badge still renders exactly once; an empty displayName '
+              'must not produce a blank "Logged by " name alongside the '
+              'role-label fallback',
+        );
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
       'entry logged by a user id with no guardian row shows the generic '
       'fallback, distinct from a real caregiver-role guardian match (R3)',
       (tester) async {
@@ -1846,6 +1887,51 @@ void main() {
         expect(
           find.textContaining('Logged by Mom • Modified by Dad'),
           findsOneWidget,
+        );
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
+      'equal logged-by and last-modified-by ids render only the single '
+      '"Logged by" segment (#89)',
+      (tester) async {
+        final auth = FakeAuthService()
+          ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-mom'));
+        final h = await pumpLogging(
+          tester,
+          authService: auth,
+          withStorage: true,
+          seed: (db, profileId) async {
+            await db.storage.applyRemoteRows([
+              dayEntryRow(
+                profileId,
+                'e-1',
+                kToday,
+                loggedByUserId: 'user-mom',
+                lastModifiedByUserId: 'user-mom',
+              ),
+            ]);
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Logged by you'), findsOneWidget);
+        expect(
+          find.textContaining('Modified by'),
+          findsNothing,
+          reason:
+              'equal logged-by/last-modified-by ids must not set isModified; '
+              'a refactor dropping the != check would render a second '
+              '"Modified by" segment here',
+        );
+        expect(
+          find.textContaining('•'),
+          findsNothing,
+          reason:
+              'no second segment means no " • " separator may render either',
         );
         await disposeLogging(tester, h);
       },
@@ -1981,7 +2067,7 @@ void main() {
           ]);
         },
       );
-      gatedGuardians.inner = data.ProfileGuardiansRepository(h.db.storage);
+      gatedGuardians.inner = DriftProfileGuardiansRepository(h.db.storage);
       // Publish profile A's guardians through the gate — what the live
       // storage stream would have emitted on its own first tick.
       gatedGuardians.emitFor(h.profile.id, [

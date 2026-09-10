@@ -1,4 +1,4 @@
-/// `HealthFlowWriteService`'s whole policy, pinned: guard-first (zero port
+/// `LocalHealthFlowWriteService`'s whole policy, pinned: guard-first (zero port
 /// calls on any deny), opt-in (authorization requested exactly once,
 /// cursor stamped at the grant instant), forward-only (pre-cursor rows are
 /// never written; a clean pass advances the cursor to the newest processed
@@ -193,7 +193,7 @@ void main() {
   late _FakeObservations observations;
   late DateTime clock;
 
-  HealthFlowWriteService buildService() => HealthFlowWriteService(
+  LocalHealthFlowWriteService buildService() => LocalHealthFlowWriteService(
         platform: platform,
         binding: HealthSyncBinding(settings),
         minorBindingAllowed: false,
@@ -248,7 +248,7 @@ void main() {
 
     test('guard deny (non-owner): refused with zero port calls', () async {
       await settings.set(_bindingKey, _profileId);
-      final service = HealthFlowWriteService(
+      final service = LocalHealthFlowWriteService(
         platform: platform,
         binding: HealthSyncBinding(settings),
         minorBindingAllowed: false,
