@@ -1,0 +1,124 @@
+{
+  "reviewer": "reliability",
+  "findings": [
+    {
+      "title": "Realtime channels subscribe with no status/error handling and never resubscribe (#98 still open)",
+      "severity": "P1",
+      "file": "lib/data/sync/realtime_sync_coordinator.dart",
+      "line": 167,
+      "why_it_matters": "When the websocket drops or the channel join fails (CHANNEL_ERROR/TIMED_OUT/CLOSED), nothing in the coordinator observes it: the onPostgresChanges subscription is created with no status callback and no error path exists anywhere in the class, so remote wake-ups silently stop and co-caregiver changes are only seen on the 15-minute periodic sync (or the next local write/app resume). The identity-change rebuild added in this range only fires on a confirmedUserId change; it never fires on a dead channel, so the fallback to slow polling is completely invisible to the user. `git grep` for onStatus/RealtimeSubscribeStatus/CHANNEL_ERROR/resubscribe over origin/main lib/ returns zero hits, confirming issue #98 remains unfixed on the reviewed head.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": false,
+      "pre_existing": true,
+      "suggested_fix": "Pass a status callback to `channel.subscribe((status, error) => ...)` (RealtimeSubscribeStatus): on `CHANNEL_ERROR`/`TIMED_OUT`/`CLOSED` with error, tear down the dead channel and re-subscribe it (bounded retries with exponential backoff, capped, re-armed on a later profile emission or app resume), and surface a sync-snapshot hint (e.g. SyncErrorKind.network or a `realtimeDegraded` flag) so the staleness is observable instead of silent.",
+      "confidence": 75,
+      "evidence": [
+        "lib/data/sync/realtime_sync_coordinator.dart:167:        .subscribe();",
+        "grep for 'onStatus|RealtimeSubscribeStatus|CHANNEL_ERROR|resubscribe' over origin/main -- lib/ returns zero matches; issue #98 filed at the snapshot remains open and the in-range #77 changes (channel rebuild on identity change) did not add status handling"
+      ]
+    },
+    {
+      "title": "Transient SQLSTATE 40P01/40001/55P03 from sync_push maps to non-retried `other` (#95 still open)",
+      "severity": "P2",
+      "file": "lib/data/sync/supabase_sync_transport.dart",
+      "line": 153,
+      "why_it_matters": "sync_push deliberately re-raises transient concurrency errors (40P01 deadlock_detected, 40001 serialization_failure, 55P03 lock_not_available) per the issue-#13 migration, and concurrent guardians can genuinely deadlock the row locks. PostgREST surfaces those as PostgrestException with the 5-char SQLSTATE in `code`; `_mapPostgrest` only parses 3-char status codes, so the error falls through to `SyncTransportError.other` -> `SyncErrorKind.other`, and `_fail` schedules a backoff retry only for `network`. A blip that would succeed on the next attempt instead ends the cycle in a generic error state and stalls sync until the 15-minute periodic timer (the next local write or app resume may be hours away on a quiet day). Rows stay dirty, so nothing is lost - only delayed, repeatedly, whenever two guardians push concurrently.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "pre_existing": true,
+      "suggested_fix": "In `_mapPostgrest`, treat the transient SQLSTATEs the server re-raises (40P01, 40001, 55P03) as `SyncTransportError.network` so the engine's existing exponential backoff + jitter retry applies; add a regression test feeding a PostgrestException(code: '40P01') into mapSyncTransportError and asserting the cycle retries (issue #102's harness).",
+      "confidence": 75,
+      "evidence": [
+        "lib/data/sync/supabase_sync_transport.dart:150-153: if (status >= 500 || _transientStatuses.contains(status)) { return const SyncTransportError.network(); } } return const SyncTransportError.other();",
+        "lib/data/sync/supabase_sync_engine.dart:577: if (kind == SyncErrorKind.network) { -- backoff retry is scheduled for network only, so SyncErrorKind.other gets no retry until the 15-min periodic timer"
+      ]
+    },
+    {
+      "title": "resetDevice logs raw error + stack trace, breaking type-only log discipline (#97 still open)",
+      "severity": "P2",
+      "file": "lib/app_lifecycle.dart",
+      "line": 926,
+      "why_it_matters": "The reset path catches failures from close/deleteLocalDatabase/deleteDbKey and prints the full raw error object and stack trace. Every other catch in the repo logs `(${error.runtimeType})` precisely because drift/SQLite error text can embed SQL with bound arguments (health-content strings) and because sentry_flutter's DebugPrintIntegration tees every debugPrint into a console breadcrumb (see breadcrumbs.dart's header), so this line is the one remaining path that can carry raw DB error text into the breadcrumb ring that feedback tickets upload. Issue #97 was filed on the snapshot and is still present verbatim on origin/main.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": false,
+      "pre_existing": true,
+      "suggested_fix": "Change to `debugPrint('lunarlog reset failed (${error.runtimeType})');` matching the repo-wide discipline; keep the fail-closed `_error = error` screen behavior unchanged (FailClosedApp renders locally and does not ship).",
+      "confidence": 100,
+      "evidence": [
+        "lib/app_lifecycle.dart:926:      debugPrint('lunarlog reset failed: $error\\n$stackTrace');"
+      ]
+    },
+    {
+      "title": "feedback-notify catch swallows failures after the notified_at claim without releasing it",
+      "severity": "P2",
+      "file": "supabase/functions/feedback-notify/index.ts",
+      "line": 189,
+      "why_it_matters": "The claim-before-send design promises 'no failed send silently and permanently swallowed', and the send-failure path releases the claim and returns 502. But if anything throws between the claim and the return - a `deps.sendEmail` implementation that rejects despite its contract, or `releaseClaim` itself throwing when the DB blips - the outer catch returns 204 with the claim still set, so notified_at stays non-null forever and no authenticated caller can ever clear it: the admin alert is permanently suppressed with zero signal. The handler's own catch discards the error object entirely, so not even the type reaches the function logs.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": false,
+      "pre_existing": false,
+      "suggested_fix": "Track `let claimed = false` set after claimNotification succeeds; in the catch block, if `claimed`, `await deps.releaseClaim(ticketId).catch(() => {})` (logging failure) before returning, and return 502 instead of 204 so the failure is at least visible in function logs; log `(${(error as Error)?.constructor.name})` type-only per the R21 discipline.",
+      "confidence": 75,
+      "evidence": [
+        "supabase/functions/feedback-notify/index.ts:187-191: } catch (_error) { // Never surface provider detail; this endpoint's contract is 204 // either way (R21's best-effort promise extends to this handler). }",
+        "supabase/functions/feedback-notify/index.ts:177-185: if (!sendResult.ok) { ... await deps.releaseClaim(ticketId); return new Response(null, { status: 502 }); } -- release-on-failure exists only on the resolved-not-ok path, not on a thrown one"
+      ]
+    },
+    {
+      "title": "feedback-reply discards sendEmail's result: failed reply emails are silently lost",
+      "severity": "P2",
+      "file": "supabase/functions/feedback-reply/index.ts",
+      "line": 77,
+      "why_it_matters": "sendEmail resolves `{ ok: false, reason }` instead of throwing, but feedback-reply neither inspects the result nor returns a non-2xx status, so a Resend 5xx, rate-limit, or the 12s timeout produces a 204 and no log line anywhere. The webhook fires once per feedback_replies INSERT (no notified_at-style claim exists for replies), so the user is simply never emailed the admin's reply - the exact failure the two-way flow exists for - and the admin believes the loop was closed. Unlike feedback-notify, this function doesn't even get a console.error to debug from.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": false,
+      "pre_existing": false,
+      "suggested_fix": "Capture the result: `const result = await sendEmail(...); if (!result.ok) { console.error(`feedback-reply: send failed for ticket ${ticketId}: ${result.reason}`); return new Response(null, { status: 502 }); }` so the failure is observable in function logs (and consider a notified_at-style claim on feedback_replies if retryability is wanted).",
+      "confidence": 75,
+      "evidence": [
+        "supabase/functions/feedback-reply/index.ts:77-81: await sendEmail( buildReplyEmail(summary, { message }), Deno.env.get(\"RESEND_API_KEY\"), Deno.env.get(\"FEEDBACK_FROM_ADDRESS\"), ); -- the SendEmailResult is discarded and the handler unconditionally returns 204"
+      ]
+    },
+    {
+      "title": "Attachment object uploaded to Storage is orphaned when the ticket update fails",
+      "severity": "P3",
+      "file": "lib/data/feedback/supabase_feedback_service.dart",
+      "line": 91,
+      "why_it_matters": "_attachAndUpdate uploads the image to the private bucket first and only then updates the ticket's attachment_paths. If the update call fails (transient network, 5xx), the thrown error is mapped into FeedbackAttachmentUploadFailedFailure and surfaced, but the already-uploaded object under `<uid>/<ticketId>/<uuid>` is never deleted and nothing references it: the file sits in the bucket unreferenced forever, accumulating storage cost and leaving a private image outside the ticket lifecycle (no admin view, no deletion when the ticket is purged).",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": false,
+      "pre_existing": false,
+      "suggested_fix": "Wrap the ticket update in try/catch inside _attachAndUpdate; on failure best-effort `client.storage.from(kFeedbackAttachmentsBucket).remove([objectPath])` (swallow-and-log the remove failure type-only) before rethrowing, so the partial-failure state is ticket-without-attachment only.",
+      "confidence": 75,
+      "evidence": [
+        "lib/data/feedback/supabase_feedback_service.dart:91-93: await client.storage.from(kFeedbackAttachmentsBucket).uploadBinary( objectPath, Uint8List.fromList(attachment.bytes), -- followed by a separate update() with no remove([objectPath]) on its failure path anywhere in the file"
+      ]
+    }
+  ],
+  "residual_risks": [
+    "issue #95: still present - 40P01/40001/55P03 re-raised by sync_push map to SyncErrorKind.other with no backoff retry; concurrent-guardian deadlocks stall sync up to the 15-min periodic timer (finding above).",
+    "issue #97: still present - app_lifecycle.dart:926 logs raw error + stack trace into debugPrint, which DebugPrintIntegration tees into the Sentry/breadcrumb path (finding above).",
+    "issue #98: still present - subscribe() at realtime_sync_coordinator.dart:167 has no status callback and no resubscribe path exists anywhere in lib/ (finding above).",
+    "issue #94 (unbounded tag strings) and #96 (dropped is_valid_tags_array validation): still present per the open-issue list, but payload-validation rather than failure-handling - not verified under this lens.",
+    "issues #99-#104 (docs/CI/architecture/testing): outside the reliability lens; #102's missing sync retry regression tests are echoed in testing_gaps.",
+    "feedback-notify degrades to silent 204 when RESEND_API_KEY/FEEDBACK_ADMIN_EMAIL are unset (configured=false): every admin alert is lost with no operator-visible signal; only docs/ops guard this.",
+    "A Supabase Edge isolate kill (or a hung Supabase DB call with no client-side deadline in the JS calls) between the notified_at claim and releaseClaim permanently suppresses that ticket's alert; email.ts's 12s AbortSignal narrows but cannot close this (acknowledged in that file's header).",
+    "delete-account retryability after apple_revoke_failed requires a fresh single-use Apple code per attempt; a user who retries without re-prompting Apple will loop on 409 until the client re-fetches a code (client dialog behavior, not verified here).",
+    "key_store migration journaling is sound for all partial states reviewed; note deleteKey() clears only storageKey - a stale journal entry from a crash-before-reset could re-materialize an old key onto the post-reset fresh DB (harmless today: the old DB file is gone), left unflagged as theoretical.",
+    "BreadcrumbLog's 25-entry ring evicts oldest entries under an error flood by design; a debugPrint storm can evict the diagnostic breadcrumbs a ticket needed (bounded by the type-only debugPrint discipline elsewhere)."
+  ],
+  "testing_gaps": [
+    "No test drives mapSyncTransportError/the engine cycle with a PostgrestException carrying SQLSTATE 40P01/40001/55P03 to prove a transient deadlock is retried with backoff (issue #102's engine-vs-RPC gap).",
+    "No test covers RealtimeSyncCoordinator behavior when a channel errors or drops (status callback path does not exist to test - issue #98).",
+    "supabase/functions/feedback-reply has no deno test at all: the discarded SendEmailResult and the ticket-missing/malformed-payload branches are unverified.",
+    "feedback-notify's tests cover the resolved-not-ok release path but not a throwing sendEmail/releaseClaim through the outer catch (the claim-leak path found above).",
+    "No test pins the _attachAndUpdate partial-failure state (upload ok + update failed) to assert no storage object is left behind.",
+    "No test asserts resetDevice's failure log stays type-only (would have caught issue #97 and would catch regressions of the log discipline)."
+  ]
+}

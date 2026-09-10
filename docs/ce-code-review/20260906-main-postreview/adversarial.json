@@ -1,0 +1,130 @@
+{
+  "reviewer": "adversarial",
+  "run": "20260906-main-postreview",
+  "scope": "origin/main vs 4c91b499ad639ae1476f2800a98dbd976fa22e21 (branch-remote)",
+  "findings": [
+    {
+      "title": "Lost response on the notified_at claim permanently suppresses a ticket's admin alert with no recovery path",
+      "severity": "P2",
+      "file": "supabase/functions/feedback-notify/index.ts",
+      "line": 256,
+      "why_it_matters": "The admin alert for a new feedback ticket can be lost forever, silently, by a partial failure of the claim round-trip itself. If the claim UPDATE commits at Postgres but its HTTP response is lost (connection reset, isolate preemption between commit and response), claimNotification resolves false, the handler returns 204 as an unclaimed no-op, and notified_at stays set: every future invocation hits claimed=false, and releaseClaim is only ever called by a claim's own winner on a send failure. There is no sweeper (the migration header explicitly defers one), so the ticket never notifies the operator and nothing ever logs the loss.",
+      "autofix_class": "manual",
+      "owner": "human",
+      "requires_verification": true,
+      "pre_existing": false,
+      "suggested_fix": "Implement the reconciliation the 20260906150000 migration header defers: a periodic job (pg_cron or a scheduled Edge Function) that clears notified_at on rows claimed more than N minutes earlier with no corresponding sent record. Alternatively, make claimNotification disambiguate an errored round-trip by re-reading notified_at for the ticket and releasing when it was set within the last few seconds by this invocation's window.",
+      "confidence": 75,
+      "evidence": [
+        "supabase/functions/feedback-notify/index.ts:256-262 claimNotification: async (ticketId) => { const { data, error } = await client! .from(\"feedback_tickets\") .update({ notified_at: new Date().toISOString() }) ... .maybeSingle(); return !error && !!data; } - a committed-but-unacknowledged UPDATE resolves as error, so the caller treats the claim as not taken while notified_at is now set.",
+        "supabase/functions/feedback-notify/index.ts:162-165 if (!claimed) { return new Response(null, { status: 204 }); } - the unclaimed path never inspects or repairs notified_at.",
+        "supabase/functions/feedback-notify/index.ts:186 await deps.releaseClaim(ticketId); - releaseClaim runs only in the !sendResult.ok branch, never after a false-negative claim; no other component (no cron, no client retry contract) ever clears a stuck claim."
+      ]
+    },
+    {
+      "title": "attachment_paths UPDATE accepts arbitrary cross-user storage paths, planting another user's private objects on the operator's triage ticket",
+      "severity": "P2",
+      "file": "supabase/migrations/20260906130000_feedback_tickets.sql",
+      "line": 210,
+      "why_it_matters": "attachment_paths is only writable via the owner-scoped UPDATE grant (it is excluded from INSERT), and the only constraint on its value is array length <= 3 - there is no per-element shape or ownership validation, unlike device_info's allowlist. Any authenticated user can therefore set their own ticket's attachment_paths to another user's <uid>/<ticket>/<uuid> object paths in the same bucket. The attacker still cannot read those objects (storage RLS blocks them), but the ticket now embeds someone else's private attachment references, which surface to the operator's manual triage/dashboard view - a trust-boundary violation of the 'paths shaped <uid>/<ticket_id>/<uuid>.<ext>' convention the schema comment asserts but nothing enforces.",
+      "autofix_class": "manual",
+      "owner": "human",
+      "requires_verification": true,
+      "pre_existing": false,
+      "suggested_fix": "Add a row-level CHECK that validates each element against the ticket's own user_id, e.g. check (public.has_valid_attachment_paths(user_id, attachment_paths)) where the function asserts every element matches ('^' || user_id::text || '/[0-9A-HJKMNP-TV-Z]{26}/[0-9a-f-]{36}\\.(png|jpg|webp)$'). A new migration only; no merged migration edited.",
+      "confidence": 75,
+      "evidence": [
+        "supabase/migrations/20260906130000_feedback_tickets.sql:210 grant update (attachment_paths, updated_at) on table public.feedback_tickets to authenticated; - the only write path for attachment_paths, with no value restriction beyond RLS.",
+        "supabase/migrations/20260906130000_feedback_tickets.sql:52 check (array_length(attachment_paths, 1) is null or array_length(attachment_paths, 1) <= 3), - bounds only the count; element content (including another user's uid prefix) is unconstrained, while device_info gets a real allowlist."
+      ]
+    },
+    {
+      "title": "ios-release ships TestFlight/store builds without the coverage, CRAP, deno, or pgTAP gates; a red ci.yml run blocks nothing",
+      "severity": "P2",
+      "file": ".github/workflows/ios-release.yml",
+      "line": 182,
+      "why_it_matters": "The release pipeline's only gates are its own verify (flutter analyze + flutter test), migration-gate, and release-gate jobs. The quality/coverage+CRAP gate, deno test, and the pgTAP database suite run only in ci.yml, which is an independent workflow with no relationship to ios-release - ios-release fires on the same push and does not consult ci.yml's result. A direct push to main (or an admin-merged PR) with a broken migration that fails pgTAP, a deno regression, or a coverage-floor breach still uploads to TestFlight and, on a version bump with the account-deletion gate open, submits for App Store review. The release goes green while the real quality/database gates are red.",
+      "autofix_class": "manual",
+      "owner": "release",
+      "requires_verification": true,
+      "pre_existing": false,
+      "suggested_fix": "Either (a) run the quality-gate, deno test, and pgTAP jobs inside ios-release.yml's verify stage (reusing a composite/reusable workflow so ci.yml and ios-release share one definition), or (b) make the release job poll GitHub check runs for the ci.yml commit SHA and fail closed when any required check is not success.",
+      "confidence": 75,
+      "evidence": [
+        ".github/workflows/ios-release.yml:182 needs: [verify, migration-gate, release-gate] - the release job depends only on in-workflow jobs; ci.yml's edge-functions, db-tests, and quality-gate jobs are separate workflows and cannot block this one.",
+        ".github/workflows/ios-release.yml verify job runs only 'flutter analyze' and 'flutter test' (no dart run tool/quality_gate.dart, no deno test, no supabase test db), while .github/workflows/ci.yml is the sole runner of those gates and triggers independently on the same push event."
+      ]
+    },
+    {
+      "title": "Apple identity linked on another device leaves this device's delete flow in an unretryable apple_code_required loop",
+      "severity": "P3",
+      "file": "lib/ui/account/account_section.dart",
+      "line": 763,
+      "why_it_matters": "_deleteAccount decides whether to run the Apple code ceremony from the locally cached providers list (auth.currentUser at build time), while the server decides from the fresh identities in the JWT. If Apple was linked from another device and this device's session has not been refreshed since (up to ~1h until the next token refresh), the local list lacks 'apple', the code is never fetched, and the Edge Function fails closed with apple_code_required - whose copy says 'please try again' - but every retry repeats the same path because the local list never updates. The only escapes are an app restart/token refresh or signing out and back in, neither of which the copy points at.",
+      "autofix_class": "advisory",
+      "owner": "human",
+      "requires_verification": true,
+      "pre_existing": false,
+      "suggested_fix": "Treat AccountDeletionAppleCodeRequiredFailure as 'stale local providers': re-read the user (refreshSession or auth.getUser) and retry once with the Apple ceremony forced on, or change the copy to 'sign out and back in, then retry'.",
+      "confidence": 50,
+      "evidence": [
+        "lib/ui/account/account_section.dart:763-808 _deleteAccount(BuildContext context, List<String> providers) gates the Apple ceremony on providers.contains(AuthProviders.apple), using the value captured at widget build time, not a fresh server read."
+      ]
+    },
+    {
+      "title": "Timeout-then-retry deletion path surfaces 'your account was not deleted' copy for an account the server did delete",
+      "severity": "P3",
+      "file": "lib/ui/account/account_section.dart",
+      "line": 93,
+      "why_it_matters": "When the client aborts at the 45s timeout the server may still complete (the Edge Function keeps running through Apple revocation and auth.admin.deleteUser). A retry from the still-open session then fails at Step 2 (auth.getUser on a deleted user) with 401, which maps to the unauthorized copy: 'Your session has expired. Sign in again and retry - your account was not deleted.' That final clause is false in this exact sequence, and the app meanwhile keeps operating as a deleted account (local data intact, pushes failing, realtime dead) until the user manually signs out or the next token refresh surfaces the expiry. Misleading guidance at the one moment accuracy matters most (irreversible deletion).",
+      "autofix_class": "advisory",
+      "owner": "human",
+      "requires_verification": true,
+      "pre_existing": false,
+      "suggested_fix": "Copy for unauthorized should not assert outcome ('Sign in again to check whether your account still exists.'), or the service should distinguish 401-after-timeout and route to the timeout copy.",
+      "confidence": 50,
+      "evidence": [
+        "lib/ui/account/account_section.dart:93-95 'Your session has expired. Sign in again and retry - your account was not deleted.'"
+      ]
+    },
+    {
+      "title": "feedback_tickets.device_info breadcrumbs value is unbounded server-side (payload amplification, same class as issue #94)",
+      "severity": "P3",
+      "file": "supabase/migrations/20260906130000_feedback_tickets.sql",
+      "line": 73,
+      "why_it_matters": "is_allowed_device_info validates only the top-level KEYS of device_info; the 'breadcrumbs' value inside it can be arbitrarily deep/large (and a malicious client bypasses the app's ring-buffer cap anyway), while message is capped at 4000 chars. A signed-in user can insert tickets whose device_info dwarfs every other column - rows persisted server-side and shipped to the operator's triage view - with no server-side size bound. Same amplification pattern issue #94 flags for day-entry tags.",
+      "autofix_class": "advisory",
+      "owner": "human",
+      "requires_verification": true,
+      "pre_existing": false,
+      "suggested_fix": "Bound the payload server-side: extend the device_info check with a size cap (e.g. pg_column_size(device_info) <= 65536) or validate breadcrumbs as an array of bounded strings in is_allowed_device_info.",
+      "confidence": 50,
+      "evidence": [
+        "supabase/migrations/20260906130000_feedback_tickets.sql:73-85 is_allowed_device_info checks only jsonb_typeof(...) = 'object' and top-level key membership in the fixed allowlist; no length or depth bound applies to the breadcrumbs value."
+      ]
+    }
+  ],
+  "residual_risks": [
+    "issue #94: still present - no server-side length bound on day-entry tag strings; only the is_valid_tags_array shape check exists.",
+    "issue #95: still present - sync_push re-raises 40P01/40001/55P03 server-side, but the client transport maps errors to rejected/network/other only, with no deadlock/serialization retry.",
+    "issue #96: still present - the final sync_push definition (20260904020000_sync_push_and_invitations.sql) carries no is_valid_tags_array validation; the last one that did was 20260903170000.",
+    "issue #97: still present - resetDevice's _deleteDatabaseAndKey debugPrints the raw error and stack trace ('lunarlog reset failed: $error\\n$stackTrace').",
+    "issue #98: still present - RealtimeSyncCoordinator still ignores channel status/errors and never resubscribes; the diff only adds identity-change rebuilds.",
+    "issue #99: still present - config.toml [db.seed] enabled with ./seed.sql but supabase/seed.sql does not exist in the tree.",
+    "issue #100: still present - account_section.dart is now ~1000 lines (the CRAP-gate split added rather than reduced mass); the other concentrated files are untouched.",
+    "issue #101: still present - public.settings is provisioned with RLS/grants; the only code touching it is delete_account_data()'s cleanup; the app never reads or writes it.",
+    "issue #102: still present - no failing-if-regressed tests for sync transactional/retry guarantees; this diff adds only realtime-coordinator and feature tests.",
+    "issue #103: partially improved - supabase-migrate.yml gained permissions: contents: read; ci.yml and ios-release.yml still have no permissions block and still pin actions by mutable tag (@v4/@v2).",
+    "issue #104: still present (repo-external org config; nothing in this diff can address it).",
+    "Feedback function runtime secrets (RESEND_API_KEY, FEEDBACK_FROM_ADDRESS, FEEDBACK_ADMIN_EMAIL, FEEDBACK_WEBHOOK_SECRET) are provisioned by no workflow - only the go-live checklist documents them. Until set, feedback-notify returns configured=false 204s and feedback-reply 401s every webhook: no alerts and no reply emails, with zero error signal anywhere.",
+    "delete-account's Step 6 rehome depends on service_role retaining EXECUTE on rehome_stray_day_entries via platform default privileges; pgTAP proves the revocation from authenticated/anon/PUBLIC and exercises the logic locally, but cloud-vs-local default-privilege parity is assumed, and the call's failure is deliberately swallowed (best-effort) - a silent weakening of the cross-family cascade guard.",
+    "Deleting an account cascades its feedback_tickets/feedback_replies rows but never their feedback-attachments storage objects; once auth.users is gone no RLS-scoped caller can even list them (documented manual-purge gap)."
+  ],
+  "testing_gaps": [
+    "No automated test drives the delete-account Edge Function: Apple misconfigured/rejected, revoke-timeout, and auth.admin.deleteUser-failure paths are proven only by documented curl runs; CI is green-blind to Step 5/7 regressions.",
+    "feedback-notify's deno tests fake claimNotification as a plain boolean; the production claim predicate is tested for the WHERE-clause shape but never for partial failure (committed claim with lost response, or failed releaseClaim), so the stranded-claim state has zero coverage.",
+    "No test asserts service_role CAN execute rehome_stray_day_entries (only that authenticated/anon/PUBLIC cannot), so a default-privilege regression on the platform would be invisible until the best-effort log line fires in production.",
+    "The feedback attachments bucket/policies run in CI only because the local stack happens to carry the storage schema; feedback_attachments_rls_test.sql has no skip guard despite its header claiming it 'runs only when the storage schema is present' - on a schema-less stack both the migration (guarded no-op) and the test file (hard SQL errors) misbehave.",
+    "No verification ties ios-release.yml to ci.yml's results: nothing fails the release when the quality-gate, deno, or pgTAP jobs are red on the same commit, and no required-check configuration is documented that would close the gap."
+  ]
+}

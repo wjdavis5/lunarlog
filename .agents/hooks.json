@@ -1,0 +1,12 @@
+{
+  "orchestrator-quota-gate": {
+    "PreToolUse": [
+      {
+        "matcher": "invoke_subagent",
+        "hooks": [
+          { "type": "command", "command": "C:/PROGRA~1/Git/bin/bash.exe C:/git/repos/lunarlog/.orchestrator/quota-gate.sh hook", "timeout": 20 }
+        ]
+      }
+    ]
+  }
+}
