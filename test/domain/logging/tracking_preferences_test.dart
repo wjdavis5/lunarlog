@@ -20,7 +20,7 @@ void main() {
       expect(TagCategory.hotFlashes.wireName, 'hot_flashes');
       expect(TagCategory.vulvaVagina.wireName, 'vulva_vagina');
       expect(TagCategory.pain.wireName, 'pain');
-      expect(TagCategory.mood.wireName, 'mood');
+      expect(TagCategory.feelings.wireName, 'feelings');
     });
 
     test('round-trip through categoryFromWireName', () {
@@ -31,7 +31,12 @@ void main() {
     });
 
     test('unknown names resolve to null (a newer client\'s category)', () {
-      expect(categoryFromWireName('partying'), isNull);
+      // `partying` is a current category since #251 landed (it is in the
+      // minor-hidden default set); it resolves like any other wire name.
+      expect(categoryFromWireName('partying'), TagCategory.partying);
+      // `sex_life` has no TagCategory member yet (#253) - it round-trips
+      // as a document key but never resolves, exactly like a category a
+      // newer client knows and this build does not.
       expect(categoryFromWireName('sex_life'), isNull);
       expect(categoryFromWireName('not_a_category'), isNull);
     });
@@ -45,9 +50,9 @@ void main() {
 
     test('parses a well-formed document', () {
       final doc = TrackingPreferences.fromJsonText(
-          '{"mood": {"enabled": false, "sort_order": 2}}');
+          '{"feelings": {"enabled": false, "sort_order": 2}}');
       expect(doc, isNotNull);
-      expect(doc![TagCategory.mood], pref(false, 2));
+      expect(doc![TagCategory.feelings], pref(false, 2));
       expect(doc.entries, hasLength(1));
     });
 
@@ -55,7 +60,7 @@ void main() {
         'resolve them', () {
       final doc = TrackingPreferences.fromJsonText(
           '{"sex_life": {"enabled": true, "sort_order": 4}, '
-          '"mood": {"enabled": false, "sort_order": 0}}');
+          '"feelings": {"enabled": false, "sort_order": 0}}');
       expect(doc!.entries, containsPair('sex_life', pref(true, 4)));
       // Not a TagCategory in this build yet (lands with #253): the entry
       // survives, and resolution ignores it (sex_life is not in the enum).
@@ -64,7 +69,7 @@ void main() {
 
     test('drops malformed entries instead of failing the document', () {
       final doc = TrackingPreferences.fromJsonText(
-          '{"mood": 3, "pain": {"enabled": "yes", "sort_order": 0}, '
+          '{"feelings": 3, "pain": {"enabled": "yes", "sort_order": 0}, '
           '"sleep": {"enabled": true}, '
           '"skin": {"enabled": true, "sort_order": 1.5}, '
           '"hair": {"enabled": true, "sort_order": 7}}');
@@ -75,7 +80,7 @@ void main() {
 
     test('non-object JSON degrades to null', () {
       expect(TrackingPreferences.fromJsonText('[]'), isNull);
-      expect(TrackingPreferences.fromJsonText('"mood"'), isNull);
+      expect(TrackingPreferences.fromJsonText('"feelings"'), isNull);
       expect(TrackingPreferences.fromJsonText('not json'), isNull);
     });
   });
@@ -87,7 +92,7 @@ void main() {
 
     test('round-trips through its own text form', () {
       final doc = TrackingPreferences({
-        'mood': pref(false, 2),
+        'feelings': pref(false, 2),
         'pain': pref(true, 0),
       });
       final parsed = TrackingPreferences.fromJsonText(doc.toJsonText());
@@ -135,9 +140,14 @@ void main() {
       for (final category in TagCategory.values) {
         expect(defaultTrackingEnabled(category, isMinor: false), isTrue,
             reason: 'every current category defaults enabled for an adult');
-        expect(defaultTrackingEnabled(category, isMinor: true), isTrue,
-            reason: 'no current category is in the minor-hidden set yet '
-                '(partying/sex_life land with #251/#253)');
+        // `partying` is the one current category in the minor-hidden set
+        // (`sex_life` arrives with #253); everything else defaults enabled
+        // for a minor too.
+        expect(
+            defaultTrackingEnabled(category, isMinor: true),
+            !kMinorDefaultHiddenTrackingCategories
+                .contains(category.wireName),
+            reason: 'exactly the minor-hidden wire names default disabled');
       }
     });
 
@@ -149,7 +159,7 @@ void main() {
       // indirectly: the stored entry exists and is honored by the
       // resolver for any category that IS in the enum. Use a proxy: the
       // rule is keyed by wire name, and the resolver reads it only for
-      // absent entries — proven with mood via the disabled-default case
+      // absent entries — proven with feelings via the disabled-default case
       // below plus the set-membership check above.
       expect(doc!.entries['partying'], pref(true, 0));
     });
@@ -157,12 +167,12 @@ void main() {
     test('an explicit disable on an adult profile hides the category',
         () {
       final doc = TrackingPreferences.fromJsonText(
-          '{"mood": {"enabled": false, "sort_order": 0}}');
+          '{"feelings": {"enabled": false, "sort_order": 0}}');
       final resolved = resolveTrackingCategories(
         defaultOrder: TagCategory.values,
         preferences: doc,
       );
-      expect(resolved, isNot(contains(TagCategory.mood)));
+      expect(resolved, isNot(contains(TagCategory.feelings)));
       expect(resolved.length, TagCategory.values.length - 1);
     });
 
@@ -182,16 +192,16 @@ void main() {
   group('resolveTrackingCategories (ordering, AC2)', () {
     test('curated categories lead, sorted by sort_order', () {
       final doc = TrackingPreferences.fromJsonText(
-          '{"mood": {"enabled": true, "sort_order": 0}, '
+          '{"feelings": {"enabled": true, "sort_order": 0}, '
           '"pain": {"enabled": true, "sort_order": 1}}');
       final resolved = resolveTrackingCategories(
         defaultOrder: TagCategory.values,
         preferences: doc,
       );
-      expect(resolved.take(2), [TagCategory.mood, TagCategory.pain]);
+      expect(resolved.take(2), [TagCategory.feelings, TagCategory.pain]);
       // The uncurated remainder keeps the default order behind them.
       expect(resolved.skip(2).toList(), [
-        ...TagCategory.values.where((c) => c != TagCategory.mood && c != TagCategory.pain),
+        ...TagCategory.values.where((c) => c != TagCategory.feelings && c != TagCategory.pain),
       ]);
     });
 
@@ -210,18 +220,18 @@ void main() {
 
     test('curated-first holds even when sort_order values are large', () {
       final doc = TrackingPreferences.fromJsonText(
-          '{"mood": {"enabled": true, "sort_order": 999}}');
+          '{"feelings": {"enabled": true, "sort_order": 999}}');
       final resolved = resolveTrackingCategories(
         defaultOrder: TagCategory.values,
         preferences: doc,
       );
-      expect(resolved.first, TagCategory.mood);
+      expect(resolved.first, TagCategory.feelings);
     });
 
     test('the resolver reads the care mode\'s order via defaultOrder, not '
         'the raw enum (teen reorders, it never removes)', () {
       const teenOrder = [
-        TagCategory.mood,
+        TagCategory.feelings,
         TagCategory.pain,
         TagCategory.energy,
       ];
@@ -239,12 +249,12 @@ void main() {
 
     test('TrackingPreferences compares by entries', () {
       expect(
-        TrackingPreferences({'mood': pref(true, 0)}),
-        TrackingPreferences({'mood': pref(true, 0)}),
+        TrackingPreferences({'feelings': pref(true, 0)}),
+        TrackingPreferences({'feelings': pref(true, 0)}),
       );
       expect(
-        TrackingPreferences({'mood': pref(true, 0)}),
-        isNot(TrackingPreferences({'mood': pref(false, 0)})),
+        TrackingPreferences({'feelings': pref(true, 0)}),
+        isNot(TrackingPreferences({'feelings': pref(false, 0)})),
       );
     });
   });

@@ -146,16 +146,16 @@ void main() {
       }
     });
 
-    test('row count matches taxonomy size exactly (45, issue #249)', () {
-      expect(kTagClinicalCodes, hasLength(45));
-      expect(kTagTaxonomy, hasLength(45));
+    test('row count matches taxonomy size exactly (67, issue #251)', () {
+      expect(kTagClinicalCodes, hasLength(67));
+      expect(kTagTaxonomy, hasLength(67));
     });
   });
 
   group('kTagClinicalCodes — golden table (BLOCKING: fails loudly on any '
       'edit to a verified tag mapping)', () {
     test('matches the full expected (system, code, display) triple for all '
-        '45 tags', () {
+        '67 tags', () {
       const snomed = 'http://snomed.info/sct';
       const local = 'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
           'tag';
@@ -216,6 +216,32 @@ void main() {
         'salty': (local, 'salty', 'Salty'),
         'carbs': (local, 'carbs', 'Carbs'),
         'chocolate': (local, 'chocolate', 'Chocolate'),
+        // issue #251's 22 new codes - every one an explicit local decision
+        // (no SNOMED concept fetch-verified yet; see
+        // docs/clinical/terminology.md's #251 section). The re-parented
+        // mood codes above are unchanged.
+        'happy': (local, 'happy', 'Happy'),
+        'angry': (local, 'angry', 'Angry'),
+        'indifferent': (local, 'indifferent', 'Indifferent'),
+        'mood_swings': (local, 'mood_swings', 'Mood swings'),
+        'excited': (local, 'excited', 'Excited'),
+        'insecure': (local, 'insecure', 'Insecure'),
+        'grateful': (local, 'grateful', 'Grateful'),
+        'distracted': (local, 'distracted', 'Distracted'),
+        'focused': (local, 'focused', 'Focused'),
+        'stressed': (local, 'stressed', 'Stressed'),
+        'motivated': (local, 'motivated', 'Motivated'),
+        'unmotivated': (local, 'unmotivated', 'Unmotivated'),
+        'productive': (local, 'productive', 'Productive'),
+        'unproductive': (local, 'unproductive', 'Unproductive'),
+        'sociable': (local, 'sociable', 'Sociable'),
+        'withdrawn': (local, 'withdrawn', 'Withdrawn'),
+        'supportive': (local, 'supportive', 'Supportive'),
+        'conflict': (local, 'conflict', 'Conflict'),
+        'drinks': (local, 'drinks', 'Drinks'),
+        'cigarettes': (local, 'cigarettes', 'Cigarettes'),
+        'big_night': (local, 'big_night', 'Big night'),
+        'hangover': (local, 'hangover', 'Hangover'),
       };
       expect(kTagClinicalCodes, hasLength(expected.length));
       expect(kTagClinicalCodes.keys.toSet(), expected.keys.toSet());

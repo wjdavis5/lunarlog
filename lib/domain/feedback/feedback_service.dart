@@ -399,12 +399,34 @@ final class FeedbackAttachmentUploadFailedFailure extends FeedbackFailure {
   String toString() => 'FeedbackFailure.attachmentUploadFailed';
 }
 
+/// 5 MiB, matching `feedback_attachments` bucket's `file_size_limit` (U2).
+/// Lives here rather than in the UI so the data-side [AttachmentSource] can
+/// reject an oversized pick *before* reading its bytes (#207) against the
+/// exact same constant the post-read UI check enforces.
+const int kMaxAttachmentBytes = 5 * 1024 * 1024;
+
+/// Thrown by [AttachmentSource.pickImage] when the picked file measures over
+/// [kMaxAttachmentBytes] *before* its bytes are read (#207): the check runs
+/// on the platform file's length, so an oversized pick never gets loaded
+/// into memory at all. `AttachmentField` catches this and shows the same
+/// recoverable too-large error its own post-read size check produces.
+final class AttachmentTooLargeException implements Exception {
+  const AttachmentTooLargeException();
+
+  @override
+  String toString() => 'AttachmentTooLargeException';
+}
+
 /// Plugin-facing seam for picking a screenshot to attach (U7). The concrete
-/// adapter (`ImagePickerAttachmentSource`) is the only untestable-under-
-/// `flutter-test` piece; this interface itself stays pure Dart.
+/// adapter (`ImagePickerAttachmentSource`) wraps the image_picker plugin and
+/// is driven under `flutter test` through an injected pick seam; this
+/// interface itself stays pure Dart.
 abstract interface class AttachmentSource {
   /// Shows the platform image picker and returns the selected image, or
-  /// null when the operator cancelled.
+  /// null when the operator cancelled. Implementations are expected to
+  /// downscale/normalise the pick before its bytes cross into Dart, and to
+  /// throw [AttachmentTooLargeException] rather than read a file over
+  /// [kMaxAttachmentBytes].
   Future<FeedbackAttachment?> pickImage();
 }
 

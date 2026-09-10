@@ -5,6 +5,7 @@
 library;
 
 import 'local_date.dart';
+import 'measurement_unit.dart';
 import 'profile_mode.dart';
 import 'profile_relationship.dart';
 import '../logging/tracking_preferences.dart';
@@ -28,6 +29,8 @@ class Profile {
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
     this.trackingPreferences,
+    this.bbtUnit = BbtUnit.celsius,
+    this.weightUnit = WeightUnit.kg,
   });
 
   /// Storage-assigned ULID (empty on unsaved, client-created models).
@@ -111,6 +114,16 @@ class Profile {
   /// already-logged entries for it (AC3), and this field is never
   /// consulted by any authorization path.
   final TrackingPreferences? trackingPreferences;
+  /// Per-profile BBT display unit (Issue #255): how a stored basal body
+  /// temperature renders, independent of the unit any individual
+  /// `observations` value was entered or imported in (each row carries its
+  /// own `unit`). Presentation only — nothing converts stored values when
+  /// this changes.
+  final BbtUnit bbtUnit;
+
+  /// Per-profile weight display unit (Issue #255). Same contract as
+  /// [bbtUnit], for weight rows.
+  final WeightUnit weightUnit;
 
   static const Object _unset = Object();
 
@@ -141,6 +154,8 @@ class Profile {
     Object? typicalCycleLengthDays = _unset,
     Object? typicalPeriodLengthDays = _unset,
     Object? trackingPreferences = _unset,
+    BbtUnit? bbtUnit,
+    WeightUnit? weightUnit,
   }) =>
       Profile(
         id: id ?? this.id,
@@ -165,6 +180,8 @@ class Profile {
             typicalPeriodLengthDays, this.typicalPeriodLengthDays),
         trackingPreferences:
             _resolveNullable(trackingPreferences, this.trackingPreferences),
+        bbtUnit: bbtUnit ?? this.bbtUnit,
+        weightUnit: weightUnit ?? this.weightUnit,
       );
 
   /// Identity-ish fields: what a row's primary key and headline attributes
@@ -183,6 +200,14 @@ class Profile {
       other.updatedAt == updatedAt &&
       other.archivedAt == archivedAt &&
       other.deletedAt == deletedAt &&
+      _sameSubjectMetadata(other) &&
+      _sameMeasurementUnits(other);
+
+  /// Split from [_sameProfileDetails] (the [Observation]
+  /// `_sameValue`/`_sameProvenance` pattern) so neither method's
+  /// cyclomatic complexity - and so its CRAP score - grows past the gate
+  /// as optional fields are added.
+  bool _sameSubjectMetadata(Profile other) =>
       other.birthYear == birthYear &&
       other.relationship == relationship &&
       other.transferredAt == transferredAt &&
@@ -198,6 +223,11 @@ class Profile {
       other.typicalCycleLengthDays == typicalCycleLengthDays &&
       other.typicalPeriodLengthDays == typicalPeriodLengthDays &&
       other.trackingPreferences == trackingPreferences;
+
+  /// Issue #255's two display-unit preferences, split out for the same
+  /// reason as [_sameSubjectMetadata].
+  bool _sameMeasurementUnits(Profile other) =>
+      other.bbtUnit == bbtUnit && other.weightUnit == weightUnit;
 
   @override
   bool operator ==(Object other) =>
@@ -226,6 +256,8 @@ class Profile {
         typicalCycleLengthDays,
         typicalPeriodLengthDays,
         trackingPreferences,
+        bbtUnit,
+        weightUnit,
       );
 
   @override

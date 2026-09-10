@@ -75,12 +75,15 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'and gets a direct unit test anyway, same treatment as '
         'google_sign_in_client.dart.',
   ),
-  const CoverageExclusion(
-    'lib/data/feedback/image_picker_attachment_source.dart',
-    'ImagePickerAttachmentSource wraps the image_picker plugin and cannot '
-        'run under flutter test; it holds no branching logic worth testing '
-        'in isolation, same treatment as google_sign_in_client.dart.',
-  ),
+  // Issue #207: image_picker_attachment_source.dart is deliberately NOT
+  // listed here any more. It still wraps the image_picker plugin, but every
+  // decision around the plugin call (downscale/normalisation parameters,
+  // the pre-read size rejection, the name-based mime fallback incl. HEIC)
+  // now runs under flutter test against an injected pick seam
+  // (test/data/feedback/image_picker_attachment_source_test.dart), so only
+  // a five-line static plugin wrapper remains uncovered — not enough to
+  // warrant hiding the whole file from the gates' denominator, and keeping
+  // the exclusion would have let the newly tested logic silently regress.
   const CoverageExclusion(
     'lib/data/export/account_export_writer.dart',
     'AccountExportWriter wraps path_provider (temp directory) and '

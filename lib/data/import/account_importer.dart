@@ -92,6 +92,11 @@ class AccountImporter {
       displayName: plan.displayName,
       isMinor: plan.isMinor,
       mode: plan.mode ?? 'standard',
+      // Issue #255: a v8 export always carries both keys; an older
+      // export's absent keys fall back to the column defaults, exactly
+      // like `mode` above.
+      bbtUnit: plan.bbtUnit ?? 'celsius',
+      weightUnit: plan.weightUnit ?? 'kg',
       sortOrder: plan.sortOrder,
     );
     return created.id;

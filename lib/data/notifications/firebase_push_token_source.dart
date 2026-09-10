@@ -28,7 +28,7 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, visibleForTesting;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/notifications/push_registration.dart';
 
@@ -55,6 +55,33 @@ FirebaseOptions buildFirebaseOptions({
 }
 
 class FirebasePushTokenSource implements PushTokenSource {
+  FirebasePushTokenSource()
+      : openedAppMessages = null,
+        initialMessage = null;
+
+  /// Testing seams (#206 C-26): when both are supplied they stand in for
+  /// the plugin-bound `FirebaseMessaging.onMessageOpenedApp` stream and
+  /// `FirebaseMessaging.instance.getInitialMessage()` future on the
+  /// [taps] path, and that path skips Firebase initialization entirely
+  /// (nothing plugin-bound is touched). Every real caller constructs this
+  /// class with the default constructor and behaves exactly as before.
+  @visibleForTesting
+  FirebasePushTokenSource.forTesting({
+    required this.openedAppMessages,
+    required this.initialMessage,
+  });
+
+  /// The [taps]-path stand-in for `FirebaseMessaging.onMessageOpenedApp`;
+  /// null in production builds.
+  @visibleForTesting
+  final Stream<RemoteMessage>? openedAppMessages;
+
+  /// The [taps]-path stand-in for
+  /// `FirebaseMessaging.instance.getInitialMessage()`; null in production
+  /// builds.
+  @visibleForTesting
+  final Future<RemoteMessage?>? initialMessage;
+
   // #5/#4 (review): a single memoized in-flight Future rather than a bare
   // `bool _initialized` -- every public method below (currentToken,
   // tokenRefreshes, taps) must run this exact same initialization before
@@ -126,17 +153,54 @@ class FirebasePushTokenSource implements PushTokenSource {
 
   @override
   Stream<String?> taps() async* {
-    await _ensureInitialized();
+    // #206 (C-26): with the testing seams in place nothing plugin-bound is
+    // reachable, so skip the (real) initialization they would otherwise
+    // require.
+    if (openedAppMessages == null && initialMessage == null) {
+      await _ensureInitialized();
+    }
+    yield* bridgeTaps(
+      openedApp: openedAppMessages ?? FirebaseMessaging.onMessageOpenedApp,
+      initialMessage:
+          initialMessage ?? FirebaseMessaging.instance.getInitialMessage(),
+    );
+  }
+
+  /// The [taps] stream's bridge from the Firebase sources to the
+  /// `profile_id` payload contract (#206 C-26). Static and
+  /// [visibleForTesting] so the subscription lifecycle — the exact thing
+  /// this issue fixes — is directly assertable under `flutter test`:
+  /// previously taps() listened to the opened-app stream without ever
+  /// holding the subscription and never closed the broadcast controller,
+  /// so every device-reset generation of `taps()` permanently attached
+  /// another listener and a single notification tap was delivered to every
+  /// coordinator ever created in the session. Now cancelling the returned
+  /// stream cancels the inner [openedApp] subscription and closes the
+  /// controller; the [initialMessage] callback is additionally guarded so
+  /// a cold-start payload resolving after that cancellation cannot touch a
+  /// closed controller.
+  @visibleForTesting
+  static Stream<String?> bridgeTaps({
+    required Stream<RemoteMessage> openedApp,
+    required Future<RemoteMessage?> initialMessage,
+  }) async* {
     final controller = StreamController<String?>.broadcast();
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+    late final StreamSubscription<RemoteMessage> openedAppSub;
+    controller.onCancel = () {
+      final cancelled = openedAppSub.cancel();
+      // Not awaited: `close()` completes through the controller's `done`
+      // future, which itself waits on this very onCancel callback --
+      // awaiting it here would deadlock the cancellation.
+      unawaited(controller.close());
+      return cancelled;
+    };
+    openedAppSub = openedApp.listen((message) {
       controller.add(message.data['profile_id'] as String?);
     });
-    unawaited(
-      FirebaseMessaging.instance.getInitialMessage().then((message) {
-        final profileId = message?.data['profile_id'] as String?;
-        if (profileId != null) controller.add(profileId);
-      }),
-    );
+    unawaited(initialMessage.then((message) {
+      final profileId = message?.data['profile_id'] as String?;
+      if (profileId != null && !controller.isClosed) controller.add(profileId);
+    }));
     yield* controller.stream;
   }
 }

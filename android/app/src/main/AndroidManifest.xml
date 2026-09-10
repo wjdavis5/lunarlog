@@ -70,6 +70,21 @@
                 <data android:scheme="lunarlog" android:host="auth-callback"/>
                 <data android:scheme="lunarlog" android:host="invite"/>
             </intent-filter>
+            <!-- Issue #129: HTTPS App Link fallback for invite/claim links
+                 (https://<domain>/invite?code=...). The human provisioning
+                 the hosted domain (issue #384) replaces
+                 __LUNARLOG_LINK_DOMAIN__ with that domain once DNS/hosting
+                 exist and the assetlinks.json in docs/links/ is served.
+                 Until then this placeholder matches nothing and the custom
+                 `lunarlog://` scheme above is the only working link form.
+                 autoVerify makes an installed, verified app open these links
+                 directly instead of showing a chooser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="__LUNARLOG_LINK_DOMAIN__" android:pathPrefix="/invite"/>
+            </intent-filter>
         </activity>
         <!-- Issue #166: minimal, standalone activity (not Flutter; Health
              Connect can launch this without booting the Flutter engine) that

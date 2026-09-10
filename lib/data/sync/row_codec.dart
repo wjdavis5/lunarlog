@@ -31,6 +31,12 @@
 ///   a null means "not customized on this device", and emitting it would
 ///   clear a co-guardian's curated document; the server's `?` containment
 ///   guard backstops the same rule for old clients.
+/// * `profiles.bbt_unit` / `weight_unit` (Issue #255, display-unit
+///   preferences) get `mode`'s closed-set treatment exactly: non-null by
+///   default, an absent or unrecognised value normalises to the column
+///   default (`celsius`/`kg`) — presentation-only, never a security field.
+///   An `observations` value's own `unit` is untouched by this: the
+///   preference decides rendering only.
 /// * `observations.category`/`code` (Issue #240) are free text and
 ///   deliberately NOT validated against a closed set here — unlike
 ///   `flow`/`mode`, an unrecognised value round-trips unchanged (the D-10
@@ -54,6 +60,7 @@ library;
 import 'dart:convert';
 
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 
@@ -204,6 +211,11 @@ JsonRow encodeProfile(Profile row) {
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
     'mode': row.mode,
+    // Issue #255: already the raw `toDb()` string on the drift row (the
+    // enum normalisation happens in `mappers.dart`/`decodeProfile`, never
+    // here).
+    'bbt_unit': row.bbtUnit,
+    'weight_unit': row.weightUnit,
     'birth_year': row.birthYear,
     'relationship': row.relationship,
     'last_period_start': row.lastPeriodStart,
@@ -450,6 +462,12 @@ RemoteProfileRow decodeProfile(JsonRow json) {
     deletedAt: r.timestampOrNull('deleted_at'),
     serverVersion: r.integerOr('server_version', 0),
     mode: ProfileMode.fromDb(r.stringOrNull('mode')).toDb(),
+    // Issue #255: same closed-set normalisation as `mode` above — an
+    // absent or unrecognised value degrades to the column default rather
+    // than surfacing garbage (or crashing a pull) for a presentation-only
+    // preference.
+    bbtUnit: BbtUnit.fromDb(r.stringOrNull('bbt_unit')).toDb(),
+    weightUnit: WeightUnit.fromDb(r.stringOrNull('weight_unit')).toDb(),
     birthYear: r.integerOrNull('birth_year'),
     relationship: _decodeRelationship(r.stringOrNull('relationship')),
     transferredAt: r.timestampOrNull('transferred_at'),

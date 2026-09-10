@@ -124,7 +124,16 @@ const Map<TagCategory, String> _standardCategoryLabels = {
   TagCategory.urine: 'Urine',
   TagCategory.vulvaVagina: 'Vulva & vagina',
   TagCategory.body: 'Body',
-  TagCategory.mood: 'Mood',
+  // Issue #251's feelings/mind/lifestyle categories — the old `mood`
+  // grouping rebuilt (its codes re-parented, never renamed).
+  TagCategory.feelings: 'Feelings',
+  TagCategory.mind: 'Mind',
+  TagCategory.motivation: 'Motivation',
+  TagCategory.socialLife: 'Social life',
+  TagCategory.leisure: 'Leisure',
+  TagCategory.meditation: 'Meditation',
+  TagCategory.pms: 'PMS',
+  TagCategory.partying: 'Partying',
 };
 
 const CareModeCopy _standard = CareModeCopy(
@@ -160,7 +169,8 @@ const CareModeCopy _teen = CareModeCopy(
   // standard category is still here, only reordered (not a reduced app).
   categoriesInOrder: [
     TagCategory.body,
-    TagCategory.mood,
+    TagCategory.feelings,
+    TagCategory.mind,
     TagCategory.pain,
     TagCategory.energy,
     TagCategory.sleep,
@@ -174,6 +184,12 @@ const CareModeCopy _teen = CareModeCopy(
     TagCategory.hotFlashes,
     TagCategory.urine,
     TagCategory.vulvaVagina,
+    TagCategory.motivation,
+    TagCategory.socialLife,
+    TagCategory.leisure,
+    TagCategory.meditation,
+    TagCategory.pms,
+    TagCategory.partying,
   ],
   categoryLabels: {
     TagCategory.pain: 'Pain',
@@ -190,7 +206,14 @@ const CareModeCopy _teen = CareModeCopy(
     TagCategory.urine: 'Urine',
     TagCategory.vulvaVagina: 'Vulva & vagina',
     TagCategory.body: 'How your body feels',
-    TagCategory.mood: 'Mood',
+    TagCategory.feelings: 'Feelings',
+    TagCategory.mind: 'Mind',
+    TagCategory.motivation: 'Motivation',
+    TagCategory.socialLife: 'Social life',
+    TagCategory.leisure: 'Leisure',
+    TagCategory.meditation: 'Meditation',
+    TagCategory.pms: 'PMS',
+    TagCategory.partying: 'Partying',
   },
 );
 

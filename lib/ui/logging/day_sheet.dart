@@ -113,6 +113,15 @@ const List<FlowLevel> kSelectableFlowLevels = [
   FlowLevel.superHeavy,
 ];
 
+/// Issue #256: the graded intensity values a pain code's selector offers —
+/// the full `observations.intensity` domain (1-5, `kMinObservationIntensity`
+/// .. `kMaxObservationIntensity`, the same bounds the server-side CHECK and
+/// the local storage layer enforce). 4 and 5 are the grades the
+/// caregiver-alert trigger classifies as high severity.
+final List<int> kGradedIntensities = [
+  for (int i = kMinObservationIntensity; i <= kMaxObservationIntensity; i++) i,
+];
+
 /// [#138] Wraps a chip so a screen reader hears its group, its label, and
 /// its selected state as one node, with an accessibility tap action wired
 /// to the same toggle the visible chip performs. The chip's own semantics
@@ -263,6 +272,21 @@ class _DaySheetState extends State<DaySheet> {
   /// entry.
   bool _spotting = false;
 
+  /// Issue #256: the graded intensity (1-5) chosen per pain code, keyed by
+  /// taxonomy code and synced to the day's `category: 'pain'` observations
+  /// rows by [_syncPainIntensityObservations] on every autosave — the
+  /// observations side of the intensity model (`observations.intensity`,
+  /// #240), which is what the server's high-severity caregiver alert
+  /// (`intensity >= 4`) reads. Absent key = no intensity for that code;
+  /// an explicit `null` value = the user cleared a previously recorded
+  /// intensity this session (the row is tombstoned — ungraded means "no
+  /// severity recorded", never "low"). Seeded on load by
+  /// [_loadExistingPainIntensity] from any already-persisted graded pain
+  /// rows (including imported ones), so an existing grade is never
+  /// silently dropped: editing a pain code's intensity is always a
+  /// deliberate act on the selector below the Pain chips.
+  final Map<String, int?> _painIntensity = {};
+
   /// Issue #220: the first-class PMS marker, tracked straight off the
   /// loaded entry (like flow and tags — it rides `DayEntry.pms` itself,
   /// not a child row).
@@ -345,6 +369,7 @@ class _DaySheetState extends State<DaySheet> {
     _noteController.addListener(_markDirty);
     if (existing != null) {
       _loadExistingSpotting(existing.id);
+      _loadExistingPainIntensity(existing.id);
     }
   }
 
@@ -380,6 +405,7 @@ class _DaySheetState extends State<DaySheet> {
           try {
             final saved = await repository.save(pending);
             await _syncSpottingObservation(saved, pending.tz, observations);
+            await _syncPainIntensityObservations(saved, pending.tz, observations);
           } catch (_) {}
         });
       }
@@ -480,6 +506,7 @@ class _DaySheetState extends State<DaySheet> {
       validateTagCodes(_sessionSelectedTags);
       final saved = await widget.repository.save(pending);
       await _syncSpottingObservation(saved, pending.tz, observations);
+      await _syncPainIntensityObservations(saved, pending.tz, observations);
       return true;
     } catch (_) {
       _dirty = true;
@@ -530,6 +557,34 @@ class _DaySheetState extends State<DaySheet> {
         _hadSpottingOnLoad = true;
       });
     }
+  }
+
+  /// Issue #256: seeds [_painIntensity] from the day's already-persisted
+  /// graded pain observations (`category: 'pain'`, `intensity` not null),
+  /// so an existing grade — including an imported one — shows up on the
+  /// selector and is never silently dropped by an autosave that never
+  /// touched it. When several live rows carry the same code (possible in
+  /// imported data; local writes resolve one row per code), the highest
+  /// grade wins — the severity reading a caregiver alert would act on.
+  Future<void> _loadExistingPainIntensity(String dayEntryId) async {
+    final painRows = [
+      for (final o
+          in await Provider.of<ObservationsRepository>(
+            context,
+            listen: false,
+          ).listForDayEntry(dayEntryId))
+        if (o.category == 'pain' && o.code != null && o.intensity != null) o,
+    ];
+    if (!mounted || painRows.isEmpty) return;
+    setState(() {
+      for (final o in painRows) {
+        final code = o.code!;
+        final current = _painIntensity[code];
+        if (current == null || o.intensity! > current) {
+          _painIntensity[code] = o.intensity;
+        }
+      }
+    });
   }
 
   /// The `flow` value actually written by every autosave compose (#247,
@@ -597,6 +652,70 @@ class _DaySheetState extends State<DaySheet> {
         updatedAt: DateTime.now().toUtc(),
       ),
     );
+  }
+
+  /// Issue #256: writes the day's graded pain observations to match
+  /// [_painIntensity], keyed by [saved]'s id, mirroring
+  /// [_syncSpottingObservation]'s post-save step. For every code with a
+  /// chosen intensity the day's `category: 'pain'` row for that code is
+  /// upserted with it; a code explicitly cleared this session (value
+  /// `null`) has its graded row tombstoned — an ungraded row records "no
+  /// severity recorded", never "low". A code absent from the map is never
+  /// touched, so a graded row that arrived from another device (or an
+  /// import) mid-session survives an autosave the operator directed at
+  /// something else. A null [observations] (no provider reachable) skips
+  /// the sync rather than failing the already-persisted entry write, exactly
+  /// like the spotting sync.
+  Future<void> _syncPainIntensityObservations(
+    DayEntry saved,
+    String tz,
+    ObservationsRepository? observations,
+  ) async {
+    if (observations == null || _painIntensity.isEmpty) return;
+    final existingPain = [
+      for (final o in await observations.listForDayEntry(saved.id))
+        if (o.category == 'pain') o,
+    ];
+    for (final entry in _painIntensity.entries) {
+      final intensity = entry.value;
+      final existingRows = [
+        for (final o in existingPain) if (o.code == entry.key) o,
+      ];
+      if (intensity == null) {
+        // Explicitly cleared this session: tombstone this code's graded
+        // row(s). Codes never touched this session never enter the map,
+        // so their rows are unreachable from here.
+        for (final o in existingRows) {
+          if (o.intensity != null) await observations.delete(o.id);
+        }
+        continue;
+      }
+      if (existingRows.isNotEmpty) {
+        final row = existingRows.first;
+        if (row.intensity != intensity) {
+          await observations.save(
+            row.copyWith(
+              intensity: intensity,
+              updatedAt: DateTime.now().toUtc(),
+            ),
+          );
+        }
+        continue;
+      }
+      await observations.save(
+        Observation(
+          id: '',
+          dayEntryId: saved.id,
+          profileId: widget.profileId,
+          localDate: widget.date,
+          tz: tz,
+          category: 'pain',
+          code: entry.key,
+          intensity: intensity,
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+    }
   }
 
   /// Issue #182 AC8: captured before the sheet goes away (the sheet's own
@@ -894,6 +1013,101 @@ class _DaySheetState extends State<DaySheet> {
     _markDirty();
   }
 
+  /// Issue #256: records [code]'s intensity choice ([value], or `null` to
+  /// clear) and marks the sheet dirty — the observation-row write itself
+  /// rides the autosave via [_syncPainIntensityObservations], exactly like
+  /// the spotting toggle.
+  void _setPainIntensity(String code, int? value) {
+    setState(() => _painIntensity[code] = value);
+    _markDirty();
+  }
+
+  /// The pain codes needing an intensity selector row right now: every
+  /// taxonomy pain code whose chip is selected, plus every code already
+  /// carrying an intensity state this session (a loaded/imported grade).
+  /// Taxonomy order, pain-first per #249's settled ordering.
+  Iterable<TagCode> get _painIntensitySelectors sync* {
+    for (final tag in kTagTaxonomy) {
+      if (tag.category == TagCategory.pain &&
+          (_tags.contains(tag.code) || _painIntensity.containsKey(tag.code))) {
+        yield tag;
+      }
+    }
+  }
+
+  /// One graded 1-5 intensity selector row for [tag] (issue #256): five
+  /// choice chips plus a Clear affordance, wrapped in the same #138
+  /// semantics pattern as every other chip group here. The chosen value
+  /// lives on the code's `observations` row (`observations.intensity`,
+  /// #240's schema) — the field the server's high-severity caregiver alert
+  /// reads (`intensity >= 4`, issue #256). Clear leaves the row ungraded:
+  /// "no severity recorded", never "low".
+  Widget _painIntensityRow(AppLocalizations l10n, ThemeData theme, TagCode tag) {
+    final group = l10n.daySheetIntensityGroup;
+    final current = _painIntensity[tag.code];
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                tag.display,
+                style: theme.textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 2,
+              children: [
+                for (final level in kGradedIntensities)
+                  groupedChipSemantics(
+                    group: group,
+                    label: '${tag.display} $level',
+                    selected: current == level,
+                    onTap:
+                        _busy || current == level
+                            ? null
+                            : () => _setPainIntensity(tag.code, level),
+                    child: ChoiceChip(
+                      key: ValueKey('pain-intensity-${tag.code}-$level'),
+                      label: Text('$level'),
+                      selected: current == level,
+                      onSelected: _busy
+                          ? null
+                          : (_) => _setPainIntensity(tag.code, level),
+                    ),
+                  ),
+                groupedChipSemantics(
+                  group: group,
+                  label: '${tag.display} ${l10n.daySheetIntensityClear}',
+                  selected: false,
+                  onTap: _busy || current == null
+                      ? null
+                      : () => _setPainIntensity(tag.code, null),
+                  child: FilterChip(
+                    key: ValueKey('pain-intensity-${tag.code}-clear'),
+                    label: Text(l10n.daySheetIntensityClear),
+                    selected: false,
+                    onSelected: _busy
+                        ? null
+                        : (_) => _setPainIntensity(tag.code, null),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// A section heading for the editable sheet (#138): visible like before
   /// (labelMedium), and flagged [Semantics.header] so screen readers offer
   /// heading navigation between the chip groups.
@@ -991,6 +1205,17 @@ class _DaySheetState extends State<DaySheet> {
                             ),
                       ],
                     ),
+                  // Issue #256: the pain category's graded intensity
+                  // selectors — one row per pain code that is either
+                  // chip-selected or already carries an intensity for the
+                  // day (so an existing/imported grade stays visible and
+                  // editable even if the code's day-entry tag is not
+                  // selected). AC: "at least the pain category exposes a
+                  // graded intensity input in the day sheet"; the reusable
+                  // IntensitySelector component is issue #234.
+                  if (category == TagCategory.pain)
+                    for (final tag in _painIntensitySelectors)
+                      _painIntensityRow(l10n, theme, tag),
                 ],
                 if (_unrecognisedTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),

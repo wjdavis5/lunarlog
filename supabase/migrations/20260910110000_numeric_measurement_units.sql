@@ -1,131 +1,112 @@
--- Migration: 20260909220000_profile_tracking_preferences.sql
--- Issue #259 (P1, epic:tracking-model): per-profile tracking preferences
--- -- an enabled-category set plus a sort order, stored alongside the
--- profile and synced, so co-guardians always see the same curated day
--- sheet. This is the data-model and read-path half only; the picker UI
--- is #234.
+-- Migration: 20260910110000_numeric_measurement_units.sql
+-- Issue #255 (P1, epic: tracking-model): BBT and weight as numeric
+-- measurements -- the per-profile display-unit preference plus the
+-- same-date source-discipline guarantee.
 --
--- STORAGE DECISION (the issue left the shape as an implementer's call,
--- to be documented in the PR): `profiles.tracking_preferences jsonb`,
--- nullable, on the exact birth_year/relationship/mode/cycle-facts
--- precedent (20260906160000, 20260908120000, 20260909120000) -- NOT a
--- dedicated synced table. A preference document is a single 1:1
--- extension of a row that already syncs under exactly the write ladder
--- the issue wants (only primary_guardian/co_parent edit profile
--- metadata); a dedicated table would add a pull cursor, an RLS policy
--- set, a sync_push section, and a drift table for what is one column of
--- the profiles row, with no lifecycle of its own (it is never
--- tombstoned, never enumerated, never read by anything but its own
--- profile's day sheet). The document is the partial override map
--- `{category: {enabled, sort_order}}` keyed by the client taxonomy's
--- category wire names: any category the document omits resolves
--- client-side to its default, which is what keeps the mechanism
--- forward-compatible with taxonomy growth (#249's unverified
--- categories, and the categories #251 (TM-4b) / #253 (TM-4d) will add).
+-- What this migration owns (the storage half of the issue):
+--   1. `profiles.bbt_unit` (`celsius|fahrenheit`) and `profiles.weight_unit`
+--      (`kg|lb`): per-profile *display*-unit preferences. Each
+--      `observations` row stores its value together with the unit it is
+--      actually in (`observations.value_num` + `observations.unit`, both
+--      shipped by 20260908160000_observations.sql / #240); the preference
+--      decides only how a value renders. It is never a storage unit --
+--      nothing converts stored values when the preference changes, so a
+--      stored value renders in the chosen display unit regardless of the
+--      unit it was entered/imported in (the client converts at read time;
+--      see `lib/domain/models/measurement_unit.dart`). Follows the #218
+--      cycle-facts precedent end to end: table CHECK constraints as the
+--      closed-set enforcement (a bad value pushed by any client lands in
+--      `sync_push`'s `rejected` list, the same as a CHECK failure), a
+--      column-scoped `grant update`, and a `v_row ? 'key'`-guarded
+--      sync_push UPDATE path so a pre-#255 client's ordinary profile edit
+--      never clobbers a stored preference (the PR #108 review item #3
+--      lesson, applied to every profiles-column migration since).
+--   2. `sync_push` re-emitted with both keys added to `c_profile_keys`,
+--      the parse block (absent key coalesces to the column default, the
+--      #131 mode pattern), the INSERT path, and the guarded UPDATE path.
+--   3. The observations same-date (category, code) collision dedup is now
+--      source-scoped (`and source = v_source`): a wearable-sourced value
+--      and a manually-entered value at the same (profile, date,
+--      category, code) are different facts and coexist, so a wearable
+--      temperature/weight can never overwrite or merge with a
+--      manually-entered BBT/weight value (the issue's A1-42 source
+--      discipline). Purely-numeric rows (code IS NULL -- how bbt and
+--      weight are stored) never entered the dedup at all, so this only
+--      ever changed coded siblings; the anti-duplicate-race property the
+--      dedup was built for ("I have a headache today", logged offline on
+--      two phones) is manual-vs-manual, i.e. same-source, and still
+--      collapses exactly as before.
+--   4. `export_account_data()` gains the two new profile columns in its
+--      projection (right-of-access completeness; the server export
+--      already carried every other profiles column).
 --
--- THE MINOR-VISIBILITY DEFAULT IS CLIENT-OWNED, LIKE EVERY DEFAULT:
--- `partying` and `sex_life` default to hidden on an isMinor profile per
--- global assumption #2 (the mechanism those two issues depend on). The
--- rule resolves on read client-side (lib/domain/logging/
--- tracking_preferences.dart's kMinorDefaultHiddenTrackingCategories,
--- keyed by wire name so it is already in force when those categories
--- land) -- the server never recomputes or enforces it, exactly as it
--- never recomputes predictions (the profile_reminder_windows
--- precedent: the client stays the only implementation of the
--- algorithm). What the server must do -- and what the pgTAP suite pins
--- -- is stay out of the way honestly: store the document verbatim, let
--- a primary_guardian's explicit enable of `partying`/`sex_life` on a
--- minor profile round-trip (AC4's server half), and never let an old
--- client's unrelated edit clobber the document (the containment guard).
--- Curation is presentation, never permission: no policy, grant, or role
--- check in this file consults the column.
+-- Every numeric measurement row already carries a non-null `source`
+-- server-side (`observations_source_check` + `not null default 'manual'`
+-- from #240); the issue's "never merges" half is item 3 above. BBT's
+-- per-datapoint `excluded` flag also already round-trips (#240's
+-- `excluded` column and the Clue importer's `ClueNumericDatapoint`).
 --
--- Sections:
---   1. `profiles.tracking_preferences jsonb` +
---      `profiles_tracking_preferences_check` via
---      `public.is_valid_tracking_preferences()` (the issue #40
---      is_valid_tags_array() pattern): object-of-objects shape only --
---      category keys stay free text (the taxonomy is client-owned and
---      grows; the observations.category "stored, never rejected"
---      precedent), while each entry must carry a boolean `enabled` and
---      an integer `sort_order` in [0, 1000] and nothing else.
---   2. `grant update (tracking_preferences)` -- additive column-list
---      grant (KTD15); the table-level select grant already covers
---      reading it.
---   3. `sync_push`: create-or-replaced from its latest body
---      (20260909210000_profile_transferred_to_user_id.sql, the current
---      tip -- this file sorts after it per Migration Flow item 7),
---      copied verbatim with only the profiles section touched: the key
---      joins the allowlist, is parsed with the `nullif(...,
---      'null'::jsonb)` collapse (observations.raw's lesson),
---      round-tripped on the INSERT path, and written on the UPDATE path
---      behind the usual `v_row ? 'key'` containment guard. #296's
---      transferred_to_user_id tolerated-but-never-read handling is kept
---      exactly as that migration shipped it. Same 7-argument signature,
---      so CREATE OR REPLACE works in place -- exactly one sync_push
---      afterwards.
---
--- Filename ordering (AGENTS.md Migration Flow step 7): originally
--- authored as 20260909210000_profile_tracking_preferences.sql in
--- parallel with #376's migration of the same timestamp; renamed to
--- 20260909220000 during the #378 merge integration so it sorts after
--- main's tip, 20260909210000_profile_transferred_to_user_id.sql (both
--- files re-emit sync_push from different bases, so this file's body is
--- carried forward from #376's, not from 20260909160000). The two touch
--- disjoint columns and have no interaction.
+-- Filename ordering (AGENTS.md Migration Flow item 7): the original
+-- 20260909210000_ prefix collided with main's
+-- 20260909210000_profile_transferred_to_user_id.sql (a schema_migrations
+-- primary-key collision), and main has since added
+-- 20260909220000_prediction_connections_minor_gate.sql and
+-- 20260910000000_high_severity_intensity.sql, so this file was renamed to
+-- sort after main's current tip. The latest sync_push body before this
+-- file is 20260909210000_profile_transferred_to_user_id.sql (#296, which
+-- added the tolerated-not-read transferred_to_user_id key); the two
+-- migrations after it touch neither sync_push nor any table this file
+-- alters, so this file carries that #296 body forward verbatim other than
+-- the unit-column deltas called out inline below.
 
 -- ---------------------------------------------------------------------------
--- 1. New column + shape CHECK
+-- 1. New columns -- display-unit preferences, not storage units.
 -- ---------------------------------------------------------------------------
-
-create or replace function public.is_valid_tracking_preferences(p_doc jsonb)
-returns boolean
-language sql
-immutable
-as $$
-  select p_doc is null or (
-    jsonb_typeof(p_doc) = 'object'
-    and not exists (
-      select 1
-        from jsonb_each(p_doc) as e(key, value)
-       where key = ''
-          or length(key) > 64
-          or jsonb_typeof(value) <> 'object'
-          or exists (select 1 from jsonb_object_keys(value) k where k not in ('enabled', 'sort_order'))
-          or jsonb_typeof(value -> 'enabled') is distinct from 'boolean'
-          or jsonb_typeof(value -> 'sort_order') is distinct from 'number'
-          or (value ->> 'sort_order') !~ '^[0-9]{1,4}$'
-          or (value ->> 'sort_order')::numeric > 1000
-      )
-  );
-$$;
-
-comment on function public.is_valid_tracking_preferences(jsonb) is
-  'Shape check for Issue #259 tracking-preferences documents: an object mapping category wire names (1-64 chars, any string -- the taxonomy is client-owned and grows, so keys are never validated against a closed set) to objects carrying exactly a boolean enabled and an integer sort_order in [0, 1000]. Mirrors is_valid_tags_array()''s role for day_entries.tags (issue #40).';
 
 alter table public.profiles
-  add column tracking_preferences jsonb
-    constraint profiles_tracking_preferences_check
-    check (public.is_valid_tracking_preferences(tracking_preferences));
+  add column bbt_unit text
+    not null
+    default 'celsius'
+    constraint profiles_bbt_unit_check
+    check (bbt_unit in ('celsius', 'fahrenheit'));
 
-comment on column public.profiles.tracking_preferences is
-  'Issue #259: the profile''s curated tracking categories -- a partial {category: {enabled, sort_order}} document; any category it omits resolves client-side to its default (enabled, taxonomy order), except the minor-hidden set on an is_minor profile, whose default-hidden rule also resolves client-side (a stored entry always wins, so a primary guardian can enable a hidden category). Presentation curation only: no authorization path consults this column, and hiding a category never deletes or hides already-logged entries for it.';
+alter table public.profiles
+  add column weight_unit text
+    not null
+    default 'kg'
+    constraint profiles_weight_unit_check
+    check (weight_unit in ('kg', 'lb'));
+
+comment on column public.profiles.bbt_unit is
+  'Issue #255: per-profile basal-body-temperature DISPLAY unit
+   (celsius|fahrenheit). Rendering preference only -- each observations
+   row stores its own value together with the unit it is actually in, and
+   nothing converts stored values when this preference changes. Defaults
+   to celsius (Clue''s default, and what basal thermometers sold outside
+   the US report in).';
+
+comment on column public.profiles.weight_unit is
+  'Issue #255: per-profile weight DISPLAY unit (kg|lb). Same contract as
+   profiles.bbt_unit. Defaults to kg, the same metric default.';
 
 -- ---------------------------------------------------------------------------
--- 2. Privileges - ordinary profile metadata (birth_year/relationship
--- precedent); reading is covered by the table-level select grant.
+-- 2. Privileges -- ordinary profile metadata, same grant shape as
+-- birth_year/relationship/mode.
 -- ---------------------------------------------------------------------------
 
-grant update (tracking_preferences) on table public.profiles to authenticated;
+grant update (bbt_unit, weight_unit)
+  on table public.profiles to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 3. sync_push: extend the profile key allowlist and the insert/update
--- paths. Full function body carried forward verbatim from
--- 20260909210000_profile_transferred_to_user_id.sql (the current tip,
--- whose own carried sections - #296's transferred_to_user_id
--- tolerated-but-never-read key included - are kept exactly as shipped)
--- other than the additions called out inline below; same 7-argument
--- signature, so a plain create-or-replace applies (no overload fork).
+-- 3. sync_push: the two keys join the profile allowlist, the parse block,
+-- the INSERT, and the UPDATE (behind `v_row ? 'key'` containment guards,
+-- the PR #108 item #3 lesson). Full function body carried forward
+-- verbatim from 20260909210000_profile_transferred_to_user_id.sql (main's
+-- current definition, whose tolerated-not-read transferred_to_user_id key
+-- and every other carried section this re-emission keeps intact) other
+-- than the additions called out inline below; the
+-- signature is unchanged, so a plain create-or-replace applies (no
+-- overload fork -- the parameter type list did not change).
 -- ---------------------------------------------------------------------------
 
 create or replace function public.sync_push(
@@ -155,10 +136,9 @@ declare
     'mode',
     -- #218: onboarding cycle facts, syncable like any other profile column
     'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days',
-    -- #259: the curated tracking-categories document, syncable like any
-    -- other profile column (category keys inside the document stay free
-    -- text -- the taxonomy is client-owned and grows)
-    'tracking_preferences',
+    -- #255: numeric-measurement display-unit preferences, syncable like
+    -- any other profile column
+    'bbt_unit', 'weight_unit',
     -- tolerated but never read
     'user_id', 'server_version', 'transferred_at',
     -- #296: same treatment as transferred_at - ownership state written
@@ -238,9 +218,10 @@ declare
   v_last_period_start date;
   v_typical_cycle_length_days smallint;
   v_typical_period_length_days smallint;
-  -- #259: the tracking-preferences document (jsonb, null when absent or
-  -- explicitly null in the payload)
-  v_tracking_preferences jsonb;
+  -- #255: numeric-measurement display-unit preferences; absent keys parse
+  -- to the column defaults
+  v_bbt_unit text;
+  v_weight_unit text;
   v_profile_id text;
   v_local_date date;
   v_tz text;
@@ -422,18 +403,14 @@ begin
       v_last_period_start := (v_row ->> 'last_period_start')::date;
       v_typical_cycle_length_days := (v_row ->> 'typical_cycle_length_days')::smallint;
       v_typical_period_length_days := (v_row ->> 'typical_period_length_days')::smallint;
-      -- #259: the document parses as-is (shape validated by
-      -- profiles_tracking_preferences_check -- a bad value lands the row
-      -- in `rejected` like any other CHECK failure). `nullif` collapses
-      -- an explicit JSON `null` to SQL NULL (the observations.raw
-      -- lesson: `-> 'key'` on a JSON null yields the jsonb null literal,
-      -- not SQL NULL); an absent key already yields SQL NULL. The UPDATE
-      -- path below applies the `?` containment guard, so a pre-#259
-      -- client that omits the key entirely never clobbers a stored
-      -- document -- and a client that simply has not pulled yet sends no
-      -- key either (the codec emits it only when locally non-null), so a
-      -- co-guardian's curated document survives every unrelated edit.
-      v_tracking_preferences := nullif(v_row -> 'tracking_preferences', 'null'::jsonb);
+      -- #255: display-unit preferences parse like mode -- the columns are
+      -- not null with defaults, so an absent key parses to the default;
+      -- an out-of-set value is rejected by the column CHECK into
+      -- `rejected` like any other CHECK failure. The UPDATE path applies
+      -- the same `?` containment guard so a pre-#255 client's push never
+      -- touches a stored preference.
+      v_bbt_unit := coalesce(v_row ->> 'bbt_unit', 'celsius');
+      v_weight_unit := coalesce(v_row ->> 'weight_unit', 'kg');
       if v_deleted_at is not null then
         -- tombstones carry no payload
         v_display_name := '';
@@ -453,12 +430,12 @@ begin
           (id, display_name, is_minor, sort_order, archived_at, created_at, updated_at, deleted_at,
            birth_year, relationship, mode,
            last_period_start, typical_cycle_length_days, typical_period_length_days,
-           tracking_preferences)
+           bbt_unit, weight_unit)
         values
           (v_id, v_display_name, v_is_minor, v_sort_order, v_archived_at, v_created_at, v_updated_at, v_deleted_at,
            v_birth_year, v_relationship, v_mode,
            v_last_period_start, v_typical_cycle_length_days, v_typical_period_length_days,
-           v_tracking_preferences);
+           v_bbt_unit, v_weight_unit);
       else
         -- Profile exists: check guardian role of caller
         select role into v_caller_role
@@ -518,13 +495,11 @@ begin
                  last_period_start = case when v_row ? 'last_period_start' then v_last_period_start else v_stored_profile.last_period_start end,
                  typical_cycle_length_days = case when v_row ? 'typical_cycle_length_days' then v_typical_cycle_length_days else v_stored_profile.typical_cycle_length_days end,
                  typical_period_length_days = case when v_row ? 'typical_period_length_days' then v_typical_period_length_days else v_stored_profile.typical_period_length_days end,
-                 -- #259: same containment guard as every optional profile
-                 -- column above. An explicit JSON null in the payload
-                 -- (cleared back to defaults) still lands: nullif turned
-                 -- it into SQL NULL, and the key IS present, so the case
-                 -- writes null over the stored document. Only a key that
-                 -- is absent altogether preserves it.
-                 tracking_preferences = case when v_row ? 'tracking_preferences' then v_tracking_preferences else v_stored_profile.tracking_preferences end
+                 -- #255: same containment guard as mode/#218 above -- a
+                 -- pre-#255 client never sends these keys, and its ordinary
+                 -- metadata edits must not clobber a stored preference.
+                 bbt_unit = case when v_row ? 'bbt_unit' then v_bbt_unit else v_stored_profile.bbt_unit end,
+                 weight_unit = case when v_row ? 'weight_unit' then v_weight_unit else v_stored_profile.weight_unit end
            where id = v_id;
         elsif v_updated_at = v_stored_profile.updated_at
               and v_deleted_at is not null
@@ -995,12 +970,21 @@ begin
 
       if v_obs_check_collision then
         if v_code is not null then
+          -- Issue #255 (A1-42 source discipline): the collision dedup is
+          -- source-scoped. A wearable-sourced temperature or weight value
+          -- and a manually-entered BBT/weight value on the same date are
+          -- different facts and must coexist, so neither ever overwrites
+          -- or tombstones the other. The anti-duplicate-race property the
+          -- dedup was built for is untouched: the "same tap on two
+          -- phones" case is always manual-vs-manual (or same-source), and
+          -- those rows still collapse exactly as before.
           select * into v_other_obs
             from public.observations
            where profile_id = v_profile_id
              and local_date = v_local_date
              and category = v_category
              and code = v_code
+             and source = v_source
              and deleted_at is null
              and id <> v_id
            for update;
@@ -1667,9 +1651,368 @@ begin
     'server_now', now());
 end;
 $$;
-
 comment on function public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb) is
-  'Batch upsert of profiles, day entries, then observations under guardian role permissions with authoritative attribution stamping. U1: profiles carries birth_year/relationship through this path; transferred_at is tolerated-but-never-read. #296: transferred_to_user_id joins it as tolerated-but-never-read (ownership state, written only by accept_ownership_transfer). #131: profiles carries mode through this path. Same-date day_entries collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins - except that a tombstoned row always has flow forced to none, same as note/tags (issue #224). Issue #220: day_entries also carries the first-class pms marker through this path - last-writer-wins like flow/note (a single boolean, nothing to union), written on update only when the payload carries the pms key (the v_row ? ''key'' containment guard, so a pre-#220 client never clears a stored marker), and forced to false on every tombstone (day_entries_tombstone_pms_check is the structural backstop). Observations: a brand-new row colliding with an already-live sibling on (profile_id, local_date, category, code) resolves head-to-head (newer updated_at wins, ulid tiebreak) with the loser becoming a payload-free tombstone - the child-table analogue of the day_entries tag union, since there is no array to union here (see 20260908160000_observations.sql''s header). A per-day (profile_id, local_date) cap of 200 live observations is enforced in this RPC, not a CHECK. p_observations defaults to an empty array so a pre-#240 2-argument call keeps working unchanged. Issue #159: day_entries now carries source/source_id/import_id (client-authored provenance, closed-set source check, partial-unique (profile_id, source, source_id) index for import dedup) through this path exactly like every other day_entries column, with a v_row ? ''key'' containment guard on all three so an old client omitting them never nulls an already-stored value (the U1/#131 pattern); observations gains import_id with the same containment guard, and source_id now gets it too (closing a pre-existing #240 gap); source itself now gets the same guard as day_entries.source (review finding: an omitted key coalescing to ''manual'' is not distinguishable from an explicit ''manual'' without one). Provenance is never cleared on a tombstone on either table (source_id/import_id survive a day_entries or observations delete, reversing #240''s original source_id-clearing on an observations tombstone) so a deleted row stays recognisable to a future re-import. Issue #180 review fix: v_local_date is now derived from observed_at/tz (when observed_at is present) immediately after v_tz is resolved, ahead of the stored-row lookup, the same-date (category, code) collision dedup, and the per-day cap, so those checks -- and v_obs_check_collision''s own date-move detection -- always run against the same local_date the observations_derive_local_date trigger will independently recompute; previously they ran against the stale client-supplied local_date key, letting a push (or an observed_at-only update) land on a different day than what was checked. Issue #188: p_profile_modes and p_cycle_overrides (both defaulting to empty arrays so every older-arity call keeps working) carry the life-stage mode row (one per profile, no tombstone, strict LWW with every optional column guarded by the same v_row ? ''key'' containment check so an older client never clobbers birth-control state or health_sync_consent) and manual cycle corrections (per-id LWW with #224-style payload-free tombstones; cycle_overrides_tombstone_payload_check is the structural backstop). Both new sections enforce the issue''s write ladder: any accepted guardian reads, only primary_guardian/co_parent writes. A mode switch never touches day_entries/observations. Issue #128: p_care_notes/p_visit_prep_items carry the per-profile care notes and visit-prep checklist (per-id LWW with #224-style payload-free tombstones; care_notes_tombstone_payload_check/visit_prep_items_tombstone_payload_check are the structural backstops), both under the day_entries write ladder (any accepted guardian reads; primary_guardian/co_parent/caregiver writes; viewer rejected). Issue #259: profiles also carries the tracking_preferences document (shape-checked by profiles_tracking_preferences_check, category keys inside it free text - the taxonomy is client-owned) through the profile path with the usual v_row ? ''key'' containment guard, so a pre-#259 client never clobbers a stored document; the client emits the key only when it holds one, so a device that has not pulled yet cannot wipe a co-guardian''s curation either. Curation is presentation only: it changes no role gate here and deletes no logged data.';
+  'Batch upsert of profiles, day entries, then observations under guardian role permissions with authoritative attribution stamping. U1: profiles carries birth_year/relationship through this path; transferred_at is tolerated-but-never-read. #131: profiles carries mode through this path. Same-date day_entries collisions union tags onto the surviving row (R7, issue #3 gap-closure plan U4) while flow/note stay last-writer-wins - except that a tombstoned row always has flow forced to none, same as note/tags (issue #224). Issue #220: day_entries also carries the first-class pms marker through this path - last-writer-wins like flow/note (a single boolean, nothing to union), written on update only when the payload carries the pms key (the v_row ? ''key'' containment guard, so a pre-#220 client never clears a stored marker), and forced to false on every tombstone (day_entries_tombstone_pms_check is the structural backstop). Observations: a brand-new row colliding with an already-live sibling on (profile_id, local_date, category, code) resolves head-to-head (newer updated_at wins, ulid tiebreak) with the loser becoming a payload-free tombstone - the child-table analogue of the day_entries tag union, since there is no array to union here (see 20260908160000_observations.sql''s header). Issue #255: that collision dedup is source-scoped - a wearable-sourced value and a manually-entered value at the same (profile, date, category, code) are different facts and coexist, so a device-sourced temperature or weight never overwrites a manual entry (A1-42 source discipline); same-source rows still collapse exactly as before, which is what keeps the anti-duplicate-race property (the same tap logged offline on two phones is manual-vs-manual). Issue #255 also adds profiles.bbt_unit/weight_unit (numeric-measurement display-unit preferences) to the profile allowlist/parse/insert and the v_row ? ''key''-guarded update, the #218/#131 pattern; an absent key parses to the column default, an out-of-set value lands the row in rejected via the column CHECK. A per-day (profile_id, local_date) cap of 200 live observations is enforced in this RPC, not a CHECK. p_observations defaults to an empty array so a pre-#240 2-argument call keeps working unchanged. Issue #159: day_entries carries source/source_id/import_id through this path with containment guards so an old client omitting them never nulls an already-stored value; provenance is never cleared on a tombstone on either table. Issue #180 review fix: v_local_date is derived from observed_at/tz ahead of every observations check. Issue #188: p_profile_modes and p_cycle_overrides carry the life-stage mode row and manual cycle corrections under their own write ladder. Issue #128: p_care_notes/p_visit_prep_items carry the per-profile care notes and visit-prep checklist under the day_entries write ladder.';
 
 revoke execute on function public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb) from public, anon;
 grant execute on function public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. export_account_data(): the two new profile columns join the server
+-- export's projection (create-or-replace; body carried forward verbatim
+-- from 20260908190000_bulk_import.sql, the current definition, other than
+-- the additions called out inline below).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.export_account_data()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_profiles jsonb;
+  v_profile_guardians jsonb;
+  v_guardian_invitations jsonb;
+  v_ownership_transfers jsonb;
+  v_notification_preferences jsonb;
+  v_push_devices jsonb;
+  v_missed_entry_alert_state jsonb;
+  v_feedback_tickets jsonb;
+  v_profile_reminder_windows jsonb;
+  v_import_jobs jsonb;
+begin
+  if v_uid is null then
+    raise exception 'authentication required' using errcode = 'insufficient_privilege';
+  end if;
+
+  -- ---------------------------------------------------------------------
+  -- profiles + nested day_entries. Owned profiles carry every live entry;
+  -- shared profiles (the caller is an accepted guardian but not the
+  -- owner) carry only entries the caller authored.
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', pr.id,
+        'display_name', pr.display_name,
+        'is_minor', pr.is_minor,
+        'mode', pr.mode,
+        'sort_order', pr.sort_order,
+        'archived_at', pr.archived_at,
+        'created_at', pr.created_at,
+        'updated_at', pr.updated_at,
+        'birth_year', pr.birth_year,
+        'relationship', pr.relationship,
+        -- Issue #255: the numeric-measurement display-unit preferences.
+        'bbt_unit', pr.bbt_unit,
+        'weight_unit', pr.weight_unit,
+        'transferred_at', pr.transferred_at,
+        'owned', (pr.user_id = v_uid),
+        'day_entries', coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', de.id,
+              'local_date', de.local_date,
+              'tz', de.tz,
+              'flow', de.flow,
+              'tags', de.tags,
+              'note', de.note,
+              'created_at', de.created_at,
+              'updated_at', de.updated_at,
+              'logged_by_user_id', de.logged_by_user_id,
+              'last_modified_by_user_id', de.last_modified_by_user_id
+            )
+            order by de.local_date, de.id
+          )
+          from public.day_entries de
+          where de.profile_id = pr.id
+            and de.deleted_at is null
+            and (pr.user_id = v_uid or de.logged_by_user_id = v_uid)
+        ), '[]'::jsonb)
+      )
+      order by pr.id
+    ), '[]'::jsonb
+  )
+  into v_profiles
+  from public.profiles pr
+  where pr.deleted_at is null
+    and (
+      pr.user_id = v_uid
+      or exists (
+        select 1 from public.profile_guardians g
+         where g.profile_id = pr.id
+           and g.user_id = v_uid
+           and g.status = 'accepted'
+      )
+    );
+
+  -- ---------------------------------------------------------------------
+  -- profile_guardians: every membership on a profile the caller owns,
+  -- plus the caller's own membership row on any profile (owned or
+  -- shared) -- never a co-guardian's row on a shared profile.
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', g.id,
+        'profile_id', g.profile_id,
+        'user_id', g.user_id,
+        'role', g.role,
+        'status', g.status,
+        'display_name', g.display_name,
+        -- Never another user's id on a shared (non-owned) profile: the
+        -- caller's own row there is the only one returned, and its
+        -- invited_by names whoever invited them (often the owner) --
+        -- another user's identity, out of scope per this migration's
+        -- never-another-user's-data bound. Owned profiles keep it: the
+        -- owner already sees every guardian's invited_by via ordinary
+        -- profile_guardians_select RLS.
+        'invited_by', case
+          when g.profile_id in (select id from public.profiles where user_id = v_uid)
+            then g.invited_by
+          else null
+        end,
+        'created_at', g.created_at,
+        'updated_at', g.updated_at,
+        'revoked_at', g.revoked_at
+      )
+      order by g.profile_id, g.user_id
+    ), '[]'::jsonb
+  )
+  into v_profile_guardians
+  from public.profile_guardians g
+  where g.profile_id in (select id from public.profiles where user_id = v_uid)
+     or g.user_id = v_uid;
+
+  -- ---------------------------------------------------------------------
+  -- guardian_invitations: every invitation for a profile the caller owns,
+  -- plus invitations the caller personally created for any profile (owned
+  -- or shared). token_hash is never selected (see header note).
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', i.id,
+        'profile_id', i.profile_id,
+        'invited_by', i.invited_by,
+        'role', i.role,
+        'recipient_label', i.recipient_label,
+        'expires_at', i.expires_at,
+        'accepted_at', i.accepted_at,
+        'accepted_by', i.accepted_by,
+        'revoked_at', i.revoked_at,
+        'created_at', i.created_at
+      )
+      order by i.created_at, i.id
+    ), '[]'::jsonb
+  )
+  into v_guardian_invitations
+  from public.guardian_invitations i
+  where i.profile_id in (select id from public.profiles where user_id = v_uid)
+     or i.invited_by = v_uid;
+
+  -- ---------------------------------------------------------------------
+  -- ownership_transfers: the caller's own involvement only (initiated or
+  -- accepted), on any profile. token_hash is never selected.
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', t.id,
+        'profile_id', t.profile_id,
+        'initiated_by', t.initiated_by,
+        'parent_post_transfer_role', t.parent_post_transfer_role,
+        'recipient_label', t.recipient_label,
+        'expires_at', t.expires_at,
+        'accepted_at', t.accepted_at,
+        'accepted_by', t.accepted_by,
+        'cancelled_at', t.cancelled_at,
+        'created_at', t.created_at
+      )
+      order by t.created_at, t.id
+    ), '[]'::jsonb
+  )
+  into v_ownership_transfers
+  from public.ownership_transfers t
+  where t.initiated_by = v_uid
+     or t.accepted_by = v_uid;
+
+  -- ---------------------------------------------------------------------
+  -- notification_preferences: the caller's own rows only (never a
+  -- co-guardian's, on any profile -- see header note).
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'profile_id', np.profile_id,
+        'alert_on_log', np.alert_on_log,
+        'alert_on_cycle_start_only', np.alert_on_cycle_start_only,
+        'alert_on_high_severity', np.alert_on_high_severity,
+        'missed_entry_days', np.missed_entry_days,
+        'quiet_hours_start', np.quiet_hours_start,
+        'quiet_hours_end', np.quiet_hours_end,
+        'time_zone', np.time_zone,
+        'log_cadence', np.log_cadence,
+        'cycle_start_cadence', np.cycle_start_cadence,
+        'high_severity_cadence', np.high_severity_cadence,
+        'digest_local_time', np.digest_local_time,
+        'updated_at', np.updated_at
+      )
+      order by np.profile_id
+    ), '[]'::jsonb
+  )
+  into v_notification_preferences
+  from public.notification_preferences np
+  where np.user_id = v_uid;
+
+  -- ---------------------------------------------------------------------
+  -- push_devices: the caller's own devices; `token` redacted to its last
+  -- 4 characters (see header note) rather than included verbatim.
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', pd.id,
+        'platform', pd.platform,
+        'token_last4', right(pd.token, 4),
+        'updated_at', pd.updated_at,
+        'disabled_at', pd.disabled_at
+      )
+      order by pd.id
+    ), '[]'::jsonb
+  )
+  into v_push_devices
+  from public.push_devices pd
+  where pd.user_id = v_uid;
+
+  -- ---------------------------------------------------------------------
+  -- missed_entry_alert_state: the caller's own dedupe markers only.
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'profile_id', s.profile_id,
+        'last_enqueued_for', s.last_enqueued_for
+      )
+      order by s.profile_id
+    ), '[]'::jsonb
+  )
+  into v_missed_entry_alert_state
+  from public.missed_entry_alert_state s
+  where s.user_id = v_uid;
+
+  -- ---------------------------------------------------------------------
+  -- feedback_tickets + their full reply thread (the ticket owner can
+  -- already read every reply on their own ticket via
+  -- feedback_replies_select).
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', ft.id,
+        'reply_email', ft.reply_email,
+        'category', ft.category,
+        'message', ft.message,
+        'device_info', ft.device_info,
+        'attachment_paths', ft.attachment_paths,
+        'status', ft.status,
+        'created_at', ft.created_at,
+        'updated_at', ft.updated_at,
+        'replies', coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', fr.id,
+              'author_type', fr.author_type,
+              'message', fr.message,
+              'created_at', fr.created_at
+            )
+            order by fr.created_at, fr.id
+          )
+          from public.feedback_replies fr
+          where fr.ticket_id = ft.id
+        ), '[]'::jsonb)
+      )
+      order by ft.created_at, ft.id
+    ), '[]'::jsonb
+  )
+  into v_feedback_tickets
+  from public.feedback_tickets ft
+  where ft.user_id = v_uid;
+
+  -- ---------------------------------------------------------------------
+  -- profile_reminder_windows: owned profiles only.
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'profile_id', w.profile_id,
+        'estimated_next_start', w.estimated_next_start,
+        'episode_open', w.episode_open,
+        'updated_at', w.updated_at
+      )
+      order by w.profile_id
+    ), '[]'::jsonb
+  )
+  into v_profile_reminder_windows
+  from public.profile_reminder_windows w
+  where w.profile_id in (select id from public.profiles where user_id = v_uid);
+
+  -- ---------------------------------------------------------------------
+  -- Issue #167: import_jobs -- every job on a profile the caller owns,
+  -- plus every job the caller personally ran (created_by = v_uid) on any
+  -- profile, mirroring guardian_invitations' scoping exactly. Progress
+  -- metadata only (source label, counts, status, timestamps) -- no health
+  -- content.
+  -- ---------------------------------------------------------------------
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', j.id,
+        'profile_id', j.profile_id,
+        'source', j.source,
+        'status', j.status,
+        'total_rows', j.total_rows,
+        'processed_rows', j.processed_rows,
+        'error_kind', j.error_kind,
+        'created_by', j.created_by,
+        'created_at', j.created_at,
+        'completed_at', j.completed_at
+      )
+      order by j.created_at, j.id
+    ), '[]'::jsonb
+  )
+  into v_import_jobs
+  from public.import_jobs j
+  where j.profile_id in (select id from public.profiles where user_id = v_uid)
+     or j.created_by = v_uid;
+
+  -- schema_version stays 1 deliberately: this migration's new import_jobs
+  -- key is purely additive -- every top-level key
+  -- 20260908150000_export_account_data.sql's original body already
+  -- returned keeps its exact prior shape. A version bump is reserved for
+  -- a breaking change to an existing key's shape, not for adding a new
+  -- key alongside it.
+  return jsonb_build_object(
+    'schema_version', 1,
+    'exported_at', now(),
+    'profiles', v_profiles,
+    'profile_guardians', v_profile_guardians,
+    'guardian_invitations', v_guardian_invitations,
+    'ownership_transfers', v_ownership_transfers,
+    'notification_preferences', v_notification_preferences,
+    'push_devices', v_push_devices,
+    'missed_entry_alert_state', v_missed_entry_alert_state,
+    'feedback_tickets', v_feedback_tickets,
+    'profile_reminder_windows', v_profile_reminder_windows,
+    'import_jobs', v_import_jobs
+  );
+end;
+$$;
+-- export_account_data()'s grants and RLS posture are unchanged: it was
+-- already `security definer`, `authenticated`-only, with no `anon` grant
+-- (re-granted below for completeness against an accidental local revoke,
+-- mirroring the original migration's closing block).
+revoke execute on function public.export_account_data() from public, anon;
+grant execute on function public.export_account_data() to authenticated;

@@ -27,6 +27,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart' show GuardianRole;
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -705,7 +706,7 @@ void main() {
       await disposeLogging(tester, h);
     });
 
-    testWidgets('tag chips render exactly the curated 45 in 15 categories; '
+    testWidgets('tag chips render exactly the curated 67 in 22 categories; '
         'unverified categories ship the pin-first caption; toggling two tags '
         'persists both codes', (tester) async {
       final h = await pumpLogging(tester);
@@ -716,7 +717,7 @@ void main() {
       // Issue #247: the curated tag chips plus the standalone spotting
       // toggle, which is also a FilterChip (see `_editableBody`).
       // Issue #220: plus the standalone first-class PMS toggle.
-      expect(find.byType(FilterChip), findsNWidgets(45 + 2));
+      expect(find.byType(FilterChip), findsNWidgets(67 + 2));
       const headers = [
         'Pain',
         'Energy',
@@ -732,17 +733,31 @@ void main() {
         'Urine',
         'Vulva & vagina',
         'Body',
-        'Mood',
+        // Issue #251: the old `mood` grouping rebuilt as
+        // feelings/mind/lifestyle.
+        'Feelings',
+        'Mind',
+        'Motivation',
+        'Social life',
+        'Leisure',
+        'Meditation',
+        'PMS',
+        'Partying',
       ];
       for (final header in headers) {
-        expect(find.text(header), findsOneWidget);
+        // Issue #251: the PMS category heading shares its exact string
+        // with the standalone #220 PMS presence chip rendered above the
+        // taxonomy grid — both are legitimately on the sheet.
+        expect(find.text(header),
+            header == 'PMS' ? findsNWidgets(2) : findsOneWidget);
       }
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget);
       }
-      // The five option-set-unverified categories (issue #249) render the
+      // The eight option-set-unverified categories (five from issue #249,
+      // three from issue #251: pms, meditation, leisure) render the
       // pin-first caption where their chips would go, and ship no chips.
-      expect(find.text('Unverified — pin before shipping'), findsNWidgets(5));
+      expect(find.text('Unverified — pin before shipping'), findsNWidgets(8));
 
       await tester.tap(find.text('Headache'));
       await tester.pump();
@@ -1220,6 +1235,171 @@ void main() {
               'spotting observation for the legacy row instead of silently '
               'dropping the fact');
       expect(observations.single.category, 'spotting');
+      await disposeLogging(tester, h);
+    });
+  });
+
+  group('pain intensity (Issue #256)', () {
+    testWidgets(
+        'grading a selected pain code writes the day pain observation '
+        'carrying that intensity', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Cramps'));
+      await tester.pump();
+      // The selector row appears under the Pain section once the code is
+      // chip-selected; grade it 4.
+      expect(find.byKey(const ValueKey('pain-intensity-cramps-4')),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-4')));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final painRows = [
+        for (final o in await h.observations.listForDayEntry(saved!.id))
+          if (o.category == 'pain') o,
+      ];
+      expect(painRows, hasLength(1));
+      expect(painRows.single.code, 'cramps');
+      expect(painRows.single.intensity, 4);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'an ungraded pain code writes no intensity row (intensity null '
+        'means no severity recorded, never low)', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Cramps'));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        [
+          for (final o in await h.observations.listForDayEntry(saved!.id))
+            if (o.category == 'pain') o,
+        ],
+        isEmpty,
+        reason: 'a pain code with no chosen grade records no observation '
+            'row at all in this release — the day-entry tag is the '
+            'symptom, the graded row only exists once a grade is chosen',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'reopening a graded day seeds the selector, raising the grade '
+        'updates the row, and Clear tombstones it', (tester) async {
+      final h = await pumpLogging(tester);
+
+      // First session: cramps graded 4.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Cramps'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-4')));
+      await pumpAutosave(tester);
+      var saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .singleWhere((o) => o.category == 'pain')
+            .intensity,
+        4,
+      );
+      await dismissDaySheet(tester);
+
+      // Second session: the loaded grade seeds the selector (an existing
+      // grade is never silently dropped), raising it rewrites the same
+      // row, and Clear tombstones it.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ChoiceChip>(
+                find.byKey(const ValueKey('pain-intensity-cramps-4')))
+            .selected,
+        isTrue,
+        reason: 'the intensity selector re-seeds from the persisted '
+            'observation on reopen',
+      );
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-5')));
+      await pumpAutosave(tester);
+      saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .singleWhere((o) => o.category == 'pain')
+            .intensity,
+        5,
+      );
+      await tester.tap(find.byKey(const ValueKey('pain-intensity-cramps-clear')));
+      await pumpAutosave(tester);
+      expect(
+        [
+          for (final o in await h.observations.listForDayEntry(saved.id))
+            if (o.category == 'pain') o,
+        ],
+        isEmpty,
+        reason: 'Clear removes the recorded intensity — ungraded means '
+            '"no severity recorded", never "low"',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'an imported graded row keeps its grade through an unrelated '
+        'autosave and stays editable', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage).save(
+            entryFor(profileId, kToday, flow: FlowLevel.none),
+          );
+          final entry =
+              await DriftDayEntriesRepository(db.storage)
+                  .find(profileId, kToday);
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry!.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              category: 'pain',
+              code: 'migraine',
+              intensity: 5,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      // The imported migraine grade shows on its own selector row.
+      expect(
+        tester
+            .widget<ChoiceChip>(
+                find.byKey(const ValueKey('pain-intensity-migraine-5')))
+            .selected,
+        isTrue,
+      );
+      // An unrelated change (a note) must not disturb the graded row.
+      await tester.enterText(
+          find.byKey(const ValueKey('note-field')), 'rough day');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .singleWhere((o) => o.category == 'pain')
+            .intensity,
+        5,
+        reason: 'an autosave the operator directed at something else never '
+            'touches a graded row they did not',
+      );
       await disposeLogging(tester, h);
     });
   });
@@ -2182,10 +2362,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      // All 45 curated chips render — nothing is removed by the mode —
+      // All 67 curated chips render — nothing is removed by the mode —
       // plus the standalone spotting toggle (Issue #247) and the
       // standalone PMS toggle (Issue #220), also FilterChips.
-      expect(find.byType(FilterChip), findsNWidgets(45 + 2));
+      expect(find.byType(FilterChip), findsNWidgets(67 + 2));
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget,
             reason: 'teen mode must not hide ${tag.display}');
@@ -2194,7 +2374,9 @@ void main() {
       expect(find.text('How your body feels'), findsOneWidget);
       expect(find.text('Body'), findsNothing);
       // ...and surfaced first (the first heading in the sheet's column).
-      final headings = ['How your body feels', 'Mood', 'Pain', 'Energy'];
+      // Issue #251: the old 'Mood' heading is now 'Feelings' (the mood
+      // grouping rebuilt), still directly below the body heading.
+      final headings = ['How your body feels', 'Feelings', 'Pain', 'Energy'];
       final offsets = headings
           .map((h) => tester.getTopLeft(find.text(h)).dy)
           .toList();
@@ -2241,7 +2423,16 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-12')));
       await tester.pumpAndSettle();
       expect(find.text('Heavy'), findsOneWidget);
-      expect(find.text('Cramps'), findsOneWidget);
+      // Issue #256: the selected cramps code also surfaces its intensity
+      // selector row (labelled with the same display string), so the chip
+      // itself is what must stay unique — and the day's stored row carries
+      // no grade, so no intensity chip is selected ("no severity
+      // recorded", never "low").
+      expect(find.widgetWithText(FilterChip, 'Cramps'), findsOneWidget);
+      expect(find.byKey(const ValueKey('pain-intensity-cramps-1')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('pain-intensity-cramps-clear')),
+          findsOneWidget);
       expect(find.text('Anxious'), findsOneWidget);
       expect(find.text('verbatim note'), findsOneWidget);
       await disposeLogging(tester, h);
@@ -2775,7 +2966,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Issue #249 grew the taxonomy (45 chips in 15 categories), so the
+      // Issue #249/#251 grew the taxonomy (67 chips in 22 categories), so the
       // sheet's scroll view now genuinely scrolls: bring the note field
       // into view before tapping it, exactly as a user would.
       await tester.ensureVisible(find.byKey(const ValueKey('note-field')));
@@ -2952,7 +3143,7 @@ void main() {
 
 group('tracking preferences read path (Issue #259)', () {
   final curatedDoc = TrackingPreferences({
-    'mood': TrackingCategoryPreference(enabled: false, sortOrder: 0),
+    'feelings': TrackingCategoryPreference(enabled: false, sortOrder: 0),
     'pain': TrackingCategoryPreference(enabled: true, sortOrder: 1),
   });
 
@@ -2961,8 +3152,9 @@ group('tracking preferences read path (Issue #259)', () {
     final db = await pumpSheetWithPrefs(tester, trackingPreferences: curatedDoc);
     addTearDown(db.close);
 
-    // Mood is disabled: neither its heading nor any of its chips render.
-    expect(find.text('Mood'), findsNothing);
+    // Feelings is disabled: neither its heading nor any of its chips
+    // render.
+    expect(find.text('Feelings'), findsNothing);
     expect(find.text('Irritable'), findsNothing);
     expect(find.text('Anxious'), findsNothing);
 
@@ -2972,7 +3164,7 @@ group('tracking preferences read path (Issue #259)', () {
     expect(headers, isNot(contains('Mood')));
     final taxonomyOrder = [
       for (final category in TagCategory.values)
-        if (category != TagCategory.mood)
+        if (category != TagCategory.feelings)
           careModeCopyFor(ProfileMode.standard).categoryLabel(category),
     ];
     expect(headers.skip(2).toList(), taxonomyOrder,
@@ -2993,8 +3185,8 @@ group('tracking preferences read path (Issue #259)', () {
         careModeCopyFor(ProfileMode.standard).categoryLabel(category),
     ];
     expect(headers.skip(2).toList(), expected);
-    expect(find.byType(FilterChip), findsNWidgets(45 + 2),
-        reason: '45 curated chips plus the spotting and PMS toggles');
+    expect(find.byType(FilterChip), findsNWidgets(67 + 2),
+        reason: '67 curated chips plus the spotting and PMS toggles');
   });
 
   testWidgets('already-logged tags in a disabled category are never '

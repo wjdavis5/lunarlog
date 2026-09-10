@@ -159,6 +159,24 @@ class Profiles extends Table with TableInfo {
         requiredDuringInsert: false,
         $customConstraints: 'NULL',
       );
+  late final GeneratedColumn<String> bbtUnit = GeneratedColumn<String>(
+    'bbt_unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'celsius\'',
+    defaultValue: const CustomExpression('\'celsius\''),
+  );
+  late final GeneratedColumn<String> weightUnit = GeneratedColumn<String>(
+    'weight_unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'kg\'',
+    defaultValue: const CustomExpression('\'kg\''),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -179,6 +197,8 @@ class Profiles extends Table with TableInfo {
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,
+    bbtUnit,
+    weightUnit,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;

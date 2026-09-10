@@ -66,7 +66,9 @@ class GeneratedTransfer {
   final String tokenHash;
 
   /// Deep link URI to claim this transfer:
-  /// `lunarlog://invite?code=<rawToken>&profile=<profileId>&kind=claim`.
+  /// `lunarlog://invite?code=<rawToken>&profile=<profileId>&kind=claim`,
+  /// or the `https://<domain>/invite?...` universal-link form when a hosted
+  /// domain is configured (issue #129).
   final Uri claimUri;
 
   final DateTime expiresAt;

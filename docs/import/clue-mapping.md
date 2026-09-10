@@ -157,10 +157,12 @@ because neither collapse happens anymore.
 | Sleep (duration) | `sleep` | MEDIUM, single parser | `observations.category = 'sleep'` | bucketed duration strings, pass-through |
 | Exercise | `exercise` | HIGH+legacy | `observations.category = 'exercise'` | pass-through, all 7 options |
 | Stool (legacy Poop) | `stool` | HIGH | `observations.category = 'stool'` | pass-through |
-| Leisure | `leisure` | option set undocumented | `observations.category = 'leisure'` | pass-through — any option, known or not |
+| Leisure | `leisure` | option set undocumented | `observations.category = 'leisure'` | pass-through — any option, known or not (issue #251 AC: unknown option strings are preserved verbatim, never rejected or coerced) |
 | Hair | `hair` | HIGH (support docs) | `observations.category = 'hair'` | pass-through |
 | Skin | `skin` | MEDIUM, single parser | `observations.category = 'skin'` | pass-through |
 | Medication | `medication` | HIGH | `observations.category = 'medication'` | pass-through |
+| Meditation | `meditation` | option set undocumented (A1-20; listed in Clue's current category list) | `observations.category = 'meditation'` | pass-through — added by issue #251 |
+| Partying | `partying` | HIGH (legacy table; current category Partying, A1-23) | `observations.category = 'partying'` | `big night` → `big_night` (snake_case for the flat tag namespace); `drinks`/`cigarettes`/`hangover` pass through — added by issue #251 |
 | Appointments | `appointments` | option strings unconfirmed | `observations.category = 'appointments'` | pass-through |
 | Ailments | `ailments` | HIGH | `observations.category = 'ailments'` | pass-through |
 | Custom tags | `tags` | HIGH | `observations.category = 'tags'` | raw free text, **never** snake_cased or normalised — this parser applies no transform to any option string unless the mapping table above explicitly renames it, so `tags` needs no special case to get this right |
@@ -168,11 +170,14 @@ because neither collapse happens anymore.
 | Tests | `tests` | MEDIUM | `observations.category = 'tests'` | pass-through |
 | Cervical mucus | `mucus` | claimed by 2 community parsers only, not in Clue's own category list | `observations.category = 'mucus'` | **assumption**: kept as its own category rather than folded into `discharge`, since no source documents them as the same export `type` — flag if a real export shows otherwise |
 
-Categories with **no export `type` at all** (Meditation, Partying, Breasts
-& chest, Hot flashes/perimenopause, Urine, Vulva & vagina, Supplements,
-Sleep quality): not represented in `measurements.json` per any source
-consulted for #190. A `type` string this table doesn't recognise —
-whether one of these or a genuinely new Clue category — escapes to the
+Categories with **no export `type` at all** (Breasts & chest, Hot
+flashes/perimenopause, Urine, Vulva & vagina, Supplements, Sleep quality):
+not represented in `measurements.json` per any source consulted for #190.
+(Meditation and Partying used to be on this list; issue #251's research
+attested their category existence, so they are mapped rows above now —
+still pass-through, since neither's option set is fully documented.) A
+`type` string this table doesn't recognise — whether one of the remaining
+ones or a genuinely new Clue category — escapes to the
 `ClueUnknownDatapoint` hatch below rather than being guessed at.
 
 ## Negative assertions — never a positive symptom

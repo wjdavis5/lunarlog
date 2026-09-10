@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "__TEAMID__.com.wjdavis5.lunarlog",
+        "paths": ["/invite*"]
+      }
+    ]
+  }
+}

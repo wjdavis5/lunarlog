@@ -26,6 +26,9 @@ void main() {
       'exercise',
       'stool',
       'leisure',
+      // Issue #251's additions.
+      'meditation',
+      'partying',
       'hair',
       'skin',
       'medication',
@@ -75,6 +78,14 @@ void main() {
       // Issue #249: Clue's legacy `fatigue` energy option maps onto the
       // graduated taxonomy's `tired`.
       expect(kClueTypeMap['energy']!.options['fatigue']!.code, 'tired');
+      // Issue #251: the attested "big night" partying option snake_cases
+      // for the flat tag namespace; drinks/cigarettes/hangover pass
+      // through with no entry at all.
+      expect(
+          kClueTypeMap['partying']!.options['big night']!.code, 'big_night');
+      expect(kClueTypeMap['partying']!.options.containsKey('drinks'), isFalse);
+      expect(
+          kClueTypeMap['partying']!.options.containsKey('hangover'), isFalse);
     });
 
     test('an option absent from a type\'s spec passes through (no entry)',

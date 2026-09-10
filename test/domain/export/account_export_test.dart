@@ -10,6 +10,7 @@ import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -22,6 +23,8 @@ Profile _profile(
   String displayName = 'Riley',
   bool isMinor = true,
   ProfileMode mode = ProfileMode.standard,
+  BbtUnit bbtUnit = BbtUnit.celsius,
+  WeightUnit weightUnit = WeightUnit.kg,
   int sortOrder = 0,
   DateTime? archivedAt,
 }) =>
@@ -30,6 +33,8 @@ Profile _profile(
       displayName: displayName,
       isMinor: isMinor,
       mode: mode,
+      bbtUnit: bbtUnit,
+      weightUnit: weightUnit,
       sortOrder: sortOrder,
       archivedAt: archivedAt,
       createdAt: DateTime.utc(2026, 1, 1),
@@ -300,7 +305,7 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 7);
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8));
       final profile = (doc['profiles'] as List).single as Map;
       final entries = (profile['dayEntries'] as List).map((e) => e as Map);
       final byId = {for (final e in entries) e['id'] as String: e};
@@ -360,16 +365,42 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 7,
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8),
           reason: 'profiles[].mode was v2''s shape change; the constant has '
               'since moved to v6 for profiles[].observations (Issue #240), '
               'dayEntries[].source/sourceId/importId (Issue #159), the '
-              'super_heavy/not_bleeding flow wire values (Issue #247), and '
-              'profiles[].careNotes/visitPrepItems (Issue #128), and to v7 '
-              'for dayEntries[].pms (Issue #220)');
+              'super_heavy/not_bleeding flow wire values (Issue #247), '
+              'profiles[].careNotes/visitPrepItems (Issue #128), to v7 for '
+              'dayEntries[].pms (Issue #220), and to v8 for '
+              'profiles[].bbtUnit/weightUnit (Issue #255)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
+    });
+  });
+
+  group('display-unit preferences (Issue #255, export v8)', () {
+    test('each exported profile carries its bbtUnit/weightUnit, and the '
+        'schema version was bumped for the new keys', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile('p-1'),
+          _profile('p-2', bbtUnit: BbtUnit.fahrenheit, weightUnit: WeightUnit.lb),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8),
+          reason: 'profiles[].bbtUnit/weightUnit is a v8 shape change; a '
+              'reader of an older export treats an absent key as the metric '
+              'default');
+      final profiles = doc['profiles'] as List;
+      expect((profiles[0] as Map)['bbtUnit'], 'celsius');
+      expect((profiles[0] as Map)['weightUnit'], 'kg');
+      expect((profiles[1] as Map)['bbtUnit'], 'fahrenheit');
+      expect((profiles[1] as Map)['weightUnit'], 'lb');
     });
   });
 
@@ -519,11 +550,12 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 7,
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8),
           reason: 'adding profiles[].observations is a shape change; the '
               'constant has since moved to v6 for profiles[].careNotes/'
-              'visitPrepItems (Issue #128), and to v7 for dayEntries[].pms '
-              '(Issue #220)');
+              'visitPrepItems (Issue #128), to v7 for dayEntries[].pms '
+              '(Issue #220), and to v8 for profiles[].bbtUnit/weightUnit '
+              '(Issue #255)');
       final profiles = doc['profiles'] as List;
       final p1 = profiles[0] as Map;
       final p2 = profiles[1] as Map;
