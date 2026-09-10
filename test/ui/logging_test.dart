@@ -1557,6 +1557,46 @@ void main() {
       await disposeLogging(tester, h);
     });
 
+    testWidgets(
+      'entry logged by the signed-in user still shows "Logged by you" '
+      'even when a guardian row with a displayName exists for them (#87)',
+      (tester) async {
+        final auth = FakeAuthService()
+          ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-mom'));
+        final h = await pumpLogging(
+          tester,
+          authService: auth,
+          withStorage: true,
+          seed: (db, profileId) async {
+            await db.storage.applyRemoteRows([
+              guardianRow(
+                profileId,
+                'g-mom',
+                'user-mom',
+                'primary_guardian',
+                displayName: 'Mom',
+              ),
+              dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-mom'),
+            ]);
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Logged by you'), findsOneWidget);
+        expect(
+          find.textContaining('Logged by Mom'),
+          findsNothing,
+          reason:
+              '"you" must win over the signed-in user\'s own guardian '
+              'displayName; a guardian-lookup-first refactor would render '
+              '"Logged by Mom" here instead',
+        );
+        await disposeLogging(tester, h);
+      },
+    );
+
     testWidgets('entry logged by another guardian shows their display name '
         '(R2)', (tester) async {
       final auth = FakeAuthService()
