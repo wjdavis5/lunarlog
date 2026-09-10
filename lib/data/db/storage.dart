@@ -338,11 +338,19 @@ class LunarLogStorage {
   /// plain ints, stored as supplied and synced like any other profile
   /// column — the prediction domain's `CycleFacts.canSeed` is the gate on
   /// which values can seed an estimate, not this method.
+  ///
+  /// [bbtUnit] and [weightUnit] (Issue #255) are the raw `toDb()` strings
+  /// of the per-profile display-unit preferences, same treatment as
+  /// [mode]: presentation-only, synced like any other profile column.
+  /// They are display preferences only — never a storage unit (each
+  /// `observations` row carries its own `unit`).
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
     required bool isMinor,
     String mode = 'standard',
+    String bbtUnit = 'celsius',
+    String weightUnit = 'kg',
     int sortOrder = 0,
     DateTime? archivedAt,
     DateTime? createdAt,
@@ -375,6 +383,8 @@ class LunarLogStorage {
               dirty: const Value(true),
               localRev: const Value(1),
               mode: Value(mode),
+              bbtUnit: Value(bbtUnit),
+              weightUnit: Value(weightUnit),
               birthYear: Value(birthYear),
               relationship: Value(relationship),
               lastPeriodStart: Value(lastPeriodStart),
@@ -395,6 +405,8 @@ class LunarLogStorage {
           dirty: const Value(true),
           localRev: Value(existing.localRev + 1),
           mode: Value(mode),
+          bbtUnit: Value(bbtUnit),
+          weightUnit: Value(weightUnit),
           birthYear: Value(birthYear),
           relationship: Value(relationship),
           lastPeriodStart: Value(lastPeriodStart),
@@ -1885,6 +1897,8 @@ class LunarLogStorage {
             dirty: const Value(false),
             localRev: const Value(0),
             mode: Value(remote.mode),
+            bbtUnit: Value(remote.bbtUnit),
+            weightUnit: Value(remote.weightUnit),
             birthYear: Value(remote.birthYear),
             relationship: Value(remote.relationship),
             transferredAt: Value(remote.transferredAt?.toUtc()),
@@ -1893,7 +1907,7 @@ class LunarLogStorage {
             typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
             typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
           ));
-      return true;
+        return true;
     }
     await (db.update(db.profiles)..where((t) => t.id.equals(remote.id))).write(
       ProfilesCompanion(
@@ -1906,6 +1920,8 @@ class LunarLogStorage {
         deletedAt: Value(deletedAt),
         dirty: const Value(false),
         mode: Value(remote.mode),
+        bbtUnit: Value(remote.bbtUnit),
+        weightUnit: Value(remote.weightUnit),
         birthYear: Value(remote.birthYear),
         relationship: Value(remote.relationship),
         transferredAt: Value(remote.transferredAt?.toUtc()),

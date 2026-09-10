@@ -12,7 +12,9 @@ import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/data/sync/row_codec.dart';
+import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart' as domain;
 import 'package:lunarlog/domain/tags.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
@@ -555,6 +557,33 @@ void main() {
       expect(reread!.lastPeriodStart, '2026-01-02');
       expect(reread.typicalCycleLengthDays, 26);
       expect(reread.typicalPeriodLengthDays, 4);
+    });
+
+    test('issue #255: remote-applied profile rows carry the display-unit '
+        'preferences (the sync pull path)', () async {
+      final created = await storage.upsertProfile(
+          displayName: 'Units',
+          isMinor: false,
+          bbtUnit: 'fahrenheit',
+          weightUnit: 'lb');
+      // Round-trip through the codec + remote apply, the way a pull does.
+      final decoded = decodeProfile(encodeProfile(created));
+      final applied = await storage.applyRemoteProfile(decoded);
+      expect(applied, isTrue);
+      final reread = await storage.getProfile(created.id);
+      expect(reread!.bbtUnit, 'fahrenheit');
+      expect(reread.weightUnit, 'lb');
+    });
+
+    test('issue #255: a new profile defaults to the metric display units',
+        () async {
+      final created =
+          await storage.upsertProfile(displayName: 'Defaults', isMinor: false);
+      expect(created.bbtUnit, 'celsius');
+      expect(created.weightUnit, 'kg');
+      final domainProfile = profileToDomain(created);
+      expect(domainProfile.bbtUnit, domain.BbtUnit.celsius);
+      expect(domainProfile.weightUnit, domain.WeightUnit.kg);
     });
 
     test('AE5 (data layer half): soft delete tombstones the row — present in '

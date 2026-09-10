@@ -18,6 +18,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -1162,6 +1163,8 @@ class _EmptyProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit = BbtUnit.celsius,
+    WeightUnit weightUnit = WeightUnit.kg,
   }) =>
       throw UnimplementedError('not exercised in the empty-edge test');
 

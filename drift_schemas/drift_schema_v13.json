@@ -202,6 +202,26 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "bbt_unit",
+            "getter_name": "bbtUnit",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'celsius\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "weight_unit",
+            "getter_name": "weightUnit",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'kg\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
           }
         ],
         "is_virtual": false,
@@ -1656,7 +1676,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"profiles\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"is_minor\" INTEGER NOT NULL CHECK (\"is_minor\" IN (0, 1)), \"sort_order\" INTEGER NOT NULL DEFAULT 0, \"archived_at\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"birth_year\" INTEGER NULL, \"relationship\" TEXT NULL, \"mode\" TEXT NOT NULL DEFAULT 'standard', \"transferred_at\" TEXT NULL, \"transferred_to_user_id\" TEXT NULL, \"last_period_start\" TEXT NULL, \"typical_cycle_length_days\" INTEGER NULL, \"typical_period_length_days\" INTEGER NULL, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"profiles\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"is_minor\" INTEGER NOT NULL CHECK (\"is_minor\" IN (0, 1)), \"sort_order\" INTEGER NOT NULL DEFAULT 0, \"archived_at\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"birth_year\" INTEGER NULL, \"relationship\" TEXT NULL, \"mode\" TEXT NOT NULL DEFAULT 'standard', \"transferred_at\" TEXT NULL, \"transferred_to_user_id\" TEXT NULL, \"last_period_start\" TEXT NULL, \"typical_cycle_length_days\" INTEGER NULL, \"typical_period_length_days\" INTEGER NULL, \"bbt_unit\" TEXT NOT NULL DEFAULT 'celsius', \"weight_unit\" TEXT NOT NULL DEFAULT 'kg', PRIMARY KEY (\"id\"));"
         }
       ]
     },

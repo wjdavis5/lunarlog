@@ -23,6 +23,8 @@ void main() {
     DateTime? deletedAt,
     DateTime? archivedAt,
     String mode = 'standard',
+    String bbtUnit = 'celsius',
+    String weightUnit = 'kg',
     int? birthYear,
     String? relationship,
     DateTime? transferredAt,
@@ -35,6 +37,8 @@ void main() {
         displayName: deletedAt == null ? 'Kid' : '',
         isMinor: true,
         mode: mode,
+        bbtUnit: bbtUnit,
+        weightUnit: weightUnit,
         sortOrder: 3,
         archivedAt: archivedAt,
         createdAt: micro,
@@ -134,6 +138,8 @@ void main() {
         'updated_at': '2026-09-02T08:30:15.999999Z',
         'deleted_at': null,
         'mode': 'standard',
+        'bbt_unit': 'celsius',
+        'weight_unit': 'kg',
         'birth_year': null,
         'relationship': null,
         'last_period_start': null,
@@ -176,6 +182,45 @@ void main() {
       expect(decoded.lastPeriodStart, '2026-08-14');
       expect(decoded.typicalCycleLengthDays, 28);
       expect(decoded.typicalPeriodLengthDays, 5);
+    });
+
+    test('encode includes the display-unit preferences (Issue #255)', () {
+      final json = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+      ));
+      expect(json['bbt_unit'], 'fahrenheit');
+      expect(json['weight_unit'], 'lb');
+    });
+
+    test('display-unit preferences round-trip through decode (Issue #255)',
+        () {
+      final decoded = decodeProfile(encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+      )));
+      expect(decoded.bbtUnit, 'fahrenheit');
+      expect(decoded.weightUnit, 'lb');
+    });
+
+    test('an absent or unrecognised display-unit key degrades to the '
+        'column default, like mode (Issue #255)', () {
+      final decoded = decodeProfile({
+        'id': profileId,
+        'display_name': 'Kid',
+        'is_minor': true,
+        'sort_order': 3,
+        'archived_at': null,
+        'created_at': '2026-09-01T10:00:00.123456Z',
+        'updated_at': '2026-09-02T08:30:15.999999Z',
+        'deleted_at': null,
+        'bbt_unit': 'kelvin',
+        // weight_unit absent entirely
+      });
+      expect(decoded.bbtUnit, 'celsius',
+          reason: 'an unrecognised value degrades to the default');
+      expect(decoded.weightUnit, 'kg',
+          reason: 'an absent key falls back to the default');
     });
 
     test('a pre-#218 payload without the fact keys decodes to nulls, and a '
@@ -327,6 +372,8 @@ void main() {
         displayName: 'x',
         isMinor: false,
         mode: 'standard',
+        bbtUnit: 'celsius',
+        weightUnit: 'kg',
         sortOrder: 0,
         createdAt: micro,
         updatedAt: micro,

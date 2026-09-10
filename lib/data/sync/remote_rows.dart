@@ -54,6 +54,8 @@ final class RemoteProfileRow extends RemoteRow {
     required this.deletedAt,
     this.serverVersion = 0,
     this.mode = 'standard',
+    this.bbtUnit = 'celsius',
+    this.weightUnit = 'kg',
     this.birthYear,
     this.relationship,
     this.transferredAt,
@@ -116,6 +118,15 @@ final class RemoteProfileRow extends RemoteRow {
   final String? lastPeriodStart;
   final int? typicalCycleLengthDays;
   final int? typicalPeriodLengthDays;
+
+  /// Issue #255: the per-profile display-unit preferences, raw `toDb()`
+  /// strings. `row_codec.dart`'s `decodeProfile` already normalises an
+  /// unrecognised or absent value to the column default (`celsius`/`kg`)
+  /// against the closed set before constructing this row, same rationale
+  /// as [mode]; `mappers.dart`'s `BbtUnit.fromDb`/`WeightUnit.fromDb`
+  /// normalise again on the way to the domain model. Presentation only.
+  final String bbtUnit;
+  final String weightUnit;
 
   @override
   SyncTable get table => SyncTable.profiles;

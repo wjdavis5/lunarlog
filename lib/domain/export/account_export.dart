@@ -64,7 +64,11 @@ import 'account_export_remote_source.dart';
 /// v7 adds `dayEntries[].pms` (Issue #220): the first-class PMS marker. A
 /// reader of an old (v6) export treats the key's absence as "false" (the
 /// marker simply did not exist yet), the same default the importer uses.
-const int kAccountExportSchemaVersion = 7;
+/// v8 adds `profiles[].bbtUnit` and `profiles[].weightUnit` (Issue #255):
+/// the per-profile display-unit preferences for numeric measurements. A
+/// reader of an old (v7) export treats an absent key as the metric default
+/// (`celsius`/`kg`), the same defaults the importer applies.
+const int kAccountExportSchemaVersion = 8;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -128,6 +132,11 @@ Map<String, Object?> _exportProfile(
     'displayName': profile.displayName,
     'isMinor': profile.isMinor,
     'mode': profile.mode.toDb(),
+    // Issue #255 (kAccountExportSchemaVersion v8): display-unit
+    // preferences -- rendering choices, not data transformations; the
+    // profile's observations each still carry their own `unit`.
+    'bbtUnit': profile.bbtUnit.toDb(),
+    'weightUnit': profile.weightUnit.toDb(),
     'sortOrder': profile.sortOrder,
     'archivedAt': profile.archivedAt?.toUtc().toIso8601String(),
     'createdAt': profile.createdAt.toUtc().toIso8601String(),

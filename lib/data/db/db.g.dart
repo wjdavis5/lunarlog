@@ -210,6 +210,30 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         type: DriftSqlType.int,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _bbtUnitMeta = const VerificationMeta(
+    'bbtUnit',
+  );
+  @override
+  late final GeneratedColumn<String> bbtUnit = GeneratedColumn<String>(
+    'bbt_unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('celsius'),
+  );
+  static const VerificationMeta _weightUnitMeta = const VerificationMeta(
+    'weightUnit',
+  );
+  @override
+  late final GeneratedColumn<String> weightUnit = GeneratedColumn<String>(
+    'weight_unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('kg'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -230,6 +254,8 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,
+    bbtUnit,
+    weightUnit,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -379,6 +405,18 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         ),
       );
     }
+    if (data.containsKey('bbt_unit')) {
+      context.handle(
+        _bbtUnitMeta,
+        bbtUnit.isAcceptableOrUnknown(data['bbt_unit']!, _bbtUnitMeta),
+      );
+    }
+    if (data.containsKey('weight_unit')) {
+      context.handle(
+        _weightUnitMeta,
+        weightUnit.isAcceptableOrUnknown(data['weight_unit']!, _weightUnitMeta),
+      );
+    }
     return context;
   }
 
@@ -460,6 +498,14 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.int,
         data['${effectivePrefix}typical_period_length_days'],
       ),
+      bbtUnit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bbt_unit'],
+      )!,
+      weightUnit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}weight_unit'],
+      )!,
     );
   }
 
@@ -537,6 +583,20 @@ class Profile extends DataClass implements Insertable<Profile> {
 
   /// The supplied "typical period length" answer in days (Issue #218).
   final int? typicalPeriodLengthDays;
+
+  /// Per-profile BBT display unit (Issue #255), mirrored by
+  /// `domain.BbtUnit` and the server's `profiles_bbt_unit_check` CHECK
+  /// (`celsius|fahrenheit`). Non-null, defaulting to `celsius`; an
+  /// unrecognised value decodes to `celsius` rather than throwing (see
+  /// `row_codec.dart`). Presentation only — a stored `observations`
+  /// temperature always keeps the unit it was entered/imported in
+  /// (`observations.unit`); this decides only how it renders.
+  final String bbtUnit;
+
+  /// Per-profile weight display unit (Issue #255), mirrored by
+  /// `domain.WeightUnit` and the server's `profiles_weight_unit_check`
+  /// CHECK (`kg|lb`). Same contract as [bbtUnit].
+  final String weightUnit;
   const Profile({
     required this.id,
     required this.displayName,
@@ -556,6 +616,8 @@ class Profile extends DataClass implements Insertable<Profile> {
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
+    required this.bbtUnit,
+    required this.weightUnit,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -598,6 +660,8 @@ class Profile extends DataClass implements Insertable<Profile> {
         typicalPeriodLengthDays,
       );
     }
+    map['bbt_unit'] = Variable<String>(bbtUnit);
+    map['weight_unit'] = Variable<String>(weightUnit);
     return map;
   }
 
@@ -639,6 +703,8 @@ class Profile extends DataClass implements Insertable<Profile> {
       typicalPeriodLengthDays: typicalPeriodLengthDays == null && nullToAbsent
           ? const Value.absent()
           : Value(typicalPeriodLengthDays),
+      bbtUnit: Value(bbtUnit),
+      weightUnit: Value(weightUnit),
     );
   }
 
@@ -672,6 +738,8 @@ class Profile extends DataClass implements Insertable<Profile> {
       typicalPeriodLengthDays: serializer.fromJson<int?>(
         json['typicalPeriodLengthDays'],
       ),
+      bbtUnit: serializer.fromJson<String>(json['bbtUnit']),
+      weightUnit: serializer.fromJson<String>(json['weightUnit']),
     );
   }
   @override
@@ -698,6 +766,8 @@ class Profile extends DataClass implements Insertable<Profile> {
       'typicalPeriodLengthDays': serializer.toJson<int?>(
         typicalPeriodLengthDays,
       ),
+      'bbtUnit': serializer.toJson<String>(bbtUnit),
+      'weightUnit': serializer.toJson<String>(weightUnit),
     };
   }
 
@@ -720,6 +790,8 @@ class Profile extends DataClass implements Insertable<Profile> {
     Value<String?> lastPeriodStart = const Value.absent(),
     Value<int?> typicalCycleLengthDays = const Value.absent(),
     Value<int?> typicalPeriodLengthDays = const Value.absent(),
+    String? bbtUnit,
+    String? weightUnit,
   }) => Profile(
     id: id ?? this.id,
     displayName: displayName ?? this.displayName,
@@ -749,6 +821,8 @@ class Profile extends DataClass implements Insertable<Profile> {
     typicalPeriodLengthDays: typicalPeriodLengthDays.present
         ? typicalPeriodLengthDays.value
         : this.typicalPeriodLengthDays,
+    bbtUnit: bbtUnit ?? this.bbtUnit,
+    weightUnit: weightUnit ?? this.weightUnit,
   );
   Profile copyWithCompanion(ProfilesCompanion data) {
     return Profile(
@@ -786,6 +860,10 @@ class Profile extends DataClass implements Insertable<Profile> {
       typicalPeriodLengthDays: data.typicalPeriodLengthDays.present
           ? data.typicalPeriodLengthDays.value
           : this.typicalPeriodLengthDays,
+      bbtUnit: data.bbtUnit.present ? data.bbtUnit.value : this.bbtUnit,
+      weightUnit: data.weightUnit.present
+          ? data.weightUnit.value
+          : this.weightUnit,
     );
   }
 
@@ -809,7 +887,9 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('transferredToUserId: $transferredToUserId, ')
           ..write('lastPeriodStart: $lastPeriodStart, ')
           ..write('typicalCycleLengthDays: $typicalCycleLengthDays, ')
-          ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays')
+          ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays, ')
+          ..write('bbtUnit: $bbtUnit, ')
+          ..write('weightUnit: $weightUnit')
           ..write(')'))
         .toString();
   }
@@ -834,6 +914,8 @@ class Profile extends DataClass implements Insertable<Profile> {
     lastPeriodStart,
     typicalCycleLengthDays,
     typicalPeriodLengthDays,
+    bbtUnit,
+    weightUnit,
   );
   @override
   bool operator ==(Object other) =>
@@ -856,7 +938,9 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.transferredToUserId == this.transferredToUserId &&
           other.lastPeriodStart == this.lastPeriodStart &&
           other.typicalCycleLengthDays == this.typicalCycleLengthDays &&
-          other.typicalPeriodLengthDays == this.typicalPeriodLengthDays);
+          other.typicalPeriodLengthDays == this.typicalPeriodLengthDays &&
+          other.bbtUnit == this.bbtUnit &&
+          other.weightUnit == this.weightUnit);
 }
 
 class ProfilesCompanion extends UpdateCompanion<Profile> {
@@ -878,6 +962,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<String?> lastPeriodStart;
   final Value<int?> typicalCycleLengthDays;
   final Value<int?> typicalPeriodLengthDays;
+  final Value<String> bbtUnit;
+  final Value<String> weightUnit;
   final Value<int> rowid;
   const ProfilesCompanion({
     this.id = const Value.absent(),
@@ -898,6 +984,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.lastPeriodStart = const Value.absent(),
     this.typicalCycleLengthDays = const Value.absent(),
     this.typicalPeriodLengthDays = const Value.absent(),
+    this.bbtUnit = const Value.absent(),
+    this.weightUnit = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfilesCompanion.insert({
@@ -919,6 +1007,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.lastPeriodStart = const Value.absent(),
     this.typicalCycleLengthDays = const Value.absent(),
     this.typicalPeriodLengthDays = const Value.absent(),
+    this.bbtUnit = const Value.absent(),
+    this.weightUnit = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        displayName = Value(displayName),
@@ -944,6 +1034,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<String>? lastPeriodStart,
     Expression<int>? typicalCycleLengthDays,
     Expression<int>? typicalPeriodLengthDays,
+    Expression<String>? bbtUnit,
+    Expression<String>? weightUnit,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -968,6 +1060,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
         'typical_cycle_length_days': typicalCycleLengthDays,
       if (typicalPeriodLengthDays != null)
         'typical_period_length_days': typicalPeriodLengthDays,
+      if (bbtUnit != null) 'bbt_unit': bbtUnit,
+      if (weightUnit != null) 'weight_unit': weightUnit,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -991,6 +1085,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<String?>? lastPeriodStart,
     Value<int?>? typicalCycleLengthDays,
     Value<int?>? typicalPeriodLengthDays,
+    Value<String>? bbtUnit,
+    Value<String>? weightUnit,
     Value<int>? rowid,
   }) {
     return ProfilesCompanion(
@@ -1014,6 +1110,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           typicalCycleLengthDays ?? this.typicalCycleLengthDays,
       typicalPeriodLengthDays:
           typicalPeriodLengthDays ?? this.typicalPeriodLengthDays,
+      bbtUnit: bbtUnit ?? this.bbtUnit,
+      weightUnit: weightUnit ?? this.weightUnit,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1081,6 +1179,12 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
         typicalPeriodLengthDays.value,
       );
     }
+    if (bbtUnit.present) {
+      map['bbt_unit'] = Variable<String>(bbtUnit.value);
+    }
+    if (weightUnit.present) {
+      map['weight_unit'] = Variable<String>(weightUnit.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1108,6 +1212,8 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('lastPeriodStart: $lastPeriodStart, ')
           ..write('typicalCycleLengthDays: $typicalCycleLengthDays, ')
           ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays, ')
+          ..write('bbtUnit: $bbtUnit, ')
+          ..write('weightUnit: $weightUnit, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7848,6 +7954,8 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> lastPeriodStart,
   Value<int?> typicalCycleLengthDays,
   Value<int?> typicalPeriodLengthDays,
+  Value<String> bbtUnit,
+  Value<String> weightUnit,
   Value<int> rowid,
 });
 typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
@@ -7869,6 +7977,8 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> lastPeriodStart,
   Value<int?> typicalCycleLengthDays,
   Value<int?> typicalPeriodLengthDays,
+  Value<String> bbtUnit,
+  Value<String> weightUnit,
   Value<int> rowid,
 });
 
@@ -8106,6 +8216,16 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<int> get typicalPeriodLengthDays => $composableBuilder(
     column: $table.typicalPeriodLengthDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bbtUnit => $composableBuilder(
+    column: $table.bbtUnit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get weightUnit => $composableBuilder(
+    column: $table.weightUnit,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8383,6 +8503,16 @@ class $$ProfilesTableOrderingComposer
     column: $table.typicalPeriodLengthDays,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get bbtUnit => $composableBuilder(
+    column: $table.bbtUnit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get weightUnit => $composableBuilder(
+    column: $table.weightUnit,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -8461,6 +8591,14 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<int> get typicalPeriodLengthDays => $composableBuilder(
     column: $table.typicalPeriodLengthDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get bbtUnit =>
+      $composableBuilder(column: $table.bbtUnit, builder: (column) => column);
+
+  GeneratedColumn<String> get weightUnit => $composableBuilder(
+    column: $table.weightUnit,
     builder: (column) => column,
   );
 
@@ -8694,6 +8832,8 @@ class $$ProfilesTableTableManager
                 Value<String?> lastPeriodStart = const Value.absent(),
                 Value<int?> typicalCycleLengthDays = const Value.absent(),
                 Value<int?> typicalPeriodLengthDays = const Value.absent(),
+                Value<String> bbtUnit = const Value.absent(),
+                Value<String> weightUnit = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion(
                 id: id,
@@ -8714,6 +8854,8 @@ class $$ProfilesTableTableManager
                 lastPeriodStart: lastPeriodStart,
                 typicalCycleLengthDays: typicalCycleLengthDays,
                 typicalPeriodLengthDays: typicalPeriodLengthDays,
+                bbtUnit: bbtUnit,
+                weightUnit: weightUnit,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8736,6 +8878,8 @@ class $$ProfilesTableTableManager
                 Value<String?> lastPeriodStart = const Value.absent(),
                 Value<int?> typicalCycleLengthDays = const Value.absent(),
                 Value<int?> typicalPeriodLengthDays = const Value.absent(),
+                Value<String> bbtUnit = const Value.absent(),
+                Value<String> weightUnit = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion.insert(
                 id: id,
@@ -8756,6 +8900,8 @@ class $$ProfilesTableTableManager
                 lastPeriodStart: lastPeriodStart,
                 typicalCycleLengthDays: typicalCycleLengthDays,
                 typicalPeriodLengthDays: typicalPeriodLengthDays,
+                bbtUnit: bbtUnit,
+                weightUnit: weightUnit,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 
 List<int> _bytes(Map<String, Object?> document) => utf8.encode(jsonEncode(document));
@@ -234,6 +235,40 @@ void main() {
       // see `_applyObservation`'s doc comment for why.
       expect(createdObservations.single.source, ObservationSource.manual);
       expect(createdObservations.single.sourceId, isNull);
+    });
+
+    test('issue #255: a created profile takes the file display-unit '
+        'preferences; an absent key falls back to the metric default',
+        () async {
+      final document = _parse(_document(profiles: [
+        {..._rawProfile(_fileP1), 'bbtUnit': 'fahrenheit', 'weightUnit': 'lb'},
+      ]));
+      final plan = await coordinator().buildPlan(document);
+      await coordinator().apply(plan);
+
+      final created = (await profiles.list()).single;
+      expect(created.bbtUnit, BbtUnit.fahrenheit);
+      expect(created.weightUnit, WeightUnit.lb);
+
+      // Re-importing the same file must plan as *matched* and keep the
+      // stored preference untouched (mode's contract).
+      final plan2 = await coordinator().buildPlan(document);
+      await coordinator().apply(plan2);
+      final second = (await profiles.list()).single;
+      expect(second.id, _fileP1);
+      expect(second.bbtUnit, BbtUnit.fahrenheit);
+      expect(second.weightUnit, WeightUnit.lb);
+    });
+
+    test('issue #255: a pre-v8 export (no unit keys) creates a profile '
+        'with the metric defaults', () async {
+      final rawDoc = _document(profiles: [_rawProfile(_fileP1)])
+        ..['schemaVersion'] = 7;
+      final plan = await coordinator().buildPlan(_parse(rawDoc));
+      await coordinator().apply(plan);
+      final created = (await profiles.list()).single;
+      expect(created.bbtUnit, BbtUnit.celsius);
+      expect(created.weightUnit, WeightUnit.kg);
     });
 
     test('re-importing the same file plans the profile as matched, not '

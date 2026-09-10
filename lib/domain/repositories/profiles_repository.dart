@@ -4,6 +4,7 @@
 library;
 
 import '../models/local_date.dart';
+import '../models/measurement_unit.dart';
 import '../models/profile.dart';
 import '../models/profile_mode.dart';
 import '../models/profile_relationship.dart';
@@ -19,7 +20,11 @@ abstract interface class ProfilesRepository {
   /// through [update]; all individually optional (skipped questions are
   /// null), and never validated here — `CycleFacts.canSeed` in the
   /// prediction domain is the gate that decides which values can seed a
-  /// provisional estimate.
+  /// provisional estimate. [bbtUnit]/[weightUnit] (Issue #255) are the
+  /// per-profile display-unit preferences for numeric measurements,
+  /// defaulting to metric (`BbtUnit.celsius`/`WeightUnit.kg`) — editable
+  /// later through [update], and always a rendering preference only (each
+  /// stored `observations` value keeps the unit it was entered in).
   Future<Profile> create({
     required String displayName,
     required bool isMinor,
@@ -30,6 +35,8 @@ abstract interface class ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit,
+    WeightUnit weightUnit,
   });
 
   /// Persists edits to an existing profile (matched by id). Throws
