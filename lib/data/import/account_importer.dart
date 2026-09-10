@@ -259,9 +259,19 @@ class AccountImportCoordinator
   /// soft-deleted profile the account import file is restoring, which must
   /// plan as `matched` (with `restoredFromTombstone`), not `created`; see
   /// [planImport]'s and `ProfilePlan.restoredFromTombstone`'s doc comments.
+  ///
+  /// The acting user id: a live [currentUserIdProvider] wins over the
+  /// captured [currentUserId], so one coordinator can be reused across
+  /// sign-ins. Extracted from [buildPlan] to keep its complexity down.
+  String? _resolveCurrentUserId() {
+    final provider = currentUserIdProvider;
+    if (provider != null) return provider();
+    return currentUserId;
+  }
+
   @override
   Future<ImportPlan> buildPlan(AccountImportDocument document) async {
-    final currentUserId = currentUserIdProvider?.call() ?? this.currentUserId;
+    final currentUserId = _resolveCurrentUserId();
     final existingProfiles = await profilesRepository.list();
     final existingIds = {for (final p in existingProfiles) p.id};
     final matchedIds = <String>{};
