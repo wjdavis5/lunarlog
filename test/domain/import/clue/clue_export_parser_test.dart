@@ -79,7 +79,10 @@ void main() {
       (20, 'skin', 'skin', 'acne'),
       (21, 'medication', 'medication', 'antihistamine'),
       (22, 'appointments', 'appointments', 'doctor_appt'),
-      (23, 'ailments', 'ailments', 'cold_flu'),
+      // Issue #252: `cold_flu` renames onto the category-qualified
+      // ailments code (the option is attested under both medication and
+      // ailments; the flat tag namespace qualifies each instance).
+      (23, 'ailments', 'ailments', 'cold_flu_ailments'),
       (24, 'tags', 'tags', 'My Vacation Trip!'),
       (25, 'birth_control', 'birth_control', 'pill'),
       (26, 'mucus', 'mucus', 'egg_white'),
@@ -111,7 +114,9 @@ void main() {
     test('issue #249 mapping table on synthetic Clue-shaped input: '
         'period_cramps->cramps, lower_back->back_pain, bloated->bloating, '
         'fatigue->tired', () {
-      final result = parseClueDatapoints(utf8.encode('['
+      final result = parseClueDatapoints(
+        utf8.encode(
+          '['
           '{"date": "2026-02-01", "type": "pain", '
           '"value": {"option": "period_cramps"}},'
           '{"date": "2026-02-02", "type": "pain", '
@@ -120,7 +125,9 @@ void main() {
           '"value": {"option": "bloated"}},'
           '{"date": "2026-02-04T00:00:00.000Z", "type": "energy", '
           '"value": {"option": "fatigue"}}'
-          ']'));
+          ']',
+        ),
+      );
       expect(result.skipped, isEmpty);
       expect(result.datapoints, hasLength(4));
       expect(
@@ -136,7 +143,9 @@ void main() {
         'leisure unknown options pass through verbatim (never rejected or '
         'coerced), partying "big night" snake_cases to big_night, '
         'meditation passes through', () {
-      final result = parseClueDatapoints(utf8.encode('['
+      final result = parseClueDatapoints(
+        utf8.encode(
+          '['
           '{"date": "2026-03-01", "type": "leisure", '
           '"value": [{"option": "Reading a Novel"}, '
           '{"option": "totally undocumented option"}]},'
@@ -144,16 +153,15 @@ void main() {
           '"value": [{"option": "big night"}, {"option": "hangover"}]},'
           '{"date": "2026-03-03T00:00:00.000Z", "type": "meditation", '
           '"value": {"option": "ten minutes"}}'
-          ']'));
+          ']',
+        ),
+      );
       expect(result.skipped, isEmpty, reason: 'unknown-never-drop');
       expect(result.datapoints, hasLength(5));
       expect(
         [
           for (final dp in result.datapoints)
-            (
-              (dp as ClueObservationDatapoint).category,
-              dp.code,
-            ),
+            ((dp as ClueObservationDatapoint).category, dp.code),
         ],
         [
           ('leisure', 'Reading a Novel'),
@@ -163,6 +171,53 @@ void main() {
           ('partying', 'big_night'),
           ('partying', 'hangover'),
           ('meditation', 'ten minutes'),
+        ],
+      );
+    });
+
+    test('issue #252 mapping table on synthetic Clue-shaped input: '
+        'the cold/flu collision category-qualifies under both medication '
+        'and ailments (both spellings), collection_method and exercise '
+        'options pass through as picker codes, and appointments options '
+        'pass through verbatim (unknown-never-drop)', () {
+      final result = parseClueDatapoints(
+        utf8.encode(
+          '['
+          '{"date": "2026-04-01", "type": "medication", '
+          '"value": [{"option": "cold/flu"}, {"option": "antibiotic"}]},'
+          '{"date": "2026-04-02", "type": "ailments", '
+          '"value": {"option": "cold/flu"}},'
+          '{"date": "2026-04-03", "type": "ailments", '
+          '"value": {"option": "cold_flu"}},'
+          '{"date": "2026-04-04", "type": "collection_method", '
+          '"value": {"option": "menstrual_cup"}},'
+          '{"date": "2026-04-05", "type": "exercise", '
+          '"value": [{"option": "walking"}, {"option": "rest_day"}]},'
+          '{"date": "2026-04-06T00:00:00.000Z", "type": "appointments", '
+          '"value": {"option": "not_publicly_enumerated"}}'
+          ']',
+        ),
+      );
+      expect(result.skipped, isEmpty, reason: 'unknown-never-drop');
+      expect(result.datapoints, hasLength(8));
+      expect(
+        [
+          for (final dp in result.datapoints)
+            ((dp as ClueObservationDatapoint).category, dp.code),
+        ],
+        [
+          ('medication', 'cold_flu_medication'),
+          ('medication', 'antibiotic'),
+          ('ailments', 'cold_flu_ailments'),
+          // Both documented spellings land on the same qualified code.
+          ('ailments', 'cold_flu_ailments'),
+          ('collection_method', 'menstrual_cup'),
+          ('exercise', 'walking'),
+          ('exercise', 'rest_day'),
+          // Appointments' exact option strings are not publicly
+          // enumerated (issue #252): whatever an export carries survives
+          // verbatim, never rejected or coerced.
+          ('appointments', 'not_publicly_enumerated'),
         ],
       );
     });
@@ -179,8 +234,8 @@ void main() {
     late List<ClueDatapoint> datapoints;
 
     setUp(() {
-      datapoints =
-          parseClueDatapoints(_fixtureBytes('bbt_variants.json')).datapoints;
+      datapoints = parseClueDatapoints(_fixtureBytes('bbt_variants.json'))
+          .datapoints;
     });
 
     test('celsius', () {
@@ -229,8 +284,9 @@ void main() {
     late List<ClueDatapoint> datapoints;
 
     setUp(() {
-      datapoints = parseClueDatapoints(_fixtureBytes('negative_assertions.json'))
-          .datapoints;
+      datapoints = parseClueDatapoints(
+        _fixtureBytes('negative_assertions.json'),
+      ).datapoints;
     });
 
     test('period/none decodes as an explicit not-bleeding flow level', () {
@@ -264,9 +320,9 @@ void main() {
     late List<ClueDatapoint> datapoints;
 
     setUp(() {
-      datapoints =
-          parseClueDatapoints(_fixtureBytes('unknown_type_and_option.json'))
-              .datapoints;
+      datapoints = parseClueDatapoints(
+        _fixtureBytes('unknown_type_and_option.json'),
+      ).datapoints;
     });
 
     test('an unrecognised type escapes to raw, preserving the whole row', () {
@@ -337,8 +393,7 @@ void main() {
   group('empty multi-select is recorded, not silently dropped', () {
     test('"value": [] is a skipped row (emptySelection), not zero '
         'datapoints; the sibling well-formed row still parses', () {
-      final result =
-          parseClueDatapoints(_fixtureBytes('empty_selection.json'));
+      final result = parseClueDatapoints(_fixtureBytes('empty_selection.json'));
       expect(result.skipped, hasLength(1));
       expect(result.skipped.single.index, 0);
       expect(result.skipped.single.reason, 'emptySelection');
@@ -395,9 +450,13 @@ void main() {
   group('UTF-8 decoding tolerance (Issue #190 review)', () {
     test('a leading UTF-8 BOM is stripped before JSON decoding', () {
       final bomPrefixed = [
-        0xEF, 0xBB, 0xBF,
-        ...utf8.encode('[{"date": "2026-01-01", "type": "period", '
-            '"value": {"option": "light"}}]'),
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode(
+          '[{"date": "2026-01-01", "type": "period", '
+          '"value": {"option": "light"}}]',
+        ),
       ];
       final result = parseClueDatapoints(bomPrefixed);
       expect(result.datapoints, hasLength(1));

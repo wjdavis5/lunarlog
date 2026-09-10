@@ -1,20 +1,23 @@
-/// Symptom tag taxonomy (KTD6): 67 codes in 22 categories, grown from the
+/// Symptom tag taxonomy (KTD6): 86 codes in 28 categories, grown from the
 /// original 17-code cycle/flow-only set by Issue #249 (the physical
 /// categories of Clue's attested taxonomy — pain, energy, sleep, skin,
 /// hair, digestion, stool, cravings, plus the option-set-unverified
-/// categories) and Issue #251 (the feelings/mind/lifestyle categories —
+/// categories), Issue #251 (the feelings/mind/lifestyle categories —
 /// `feelings`, `mind`, `motivation`, `social_life`, `partying`, plus the
-/// option-set-unverified `pms`, `meditation`, `leisure`).
+/// option-set-unverified `pms`, `meditation`, `leisure`), and Issue #252
+/// (the events-and-care categories — `collection_method`, `exercise`,
+/// `medication`, `ailments`, plus the option-set-unverified
+/// `appointments` and `supplements`).
 ///
 /// Codes are stable identifiers (stored on day entries); [TagCode.display]
-/// is the default UI string. **The code-stability rule (Issues #249 and
-/// #251): an existing code is never renamed or recoded.** Re-parenting
-/// changes only the code's [TagCode.category]; the code string itself is
-/// untouched, so historical rows referencing it stay valid without any
-/// data migration. The 11 pre-#249 physical codes (`cramps`, `headache`,
-/// `back_pain`, `breast_tenderness`, `bloating`, `nausea`, `acne`,
-/// `energetic`, `fatigue`, `cravings`, `sleep_trouble`) and the 5
-/// pre-#251 mood codes (`irritable`, `sad`, `anxious`, `calm`,
+/// is the default UI string. **The code-stability rule (Issues #249,
+/// #251, and #252): an existing code is never renamed or recoded.**
+/// Re-parenting changes only the code's [TagCode.category]; the code
+/// string itself is untouched, so historical rows referencing it stay
+/// valid without any data migration. The 11 pre-#249 physical codes
+/// (`cramps`, `headache`, `back_pain`, `breast_tenderness`, `bloating`,
+/// `nausea`, `acne`, `energetic`, `fatigue`, `cravings`, `sleep_trouble`)
+/// and the 5 pre-#251 mood codes (`irritable`, `sad`, `anxious`, `calm`,
 /// `sensitive`) all keep their exact strings.
 ///
 /// Category-scoped option strings that would collide across categories in
@@ -22,10 +25,16 @@
 /// following the export-string shape Clue itself uses for skin
 /// (`good_skin`/`oily_skin`/`dry_skin`) — rather than renamed away from
 /// their attested option: `good_hair`/`bad_hair`/`oily_hair`/`dry_hair`,
-/// `great_digestion`, `great_stool`. Everything else keeps the raw Clue
-/// option string, which is also what the Clue importer's pass-through
+/// `great_digestion`, `great_stool`, and — Issue #252 — `cold/flu`, which
+/// is an attested option of BOTH `medication` and `ailments`, so each
+/// instance is category-qualified (`cold_flu_medication`/
+/// `cold_flu_ailments`). Everything else keeps the raw Clue option
+/// string, which is also what the Clue importer's pass-through
 /// (`clue_option_map.dart`) writes into `observations.code`, so the two
-/// vocabularies line up option-for-option.
+/// vocabularies line up option-for-option. A display string is likewise
+/// qualified only where the bare option would collide with another
+/// display or a category heading ("Pain (medication)", the
+/// "Cravings (unspecified)" precedent).
 ///
 /// The taxonomy is still not a fertility-status model — see the
 /// vocabulary-guard test in test/domain/tags_test.dart. The one apparent
@@ -57,6 +66,14 @@ enum TagCategory {
   meditation,
   pms,
   partying,
+  // Issue #252's events-and-care categories, appended after #251's
+  // lifestyle cluster (enum order = default surfacing order).
+  collectionMethod,
+  exercise,
+  appointments,
+  medication,
+  ailments,
+  supplements,
 }
 
 class TagCode {
@@ -191,19 +208,64 @@ const List<TagCode> kTagTaxonomy = [
   TagCode('cigarettes', TagCategory.partying, 'Cigarettes'),
   TagCode('big_night', TagCategory.partying, 'Big night'),
   TagCode('hangover', TagCategory.partying, 'Hangover'),
+  // collection_method — Issue #252: the four documented options (the
+  // arXiv corpus's collection-method row, menstrual cup added later per
+  // Clue's own announcement). Period underwear is "widely reported but
+  // unverified", so it ships no code — and needs no schema change when it
+  // ever does: `observations.code` is free text (unknown-never-drop) and
+  // this list is data, so adding `period_underwear` is a one-line data
+  // addition, exactly the extensible-registry shape issue #252 asks for.
+  TagCode('pad', TagCategory.collectionMethod, 'Pad'),
+  TagCode('tampon', TagCategory.collectionMethod, 'Tampon'),
+  TagCode('panty_liner', TagCategory.collectionMethod, 'Panty liner'),
+  TagCode('menstrual_cup', TagCategory.collectionMethod, 'Menstrual cup'),
+  // exercise — Issue #252: running/yoga/biking/swimming are the legacy
+  // attested set; walking/pilates/rest_day were added in Clue's 2023
+  // redesign. All seven pass through the importer verbatim.
+  TagCode('running', TagCategory.exercise, 'Running'),
+  TagCode('yoga', TagCategory.exercise, 'Yoga'),
+  TagCode('biking', TagCategory.exercise, 'Biking'),
+  TagCode('swimming', TagCategory.exercise, 'Swimming'),
+  TagCode('walking', TagCategory.exercise, 'Walking'),
+  TagCode('pilates', TagCategory.exercise, 'Pilates'),
+  TagCode('rest_day', TagCategory.exercise, 'Rest day'),
+  // medication — Issue #252: the legacy table's four options. `cold/flu`
+  // is attested under BOTH medication and ailments, so each instance is
+  // category-qualified (the great_digestion/great_stool pattern — see the
+  // library doc comment); the importer's option map renames both
+  // documented spellings (`cold/flu`, `cold_flu`) onto the qualified
+  // codes. `pain` keeps the attested option string as its code; the
+  // display is qualified to stay unambiguous next to the Pain category
+  // heading ("Cravings (unspecified)" precedent).
+  TagCode('pain', TagCategory.medication, 'Pain (medication)'),
+  TagCode(
+    'cold_flu_medication',
+    TagCategory.medication,
+    'Cold/flu (medication)',
+  ),
+  TagCode('antihistamine', TagCategory.medication, 'Antihistamine'),
+  TagCode('antibiotic', TagCategory.medication, 'Antibiotic'),
+  // ailments — Issue #252: the legacy table's four options; `cold_flu_ailments`
+  // is the category-qualified half of the medication/ailments `cold/flu`
+  // collision above.
+  TagCode('cold_flu_ailments', TagCategory.ailments, 'Cold/flu (ailments)'),
+  TagCode('allergy', TagCategory.ailments, 'Allergy'),
+  TagCode('injury', TagCategory.ailments, 'Injury'),
+  TagCode('fever', TagCategory.ailments, 'Fever'),
 ];
 
-/// Issue #249/#251 categories whose Clue option set is not publicly
+/// Issue #249/#251/#252 categories whose Clue option set is not publicly
 /// attested (Clue Plus-only, undocumented, or — for #251's `pms` —
-/// presence-based with the option set not publicly enumerated;
-/// `hotFlashes`' category itself is attested, its perimenopause option
-/// cluster is not). Each exists in the enum so the schema and picker
-/// framework are real, but carries **no codes** in [kTagTaxonomy] — the
-/// picker marks them "unverified — pin before shipping" instead of
-/// inventing options, until a real Clue export pins each set. `pms` the
-/// *presence* marker is deliberately separate: it rides `day_entries.pms`
-/// (issue #220) outside this taxonomy, exactly as Clue separates the PMS
-/// phase from the PMS option set.
+/// presence-based with the option set not publicly enumerated; for #252's
+/// `appointments` the category is confirmed single-event data but its
+/// exact option strings are not publicly enumerated, and `supplements`
+/// is Clue Plus-only with nothing enumerated). Each exists in the enum so
+/// the schema and picker framework are real, but carries **no codes** in
+/// [kTagTaxonomy] — the picker marks them "unverified — pin before
+/// shipping" instead of inventing options, until a real Clue export pins
+/// each set. `pms` the *presence* marker is deliberately separate: it
+/// rides `day_entries.pms` (issue #220) outside this taxonomy, exactly as
+/// Clue separates the PMS phase from the PMS option set.
 const List<TagCategory> kUnverifiedTagCategories = [
   TagCategory.sleepQuality,
   TagCategory.breastsChest,
@@ -213,7 +275,26 @@ const List<TagCategory> kUnverifiedTagCategories = [
   TagCategory.pms,
   TagCategory.meditation,
   TagCategory.leisure,
+  // Issue #252's two.
+  TagCategory.appointments,
+  TagCategory.supplements,
 ];
+
+/// Issue #252's "single-event" categories — Clue's own treatment of
+/// appointments, medications, and ailments as meaningfully tied to their
+/// exact date rather than as cycle-pattern symptoms (birth control, the
+/// issue's fourth single-event example, is absent because issue #260
+/// ships it as its own model outside this taxonomy). These are the
+/// categories a consumer may attach an exact `observations.observed_at`
+/// to (#240's nullable column) and may exclude from cycle-trend/insights
+/// aggregation — the seam issue #252's AC names for the Predictions &
+/// Insights epic, which owns the actual consuming code; nothing here
+/// aggregates or excludes anything by itself.
+const Set<TagCategory> kSingleEventTagCategories = {
+  TagCategory.appointments,
+  TagCategory.medication,
+  TagCategory.ailments,
+};
 
 /// The `pain_free` code (Issue #249): a positive per-category "none today"
 /// assertion — an affirmative statement that the day had no pain, never a

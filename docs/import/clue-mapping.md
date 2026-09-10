@@ -149,22 +149,22 @@ because neither collapse happens anymore.
 | Digestion | `digestion` | HIGH | `observations.category = 'digestion'` | `bloated→bloating`, `nauseous`/`nauseated→nausea` |
 | Discharge | `discharge` | HIGH | `observations.category = 'discharge'` | `none` = negative assertion |
 | BBT | `bbt` (+`temperature` type alias, LOW) | HIGH shape / LOW value-key | `ClueNumericDatapoint(category: 'bbt')` | see "BBT numerics" below |
-| Collection method | `collection_method` | option set undocumented | `observations.category = 'collection_method'` | pass-through |
+| Collection method | `collection_method` | HIGH (4 options documented; period underwear widely reported but unverified) | `observations.category = 'collection_method'` | pass-through — pad/tampon/panty_liner/menstrual_cup are picker codes since issue #252 and match option-for-option |
 | Social life | `social_life` | HIGH | `observations.category = 'social_life'` | pass-through |
 | Craving | `craving` | HIGH | `observations.category = 'craving'` | pass-through |
 | Mind (legacy Mental) | `mind` | not in real-data attested list | `observations.category = 'mind'` | pass-through |
 | Motivation (legacy) | `motivation` | MEDIUM, 2 parsers | `observations.category = 'motivation'` | historic exports only; likely folded into Mind today |
 | Sleep (duration) | `sleep` | MEDIUM, single parser | `observations.category = 'sleep'` | bucketed duration strings, pass-through |
-| Exercise | `exercise` | HIGH+legacy | `observations.category = 'exercise'` | pass-through, all 7 options |
+| Exercise | `exercise` | HIGH+legacy | `observations.category = 'exercise'` | pass-through, all 7 options (running/yoga/biking/swimming + walking/pilates/rest_day) — picker codes since issue #252, matching option-for-option |
 | Stool (legacy Poop) | `stool` | HIGH | `observations.category = 'stool'` | pass-through |
 | Leisure | `leisure` | option set undocumented | `observations.category = 'leisure'` | pass-through — any option, known or not (issue #251 AC: unknown option strings are preserved verbatim, never rejected or coerced) |
 | Hair | `hair` | HIGH (support docs) | `observations.category = 'hair'` | pass-through |
 | Skin | `skin` | MEDIUM, single parser | `observations.category = 'skin'` | pass-through |
-| Medication | `medication` | HIGH | `observations.category = 'medication'` | pass-through |
+| Medication | `medication` | HIGH | `observations.category = 'medication'` | `cold/flu` (and the `cold_flu` spelling) → `cold_flu_medication` — the option is attested under both medication and ailments, and the flat day-entry tag namespace category-qualifies both instances (issue #252, the `great_digestion`/`great_stool` pattern); `pain`/`antihistamine`/`antibiotic` pass through as picker codes |
 | Meditation | `meditation` | option set undocumented (A1-20; listed in Clue's current category list) | `observations.category = 'meditation'` | pass-through — added by issue #251 |
 | Partying | `partying` | HIGH (legacy table; current category Partying, A1-23) | `observations.category = 'partying'` | `big night` → `big_night` (snake_case for the flat tag namespace); `drinks`/`cigarettes`/`hangover` pass through — added by issue #251 |
-| Appointments | `appointments` | option strings unconfirmed | `observations.category = 'appointments'` | pass-through |
-| Ailments | `ailments` | HIGH | `observations.category = 'ailments'` | pass-through |
+| Appointments | `appointments` | option strings unconfirmed | `observations.category = 'appointments'` | pass-through — single-event data per Clue's own treatment (issue #252): a consumer may attach an exact `observed_at` (#240's nullable column) and exclude the category from trend aggregation via `kSingleEventTagCategories` |
+| Ailments | `ailments` | HIGH | `observations.category = 'ailments'` | `cold/flu` (and the `cold_flu` spelling) → `cold_flu_ailments` (issue #252's category-qualified half of the medication/ailments collision); `allergy`/`injury`/`fever` pass through as picker codes |
 | Custom tags | `tags` | HIGH | `observations.category = 'tags'` | raw free text, **never** snake_cased or normalised — this parser applies no transform to any option string unless the mapping table above explicitly renames it, so `tags` needs no special case to get this right |
 | Birth control | `birth_control` | MEDIUM, option strings unattested | `observations.category = 'birth_control'` | pass-through |
 | Tests | `tests` | MEDIUM | `observations.category = 'tests'` | pass-through |
@@ -175,9 +175,15 @@ flashes/perimenopause, Urine, Vulva & vagina, Supplements, Sleep quality):
 not represented in `measurements.json` per any source consulted for #190.
 (Meditation and Partying used to be on this list; issue #251's research
 attested their category existence, so they are mapped rows above now —
-still pass-through, since neither's option set is fully documented.) A
-`type` string this table doesn't recognise — whether one of the remaining
-ones or a genuinely new Clue category — escapes to the
+still pass-through, since neither's option set is fully documented.)
+Supplements is a special case since issue #252: it exists as a lunarlog
+taxonomy category (option-set-unverified, the picker's "unverified — pin
+before shipping" caption), but no source attests a `supplements` export
+`type`, so it stays on this list with **no** `kClueTypeMap` entry — an
+export that ever carries one escapes to the `ClueUnknownDatapoint` hatch
+below, losslessly, until a real export pins both the type string and its
+option set. A `type` string this table doesn't recognise — whether one of
+the remaining ones or a genuinely new Clue category — escapes to the
 `ClueUnknownDatapoint` hatch below rather than being guessed at.
 
 ## Negative assertions — never a positive symptom
