@@ -72,6 +72,7 @@ import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/startup/startup.dart' as startup;
+import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
 import 'package:provider/provider.dart';
@@ -605,11 +606,10 @@ SyncEngine defaultSyncEngineBuilder({
       gateUnlocked: () => gate.unlocked,
     );
 
-/// The device reset (KTD16) as the widget tree sees it: provided by
-/// [LunarLogRoot] so any screen can call `context.read<DeviceResetCallback?>()`
-/// without knowing the root. Null in harnesses that mount `LunarLogApp`
-/// directly without passing one.
-typedef DeviceResetCallback = Future<void> Function();
+/// The device reset callback type lives next to the account UI that
+/// consumes it ([DeviceResetCallback] in
+/// `lib/ui/account/device_reset_callback.dart`); this composition root only
+/// provides it (KTD16).
 
 /// Explicit push-device-registration removal (#1 review fix), provided
 /// alongside [DeviceResetCallback] so a sign-out UI flow that does *not* go

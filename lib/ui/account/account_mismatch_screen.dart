@@ -9,7 +9,8 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart'
-    show DeviceResetCallback, RemovePushRegistrationCallback;
+    show RemovePushRegistrationCallback;
+import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
