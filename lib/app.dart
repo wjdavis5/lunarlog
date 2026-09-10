@@ -12,38 +12,19 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
+import 'package:lunarlog/composition/app_dependencies.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
-import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart'
-    as data;
-import 'package:lunarlog/data/export/account_export_writer.dart' as data;
-import 'package:lunarlog/data/export/fhir_bundle_writer.dart' as data;
-import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart'
-    as data;
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
-import 'package:lunarlog/data/import/account_importer.dart' as data;
-import 'package:lunarlog/data/import/import_file_picker.dart' as data;
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
-    as data;
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
-    as data;
-import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart'
-    as data;
 import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart'
     as data;
-import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
-import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
-import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
-import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
-import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
-import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
@@ -100,6 +81,7 @@ class LunarLogApp extends StatefulWidget {
   const LunarLogApp({
     super.key,
     required this.db,
+    this.dependencies,
     this.scheduler,
     this.authService,
     this.syncEngine,
@@ -123,6 +105,13 @@ class LunarLogApp extends StatefulWidget {
   });
 
   final LunarLogDatabase db;
+
+  /// A pre-built dependency bundle, supplied by the composition root
+  /// (`LunarLogRoot`) once the database is open. When null (tests that mount
+  /// this widget directly), [initState] builds one from the collaborators
+  /// below via `buildAppDependencies`.
+  final AppDependencies? dependencies;
+
   final SharingService? sharingService;
 
   /// In-app feedback service (Issue #6, U6). When present, Settings gains a
@@ -233,6 +222,11 @@ class LunarLogApp extends StatefulWidget {
 
 class _LunarLogAppState extends State<LunarLogApp>
     with WidgetsBindingObserver {
+  // The dependency bundle this widget's lifetime is bound to. Supplied by
+  // the composition root, or built once in [initState] from the (stable)
+  // database and the injectable collaborators below.
+  late final AppDependencies _deps;
+
   // KTD3/R5: one instance of each repository for this widget's lifetime,
   // built once in [initState] from the (stable) database and shared by the
   // reminder coordinator and the provider tree below.
@@ -311,47 +305,57 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   void initState() {
     super.initState();
-    final storage = widget.db.storage;
-    _profiles = DriftProfilesRepository(storage);
-    _dayEntries = DriftDayEntriesRepository(storage);
-    _observations = DriftObservationsRepository(storage);
-    _careContent = DriftCareContentRepository(storage);
-    _settings = DriftSettingsStore(storage);
+    // Composition root: build (or accept) the one bundle of concrete
+    // data-layer implementations this widget's lifetime is bound to. When
+    // the shell (`LunarLogRoot`) supplies one, use it verbatim; otherwise
+    // build it from this widget's own collaborators (tests, and the direct
+    // `LunarLogApp` mounts that pass none).
+    _deps = widget.dependencies ??
+        buildAppDependencies(
+          db: widget.db,
+          authService: widget.authService,
+          syncEngine: widget.syncEngine,
+          sharingService: widget.sharingService,
+          feedbackService: widget.feedbackService,
+          accountDeletionService: widget.accountDeletionService,
+          ownershipTransferService: widget.ownershipTransferService,
+          predictionConnectionService: widget.predictionConnectionService,
+          notificationPreferencesService: widget.notificationPreferencesService,
+          accountExportRemoteSource: widget.accountExportRemoteSource,
+          reminderWindowUpsert: widget.reminderWindowUpsert,
+          scheduler: widget.scheduler,
+          currentUserIdProvider: () => _authController?.currentUserId,
+          pushEnabled: AppConfig.hasPush && !kIsWeb,
+        );
+    _profiles = _deps.profiles;
+    _dayEntries = _deps.dayEntries;
+    _observations = _deps.observations;
+    _careContent = _deps.careContent;
+    _settings = _deps.settings;
     // Issue #132: the device-local omission list joins both streams, so
     // estimates and history re-derive (and reminders replan) whenever the
     // operator omits, restores, or skips a cycle. Issue #218: the profiles
     // repository joins too, so a profile with onboarding-supplied cycle
     // facts but fewer than three logged cycles gets a provisional
     // prediction (and re-derives whenever the facts are edited).
-    _prediction = CyclePredictionService(_dayEntries,
-        settings: _settings, profiles: _profiles);
-    _profileModes = DriftProfileModesRepository(storage);
-    _cycleHistory = CycleHistoryService(_dayEntries, settings: _settings);
-    _cycleExclusions = CycleExclusionList(_settings);
+    _prediction = _deps.prediction;
+    _profileModes = _deps.profileModes;
+    _cycleHistory = _deps.cycleHistory;
+    _cycleExclusions = _deps.cycleExclusions;
     _permissionState = NotificationPermissionState(
       NotificationAvailability.available,
     );
     // R1/R7/R8: the concrete implementations `lib/ui` used to construct
     // inline, built once here and provided to the tree as domain contracts.
-    _profileGuardians = data.ProfileGuardiansRepository(storage);
-    _activityFeed = data.ActivityFeedRepository(storage);
-    _onboardingCycleAnswers =
-        data.DriftOnboardingCycleAnswersRecorder(storage);
-    _deviceDiagnostics = data.DeviceDiagnosticsCollector();
-    _accountExportWriter = data.AccountExportWriter(
-      remoteSource: widget.accountExportRemoteSource,
-    );
-    _fhirBundleWriter = const data.FhirBundleWriter();
-    _attachmentSource = data.ImagePickerAttachmentSource();
-    _importFileReader = const data.PickImportFileReader();
-    _accountImportCoordinator = data.AccountImportCoordinator(
-      profilesRepository: _profiles,
-      dayEntriesRepository: _dayEntries,
-      observationsRepository: _observations,
-      storage: storage,
-      guardiansForProfile: _profileGuardians.getForProfile,
-      currentUserIdProvider: () => _authController?.currentUserId,
-    );
+    _profileGuardians = _deps.profileGuardians;
+    _activityFeed = _deps.activityFeed;
+    _onboardingCycleAnswers = _deps.onboardingCycleAnswers;
+    _deviceDiagnostics = _deps.deviceDiagnostics;
+    _accountExportWriter = _deps.accountExportWriter;
+    _fhirBundleWriter = _deps.fhirBundleWriter;
+    _attachmentSource = _deps.attachmentSource;
+    _importFileReader = _deps.importFileReader;
+    _accountImportCoordinator = _deps.accountImportCoordinator;
     _initAuthController();
     _initHealthFlowWriter();
     _buildReminderCoordinator();
@@ -387,16 +391,10 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// [initState] (issue #168 CRAP gate) so this branching doesn't count
   /// against that method's complexity.
   void _buildReminderCoordinator() {
-    final scheduler = widget.scheduler;
+    // R9: the scheduler (and its constructor-injected settings store) comes
+    // from the composition bundle. Null disables reminders entirely.
+    final scheduler = _deps.scheduler;
     if (scheduler == null) return;
-    // Issue #168: `main.dart` constructs the scheduler before the
-    // database (and so this settings store) exists, so
-    // `FlutterLocalNotificationsScheduler.settingsStore` is attached
-    // here, as soon as it does, rather than at that scheduler's own
-    // construction. The web `NoopReminderScheduler` has no such field.
-    if (scheduler is FlutterLocalNotificationsScheduler) {
-      scheduler.settingsStore = _settings;
-    }
     // Issue #136: the per-profile reminder configuration service and the
     // action executor live exactly as long as the coordinator does — no
     // scheduler (widget-test harnesses, web) means neither is built and
@@ -462,8 +460,8 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// CRAP gate) so this branching doesn't count against that method's
   /// complexity.
   void _initReminderWindowPublisher() {
-    final reminderWindowUpsert = widget.reminderWindowUpsert;
-    if (widget.notificationPreferencesService == null ||
+    final reminderWindowUpsert = _deps.reminderWindowUpsert;
+    if (_deps.notificationPreferencesService == null ||
         reminderWindowUpsert == null) {
       return;
     }
@@ -486,7 +484,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// `AppConfig.hasPush`/web gate the reminder publisher sits behind,
   /// because the service (and so the whole sharing UI) exists without push.
   void _startPredictionProjectionPublisher() {
-    final service = widget.predictionConnectionService;
+    final service = _deps.predictionConnectionService;
     if (service == null) return;
     final publisher = data.PredictionProjectionPublisher(
       activeProfiles: _profiles.watch(),
@@ -591,10 +589,10 @@ class _LunarLogAppState extends State<LunarLogApp>
     final isClaim = kind == 'claim';
     final isPrediction = kind == 'prediction';
     final collaboratorPresent = isClaim
-        ? widget.ownershipTransferService != null
+        ? _deps.ownershipTransferService != null
         : isPrediction
-            ? widget.predictionConnectionService != null
-            : widget.sharingService != null;
+            ? _deps.predictionConnectionService != null
+            : _deps.sharingService != null;
     if (!collaboratorPresent || _inviteSheetOpen) return;
     if (_authController?.signedIn ?? false) {
       _presentSheet(code, profileId, kind);
@@ -621,7 +619,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   }
 
   void _showInviteSheet(String code, String? profileId) {
-    final sharing = widget.sharingService;
+    final sharing = _deps.sharingService;
     if (sharing == null || _inviteSheetOpen) return;
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) {
@@ -662,7 +660,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// sharing the same [_inviteSheetOpen] re-entrancy guard so only one
   /// invite/claim sheet is ever open at once.
   void _showClaimSheet(String code, String? profileId) {
-    final service = widget.ownershipTransferService;
+    final service = _deps.ownershipTransferService;
     if (service == null || _inviteSheetOpen) return;
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) {
@@ -702,7 +700,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// by passing the kind through from the caller; a deep link arriving
   /// live never latches.
   void _showPredictionConnectionSheet(String code) {
-    final service = widget.predictionConnectionService;
+    final service = _deps.predictionConnectionService;
     if (service == null || _inviteSheetOpen) return;
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) {
@@ -916,28 +914,28 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<ImportFileReader>.value(value: _importFileReader),
         Provider<AccountImportCoordinator>.value(
             value: _accountImportCoordinator),
-        if (widget.sharingService != null)
-          Provider<SharingService>.value(value: widget.sharingService!),
-        if (widget.ownershipTransferService != null)
+        if (_deps.sharingService != null)
+          Provider<SharingService>.value(value: _deps.sharingService!),
+        if (_deps.ownershipTransferService != null)
           Provider<OwnershipTransferService>.value(
-              value: widget.ownershipTransferService!),
-        if (widget.predictionConnectionService != null)
+              value: _deps.ownershipTransferService!),
+        if (_deps.predictionConnectionService != null)
           Provider<PredictionConnectionService>.value(
-              value: widget.predictionConnectionService!),
+              value: _deps.predictionConnectionService!),
         if (_predictionProjectionPublisher != null)
           Provider<PredictionProjectionPublisher>.value(
               value: _predictionProjectionPublisher!),
-        if (widget.feedbackService != null)
-          Provider<FeedbackService>.value(value: widget.feedbackService!),
-        if (widget.accountDeletionService != null)
+        if (_deps.feedbackService != null)
+          Provider<FeedbackService>.value(value: _deps.feedbackService!),
+        if (_deps.accountDeletionService != null)
           Provider<AccountDeletionService>.value(
-              value: widget.accountDeletionService!),
-        if (widget.notificationPreferencesService != null)
+              value: _deps.accountDeletionService!),
+        if (_deps.notificationPreferencesService != null)
           Provider<NotificationPreferencesService>.value(
-              value: widget.notificationPreferencesService!),
-        if (widget.accountExportRemoteSource != null)
+              value: _deps.notificationPreferencesService!),
+        if (_deps.accountExportRemoteSource != null)
           Provider<AccountExportRemoteSource>.value(
-              value: widget.accountExportRemoteSource!),
+              value: _deps.accountExportRemoteSource!),
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),

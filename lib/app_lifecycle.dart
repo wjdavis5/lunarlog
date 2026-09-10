@@ -40,6 +40,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunarlog/app.dart';
+import 'package:lunarlog/composition/app_dependencies.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
@@ -48,9 +49,6 @@ import 'package:lunarlog/data/gate/app_gate.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
-import 'package:lunarlog/data/notifications/reminder_window_publisher.dart'
-    show ReminderWindowUpsert;
-import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
 import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
@@ -862,20 +860,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
   late final GateController _gate;
   LunarLogDatabase? _db;
   SyncEngine? _syncEngine;
-  SharingService? _builtSharingService;
-  FeedbackService? _builtFeedbackService;
-  AccountDeletionService? _builtAccountDeletionService;
-  OwnershipTransferService? _builtOwnershipTransferService;
-  PredictionConnectionService? _builtPredictionConnectionService;
 
-  /// Issue #151: the injected service wins over the built one (the same
-  /// resolution every other service does inline at the [LunarLogApp] call
-  /// site; split out so [build]'s own CRAP budget does not grow).
-  PredictionConnectionService? get _resolvedPredictionConnectionService =>
-      widget.predictionConnectionService ?? _builtPredictionConnectionService;
-  NotificationPreferencesService? _builtNotificationPreferencesService;
-  AccountExportRemoteSource? _builtAccountExportRemoteSource;
-  ReminderWindowUpsert? _reminderWindowUpsert;
+  /// The composition bundle handed to [LunarLogApp]. Built after the database
+  /// opens (KTD7), with or without a Supabase client, and cleared on engine
+  /// disposal so the widget never sees a bundle bound to a closed database.
+  AppDependencies? _deps;
   RealtimeSyncCoordinator? _realtimeCoordinator;
   PushRegistrationCoordinator? _pushCoordinator;
 
@@ -944,59 +933,60 @@ class LunarLogRootState extends State<LunarLogRoot> {
   void _startSyncEngine(LunarLogDatabase db) {
     final authService = widget.authService;
     final transport = widget.syncTransport;
-    if (authService == null || transport == null || _syncEngine != null) {
-      return;
-    }
-    if (!mounted) return;
-    final engine = widget.syncEngineBuilder(
-      db: db,
-      authService: authService,
-      transport: transport,
-      gate: _gate,
-    );
-    _syncEngine = engine;
-    engine.start();
-
     final client = widget.supabaseClient;
-    if (client != null) {
-      _builtSharingService =
-          SupabaseSharingService(client: client, syncEngine: engine);
-      _builtFeedbackService = SupabaseFeedbackService(client: client);
-      _builtAccountDeletionService =
-          SupabaseAccountDeletionService(client: client);
-      _builtOwnershipTransferService =
-          SupabaseOwnershipTransferService(client: client, syncEngine: engine);
-      _builtPredictionConnectionService =
-          SupabasePredictionConnectionService(client: client);
-      _builtAccountExportRemoteSource =
-          SupabaseAccountExportRemoteSource(client: client);
-      final coordinator = RealtimeSyncCoordinator(
-        client: client,
-        syncEngine: engine,
-        storage: db.storage,
-        auth: authService,
+    SyncEngine? engine = _syncEngine;
+    if (authService != null && transport != null && engine == null) {
+      if (!mounted) return;
+      engine = widget.syncEngineBuilder(
+        db: db,
+        authService: authService,
+        transport: transport,
+        gate: _gate,
       );
-      _realtimeCoordinator = coordinator;
-      coordinator.start();
+      _syncEngine = engine;
+      engine.start();
 
-      // Issue #5, U7/U8: push registration and the Notifications screen.
-      // Gated by AppConfig.hasPush (R17, R18) — an unconfigured or web
-      // build never constructs any of this, so it never touches
-      // firebase_messaging and Manage guardians shows no Notifications tile.
-      if (AppConfig.hasPush && !widget.isWeb) {
-        unawaited(_startPushRegistration(db, authService, client));
-        _builtNotificationPreferencesService =
-            SupabaseNotificationPreferencesService(client: client);
-        _reminderWindowUpsert =
-            (profileId, estimatedNextStartIso, episodeOpen) async {
-          await client.rpc<dynamic>('upsert_reminder_window', params: {
-            'p_profile_id': profileId,
-            'p_estimated_next_start': estimatedNextStartIso,
-            'p_episode_open': episodeOpen,
-          });
-        };
+      if (client != null) {
+        final coordinator = RealtimeSyncCoordinator(
+          client: client,
+          syncEngine: engine,
+          storage: db.storage,
+          auth: authService,
+        );
+        _realtimeCoordinator = coordinator;
+        coordinator.start();
+
+        // Issue #5, U7/U8: push registration and the Notifications screen.
+        // Gated by AppConfig.hasPush (R17, R18) — an unconfigured or web
+        // build never constructs any of this, so it never touches
+        // firebase_messaging and Manage guardians shows no Notifications tile.
+        if (AppConfig.hasPush && !widget.isWeb) {
+          unawaited(_startPushRegistration(db, authService, client));
+        }
       }
     }
+    // KTD7: the bundle is built once the database is open, client or not —
+    // the local-only (unconfigured) build still needs every drift-backed
+    // contract. The Supabase-backed services resolve to null without a
+    // client, preserving the unconfigured-build posture (R14).
+    _deps = buildAppDependencies(
+      db: db,
+      client: client,
+      authService: authService,
+      syncTransport: transport,
+      syncEngine: engine,
+      sharingService: widget.sharingService,
+      feedbackService: widget.feedbackService,
+      accountDeletionService: widget.accountDeletionService,
+      ownershipTransferService: widget.ownershipTransferService,
+      predictionConnectionService: widget.predictionConnectionService,
+      notificationPreferencesService: widget.notificationPreferencesService,
+      accountExportRemoteSource: widget.accountExportRemoteSource,
+      scheduler: widget.scheduler,
+      // R17/R18: push-backed services exist only when push is configured and
+      // this is not web — the same gate `_startPushRegistration` uses below.
+      pushEnabled: AppConfig.hasPush && !widget.isWeb,
+    );
   }
 
   /// Resolves (generating and persisting once) this install's stable
@@ -1039,14 +1029,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     final pushCoordinator = _pushCoordinator;
     _pushCoordinator = null;
     await pushCoordinator?.dispose();
-    _builtSharingService = null;
-    _builtFeedbackService = null;
-    _builtAccountDeletionService = null;
-    _builtOwnershipTransferService = null;
-    _builtPredictionConnectionService = null;
-    _builtNotificationPreferencesService = null;
-    _builtAccountExportRemoteSource = null;
-    _reminderWindowUpsert = null;
+    _deps = null;
     final engine = _syncEngine;
     _syncEngine = null;
     await engine?.dispose();
@@ -1199,21 +1182,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
     } else if (_db != null) {
       content = LunarLogApp(
         db: _db!,
+        dependencies: _deps,
         scheduler: widget.scheduler,
         authService: widget.authService,
         syncEngine: _syncEngine,
-        sharingService: widget.sharingService ?? _builtSharingService,
-        feedbackService: widget.feedbackService ?? _builtFeedbackService,
-        accountDeletionService:
-            widget.accountDeletionService ?? _builtAccountDeletionService,
-        ownershipTransferService:
-            widget.ownershipTransferService ?? _builtOwnershipTransferService,
-        predictionConnectionService: _resolvedPredictionConnectionService,
-        notificationPreferencesService: widget.notificationPreferencesService ??
-            _builtNotificationPreferencesService,
-        accountExportRemoteSource: widget.accountExportRemoteSource ??
-            _builtAccountExportRemoteSource,
-        reminderWindowUpsert: _reminderWindowUpsert,
         inviteLinks: widget.inviteLinks,
         initialInviteCode: widget.initialInviteCode,
         initialInviteProfileId: widget.initialInviteProfileId,

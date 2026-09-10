@@ -123,14 +123,12 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   bool _initialized = false;
 
   /// Issue #168: the device-local store the Android denial count is
-  /// persisted in. Not available at construction time in production —
-  /// `main.dart` builds this scheduler before the database (and so the
-  /// settings store) exists — so it is mutable rather than `final`;
-  /// `_LunarLogAppState.initState` attaches it as soon as the store is
-  /// built. `null` (a widget test with no scheduler wiring, or before that
-  /// attachment happens) falls back to the in-memory-only behavior this
-  /// counter used to always have.
-  SettingsStore? settingsStore;
+  /// persisted in. Constructor-injected (R9): the composition factory builds
+  /// the scheduler only after the database — and so the settings store —
+  /// exists, so this is never mutated after construction. `null` (a widget
+  /// test with no scheduler wiring) falls back to the in-memory-only
+  /// behavior this counter used to always have.
+  final SettingsStore? settingsStore;
 
   // Issue #168: how many OS asks (the automatic one in [initialize], plus
   // every [requestPermission] tap) have come back refused on Android.
