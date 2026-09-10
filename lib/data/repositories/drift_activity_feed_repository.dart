@@ -18,11 +18,10 @@ import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
-import 'package:lunarlog/domain/repositories/activity_feed_repository.dart'
-    as contract;
+import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 
-class ActivityFeedRepository implements contract.ActivityFeedRepository {
-  const ActivityFeedRepository(this._storage);
+class DriftActivityFeedRepository implements ActivityFeedRepository {
+  const DriftActivityFeedRepository(this._storage);
 
   final LunarLogStorage _storage;
 

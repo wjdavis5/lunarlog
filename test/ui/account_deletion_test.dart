@@ -10,7 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart' show GateController;
-import 'package:lunarlog/data/export/account_export_writer.dart' as data;
+import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -254,7 +254,7 @@ class DeletionHarness {
             // falling back to the injected collaborator (mirrors
             // `lib/app.dart`).
             Provider<AccountExportWriter>.value(
-                value: const data.AccountExportWriter()),
+                value: const PlatformAccountExportWriter()),
             if (deletion != null)
               Provider<AccountDeletionService>.value(value: deletion!),
             Provider<DeviceResetCallback>.value(

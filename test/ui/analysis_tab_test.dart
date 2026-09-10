@@ -16,13 +16,14 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -347,7 +348,7 @@ void main() {
       await h.tester.pumpWidget(h.widgetFor(
         profile.id,
         authController: authController,
-        guardiansRepository: ProfileGuardiansRepository(h.db.storage),
+        guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
       ));
       await h.tester.pumpAndSettle();
 
@@ -390,7 +391,7 @@ void main() {
       await h.tester.pumpWidget(h.widgetFor(
         profile.id,
         authController: authController,
-        guardiansRepository: ProfileGuardiansRepository(h.db.storage),
+        guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
       ));
       await h.tester.pumpAndSettle();
 

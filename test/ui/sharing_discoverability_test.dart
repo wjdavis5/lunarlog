@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart' hide Profile, DayEntry;
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -177,7 +177,7 @@ Future<LunarLogDatabase> _pumpApp(
   PredictionConnectionService? predictionConnectionService,
 }) async {
   final db = LunarLogDatabase(NativeDatabase.memory());
-  await tester.pumpWidget(LunarLogApp(
+  await tester.pumpWidget(LunarLogApp.withCollaborators(
     db: db,
     authService: auth,
     sharingService: sharing,
@@ -490,7 +490,7 @@ void main() {
         final profile = await DriftProfilesRepository(db.storage)
             .create(displayName: 'Alice', isMinor: false);
         final controller = SharingOverviewController(
-          guardiansRepository: ProfileGuardiansRepository(db.storage),
+          guardiansRepository: DriftProfileGuardiansRepository(db.storage),
           currentUserId: 'user-mom',
         );
         var notified = 0;

@@ -52,7 +52,7 @@ library;
 // ignore_for_file: prefer_initializing_formals
 
 import 'package:lunarlog/domain/episodes/episodes.dart';
-import 'package:lunarlog/domain/health/health_flow_write_service.dart' as domain;
+import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -132,8 +132,8 @@ class _Batch {
   }
 }
 
-class HealthFlowWriteService implements domain.HealthFlowWriteService {
-  HealthFlowWriteService({
+class LocalHealthFlowWriteService implements HealthFlowWriteService {
+  LocalHealthFlowWriteService({
     required HealthPlatformStore platform,
     required HealthSyncBinding binding,
     required bool minorBindingAllowed,
@@ -174,10 +174,10 @@ class HealthFlowWriteService implements domain.HealthFlowWriteService {
   /// method per stage (resolve → guard → grant → collect → write) so each
   /// stays under the quality gate's CRAP ceiling.
   @override
-  Future<domain.HealthFlowSyncReport> syncNow() async {
+  Future<HealthFlowSyncReport> syncNow() async {
     final bound = await _resolveBound();
     if (bound == null) {
-      return const domain.HealthFlowSyncReport(bound: false);
+      return const HealthFlowSyncReport(bound: false);
     }
 
     // Pre-flight only (the port re-checks per call, natively mirrored):
@@ -190,7 +190,7 @@ class HealthFlowWriteService implements domain.HealthFlowWriteService {
       minorBindingAllowed: _minorBindingAllowed,
     );
     if (!check.isAllowed) {
-      return domain.HealthFlowSyncReport(
+      return HealthFlowSyncReport(
         bound: true,
         blocked: HealthPlatformResult.refused(check),
       );
@@ -204,14 +204,14 @@ class HealthFlowWriteService implements domain.HealthFlowWriteService {
     // pass instead of silently denying forever.
     final bindBlocked = _notAllowed(await _platform.bindProfile(bound.facts));
     if (bindBlocked != null) {
-      return domain.HealthFlowSyncReport(bound: true, blocked: bindBlocked);
+      return HealthFlowSyncReport(bound: true, blocked: bindBlocked);
     }
 
     final grant = await _ensureForwardOnlyCursor(bound.facts);
     if (grant.blocked != null) {
       // A refused/denied authorization — or `unavailable` (consent was
       // stamped but there is nothing to write to) — ends the pass.
-      return domain.HealthFlowSyncReport(
+      return HealthFlowSyncReport(
         bound: true,
         authorizationRequested: grant.grantedNow,
         blocked: grant.blocked,
@@ -227,7 +227,7 @@ class HealthFlowWriteService implements domain.HealthFlowWriteService {
       );
     }
 
-    return domain.HealthFlowSyncReport(
+    return HealthFlowSyncReport(
       bound: true,
       authorizationRequested: grant.grantedNow,
       blocked: outcome.failure,

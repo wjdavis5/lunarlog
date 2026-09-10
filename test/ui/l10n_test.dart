@@ -390,7 +390,7 @@ void main() {
     testWidgets("LunarLogApp's MaterialApp registers delegates + locales",
         (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
-      await tester.pumpWidget(LunarLogApp(db: db));
+      await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pump();
       final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
       expect(

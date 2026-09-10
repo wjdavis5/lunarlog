@@ -1,5 +1,5 @@
 /// Tests for `lib/data/import/account_importer.dart` (Issue #140):
-/// [AccountImporter.apply]'s transactional guarantee, and
+/// [DriftAccountImporter.apply]'s transactional guarantee, and
 /// [AccountImportCoordinator.buildPlan]/`apply` end to end against a real
 /// in-memory Drift store (mirrors `test/data/profile_guardians_repository_test.dart`'s
 /// setup) — including the full export -> import round trip and a same-date
@@ -18,7 +18,7 @@ import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
@@ -125,11 +125,11 @@ void main() {
 
   tearDown(() => db.close());
 
-  AccountImportCoordinator coordinator({
+  DriftAccountImportCoordinator coordinator({
     GuardiansForProfileFn? guardiansForProfile,
     String? currentUserId,
   }) =>
-      AccountImportCoordinator(
+      DriftAccountImportCoordinator(
         profilesRepository: profiles,
         dayEntriesRepository: entries,
         observationsRepository: observations,
@@ -138,7 +138,7 @@ void main() {
         currentUserId: currentUserId,
       );
 
-  group('AccountImporter.apply — transactional rollback', () {
+  group('DriftAccountImporter.apply — transactional rollback', () {
     test('an unexpected write failure partway through leaves the store '
         'exactly as it was before apply ran', () async {
       // Hand-crafted plan (bypassing the pure planner's own bound checks,
@@ -186,7 +186,7 @@ void main() {
       ]);
 
       await expectLater(
-        AccountImporter(storage).apply(plan),
+        DriftAccountImporter(storage).apply(plan),
         throwsA(isA<ArgumentError>()),
       );
 
@@ -342,7 +342,7 @@ void main() {
           updatedAt: DateTime.utc(2026, 1, 1),
         ),
       ]);
-      final guardians = ProfileGuardiansRepository(storage);
+      final guardians = DriftProfileGuardiansRepository(storage);
 
       final document = _parse(_document(profiles: [
         _rawProfile(existingProfile.id, dayEntries: [
@@ -530,7 +530,7 @@ void main() {
           updatedAt: DateTime.utc(2026, 1, 1),
         ),
       ]);
-      final guardians = ProfileGuardiansRepository(storage);
+      final guardians = DriftProfileGuardiansRepository(storage);
       await profiles.delete(existingProfile.id);
 
       final document = _parse(_document(profiles: [
@@ -597,7 +597,7 @@ void main() {
       final targetProfiles = DriftProfilesRepository(targetStorage);
       final targetEntries = DriftDayEntriesRepository(targetStorage);
       final targetObservations = DriftObservationsRepository(targetStorage);
-      final targetCoordinator = AccountImportCoordinator(
+      final targetCoordinator = DriftAccountImportCoordinator(
         profilesRepository: targetProfiles,
         dayEntriesRepository: targetEntries,
         observationsRepository: targetObservations,

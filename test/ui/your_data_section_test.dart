@@ -8,7 +8,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/export/account_export_writer.dart' as data;
+import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
@@ -215,7 +215,7 @@ Future<void> _pump(
           // The tree-provided export writer the section reads before
           // falling back to the injected collaborator (mirrors
           // `lib/app.dart`).
-          Provider<AccountExportWriter>.value(value: const data.AccountExportWriter()),
+          Provider<AccountExportWriter>.value(value: const PlatformAccountExportWriter()),
           if (auth != null)
             ChangeNotifierProvider<AuthController>.value(value: auth),
         ],

@@ -152,7 +152,7 @@ void main() {
     String? initialInviteProfileId,
     String? initialInviteKind,
   }) async {
-    await tester.pumpWidget(LunarLogApp(
+    await tester.pumpWidget(LunarLogApp.withCollaborators(
       db: db,
       authService: auth,
       sharingService: _StubSharingService(),

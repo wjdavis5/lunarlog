@@ -1,6 +1,6 @@
-/// Unit tests for FhirBundleWriter (Issue #157). Uses a fake
+/// Unit tests for PlatformFhirBundleWriter (Issue #157). Uses a fake
 /// [FhirBundleShareCollaborator] throughout — never touches
-/// `path_provider`/`share_plus`; only [FhirBundleWriter._platformShare]
+/// `path_provider`/`share_plus`; only [PlatformFhirBundleWriter._platformShare]
 /// (the real platform call) is untested here, same treatment as
 /// `AccountExportWriter` (see this file's target's own doc comment).
 library;
@@ -39,13 +39,13 @@ void main() {
     });
   });
 
-  group('FhirBundleWriter.exportAndShare', () {
+  group('PlatformFhirBundleWriter.exportAndShare', () {
     test('encodes the bundle, names the file, and hands both to the '
         'collaborator with the FHIR mime type', () async {
       String? capturedFileName;
       String? capturedContent;
       String? capturedMimeType;
-      final writer = FhirBundleWriter(
+      final writer = PlatformFhirBundleWriter(
         shareCollaborator: ({
           required fileName,
           required jsonContent,
@@ -69,7 +69,7 @@ void main() {
     });
 
     test('propagates a collaborator failure rather than swallowing it', () {
-      final writer = FhirBundleWriter(
+      final writer = PlatformFhirBundleWriter(
         shareCollaborator: ({
           required fileName,
           required jsonContent,
@@ -91,8 +91,8 @@ void main() {
     test('the default collaborator is only used when none is injected '
         '(constructed here but never invoked, so path_provider/share_plus '
         'are never touched by this test)', () {
-      const writer = FhirBundleWriter();
-      expect(writer, isA<FhirBundleWriter>());
+      const writer = PlatformFhirBundleWriter();
+      expect(writer, isA<PlatformFhirBundleWriter>());
     });
   });
 }

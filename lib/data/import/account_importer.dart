@@ -17,9 +17,8 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/ulid.dart' show isValidUlid;
 import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
-import 'package:lunarlog/domain/import/account_import_coordinator.dart'
-    as coordinator;
-import 'package:lunarlog/domain/import/account_importer.dart' as importer;
+import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/account_importer.dart';
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
@@ -39,8 +38,8 @@ typedef GuardiansForProfileFn = Future<List<ProfileGuardian>> Function(
 
 /// Applies one already-built [ImportPlan] (Issue #140). See this file's
 /// own doc comment for the transactional guarantee.
-class AccountImporter implements importer.AccountImporter {
-  const AccountImporter(this._storage);
+class DriftAccountImporter implements AccountImporter {
+  const DriftAccountImporter(this._storage);
 
   final LunarLogStorage _storage;
 
@@ -219,9 +218,9 @@ class AccountImporter implements importer.AccountImporter {
 /// The glue between a UI caller and [AccountImporter]/`planImport`:
 /// reads just enough of the current local store to plan against, then
 /// applies the plan. See this file's own doc comment.
-class AccountImportCoordinator
-    implements coordinator.AccountImportCoordinator {
-  const AccountImportCoordinator({
+class DriftAccountImportCoordinator
+    implements AccountImportCoordinator {
+  const DriftAccountImportCoordinator({
     required this.profilesRepository,
     required this.dayEntriesRepository,
     required this.observationsRepository,
@@ -229,6 +228,7 @@ class AccountImportCoordinator
     this.guardiansForProfile,
     this.currentUserId,
     this.currentUserIdProvider,
+    this.importer,
   });
 
   final ProfilesRepository profilesRepository;
@@ -249,6 +249,12 @@ class AccountImportCoordinator
   /// later sign-in still gates on the signed-in user (the UI no longer
   /// builds a fresh coordinator per pick).
   final String? Function()? currentUserIdProvider;
+
+  /// The effectful import writer (Issue #418, AC4): typed against the
+  /// domain [AccountImporter] contract, so the one-implementor contract is
+  /// consumed rather than dangling. Null (tests, and callers that only
+  /// plan) falls back to a [DriftAccountImporter] over [storage].
+  final AccountImporter? importer;
 
   /// Builds the plan for [document] against the local store's current
   /// state (Issue #140). Only fetches entries/observations/guardians for
@@ -327,8 +333,8 @@ class AccountImportCoordinator
     return fn == null ? Future.value(const []) : fn(profileId);
   }
 
-  /// Applies [plan] via [AccountImporter].
+  /// Applies [plan] via the injected [importer] contract.
   @override
   Future<ImportPlanSummary> apply(ImportPlan plan) =>
-      AccountImporter(storage).apply(plan);
+      (importer ?? DriftAccountImporter(storage)).apply(plan);
 }

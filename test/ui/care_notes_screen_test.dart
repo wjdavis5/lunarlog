@@ -11,15 +11,13 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/repositories/profile_guardians_repository.dart'
-    as data;
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
@@ -111,7 +109,7 @@ Future<Harness> pumpCare(
         home: CareNotesScreen(
           profile: profile,
           repository: care,
-          guardiansRepository: data.ProfileGuardiansRepository(db.storage),
+          guardiansRepository: DriftProfileGuardiansRepository(db.storage),
           readOnly: readOnly,
         ),
       ),
@@ -378,9 +376,9 @@ void main() {
             // Domain-typed seams `ProfileDetailScreen` reads instead of raw
             // storage (mirrors `lib/app.dart`).
             Provider<ProfileGuardiansRepository>.value(
-                value: data.ProfileGuardiansRepository(db.storage)),
+                value: DriftProfileGuardiansRepository(db.storage)),
             Provider<ActivityFeedRepository>.value(
-                value: data.ActivityFeedRepository(db.storage)),
+                value: DriftActivityFeedRepository(db.storage)),
             Provider<CareContentRepository>.value(
                 value: DriftCareContentRepository(db.storage)),
             ChangeNotifierProvider(
