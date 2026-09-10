@@ -101,9 +101,9 @@ jobs:
       FCM_PRIVATE_KEY: ${{ secrets.FCM_PRIVATE_KEY }}
       PUSH_DISPATCH_WEBHOOK_SECRET: ${{ secrets.PUSH_DISPATCH_WEBHOOK_SECRET }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1.7.1
         with:
           # Pinned to the version the migrations and tests were written against.
           version: 2.116.0
