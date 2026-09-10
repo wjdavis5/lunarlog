@@ -44,6 +44,10 @@ on:
 
 env:
   FLUTTER_CHANNEL: stable
+  # Pinned so a new stable release cannot change the shipped app without a
+  # commit here (issue #208). Keep in sync with AGENTS.md's "Flutter SDK"
+  # note and the build Mac.
+  FLUTTER_VERSION: '3.47.2'
   BUNDLE_ID: com.wjdavis5.lunarlog
 
 concurrency:
@@ -61,6 +65,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
@@ -199,6 +204,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
