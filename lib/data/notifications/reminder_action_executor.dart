@@ -29,7 +29,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';

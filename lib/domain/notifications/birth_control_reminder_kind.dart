@@ -1,8 +1,8 @@
 /// Pure mapping from a recorded birth-control method to the adherence
 /// reminder kind it plans (Issue #183), exposed here so `lib/ui` can name
-/// the kind without importing `lib/data/notifications/scheduling.dart`.
+/// the kind without importing `lib/domain/notifications/scheduling.dart`.
 ///
-/// `lib/data/notifications/scheduling.dart` imports and re-exports this so
+/// `lib/domain/notifications/scheduling.dart` imports and re-exports this so
 /// its existing callers (and tests) keep resolving the same name.
 library;
 

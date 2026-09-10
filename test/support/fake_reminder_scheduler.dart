@@ -8,10 +8,10 @@ library;
 
 import 'dart:async';
 
-import 'package:lunarlog/data/notifications/notification_scheduler.dart';
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 
 class FakeReminderScheduler implements ReminderScheduler {
   FakeReminderScheduler({

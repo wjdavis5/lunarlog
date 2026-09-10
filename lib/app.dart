@@ -18,10 +18,8 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
-import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart'
     as data;
@@ -49,7 +47,12 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart'
+    as domain_health;
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
+import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
@@ -154,7 +157,7 @@ class LunarLogApp extends StatefulWidget {
   /// Publishes the client's cycle prediction to the server (Issue #5, U6;
   /// R13). Null together with [notificationPreferencesService] on a build
   /// without push.
-  final ReminderWindowUpsert? reminderWindowUpsert;
+  final ReminderWindowRemote? reminderWindowUpsert;
 
   /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
   /// `https://<domain>/invite?code=...` (issue #129) — filtered by main.dart
@@ -278,7 +281,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   ReminderConfigService? _reminderConfigService;
   ReminderWindowPublisher? _reminderWindowPublisher;
   PredictionProjectionPublisher? _predictionProjectionPublisher;
-  HealthFlowWriteCoordinator? _healthFlowCoordinator;
+  domain_health.HealthFlowWriteCoordinator? _healthFlowCoordinator;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;

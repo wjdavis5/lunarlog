@@ -7,12 +7,13 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_permission_action.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -76,35 +77,6 @@ Future<String> defaultLocalTimeZoneProvider() async {
   } catch (_) {
     return 'UTC';
   }
-}
-
-abstract interface class ReminderScheduler {
-  /// Initializes the plugin, requests permission, and reports whether
-  /// notifications are actually enabled. [onLaunchFromNotification] fires
-  /// for a notification tap (warm) and for a cold start launched by a tap,
-  /// decoded into a [ReminderLaunch] — whose [ReminderLaunch.actionId]
-  /// distinguishes an action-button tap (Issue #136) from a plain tap.
-  Future<NotificationAvailability> initialize({
-    void Function(ReminderLaunch launch)? onLaunchFromNotification,
-  });
-
-  /// Reads the current OS permission without reinitializing the plugin.
-  Future<NotificationAvailability> checkAvailability();
-
-  /// Issue #168: re-requests the OS permission from an explicit user
-  /// action (the overview hint's "Turn on reminders" tap) — independent of
-  /// [initialize], and not gated on push/FCM being configured. Once the OS
-  /// has stopped showing the request dialog at all — Android: two
-  /// refusals (see [nextNotificationPermissionAction]); Darwin: one, since
-  /// its own dialog is one-shot-per-install — this opens the platform's
-  /// notification-settings screen instead of re-prompting silently. Always
-  /// ends by reporting the resulting availability, the same as
-  /// [initialize] and [checkAvailability].
-  Future<NotificationAvailability> requestPermission();
-
-  Future<void> rescheduleAll(List<PlannedReminder> reminders);
-
-  Future<void> cancelAll();
 }
 
 class FlutterLocalNotificationsScheduler implements ReminderScheduler {

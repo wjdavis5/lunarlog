@@ -19,6 +19,7 @@ import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart'
     as domain;
+import 'package:lunarlog/domain/import/account_importer.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
@@ -38,7 +39,7 @@ typedef GuardiansForProfileFn = Future<List<ProfileGuardian>> Function(
 
 /// Applies one already-built [ImportPlan] (Issue #140). See this file's
 /// own doc comment for the transactional guarantee.
-class AccountImporter {
+class AccountImporter implements domain.AccountImporter {
   const AccountImporter(this._storage);
 
   final LunarLogStorage _storage;
@@ -47,6 +48,7 @@ class AccountImporter {
   /// summary (accurate because the transaction is all-or-nothing: either
   /// every planned write lands, matching the summary exactly, or none of
   /// them do and this throws).
+  @override
   Future<ImportPlanSummary> apply(ImportPlan plan) async {
     await _storage.db.transaction(() async {
       for (final profilePlan in plan.profiles) {

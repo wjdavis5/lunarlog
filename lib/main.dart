@@ -16,7 +16,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'app_lifecycle.dart';
 import 'config.dart';
-import 'data/gate/gate.dart';
+import 'startup/gate/gate.dart';
 import 'domain/sharing/invite_links.dart';
 import 'data/notifications/notification_scheduler.dart';
 import 'data/sync/supabase_sync_transport.dart';

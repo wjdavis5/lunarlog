@@ -17,8 +17,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
@@ -28,6 +26,8 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart'
     show decodeLateSnoozes, kNotYetSnoozeDays;
 import 'package:lunarlog/domain/prediction/prediction_service.dart';

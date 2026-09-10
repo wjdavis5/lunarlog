@@ -17,7 +17,7 @@ import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/db/errors.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
-import 'package:lunarlog/data/gate/app_gate.dart';
+import 'package:lunarlog/domain/gate/app_gate.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';

@@ -14,7 +14,7 @@
 ///   `lib/data/db/storage.dart`).
 /// * A conditional directive puts its URI after `if (...)`, not directly
 ///   after the keyword — `lib/data/db/platform_factory.dart` and
-///   `lib/data/gate/gate.dart` both use that idiom.
+///   `lib/startup/gate/gate.dart` both use that idiom.
 /// * Relative URIs are resolved against the importing file, so an escape
 ///   is caught at any depth (`../ui/x.dart` as well as `../../ui/x.dart`).
 ///

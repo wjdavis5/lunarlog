@@ -52,6 +52,7 @@ library;
 // ignore_for_file: prefer_initializing_formals
 
 import 'package:lunarlog/domain/episodes/episodes.dart';
+import 'package:lunarlog/domain/health/health_flow_write_service.dart' as domain;
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -67,6 +68,11 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 
 import 'health_flow_mapping.dart';
 
+/// Re-exported so existing importers of this file keep resolving the report
+/// type after it moved to `lib/domain` with the contract (U9).
+export 'package:lunarlog/domain/health/health_flow_write_service.dart'
+    show HealthFlowSyncReport;
+
 /// Resolves the guardian rows for one profile, mapped to the domain model
 /// (`ownerUserIdFor` turns them into the guard's owner fact). Production
 /// wiring passes `ProfileGuardiansRepository.getForProfile` as a tear-off;
@@ -74,43 +80,6 @@ import 'health_flow_mapping.dart';
 /// and its storage dependency.
 typedef GuardiansForProfile = Future<List<ProfileGuardian>> Function(
     String profileId);
-
-/// What one [HealthFlowWriteService.syncNow] pass did. Counts are per
-/// pass; [blocked] carries the terminal outcome that stopped (or ended)
-/// the pass when it was not a clean full run.
-class HealthFlowSyncReport {
-  const HealthFlowSyncReport({
-    required this.bound,
-    this.authorizationRequested = false,
-    this.blocked,
-    this.samplesWritten = 0,
-    this.daysWithoutSample = 0,
-  });
-
-  /// Whether a live bound profile was found to sync at all. `false` means
-  /// health sync is off for this device (or the bound profile was deleted)
-  /// — nothing else in the report is meaningful.
-  final bool bound;
-
-  /// Whether this pass performed the one-time `requestWriteAuthorization`
-  /// call (i.e. this was the grant moment).
-  final bool authorizationRequested;
-
-  /// The non-allowed outcome that ended the pass before everything
-  /// eligible was written: a guard refusal (`HealthPlatformRefused`), an
-  /// authorization prompt outcome, or a failing write. Null on a fully
-  /// successful pass (including a pass where every eligible day mapped to
-  /// no sample). The cursor is advanced only when this is null.
-  final HealthPlatformResult? blocked;
-
-  /// Days a sample/record was actually written for.
-  final int samplesWritten;
-
-  /// Eligible days that mapped to [HealthFlowNoWrite] (`none`/
-  /// `notBleeding`), or to a skipped duplicate (spotting on a day whose
-  /// own flow already carries the intensity).
-  final int daysWithoutSample;
-}
 
 /// One eligible day's resolved write, before it is sent to the port.
 class _PendingWrite {
@@ -168,7 +137,7 @@ class _Batch {
   }
 }
 
-class HealthFlowWriteService {
+class HealthFlowWriteService implements domain.HealthFlowWriteService {
   HealthFlowWriteService({
     required HealthPlatformStore platform,
     required HealthSyncBinding binding,
@@ -209,10 +178,11 @@ class HealthFlowWriteService {
   /// rather than swallowing protocol errors. Decomposed into one private
   /// method per stage (resolve → guard → grant → collect → write) so each
   /// stays under the quality gate's CRAP ceiling.
-  Future<HealthFlowSyncReport> syncNow() async {
+  @override
+  Future<domain.HealthFlowSyncReport> syncNow() async {
     final bound = await _resolveBound();
     if (bound == null) {
-      return const HealthFlowSyncReport(bound: false);
+      return const domain.HealthFlowSyncReport(bound: false);
     }
 
     // Pre-flight only (the port re-checks per call, natively mirrored):
@@ -225,7 +195,7 @@ class HealthFlowWriteService {
       minorBindingAllowed: _minorBindingAllowed,
     );
     if (!check.isAllowed) {
-      return HealthFlowSyncReport(
+      return domain.HealthFlowSyncReport(
         bound: true,
         blocked: HealthPlatformResult.refused(check),
       );
@@ -239,14 +209,14 @@ class HealthFlowWriteService {
     // pass instead of silently denying forever.
     final bindBlocked = _notAllowed(await _platform.bindProfile(bound.facts));
     if (bindBlocked != null) {
-      return HealthFlowSyncReport(bound: true, blocked: bindBlocked);
+      return domain.HealthFlowSyncReport(bound: true, blocked: bindBlocked);
     }
 
     final grant = await _ensureForwardOnlyCursor(bound.facts);
     if (grant.blocked != null) {
       // A refused/denied authorization — or `unavailable` (consent was
       // stamped but there is nothing to write to) — ends the pass.
-      return HealthFlowSyncReport(
+      return domain.HealthFlowSyncReport(
         bound: true,
         authorizationRequested: grant.grantedNow,
         blocked: grant.blocked,
@@ -262,7 +232,7 @@ class HealthFlowWriteService {
       );
     }
 
-    return HealthFlowSyncReport(
+    return domain.HealthFlowSyncReport(
       bound: true,
       authorizationRequested: grant.grantedNow,
       blocked: outcome.failure,
@@ -422,6 +392,7 @@ class HealthFlowWriteService {
   /// consent belongs to one binding, so re-binding (same or different
   /// profile) re-grants from the new authorization moment rather than
   /// backfilling under the old cursor.
+  @override
   Future<void> onUnbound() async {
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
     await _platform.unbindProfile();

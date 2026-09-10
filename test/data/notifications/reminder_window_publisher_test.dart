@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 Profile _profile(String id) => Profile(
@@ -52,6 +53,31 @@ class _UpsertCall {
   final bool episodeOpen;
 }
 
+/// Adapts an inline closure to the named [ReminderWindowRemote] contract
+/// (U9) so these tests can keep recording calls inline.
+class _RecordingRemote implements ReminderWindowRemote {
+  _RecordingRemote(this._onUpsert);
+
+  final Future<void> Function(
+      String profileId, String estimatedNextStartIso, bool episodeOpen)
+      _onUpsert;
+
+  @override
+  Future<void> upsert({
+    required String profileId,
+    required String estimatedNextStartIso,
+    required bool episodeOpen,
+  }) =>
+      _onUpsert(profileId, estimatedNextStartIso, episodeOpen);
+}
+
+ReminderWindowRemote _remote(
+  Future<void> Function(
+          String profileId, String estimatedNextStartIso, bool episodeOpen)
+      onUpsert,
+) =>
+    _RecordingRemote(onUpsert);
+
 void main() {
   test('a prediction change publishes exactly one upsert after the debounce, '
       'not one per intermediate emission', () async {
@@ -65,9 +91,9 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
-      },
+      }),
       isSignedIn: () => true,
       debounce: Duration.zero,
     );
@@ -102,9 +128,9 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
-      },
+      }),
       isSignedIn: () => true,
       debounce: Duration.zero,
     );
@@ -138,9 +164,9 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
-      },
+      }),
       isSignedIn: () => false,
       debounce: Duration.zero,
     );
@@ -171,10 +197,10 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         attemptCount++;
         throw Exception('network down');
-      },
+      }),
       isSignedIn: () => true,
       debounce: Duration.zero,
     );
@@ -211,11 +237,11 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         attemptCount++;
         if (attemptCount == 1) throw Exception('network down');
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
-      },
+      }),
       isSignedIn: () => true,
       debounce: Duration.zero,
       retryDelay: Duration.zero,
@@ -256,11 +282,11 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         attemptCount++;
         if (attemptCount == 1) throw Exception('network down');
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
-      },
+      }),
       isSignedIn: () => true,
       debounce: Duration.zero,
       retryDelay: const Duration(minutes: 5),
@@ -302,9 +328,9 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
-      },
+      }),
       isSignedIn: () => true,
       debounce: Duration.zero,
     );
@@ -340,9 +366,9 @@ void main() {
       predictionFor: (id) => predictions
           .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
           .stream,
-      upsert: (profileId, iso, episodeOpen) async {
+      upsert: _remote((profileId, iso, episodeOpen) async {
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
-      },
+      }),
       isSignedIn: () => true,
       debounce: Duration.zero,
     );

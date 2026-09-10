@@ -30,9 +30,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
-import 'package:lunarlog/data/notifications/notification_scheduler.dart';
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
-import 'package:lunarlog/data/notifications/scheduling.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';

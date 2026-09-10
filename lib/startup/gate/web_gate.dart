@@ -3,7 +3,7 @@
 /// deliberately not built here.
 library;
 
-import 'app_gate.dart';
+import 'package:lunarlog/domain/gate/app_gate.dart';
 
 /// Web factory (see `gate.dart` conditional export).
 AppGate defaultAppGate() => WebAppGate();

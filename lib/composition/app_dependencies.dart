@@ -22,8 +22,6 @@ import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/import/account_importer.dart' as data;
 import 'package:lunarlog/data/import/import_file_picker.dart' as data;
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
-import 'package:lunarlog/data/notifications/reminder_window_publisher.dart'
-    show ReminderWindowUpsert;
 import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
 import 'package:lunarlog/data/repositories/activity_feed_repository.dart'
     as data;
@@ -50,6 +48,8 @@ import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
+import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
@@ -134,7 +134,7 @@ class AppDependencies {
 
   /// Publishes a profile's prediction window to the server (Issue #5). Null
   /// without a push-capable Supabase client.
-  final ReminderWindowUpsert? reminderWindowUpsert;
+  final ReminderWindowRemote? reminderWindowUpsert;
 
   /// The reminder scheduler (R9). Null disables reminders entirely (widget
   /// tests that pass none). The production platform default is built with
@@ -163,7 +163,7 @@ AppDependencies buildAppDependencies({
   PredictionConnectionService? predictionConnectionService,
   NotificationPreferencesService? notificationPreferencesService,
   AccountExportRemoteSource? accountExportRemoteSource,
-  ReminderWindowUpsert? reminderWindowUpsert,
+  ReminderWindowRemote? reminderWindowUpsert,
   ReminderScheduler? scheduler,
   String? Function()? currentUserIdProvider,
   bool pushEnabled = false,
@@ -309,8 +309,8 @@ NotificationPreferencesService? _resolveNotificationPreferencesService(
   return SupabaseNotificationPreferencesService(client: client);
 }
 
-ReminderWindowUpsert? _resolveReminderWindowUpsert(
-  ReminderWindowUpsert? override,
+ReminderWindowRemote? _resolveReminderWindowUpsert(
+  ReminderWindowRemote? override,
   SupabaseClient? client,
   bool pushEnabled,
 ) {
@@ -320,12 +320,26 @@ ReminderWindowUpsert? _resolveReminderWindowUpsert(
 }
 
 /// The `upsert_reminder_window` RPC (Issue #5, U6): one narrow write, no
-/// content.
-ReminderWindowUpsert _supabaseReminderWindowUpsert(SupabaseClient client) =>
-    (profileId, estimatedNextStartIso, episodeOpen) async {
-      await client.rpc<dynamic>('upsert_reminder_window', params: {
-        'p_profile_id': profileId,
-        'p_estimated_next_start': estimatedNextStartIso,
-        'p_episode_open': episodeOpen,
-      });
-    };
+/// content. The named [ReminderWindowRemote] contract's Supabase-backed
+/// implementation.
+ReminderWindowRemote _supabaseReminderWindowUpsert(SupabaseClient client) =>
+    _SupabaseReminderWindowRemote(client);
+
+class _SupabaseReminderWindowRemote implements ReminderWindowRemote {
+  _SupabaseReminderWindowRemote(this._client);
+
+  final SupabaseClient _client;
+
+  @override
+  Future<void> upsert({
+    required String profileId,
+    required String estimatedNextStartIso,
+    required bool episodeOpen,
+  }) async {
+    await _client.rpc<dynamic>('upsert_reminder_window', params: {
+      'p_profile_id': profileId,
+      'p_estimated_next_start': estimatedNextStartIso,
+      'p_episode_open': episodeOpen,
+    });
+  }
+}

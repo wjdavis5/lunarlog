@@ -4,7 +4,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart'
     show ReminderKind;
 

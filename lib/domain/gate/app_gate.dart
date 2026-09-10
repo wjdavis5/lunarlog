@@ -1,7 +1,7 @@
 /// Domain-level credential gate (U7, R7): the single seam through which
 /// the app asks "may data be shown?".
 ///
-/// Implementations:
+/// Implementations live under `lib/startup/gate/`:
 /// * `local_auth_gate.dart` (mobile/desktop via local_auth) — device
 ///   credential, biometric with passcode fallback.
 /// * `web_gate.dart` — no-op returning true (the web dev banner is U8).
