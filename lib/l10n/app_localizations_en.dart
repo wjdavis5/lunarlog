@@ -572,6 +572,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get birthControlOther => 'Other';
 
   @override
+  String get birthControlIntakeTaken => 'Taken';
+
+  @override
+  String get birthControlIntakeLate => 'Late';
+
+  @override
+  String get birthControlIntakeMissed => 'Missed';
+
+  @override
   String get daySheetPmsChip => 'PMS';
 
   @override
