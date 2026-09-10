@@ -1678,6 +1678,49 @@ void main() {
     );
 
     testWidgets(
+      'entry logged by a guardian with an empty display name falls back '
+      'to the role label (#88)',
+      (tester) async {
+        final auth = FakeAuthService()
+          ..emit(
+            AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-mom'),
+          );
+        final h = await pumpLogging(
+          tester,
+          authService: auth,
+          withStorage: true,
+          seed: (db, profileId) async {
+            await db.storage.applyRemoteRows([
+              guardianRow(
+                profileId,
+                'g-dad',
+                'user-dad',
+                'co_parent',
+                displayName: '',
+              ),
+              dayEntryRow(profileId, 'e-1', kToday, loggedByUserId: 'user-dad'),
+            ]);
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Logged by Co-Parent'), findsOneWidget);
+        expect(
+          find.textContaining('Logged by '),
+          findsOneWidget,
+          reason:
+              'the badge still renders exactly once; an empty displayName '
+              'must not produce a blank "Logged by " name alongside the '
+              'role-label fallback',
+        );
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
       'entry logged by a user id with no guardian row shows the generic '
       'fallback, distinct from a real caregiver-role guardian match (R3)',
       (tester) async {
