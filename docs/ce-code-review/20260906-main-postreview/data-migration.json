@@ -1,0 +1,70 @@
+{
+  "reviewer": "data-migration",
+  "findings": [
+    {
+      "title": "Migration header self-reference is stale: 20260905110000_account_deletion.sql opens as '20260905100000_account_deletion.sql'",
+      "severity": "P3",
+      "file": "supabase/migrations/20260905110000_account_deletion.sql",
+      "line": 1,
+      "why_it_matters": "This file was renamed from a 20260905100000_ prefix to 20260905110000_ to avoid a schema_migrations primary-key collision with 20260905100000_realtime_publication.sql (documented in AGENTS.md), but the file's own first line still names the pre-rename filename. Anyone auditing applied-vs-pending migrations on the remote project, or grepping for the migration by the name in its header, lands on a file that does not exist - precisely the confusion the rename was done to prevent. Cosmetic but actively misleading given this repo's migration-collision history.",
+      "autofix_class": "advisory",
+      "owner": "human",
+      "requires_verification": false,
+      "suggested_fix": "Change line 1 to: `-- Migration: 20260905110000_account_deletion.sql`. Verify with: git show origin/main:supabase/migrations/20260905110000_account_deletion.sql | Select-Object -First 1",
+      "confidence": 100,
+      "evidence": [
+        "supabase/migrations/20260905110000_account_deletion.sql:1: -- Migration: 20260905100000_account_deletion.sql"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "feedback_tickets.device_info has no payload-size bound - only key NAMES are allowlisted, so 'breadcrumbs' carries unbounded jsonb",
+      "severity": "P3",
+      "file": "supabase/migrations/20260906130000_feedback_tickets.sql",
+      "line": 49,
+      "why_it_matters": "The new table bounds reply_email (254), message (4000), category, status, and attachment_paths count (<=3), and is_allowed_device_info bounds only which top-level KEYS may appear - not the size or shape of their values. Any authenticated account can therefore store up to the platform's request-body limit of jsonb per ticket under the allowlisted 'breadcrumbs' key (R17 caps this at 5/hour/uid, not at bytes), and SupabaseFeedbackService.listTickets() (.select() with no column list) then pulls every ticket's full device_info over the wire on each Support-history open. This is the same payload-amplification class tracked as open issue #94 for day-entry tags, newly introduced with this migration.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": false,
+      "suggested_fix": "Tighten is_allowed_device_info to bound the values it already names, e.g. append: `and coalesce(jsonb_array_length(p_device_info->'breadcrumbs'), 0) <= 20` plus a per-element type/length check, or add a table constraint `check (pg_column_size(device_info) <= 16384)` named feedback_tickets_device_info_size_check. Add a pgTAP throws_ok (23514) for a ticket whose breadcrumbs array has 21 entries, mirroring the AE4 case.",
+      "confidence": 75,
+      "evidence": [
+        "supabase/migrations/20260906130000_feedback_tickets.sql:49:   device_info jsonb not null default '{}'::jsonb,",
+        "supabase/migrations/20260906130000_feedback_tickets.sql:93:         key in ('os', 'os_version', 'model', 'app_version', 'build_number', 'locale', 'breadcrumbs')"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "delete-account Edge Function discards the final re-home pass's returned row count, blinding the documented residual-race signal",
+      "severity": "P3",
+      "file": "supabase/functions/delete-account/index.ts",
+      "line": 249,
+      "why_it_matters": "Step 6's standalone rehome_stray_day_entries() call returns the number of rows it just re-homed - the only observable production signal that the documented residual race (a stray write landing between the RPC and auth.admin.deleteUser, tracked as a follow-up in AGENTS.md and the 20260906120000 migration header) has actually fired. The destructuring binds only `error`; `data` is dropped, so a non-zero re-home in production is invisible in the logs and the follow-up can never be sized against real data. The first pass's counts (including day_entries_rehomed) ARE logged via rowCounts, so the asymmetry is easy to miss.",
+      "autofix_class": "advisory",
+      "owner": "downstream-resolver",
+      "requires_verification": false,
+      "suggested_fix": "Capture and log the count with the existing type-only discipline, e.g.: `const { data: rehomed, error: rehomeError } = await adminClient.rpc(...)` and on success `if (typeof rehomed === 'number' && rehomed > 0) console.error(`delete-account: final rehome pass moved ${rehomed} stray day_entries (residual-race window fired)`)`. The pgTAP suite already proves the function returns the moved-row count (account_deletion_test.sql section 9).",
+      "confidence": 100,
+      "evidence": [
+        "supabase/functions/delete-account/index.ts:249:     const { error: rehomeError } = await adminClient.rpc("
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "Issue #94: still present - is_valid_tags_array bounds array length (<=32) and element type only; no server-side per-string length bound exists on day-entry tags, and no migration in this diff adds one. (Finding 2 adds the same class for feedback device_info.)",
+    "Issue #96: partially fixed - the explicit public.is_valid_tags_array call exists only in 20260903170000_tags_string_array_check.sql's sync_push re-declaration; the FINAL re-declaration (20260904020000_sync_push_and_invitations.sql:231-233) again checks only jsonb_typeof(tags)='array'. Data safety holds anyway because the table-level day_entries_tags_check constraint (20260903170000:40-41) still rejects non-string arrays at write time, so such rows land in sync_push's per-row rejected list rather than being accepted - the explicit check and its distinct error remain dropped.",
+    "Issue #101: still present - public.settings has no read or write path in lib/ (the app uses device-local Drift app_settings); 20260905110000 only adds deletion coverage for the unused table.",
+    "None of the reviewed schema has ever reached the linked remote project: every supabase-migrate.yml run has failed at 'Check deploy credentials' (SUPABASE_ACCESS_TOKEN unset - documented open TODO). The first successful push applies the entire backlog at once, and whether anyone pushed the pre-rename feedback migrations (20260905120000_/20260905130000_/20260906090000_) manually is unverifiable from the repo - if so, `db push` will demand a `supabase migration repair` before anything applies.",
+    "notified_at claim can remain committed with no email sent if the feedback-notify isolate is killed between claim and send/timeout; closing it needs the periodic reconciliation job documented as not implemented (20260906150000 header, AGENTS.md follow-up).",
+    "Account deletion (auth.users cascade) removes feedback_tickets/feedback_replies rows but never deletes feedback-attachments storage objects - they become permanently orphaned and unreadable but persist; documented as a manual-purge gap in docs/ops/supabase-go-live.md, not a bug in this diff.",
+    "All new SECURITY DEFINER helpers (owns_feedback_ticket, feedback_replies_touch_ticket, feedback_tickets_rate_limit, rehome_stray_day_entries, touch_sync_signal) plus every existing RLS helper depend on the function owner bypassing forced RLS on the hosted platform's postgres role. That is the repo-wide standing assumption (pinned by rls_isolation_test.sql's '(bypassrls)' comment) and it is what makes the whole schema work on hosted Supabase; it is not new to this diff, but any change to the role that owns/ran these migrations silently re-enables forced RLS against these helpers and would zero them out.",
+    "Deploy-order dependency verified safe both ways: feedback migrations sort after 20260906120000, supabase-migrate.yml pushes migrations before deploying feedback-notify (so notified_at exists before the claim UPDATE runs), and an old delete-account function against the new delete_account_data()/rehome_stray_day_entries() degrades to a logged, best-effort no-op. No finding."
+  ],
+  "testing_gaps": [
+    "The storage.objects policies for feedback-attachments are created by the migration's guarded DO block (executed in CI where storage-api runs), but only 4 pgTAP cases exercise them; the delete-own-object path cannot run in-suite because storage.protect_delete() blocks direct SQL DELETE on storage.objects (documented in the test file header), so object read/delete policies get their first real exercise in the manual go-live checklist.",
+    "No test pins any maximum size for feedback_tickets.device_info (ties to finding 2); a mutant deleting the whole is_allowed_device_info constraint would still leave message/email length tests green.",
+    "The delete-account Edge Function has no automated test file (deno.json test.include excludes it), so the Step 6 'call rehome again immediately before deleteUser' sequencing - the actual P1 window-narrowing mechanism - is proven only by local `supabase functions serve` + curl per the go-live runbook; the DB-side function is well covered by account_deletion_test.sql section 9.",
+    "No committed read-only post-deploy verification SQL for the first production push (e.g. asserting rehome_stray_day_entries has no authenticated EXECUTE, publication membership, feedback policies/grants present); verification there is the manual AGENTS.md step 5 (MCP advisors) plus go-live checkboxes."
+  ]
+}

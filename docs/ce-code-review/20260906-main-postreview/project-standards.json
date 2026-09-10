@@ -1,0 +1,55 @@
+{
+  "reviewer": "project-standards",
+  "scope": {
+    "mode": "branch-remote",
+    "head": "origin/main",
+    "base": "4c91b499ad639ae1476f2800a98dbd976fa22e21",
+    "criteria": [
+      "AGENTS.md (origin/main)",
+      "CLAUDE.md (origin/main)"
+    ],
+    "files_reviewed": 108
+  },
+  "findings": [
+    {
+      "title": "AGENTS.md pgTAP test counts stale: feedback_rls 22 documented vs plan(24), total 303 vs 305",
+      "severity": "P2",
+      "file": "AGENTS.md",
+      "line": 26,
+      "why_it_matters": "Anyone following AGENTS.md's Database-tests inventory to verify a merge or reconcile counts (the repo's own doc-currency practice, issue #50 class) will expect 22 tests in feedback_rls_test.sql and a 303-test suite; the file actually declares select plan(24), so the suite plans 305. The inventory arithmetic in the project's designated single source of context is wrong, and it was made wrong inside this same diff range (both AGENTS.md and the test file were added/modified here).",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "pre_existing": false,
+      "suggested_fix": "In AGENTS.md line 26, change `feedback_rls_test.sql` 22 to 24 and the `303 pgTAP tests` total to 305. plan(24) in supabase/tests/feedback_rls_test.sql is ground truth (pgTAP fails a run whose plan does not match executed assertions, so CI-green means 24); every other per-file count in the same line already matches its plan() value (000-setup 1, rls_isolation 51, sync_push 87, profile_guardians_rls 35, guardian_sync_push 26, guardian_revocation_bypass 7, account_deletion 42, realtime_publication 28, feedback_attachments_rls 4).",
+      "confidence": 100,
+      "evidence": [
+        "AGENTS.md:26 (origin/main): \"- **Database tests (`supabase/tests/`):** 303 pgTAP tests (`000-setup.sql` 1, ... `realtime_publication_test.sql` 28, `feedback_rls_test.sql` 22 \u2014 PR #105 review added the `notified_at`-not-client-writable pair, closing the same gap on the feedback-notify replay guard that `status` already had, `feedback_attachments_rls_test.sql` 4 ...\"",
+        "supabase/tests/feedback_rls_test.sql:11 (origin/main, file added in this diff): \"select plan(24);\" \u2014 with the added \"-- 8b. PR #105 review: feedback-notify's replay guard (notified_at)\" pair; all eight other per-file counts cited on AGENTS.md:26 match their plan() values exactly, so the true suite total is 305, not 303.",
+        "Standards rule (CLAUDE.md, origin/main): \"Read [`AGENTS.md`](AGENTS.md) first \u2014 it is the single source of project context, Supabase backend configuration, credential locations, and build instructions for `lunarlog`.\" AGENTS.md's factual inventory is the project's contract; documentation-currency (docs must match codebase reality, the issue #50 class) is an explicit criterion of this review."
+      ]
+    }
+  ],
+  "residual_risks": [
+    "issue #50: still present - the AGENTS.md:26 pgTAP count drift (feedback_rls 22 vs plan(24); total 303 vs 305) is exactly the reconcile-documentation-with-codebase-reality class issue #50 covered; reported as this review's only finding.",
+    "supabase/migrations/20260905110000_account_deletion.sql:1 - the header title line still reads 'Migration: 20260905100000_account_deletion.sql' (its pre-rename name; AGENTS.md documents the rename to 20260905110000_ for the schema_migrations collision). No written rule mandates a rename header for this file (the each-renamed-file's-header convention in AGENTS.md Migration Flow item 7 is scoped to the three feedback migrations), so this is a stale-comment hazard, not a standards finding.",
+    "PRIVACY.md's 'Support Ticket Retention' honestly discloses that account deletion does not delete an attached screenshot in Storage (orphaned file, unfindable in practice); AGENTS.md tracks follow-ups for the Realtime-publication and notified_at reconciliation gaps but has no tracked item for this disclosed gap - the operator may want one.",
+    "Per AGENTS.md's own Migration Flow item 7, every supabase-migrate.yml run to date has failed at 'Check deploy credentials' (SUPABASE_ACCESS_TOKEN unset, an open TODO), so none of the reviewed migrations/Edge Functions are verifiably applied to the linked cloud project; all findings here are code-level, not deployed-state.",
+    "PRIVACY.md section C says 'An optional screenshot' (one) while the feedback_tickets schema allows up to 3 attachment_paths (check constraint); the client currently surfaces one, but PRIVACY.md is not a criteria file for this review and AGENTS.md states no count, so recorded as a disclosure-precision note only."
+  ],
+  "testing_gaps": [
+    "supabase/functions/delete-account/ and feedback-reply/ remain outside deno.json's test.include (AGENTS.md documents this as accepted, proven instead by local 'supabase functions serve' + curl per the go-live runbook) - regressions in the account-deletion entry point and the reply-email dispatcher have no automated CI net.",
+    "Realtime end-to-end websocket delivery is manual-only (AGENTS.md Migration Flow step 6, supabase/tests/manual/verify_realtime_delivery.mjs); CI's db-tests job runs with '-x realtime' so it proves catalog state and trigger behavior but never actual delivery.",
+    "feedback_attachments_rls_test.sql's 'delete own object' case cannot run in this stack (storage.protect_delete() blocks direct SQL DELETE), so the feedback_attachments_delete policy's using-clause is asserted only by structural equivalence with the proven select/insert policies (documented in the file's header comment)."
+  ],
+  "checks_performed_clean": [
+    "RLS-mandatory rule: feedback_tickets, feedback_replies, sync_signals all ENABLE+FORCE RLS with auth.uid()/guardian-scoped policies; storage.objects policies per-user folder scoped - no violation.",
+    "Secrets rule ('Never paste, print, or commit raw secret values'): no secret-like values in added lines across the 18.7k-line diff; workflows reference secrets without echoing them (Apple-secret check tests only -z; supabase secrets set passes via env).",
+    "Migration flow: new migration files only (no merged migration edited; final_rehome's in-place round-2 edit happened pre-merge in the same PR); the three renamed feedback migrations all carry the required rename headers pointing at AGENTS.md; filename sort order is consistent with apply order.",
+    "pgTAP extended for every migration (account_deletion 42, realtime_publication 28, feedback_rls 24, feedback_attachments 4) - except the count-drift finding above.",
+    "Deno coverage claims: deno.json test.include matches AGENTS.md verbatim; email.test.ts/format.test.ts/feedback-notify index.test.ts exist; delete-account genuinely has no test file, matching the doc's claim.",
+    "supabase-migrate.yml matches AGENTS.md's described step order (push, reconcile_realtime_publication, deploy feedback functions, Apple-secret fail-closed check, secrets set, deploy delete-account); config.toml verify_jwt flags match the doc.",
+    "ci.yml edge-functions job, quality-gate exclusions (platform adapters only, each with rationale), export-compliance wiring (Info.plist key + Fastfile alignment + 'Verify the exported bundle' assertion), release-gate fail-closed script, unlinkProvider (unlinkIdentity + refreshSession), RealtimeSyncCoordinator sync_signals subscription shape, SupabaseAccountDeletionService/SupabaseFeedbackService construction whenever a SupabaseClient exists, and account_export.dart purity (no network/IO imports) all match their AGENTS.md descriptions.",
+    "pubspec.yaml versions match AGENTS.md's pins (supabase_flutter 2.17.2, sign_in_with_apple 8.2.0, google_sign_in 7.2, sentry_flutter 9.28.0); no Drift schema change in this range, so no db.g.dart codegen obligation was triggered."
+  ]
+}
