@@ -67,9 +67,11 @@ class GeneratedInvite {
       );
 }
 
-/// An outstanding (not accepted, not revoked, not expired) invitation,
-/// read on demand from the server and never persisted locally (KTD3; R1,
-/// R6). Carries no token or hash - a screenshot of the pending list must
+/// An outstanding (not accepted, not revoked) invitation, read on demand
+/// from the server and never persisted locally (KTD3; R1, R6). This includes
+/// recently expired invitations (issue #362) so the sender can see that an
+/// outstanding invitation aged out rather than reading it as broken.
+/// Carries no token or hash - a screenshot of the pending list must
 /// never be redeemable.
 @immutable
 class PendingInvite {
@@ -88,6 +90,10 @@ class PendingInvite {
   final String? recipientLabel;
   final DateTime createdAt;
   final DateTime expiresAt;
+
+  /// Whether this invitation has aged past [expiresAt] against the current
+  /// UTC time (issue #362). Derived locally - no new server column.
+  bool get isExpired => !expiresAt.isAfter(DateTime.now().toUtc());
 
   @override
   bool operator ==(Object other) =>
@@ -279,6 +285,8 @@ abstract interface class SharingService {
 
   /// Lists [profileId]'s outstanding invitations (R1), ordered by creation
   /// time. Read on demand - never synced into local storage (KTD3, R6).
+  /// Includes live invitations plus recently expired ones (issue #362) so
+  /// an aged-out invitation is visible as expired rather than vanishing.
   Future<List<PendingInvite>> listPendingInvites(String profileId);
 
   /// Cancels a single outstanding invitation (R2), after which its token

@@ -253,6 +253,9 @@ void main() {
   group('listPendingInvites', () {
     test('maps a row set to PendingInvites in created_at order, parsing '
         'expires_at to UTC', () async {
+      final now = DateTime.now().toUtc();
+      final createdAt = now.subtract(const Duration(hours: 2)).toIso8601String();
+      final expiresAt = now.add(const Duration(hours: 46)).toIso8601String();
       final client = makeClient((req) async {
         expect(req.url.path, '/rest/v1/guardian_invitations');
         expect(req.method, 'GET');
@@ -267,8 +270,8 @@ void main() {
               'profile_id': '01JABCDEF01234567890123456',
               'role': 'caregiver',
               'recipient_label': 'Sitter',
-              'created_at': '2026-09-06T10:00:00+00:00',
-              'expires_at': '2026-09-08T10:00:00+00:00',
+              'created_at': createdAt,
+              'expires_at': expiresAt,
             },
           ]),
           200,
@@ -283,9 +286,68 @@ void main() {
       expect(invites.single.profileId, '01JABCDEF01234567890123456');
       expect(invites.single.role, GuardianRole.caregiver);
       expect(invites.single.recipientLabel, 'Sitter');
-      expect(invites.single.createdAt, DateTime.utc(2026, 9, 6, 10));
-      expect(invites.single.expiresAt, DateTime.utc(2026, 9, 8, 10));
+      expect(invites.single.createdAt.isUtc, isTrue);
       expect(invites.single.expiresAt.isUtc, isTrue);
+      expect(invites.single.isExpired, isFalse);
+    });
+
+    test('filters by the recently-expired cutoff (now - window), not by now, '
+        'so recently expired rows are returned', () async {
+      String? expiresParam;
+      final client = makeClient((req) async {
+        expiresParam = req.url.queryParameters['expires_at'];
+        final expiredAt = DateTime.now()
+            .toUtc()
+            .subtract(const Duration(hours: 2))
+            .toIso8601String();
+        final createdAt = DateTime.now()
+            .toUtc()
+            .subtract(const Duration(hours: 50))
+            .toIso8601String();
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'inv-expired',
+              'profile_id': 'p1',
+              'role': 'caregiver',
+              'recipient_label': 'Sitter',
+              'created_at': createdAt,
+              'expires_at': expiredAt,
+            },
+          ]),
+          200,
+        );
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      final invites = await service.listPendingInvites('p1');
+
+      // The expired-within-window row is returned, not filtered out.
+      expect(invites, hasLength(1));
+      expect(invites.single.invitationId, 'inv-expired');
+      expect(invites.single.isExpired, isTrue);
+
+      // The request admits anything expiring after now - window.
+      expect(expiresParam, isNotNull);
+      expect(expiresParam, startsWith('gt.'));
+      final cutoff =
+          DateTime.parse(expiresParam!.substring('gt.'.length)).toUtc();
+      final expectedCutoff = DateTime.now()
+          .toUtc()
+          .subtract(SupabaseSharingService.recentlyExpiredWindow);
+      expect(
+        cutoff.difference(expectedCutoff).abs(),
+        lessThan(const Duration(minutes: 5)),
+        reason: 'expires_at filter must be now - recentlyExpiredWindow',
+      );
+      expect(cutoff.isBefore(DateTime.now().toUtc()), isTrue,
+          reason: 'a now-based filter would exclude expired rows');
+    });
+
+    test('recentlyExpiredWindow bounds the list so it cannot grow without bound',
+        () async {
+      expect(SupabaseSharingService.recentlyExpiredWindow,
+          const Duration(days: 7));
     });
 
     test('returns an empty list when the profile has no live invitations', () async {

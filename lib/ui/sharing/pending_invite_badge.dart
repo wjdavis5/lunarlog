@@ -2,7 +2,10 @@
 ///
 /// Fetches [SharingService.listPendingInvites] once (and again whenever
 /// [profileId] or [refreshToken] changes) and renders a small count badge
-/// when at least one invitation is outstanding. Pending invitations are
+/// when at least one invitation is outstanding. Live invitations keep the
+/// count badge; when only recently expired invitations remain (issue #362)
+/// the badge renders error-colored with an "N invitation(s) expired"
+/// tooltip instead. Pending invitations are
 /// deliberately never synced locally, so this badge needs connectivity to
 /// be accurate: any failure — including offline — renders nothing, never
 /// an error state and never a spinner, and never blocks its screen. Do not
@@ -72,12 +75,29 @@ class _PendingInviteBadgeState extends State<PendingInviteBadge> {
             invites.isEmpty) {
           return const SizedBox.shrink();
         }
+        // Issue #362: live invitations keep the current count badge; when
+        // only expired invitations remain, render a visually distinct
+        // error-colored badge so an aged-out invite reads as expired.
+        final live = invites.where((i) => !i.isExpired).toList();
+        if (live.isNotEmpty) {
+          return Tooltip(
+            message: live.length == 1
+                ? '1 pending invitation'
+                : '${live.length} pending invitations',
+            child: Badge(
+              label: Text('${live.length}'),
+              child: const Icon(Icons.mail_outline),
+            ),
+          );
+        }
+        final expired = invites.where((i) => i.isExpired).toList();
         return Tooltip(
-          message: invites.length == 1
-              ? '1 pending invitation'
-              : '${invites.length} pending invitations',
+          message: expired.length == 1
+              ? '1 invitation expired'
+              : '${expired.length} invitations expired',
           child: Badge(
-            label: Text('${invites.length}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            label: Text('${expired.length}'),
             child: const Icon(Icons.mail_outline),
           ),
         );

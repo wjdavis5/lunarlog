@@ -142,6 +142,7 @@ PendingInvite _invite(
   String id, {
   GuardianRole role = GuardianRole.caregiver,
   String? label = 'Sitter',
+  DateTime? expiresAt,
 }) =>
     PendingInvite(
       invitationId: id,
@@ -149,7 +150,23 @@ PendingInvite _invite(
       role: role,
       recipientLabel: label,
       createdAt: DateTime.utc(2026, 1, 1),
-      expiresAt: DateTime.utc(2026, 9, 9),
+      expiresAt: expiresAt ?? DateTime.utc(2027, 5, 1),
+    );
+
+/// An invitation expired 2 hours ago - inside the 7-day recently-expired
+/// window (issue #362), so the read path still returns it as expired.
+PendingInvite _expiredInvite(
+  String profileId,
+  String id, {
+  GuardianRole role = GuardianRole.caregiver,
+  String? label = 'Sitter',
+}) =>
+    _invite(
+      profileId,
+      id,
+      role: role,
+      label: label,
+      expiresAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
     );
 
 RemoteProfileGuardianRow _row(
@@ -393,6 +410,87 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(Badge), findsNothing);
+    });
+
+    testWidgets('expired-only invitations render the distinct expired badge',
+        (tester) async {
+      final sharing = FakeSharing126()
+        ..pendingByProfile['p-1'] = [_expiredInvite('p-1', 'a')];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PendingInviteBadge(
+                profileId: 'p-1', sharingService: sharing),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Badge), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((widget) =>
+            widget is Tooltip && widget.message == '1 invitation expired'),
+        findsOneWidget,
+      );
+      // Visually distinct: the expired badge carries the error color.
+      final badge = tester.widget<Badge>(find.byType(Badge));
+      final error = Theme.of(tester.element(find.byType(Badge)))
+          .colorScheme
+          .error;
+      expect(badge.backgroundColor, error);
+    });
+
+    testWidgets('expired-only plural renders the N-expired tooltip',
+        (tester) async {
+      final sharing = FakeSharing126()
+        ..pendingByProfile['p-1'] = [
+          _expiredInvite('p-1', 'a'),
+          _expiredInvite('p-1', 'b'),
+        ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PendingInviteBadge(
+                profileId: 'p-1', sharingService: sharing),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Badge), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((widget) =>
+            widget is Tooltip && widget.message == '2 invitations expired'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('live invitations take precedence over expired ones',
+        (tester) async {
+      final sharing = FakeSharing126()
+        ..pendingByProfile['p-1'] = [
+          _invite('p-1', 'a'),
+          _expiredInvite('p-1', 'b'),
+        ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PendingInviteBadge(
+                profileId: 'p-1', sharingService: sharing),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Badge), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((widget) =>
+            widget is Tooltip && widget.message == '1 pending invitation'),
+        findsOneWidget,
+      );
     });
   });
 
@@ -776,6 +874,60 @@ void main() {
         expect(find.byType(Badge), findsNothing);
         expect(find.byKey(ValueKey('shared-indicator-${ids.alice}')),
             findsOneWidget);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets('an expired invitation renders an Expired row with Resend',
+        (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final sharing = FakeSharing126();
+      final db = await _pumpApp(tester, auth: auth, sharing: sharing);
+      try {
+        final ids = await _seedFamily(db);
+        sharing.pendingByProfile[ids.alice] = [
+          _expiredInvite(ids.alice, 'inv-1'),
+        ];
+        await tester.pumpAndSettle();
+
+        // Outside Manage Guardians the expired-only badge reads as expired.
+        expect(
+          find.byWidgetPredicate((widget) =>
+              widget is Tooltip && widget.message == '1 invitation expired'),
+          findsOneWidget,
+        );
+
+        // Into Alice's Manage Guardians: the row is a distinct expired
+        // state - an `Expired` subtitle, no negative countdown, no cancel
+        // control, and a Resend action - under a stable key.
+        await tester.tap(find.descendant(
+          of: find.byKey(ValueKey('profile-row-${ids.alice}')),
+          matching: find.byType(PopupMenuButton<String>),
+        ));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Caregivers'));
+        await tester.pumpAndSettle();
+        expect(find.text('Alice Caregivers'), findsOneWidget);
+        expect(
+            find.byKey(const ValueKey('pending-invite-inv-1')), findsOneWidget);
+        expect(find.text('Sitter'), findsOneWidget);
+        expect(find.textContaining('Expired'), findsOneWidget);
+        expect(find.textContaining('expires in'), findsNothing);
+        expect(find.byIcon(Icons.cancel_outlined), findsNothing);
+        expect(find.widgetWithText(TextButton, 'Resend'), findsOneWidget);
+
+        // Resend re-opens the existing invite flow, then reloads the list:
+        // the dialog appears, and dismissing it leaves the expired row.
+        await tester.tap(find.widgetWithText(TextButton, 'Resend'));
+        await tester.pumpAndSettle();
+        expect(find.text('Invite Caregiver to Alice'), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(
+            find.byKey(const ValueKey('pending-invite-inv-1')), findsOneWidget);
+        expect(find.textContaining('Expired'), findsOneWidget);
       } finally {
         await _disposeApp(tester, db);
       }

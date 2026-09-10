@@ -125,6 +125,27 @@ void main() {
       // ignore: unrelated_type_equality_checks
       expect(invite() == 'not an invite', isFalse);
     });
+
+    test('isExpired derives from expiresAt vs the current UTC time', () {
+      PendingInvite withExpiry(DateTime expiresAt) => PendingInvite(
+            invitationId: 'inv-1',
+            profileId: 'p-1',
+            role: GuardianRole.viewer,
+            recipientLabel: 'Grandma',
+            createdAt: now,
+            expiresAt: expiresAt,
+          );
+      expect(
+        withExpiry(DateTime.now().toUtc().add(const Duration(hours: 1)))
+            .isExpired,
+        isFalse,
+      );
+      expect(
+        withExpiry(DateTime.now().toUtc().subtract(const Duration(hours: 1)))
+            .isExpired,
+        isTrue,
+      );
+    });
   });
 
   group('InviteCancellation.fromDb', () {

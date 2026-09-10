@@ -26,6 +26,13 @@ class SupabaseSharingService implements SharingService {
   final SyncEngine syncEngine;
   final Random _random;
 
+  /// How far back an expired invitation stays visible in
+  /// [listPendingInvites] (issue #362). Anything expired before
+  /// `now - recentlyExpiredWindow` is omitted so the list cannot grow
+  /// without bound; the RLS policy already admits these rows, so no
+  /// migration or RPC change is needed.
+  static const recentlyExpiredWindow = Duration(days: 7);
+
   @override
   Future<GeneratedInvite> createInvite({
     required String profileId,
@@ -146,13 +153,20 @@ class SupabaseSharingService implements SharingService {
       // a future edit that adds it back to this query fails the coverage
       // test that asserts on the selected columns rather than silently
       // shipping a token to the client.
+      // Issue #362: return live invitations plus ones expired within
+      // [recentlyExpiredWindow] (cutoff = now - window), so an aged-out
+      // invitation is visible as expired rather than vanishing.
+      final cutoff = DateTime.now()
+          .toUtc()
+          .subtract(recentlyExpiredWindow)
+          .toIso8601String();
       final rows = await client
           .from('guardian_invitations')
           .select('id, profile_id, role, recipient_label, created_at, expires_at')
           .eq('profile_id', profileId)
           .isFilter('accepted_at', null)
           .isFilter('revoked_at', null)
-          .gt('expires_at', DateTime.now().toUtc().toIso8601String())
+          .gt('expires_at', cutoff)
           .order('created_at', ascending: true);
 
       return [
