@@ -342,7 +342,7 @@ class _ImportScreenState extends State<ImportScreen> {
         const SizedBox(height: 16),
         ElevatedButton(
           key: const ValueKey('import-result-done'),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(summary),
           child: const Text('Done'),
         ),
       ],

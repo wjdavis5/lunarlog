@@ -491,6 +491,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstRunContinue => 'Continue';
 
   @override
+  String get firstRunRestore => 'Restore from backup or Clue export';
+
+  @override
   String get firstRunCycleCaption =>
       'A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.';
 

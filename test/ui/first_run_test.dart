@@ -80,6 +80,7 @@ class Harness {
     bool isWebBuild = false,
     AuthController? auth,
     SyncStatusController? sync,
+    Future<void> Function(BuildContext context)? onOpenImport,
   }) async {
     await profiles.load();
     await tester.pumpWidget(MaterialApp(
@@ -99,6 +100,7 @@ class Harness {
           isWebBuild: isWebBuild,
           todayProvider: () => kToday,
           pickDate: pickDate ?? (_, _, _, _) async => null,
+          onOpenImport: onOpenImport,
         ),
       ),
     ));
@@ -576,4 +578,126 @@ void main() {
       await h.dispose();
     });
   });
+
+  group('restore from backup or Clue export (Issue #468)', () {
+    testWidgets(
+        'restore button is rendered on the intro card and invokes onOpenImport',
+        (tester) async {
+      bool restoreCalled = false;
+      final h = Harness(tester);
+      await h.pump(
+        onOpenImport: (_) async {
+          restoreCalled = true;
+        },
+      );
+
+      final button = find.byKey(const ValueKey('first-run-restore-intro'));
+      expect(button, findsOneWidget);
+      expect(find.text('Restore from backup or Clue export'), findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(restoreCalled, isTrue);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'restore button is rendered on the account step and invokes onOpenImport',
+        (tester) async {
+      bool restoreCalled = false;
+      final auth = FakeAuthService();
+      final authController = AuthController(authService: auth);
+      final h = Harness(tester);
+      // Skip intro notice
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.pump(
+        auth: authController,
+        onOpenImport: (_) async {
+          restoreCalled = true;
+        },
+      );
+      await tester.pumpAndSettle();
+
+      final button =
+          find.byKey(const ValueKey('first-run-restore-account-step'));
+      expect(button, findsOneWidget);
+      expect(find.text('Restore from backup or Clue export'), findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(restoreCalled, isTrue);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'restore button is rendered on the name form step and invokes onOpenImport',
+        (tester) async {
+      bool restoreCalled = false;
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.pump(
+        onOpenImport: (_) async {
+          restoreCalled = true;
+        },
+      );
+      await tester.pumpAndSettle();
+
+      final button =
+          find.byKey(const ValueKey('first-run-restore-name-form'));
+      expect(button, findsOneWidget);
+      expect(find.text('Restore from backup or Clue export'), findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(restoreCalled, isTrue);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'completing an import with a profile completes onboarding and selects active profile',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump(
+        onOpenImport: (_) async {
+          // Simulate import writing a profile
+          await DriftProfilesRepository(h.db.storage).create(
+            displayName: 'Restored Profile',
+            isMinor: false,
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('first-run-restore-intro')));
+      await tester.pumpAndSettle();
+
+      expect(h.profiles.firstRunNoticeShown, isTrue);
+      expect(h.profiles.activeProfile, isNotNull);
+      expect(h.profiles.activeProfile!.displayName, 'Restored Profile');
+      await h.dispose();
+    });
+
+    testWidgets(
+        'cancelling an import leaves user on FirstRunScreen without creating profile',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump(
+        onOpenImport: (_) async {
+          // User cancels picker - nothing imported
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('first-run-restore-intro')));
+      await tester.pumpAndSettle();
+
+      expect(h.profiles.firstRunNoticeShown, isFalse);
+      expect(h.profiles.activeProfile, isNull);
+      expect(
+          find.byKey(const ValueKey('first-run-card-value')), findsOneWidget);
+      await h.dispose();
+    });
+  });
 }
+
