@@ -832,6 +832,19 @@ void main() {
       expect(find.text('Create a profile'), findsNothing);
       expect(key('restore-retry-button'), findsOneWidget);
 
+      // Issue #326: pin RestoreErrorScreen's live region on the message only.
+      final semanticsHandle = tester.ensureSemantics();
+      const defaultMessage =
+          'We could not restore your account data from the cloud. '
+          'Please check your internet connection and try again.';
+      final messageNode = tester.getSemantics(find.text(defaultMessage));
+      expect(messageNode.flagsCollection.isLiveRegion, isTrue);
+      expect(messageNode.label, defaultMessage);
+      final headingNode =
+          tester.getSemantics(find.text('Unable to restore data'));
+      expect(headingNode.flagsCollection.isLiveRegion, isFalse);
+      semanticsHandle.dispose();
+
       // Tapping Retry calls requestSync on the engine
       await tester.tap(key('restore-retry-button'));
       await pumpFew(tester);

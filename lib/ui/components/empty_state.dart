@@ -57,9 +57,15 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isStart = crossAxisAlignment == CrossAxisAlignment.start;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final content = Center(child: _content(context));
+        final content = isStart
+            ? Align(
+                alignment: AlignmentDirectional.topStart,
+                child: _content(context),
+              )
+            : Center(child: _content(context));
         if (!constraints.hasBoundedHeight) return content;
         // Issue #308: a Scaffold-body use (profile_picker_screen.dart) gets
         // bounded, viewport-sized constraints here — at large text scale
@@ -80,14 +86,17 @@ class EmptyState extends StatelessWidget {
   Widget _content(BuildContext context) {
     final theme = Theme.of(context);
     final onPrimaryAction = this.onPrimaryAction;
-    final textAlign = crossAxisAlignment == CrossAxisAlignment.start
+    final isStart = crossAxisAlignment == CrossAxisAlignment.start;
+    final textAlign = isStart
         ? TextAlign.start
         : TextAlign.center;
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: LLSpace.space5,
-        vertical: LLSpace.space6,
-      ),
+      padding: isStart
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(
+              horizontal: LLSpace.space5,
+              vertical: LLSpace.space6,
+            ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: crossAxisAlignment,
