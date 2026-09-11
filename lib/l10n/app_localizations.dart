@@ -916,6 +916,12 @@ abstract class AppLocalizations {
   /// **'Continue'**
   String get firstRunContinue;
 
+  /// Action on first run allowing user to restore profiles and cycle history from an existing backup or Clue export.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore from backup or Clue export'**
+  String get firstRunRestore;
+
   /// Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability.
   ///
   /// In en, this message translates to:

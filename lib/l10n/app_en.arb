@@ -599,6 +599,10 @@
   "@firstRunContinue": {
     "description": "Submit button of the first-run name form; validates and moves to the cycle questions."
   },
+  "firstRunRestore": "Restore from backup or Clue export",
+  "@firstRunRestore": {
+    "description": "Action on first run allowing user to restore profiles and cycle history from an existing backup or Clue export."
+  },
   "firstRunCycleCaption": "A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.",
   "@firstRunCycleCaption": {
     "description": "Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability."

@@ -36,6 +36,7 @@ import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/google_sign_in_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
@@ -120,6 +121,7 @@ class SignInScreen extends StatefulWidget {
     this.embedded = false,
     this.onSignedIn,
     this.onNotNow,
+    this.onRestore,
   });
 
   /// Whether the Apple button renders; null means "iOS only" (KTD9).
@@ -140,6 +142,9 @@ class SignInScreen extends StatefulWidget {
 
   final VoidCallback? onSignedIn;
   final VoidCallback? onNotNow;
+
+  /// First-run restore action (Issue #468).
+  final VoidCallback? onRestore;
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
@@ -477,16 +482,28 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
       ];
 
-  List<Widget> _buildEmbeddedFooter() => [
-        if (widget.embedded) ...[
-          const Divider(height: 32),
-          TextButton(
-            key: const ValueKey('first-run-not-now'),
-            onPressed: _busy ? null : widget.onNotNow,
-            child: const Text('Not now'),
-          ),
-        ],
-      ];
+  List<Widget> _buildEmbeddedFooter() {
+    if (!widget.embedded) return const [];
+    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    final restoreLabel =
+        l10n?.firstRunRestore ?? 'Restore from backup or Clue export';
+    return [
+      const Divider(height: 32),
+      if (widget.onRestore != null) ...[
+        OutlinedButton(
+          key: const ValueKey('first-run-restore-account-step'),
+          onPressed: _busy ? null : widget.onRestore,
+          child: Text(restoreLabel),
+        ),
+        const SizedBox(height: 8),
+      ],
+      TextButton(
+        key: const ValueKey('first-run-not-now'),
+        onPressed: _busy ? null : widget.onNotNow,
+        child: const Text('Not now'),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {

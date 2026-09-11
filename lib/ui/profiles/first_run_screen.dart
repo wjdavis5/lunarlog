@@ -38,6 +38,7 @@ import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/observability/route_names.dart' show kRouteImportScreen;
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
@@ -47,6 +48,7 @@ import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/routes.dart' show pushNamedScreen;
 import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
@@ -81,6 +83,7 @@ class FirstRunScreen extends StatefulWidget {
     this.isWebBuild = kIsWeb,
     this.todayProvider = LocalDate.today,
     this.pickDate = _showMaterialDatePicker,
+    this.onOpenImport,
   });
 
   /// KTD9 web guardrail; injectable so host tests can exercise it.
@@ -91,6 +94,10 @@ class FirstRunScreen extends StatefulWidget {
 
   /// The date-picker callable; injectable for tests.
   final FirstRunDatePicker pickDate;
+
+  /// Injected action to open the restore/import flow (Issue #468).
+  /// Defaults to pushing [ImportScreen] via [kRouteImportScreen].
+  final Future<void> Function(BuildContext context)? onOpenImport;
 
   @override
   State<FirstRunScreen> createState() => _FirstRunScreenState();
@@ -206,6 +213,26 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     await controller.markFirstRunNoticeShown();
     if (mounted) {
       setState(() => _noticePending = false);
+    }
+  }
+
+  /// Opens the import/restore flow (Issue #468). When an import produces
+  /// at least one profile, completes onboarding and selects the imported
+  /// profile so the home gate transitions to AppShell.
+  Future<void> _openImport() async {
+    if (widget.onOpenImport != null) {
+      await widget.onOpenImport!(context);
+    } else {
+      await pushNamedScreen<void>(context, kRouteImportScreen);
+    }
+    if (!mounted) return;
+    final controller = context.read<ProfileController>();
+    await controller.load();
+    if (controller.activeProfiles.isNotEmpty) {
+      await controller.markFirstRunNoticeShown();
+      if (controller.activeProfile == null) {
+        await controller.selectProfile(controller.activeProfiles.first.id);
+      }
     }
   }
 
@@ -345,6 +372,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         embedded: true,
         onSignedIn: _onSignedIn,
         onNotNow: () => setState(() => _accountPending = false),
+        onRestore: _openImport,
       );
     }
     if (_awaitingRestore) {
@@ -391,6 +419,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                         : l10n.firstRunUnderstand),
                   ),
                 ],
+              ),
+              const SizedBox(height: LLSpace.space4),
+              OutlinedButton(
+                key: const ValueKey('first-run-restore-intro'),
+                onPressed: _openImport,
+                child: Text(l10n.firstRunRestore),
               ),
             ],
           ),
@@ -548,11 +582,17 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                       ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: LLSpace.space4),
               FilledButton(
                 key: const ValueKey('first-run-continue'),
                 onPressed: _continueToCycleQuestions,
                 child: Text(l10n.firstRunContinue),
+              ),
+              const SizedBox(height: LLSpace.space3),
+              OutlinedButton(
+                key: const ValueKey('first-run-restore-name-form'),
+                onPressed: _openImport,
+                child: Text(l10n.firstRunRestore),
               ),
             ],
           ),
