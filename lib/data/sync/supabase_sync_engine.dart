@@ -1,9 +1,14 @@
-/// The sync coordinator (U5; KTD1, KTD2, KTD4, KTD10, KTD11): pushes dirty
-/// rows through `sync_push` in batches, applies the server's resolutions
-/// and declines in the same cycle, pulls remote pages per table by
-/// `server_version`, reconciles fully on bind / after resolutions / daily,
-/// and enforces the device binding guard with a non-destructive mismatch
-/// state.
+/// The sync loop, trigger gating and transport coordination (U5; KTD1,
+/// KTD2, KTD4, KTD10, KTD11): pushes dirty rows through `sync_push` in
+/// batches, pulls remote pages per table by `server_version`, reconciles
+/// fully on bind / after resolutions / daily, and enforces the device
+/// binding guard with a non-destructive mismatch state.
+///
+/// The apply half of the same cycle — recording rejections, clearing
+/// `dirty` on accepted rows, storing the server's `resolved` copies and
+/// applying reconcile pages — lives in `supabase_sync_apply.dart`
+/// ([SupabaseSyncApply], split out verbatim under issue #435); this file
+/// keeps the loop, the triggers and every transport call.
 ///
 /// Triggers (AS8): the gate `Listenable` (edge-detected unlock), auth state
 /// transitions, app resume, a debounced local-write signal (drift table
@@ -42,6 +47,7 @@ import '../db/db.dart';
 import '../db/storage.dart';
 import '../db/ulid.dart';
 import 'row_codec.dart';
+import 'supabase_sync_apply.dart';
 import 'sync_transport.dart';
 
 /// Builds a one-shot timer; the default is `Timer(delay, callback)`.
@@ -95,22 +101,6 @@ class _SyncPaused implements Exception {
 /// was disposed; the cycle ends quietly.
 class _SyncAborted implements Exception {
   const _SyncAborted();
-}
-
-class _PushItem {
-  const _PushItem(this.table, this.id, this.localRev, this.json,
-      {this.profileId});
-
-  final SyncTable table;
-  final String id;
-  final int localRev;
-  final JsonRow json;
-
-  /// The owning profile's id for a day-entry item; `null` for a profile
-  /// item. Carried so [SupabaseSyncEngine._unrejectEntriesOf] can filter
-  /// the in-memory [SupabaseSyncEngine._rejected] map without a storage
-  /// read (finding #2).
-  final String? profileId;
 }
 
 /// Keyset cursor state for one [SupabaseSyncEngine._push] call, split out
@@ -227,6 +217,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     int pageSize = 500,
     this.writeDebounce = const Duration(milliseconds: 250),
     UlidGenerator? ulid,
+    SupabaseSyncApply? apply,
   })  : _storage = storage,
         _transport = transport,
         _auth = auth,
@@ -239,6 +230,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         _backoff = backoff,
         _batchSize = batchSize,
         _pageSize = pageSize,
+        _apply = apply ?? SupabaseSyncApply(storage),
         _ulid = ulid ?? UlidGenerator() {
     if (batchSize < 1 || batchSize > PushBatch.maxRows) {
       throw ArgumentError.value(
@@ -261,6 +253,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   final SyncBackoff _backoff;
   final int _batchSize;
   final int _pageSize;
+  final SupabaseSyncApply _apply;
   final UlidGenerator _ulid;
 
   /// Quiet time after the last local write before a sync is requested.
@@ -291,14 +284,6 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// after finding #8) cannot force a full profile re-pull every cycle
   /// forever.
   int _consecutiveGuardianPullRetries = 0;
-
-  /// Rows the server rejected: id → (`local_rev` at rejection, owning
-  /// profile id — `null` for a profile row itself). A row is excluded from
-  /// pushes while its `local_rev` still equals the rejected one; a later
-  /// local write bumps it and the row is retried. The `profileId` lets
-  /// [_unrejectEntriesOf] filter this map in memory when a profile is
-  /// accepted, with no storage read (finding #2).
-  final Map<String, ({int localRev, String? profileId})> _rejected = {};
 
   StreamSubscription<AuthSessionState>? _authSub;
   StreamSubscription<Set<TableUpdate>>? _writeSub;
@@ -333,7 +318,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         ]))
         .listen((_) => _onLocalWrite());
     _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
-      _rejected.clear();
+      _apply.clearRejected();
       requestSync();
     });
     requestSync();
@@ -443,43 +428,34 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   Future<bool> _hasPushableDirty() async {
     final profiles = await _storage.readDirtyProfiles();
-    if (_pushable(profiles, (p) => p.id, (p) => p.localRev).isNotEmpty) {
+    if (_apply.pushable(profiles, (p) => p.id, (p) => p.localRev).isNotEmpty) {
       return true;
     }
     final entries = await _storage.readDirtyDayEntries();
-    if (_pushable(entries, (e) => e.id, (e) => e.localRev).isNotEmpty) {
+    if (_apply.pushable(entries, (e) => e.id, (e) => e.localRev).isNotEmpty) {
       return true;
     }
     final observations = await _storage.readDirtyObservations();
-    if (_pushable(observations, (o) => o.id, (o) => o.localRev).isNotEmpty) {
+    if (_apply.pushable(observations, (o) => o.id, (o) => o.localRev).isNotEmpty) {
       return true;
     }
     final profileModes = await _storage.readDirtyProfileModes();
-    if (_pushable(profileModes, (m) => m.profileId, (m) => m.localRev)
+    if (_apply.pushable(profileModes, (m) => m.profileId, (m) => m.localRev)
         .isNotEmpty) {
       return true;
     }
     final cycleOverrides = await _storage.readDirtyCycleOverrides();
-    if (_pushable(cycleOverrides, (o) => o.id, (o) => o.localRev).isNotEmpty) {
+    if (_apply.pushable(cycleOverrides, (o) => o.id, (o) => o.localRev).isNotEmpty) {
       return true;
     }
     final careNotes = await _storage.readDirtyCareNotes();
-    if (_pushable(careNotes, (n) => n.id, (n) => n.localRev).isNotEmpty) {
+    if (_apply.pushable(careNotes, (n) => n.id, (n) => n.localRev).isNotEmpty) {
       return true;
     }
     final visitPrepItems = await _storage.readDirtyVisitPrepItems();
-    return _pushable(visitPrepItems, (i) => i.id, (i) => i.localRev)
+    return _apply.pushable(visitPrepItems, (i) => i.id, (i) => i.localRev)
         .isNotEmpty;
   }
-
-  /// Dirty rows the server has not rejected at their current `local_rev`
-  /// (a later local write bumps the rev and makes the row pushable again).
-  Iterable<T> _pushable<T>(
-    List<T> rows,
-    String Function(T) id,
-    int Function(T) localRev,
-  ) =>
-      rows.where((row) => _rejected[id(row)]?.localRev != localRev(row));
 
   // ------------------------------------------------------------------- loop
 
@@ -531,7 +507,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       _emit(_snapshot.copyWith(
           phase: _phase(SyncPhase.pushing), boundUserId: uid));
 
-      // Computed (and, when due, acted on by clearing _rejected) before the
+      // Computed (and, when due, acted on by clearing the apply-side
+      // rejections) before the
       // push so a previously-rejected row is retried once the reconcile
       // that follows re-evaluates it.
       final reconcileDueBeforePush = _reconcileDueBeforePush(bindNow, state);
@@ -556,7 +533,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       _emit(_snapshot.copyWith(
         phase: SyncPhase.idle,
         dirtyCount: await _storage.dirtyCount(),
-        rejectedCount: _rejected.length,
+        rejectedCount: _apply.rejectedCount,
         lastSyncAt: finishedAt,
         lastError: SyncErrorKind.none,
         boundUserId: uid,
@@ -631,7 +608,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   /// Whether a full reconcile is due, based on state from *before* this
   /// cycle's push: a fresh bind, no prior full pull, or the last one is
-  /// stale (KTD2). When due, also clears [_rejected] (a previously-rejected
+  /// stale (KTD2). When due, also clears the apply-side rejections (a
+  /// previously-rejected
   /// row is retried once the reconcile that follows re-evaluates it) —
   /// this must run before the push, so it lives here rather than in
   /// [_reconcileIfDue], which only sees post-push state.
@@ -644,7 +622,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         bindNow ||
         lastFull == null ||
         now.difference(lastFull) > kSyncFullPullInterval;
-    if (due) _rejected.clear();
+    if (due) _apply.clearRejected();
     return due;
   }
 
@@ -726,7 +704,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       phase: SyncPhase.error,
       lastError: kind,
       dirtyCount: await _safeDirtyCount(),
-      rejectedCount: _rejected.length,
+      rejectedCount: _apply.rejectedCount,
     ));
   }
 
@@ -814,22 +792,22 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// round's pushable items and whether the loop may terminate after it
   /// (this round's profile page was genuinely empty and day entries are
   /// exhausted).
-  Future<({List<_PushItem> batch, bool done})> _readPushRound(
+  Future<({List<SyncPushItem> batch, bool done})> _readPushRound(
     _PushCursor cursor,
   ) async {
     final profilePage = await cursor.readProfilePage();
     final profilesEmptyThisRound = profilePage.isEmpty;
-    final batch = <_PushItem>[
+    final batch = <SyncPushItem>[
       for (final row
-          in _pushable(profilePage, (p) => p.id, (p) => p.localRev))
-        _PushItem(
+          in _apply.pushable(profilePage, (p) => p.id, (p) => p.localRev))
+        SyncPushItem(
             SyncTable.profiles, row.id, row.localRev, encodeProfile(row)),
     ];
     if (profilePage.length < cursor.batchSize && !cursor.entriesDone) {
       final entryPage = await cursor.readEntryPage();
       batch.addAll([
-        for (final row in _pushable(entryPage, (e) => e.id, (e) => e.localRev))
-          _PushItem(SyncTable.dayEntries, row.id, row.localRev,
+        for (final row in _apply.pushable(entryPage, (e) => e.id, (e) => e.localRev))
+          SyncPushItem(SyncTable.dayEntries, row.id, row.localRev,
               encodeDayEntry(row), profileId: row.profileId),
       ]);
     }
@@ -843,8 +821,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       final observationPage = await cursor.readObservationPage();
       batch.addAll([
         for (final row
-            in _pushable(observationPage, (o) => o.id, (o) => o.localRev))
-          _PushItem(SyncTable.observations, row.id, row.localRev,
+            in _apply.pushable(observationPage, (o) => o.id, (o) => o.localRev))
+          SyncPushItem(SyncTable.observations, row.id, row.localRev,
               encodeObservation(row), profileId: row.profileId),
       ]);
     }
@@ -864,24 +842,24 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// notes ride once cycle overrides are exhausted, visit-prep items once
   /// care notes are.
   Future<void> _appendModeTableItems(
-    List<_PushItem> batch,
+    List<SyncPushItem> batch,
     _PushCursor cursor,
   ) async {
     if (cursor.observationsDone && !cursor.profileModesDone) {
       final profileModePage = await cursor.readProfileModePage();
       batch.addAll([
-        for (final row in _pushable(
+        for (final row in _apply.pushable(
             profileModePage, (m) => m.profileId, (m) => m.localRev))
-          _PushItem(SyncTable.profileModes, row.profileId, row.localRev,
+          SyncPushItem(SyncTable.profileModes, row.profileId, row.localRev,
               encodeProfileMode(row), profileId: row.profileId),
       ]);
     }
     if (cursor.profileModesDone && !cursor.cycleOverridesDone) {
       final cycleOverridePage = await cursor.readCycleOverridePage();
       batch.addAll([
-        for (final row in _pushable(
+        for (final row in _apply.pushable(
             cycleOverridePage, (o) => o.id, (o) => o.localRev))
-          _PushItem(SyncTable.cycleOverrides, row.id, row.localRev,
+          SyncPushItem(SyncTable.cycleOverrides, row.id, row.localRev,
               encodeCycleOverride(row), profileId: row.profileId),
       ]);
     }
@@ -894,23 +872,23 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// [_appendModeTableItems] so that method's branch count stays under the
   /// CRAP gate as tables are added.
   Future<void> _appendCareTableItems(
-    List<_PushItem> batch,
+    List<SyncPushItem> batch,
     _PushCursor cursor,
   ) async {
     if (cursor.cycleOverridesDone && !cursor.careNotesDone) {
       final careNotePage = await cursor.readCareNotePage();
       batch.addAll([
         for (final row
-            in _pushable(careNotePage, (n) => n.id, (n) => n.localRev))
-          _PushItem(SyncTable.careNotes, row.id, row.localRev,
+            in _apply.pushable(careNotePage, (n) => n.id, (n) => n.localRev))
+          SyncPushItem(SyncTable.careNotes, row.id, row.localRev,
               encodeCareNote(row), profileId: row.profileId),
       ]);
     }
     if (cursor.careNotesDone && !cursor.visitPrepItemsDone) {
       final prepItemPage = await cursor.readVisitPrepItemPage();
       batch.addAll([
-        for (final row in _pushable(prepItemPage, (i) => i.id, (i) => i.localRev))
-          _PushItem(SyncTable.visitPrepItems, row.id, row.localRev,
+        for (final row in _apply.pushable(prepItemPage, (i) => i.id, (i) => i.localRev))
+          SyncPushItem(SyncTable.visitPrepItems, row.id, row.localRev,
               encodeVisitPrepItem(row), profileId: row.profileId),
       ]);
     }
@@ -922,7 +900,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// to take).
   Future<({bool resolvedSeen, Duration? offset})> _pushBatch(
     String uid,
-    List<_PushItem> batch,
+    List<SyncPushItem> batch,
   ) async {
     _checkpoint(uid);
     final PushResult result;
@@ -939,10 +917,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     } on SyncTransportRejectedError catch (error) {
       // A transport without per-row results: the named rows are rejected,
       // the rest of the batch stays dirty for the next cycle.
-      _markRejected(batch, error.ids);
+      _apply.markRejected(batch, error.ids);
       return (resolvedSeen: false, offset: null);
     }
-    await _applyPushResult(batch, result);
+    await _apply.applyPushResult(batch, result);
     // The in-memory offset takes effect immediately (it stamps the next
     // local writes) and is persisted to sync_state for this committed batch.
     final offset = result.serverNow.toUtc().difference(_clock().toUtc());
@@ -950,63 +928,6 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     await _updateState(
         (s) => s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));
     return (resolvedSeen: result.resolved.isNotEmpty, offset: offset);
-  }
-
-  void _markRejected(List<_PushItem> batch, List<String> rejectedIds) {
-    final byId = {for (final i in batch) i.id: i};
-    for (final id in rejectedIds) {
-      final item = byId[id];
-      if (item != null) {
-        _rejected[id] = (localRev: item.localRev, profileId: item.profileId);
-      }
-    }
-  }
-
-  Future<void> _applyPushResult(List<_PushItem> batch, PushResult result) async {
-    final rejected = result.rejectedIds.toSet();
-    final acceptedProfileIds = <String>{};
-    for (final item in batch) {
-      if (rejected.contains(item.id)) {
-        _rejected[item.id] =
-            (localRev: item.localRev, profileId: item.profileId);
-        continue;
-      }
-      _rejected.remove(item.id);
-      if (item.table == SyncTable.profiles) {
-        acceptedProfileIds.add(item.id);
-      }
-      await _storage.markPushed(
-          table: item.table, id: item.id, localRevAtPush: item.localRev);
-    }
-    if (acceptedProfileIds.isNotEmpty) {
-      _unrejectEntriesOf(acceptedProfileIds, rejected);
-    }
-    if (result.resolved.isNotEmpty) {
-      await _storage.applyResolved(result.resolved);
-    }
-  }
-
-  /// A day entry rejected alongside its profile is un-rejected once that
-  /// profile is accepted (and the entry itself wasn't [rejectedThisBatch]),
-  /// so it is retried on the next push instead of waiting for its own
-  /// local edit. Filters the in-memory [_rejected] map by the `profileId`
-  /// carried on each rejected entry — no storage read (finding #2), so
-  /// this stays bounded regardless of how large the dirty set is.
-  void _unrejectEntriesOf(
-    Set<String> acceptedProfileIds,
-    Set<String> rejectedThisBatch,
-  ) {
-    final toUnreject = <String>[];
-    for (final entry in _rejected.entries) {
-      if (rejectedThisBatch.contains(entry.key)) continue;
-      final profileId = entry.value.profileId;
-      if (profileId != null && acceptedProfileIds.contains(profileId)) {
-        toUnreject.add(entry.key);
-      }
-    }
-    for (final id in toUnreject) {
-      _rejected.remove(id);
-    }
   }
 
   // ------------------------------------------------------------------- pull
@@ -1060,7 +981,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       final page = await _transport.pullPage(
           table: table, afterVersion: after, limit: _pageSize);
       if (page.isEmpty) break;
-      final newCursor = _maxVersion(page, after);
+      final newCursor = _apply.maxVersion(page, after);
       try {
         await _storage.applyRemotePage(
             table: table, rows: page, newCursor: newCursor);
@@ -1152,49 +1073,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         final page = await _transport.pullPage(
             table: table, afterVersion: after, limit: _pageSize);
         if (page.isEmpty) break;
-        if (await _applyReconcilePage(page)) retry = true;
-        final next = _maxVersion(page, after);
+        if (await _apply.applyReconcilePage(page)) retry = true;
+        final next = _apply.maxVersion(page, after);
         if (page.length < _pageSize || next <= after) break;
         after = next;
       }
     }
     return retry;
-  }
-
-  /// Applies a reconcile page in one transaction; when a row hits a
-  /// retryable apply failure the page is re-applied row by row so every
-  /// other row still lands (the per-row semantics of the single-row
-  /// applies). Returns whether any row was left for the next cycle.
-  /// The per-row fallback below is type-agnostic by construction:
-  /// [LunarLogStorage.applyRemoteRows] with a single-element list is
-  /// exactly each row type's single-row apply (one transaction, that one
-  /// row, same LWW/retryable semantics -- see its per-type dispatch), so
-  /// no switch is needed here and this method's branch count stays put
-  /// as synced tables are added (Issue #188 added two more row types).
-  Future<bool> _applyReconcilePage(List<RemoteRow> page) async {
-    try {
-      await _storage.applyRemoteRows(page);
-      return false;
-    } on RetryableSyncApplyError {
-      // Fall through to per-row application.
-    }
-    var retry = false;
-    for (final row in page) {
-      try {
-        await _storage.applyRemoteRows([row]);
-      } on RetryableSyncApplyError {
-        retry = true;
-      }
-    }
-    return retry;
-  }
-
-  int _maxVersion(List<RemoteRow> page, int floor) {
-    var v = floor;
-    for (final row in page) {
-      if (row.serverVersion > v) v = row.serverVersion;
-    }
-    return v;
   }
 
   // --------------------------------------------------------------- snapshot
