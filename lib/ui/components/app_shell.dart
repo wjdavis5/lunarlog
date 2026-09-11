@@ -345,23 +345,29 @@ class _ProfileSwitcher extends StatelessWidget {
         key: const ValueKey('app-shell-profile-switcher'),
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  profile.displayName,
-                  overflow: TextOverflow.ellipsis,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: kMinInteractiveDimension,
+            minHeight: kMinInteractiveDimension,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    profile.displayName,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              if (repository != null)
-                _SharedMark(
-                    repository: repository, profileId: profile.id),
-              const SizedBox(width: 4),
-              const Icon(Icons.expand_more, size: 20),
-            ],
+                if (repository != null)
+                  _SharedMark(
+                      repository: repository, profileId: profile.id),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_more, size: 20),
+              ],
+            ),
           ),
         ),
       ),

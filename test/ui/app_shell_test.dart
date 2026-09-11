@@ -281,7 +281,15 @@ void main() {
     expect(find.text('Alice'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('app-shell-profile-switcher')));
+    final switcherFinder =
+        find.byKey(const ValueKey('app-shell-profile-switcher'));
+    final size = tester.getSize(switcherFinder);
+    expect(size.width, greaterThanOrEqualTo(48.0),
+        reason: 'Profile switcher width must satisfy >= 48dp touch target');
+    expect(size.height, greaterThanOrEqualTo(48.0),
+        reason: 'Profile switcher height must satisfy >= 48dp touch target');
+
+    await tester.tap(switcherFinder);
     await tester.pumpAndSettle();
 
     expect(find.text('Profiles'), findsOneWidget,
