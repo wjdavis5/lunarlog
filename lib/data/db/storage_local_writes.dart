@@ -404,9 +404,48 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     _validateTags(tags);
     _validateDayEntryProvenance(sourceId: sourceId);
     return db.transaction(() async {
-      final now = (updatedAt ?? _now()).toUtc();
-      final live =
-          id == null ? await _liveDayEntry(profileId, localDate) : await _dayEntryOrNull(id);
+      return _writeDayEntry(
+        id: id,
+        profileId: profileId,
+        localDate: localDate,
+        tz: tz,
+        flow: flow,
+        tags: tags,
+        note: note,
+        pms: pms,
+        updatedAt: updatedAt,
+        source: source,
+        sourceId: sourceId,
+        importId: importId,
+      );
+    });
+  }
+
+  /// The per-row day-entry write behind [upsertDayEntry], minus the
+  /// transaction wrapper: resolves the live row (by [id] when given, else
+  /// by (profileId, localDate)), inserts or updates in place with the same
+  /// stamping/dirty/local_rev/provenance rules, and reads the row back.
+  /// [bulkUpsertDayEntries] calls this once per entry inside its single
+  /// transaction instead of going through [upsertDayEntry] (which would
+  /// open one transaction per row); [upsertDayEntry] itself delegates here
+  /// too, so the single-entry behavior is defined exactly once.
+  Future<DayEntry> _writeDayEntry({
+    String? id,
+    required String profileId,
+    required String localDate,
+    required String tz,
+    required FlowLevel flow,
+    required List<String> tags,
+    required String? note,
+    required bool pms,
+    required DateTime? updatedAt,
+    required String source,
+    required String? sourceId,
+    required String? importId,
+  }) async {
+    final now = (updatedAt ?? _now()).toUtc();
+    final live =
+        id == null ? await _liveDayEntry(profileId, localDate) : await _dayEntryOrNull(id);
       if (live == null) {
         await db.into(db.dayEntries).insert(DayEntriesCompanion.insert(
               id: id ?? _generator.next(),
@@ -463,7 +502,133 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         throw StateError('day entry disappeared: $profileId $localDate');
       }
       return rows.last;
+  }
+
+  /// Bulk import seam (Issue #172): writes [entries] and [observations] in
+  /// ONE [db.transaction] — one stream invalidation, not one per row — so
+  /// importing a multi-year history (≈3,650 rows) is O(1) batches, not
+  /// O(n) transactions each re-running a full-table SELECT. The future
+  /// Clue importer (#190) drives imports exclusively through this method,
+  /// never through the per-row [upsertDayEntry]/[upsertObservation].
+  ///
+  /// Each entry carries its own id (reused on insert, so two devices
+  /// importing the same file converge on the same row ids instead of
+  /// minting fresh ones) and its own `updated_at` stamp base (an update
+  /// still bumps strictly after the stored value, the [_afterStored]
+  /// rule). Entries resolve like [upsertDayEntry] plus one bulk-only
+  /// fallback: an id matching no stored row falls back to the live row at
+  /// (profileId, localDate) when one exists, so a re-import carrying new
+  /// ids for already-imported dates updates in place instead of colliding
+  /// on `uq_day_entries_profile_date_live`. Duplicate dates within one
+  /// batch are last-wins in input order (each write sees the earlier ones
+  /// in the same transaction, matching [upsertDayEntry]). Observations
+  /// resolve by id alone, like [upsertObservation], and are written after
+  /// their day entries so `day_entry_id` always resolves.
+  ///
+  /// Only live-row fields are read from the inputs: `dirty`/`local_rev`
+  /// are restamped, `deleted_at` is ignored (bulk writes live rows — the
+  /// update path clears it, like [upsertDayEntry]), and
+  /// `logged_by_user_id`/`last_modified_by_user_id` are never written
+  /// locally (the server stamps them). Every input is validated before
+  /// anything is written, so a bad row fails the whole batch with nothing
+  /// persisted. An empty call writes nothing and opens no transaction.
+  /// Returns the persisted day entries in input order.
+  Future<List<DayEntry>> bulkUpsertDayEntries(
+    List<DayEntry> entries, {
+    List<Observation> observations = const [],
+  }) async {
+    // Async so validation failures surface as failed futures, not sync
+    // throws, for callers awaiting the result.
+    for (final entry in entries) {
+      _validateBulkDayEntry(entry);
+    }
+    for (final observation in observations) {
+      _validateBulkObservation(observation);
+    }
+    if (entries.isEmpty && observations.isEmpty) return [];
+    return db.transaction(() async {
+      final written = <DayEntry>[];
+      for (final entry in entries) {
+        written.add(await _writeBulkDayEntry(entry));
+      }
+      for (final observation in observations) {
+        // [_validateBulkObservation] already rejected a null/empty
+        // category above, so this `!` never fails here.
+        await _writeObservation(
+          id: observation.id,
+          dayEntryId: observation.dayEntryId,
+          profileId: observation.profileId,
+          localDate: observation.localDate,
+          observedAt: observation.observedAt,
+          tz: observation.tz,
+          category: observation.category!,
+          code: observation.code,
+          valueNum: observation.valueNum,
+          valueText: observation.valueText,
+          unit: observation.unit,
+          intensity: observation.intensity,
+          excluded: observation.excluded,
+          source: observation.source,
+          sourceId: observation.sourceId,
+          importId: observation.importId,
+          raw: observation.raw,
+          updatedAt: observation.updatedAt,
+        );
+      }
+      return written;
     });
+  }
+
+  /// Validates one bulk day-entry input with the same limits
+  /// [upsertDayEntry] enforces.
+  void _validateBulkDayEntry(DayEntry entry) {
+    _validateLocalDate(entry.localDate);
+    _validateNote(entry.note);
+    _validateTags(entry.tags);
+    _validateDayEntryProvenance(sourceId: entry.sourceId);
+  }
+
+  /// Validates one bulk observation input with the same limits
+  /// [upsertObservation] enforces. A null category reads as empty, which
+  /// [_validateObservation] rejects (only a tombstone may carry a null
+  /// category, and bulk writes live rows).
+  void _validateBulkObservation(Observation observation) {
+    _validateLocalDate(observation.localDate);
+    _validateObservation(
+      category: observation.category ?? '',
+      code: observation.code,
+      valueText: observation.valueText,
+      unit: observation.unit,
+      sourceId: observation.sourceId,
+      raw: observation.raw,
+      intensity: observation.intensity,
+    );
+  }
+
+  /// One bulk day-entry row through [_writeDayEntry]: an id matching a
+  /// stored row updates it; otherwise the live row at (profileId,
+  /// localDate), when one exists, is updated in place (the bulk-only
+  /// fallback); otherwise the entry's own id is inserted fresh.
+  Future<DayEntry> _writeBulkDayEntry(DayEntry entry) async {
+    var targetId = entry.id;
+    if (await _dayEntryOrNull(targetId) == null) {
+      targetId = (await _liveDayEntry(entry.profileId, entry.localDate))?.id ??
+          entry.id;
+    }
+    return _writeDayEntry(
+      id: targetId,
+      profileId: entry.profileId,
+      localDate: entry.localDate,
+      tz: entry.tz,
+      flow: entry.flow,
+      tags: entry.tags,
+      note: entry.note,
+      pms: entry.pms,
+      updatedAt: entry.updatedAt,
+      source: entry.source,
+      sourceId: entry.sourceId,
+      importId: entry.importId,
+    );
   }
 
   /// Tombstones the live entry for (profileId, localDate), if any, clearing
@@ -541,6 +706,57 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       intensity: intensity,
     );
     return db.transaction(() async {
+      return _writeObservation(
+        id: id,
+        dayEntryId: dayEntryId,
+        profileId: profileId,
+        localDate: localDate,
+        observedAt: observedAt,
+        tz: tz,
+        category: category,
+        code: code,
+        valueNum: valueNum,
+        valueText: valueText,
+        unit: unit,
+        intensity: intensity,
+        excluded: excluded,
+        source: source,
+        sourceId: sourceId,
+        importId: importId,
+        raw: raw,
+        updatedAt: updatedAt,
+      );
+    });
+  }
+
+  /// The per-row observation write behind [upsertObservation], minus the
+  /// transaction wrapper: inserts or updates by [id] with the same
+  /// stamping/dirty/local_rev rules and reads the row back.
+  /// [bulkUpsertDayEntries] calls this once per observation inside its
+  /// single transaction instead of going through [upsertObservation]
+  /// (which would open one transaction per row); [upsertObservation]
+  /// itself delegates here too, so the single-entry behavior is defined
+  /// exactly once.
+  Future<Observation> _writeObservation({
+    required String? id,
+    required String dayEntryId,
+    required String profileId,
+    required String localDate,
+    required DateTime? observedAt,
+    required String tz,
+    required String category,
+    required String? code,
+    required double? valueNum,
+    required String? valueText,
+    required String? unit,
+    required int? intensity,
+    required bool excluded,
+    required String source,
+    required String? sourceId,
+    required String? importId,
+    required String? raw,
+    required DateTime? updatedAt,
+  }) async {
       final now = (updatedAt ?? _now()).toUtc();
       Observation? existing;
       if (id != null) existing = await _observationOrNull(id);
@@ -595,7 +811,6 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         localRev: Value(existing.localRev + 1),
       ));
       return _observationById(rowId);
-    });
   }
 
   /// Tombstones the observation [id]: sets `deleted_at` (and bumps
