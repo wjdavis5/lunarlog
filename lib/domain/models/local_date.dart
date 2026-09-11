@@ -92,6 +92,15 @@ class LocalDate implements Comparable<LocalDate> {
 
   LocalDate addDays(int days) => _fromDayNumber(_dayNumber + days);
 
+  /// Adds [months] whole calendar months, clamping the day to the last day of
+  /// the target month if needed (e.g. 2026-01-31 + 1 month = 2026-02-28).
+  LocalDate addMonths(int months) {
+    final norm = DateTime(year, month + months, 1);
+    final maxDay = _daysInMonth(norm.year, norm.month);
+    final targetDay = day > maxDay ? maxDay : day;
+    return LocalDate(norm.year, norm.month, targetDay);
+  }
+
   /// Whole civil days from [other] to this date (positive when later).
   int difference(LocalDate other) => _dayNumber - other._dayNumber;
 

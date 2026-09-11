@@ -379,6 +379,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         for (final kind in kinds) ...[
           _typeTile(kind, config),
           if (_hasLead(kind)) _leadTile(kind, config),
+          if (kind == ReminderKind.log) _cadenceTile(kind, config),
           _timeTile(kind, config),
           const Divider(),
         ],
@@ -483,7 +484,13 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       value: typeConfig.enabled,
       onChanged: (on) => _update(config.withTypeConfig(
         kind,
-        typeConfig.copyWith(enabled: on),
+        typeConfig.copyWith(
+          enabled: on,
+          anchorDate:
+              (on && kind == ReminderKind.log && typeConfig.anchorDate == null)
+                  ? LocalDate.today()
+                  : null,
+        ),
       )),
     );
   }
@@ -534,6 +541,38 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                   _update(config.withTypeConfig(
                     kind,
                     typeConfig.copyWith(leadDays: days),
+                  ));
+                }
+              }
+            : null,
+      ),
+    );
+  }
+
+  Widget _cadenceTile(ReminderKind kind, ReminderConfig config) {
+    final typeConfig = config.typeConfig(kind);
+    return ListTile(
+      key: ValueKey('reminder-${kind.name}-cadence'),
+      title: const Text('Cadence'),
+      trailing: DropdownButton<ReminderCadence>(
+        key: ValueKey('reminder-${kind.name}-cadence-dropdown'),
+        value: typeConfig.cadence,
+        items: [
+          for (final cadence in ReminderCadence.values)
+            DropdownMenuItem(
+              value: cadence,
+              child: Text(cadence.label),
+            ),
+        ],
+        onChanged: typeConfig.enabled
+            ? (cadence) {
+                if (cadence != null) {
+                  _update(config.withTypeConfig(
+                    kind,
+                    typeConfig.copyWith(
+                      cadence: cadence,
+                      anchorDate: LocalDate.today(),
+                    ),
                   ));
                 }
               }

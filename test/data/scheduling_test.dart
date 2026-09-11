@@ -363,6 +363,116 @@ void main() {
       expect(plan.every((r) => r.timeOfDayMinutes == 20 * 60), isTrue);
     });
 
+    test('weekly log nudge plans occurrences at 7-day intervals without drifting on next-day replan (#463)', () {
+      final anchor = LocalDate(2026, 8, 25); // a Tuesday
+      final config = ReminderConfig.standard.copyWith(
+        log: ReminderTypeConfig(
+          enabled: true,
+          timeOfDayMinutes: 20 * 60,
+          cadence: ReminderCadence.weekly,
+          anchorDate: anchor,
+        ),
+      );
+
+      // today is 2026-08-30 (Sunday).
+      // anchor is 2026-08-25 (Tuesday).
+      // Next occurrences should be 2026-09-01, 2026-09-08, 2026-09-15, 2026-09-22.
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': config},
+      );
+      expect(plan, hasLength(kLogNudgeCadencePreArmOccurrences));
+      expect(plan.map((r) => r.kind), everyElement(ReminderKind.log));
+      expect(plan[0].fireOn, LocalDate(2026, 9, 1));
+      expect(plan[1].fireOn, LocalDate(2026, 9, 8));
+      expect(plan[2].fireOn, LocalDate(2026, 9, 15));
+      expect(plan[3].fireOn, LocalDate(2026, 9, 22));
+
+      // Replanning the next day (2026-08-31) must produce the exact same planned dates
+      final nextDayPlan = planReminders(
+        today: today.addDays(1),
+        predictions: {},
+        configs: {'p1': config},
+      );
+      expect(nextDayPlan.map((r) => r.fireOn), plan.map((r) => r.fireOn));
+    });
+
+    test('fortnightly log nudge plans occurrences at 14-day intervals (#463)', () {
+      final anchor = LocalDate(2026, 8, 16);
+      final config = ReminderConfig.standard.copyWith(
+        log: ReminderTypeConfig(
+          enabled: true,
+          timeOfDayMinutes: 20 * 60,
+          cadence: ReminderCadence.fortnightly,
+          anchorDate: anchor,
+        ),
+      );
+
+      final plan = planReminders(
+        today: today, // 2026-08-30
+        predictions: {},
+        configs: {'p1': config},
+      );
+      expect(plan, hasLength(kLogNudgeCadencePreArmOccurrences));
+      // anchor + 14 days = 2026-08-30 (today)
+      expect(plan[0].fireOn, LocalDate(2026, 8, 30));
+      expect(plan[1].fireOn, LocalDate(2026, 9, 13));
+      expect(plan[2].fireOn, LocalDate(2026, 9, 27));
+      expect(plan[3].fireOn, LocalDate(2026, 10, 11));
+    });
+
+    test('monthly log nudge plans occurrences on anchor day each month across month boundaries (#463)', () {
+      final anchor = LocalDate(2026, 7, 31);
+      final config = ReminderConfig.standard.copyWith(
+        log: ReminderTypeConfig(
+          enabled: true,
+          timeOfDayMinutes: 20 * 60,
+          cadence: ReminderCadence.monthly,
+          anchorDate: anchor,
+        ),
+      );
+
+      // today is 2026-08-30
+      // anchor is 2026-07-31
+      // candidate for Aug: 2026-07-31.addMonths(1) = 2026-08-31 (tomorrow)
+      // Occurrence 0: 2026-08-31
+      // Occurrence 1: 2026-07-31.addMonths(2) = 2026-09-30 (clamped from 31)
+      // Occurrence 2: 2026-07-31.addMonths(3) = 2026-10-31
+      // Occurrence 3: 2026-07-31.addMonths(4) = 2026-11-30 (clamped from 31)
+      final plan = planReminders(
+        today: today, // 2026-08-30
+        predictions: {},
+        configs: {'p1': config},
+      );
+      expect(plan, hasLength(kLogNudgeCadencePreArmOccurrences));
+      expect(plan[0].fireOn, LocalDate(2026, 8, 31));
+      expect(plan[1].fireOn, LocalDate(2026, 9, 30));
+      expect(plan[2].fireOn, LocalDate(2026, 10, 31));
+      expect(plan[3].fireOn, LocalDate(2026, 11, 30));
+    });
+
+    test('weekly log nudge falls back to today if anchorDate is null (#463)', () {
+      final config = ReminderConfig.standard.copyWith(
+        log: const ReminderTypeConfig(
+          enabled: true,
+          timeOfDayMinutes: 20 * 60,
+          cadence: ReminderCadence.weekly,
+        ),
+      );
+
+      final plan = planReminders(
+        today: today, // 2026-08-30
+        predictions: {},
+        configs: {'p1': config},
+      );
+      expect(plan, hasLength(kLogNudgeCadencePreArmOccurrences));
+      expect(plan[0].fireOn, today);
+      expect(plan[1].fireOn, today.addDays(7));
+      expect(plan[2].fireOn, today.addDays(14));
+      expect(plan[3].fireOn, today.addDays(21));
+    });
+
     test('per-type time-of-day is honored (not the hardcoded 9 AM)', () {
       final estimate = today.addDays(10);
       final plan = planReminders(

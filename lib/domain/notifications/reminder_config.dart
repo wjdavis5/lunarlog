@@ -78,6 +78,39 @@ const int kMaxTimeOfDayMinutes = 23 * 60 + 59;
 int _clampInt(int value, int min, int max) =>
     value < min ? min : (value > max ? max : value);
 
+/// Cadence for recurring reminders (Issue #463: log nudge).
+enum ReminderCadence {
+  daily,
+  weekly,
+  fortnightly,
+  monthly;
+
+  String get label => switch (this) {
+        daily => 'Daily',
+        weekly => 'Weekly',
+        fortnightly => 'Fortnightly',
+        monthly => 'Monthly',
+      };
+
+  static ReminderCadence fromJson(String? value) => switch (value) {
+        'weekly' => weekly,
+        'fortnightly' => fortnightly,
+        'monthly' => monthly,
+        _ => daily,
+      };
+
+  String toJson() => name;
+}
+
+LocalDate? _tryParseIso(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  try {
+    return LocalDate.fromIso(raw);
+  } on ArgumentError {
+    return null;
+  }
+}
+
 /// One reminder type's configuration: whether it is on, when it fires
 /// (minutes since local midnight), and — for the estimate-relative types —
 /// how many days before the estimate.
@@ -86,6 +119,8 @@ class ReminderTypeConfig {
     required this.enabled,
     this.leadDays,
     required this.timeOfDayMinutes,
+    this.cadence = ReminderCadence.daily,
+    this.anchorDate,
   });
 
   /// The defaults for the types that are on out of the box (the pre-#136
@@ -108,6 +143,7 @@ class ReminderTypeConfig {
   static const ReminderTypeConfig log = ReminderTypeConfig(
     enabled: false,
     timeOfDayMinutes: kDefaultReminderTimeMinutes,
+    cadence: ReminderCadence.daily,
   );
 
   /// Issue #178's kinds all ship **off**: they are opt-ins, not part of any
@@ -167,15 +203,27 @@ class ReminderTypeConfig {
   /// Fire time-of-day, minutes since local midnight (0-1439).
   final int timeOfDayMinutes;
 
+  /// Recurrence cadence (Issue #463): daily (default), weekly, fortnightly,
+  /// or monthly.
+  final ReminderCadence cadence;
+
+  /// Anchor date for non-daily cadences (the day cadence was set).
+  final LocalDate? anchorDate;
+
   ReminderTypeConfig copyWith({
     bool? enabled,
     int? leadDays,
     int? timeOfDayMinutes,
+    ReminderCadence? cadence,
+    LocalDate? anchorDate,
+    bool clearAnchorDate = false,
   }) =>
       ReminderTypeConfig(
         enabled: enabled ?? this.enabled,
         leadDays: leadDays ?? this.leadDays,
         timeOfDayMinutes: timeOfDayMinutes ?? this.timeOfDayMinutes,
+        cadence: cadence ?? this.cadence,
+        anchorDate: clearAnchorDate ? null : (anchorDate ?? this.anchorDate),
       );
 
   /// The lead days the planner should use: this config's value for the
@@ -187,6 +235,8 @@ class ReminderTypeConfig {
         'enabled': enabled,
         if (leadDays != null) 'leadDays': leadDays,
         'timeOfDay': timeOfDayMinutes,
+        if (cadence != ReminderCadence.daily) 'cadence': cadence.toJson(),
+        if (anchorDate != null) 'anchorDate': anchorDate!.iso,
       };
 
   /// Tolerant decode: a malformed or out-of-range stored value falls back
@@ -209,6 +259,12 @@ class ReminderTypeConfig {
             ? _clampInt(json['timeOfDay'] as int, kMinTimeOfDayMinutes,
                 kMaxTimeOfDayMinutes)
             : defaults.timeOfDayMinutes,
+        cadence: json['cadence'] is String
+            ? ReminderCadence.fromJson(json['cadence'] as String)
+            : defaults.cadence,
+        anchorDate: json['anchorDate'] is String
+            ? _tryParseIso(json['anchorDate'] as String)
+            : defaults.anchorDate,
       );
 
   @override
@@ -216,15 +272,18 @@ class ReminderTypeConfig {
       other is ReminderTypeConfig &&
       other.enabled == enabled &&
       other.leadDays == leadDays &&
-      other.timeOfDayMinutes == timeOfDayMinutes;
+      other.timeOfDayMinutes == timeOfDayMinutes &&
+      other.cadence == cadence &&
+      other.anchorDate == anchorDate;
 
   @override
-  int get hashCode => Object.hash(enabled, leadDays, timeOfDayMinutes);
+  int get hashCode =>
+      Object.hash(enabled, leadDays, timeOfDayMinutes, cadence, anchorDate);
 
   @override
   String toString() =>
       'ReminderTypeConfig(enabled: $enabled, leadDays: $leadDays, '
-      'timeOfDayMinutes: $timeOfDayMinutes)';
+      'timeOfDayMinutes: $timeOfDayMinutes, cadence: $cadence, anchorDate: $anchorDate)';
 }
 
 /// One profile's full local reminder configuration (Issue #136, widened by

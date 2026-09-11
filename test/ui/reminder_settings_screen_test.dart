@@ -127,7 +127,9 @@ Future<void> _scrollToTop(WidgetTester tester) async {
         .byKey(const ValueKey('reminder-profile-dropdown'))
         .evaluate()
         .isNotEmpty) {
-      return;
+      final center = tester.getCenter(
+          find.byKey(const ValueKey('reminder-profile-dropdown')));
+      if (center.dy > 60) return;
     }
     await tester.drag(find.byType(ListView), const Offset(0, 400));
     await tester.pumpAndSettle();
@@ -514,5 +516,37 @@ void main() {
     expect(stored.quietHours!.endMinutes, 6 * 60 + 30);
     expect(find.text('23:45'), findsOneWidget);
     expect(find.text('06:30'), findsOneWidget);
+  });
+
+  testWidgets('#463: log nudge cadence dropdown renders and updates config with anchorDate', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await _pump(tester, [_profile('p1', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-log-switch'));
+    expect(find.text('Other reminders'), findsOneWidget);
+    expect(find.byKey(const ValueKey('reminder-log-cadence')), findsOneWidget);
+    expect(find.text('Cadence'), findsOneWidget);
+
+    // Switch log nudge on
+    await tester.tap(find.byKey(const ValueKey('reminder-log-switch')));
+    await tester.pumpAndSettle();
+
+    var stored = await service.load('p1');
+    expect(stored!.log.enabled, isTrue);
+    expect(stored.log.cadence, ReminderCadence.daily);
+    expect(stored.log.anchorDate, LocalDate.today());
+
+    // Select 'Weekly' from the cadence dropdown
+    await _scrollTo(tester, const ValueKey('reminder-log-cadence-dropdown'));
+    await tester.tap(find.byKey(const ValueKey('reminder-log-cadence-dropdown')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Weekly').last);
+    await tester.pumpAndSettle();
+
+    stored = await service.load('p1');
+    expect(stored!.log.cadence, ReminderCadence.weekly);
+    expect(stored.log.anchorDate, LocalDate.today());
   });
 }
