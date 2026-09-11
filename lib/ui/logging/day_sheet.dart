@@ -220,6 +220,7 @@ class _DaySheetState extends State<DaySheet> {
   Timer? _savedIndicatorTimer;
   bool _saving = false;
   bool _showSaved = false;
+  String? _persistedEntryId;
 
   /// Set when a write was already in flight as another flush arrived; the
   /// running write re-runs the autosave on completion so the newer state is
@@ -315,6 +316,7 @@ class _DaySheetState extends State<DaySheet> {
   void initState() {
     super.initState();
     final existing = widget.existing;
+    _persistedEntryId = existing?.id;
     _flow = existing?.flow ?? FlowLevel.none;
     _tags = {...?existing?.tags};
     _pms = existing?.pms ?? false;
@@ -363,9 +365,13 @@ class _DaySheetState extends State<DaySheet> {
       if (pending != null) {
         scheduleMicrotask(() async {
           try {
-            final saved = await repository.save(pending);
-            await _syncSpottingObservation(saved, pending.tz, observations);
-            await _syncPainIntensityObservations(saved, pending.tz, observations);
+            final (toUpsert, toDelete) =
+                await _computeObservationMutations(pending, observations);
+            await repository.saveDayEntryWithObservations(
+              entry: pending,
+              observationsToUpsert: toUpsert,
+              observationIdsToDelete: toDelete,
+            );
           } catch (_) {}
         });
       }
@@ -392,8 +398,9 @@ class _DaySheetState extends State<DaySheet> {
   DayEntry _composeEntry() {
     final note = _noteController.text.trim();
     final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
+    final entryId = _persistedEntryId ?? widget.existing?.id ?? '';
     return DayEntry(
-      id: widget.existing?.id ?? '',
+      id: entryId,
       profileId: widget.profileId,
       localDate: widget.date,
       tz: tz,
@@ -446,14 +453,11 @@ class _DaySheetState extends State<DaySheet> {
     });
   }
 
-  /// Persists [pending]; on failure restores the pending state (the sheet
-  /// keeps every entered value) and raises the inline retry error. After a
-  /// successful entry write it syncs the day's spotting observation (#247)
-  /// — exactly the step #335's Save performed next, moved into the
-  /// autosave path; an observation-write failure surfaces through the same
-  /// catch (the entry save and its spotting sync are one logical write).
+  /// Persists [pending] and its child observations atomically (Issue #471);
+  /// on failure restores the pending state (the sheet keeps every entered
+  /// value) and raises the inline retry error.
   Future<bool> _writePending(DayEntry pending) async {
-    // Captured while every caller is still mounted: the sync below may
+    // Captured while every caller is still mounted: the write below may
     // complete after this sheet has gone (a dismissal-time flush), and
     // `Provider.of` from a dead context throws.
     final observations = _observationsRepository;
@@ -464,9 +468,14 @@ class _DaySheetState extends State<DaySheet> {
       // does not recognise (`_unrecognisedTags`). That code is preserved,
       // not silently re-validated and rejected, on every autosave.
       validateTagCodes(_sessionSelectedTags);
-      final saved = await widget.repository.save(pending);
-      await _syncSpottingObservation(saved, pending.tz, observations);
-      await _syncPainIntensityObservations(saved, pending.tz, observations);
+      final (toUpsert, toDelete) =
+          await _computeObservationMutations(pending, observations);
+      final saved = await widget.repository.saveDayEntryWithObservations(
+        entry: pending,
+        observationsToUpsert: toUpsert,
+        observationIdsToDelete: toDelete,
+      );
+      _persistedEntryId = saved.id;
       return true;
     } catch (_) {
       _dirty = true;
@@ -572,88 +581,62 @@ class _DaySheetState extends State<DaySheet> {
     return revertToNone ? FlowLevel.none : _flow;
   }
 
-  /// Issue #247: spotting is its own `observations` category row, not a
-  /// `FlowLevel` value — writes or clears the day's spotting observation
-  /// to match [_spotting], keyed by [saved]'s id (Issue #240's per-day
-  /// -entry child rows). Re-reads [saved]'s observations rather than
-  /// trusting [_loadExistingSpotting]'s initial snapshot, so this stays
-  /// correct even if another device wrote (or cleared) the same day's
-  /// spotting observation since this sheet opened. The repository is a
-  /// parameter (not a `Provider.of` here) so a write started while the
-  /// sheet was mounted can finish this step after it has gone; a null
-  /// [observations] (no provider reachable) skips the sync rather than
-  /// failing the already-persisted entry write.
-  Future<void> _syncSpottingObservation(
-    DayEntry saved,
-    String tz,
-    ObservationsRepository? observations,
-  ) async {
-    if (observations == null) return;
+  void _computeSpottingMutations({
+    required List<Observation> existingObs,
+    required String targetId,
+    required String tz,
+    required List<Observation> toUpsert,
+    required List<String> toDelete,
+  }) {
     final existingSpotting = [
-      for (final o in await observations.listForDayEntry(saved.id))
-        if (o.category == 'spotting') o,
+      for (final o in existingObs) if (o.category == 'spotting') o,
     ];
     if (!_spotting) {
       for (final o in existingSpotting) {
-        await observations.delete(o.id);
+        toDelete.add(o.id);
       }
-      return;
+    } else if (existingSpotting.isEmpty) {
+      toUpsert.add(
+        Observation(
+          id: '',
+          dayEntryId: targetId,
+          profileId: widget.profileId,
+          localDate: widget.date,
+          tz: tz,
+          category: 'spotting',
+          code: 'spotting',
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
     }
-    if (existingSpotting.isNotEmpty) return;
-    await observations.save(
-      Observation(
-        id: '',
-        dayEntryId: saved.id,
-        profileId: widget.profileId,
-        localDate: widget.date,
-        tz: tz,
-        category: 'spotting',
-        code: 'spotting',
-        updatedAt: DateTime.now().toUtc(),
-      ),
-    );
   }
 
-  /// Issue #256: writes the day's graded pain observations to match
-  /// [_painIntensity], keyed by [saved]'s id, mirroring
-  /// [_syncSpottingObservation]'s post-save step. For every code with a
-  /// chosen intensity the day's `category: 'pain'` row for that code is
-  /// upserted with it; a code explicitly cleared this session (value
-  /// `null`) has its graded row tombstoned — an ungraded row records "no
-  /// severity recorded", never "low". A code absent from the map is never
-  /// touched, so a graded row that arrived from another device (or an
-  /// import) mid-session survives an autosave the operator directed at
-  /// something else. A null [observations] (no provider reachable) skips
-  /// the sync rather than failing the already-persisted entry write, exactly
-  /// like the spotting sync.
-  Future<void> _syncPainIntensityObservations(
-    DayEntry saved,
-    String tz,
-    ObservationsRepository? observations,
-  ) async {
-    if (observations == null || _painIntensity.isEmpty) return;
+  void _computePainMutations({
+    required List<Observation> existingObs,
+    required String targetId,
+    required String tz,
+    required List<Observation> toUpsert,
+    required List<String> toDelete,
+  }) {
+    if (_painIntensity.isEmpty) return;
     final existingPain = [
-      for (final o in await observations.listForDayEntry(saved.id))
-        if (o.category == 'pain') o,
+      for (final o in existingObs) if (o.category == 'pain') o,
     ];
     for (final entry in _painIntensity.entries) {
       final intensity = entry.value;
-      final existingRows = [
+      final matchingPainRows = [
         for (final o in existingPain) if (o.code == entry.key) o,
       ];
       if (intensity == null) {
-        // Explicitly cleared this session: tombstone this code's graded
-        // row(s). Codes never touched this session never enter the map,
-        // so their rows are unreachable from here.
-        for (final o in existingRows) {
-          if (o.intensity != null) await observations.delete(o.id);
+        for (final o in matchingPainRows) {
+          if (o.intensity != null) toDelete.add(o.id);
         }
         continue;
       }
-      if (existingRows.isNotEmpty) {
-        final row = existingRows.first;
+      if (matchingPainRows.isNotEmpty) {
+        final row = matchingPainRows.first;
         if (row.intensity != intensity) {
-          await observations.save(
+          toUpsert.add(
             row.copyWith(
               intensity: intensity,
               updatedAt: DateTime.now().toUtc(),
@@ -662,10 +645,10 @@ class _DaySheetState extends State<DaySheet> {
         }
         continue;
       }
-      await observations.save(
+      toUpsert.add(
         Observation(
           id: '',
-          dayEntryId: saved.id,
+          dayEntryId: targetId,
           profileId: widget.profileId,
           localDate: widget.date,
           tz: tz,
@@ -676,6 +659,39 @@ class _DaySheetState extends State<DaySheet> {
         ),
       );
     }
+  }
+
+  /// Computes the required observation mutations (upserts and deletes) for
+  /// child observations (spotting and graded pain intensity) to be committed
+  /// atomically alongside [pending] (Issue #471).
+  Future<(List<Observation>, List<String>)> _computeObservationMutations(
+    DayEntry pending,
+    ObservationsRepository? observations,
+  ) async {
+    if (observations == null) return (const <Observation>[], const <String>[]);
+    final targetId = _persistedEntryId ??
+        (pending.id.isNotEmpty ? pending.id : (widget.existing?.id ?? ''));
+    List<Observation> existingObs = const [];
+    if (targetId.isNotEmpty) {
+      existingObs = await observations.listForDayEntry(targetId);
+    }
+    final toUpsert = <Observation>[];
+    final toDelete = <String>[];
+    _computeSpottingMutations(
+      existingObs: existingObs,
+      targetId: targetId,
+      tz: pending.tz,
+      toUpsert: toUpsert,
+      toDelete: toDelete,
+    );
+    _computePainMutations(
+      existingObs: existingObs,
+      targetId: targetId,
+      tz: pending.tz,
+      toUpsert: toUpsert,
+      toDelete: toDelete,
+    );
+    return (toUpsert, toDelete);
   }
 
   /// Issue #182 AC8: captured before the sheet goes away (the sheet's own

@@ -20,6 +20,7 @@ import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -60,6 +61,18 @@ class RecordingDayEntriesRepository implements DayEntriesRepository {
 
   @override
   Future<DayEntry> save(DayEntry entry) => _inner.save(entry);
+
+  @override
+  Future<DayEntry> saveDayEntryWithObservations({
+    required DayEntry entry,
+    List<Observation> observationsToUpsert = const [],
+    List<String> observationIdsToDelete = const [],
+  }) =>
+      _inner.saveDayEntryWithObservations(
+        entry: entry,
+        observationsToUpsert: observationsToUpsert,
+        observationIdsToDelete: observationIdsToDelete,
+      );
 
   @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) =>

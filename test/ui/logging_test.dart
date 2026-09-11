@@ -348,6 +348,13 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   }
 
   @override
+  Future<DayEntry> saveDayEntryWithObservations({
+    required DayEntry entry,
+    List<Observation> observationsToUpsert = const [],
+    List<String> observationIdsToDelete = const [],
+  }) => save(entry);
+
+  @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) async {
     for (final entry in seeded) {
       if (entry.localDate == localDate) return entry;

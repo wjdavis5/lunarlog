@@ -203,6 +203,50 @@ void _validateVisitPrepItemBody(String body) {
   _boundedOrThrow(body, kMaxVisitPrepItemLength, 'body');
 }
 
+/// Input payload for atomically upserting an observation alongside a day entry
+/// in [LunarLogStorageLocalWrites.saveDayEntryWithObservations].
+class UpsertObservationPayload {
+  const UpsertObservationPayload({
+    this.id,
+    this.dayEntryId,
+    required this.profileId,
+    required this.localDate,
+    this.observedAt,
+    required this.tz,
+    required this.category,
+    this.code,
+    this.valueNum,
+    this.valueText,
+    this.unit,
+    this.intensity,
+    this.excluded = false,
+    this.source = 'manual',
+    this.sourceId,
+    this.importId,
+    this.raw,
+    this.updatedAt,
+  });
+
+  final String? id;
+  final String? dayEntryId;
+  final String profileId;
+  final String localDate;
+  final DateTime? observedAt;
+  final String tz;
+  final String category;
+  final String? code;
+  final double? valueNum;
+  final String? valueText;
+  final String? unit;
+  final int? intensity;
+  final bool excluded;
+  final String source;
+  final String? sourceId;
+  final String? importId;
+  final String? raw;
+  final DateTime? updatedAt;
+}
+
 /// Local-write members mixed into [LunarLogStorage].
 mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   UlidGenerator get _generator;
@@ -396,15 +440,8 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     String source = 'manual',
     String? sourceId,
     String? importId,
-  }) async {
-    // Async so validation failures surface as failed futures, not sync
-    // throws, for callers awaiting the result.
-    _validateLocalDate(localDate);
-    _validateNote(note);
-    _validateTags(tags);
-    _validateDayEntryProvenance(sourceId: sourceId);
-    return db.transaction(() async {
-      return _writeDayEntry(
+  }) =>
+      saveDayEntryWithObservations(
         id: id,
         profileId: profileId,
         localDate: localDate,
@@ -418,6 +455,94 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         sourceId: sourceId,
         importId: importId,
       );
+
+  /// Atomically writes [entry] and its child [observationsToUpsert], and
+  /// soft-deletes any observation IDs in [observationIdsToDelete] inside a
+  /// single database transaction.
+  ///
+  /// Pre-validates all inputs before opening the transaction. If any validation
+  /// or storage write fails, the entire transaction rolls back and neither the
+  /// day entry nor observations are persisted or marked dirty.
+  Future<DayEntry> saveDayEntryWithObservations({
+    String? id,
+    required String profileId,
+    required String localDate,
+    required String tz,
+    required FlowLevel flow,
+    List<String> tags = const [],
+    String? note,
+    bool pms = false,
+    DateTime? updatedAt,
+    String source = 'manual',
+    String? sourceId,
+    String? importId,
+    List<UpsertObservationPayload> observationsToUpsert = const [],
+    List<String> observationIdsToDelete = const [],
+  }) async {
+    _validateLocalDate(localDate);
+    _validateNote(note);
+    _validateTags(tags);
+    _validateDayEntryProvenance(sourceId: sourceId);
+
+    for (final obs in observationsToUpsert) {
+      _validateLocalDate(obs.localDate);
+      _validateObservation(
+        category: obs.category,
+        code: obs.code,
+        valueText: obs.valueText,
+        unit: obs.unit,
+        sourceId: obs.sourceId,
+        raw: obs.raw,
+        intensity: obs.intensity,
+      );
+    }
+
+    return db.transaction(() async {
+      final savedEntry = await _writeDayEntry(
+        id: id,
+        profileId: profileId,
+        localDate: localDate,
+        tz: tz,
+        flow: flow,
+        tags: tags,
+        note: note,
+        pms: pms,
+        updatedAt: updatedAt,
+        source: source,
+        sourceId: sourceId,
+        importId: importId,
+      );
+
+      for (final deleteId in observationIdsToDelete) {
+        await _softDeleteObservation(deleteId);
+      }
+
+      for (final obs in observationsToUpsert) {
+        await _writeObservation(
+          id: obs.id,
+          dayEntryId: (obs.dayEntryId == null || obs.dayEntryId!.isEmpty)
+              ? savedEntry.id
+              : obs.dayEntryId!,
+          profileId: obs.profileId,
+          localDate: obs.localDate,
+          observedAt: obs.observedAt,
+          tz: obs.tz,
+          category: obs.category,
+          code: obs.code,
+          valueNum: obs.valueNum,
+          valueText: obs.valueText,
+          unit: obs.unit,
+          intensity: obs.intensity,
+          excluded: obs.excluded,
+          source: obs.source,
+          sourceId: obs.sourceId,
+          importId: obs.importId,
+          raw: obs.raw,
+          updatedAt: obs.updatedAt,
+        );
+      }
+
+      return savedEntry;
     });
   }
 
@@ -856,33 +981,35 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// exactly. Marks the row dirty. Idempotent: re-deleting a tombstone does
   /// nothing. No-op when [id] is not held locally.
   Future<void> softDeleteObservation(String id) async {
-    await db.transaction(() async {
-      final existing = await _observationOrNull(id);
-      if (existing == null || existing.deletedAt != null) return;
-      final at = _afterStored(_now(), existing.updatedAt);
-      await (db.update(db.observations)..where((t) => t.id.equals(id))).write(
-        ObservationsCompanion(
-          category: const Value(null),
-          observedAt: const Value(null),
-          code: const Value(null),
-          valueNum: const Value(null),
-          valueText: const Value(null),
-          unit: const Value(null),
-          intensity: const Value(null),
-          excluded: const Value(false),
-          // Issue #159: sourceId (and importId, never touched by this
-          // write) survive a tombstone -- a deleted row must stay
-          // recognisable to a future re-import (reverses #240's original
-          // "sourceId: const Value(null)" here; see the server-side
-          // decision in supabase/migrations/20260908170000_import_provenance.sql).
-          raw: const Value(null),
-          updatedAt: Value(at),
-          deletedAt: Value(at),
-          dirty: const Value(true),
-          localRev: Value(existing.localRev + 1),
-        ),
-      );
-    });
+    await db.transaction(() => _softDeleteObservation(id));
+  }
+
+  Future<void> _softDeleteObservation(String id) async {
+    final existing = await _observationOrNull(id);
+    if (existing == null || existing.deletedAt != null) return;
+    final at = _afterStored(_now(), existing.updatedAt);
+    await (db.update(db.observations)..where((t) => t.id.equals(id))).write(
+      ObservationsCompanion(
+        category: const Value(null),
+        observedAt: const Value(null),
+        code: const Value(null),
+        valueNum: const Value(null),
+        valueText: const Value(null),
+        unit: const Value(null),
+        intensity: const Value(null),
+        excluded: const Value(false),
+        // Issue #159: sourceId (and importId, never touched by this
+        // write) survive a tombstone -- a deleted row must stay
+        // recognisable to a future re-import (reverses #240's original
+        // "sourceId: const Value(null)" here; see the server-side
+        // decision in supabase/migrations/20260908170000_import_provenance.sql).
+        raw: const Value(null),
+        updatedAt: Value(at),
+        deletedAt: Value(at),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ),
+    );
   }
 
   // ------------------------------------------------------------- profile modes

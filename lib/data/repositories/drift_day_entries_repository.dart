@@ -5,6 +5,7 @@ library;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
+import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 
 import 'mappers.dart';
@@ -23,8 +24,17 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
   /// validation of newly-chosen codes should call `validateTagCodes` itself
   /// before constructing [entry] (see `DaySheet`).
   @override
-  Future<domain.DayEntry> save(domain.DayEntry entry) async {
-    return dayEntryToDomain(await _storage.upsertDayEntry(
+  Future<domain.DayEntry> save(domain.DayEntry entry) =>
+      saveDayEntryWithObservations(entry: entry);
+
+  @override
+  Future<domain.DayEntry> saveDayEntryWithObservations({
+    required domain.DayEntry entry,
+    List<domain.Observation> observationsToUpsert = const [],
+    List<String> observationIdsToDelete = const [],
+  }) async {
+    return dayEntryToDomain(await _storage.saveDayEntryWithObservations(
+      id: entry.id.isEmpty ? null : entry.id,
       profileId: entry.profileId,
       localDate: entry.localDate.iso,
       tz: entry.tz,
@@ -32,11 +42,33 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
       tags: entry.tags,
       note: entry.note,
       pms: entry.pms,
-      // Issue #159: round-trips whatever provenance [entry] already
-      // carries (defaults to manual/null/null for an ordinary UI edit).
       source: entry.source.toDb(),
       sourceId: entry.sourceId,
       importId: entry.importId,
+      observationsToUpsert: [
+        for (final o in observationsToUpsert)
+          UpsertObservationPayload(
+            id: o.id.isEmpty ? null : o.id,
+            dayEntryId: o.dayEntryId.isEmpty ? null : o.dayEntryId,
+            profileId: o.profileId,
+            localDate: o.localDate.iso,
+            observedAt: o.observedAt,
+            tz: o.tz,
+            category: o.category,
+            code: o.code,
+            valueNum: o.valueNum,
+            valueText: o.valueText,
+            unit: o.unit,
+            intensity: o.intensity,
+            excluded: o.excluded,
+            source: o.source.toDb(),
+            sourceId: o.sourceId,
+            importId: o.importId,
+            raw: o.raw,
+            updatedAt: o.updatedAt,
+          ),
+      ],
+      observationIdsToDelete: observationIdsToDelete,
     ));
   }
 

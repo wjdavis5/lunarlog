@@ -4,12 +4,25 @@ library;
 
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
+import '../models/observation.dart';
 
 abstract interface class DayEntriesRepository {
   /// Upserts the live entry for (profileId, localDate). Tag codes are
   /// validated against the domain taxonomy. The returned model carries the
   /// storage-assigned row id and monotonic `updatedAt`.
   Future<DayEntry> save(DayEntry entry);
+
+  /// Atomically saves [entry], upserts [observationsToUpsert], and soft-deletes
+  /// any observation IDs in [observationIdsToDelete] within a single database
+  /// transaction.
+  ///
+  /// Any failure during entry or observation processing rolls back the entire
+  /// transaction.
+  Future<DayEntry> saveDayEntryWithObservations({
+    required DayEntry entry,
+    List<Observation> observationsToUpsert = const [],
+    List<String> observationIdsToDelete = const [],
+  });
 
   /// The live entry for (profileId, localDate), or null.
   Future<DayEntry?> find(String profileId, LocalDate localDate);

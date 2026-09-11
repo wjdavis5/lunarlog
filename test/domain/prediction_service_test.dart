@@ -10,6 +10,7 @@ import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -38,6 +39,13 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
 
   @override
   Future<DayEntry> save(DayEntry entry) => throw UnimplementedError();
+
+  @override
+  Future<DayEntry> saveDayEntryWithObservations({
+    required DayEntry entry,
+    List<Observation> observationsToUpsert = const [],
+    List<String> observationIdsToDelete = const [],
+  }) => throw UnimplementedError();
 
   @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) =>
