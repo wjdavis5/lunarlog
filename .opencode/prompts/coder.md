@@ -32,10 +32,14 @@ Rules:
 9. Add or update tests for every behavior you change.
 10. Run the verification commands from the brief and read their output — a non-zero exit is not
     reported to you automatically, so check for failures yourself. This is a Flutter/Dart repo:
-    `flutter pub get`, `flutter analyze`, `flutter test`, `dart run tool/quality_gate.dart`, and for
-    anything touching `supabase/` the pgTAP flow (`npx --yes supabase@2.116.0 start -x ...`, `db
-    reset --local`, `test db --local` — see AGENTS.md for the exact exclusion flags). Fix failures
-    before opening the PR.
+    `flutter pub get`, `flutter analyze`,
+    `pwsh -File tool/dart_concurrency_guard.ps1 -Command flutter.bat -Arguments test,--concurrency=1`
+    (not plain `flutter test` — other coders may be verifying at the same time, and this caps
+    concurrent dart.exe/flutter_tester.exe processes so that doesn't exhaust the desktop; see
+    `docs/dart-concurrency.md`), `dart run tool/quality_gate.dart` (routes through the same guard
+    internally), and for anything touching `supabase/` the pgTAP flow (`npx --yes
+    supabase@2.116.0 start -x ...`, `db reset --local`, `test db --local` — see AGENTS.md for the
+    exact exclusion flags). Fix failures before opening the PR.
 11. Commit with conventional-commit messages ending in `(#<issue>)`. Push the branch:
     `git -c core.fsmonitor=false push -u origin <branch>`.
 12. Open the PR with:

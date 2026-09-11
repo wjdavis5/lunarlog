@@ -37,7 +37,11 @@ files you edit directly are under `docs/coordinator/COORDINATOR_ID/`.
 ## Operating in OpenCode
 
 - Dispatch work with the **Task tool** using `subagent_type: "coder"`. Never use any other subagent.
-- To run coders in parallel, issue up to three Task calls in the same turn. Do not use background mode.
+- To run coders in parallel, issue up to two Task calls in the same turn. Do not use background mode.
+  (Capped at 2, not 3: two `opencode-<model>` coordinators can run concurrently, and each
+  coder's local `flutter test`/`quality_gate.dart` verification is real CPU/memory work —
+  2x2=4 concurrent coders matches this desktop's documented safe ceiling, see
+  `docs/dart-concurrency.md`.)
 - Each Task prompt is the full brief file content (see "Brief"). Subagents do not share your context; anything not in the brief does not exist for them.
 - A Task returns only the PR number and a short summary. Everything else you need is on GitHub. Read PRs with `gh` (via the helper scripts below), not from the Task result.
 - Never rely on the `question` tool. It is disabled. Every open question becomes a `needs-human-review` issue.
@@ -172,7 +176,7 @@ and sorts P0→P1→P2→P3→unlabeled. Do not re-implement this filter with a 
 the script so the pick logic lives in one place.
 
 Within a priority, prefer issues that unblock the most other open issues, then the lowest number.
-Fill up to three In-progress slots (yours — a foreign in-progress issue never counts against your
+Fill up to two In-progress slots (yours — a foreign in-progress issue never counts against your
 slots, since it was never eligible in the first place).
 
 ### 3. Claim
@@ -196,8 +200,11 @@ Write `docs/coordinator/COORDINATOR_ID/briefs/<n>.md`:
 - The exact verification commands (this is a Flutter/Dart repo — no Node package manifest here):
   - `flutter pub get`
   - `flutter analyze`
-  - `flutter test`
-  - `dart run tool/quality_gate.dart` (90% coverage floor + per-method CRAP gate)
+  - `pwsh -File tool/dart_concurrency_guard.ps1 -Command flutter.bat -Arguments test,--concurrency=1`
+    (not plain `flutter test` — caps concurrent dart.exe/flutter_tester.exe processes across
+    whichever coders are verifying at the same time; see `docs/dart-concurrency.md`)
+  - `dart run tool/quality_gate.dart` (90% coverage floor + per-method CRAP gate; routes through
+    the same guard internally)
   - If the issue touches anything under `supabase/`: the pgTAP flow from `AGENTS.md` — `npx
     --yes supabase@2.116.0 start -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,
     logflare,vector,supavisor`, then `db reset --local`, then `test db --local`.
@@ -220,7 +227,7 @@ Closes #<n>
 ```
 
 ### 5. Dispatch
-Task tool, `subagent_type: "coder"`, prompt = brief contents. Up to three in one turn.
+Task tool, `subagent_type: "coder"`, prompt = brief contents. Up to two in one turn.
 
 ### 6. Review
 For every PR you might act on: **first confirm ownership** — head branch starts with
