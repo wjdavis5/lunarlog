@@ -85,6 +85,33 @@ class ListIssuesTests(unittest.TestCase):
         self.assertFalse(list_issues.is_excluded(["owner:opencode-muse"], "opencode-muse"))
         self.assertTrue(list_issues.is_excluded(["in-progress"], "opencode-muse"))
 
+    def test_epic_theme_label_alone_is_not_a_container(self):
+        # #448: epic:<theme> is a theme tag used repo-wide on ordinary sized
+        # issues, not a container marker -- it must not exclude them.
+        self.assertFalse(list_issues.is_excluded(
+            ["enhancement", "P1", "epic:tracking-model"], "opencode-muse",
+            "feat(logging): numeric measurements — BBT and weight",
+        ))
+        self.assertFalse(list_issues.is_epic_container(
+            ["epic:tracking-model"], "feat(logging): numeric measurements",
+        ))
+
+    def test_epic_container_excluded_by_bare_label_or_title(self):
+        self.assertTrue(list_issues.is_epic_container(["epic"], "anything"))
+        self.assertTrue(list_issues.is_epic_container(
+            ["epic:privacy-compliance"], "Epic: Privacy & Compliance — Clue parity",
+        ))
+        self.assertTrue(list_issues.is_excluded(
+            ["enhancement", "P1", "epic:privacy-compliance"], "opencode-muse",
+            "Epic: Privacy & Compliance — Clue parity",
+        ))
+
+    def test_epic_container_title_match_is_prefix_anchored(self):
+        # A title merely mentioning "epic" mid-sentence is not a container.
+        self.assertFalse(list_issues.is_epic_container(
+            ["epic:ui-ux"], "fix(ui): the epic navigation redesign needs a spacing tweak",
+        ))
+
     def test_dependency_numbers_captures_all_refs(self):
         self.assertEqual(
             list_issues.dependency_numbers("depends on #12 and #13"),

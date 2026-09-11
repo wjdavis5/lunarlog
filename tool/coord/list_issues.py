@@ -2,11 +2,19 @@
 """List open GitHub issues, plain-text by default: `#n<TAB>labels<TAB>title`.
 
 With --eligible <COORDINATOR_ID>, applies the standard pick filter (drops
-in-progress, needs-human-review, blocked, epic[:*], wontfix, any FOREIGN owner:*
-label, anything whose body has an open `depends on: #N` / `blocked by #N`, and
-anything an open PR already closes) and sorts P0 -> P1 -> P2 -> P3 -> unlabeled,
-then by issue number. The coordinator's OWN owner:<id> label without in-progress
-is reclaimable, not excluded.
+in-progress, needs-human-review, blocked, wontfix, epic CONTAINERS, any FOREIGN
+owner:* label, anything whose body has an open `depends on: #N` / `blocked by
+#N`, and anything an open PR already closes) and sorts P0 -> P1 -> P2 -> P3 ->
+unlabeled, then by issue number. The coordinator's OWN owner:<id> label without
+in-progress is reclaimable, not excluded.
+
+An epic CONTAINER (a bare `epic` label, or a title starting with "Epic:") is
+excluded as non-dispatchable. An `epic:<theme>` label alone is NOT a container
+marker -- it is used repo-wide as a theme tag on ordinary, individually-sized
+issues (e.g. `epic:tracking-model` on a normal `feat(logging): ...` issue), and
+such issues stay eligible (#448: the original blanket `epic:*` exclusion here
+emptied the eligible queue for every coordinator, since virtually every open
+issue carries a theme label).
 
 With --stuck, lists stuck claims: open issues carrying `in-progress` with no
 `owner:*` label (the mutual-backoff edge in claim.py). If both --stuck and
@@ -34,12 +42,22 @@ ISSUE_REF_RE = re.compile(r"(?:#|/issues/)(\d+)")
 CLOSES_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE)
 
 
-def is_excluded(labels: list[str], self_owner: str | None = None) -> bool:
+def is_epic_container(labels: list[str], title: str) -> bool:
+    """True for an epic CONTAINER issue -- a bare `epic` label, or a title
+    starting with "Epic:" (the repo's own convention; every current container
+    uses both). An `epic:<theme>` label alone does not make an issue a
+    container -- it is a theme tag applied to ordinary sized issues too."""
+    if "epic" in labels:
+        return True
+    return title.startswith("Epic:") or title.startswith("Epic ")
+
+
+def is_excluded(labels: list[str], self_owner: str | None = None, title: str = "") -> bool:
+    if is_epic_container(labels, title):
+        return True
     own = f"owner:{self_owner}" if self_owner else None
     for name in labels:
         if name in EXCLUDE_EXACT:
-            return True
-        if name == "epic" or name.startswith("epic:"):
             return True
         if name.startswith("owner:") and name != own:
             return True
@@ -121,7 +139,7 @@ def main() -> int:
         claimed_by_pr = open_pr_issue_numbers()
         filtered = []
         for r in rows:
-            if is_excluded(r["labels"], args.eligible):
+            if is_excluded(r["labels"], args.eligible, r["title"]):
                 continue
             if r["number"] in claimed_by_pr:
                 continue
