@@ -129,7 +129,7 @@
     <h1>LunarLog Privacy Policy</h1>
     <div class="meta">
       <strong>Effective Date:</strong> September 3, 2026 &bull;
-      <strong>Last Updated:</strong> September 9, 2026 (LunarLog now computes a fertile-window and ovulation estimate from your logged cycle history, on-device &mdash; see the &ldquo;Estimates From Your Own Logged Data&rdquo; principle below; repositioned the product framing around sync and multi-guardian family collaboration rather than offline operation, and replaced the retired SQLCipher at-rest description with the app's actual OS-level at-rest protection &mdash; see PRIVACY.md for the full change history)
+      <strong>Last Updated:</strong> September 11, 2026 (Section 4 now explicitly states LunarLog's data residency and hosting regions &mdash; Supabase Cloud in AWS us-east-1 and Sentry in the US multi-tenant region &mdash; confirms that all cloud processing occurs in the United States, states the US and Canada distribution scope, and clarifies that LunarLog is not a HIPAA covered entity or business associate &mdash; see PRIVACY.md for the full change history)
     </div>
 
     <div class="highlight-card">
@@ -197,6 +197,18 @@
         </tbody>
       </table>
     </div>
+
+    <h3>Data Residency, Hosting Regions &amp; Geographic Distribution</h3>
+    <p>All LunarLog cloud infrastructure and diagnostic telemetry are hosted within the United States:</p>
+    <ul>
+      <li><strong>Supabase Cloud:</strong> Database storage, account authentication, and sync infrastructure (project <code>dleexnnevuuddcgcpztq</code>) are hosted on Amazon Web Services (AWS) in the US East (N. Virginia, <code>us-east-1</code>) region.</li>
+      <li><strong>Sentry Telemetry:</strong> Anonymized diagnostic crash telemetry is processed and stored in Sentry's United States multi-tenant region (<code>us.sentry.io</code>).</li>
+    </ul>
+    <p>All cloud-synchronized data is stored and processed within the United States regardless of user location. In alignment with export compliance filings, LunarLog app distribution is restricted to the United States and Canada.</p>
+
+    <h3>HIPAA Non-Applicability Notice</h3>
+    <p>LunarLog is a direct-to-consumer mobile application designed for personal cycle tracking, self-care, and family collaboration. LunarLog is <strong>not</strong> a "covered entity" and is <strong>not</strong> a "business associate" under the Health Insurance Portability and Accountability Act of 1996 (HIPAA) or 45 C.F.R. Parts 160 and 164. Data stored or synced by LunarLog is not Protected Health Information (PHI) under HIPAA regulations.</p>
+    <p>Clinical data exports (JSON, FHIR R4, or CSV) are user-directed, user-controlled transfers of personal records directly to clinicians or portals chosen by the user. Handing an export to a healthcare provider does not establish a HIPAA business associate relationship between LunarLog and that provider or healthcare organization.</p>
 
     <h2>5. Minors' Privacy &amp; Family Profiles</h2>
     <p>LunarLog allows adult operators to manage cycle profiles for family members, including minors (<code>is_minor</code>). Adult operators act as the custodian of the device and account. We do not knowingly solicit or collect data directly from children, and minor profiles receive identical end-to-end encryption protections.</p>
