@@ -34,6 +34,7 @@ import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 
+import '../theme/haptics.dart';
 import '../theme/lunarlog_colors.dart';
 import 'cycle_wheel.dart';
 import 'inline_error.dart';
@@ -102,6 +103,7 @@ class _TodayCardState extends State<TodayCard> {
 
   Future<void> _handleTap() async {
     if (_busy) return;
+    LLHaptics.action();
     setState(() {
       _busy = true;
       _error = null;
