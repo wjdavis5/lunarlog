@@ -1134,6 +1134,11 @@ void main() {
   group('settings entry point (AC1)', () {
     testWidgets('section lists profiles and routes each to Manage Guardians',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final auth = _signedInAs('user-mom');
       addTearDown(auth.dispose);
       final sharing = FakeSharing126();

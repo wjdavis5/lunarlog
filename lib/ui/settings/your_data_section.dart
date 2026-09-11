@@ -54,6 +54,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
 import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
+import 'package:lunarlog/ui/settings/csv_export_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
@@ -64,7 +65,11 @@ class YourDataSection extends StatefulWidget {
     this.showExport,
     this.showImport,
     this.exportAccount,
+    this.exportCsv,
   });
+
+  /// Injected collaborator for CSV export testing.
+  final CsvExportCollaborator? exportCsv;
 
   /// Whether "Export my data" may render at all; null means "not web"
   /// (matches `AccountSection`'s pre-#222 `showExportAndDelete` default -
@@ -154,6 +159,7 @@ class _YourDataSectionState extends State<YourDataSection> {
       ),
       ..._exportTile(context, profiles, signedIn),
       ..._importTile(context),
+      CsvExportTile(exportCsv: widget.exportCsv), // Issue #469
       const ClinicalExportTile(), // Issue #157
       const Divider(),
     ];
