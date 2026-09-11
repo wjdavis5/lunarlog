@@ -152,11 +152,17 @@ class CycleWheel extends StatelessWidget {
             todayMarkerColor: theme.colorScheme.onSurface,
           ),
           child: Center(
-            child: Text(
-              _centerLabel(l10n),
-              key: const ValueKey('cycle-wheel-center-label'),
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _centerLabel(l10n),
+                  key: const ValueKey('cycle-wheel-center-label'),
+                  style: theme.textTheme.titleLarge,
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ),
           ),
         ),
