@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(162);
+select plan(165);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -491,6 +491,38 @@ select throws_ok(
   null,
   'table check constraint day_entries_tags_check rejects an over-length tag element'
 );
+
+-- ---------------------------------------------------------------------------
+-- Issue #96: RPC-level is_valid_tags_array validation inside sync_push
+-- ---------------------------------------------------------------------------
+-- The 20260904020000 rewrite dropped the explicit is_valid_tags_array call
+-- the #40 migration had added to the RPC; day_entries_tags_check has been
+-- the only enforcement since. The restored RPC check raises 22023 before
+-- DML, so a bad-tags row lands in `rejected` via the RPC layer itself.
+-- The rejected-count assertions below go through sync_push (pinning the RPC
+-- contract, not the CHECK), and the structural pg_get_functiondef assertion
+-- proves the rejection does not depend on the table CHECK at all.
+select tests.authenticate_as('user_a');
+
+insert into r select 'tags_rpc_validation', public.sync_push(
+  '[]'::jsonb,
+  jsonb_build_array(
+    jsonb_build_object('id', tests.ulid(140), 'profile_id', tests.ulid(1), 'local_date', '2026-09-30',
+      'tz', 'UTC', 'flow', 'none', 'tags', '[3]'::jsonb, 'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(141), 'profile_id', tests.ulid(1), 'local_date', '2026-10-06',
+      'tz', 'UTC', 'flow', 'none',
+      'tags', (select jsonb_agg(g::text) from generate_series(1, 33) g), 'updated_at', pg_temp.ts_txt('t1')),
+    jsonb_build_object('id', tests.ulid(142), 'profile_id', tests.ulid(1), 'local_date', '2026-10-07',
+      'tz', 'UTC', 'flow', 'none', 'tags', '["ok"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))
+  ));
+select is(jsonb_array_length(pg_temp.resp('tags_rpc_validation') -> 'rejected'), 2,
+  '#96: a non-string element ([3]) and a 33-element array are rejected by sync_push at the RPC layer');
+select is((select count(*) from public.day_entries where id = tests.ulid(142)), 1::bigint,
+  '#96: the valid-tags row in the same batch still lands');
+select ok(
+  pg_get_functiondef(to_regprocedure('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'))
+    like '%is_valid_tags_array%',
+  '#96: sync_push calls is_valid_tags_array itself instead of relying on the table CHECK alone');
 
 -- ---------------------------------------------------------------------------
 -- U1: profile subject metadata (birth_year, relationship, transferred_at)
