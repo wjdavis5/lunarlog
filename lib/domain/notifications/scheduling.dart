@@ -56,7 +56,7 @@ import 'package:lunarlog/domain/prediction/fertile_window.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
 export 'package:lunarlog/domain/notifications/reminder_config.dart'
-    show ReminderKind;
+    show ReminderCadence, ReminderKind;
 
 /// Days before the estimate the "upcoming period" reminder fired pre-#136.
 /// Kept (value unchanged) for callers and tests that reference it; the
@@ -86,6 +86,11 @@ const int kBirthControlPillPreArmDays = 7;
 /// occurrences keep the reminder alive across skipped opens while staying
 /// a small, bounded share of the [kMaxPendingReminders] cap.
 const int kBirthControlPreArmOccurrences = 3;
+
+/// How many forward occurrences the tracking reminder (log nudge, Issue
+/// #463) pre-arms at non-daily cadences (weekly/fortnightly/monthly).
+/// Daily keeps [kLogNudgePreArmDays] (7).
+const int kLogNudgeCadencePreArmOccurrences = 4;
 
 /// Generic content only (KTD7): these exact strings are what the lock
 /// screen shows — never a profile name, date, or health detail.
@@ -266,15 +271,12 @@ List<PlannedReminder> _planProfile({
 }) {
   final planned = <PlannedReminder>[];
   if (config.log.enabled) {
-    for (var i = 0; i < kLogNudgePreArmDays; i++) {
-      planned.add(_planOne(
-        profileId,
-        ReminderKind.log,
-        today.addDays(i),
-        config.log.timeOfDayMinutes,
-        config.quietHours,
-      ));
-    }
+    planned.addAll(_planLogNudge(
+      profileId: profileId,
+      today: today,
+      config: config.log,
+      quietHours: config.quietHours,
+    ));
   }
   // Issue #178: the statistic-change reminder is event-driven — it plans
   // only on the date the coordinator observed a meaningful change, never
@@ -307,6 +309,73 @@ List<PlannedReminder> _planProfile({
     config: config,
     snoozed: snoozed,
   ));
+  return planned;
+}
+
+/// Plans the tracking reminder (log nudge, Issue #463).
+///
+/// At [ReminderCadence.daily] (the default), pre-arms [kLogNudgePreArmDays]
+/// consecutive days starting from [today], preserving legacy scheduling and IDs.
+///
+/// At non-daily cadences ([ReminderCadence.weekly], [ReminderCadence.fortnightly],
+/// [ReminderCadence.monthly]), pre-arms [kLogNudgeCadencePreArmOccurrences]
+/// future occurrences starting from [ReminderTypeConfig.anchorDate] (or
+/// [today] if no anchor is set).
+List<PlannedReminder> _planLogNudge({
+  required String profileId,
+  required LocalDate today,
+  required ReminderTypeConfig config,
+  required QuietHours? quietHours,
+}) {
+  final cadence = config.cadence;
+  if (cadence == ReminderCadence.daily) {
+    return [
+      for (var i = 0; i < kLogNudgePreArmDays; i++)
+        _planOne(
+          profileId,
+          ReminderKind.log,
+          today.addDays(i),
+          config.timeOfDayMinutes,
+          quietHours,
+        ),
+    ];
+  }
+
+  final anchor = config.anchorDate ?? today;
+  final planned = <PlannedReminder>[];
+
+  if (cadence == ReminderCadence.weekly ||
+      cadence == ReminderCadence.fortnightly) {
+    final intervalDays = cadence == ReminderCadence.weekly ? 7 : 14;
+    final offsetDays = today.difference(anchor);
+    final k =
+        offsetDays <= 0 ? 0 : (offsetDays + intervalDays - 1) ~/ intervalDays;
+    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++) {
+      planned.add(_planOne(
+        profileId,
+        ReminderKind.log,
+        anchor.addDays((k + i) * intervalDays),
+        config.timeOfDayMinutes,
+        quietHours,
+      ));
+    }
+  } else if (cadence == ReminderCadence.monthly) {
+    final monthsDiff =
+        (today.year - anchor.year) * 12 + (today.month - anchor.month);
+    final candidate = anchor.addMonths(monthsDiff);
+    final startOffset =
+        candidate.isBefore(today) ? monthsDiff + 1 : monthsDiff;
+    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++) {
+      planned.add(_planOne(
+        profileId,
+        ReminderKind.log,
+        anchor.addMonths(startOffset + i),
+        config.timeOfDayMinutes,
+        quietHours,
+      ));
+    }
+  }
+
   return planned;
 }
 
