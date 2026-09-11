@@ -27,6 +27,7 @@ import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
+import 'package:lunarlog/domain/export/csv_export_writer.dart';
 import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
@@ -247,6 +248,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final DeviceDiagnosticsCollector _deviceDiagnostics;
   late final AccountExportWriter _accountExportWriter;
   late final FhirBundleWriter _fhirBundleWriter;
+  late final CsvExportWriter _csvExportWriter;
   late final AttachmentSource _attachmentSource;
   late final ImportFileReader _importFileReader;
   late final AccountImportCoordinator _accountImportCoordinator;
@@ -327,6 +329,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _deviceDiagnostics = _deps.deviceDiagnostics;
     _accountExportWriter = _deps.accountExportWriter;
     _fhirBundleWriter = _deps.fhirBundleWriter;
+    _csvExportWriter = _deps.csvExportWriter;
     _attachmentSource = _deps.attachmentSource;
     _importFileReader = _deps.importFileReader;
     _accountImportCoordinator = _deps.accountImportCoordinator;
@@ -866,6 +869,7 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<DeviceDiagnosticsCollector>.value(value: _deviceDiagnostics),
         Provider<AccountExportWriter>.value(value: _accountExportWriter),
         Provider<FhirBundleWriter>.value(value: _fhirBundleWriter),
+        Provider<CsvExportWriter>.value(value: _csvExportWriter),
         Provider<AttachmentSource>.value(value: _attachmentSource),
         Provider<ImportFileReader>.value(value: _importFileReader),
         Provider<AccountImportCoordinator>.value(

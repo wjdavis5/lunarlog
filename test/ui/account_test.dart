@@ -1646,6 +1646,11 @@ void main() {
         'confirms; not now leaves the tappable tile that reopens it', (
       tester,
     ) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final h = AccountHarness(tester);
       await h.pump(
         seed: (db) async {
@@ -1710,6 +1715,11 @@ void main() {
   group('sync status and Sync now (Approach 7)', () {
     testWidgets('Sync now calls requestSync, is disabled while a cycle runs, '
         'and the tile reads Syncing… then Up to date', (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final h = AccountHarness(tester);
       await h.pump(seed: AccountHarness.seedOneProfile);
       h.signIn();
