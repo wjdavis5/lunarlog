@@ -17,6 +17,8 @@ sealed class NotificationPreferencesFailure implements Exception {
       NotificationPreferencesUnauthorizedFailure;
   const factory NotificationPreferencesFailure.network() =
       NotificationPreferencesNetworkFailure;
+  const factory NotificationPreferencesFailure.invalidTimeZone() =
+      NotificationPreferencesInvalidTimeZoneFailure;
   const factory NotificationPreferencesFailure.other() =
       NotificationPreferencesOtherFailure;
 
@@ -46,6 +48,16 @@ final class NotificationPreferencesNetworkFailure
   String get userFacingMessage => 'Network error. Please check your connection.';
   @override
   String toString() => 'NotificationPreferencesFailure.network';
+}
+
+final class NotificationPreferencesInvalidTimeZoneFailure
+    extends NotificationPreferencesFailure {
+  const NotificationPreferencesInvalidTimeZoneFailure();
+  @override
+  String get userFacingMessage =>
+      "Your device's time zone isn't recognised by the server yet — quiet hours will use UTC until it is";
+  @override
+  String toString() => 'NotificationPreferencesFailure.invalidTimeZone';
 }
 
 final class NotificationPreferencesOtherFailure

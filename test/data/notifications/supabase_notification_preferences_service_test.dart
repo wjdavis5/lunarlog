@@ -260,6 +260,25 @@ void main() {
       }
     });
 
+    test('a 23514 check violation on time_zone maps to invalidTimeZone failure', () async {
+      final client = makeClient((req) async => http.Response(
+            jsonEncode({
+              'message':
+                  'new row for relation "notification_preferences" violates check constraint "notification_preferences_time_zone_valid"',
+              'code': '23514',
+              'details': 'Failing row contains (..., Europe/Nonexistent, ...).'
+            }),
+            400,
+          ));
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      await expectLater(
+        service.save(_profileId, CaregiverAlertPreferences.off),
+        throwsA(isA<NotificationPreferencesInvalidTimeZoneFailure>()),
+      );
+    });
+
     test('a signed-out client rejects locally with the unauthorized failure', () async {
       final client = makeClient((req) async {
         fail('a signed-out save must never reach the network: ${req.method} ${req.url}');

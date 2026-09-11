@@ -52,6 +52,27 @@ class _FailingOnceService implements NotificationPreferencesService {
   }
 }
 
+class _TimeZoneFailingService implements NotificationPreferencesService {
+  _TimeZoneFailingService(this._delegate, {this.failCount = 1});
+  final FakeNotificationPreferencesService _delegate;
+  int failCount;
+  int saves = 0;
+
+  @override
+  Stream<CaregiverAlertPreferences> watchFor(String profileId) =>
+      _delegate.watchFor(profileId);
+
+  @override
+  Future<void> save(String profileId, CaregiverAlertPreferences prefs) async {
+    saves++;
+    if (prefs.timeZone != null && failCount > 0) {
+      failCount--;
+      throw const NotificationPreferencesFailure.invalidTimeZone();
+    }
+    await _delegate.save(profileId, prefs);
+  }
+}
+
 void main() {
   testWidgets('the screen loads and displays stored preferences', (tester) async {
     final service = FakeNotificationPreferencesService()
@@ -308,5 +329,99 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('discretion-copy')), findsOneWidget);
+  });
+
+  testWidgets(
+      'a 23514 invalidTimeZone failure surfaces InlineError, supports retry, and explicit confirmation fallback',
+      (tester) async {
+    final delegate = FakeNotificationPreferencesService();
+    final service = _TimeZoneFailingService(delegate, failCount: 1);
+
+    await tester.pumpWidget(MaterialApp(
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Pick quiet hours start to set quietHours and timeZone.
+    await _scrollTo(tester, find.byKey(const ValueKey('quiet-hours-start-tile')));
+    await tester.tap(find.byKey(const ValueKey('quiet-hours-start-tile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    // The save should have failed with invalidTimeZone failure.
+    // Confirm InlineError is rendered with the expected message.
+    await _scrollTo(tester, find.byKey(const ValueKey('timezone-inline-error')));
+    expect(find.byKey(const ValueKey('timezone-inline-error')), findsOneWidget);
+    expect(
+      find.text(
+        "Your device's time zone isn't recognised by the server yet — quiet hours will use UTC until it is",
+      ),
+      findsOneWidget,
+    );
+    // Snackbar should NOT be shown for this inline error.
+    expect(find.byType(SnackBar), findsNothing);
+
+    // Verify Retry button works:
+    expect(find.text('Retry'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    // Since failCount was 1, retry succeeded and InlineError is gone.
+    expect(find.byKey(const ValueKey('timezone-inline-error')), findsNothing);
+  });
+
+  testWidgets(
+      'fallback to saving without time zone asks for explicit confirmation before saving null',
+      (tester) async {
+    final delegate = FakeNotificationPreferencesService();
+    // Always fail when timeZone is non-null
+    final service = _TimeZoneFailingService(delegate, failCount: 99);
+
+    await tester.pumpWidget(MaterialApp(
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const ValueKey('quiet-hours-start-tile')));
+    await tester.tap(find.byKey(const ValueKey('quiet-hours-start-tile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const ValueKey('timezone-fallback-button')));
+    expect(find.byKey(const ValueKey('timezone-fallback-button')), findsOneWidget);
+
+    // Tap fallback button: dialog opens
+    await tester.tap(find.byKey(const ValueKey('timezone-fallback-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Save without time zone?'), findsOneWidget);
+
+    // Cancel first:
+    await tester.tap(find.byKey(const ValueKey('timezone-fallback-cancel')));
+    await tester.pumpAndSettle();
+
+    // Dialog closed, error still visible
+    expect(find.byKey(const ValueKey('timezone-inline-error')), findsOneWidget);
+
+    // Tap fallback button again:
+    await tester.tap(find.byKey(const ValueKey('timezone-fallback-button')));
+    await tester.pumpAndSettle();
+
+    // Confirm:
+    await tester.tap(find.byKey(const ValueKey('timezone-fallback-confirm')));
+    await tester.pumpAndSettle();
+
+    // Error is gone, and stored preferences has timeZone: null
+    expect(find.byKey(const ValueKey('timezone-inline-error')), findsNothing);
+    expect(delegate.stored['profile-1']?.timeZone, isNull);
+    expect(delegate.stored['profile-1']?.quietHours, isNotNull);
   });
 }

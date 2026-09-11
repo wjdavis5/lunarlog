@@ -169,8 +169,16 @@ class SupabaseNotificationPreferencesService
   NotificationPreferencesFailure _mapPostgrestError(PostgrestException error) {
     final code = error.code ?? '';
     final msg = error.message.toLowerCase();
+    final details = error.details?.toString().toLowerCase() ?? '';
     if (_isUnauthorized(code, msg)) {
       return const NotificationPreferencesFailure.unauthorized();
+    }
+    if (code == '23514' ||
+        msg.contains('time_zone') ||
+        msg.contains('notification_preferences_time_zone_valid') ||
+        details.contains('time_zone') ||
+        details.contains('notification_preferences_time_zone_valid')) {
+      return const NotificationPreferencesFailure.invalidTimeZone();
     }
     final status = int.tryParse(code);
     if (status != null && status >= 500) {

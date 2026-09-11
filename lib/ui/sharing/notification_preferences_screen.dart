@@ -13,6 +13,7 @@ import '../../domain/models/profile.dart';
 import '../../domain/notifications/notification_preferences.dart';
 import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/util/timezone.dart';
+import '../components/inline_error.dart';
 
 /// Default quiet-hours window offered the first time a guardian sets one.
 const int _kDefaultQuietStartMinutes = 22 * 60; // 22:00
@@ -42,6 +43,7 @@ class _NotificationPreferencesScreenState
   CaregiverAlertPreferences _prefs = CaregiverAlertPreferences.off;
   bool _loaded = false;
   StreamSubscription<CaregiverAlertPreferences>? _sub;
+  NotificationPreferencesInvalidTimeZoneFailure? _timeZoneError;
 
   @override
   void initState() {
@@ -67,16 +69,69 @@ class _NotificationPreferencesScreenState
     CaregiverAlertPreferences Function(CaregiverAlertPreferences) transform,
   ) async {
     final next = transform(_prefs);
-    setState(() => _prefs = next);
+    setState(() {
+      _prefs = next;
+      _timeZoneError = null;
+    });
     try {
       await widget.preferencesService.save(widget.profile.id, next);
     } catch (error) {
       if (!mounted) return;
+      if (error is NotificationPreferencesInvalidTimeZoneFailure) {
+        setState(() => _timeZoneError = error);
+        return;
+      }
       final message = error is NotificationPreferencesFailure
           ? error.userFacingMessage
           : 'Failed to save notification preferences. Please try again.';
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _retrySave() async {
+    setState(() => _timeZoneError = null);
+    try {
+      await widget.preferencesService.save(widget.profile.id, _prefs);
+    } catch (error) {
+      if (!mounted) return;
+      if (error is NotificationPreferencesInvalidTimeZoneFailure) {
+        setState(() => _timeZoneError = error);
+        return;
+      }
+      final message = error is NotificationPreferencesFailure
+          ? error.userFacingMessage
+          : 'Failed to save notification preferences. Please try again.';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _confirmSaveWithoutTimeZone() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Save without time zone?'),
+        content: const Text(
+          'Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?',
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('timezone-fallback-cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('timezone-fallback-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Save without time zone'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() => _timeZoneError = null);
+      await _apply((p) => p.copyWith(clearTimeZone: true));
     }
   }
 
@@ -332,6 +387,28 @@ class _NotificationPreferencesScreenState
                           clearQuietHours: true,
                           clearTimeZone: true,
                         )),
+                  ),
+                if (_timeZoneError != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        InlineError(
+                          key: const ValueKey('timezone-inline-error'),
+                          message: _timeZoneError!.userFacingMessage,
+                          onRetry: _retrySave,
+                        ),
+                        TextButton(
+                          key: const ValueKey('timezone-fallback-button'),
+                          onPressed: _confirmSaveWithoutTimeZone,
+                          child: const Text('Save without time zone'),
+                        ),
+                      ],
+                    ),
                   ),
               ],
             ),
