@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/repositories/activity_feed_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
+import '../../domain/help/help_cards.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/notifications/notification_preferences_service.dart';
@@ -28,6 +29,7 @@ import '../../domain/sharing/prediction_connection_service.dart';
 import '../../domain/sharing/sharing_service.dart';
 import '../../observability/route_names.dart';
 import '../components/inline_error.dart';
+import '../help/help_card_view.dart';
 import '../routes.dart';
 import 'activity_feed_screen.dart';
 import 'invite_guardian_dialog.dart';
@@ -570,6 +572,16 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         // profile's accepted primary guardian, and only when an
         // OwnershipTransferService is actually configured on this build.
         actions: [
+          // Issue #139: contextual entry point to the guardian-roles card.
+          IconButton(
+            key: const ValueKey('guardians-help-action'),
+            tooltip: 'About roles',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showHelpCardSheet(
+              context,
+              HelpCards.guardianRoles,
+            ),
+          ),
           if (widget.activityRepository != null)
             ActivityFeedButton(
               profile: widget.profile,

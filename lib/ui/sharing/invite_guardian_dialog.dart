@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/sharing/sharing_service.dart';
+import '../help/help_card_view.dart';
 
 class InviteGuardianDialog extends StatefulWidget {
   const InviteGuardianDialog({
@@ -162,6 +163,11 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                 labelText: 'Nickname / Label (Optional)',
                 hintText: 'e.g. Dad, Grandma, School Nurse',
               ),
+            ),
+            // Issue #139: contextual entry point to the invitations card.
+            const HelpCardLink(
+              cardId: 'invitations',
+              label: 'How do invitations work?',
             ),
           ],
         ),

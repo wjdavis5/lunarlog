@@ -72,6 +72,7 @@ import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
 import '../account/auth_controller.dart';
 import '../components/empty_state.dart';
+import '../help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
@@ -403,6 +404,11 @@ class _AnalysisTabState extends State<AnalysisTab> {
               kEstimateDisclaimer,
               key: const ValueKey('analysis-not-enough-disclaimer'),
               style: theme.textTheme.bodySmall,
+            ),
+            // Issue #139: same three-cycle explainer as OverviewPanel.
+            const HelpCardLink(
+              cardId: 'why-no-estimate-yet',
+              label: 'Why three cycles?',
             ),
           ],
         ),

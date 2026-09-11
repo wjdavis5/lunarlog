@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
+import '../help/help_card_view.dart';
 
 /// Renders [utc] in the device's local time as `YYYY-MM-DD HH:MM`, mirroring
 /// `formatCreatedDate` in `profile_picker_screen.dart`.
@@ -317,6 +318,11 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         _bullet(
           "If they later delete their account, this profile's history goes "
           'with it.',
+        ),
+        // Issue #139: contextual entry point to the transfer card.
+        const HelpCardLink(
+          cardId: 'ownership-transfer',
+          label: 'How does the transfer work?',
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
