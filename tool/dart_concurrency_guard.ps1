@@ -78,5 +78,14 @@ while ($true) {
     $waited += $PollSeconds
 }
 
-& $Command @Arguments
+$flatArgs = @()
+foreach ($arg in $Arguments) {
+    if ($arg -match ',') {
+        $flatArgs += $arg.Split(',', [System.StringSplitOptions]::RemoveEmptyEntries)
+    } else {
+        $flatArgs += $arg
+    }
+}
+
+& $Command @flatArgs
 exit $LASTEXITCODE

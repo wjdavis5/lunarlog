@@ -4,7 +4,7 @@
 -- resolution, the per-day cap), the tags->observations backfill's
 -- idempotency, and delete_account_data()'s new observations count.
 begin;
-select plan(55);
+select plan(64);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -90,6 +90,11 @@ select is(
      join pg_publication p on p.oid = pr.prpubid
     where p.pubname = 'supabase_realtime' and c.relname = 'observations'),
   0, 'observations itself is never added to the supabase_realtime publication');
+select is(
+  (select count(*)::integer from pg_trigger t
+     join pg_class c on c.oid = t.tgrelid
+    where c.relname = 'day_entries' and t.tgname = 'day_entries_after_tombstone_cascade_observations'),
+  1, 'day_entries fires cascade_day_entry_tombstone_to_observations() trigger');
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: two independent families (RLS isolation), each with one profile
@@ -487,6 +492,64 @@ select ok(
 select is(
   (select count(*) from public.observations where profile_id = tests.ulid(851)),
   0::bigint, 'delete_account_data() actually removed the caller''s observations');
+
+-- ---------------------------------------------------------------------------
+-- Issue #470: Cascading tombstone from day_entries to observations.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('mom');
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(890), tests.ulid(801), '2026-09-12', 'UTC', 'medium', '2026-09-12T09:00:00Z');
+
+insert into public.observations (
+  id, day_entry_id, profile_id, local_date, tz, category, code, intensity, source, source_id, updated_at
+) values (
+  tests.ulid(891), tests.ulid(890), tests.ulid(801), '2026-09-12', 'UTC', 'pain', 'cramps', 4, 'manual', 'src_470', '2026-09-12T09:30:00Z'
+);
+
+select is(
+  (select count(*)::integer from public.observations where day_entry_id = tests.ulid(890) and deleted_at is null),
+  1, 'observation is live before day entry tombstone');
+
+-- Soft delete the day entry via sync_push
+insert into r select 'mom_soft_delete_day', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(890), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-12', 'tz', 'UTC', 'flow', 'none',
+    'deleted_at', '2026-09-12T11:00:00Z', 'updated_at', '2026-09-12T11:00:00Z')));
+
+select is(
+  (select deleted_at from public.day_entries where id = tests.ulid(890)),
+  '2026-09-12T11:00:00Z'::timestamptz,
+  'day entry is tombstoned');
+
+select is(
+  (select count(*)::integer from public.observations where day_entry_id = tests.ulid(890) and deleted_at is null),
+  0, 'live observation count is 0 after day entry tombstone');
+
+select is(
+  (select deleted_at from public.observations where id = tests.ulid(891)),
+  '2026-09-12T11:00:00Z'::timestamptz,
+  'cascade: observation deleted_at matches day entry deleted_at');
+
+select is(
+  (select category from public.observations where id = tests.ulid(891)),
+  null,
+  'cascade: observation category is cleared to null');
+
+select is(
+  (select code from public.observations where id = tests.ulid(891)),
+  null,
+  'cascade: observation code is cleared to null');
+
+select is(
+  (select intensity from public.observations where id = tests.ulid(891)),
+  null,
+  'cascade: observation intensity is cleared to null');
+
+select is(
+  (select source_id from public.observations where id = tests.ulid(891)),
+  'src_470',
+  'cascade: observation source_id is preserved across tombstoning');
 
 select * from finish();
 rollback;

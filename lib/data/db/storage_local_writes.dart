@@ -659,6 +659,40 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           localRev: Value(live.localRev + 1),
         ),
       );
+
+      // Issue #470: cascade tombstone to all live observations attached
+      // to this day entry. Payload fields are cleared, localRev is bumped,
+      // and rows are marked dirty so sync pushes them.
+      final liveObs = await (db.select(db.observations)
+            ..where((t) =>
+                (t.dayEntryId.equals(rowId) |
+                    (t.profileId.equals(profileId) &
+                        t.localDate.equals(localDate))) &
+                t.deletedAt.isNull()))
+          .get();
+      for (final obs in liveObs) {
+        final obsAt = _afterStored(at, obs.updatedAt);
+        await (db.update(db.observations)..where((t) => t.id.equals(obs.id)))
+            .write(
+          ObservationsCompanion(
+            category: const Value(null),
+            observedAt: const Value(null),
+            code: const Value(null),
+            valueNum: const Value(null),
+            valueText: const Value(null),
+            unit: const Value(null),
+            intensity: const Value(null),
+            excluded: const Value(false),
+            // Issue #159: sourceId (and importId, never touched by this
+            // write) survive a tombstone.
+            raw: const Value(null),
+            updatedAt: Value(obsAt),
+            deletedAt: Value(obsAt),
+            dirty: const Value(true),
+            localRev: Value(obs.localRev + 1),
+          ),
+        );
+      }
     });
   }
 

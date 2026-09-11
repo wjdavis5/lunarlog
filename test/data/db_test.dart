@@ -618,6 +618,69 @@ void main() {
       expect(tombstone.tags, isEmpty);
     });
 
+    test(
+        'issue #470: softDeleteDayEntry cascades tombstoning to all live observations',
+        () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final entry = await storage.upsertDayEntry(
+        profileId: profile.id,
+        localDate: '2026-03-05',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+      );
+
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: profile.id,
+        localDate: '2026-03-05',
+        tz: 'UTC',
+        category: 'pain',
+        code: 'cramps',
+        intensity: 4,
+      );
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: profile.id,
+        localDate: '2026-03-05',
+        tz: 'UTC',
+        category: 'mood',
+        code: 'anxious',
+      );
+
+      // Verify they are live initially
+      expect(await storage.getObservationsForProfile(profile.id), hasLength(2));
+      expect(await storage.getObservationsForDayEntry(entry.id), hasLength(2));
+
+      await storage.softDeleteDayEntry(
+        profileId: profile.id,
+        localDate: '2026-03-05',
+      );
+
+      // UI queries exclude tombstones by default: both must now be empty
+      expect(await storage.getObservationsForProfile(profile.id), isEmpty);
+      expect(await storage.getObservationsForDayEntry(entry.id), isEmpty);
+
+      // Full-fidelity reads: both observations are tombstoned with cleared payloads
+      final tombstones = await storage.getObservationsForProfile(
+        profile.id,
+        includeTombstones: true,
+      );
+      expect(tombstones, hasLength(2));
+      for (final t in tombstones) {
+        expect(t.deletedAt, isNotNull);
+        expect(t.category, isNull);
+        expect(t.code, isNull);
+        expect(t.intensity, isNull);
+        expect(t.valueNum, isNull);
+        expect(t.valueText, isNull);
+        expect(t.unit, isNull);
+        expect(t.raw, isNull);
+        expect(t.excluded, isFalse);
+        expect(t.dirty, isTrue);
+      }
+    });
+
     test('R3: per-profile queries never co-mingle entries', () async {
       final a = await storage.upsertProfile(displayName: 'A', isMinor: true);
       final b = await storage.upsertProfile(displayName: 'B', isMinor: false);
