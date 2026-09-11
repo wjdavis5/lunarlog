@@ -417,6 +417,39 @@ void main() {
       await storage.softDeleteObservation('nonexistent');
       expect(await observationById('nonexistent'), isNull);
     });
+
+    test('issue #470: softDeleteDayEntry cascades tombstone to child observations', () async {
+      final dId = await entryId();
+      final o = await storage.upsertObservation(
+        dayEntryId: dId,
+        profileId: 'p1',
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        category: 'pain',
+        code: 'cramps',
+        intensity: 3,
+        source: 'manual',
+        sourceId: 's1',
+      );
+      expect((await storage.getObservationsForProfile('p1')).map((r) => r.id), [o.id]);
+
+      await storage.softDeleteDayEntry(profileId: 'p1', localDate: '2026-09-01');
+
+      // Excluded from live reads
+      expect(await storage.getObservationsForProfile('p1'), isEmpty);
+      expect(await storage.getObservationsForDayEntry(dId), isEmpty);
+
+      // Stored as tombstone with payload cleared and sourceId preserved
+      final tombstone = await observationById(o.id);
+      expect(tombstone, isNotNull);
+      expect(tombstone!.deletedAt, isNotNull);
+      expect(tombstone.category, isNull);
+      expect(tombstone.code, isNull);
+      expect(tombstone.intensity, isNull);
+      expect(tombstone.sourceId, 's1');
+      expect(tombstone.dirty, isTrue);
+      expect(tombstone.localRev, o.localRev + 1);
+    });
   });
 
   group('dirty tracking', () {
