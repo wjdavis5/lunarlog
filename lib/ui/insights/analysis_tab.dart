@@ -398,6 +398,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
             EmptyState(
               title: _copy.notEnoughTitle,
               body: _copy.notEnoughBody,
+              titleStyle: theme.textTheme.headlineSmall,
+              crossAxisAlignment: CrossAxisAlignment.start,
             ),
             const SizedBox(height: 8),
             Text(

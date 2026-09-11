@@ -1121,6 +1121,8 @@ void main() {
         ChangeNotifierProvider<ProfileController>.value(
           value: controller,
           child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context)
                   .copyWith(textScaler: const TextScaler.linear(2.5)),
@@ -1134,6 +1136,13 @@ void main() {
 
       expect(find.byKey(const ValueKey('profile-picker-empty')), findsOneWidget);
       expect(tester.takeException(), isNull);
+
+      // Issue #326: verify the button can be scrolled into view and tapped at 2.5x text scale.
+      final addButton = find.widgetWithText(FilledButton, 'Add profile');
+      await tester.ensureVisible(addButton);
+      await tester.tap(addButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextFormField), findsWidgets);
     });
   });
 }

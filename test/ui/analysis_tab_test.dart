@@ -28,6 +28,7 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:provider/provider.dart';
 
@@ -239,6 +240,14 @@ void main() {
     await h.pump(starts: kNotEnoughStarts);
 
     expect(find.byKey(const ValueKey('analysis-not-enough')), findsOneWidget);
+    final emptyState = tester.widget<EmptyState>(
+      find.descendant(
+        of: find.byKey(const ValueKey('analysis-not-enough')),
+        matching: find.byType(EmptyState),
+      ),
+    );
+    expect(emptyState.crossAxisAlignment, CrossAxisAlignment.start);
+    expect(emptyState.titleStyle, isNotNull);
     expect(find.text('Not enough history yet'), findsOneWidget);
     expect(textAt(tester, 'analysis-not-enough-disclaimer'), kDisclaimer);
     expect(find.byKey(const ValueKey('analysis-stats')), findsNothing);

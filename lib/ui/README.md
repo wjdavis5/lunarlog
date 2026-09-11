@@ -21,6 +21,12 @@ without the person needing to move focus onto it. `EmptyState`'s illustration
 slot is deliberately unwired today — #164 (UX-11) owns the bundled
 illustration set and when to introduce it.
 
+### `EmptyState` slots and layout contract (issues #308, #326)
+
+- **`titleStyle`**: Overrides the default `Theme.of(context).textTheme.titleMedium` style — e.g. `OverviewPanel` and `AnalysisTab`'s not-enough-history cards, which use `headlineSmall` to match existing heading weights.
+- **`crossAxisAlignment`**: Defaults to `CrossAxisAlignment.center`. When set to `CrossAxisAlignment.start`, it left-aligns the title/body text, positions the block via `Align(alignment: AlignmentDirectional.topStart)`, and drops `EmptyState`'s default horizontal and vertical padding so the content aligns flush with surrounding left-aligned card content and disclaimers.
+- **Bounded/unbounded layout contract**: Under bounded vertical constraints (such as a full `Scaffold` body in `ProfilePickerScreen`), `EmptyState` wraps its layout in a `SingleChildScrollView` with `minHeight: constraints.maxHeight` so tall content at large accessibility text scales (e.g. 2.5×) scrolls safely without RenderFlex overflows. Under unbounded vertical constraints (inside a `Column`, `Card`, or `ListView`), it renders directly without a scroll view. **Never place `EmptyState` inside a fixed-height box within a same-axis scroll view**: the fixed height satisfies the bounded check and creates a nested `SingleChildScrollView` that silently swallows drag and scroll gestures (e.g. `support_history_screen.dart` uses a bespoke non-scrolling layout for this reason).
+
 ## Navigation (issue #182)
 
 Once a profile is active, `ProfileHomeGate` (`profiles/profile_home_gate.dart`)
