@@ -21,6 +21,7 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 
@@ -218,6 +219,11 @@ class _LateResolverState extends State<LateResolver> {
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onErrorContainer,
             ),
+          ),
+          // Issue #139: contextual entry point to the "late period" card.
+          const HelpCardLink(
+            cardId: 'period-late',
+            label: 'Why is it late?',
           ),
         ],
       ),

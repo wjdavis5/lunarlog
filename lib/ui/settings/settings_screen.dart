@@ -26,6 +26,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/help/help_library_screen.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart'
     show kSupportEmailAddress;
 import 'package:lunarlog/ui/feedback/support_history_screen.dart'
@@ -179,6 +180,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text(l10n.settingsPrivacySubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showPrivacyPolicy(context),
+          ),
+          // Issue #139: the bundled offline help library — every card
+          // ships in the app bundle, so this needs no network.
+          ListTile(
+            key: const ValueKey('settings-help-tile'),
+            leading: const Icon(Icons.help_outline),
+            title: const Text('Help & explanations'),
+            subtitle: const Text(
+                'Plain-language answers about estimates, logging, sync, '
+                'and sharing — works offline'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const HelpLibraryScreen(),
+              ),
+            ),
           ),
         ],
       ),

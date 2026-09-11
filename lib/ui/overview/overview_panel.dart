@@ -63,6 +63,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
+import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
@@ -674,6 +675,12 @@ class _OverviewPanelState extends State<OverviewPanel> {
               kEstimateDisclaimer,
               key: const ValueKey('overview-not-enough-disclaimer'),
               style: theme.textTheme.bodySmall,
+            ),
+            // Issue #139: the "not enough history yet" state links to the
+            // bundled card explaining the three-cycle requirement.
+            const HelpCardLink(
+              cardId: 'why-no-estimate-yet',
+              label: 'Why three cycles?',
             ),
           ],
         ),
