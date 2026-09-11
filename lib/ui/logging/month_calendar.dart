@@ -65,6 +65,7 @@ import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
+import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:provider/provider.dart';
 
@@ -876,6 +877,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   }
 
   void _shiftMonth(int delta) {
+    LLHaptics.selection();
     final index = _monthIndex(_displayedYear, _displayedMonth) + delta;
     _goToMonth(index ~/ 12, index % 12 + 1, animate: true);
   }
@@ -907,6 +909,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   }
 
   Future<void> _openDay(LocalDate date, DayEntry? entry) async {
+    LLHaptics.selection();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -934,6 +937,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     ForecastDayCell? cell,
     List<ForecastCycle> cycles,
   ) async {
+    LLHaptics.selection();
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,

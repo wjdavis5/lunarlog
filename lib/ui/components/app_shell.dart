@@ -57,6 +57,7 @@ import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
+import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:provider/provider.dart';
 
 import 'app_shell_scope.dart';
@@ -344,7 +345,10 @@ class _ProfileSwitcher extends StatelessWidget {
       child: InkWell(
         key: const ValueKey('app-shell-profile-switcher'),
         borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
+        onTap: () {
+          LLHaptics.selection();
+          onTap();
+        },
         child: ConstrainedBox(
           constraints: const BoxConstraints(
             minWidth: kMinInteractiveDimension,

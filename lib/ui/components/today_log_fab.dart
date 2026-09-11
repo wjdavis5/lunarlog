@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
+import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:provider/provider.dart';
 
 class TodayLogFab extends StatefulWidget {
@@ -117,6 +118,7 @@ class _TodayLogFabState extends State<TodayLogFab> {
       acceptedGuardianFor(_guardians, _currentUserId)?.role.canLog != false;
 
   Future<void> _openTodaySheet() async {
+    LLHaptics.action();
     final repository = context.read<DayEntriesRepository>();
     final today = widget.todayProvider();
     final existing = await repository.find(widget.profileId, today);

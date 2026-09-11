@@ -69,6 +69,7 @@ import 'package:provider/provider.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
+import 'package:lunarlog/ui/theme/haptics.dart';
 
 /// Debounce between the last change (chip, flow, or note keystroke) and the
 /// autosave write (#198 B-13). Short enough to feel commit-immediate, long
@@ -715,6 +716,7 @@ class _DaySheetState extends State<DaySheet> {
       ),
     );
     if (confirmed != true) return;
+    LLHaptics.destructive();
     // A delete must never be resurrected by a still-pending autosave: drop
     // any debounce in flight before tombstoning (#198).
     _saveDebounce?.cancel();
@@ -935,6 +937,7 @@ class _DaySheetState extends State<DaySheet> {
   /// the visible ChoiceChip's `onSelected` and the #138 semantics wrapper's
   /// accessibility tap.
   void _selectFlow(FlowLevel level) {
+    LLHaptics.selection();
     setState(() {
       _flow = level;
       _flowExplicitlySet = true;
@@ -945,6 +948,7 @@ class _DaySheetState extends State<DaySheet> {
   /// Sets the standalone spotting toggle (issue #247) — shared by the
   /// visible chip and its semantics tap.
   void _toggleSpotting(bool value) {
+    LLHaptics.selection();
     setState(() => _spotting = value);
     _markDirty();
   }
@@ -953,6 +957,7 @@ class _DaySheetState extends State<DaySheet> {
   /// chip and its semantics tap. The marker rides the entry itself, so
   /// this is exactly like any other content change: state, then dirty.
   void _togglePms(bool value) {
+    LLHaptics.selection();
     setState(() => _pms = value);
     _markDirty();
   }
@@ -960,6 +965,7 @@ class _DaySheetState extends State<DaySheet> {
   /// Adds or removes [code] from the taxonomy grid — shared by the visible
   /// chip and its semantics tap (#138).
   void _toggleTag(String code) {
+    LLHaptics.selection();
     setState(() {
       if (_tags.contains(code)) {
         _tags.remove(code);
@@ -977,6 +983,7 @@ class _DaySheetState extends State<DaySheet> {
   /// rides the autosave via [_syncPainIntensityObservations], exactly like
   /// the spotting toggle.
   void _setPainIntensity(String code, int? value) {
+    LLHaptics.selection();
     setState(() => _painIntensity[code] = value);
     _markDirty();
   }
