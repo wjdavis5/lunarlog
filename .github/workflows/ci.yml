@@ -239,6 +239,19 @@ jobs:
         # Proves RLS isolation, privileges, constraints, and sync_push (R9).
         run: supabase test db --local
 
+      - name: Verify AGENTS.md pgTAP plan count
+        # Issue #288: prove that AGENTS.md's stated total pgTAP test count
+        # matches the actual sum of select plan(N) across supabase/tests/*.sql.
+        run: |
+          ACTUAL=$(grep -roh "select plan([0-9]*)" supabase/tests/ | grep -o "[0-9]*" | awk '{s+=$1} END {print s}')
+          STATED=$(grep -o "[0-9]* pgTAP tests" AGENTS.md | head -n1 | grep -o "[0-9]*")
+          echo "Actual plan total: $ACTUAL, stated in AGENTS.md: $STATED"
+          if [ "$ACTUAL" != "$STATED" ]; then
+            echo "::error::AGENTS.md states $STATED pgTAP tests, but supabase/tests/*.sql plan() sums to $ACTUAL"
+            exit 1
+          fi
+
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
