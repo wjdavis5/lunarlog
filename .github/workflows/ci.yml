@@ -307,7 +307,7 @@ jobs:
         # same-PR-sized cleanup.
         working-directory: supabase/functions
         run: |
-          deno check **/*.ts
+          deno check ./**/*.ts
           deno test
 
   db-tests:
