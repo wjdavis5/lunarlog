@@ -7,7 +7,9 @@
 		parties receive data off-device, both only for app functionality:
 
 		- Supabase (account sign-in and cross-device sync): the account email
-		  and the encrypted-at-rest cycle entries the operator chooses to sync.
+		  and the cycle entries the operator chooses to sync, protected by
+		  TLS in transit and Supabase's own AES-256 at-rest infrastructure
+		  encryption (not an app-managed cipher — PRIVACY.md Section 6).
 		  Both are linked to the account (Email Address, Health).
 		- Sentry (crash reporting via the sentry_flutter SDK): crash and error
 		  events reduced to an allowlist before upload (no user, device name,
@@ -24,10 +26,12 @@
 		landed the first-party HealthKit adapter and #193/#374 the opt-in,
 		forward-only menstrual-flow writes (the bound profile's user-logged
 		flow and spotting records, written into the OS HealthKit store on
-		this device). HealthKit read/write keeps data on the device: the app
-		itself never transmits HealthKit data off-device and no third party
-		receives it through this feature, so it is NOT a new *collected*
-		data type for App Store Connect purposes and the
+		this device). Write-only by design (issue #515): AppDelegate.swift's
+		`requestAuthorization` call passes an empty `read` set, so this app
+		never reads HealthKit data. That write keeps data on the device: the
+		app itself never transmits HealthKit data off-device and no third
+		party receives it through this feature, so it is NOT a new
+		*collected* data type for App Store Connect purposes and the
 		collected-data-types list below is unchanged by it. The "Health"
 		entry above is the app's own cycle/symptom data synced to Supabase
 		under the operator's separate, optional account sync, unrelated

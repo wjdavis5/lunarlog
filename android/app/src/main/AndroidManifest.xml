@@ -19,13 +19,16 @@
          ever written (issue #254's written rule; see
          docs/ops/play-health-declaration.md for the Play Console Health apps
          declaration these permissions require before any production-track
-         ship). Extend this list (never widen it silently) as later HS issues
-         add data types — adding one re-triggers Play's Health apps
-         declaration review; do NOT add history, background, sexual-activity,
-         or BBT permissions here; those belong to #186/#210/#228. -->
-    <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
+         ship). Write-only by design (issue #515): HealthConnectAdapter.kt's
+         `writePermissions` set never requests `getReadPermission` for either
+         record type, so this app never reads Health Connect — do not add a
+         READ_* permission here without a matching read call site and a
+         PRIVACY.md update describing what is read and why. Extend this list
+         (never widen it silently) as later HS issues add data types —
+         adding one re-triggers Play's Health apps declaration review; do NOT
+         add history, background, sexual-activity, or BBT permissions here;
+         those belong to #186/#210/#228. -->
     <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
-    <uses-permission android:name="android.permission.health.READ_INTERMENSTRUAL_BLEEDING"/>
     <uses-permission android:name="android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING"/>
     <application
         android:label="lunarlog"

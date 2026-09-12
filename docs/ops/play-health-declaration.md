@@ -37,17 +37,22 @@ written into the on-device Health Connect store, and nothing is
 transmitted off-device through this feature. Writes carry user-logged or
 imported data only — never a predicted or derived cycle value (the
 written rule in `lib/data/health/health_channel.dart`'s library doc,
-issue [#254](https://github.com/wjdavis5/lunarlog/issues/254). Extend the
-table below (never widen the manifest silently) as later HS issues
-([#186](https://github.com/wjdavis5/lunarlog/issues/186),
+issue [#254](https://github.com/wjdavis5/lunarlog/issues/254). **Write-only
+by design (issue #515):** `HealthConnectAdapter.kt`'s `writePermissions`
+set never requests `getReadPermission` for either record type, so the
+manifest's earlier `READ_MENSTRUATION`/`READ_INTERMENSTRUAL_BLEEDING`
+declarations were dead permissions with no matching call site — they were
+removed rather than kept "for later," matching the Swift adapter's
+`read: []`. Re-add a `READ_*` permission here only alongside an actual
+read call site and a `PRIVACY.md` update describing what is read and why.
+Extend the table below (never widen the manifest silently) as later HS
+issues ([#186](https://github.com/wjdavis5/lunarlog/issues/186),
 [#210](https://github.com/wjdavis5/lunarlog/issues/210),
 [#228](https://github.com/wjdavis5/lunarlog/issues/228)) add data types.
 
 | Permission | Direction | Justification (draft — confirm against the live form's exact wording) |
 |---|---|---|
-| `android.permission.health.READ_MENSTRUATION` | Read | Lets a user who grants access see their previously-logged period and flow history reflected back from Health Connect, e.g. after reinstalling the app or when another app wrote data first. Read only for the profile explicitly bound as this device's owner (product assumption #3, enforced by issue #153's guard) — a guardian's device never reads another profile's data from its own health store. |
 | `android.permission.health.WRITE_MENSTRUATION` | Write | Lets the user optionally mirror period start/end dates and flow level they log in lunarlog into Health Connect, so other health apps they use can see the same cycle history. Opt-in, one profile at a time, forward-only from grant (matches the Clue-parity baseline scoped in issue #116's epic). |
-| `android.permission.health.READ_INTERMENSTRUAL_BLEEDING` | Read | Same rationale as `READ_MENSTRUATION`, for spotting/bleeding logged between periods rather than during them — a distinct Health Connect record type from menstruation flow. |
 | `android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING` | Write | Same rationale as `WRITE_MENSTRUATION`, for intermenstrual bleeding entries. |
 
 ## Declaration form skeleton
@@ -58,11 +63,11 @@ this as a skeleton to walk through, not a verbatim transcript.
 
 - [ ] **App description of health use:** one or two sentences describing
       that lunarlog is a menstrual cycle tracker that, with explicit
-      opt-in, can read and write period/flow and intermenstrual-bleeding
-      records to Health Connect so the user's data is available to other
-      health apps they choose to use.
+      opt-in, can write period/flow and intermenstrual-bleeding records to
+      Health Connect so the user's data is available to other health apps
+      they choose to use (write-only — issue #515).
 - [ ] **Per-permission justification:** paste the justification column
-      above (or the form's closer equivalent) for each of the four
+      above (or the form's closer equivalent) for each of the two
       permissions.
 - [ ] **Data sharing disclosure:** confirm the form's questions about
       whether health data is shared with third parties are answered "no" —
