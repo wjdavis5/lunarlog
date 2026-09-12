@@ -389,6 +389,11 @@ JsonRow encodeObservation(Observation row) {
     'source': row.source,
     'source_id': row.sourceId,
     'import_id': row.importId,
+    // Issue #186: the round-trip-write marker, synced like any other
+    // observations column; the server's sync_push update path guards it
+    // with `v_row ? 'exported_to_platform_at'`, so always emitting the key
+    // is safe (an old client omitting it never clears a stored value).
+    'exported_to_platform_at': _encodeNullable(row.exportedToPlatformAt),
     'raw': _decodeRawForWire(row.raw),
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
@@ -511,6 +516,10 @@ RemoteObservationRow decodeObservation(JsonRow json) {
     source: r.stringOrNull('source') ?? 'manual',
     sourceId: r.stringOrNull('source_id'),
     importId: r.stringOrNull('import_id'),
+    // Issue #186: absent key (a pre-#186 server) decodes to null rather
+    // than failing the pull — the marker is optional round-trip metadata,
+    // not an identity field.
+    exportedToPlatformAt: r.timestampOrNull('exported_to_platform_at'),
     raw: json['raw'] == null ? null : jsonEncode(json['raw']),
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),

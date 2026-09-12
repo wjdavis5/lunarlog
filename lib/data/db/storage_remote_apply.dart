@@ -633,6 +633,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             // written from `remote` directly regardless of tombstone.
             sourceId: Value(remote.sourceId),
             importId: Value(remote.importId),
+            // Issue #186: the round-trip marker rides with the other
+            // provenance columns (never cleared on a tombstone).
+            exportedToPlatformAt:
+                Value(remote.exportedToPlatformAt?.toUtc()),
             raw: Value(payload.raw),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
@@ -660,6 +664,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       source: Value(remote.source),
       sourceId: Value(remote.sourceId),
       importId: Value(remote.importId),
+      exportedToPlatformAt:
+          Value(remote.exportedToPlatformAt?.toUtc() ?? local.exportedToPlatformAt),
       raw: Value(payload.raw),
       updatedAt: Value(updatedAt),
       deletedAt: Value(deletedAt),

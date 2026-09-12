@@ -187,6 +187,12 @@ void main() {
     String? signedInUserId = 'u1',
     ProfilesRepository? profilesRepository,
   }) async {
+    // Issue #186 added revocation/30-day-limit copy above the profile
+    // picker, so give the lazy ListView a tall viewport to keep every
+    // profile tile and the unbind action inside the build window.
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         home: HealthSyncScreen(

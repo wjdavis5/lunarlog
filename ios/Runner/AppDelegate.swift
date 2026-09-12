@@ -353,20 +353,28 @@ enum HealthKitChannelHandler {
         let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
         let flowWire = args?["flow"] as? String,
         let flow = MenstrualFlowRawValue(wire: flowWire),
-        let cycleStartNumber = args?["cycleStart"] as? NSNumber
+        let cycleStartNumber = args?["cycleStart"] as? NSNumber,
+        let recordId = args?["recordId"] as? String
       else {
-        badArgs(result, "writeMenstrualFlow requires startMs/endMs/flow/cycleStart")
+        badArgs(result, "writeMenstrualFlow requires startMs/endMs/flow/cycleStart/recordId")
         return
       }
       // #193: HKMetadataKeyMenstrualCycleStart is required on every
       // menstrualFlow sample — true on the first day of a cycle, false
       // otherwise (sourced on the Dart side from episodes.dart).
+      // #186: HKMetadataKeyExternalUUID carries lunarlog's own record id
+      // (the day_entry ULID) so a future re-import can recognise this
+      // sample as our own write (the backup loop-breaker) and a tombstone
+      // can locate and delete exactly it.
       let sample = HKCategorySample(
         type: menstrualFlowType,
         value: flow.rawValue,
         start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
         end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
-        metadata: [HKMetadataKeyMenstrualCycleStart: cycleStartNumber]
+        metadata: [
+          HKMetadataKeyMenstrualCycleStart: cycleStartNumber,
+          HKMetadataKeyExternalUUID: recordId,
+        ]
       )
       save([sample], result: result)
 
@@ -386,20 +394,80 @@ enum HealthKitChannelHandler {
       }
       guard
         let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
-        let endMs = (args?["endMs"] as? NSNumber)?.int64Value
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let recordId = args?["recordId"] as? String
       else {
-        badArgs(result, "writeIntermenstrualBleeding requires startMs/endMs")
+        badArgs(result, "writeIntermenstrualBleeding requires startMs/endMs/recordId")
         return
       }
       // No intensity on this type: HKCategoryValueNotApplicable — the
       // sample's existence is the datum (#193/A3-4).
+      // #186: HKMetadataKeyExternalUUID, as for writeMenstrualFlow.
       let sample = HKCategorySample(
         type: intermenstrualBleedingType,
         value: HKCategoryValue.notApplicable.rawValue,
         start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
-        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0)
+        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+        metadata: [HKMetadataKeyExternalUUID: recordId]
       )
       save([sample], result: result)
+
+    case "deleteRecords":
+      // Issue #186 tombstone propagation: delete the samples whose
+      // HKMetadataKeyExternalUUID is one of the supplied lunarlog record
+      // ids. HealthKit can only delete samples the app itself saved, so we
+      // first query the two types this app writes by their external-UUID
+      // metadata, then delete exactly those — a record we never wrote (or a
+      // per-type mismatch) is simply absent from the query result. Behind
+      // the same guard as every write (a deletion is a health-API touch).
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "deleteRecords requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard let recordIds = args?["recordIds"] as? [String], !recordIds.isEmpty else {
+        badArgs(result, "deleteRecords requires recordIds")
+        return
+      }
+      Task {
+        do {
+          let predicate = HKQuery.predicateForObjects(
+            withMetadataKey: HKMetadataKeyExternalUUID,
+            allowedValues: recordIds)
+          // Query both types this app writes by their external-UUID
+          // metadata, then delete exactly those samples. HealthKit's
+          // delete(_:) can only remove samples the app itself saved, so a
+          // record we never wrote is simply absent from the query result.
+          let samples = try await store.samples(
+            ofType: menstrualFlowType,
+            predicate: predicate,
+            limit: HKObjectQueryNoLimit)
+          let intermenstrual = try await store.samples(
+            ofType: intermenstrualBleedingType,
+            predicate: predicate,
+            limit: HKObjectQueryNoLimit)
+          var toDelete = samples
+          toDelete.append(contentsOf: intermenstrual)
+          if !toDelete.isEmpty {
+            try await store.delete(toDelete)
+          }
+          result("allowed")
+        } catch {
+          result(
+            FlutterError(
+              code: "writeFailed",
+              message: "deleteRecords failed: \(error.localizedDescription)",
+              details: nil))
+        }
+      }
 
     default:
       result(FlutterMethodNotImplemented)

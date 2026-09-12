@@ -13,8 +13,9 @@
 /// | `bind` | guard args | result string |
 /// | `unbind` | none | `null` |
 /// | `requestWriteAuthorization` | guard args | result string |
-/// | `writeMenstrualFlow` | guard + day + `flow` + `cycleStart` | result string |
-/// | `writeIntermenstrualBleeding` | guard + day | result string |
+/// | `writeMenstrualFlow` | guard + day + `flow` + `cycleStart` + `recordId` + `recordVersionMs` | result string |
+/// | `writeIntermenstrualBleeding` | guard + day + `recordId` + `recordVersionMs` | result string |
+/// | `deleteRecords` | guard + `recordIds` | result string |
 ///
 /// *Guard args* (every guarded method): `profileId`, `signedInUserId?`,
 /// `ownerUserId?`, `isMinor`, `birthYear?`, `transferredAtMs?`,
@@ -38,6 +39,16 @@
 /// cross as `FlutterError(code: "writeFailed", ...)` (a
 /// [PlatformException] on the Dart side) instead, carrying the
 /// diagnostic message.
+///
+/// **Deferred permissions (issue #186, AC9):** `READ_HEALTH_DATA_HISTORY`
+/// (full-history import) and `READ_HEALTH_DATA_IN_BACKGROUND` (background
+/// reads) are deliberately NOT declared for v1. Reads are limited to the
+/// last 30 days (Health Connect's change-token window) with a
+/// user-initiated sync plus a foreground-resume sync — the same
+/// background-delivery deferral rationale as #156 (HS-2) — so the Play
+/// form needs no extra permission justification. Both the Settings copy
+/// and this comment record that decision; the Settings screen states the
+/// 30-day limit explicitly rather than silently truncating.
 library;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
@@ -53,6 +64,7 @@ abstract final class HealthChannelMethods {
   static const requestWriteAuthorization = 'requestWriteAuthorization';
   static const writeMenstrualFlow = 'writeMenstrualFlow';
   static const writeIntermenstrualBleeding = 'writeIntermenstrualBleeding';
+  static const deleteRecords = 'deleteRecords';
 }
 
 /// The [HealthSyncCheck] name as it appears on the wire — the enum's own

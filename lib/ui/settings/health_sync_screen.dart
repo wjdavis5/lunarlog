@@ -293,6 +293,33 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
               'intermenstrual bleeding.',
             ),
           ),
+          // Issue #186 (AC7): what happens on revocation/unmapping. Stopping
+          // sync or revoking this phone's Health app permission never deletes
+          // what was already written — the samples stay in the Health app,
+          // which may consider them theirs.
+          const Padding(
+            key: ValueKey('health-sync-revocation-copy'),
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Turning sync off, or later revoking this phone\'s Health app '
+              'permission, leaves everything already written in the Health '
+              'app in place. To remove it, delete it in the Health app '
+              'itself.',
+            ),
+          ),
+          // Issue #186 (AC9): the v1 scope decision, stated plainly.
+          // History import reads only the last 30 days (Health Connect's
+          // token window); full-history import (READ_HEALTH_DATA_HISTORY)
+          // and background sync (READ_HEALTH_DATA_IN_BACKGROUND) are
+          // deliberately deferred for v1.
+          const Padding(
+            key: ValueKey('health-sync-30-day-limit-copy'),
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Health Connect reads sync the last 30 days only. Full history '
+              'import and background sync are not available yet.',
+            ),
+          ),
           for (final profile in _profiles) _profileTile(profile),
           if (_boundProfileId != null)
             ListTile(

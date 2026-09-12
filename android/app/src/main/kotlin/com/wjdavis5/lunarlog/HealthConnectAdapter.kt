@@ -207,24 +207,35 @@ class HealthConnectAdapter(context: Context) {
                     "heavy" -> MenstruationFlowRecord.FLOW_HEAVY
                     else -> null
                 }
-                if (instantMs == null || zoneOffsetMs == null || flow == null) {
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (instantMs == null || zoneOffsetMs == null || flow == null ||
+                    recordId == null || recordVersionMs == null) {
                     return result.error(
                         "bad_args",
-                        "writeMenstrualFlow requires instantMs/zoneOffsetMs/flow",
+                        "writeMenstrualFlow requires instantMs/zoneOffsetMs/flow/recordId/recordVersionMs",
                         null)
                 }
                 // Health Connect's menstruation record is instantaneous:
                 // `time` at local midnight plus the entry's own
-                // zoneOffset (from the #180 contract — never the device's
+                // zoneOffset (from the #180 contract -- never the device's
                 // current zone).
+                // #186 sync mechanics: the lunarlog record id becomes
+                // clientRecordId and the row's updatedAt-ms becomes
+                // clientRecordVersion -- a higher version replaces on
+                // re-write (idempotent writes) and a tombstone can delete
+                // by clientRecordId.
                 val record = MenstruationFlowRecord(
                     time = Instant.ofEpochMilli(instantMs),
                     zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
                     flow = flow,
-                    // User-logged cycle data: the 1.1.0 public factory for
-                    // a manual-entry record (the raw constructor is
-                    // internal).
-                    metadata = HcMetadata.manualEntry(),
+                    // User-logged cycle data (issue #254: never a derived
+                    // value). Health Connect stamps dataOrigin itself from
+                    // the calling package.
+                    metadata = HcMetadata(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
                 )
                 insert(client, listOf(record), result)
             }
@@ -245,20 +256,68 @@ class HealthConnectAdapter(context: Context) {
                 }
                 val instantMs = GuardArgs.number(args, "instantMs")
                 val zoneOffsetMs = GuardArgs.number(args, "zoneOffsetMs")
-                if (instantMs == null || zoneOffsetMs == null) {
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (instantMs == null || zoneOffsetMs == null ||
+                    recordId == null || recordVersionMs == null) {
                     return result.error(
                         "bad_args",
-                        "writeIntermenstrualBleeding requires instantMs/zoneOffsetMs",
+                        "writeIntermenstrualBleeding requires instantMs/zoneOffsetMs/recordId/recordVersionMs",
                         null)
                 }
-                // No value field at all — the record's existence is the
+                // No value field at all -- the record's existence is the
                 // datum (#193/A3-4, #202/A3-23).
+                // #186 sync mechanics: clientRecordId/version, as for
+                // writeMenstrualFlow.
                 val record = IntermenstrualBleedingRecord(
                     time = Instant.ofEpochMilli(instantMs),
                     zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
-                    metadata = HcMetadata.manualEntry(),
+                    metadata = HcMetadata(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
                 )
                 insert(client, listOf(record), result)
+            }
+
+            "deleteRecords" -> {
+                // Issue #186 tombstone propagation: delete the records whose
+                // clientRecordId is one of the supplied lunarlog record ids.
+                // Behind the same guard as every write.
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "deleteRecords requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val recordIds = args?.get("recordIds") as? List<*>
+                    ?: return result.error(
+                        "bad_args", "deleteRecords requires recordIds", null)
+                val ids = recordIds.mapNotNull { it as? String }
+                if (ids.isEmpty()) {
+                    result.success("allowed")
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        client.deleteRecords(
+                            MenstruationFlowRecord::class, clientRecordIds = ids)
+                        client.deleteRecords(
+                            IntermenstrualBleedingRecord::class, clientRecordIds = ids)
+                        result.success("allowed")
+                    } catch (e: SecurityException) {
+                        result.success("permissionDenied")
+                    } catch (e: Exception) {
+                        result.error("writeFailed", e.message, null)
+                    }
+                }
             }
 
             else -> result.notImplemented()

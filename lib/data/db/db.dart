@@ -81,6 +81,7 @@ const String kVisitPrepItemsProfileIndexSql =
   VisitPrepItems,
   AppSettings,
   SyncState,
+  HealthSyncState,
 ])
 class LunarLogDatabase extends _$LunarLogDatabase {
   LunarLogDatabase(super.executor);
@@ -125,8 +126,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 13 — `transferred_to_user_id` on `profiles` (Issue #296, the
   ///   "transferred to whom" ownership signal the health-sync minor gate
   ///   requires).
+  /// * 14 — `health_sync_state` table (Issue #186, per-device/per-platform
+  ///   health-store sync anchors — never synced to the server) and
+  ///   `exported_to_platform_at` on `observations` (Issue #186, the
+  ///   round-trip-write marker).
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -168,7 +173,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// Issue #128 adds `care_notes`, `visit_prep_items`,
   /// `sync_state.cursor_care_notes`, `sync_state.cursor_visit_prep_items`,
   /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
-  /// Issue #220 adds `day_entries.pms`.
+  /// Issue #220 adds `day_entries.pms`. Issue #186 adds `health_sync_state`,
+  /// `observations.exported_to_platform_at`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -300,6 +306,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV12(m, from);
     // Issue #296's v13 step, same shape again.
     await _upgradeToV13(m, from);
+    // Issue #186's v14 step, same shape again.
+    await _upgradeToV14(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -424,6 +432,27 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
+  /// The v14 upgrade step (Issue #186, sync mechanics): the device-local
+  /// `health_sync_state` anchor table and `observations.exported_to_platform_at`
+  /// (the round-trip-write marker). `observations` has existed since v6, so
+  /// the addColumn is safe regardless of `from` (the `from < 6` block's
+  /// `createTable` builds it from the *current* `Observations` class, which
+  /// already declares the column, so a device upgrading straight from
+  /// before v6 gets it for free — matching the `import_id` gotcha the
+  /// `from < 7` block documents). `health_sync_state` is a fresh table,
+  /// created exactly once.
+  Future<void> _upgradeToV14(Migrator m, int from) async {
+    if (from >= 14) return;
+    await transaction(() async {
+      await m.createTable(healthSyncState);
+      await migrationStepHook?.call('health_sync_state');
+      if (from >= 6) {
+        await m.addColumn(observations, observations.exportedToPlatformAt);
+        await migrationStepHook?.call('observations.exported_to_platform_at');
+      }
+    });
+  }
+
   /// Hard-deletes every row in every table, the `sync_state` row included —
   /// the web build's wipe-local-data action and the web half of device
   /// reset (KTD16). This is a wipe, not a sync-domain soft delete:
@@ -446,6 +475,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await delete(profiles).go();
       await delete(appSettings).go();
       await delete(syncState).go();
+      await delete(healthSyncState).go();
     });
   }
 }

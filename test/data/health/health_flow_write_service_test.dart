@@ -140,6 +140,13 @@ class _FakePlatform implements HealthPlatformStore {
     markerWrites.add(write);
     return _nextWriteResult();
   }
+
+  @override
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
+  ) async =>
+      const HealthPlatformAllowed();
 }
 
 class _FakeProfiles implements ProfilesRepository {

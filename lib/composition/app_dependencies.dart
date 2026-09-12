@@ -26,6 +26,8 @@ import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/data/health/health_sync_deletion_service.dart';
+import 'package:lunarlog/data/health/health_sync_tombstone_coordinator.dart';
 import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/data/import/import_file_picker.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
@@ -41,6 +43,7 @@ import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
+import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -79,6 +82,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/health/health_sync_state_repository.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
@@ -105,6 +109,7 @@ class AppDependencies {
     required this.activityFeed,
     required this.onboardingCycleAnswers,
     required this.deviceDiagnostics,
+    required this.healthSyncAnchors,
     required this.accountExportWriter,
     required this.fhirBundleWriter,
     required this.csvExportWriter,
@@ -137,6 +142,11 @@ class AppDependencies {
   final ActivityFeedRepository activityFeed;
   final OnboardingCycleAnswersRecorder onboardingCycleAnswers;
   final DeviceDiagnosticsCollector deviceDiagnostics;
+
+  /// Device-local health-store sync anchors (Issue #186) — never synced to
+  /// the server; the drift `health_sync_state` table's domain contract.
+  final HealthSyncStateRepository healthSyncAnchors;
+
   final AccountExportWriter accountExportWriter;
   final FhirBundleWriter fhirBundleWriter;
   final CsvExportWriter csvExportWriter;
@@ -223,6 +233,7 @@ AppDependencies buildAppDependencies({
     activityFeed: DriftActivityFeedRepository(storage),
     onboardingCycleAnswers: DriftOnboardingCycleAnswersRecorder(storage),
     deviceDiagnostics: PlatformDeviceDiagnosticsCollector(),
+    healthSyncAnchors: DriftHealthSyncStateRepository(storage),
     accountExportWriter: PlatformAccountExportWriter(
       remoteSource: builtAccountExportRemoteSource,
     ),
@@ -433,6 +444,42 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
     binding: binding,
     dayEntries: dayEntries,
     service: service,
+  );
+}
+
+/// Constructs the health-store tombstone-propagation coordinator (Issue
+/// #186, AC6), or null when the feature is gated off (same gate as the write
+/// coordinator: `AppConfig.hasHealthSync`, native-only; widget-test harnesses
+/// and web never construct it). A tombstoned bound-profile entry hands its
+/// ULID (the recorded health-store external id) to the platform's
+/// `deleteRecords`.
+HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required DayEntriesRepository dayEntries,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+      guardiansForProfile,
+  required String? Function() signedInUserId,
+}) {
+  if (!AppConfig.hasHealthSync) return null;
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+  final binding = HealthSyncBinding(settings);
+  final platform = createHealthPlatform(
+    defaultTargetPlatform,
+    binding: binding,
+    minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+  );
+  final deletionService = LocalHealthSyncDeletionService(
+    platform: platform,
+    binding: binding,
+    profiles: profiles,
+    guardiansForProfile: guardiansForProfile,
+    signedInUserId: signedInUserId,
+  );
+  return HealthSyncTombstoneCoordinator(
+    binding: binding,
+    dayEntries: dayEntries,
+    deletionService: deletionService,
   );
 }
 

@@ -221,6 +221,8 @@ class HealthMenstrualFlowWrite {
     required this.tzName,
     required this.flow,
     required this.cycleStart,
+    required this.recordId,
+    required this.recordVersionMs,
   });
 
   final HealthGuardFacts facts;
@@ -228,6 +230,18 @@ class HealthMenstrualFlowWrite {
   final String tzName;
   final HealthFlowValue flow;
   final bool cycleStart;
+
+  /// The lunarlog record id this sample came from (Issue #186 sync
+  /// mechanics): the `day_entry_id` ULID. Becomes Health Connect's
+  /// `clientRecordId` and HealthKit's `HKMetadataKeyExternalUUID`, so the
+  /// write is idempotent (re-writes replace rather than duplicate) and a
+  /// tombstone can delete the exact sample.
+  final String recordId;
+
+  /// `updatedAt.millisecondsSinceEpoch` of the source row — Health
+  /// Connect's `clientRecordVersion` (a higher version replaces on
+  /// re-write).
+  final int recordVersionMs;
 }
 
 /// A `writeIntermenstrualBleeding` payload: one logged day of bleeding
@@ -242,11 +256,20 @@ class HealthIntermenstrualBleedingWrite {
     required this.facts,
     required this.date,
     required this.tzName,
+    required this.recordId,
+    required this.recordVersionMs,
   });
 
   final HealthGuardFacts facts;
   final LocalDate date;
   final String tzName;
+
+  /// As [HealthMenstrualFlowWrite.recordId] — the source observation's
+  /// ULID (for spotting markers this is the observation row id).
+  final String recordId;
+
+  /// As [HealthMenstrualFlowWrite.recordVersionMs].
+  final int recordVersionMs;
 }
 
 /// The platform-neutral health-store port (see the library doc for the
@@ -302,5 +325,22 @@ abstract interface class HealthPlatformStore {
   /// profile.
   Future<HealthPlatformResult> writeIntermenstrualBleeding(
     HealthIntermenstrualBleedingWrite write,
+  );
+
+  /// Deletes the health-store samples whose recorded external id (Health
+  /// Connect `clientRecordId` / HealthKit `HKMetadataKeyExternalUUID`)
+  /// matches one of [recordIds] — the tombstone-propagation half of issue
+  /// #186's sync mechanics: when a lunarlog entry is tombstoned, the
+  /// corresponding health-store sample is removed rather than orphaned.
+  ///
+  /// Only samples this app itself saved can be deleted (HealthKit's
+  /// `delete(_:withCompletion:)` constraint); a record that never made it to
+  /// the store, or that the platform refuses to delete, reports
+  /// [HealthPlatformResult.allowed] or [HealthPlatformResult.failed] like
+  /// any other write — never throws. Behind the same guard as every write
+  /// (a deletion is a health-API touch, so it is gated identically).
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
   );
 }

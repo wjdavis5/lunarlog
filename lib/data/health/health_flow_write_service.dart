@@ -83,6 +83,7 @@ class _PendingWrite {
     required this.tzName,
     required this.plan,
     required this.cycleStart,
+    required this.recordId,
     required this.updatedAt,
   });
 
@@ -95,7 +96,15 @@ class _PendingWrite {
   /// must carry (true on the cycle's first day, false otherwise). Always
   /// false for intermenstrual markers (that type carries no metadata).
   final bool cycleStart;
+
+  /// The source row's ULID (day-entry id for flow, observation id for
+  /// spotting) — Issue #186 sync mechanics: becomes Health Connect's
+  /// `clientRecordId` / HealthKit's `HKMetadataKeyExternalUUID` so the
+  /// write is idempotent and a tombstone can delete the exact sample.
+  final String recordId;
   final DateTime updatedAt;
+
+  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
 
 /// Accumulates one pass's write plan: days mapped to no sample are
@@ -104,7 +113,7 @@ class _Batch {
   final List<_PendingWrite> pending = [];
   int withoutSample = 0;
 
-  void add(LocalDate date, String tzName, DateTime updatedAt,
+  void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
       HealthFlowWritePlan plan, Episode? containing) {
     switch (plan) {
       case HealthFlowNoWrite():
@@ -118,6 +127,7 @@ class _Batch {
           // day of the containing episode (per episodes.dart), false on
           // every other written sample.
           cycleStart: containing != null && containing.start == date,
+          recordId: recordId,
           updatedAt: updatedAt,
         ));
       case HealthFlowIntermenstrualMarker():
@@ -126,6 +136,7 @@ class _Batch {
           tzName: tzName,
           plan: plan,
           cycleStart: false,
+          recordId: recordId,
           updatedAt: updatedAt,
         ));
     }
@@ -299,6 +310,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         entry.localDate,
         entry.tz,
         entry.updatedAt,
+        entry.id,
         mapFlowToHealthWrite(
           entry.flow,
           inPeriodEpisode: containing != null,
@@ -321,6 +333,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         row.localDate,
         row.tz,
         row.updatedAt,
+        row.id,
         mapSpottingToHealthWrite(inPeriodEpisode: containing != null),
         containing,
       );
@@ -359,6 +372,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
               tzName: write.tzName,
               flow: value,
               cycleStart: write.cycleStart,
+              recordId: write.recordId,
+              recordVersionMs: write.recordVersionMs,
             ),
           );
         case HealthFlowIntermenstrualMarker():
@@ -367,6 +382,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
               facts: facts,
               date: write.date,
               tzName: write.tzName,
+              recordId: write.recordId,
+              recordVersionMs: write.recordVersionMs,
             ),
           );
         case HealthFlowNoWrite():

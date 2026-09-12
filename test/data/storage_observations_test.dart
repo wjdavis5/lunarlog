@@ -68,6 +68,7 @@ void main() {
     int? intensity = 3,
     required DateTime updatedAt,
     DateTime? deletedAt,
+    DateTime? exportedToPlatformAt,
   }) => RemoteObservationRow(
     id: id,
     dayEntryId: dayEntryId,
@@ -79,6 +80,7 @@ void main() {
     intensity: intensity,
     updatedAt: updatedAt,
     deletedAt: deletedAt,
+    exportedToPlatformAt: exportedToPlatformAt,
   );
 
   group('upsertObservation', () {
@@ -601,6 +603,35 @@ void main() {
       expect(row!.dirty, isFalse);
       expect(row.category, 'pain');
       expect(row.code, 'migraine');
+    });
+
+    test('round-trips exported_to_platform_at (Issue #186 marker)', () async {
+      final dayEntryId = await entryId();
+      final exported = DateTime.utc(2026, 9, 2, 8);
+      await storage.applyRemoteObservation(
+        remoteObservation(
+          'r1',
+          dayEntryId: dayEntryId,
+          updatedAt: t0,
+          exportedToPlatformAt: exported,
+        ),
+      );
+      expect((await observationById('r1'))!.exportedToPlatformAt, exported);
+
+      // A remote update without the key preserves the stored marker.
+      await storage.applyRemoteObservation(
+        remoteObservation(
+          'r1',
+          dayEntryId: dayEntryId,
+          code: 'edited',
+          updatedAt: t0.add(const Duration(hours: 2)),
+        ),
+      );
+      expect(
+        (await observationById('r1'))!.exportedToPlatformAt,
+        exported,
+        reason: 'an old client''s payload omitting the key never clears it',
+      );
     });
 
     test('per-id LWW: an older remote row is declined, keeping the local '

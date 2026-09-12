@@ -342,6 +342,17 @@ class Observations extends Table {
   /// unconstrained server-side until #167 adds that table).
   TextColumn get importId => text().named('import_id').nullable()();
 
+  /// Issue #186 (sync mechanics): the UTC instant this row's content was
+  /// last written to a health platform (HealthKit/Health Connect), so a
+  /// round-trip write is detectable when the same row comes back through a
+  /// future import (#217/#228). Client-stamped at export time and synced
+  /// like any other observations column (the migration applies the
+  /// established `v_row ? 'key'` containment guard so an old client's
+  /// payload never clears an already-stored value). Null until the export
+  /// flow writes it — inert until #217/#228 own that flow.
+  DateTimeColumn get exportedToPlatformAt =>
+      dateTime().named('exported_to_platform_at').nullable()();
+
   /// Escape hatch for an unrecognised type/value shape (A1-45); the entire
   /// original datapoint as JSON text.
   TextColumn get raw => text().nullable()();
@@ -642,4 +653,35 @@ class SyncState extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// Per-device, per-platform sync anchors for health-store reads (Issue
+/// #186, sync mechanics): one row per OS health platform (`healthkit` /
+/// `health_connect`), recording the change anchor and the last sync
+/// instant. **Deliberately never synced to the server** — anchors are
+/// device-specific and the platform stores are local (never server state),
+/// exactly the rationale `sync_state`'s cursor columns already document for
+/// lunarlog's own sync. Also deliberately not bound to a profile: like
+/// `sync_state`, the whole local database belongs to at most one account,
+/// and the platform anchor advances regardless of which bound profile (at
+/// most one at a time) is being synced.
+@DataClassName('HealthSyncStateRow')
+class HealthSyncState extends Table {
+  /// The OS health platform this anchor belongs to: `healthkit` |
+  /// `health_connect`.
+  TextColumn get platform => text()();
+
+  /// The platform's opaque change anchor: Health Connect's
+  /// `getChangesToken` token, or HealthKit's anchor UUID / last-read
+  /// instant as a string. Null before the first successful read; clearing
+  /// it signals "no anchor — do a full time-range read" (the
+  /// `ChangesTokenExpiredException` fallback of issue #186).
+  TextColumn get anchor => text().nullable()();
+
+  /// The UTC instant this anchor was last persisted at.
+  DateTimeColumn get lastSyncedAt =>
+      dateTime().named('last_synced_at').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {platform};
 }
