@@ -700,6 +700,30 @@ SentryEvent? scrubEvent(SentryEvent event) {
 String? _scrubBreadcrumbMessage(String? message) =>
     message != null && mentionsDenyListedKey(message) ? '[scrubbed]' : message;
 
+/// The drop decision for [scrubBreadcrumb], split out so that function
+/// stays under the CRAP gate's complexity budget. True when the
+/// breadcrumb's `data` carries a deny-listed *key* at any depth, or — issue
+/// #520, since [containsDenyListedKey] inspects only keys — when a
+/// non-navigation breadcrumb's data carries deny-listed content under an
+/// innocuous key. Navigation data is exempt from the value scan:
+/// [scrubNavigationData] rebuilds it entirely under a route-name allowlist,
+/// so there is no free-text value left for this to find.
+bool _breadcrumbDataMustDrop(String? category, Map<String, dynamic>? data) {
+  if (containsDenyListedKey(data)) return true;
+  return category != 'navigation' && _dataValuesMentionDenyListedKey(data);
+}
+
+/// Rebuilds an `http` breadcrumb's `data` with the URL cut at `?` and the
+/// query/fragment entries dropped, leaving every other entry as-is.
+Map<String, dynamic> _scrubHttpBreadcrumbData(Map<String, dynamic> data) =>
+    <String, dynamic>{
+      for (final entry in data.entries)
+        if (entry.key == 'url' && entry.value is String)
+          entry.key: stripQueryString(entry.value as String)
+        else if (entry.key != 'http.query' && entry.key != 'http.fragment')
+          entry.key: entry.value,
+    };
+
 /// Applies the KTD12 breadcrumb rules. Returns null (drop) when the
 /// breadcrumb's `data` carries a deny-listed key at any depth; otherwise a
 /// new breadcrumb with navigation `data` rebuilt under an allowlist (U1;
@@ -712,32 +736,17 @@ String? _scrubBreadcrumbMessage(String? message) =>
 Breadcrumb? scrubBreadcrumb(Breadcrumb? breadcrumb) {
   if (breadcrumb == null) return null;
   final data = breadcrumb.data;
-  if (containsDenyListedKey(data)) return null;
-
   final category = breadcrumb.category;
-  final isHttp = category == 'http' || breadcrumb.type == 'http';
-  // Issue #520: containsDenyListedKey above inspects only *keys* — a
-  // non-navigation breadcrumb's data can carry deny-listed content under an
-  // innocuous key. Navigation data is exempt: scrubNavigationData below
-  // rebuilds it entirely under a route-name allowlist, so there is no
-  // free-text value left for this to find.
-  if (category != 'navigation' && _dataValuesMentionDenyListedKey(data)) {
-    return null;
-  }
+  if (_breadcrumbDataMustDrop(category, data)) return null;
 
   final Map<String, dynamic>? scrubbedData;
   if (category == 'navigation') {
     // Route names survive under an allowlist (KTD1/KTD2); arguments never
     // do, whatever shape they take — see scrubNavigationData.
     scrubbedData = scrubNavigationData(data);
-  } else if (isHttp && data != null) {
-    scrubbedData = <String, dynamic>{
-      for (final entry in data.entries)
-        if (entry.key == 'url' && entry.value is String)
-          entry.key: stripQueryString(entry.value as String)
-        else if (entry.key != 'http.query' && entry.key != 'http.fragment')
-          entry.key: entry.value,
-    };
+  } else if ((category == 'http' || breadcrumb.type == 'http') &&
+      data != null) {
+    scrubbedData = _scrubHttpBreadcrumbData(data);
   } else {
     scrubbedData = data;
   }
