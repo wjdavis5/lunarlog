@@ -297,7 +297,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(key('auth-apple'), findsOneWidget);
 
-      h.auth.appleResult = const AppleSignInCancelled();
+      h.auth.appleResult = const NativeSignInCancelled();
       await tester.tap(key('auth-apple'));
       await tester.pumpAndSettle();
       expect(h.auth.appleCalls, 1);
@@ -375,7 +375,7 @@ void main() {
         'spinner, and an editable form (AE2); providerUnavailable shows the '
         'email alternative under auth-error', (tester) async {
       final s = await pumpStandalone(tester, showGoogle: true);
-      s.auth.googleResult = const GoogleSignInCancelled();
+      s.auth.googleResult = const NativeSignInCancelled();
       await tester.tap(key('auth-google'));
       await tester.pumpAndSettle();
       expect(s.auth.googleCalls, 1);
@@ -503,7 +503,7 @@ void main() {
         onSignedIn: () => completions++,
       );
       s.auth.passkeySignInResult =
-          const PasskeySignInSession(AuthUser(id: 'user-passkey'));
+          const NativeSignInSession(AuthUser(id: 'user-passkey'));
 
       await tester.tap(key('auth-passkey'));
       await tester.pumpAndSettle();
@@ -1302,7 +1302,7 @@ void main() {
         providers: ['email'],
         showAddPasskey: true,
       );
-      s.auth.passkeyRegistrationResult = const PasskeyRegistrationSuccess(
+      s.auth.passkeyRegistrationResult = const NativeSignInSession(
         AuthUser(id: 'u1', email: 'a@b.c', providers: ['email']),
       );
 

@@ -361,7 +361,7 @@ class _AccountSectionState extends State<AccountSection> {
       ];
 
   /// Adapts [AuthController.registerPasskey]'s
-  /// [PasskeyRegistrationResult] to the `Future<AuthUser>` shape
+  /// [NativeSignInResult] to the `Future<AuthUser>` shape
   /// [_addMethod]/[_reauthenticateAndLink] share with [linkGoogle] and
   /// [linkApple] (#30 U4; KTD5). A dismissed ceremony has no fresh user to
   /// report — the controller adopted nothing — so the current user is
@@ -370,8 +370,8 @@ class _AccountSectionState extends State<AccountSection> {
   Future<AuthUser> _registerPasskey(AuthController auth) async {
     final result = await auth.registerPasskey();
     return switch (result) {
-      PasskeyRegistrationSuccess(:final user) => user,
-      PasskeyRegistrationCancelled() => auth.currentUser!,
+      NativeSignInSession(:final user) => user,
+      NativeSignInCancelled() => auth.currentUser!,
     };
   }
 

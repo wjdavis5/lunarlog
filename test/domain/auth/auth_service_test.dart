@@ -41,29 +41,29 @@ void main() {
   });
 
   group('Passkey cancellation results (#30 U2)', () {
-    test('PasskeySignInCancelled is value-equal to a fresh instance', () {
-      expect(const PasskeySignInCancelled(), const PasskeySignInCancelled());
-      expect(const PasskeySignInCancelled().hashCode,
-          const PasskeySignInCancelled().hashCode);
+    test('NativeSignInCancelled is value-equal to a fresh instance', () {
+      expect(const NativeSignInCancelled(), const NativeSignInCancelled());
+      expect(const NativeSignInCancelled().hashCode,
+          const NativeSignInCancelled().hashCode);
     });
 
-    test('PasskeySignInCancelled.toString carries no provider detail', () {
+    test('NativeSignInCancelled.toString carries no provider detail', () {
       expect(
-          const PasskeySignInCancelled().toString(), 'PasskeySignInCancelled');
+          const NativeSignInCancelled().toString(), 'NativeSignInCancelled');
     });
 
-    test('PasskeyRegistrationCancelled is value-equal to a fresh instance',
+    test('NativeSignInCancelled is value-equal to a fresh instance',
         () {
-      expect(const PasskeyRegistrationCancelled(),
-          const PasskeyRegistrationCancelled());
-      expect(const PasskeyRegistrationCancelled().hashCode,
-          const PasskeyRegistrationCancelled().hashCode);
+      expect(const NativeSignInCancelled(),
+          const NativeSignInCancelled());
+      expect(const NativeSignInCancelled().hashCode,
+          const NativeSignInCancelled().hashCode);
     });
 
-    test('PasskeyRegistrationCancelled.toString carries no provider detail',
+    test('NativeSignInCancelled.toString carries no provider detail',
         () {
-      expect(const PasskeyRegistrationCancelled().toString(),
-          'PasskeyRegistrationCancelled');
+      expect(const NativeSignInCancelled().toString(),
+          'NativeSignInCancelled');
     });
   });
 
@@ -111,12 +111,12 @@ void main() {
     test('signInWithPasskey returns the configured session', () async {
       final auth = FakeAuthService()
         ..passkeySignInResult =
-            const PasskeySignInSession(AuthUser(id: 'user-passkey'));
+            const NativeSignInSession(AuthUser(id: 'user-passkey'));
       addTearDown(auth.dispose);
 
       final result = await auth.signInWithPasskey();
 
-      expect(result, isA<PasskeySignInSession>());
+      expect(result, isA<NativeSignInSession>());
       expect(auth.state, AuthSessionState.signedIn);
       expect(auth.passkeySignInCalls, 1);
     });
@@ -128,7 +128,7 @@ void main() {
 
       final result = await auth.signInWithPasskey();
 
-      expect(result, const PasskeySignInCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(auth.state, AuthSessionState.signedOut);
     });
 
@@ -146,13 +146,13 @@ void main() {
         () async {
       final auth =
           FakeAuthService(initialState: AuthSessionState.signedIn)
-            ..passkeyRegistrationResult = const PasskeyRegistrationSuccess(
+            ..passkeyRegistrationResult = const NativeSignInSession(
                 AuthUser(id: 'user-passkey'));
       addTearDown(auth.dispose);
 
       final result = await auth.registerPasskey();
 
-      expect(result, isA<PasskeyRegistrationSuccess>());
+      expect(result, isA<NativeSignInSession>());
       expect(auth.registerPasskeyCalls, 1);
     });
 
