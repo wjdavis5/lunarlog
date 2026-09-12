@@ -36,7 +36,7 @@
 /// other derived cycle value — because a prediction presented to the
 /// OS as a recorded observation is exactly the "false or inaccurate
 /// data" 5.1.3 forbids. The write surface is deliberately tiny (the
-/// two write methods below, mirrored by the Swift and Kotlin handlers)
+/// write methods below, mirrored by the Swift and Kotlin handlers)
 /// so the rule stays checkable by inspection; any future feature that
 /// wants to write a predicted or derived value must route through one
 /// of them and therefore fails this rule — per issue #254's stated
@@ -225,6 +225,23 @@ class MethodChannelHealthPlatform implements HealthPlatformStore {
       );
 
   @override
+  Future<HealthPlatformResult> writeMenstrualPeriod(
+    HealthMenstrualPeriodWrite write,
+  ) =>
+      _invokeGuarded(
+        HealthChannelMethods.writeMenstrualPeriod,
+        write.facts,
+        payloadArgs: () => {
+          // #202: the interval record spans the episode's first and last
+          // day, so its envelope is the two-instant/offset period args
+          // (computed here after the guard, from the entry's own tz).
+          ...encodePeriodDayArgs(write.start, write.end, write.tzName),
+          'recordId': write.recordId,
+          'recordVersionMs': write.recordVersionMs,
+        },
+      );
+
+  @override
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,
     List<String> recordIds,
@@ -270,6 +287,12 @@ class UnsupportedHealthPlatform implements HealthPlatformStore {
   @override
   Future<HealthPlatformResult> writeIntermenstrualBleeding(
     HealthIntermenstrualBleedingWrite write,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> writeMenstrualPeriod(
+    HealthMenstrualPeriodWrite write,
   ) async =>
       const HealthPlatformResult.unavailable();
 

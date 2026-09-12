@@ -57,6 +57,7 @@ import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -107,10 +108,58 @@ class _PendingWrite {
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
 
+/// An eligible bleed day's zone + timestamp, used to derive a period
+/// episode's interval write (Issue #202): the newest eligible member day's
+/// `updatedAt` becomes the record's clientRecordVersion, and its `tz` the
+/// episode's zone (#180 — the entry's own zone, never the device's).
+class _EligibleBleed {
+  const _EligibleBleed(this.tzName, this.updatedAt);
+
+  final String tzName;
+  final DateTime updatedAt;
+}
+
+/// One period episode's resolved interval write (Issue #202's
+/// `MenstruationPeriodRecord`), before it is sent to the port.
+class _PendingPeriodWrite {
+  const _PendingPeriodWrite({
+    required this.start,
+    required this.end,
+    required this.tzName,
+    required this.recordId,
+    required this.updatedAt,
+  });
+
+  /// The episode's inclusive first bleed day.
+  final LocalDate start;
+
+  /// The episode's inclusive last bleed day; the record's `endTime` is the
+  /// exclusive local midnight after this date.
+  final LocalDate end;
+
+  /// The episode's IANA zone (from its eligible member entries — #180).
+  final String tzName;
+
+  /// The episode's stable clientRecordId: derived from the episode start
+  /// (Issue #186/HS-11) so the SAME in-progress episode keeps the SAME id
+  /// as it extends — Health Connect upserts by clientRecordId, so a
+  /// re-write *updates* rather than duplicates; a closed episode simply
+  /// stops re-writing once it has no new eligible member days.
+  final String recordId;
+
+  /// The newest eligible member day's `updatedAt` — clientRecordVersion,
+  /// higher than any prior write of this episode.
+  final DateTime updatedAt;
+
+  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+}
+
 /// Accumulates one pass's write plan: days mapped to no sample are
-/// counted, everything else joins [pending].
+/// counted, everything else joins [pending], and period episodes join
+/// [pendingPeriods].
 class _Batch {
   final List<_PendingWrite> pending = [];
+  final List<_PendingPeriodWrite> pendingPeriods = [];
   int withoutSample = 0;
 
   void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
@@ -230,7 +279,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
 
     final batch = await _collectBatch(bound.profile.id, grant.cursor!);
-    final outcome = await _writeBatch(batch.pending, bound.facts);
+    final outcome =
+        await _writeBatch(batch.pending, batch.pendingPeriods, bound.facts);
     if (outcome.failure == null && outcome.newest != null) {
       await _settings.set(
         SettingsKeys.healthSyncWrittenThroughMs,
@@ -243,6 +293,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       authorizationRequested: grant.grantedNow,
       blocked: outcome.failure,
       samplesWritten: outcome.written,
+      periodRecordsWritten: outcome.periodRecordsWritten,
       daysWithoutSample: batch.withoutSample,
     );
   }
@@ -289,11 +340,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
 
   /// Builds the pass's write batch from the bound profile's day entries
   /// and spotting observations: everything strictly newer than [cursor]
-  /// (forward-only), mapped through `health_flow_mapping.dart`.
-  Future<({List<_PendingWrite> pending, int withoutSample})> _collectBatch(
-    String profileId,
-    DateTime cursor,
-  ) async {
+  /// (forward-only), mapped through `health_flow_mapping.dart`, plus one
+  /// `MenstruationPeriodRecord` per period episode that contains an
+  /// eligible bleed day (Issue #202 — see [_periodWritesFor]).
+  Future<
+      ({
+        List<_PendingWrite> pending,
+        List<_PendingPeriodWrite> pendingPeriods,
+        int withoutSample,
+      })> _collectBatch(String profileId, DateTime cursor) async {
     final entries = await _dayEntries.listForProfile(profileId);
     final spottingRows = [
       for (final observation in await _observations.listForProfile(profileId))
@@ -303,8 +358,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final bleedDays = bleedDatesOf(entries);
     final batch = _Batch();
 
+    // Eligible bleed days keyed by date, for period-record derivation.
+    final eligibleBleed = <LocalDate, _EligibleBleed>{};
+
     for (final entry in entries) {
       if (!_isEligible(entry.updatedAt, entry.source, cursor)) continue;
+      if (isBleed(entry.flow)) {
+        eligibleBleed[entry.localDate] =
+            _EligibleBleed(entry.tz, entry.updatedAt);
+      }
       final containing = _containing(episodes, entry.localDate);
       batch.add(
         entry.localDate,
@@ -338,19 +400,89 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         containing,
       );
     }
-    return (pending: batch.pending, withoutSample: batch.withoutSample);
+
+    batch.pendingPeriods
+        .addAll(_periodWritesFor(profileId, episodes, eligibleBleed));
+    return (
+      pending: batch.pending,
+      pendingPeriods: batch.pendingPeriods,
+      withoutSample: batch.withoutSample,
+    );
   }
 
-  /// Sends [pending] to the port. Keeps writing after a failure (one bad
-  /// day must not hide the others), remembering the first failure and
-  /// leaving the cursor — the next pass retries the batch rather than
-  /// half-skipping (see the class doc's forward-only note).
+  /// One `MenstruationPeriodRecord` write per period episode that contains
+  /// at least one eligible (post-cursor, not health-store-sourced) bleed
+  /// day. The stable clientRecordId (`period-<profile>-<start>`) is
+  /// identical across re-writes as an in-progress episode extends, so
+  /// Health Connect's upsert-by-clientRecordId *updates* rather than
+  /// duplicates; a closed episode stops being re-written once none of its
+  /// days is new, so its last write already carries the complete interval —
+  /// the #202 update-on-close strategy.
+  List<_PendingPeriodWrite> _periodWritesFor(
+    String profileId,
+    List<Episode> episodes,
+    Map<LocalDate, _EligibleBleed> eligibleBleed,
+  ) {
+    final writes = <_PendingPeriodWrite>[];
+    for (final episode in episodes) {
+      _EligibleBleed? newest;
+      for (var date = episode.start;
+          !date.isAfter(episode.end);
+          date = date.addDays(1)) {
+        final bleed = eligibleBleed[date];
+        if (bleed == null) continue;
+        if (newest == null || bleed.updatedAt.isAfter(newest.updatedAt)) {
+          newest = bleed;
+        }
+      }
+      if (newest == null) continue;
+      writes.add(_PendingPeriodWrite(
+        start: episode.start,
+        end: episode.end,
+        tzName: newest.tzName,
+        recordId: 'period-$profileId-${episode.start.iso}',
+        updatedAt: newest.updatedAt,
+      ));
+    }
+    return writes;
+  }
+
+  /// Sends [pending] (per-day flow/marker writes) and [pendingPeriods]
+  /// (per-episode interval writes) to the port. Keeps writing after a
+  /// failure (one bad day must not hide the others), remembering the first
+  /// failure and leaving the cursor — the next pass retries the batch
+  /// rather than half-skipping (see the class doc's forward-only note).
+  Future<
+      ({
+        int written,
+        int periodRecordsWritten,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writeBatch(
+    List<_PendingWrite> pending,
+    List<_PendingPeriodWrite> pendingPeriods,
+    HealthGuardFacts facts,
+  ) async {
+    final flow = await _writeFlowRecords(pending, facts);
+    final periods = await _writePeriodRecords(pendingPeriods, facts);
+    return (
+      written: flow.written,
+      periodRecordsWritten: periods.written,
+      failure: flow.failure ?? periods.failure,
+      newest: _latest(flow.newest, periods.newest),
+    );
+  }
+
+  /// Sends the per-day flow/marker writes to the port. Keeps writing after
+  /// a failure (one bad day must not hide the others), remembering the
+  /// first failure and leaving the cursor — the next pass retries the batch
+  /// rather than half-skipping (see the class doc's forward-only note).
   Future<
       ({
         int written,
         HealthPlatformResult? failure,
         DateTime? newest,
-      })> _writeBatch(
+      })> _writeFlowRecords(
     List<_PendingWrite> pending,
     HealthGuardFacts facts,
   ) async {
@@ -391,6 +523,56 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       }
       if (result is HealthPlatformAllowed) {
         written++;
+      } else {
+        failure ??= result;
+      }
+    }
+    return (written: written, failure: failure, newest: newest);
+  }
+
+  /// The later of [a] and [b], or the non-null one when only one is set.
+  static DateTime? _latest(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
+  }
+
+  /// Sends the per-episode interval writes (Issue #202's
+  /// `MenstruationPeriodRecord`). A platform that answers `unavailable` —
+  /// HealthKit encodes episode boundaries via menstrual-flow cycle-start
+  /// metadata instead (#193) — is a graceful skip, never a pass-blocking
+  /// failure (on Android a genuinely missing Health Connect surfaces as
+  /// `unavailable` on the per-day writes above, which already blocks).
+  Future<
+      ({
+        int written,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writePeriodRecords(
+    List<_PendingPeriodWrite> pendingPeriods,
+    HealthGuardFacts facts,
+  ) async {
+    var written = 0;
+    HealthPlatformResult? failure;
+    DateTime? newest;
+    for (final period in pendingPeriods) {
+      if (newest == null || period.updatedAt.isAfter(newest)) {
+        newest = period.updatedAt;
+      }
+      final result = await _platform.writeMenstrualPeriod(
+        HealthMenstrualPeriodWrite(
+          facts: facts,
+          start: period.start,
+          end: period.end,
+          tzName: period.tzName,
+          recordId: period.recordId,
+          recordVersionMs: period.recordVersionMs,
+        ),
+      );
+      if (result is HealthPlatformAllowed) {
+        written++;
+      } else if (result is HealthPlatformUnavailable) {
+        continue;
       } else {
         failure ??= result;
       }
