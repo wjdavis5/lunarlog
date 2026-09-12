@@ -203,10 +203,37 @@ void main() {
         'exclude it from future averages, or turn off predictions if long '
         'cycles are common for this profile.',
       );
-      expect(l10n.overviewLongCycleExclude, 'Exclude this cycle');
       expect(
         l10n.overviewLongCyclePredictionsOff,
-        'Turn off predictions (coming soon)',
+        'Turn off predictions',
+      );
+      expect(
+        l10n.overviewIrregularSuggestionTitle,
+        'Cycles vary a lot',
+      );
+      expect(
+        l10n.overviewIrregularSuggestionBody,
+        'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.',
+      );
+      expect(
+        l10n.overviewIrregularSuggestionSettings,
+        'Manage in Settings',
+      );
+      expect(
+        l10n.overviewIrregularSuggestionDismiss,
+        'Dismiss',
+      );
+      expect(
+        l10n.predictionsDisabledTitle,
+        'Predictions turned off',
+      );
+      expect(
+        l10n.predictionsDisabledBody,
+        'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.',
+      );
+      expect(
+        l10n.predictionsDisabledAction,
+        'Manage in Settings',
       );
       expect(
         l10n.overviewReminderHint,
@@ -242,6 +269,15 @@ void main() {
         'relocks immediately. A sign-in or unlock prompt this app opened '
         'is the one exception: the app stays covered while it is on '
         'screen, and relocks as soon as it closes if you have left.',
+      );
+      expect(l10n.settingsPredictionsTitle, 'Show predictions');
+      expect(
+        l10n.settingsPredictionsSubtitle,
+        'Show cycle estimates, fertile window, and prediction reminders',
+      );
+      expect(
+        l10n.settingsPredictionsProfileTitle('Alice'),
+        'Show predictions (Alice)',
       );
       expect(l10n.settingsHealthHeader, 'Health');
       expect(l10n.settingsHealthSyncTitle, 'Health app sync');

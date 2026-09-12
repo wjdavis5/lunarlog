@@ -123,8 +123,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () => _showContactSupport(context),
             ),
           if (hasFeedback) const _SupportHistoryTile(),
-          // Issue #225: per-profile predictions toggle section.
-          const PredictionsSettingsSection(),
           // Issue #136: the per-profile local reminder configuration.
           // Present whenever the app provides the reminder configuration
           // store (i.e. reminders exist — a scheduler was wired); hidden
@@ -157,6 +155,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : null,
           ),
           const Divider(),
+          // Issue #225: per-profile predictions toggle section.
+          const PredictionsSettingsSection(),
           if (hasHealthSync) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
