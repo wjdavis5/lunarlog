@@ -447,6 +447,11 @@ registers no device, and shows no Notifications entry (R17).
       email address, encrypted in transit, user can request deletion —
       now true in-app via "Delete account" in the account section, issue
       #17).
+- [ ] **Issue #269 (minimum-age statement):** App Store Age Rating / Privacy Details
+      and Google Play Target Audience & Content questionnaires reflect
+      LunarLog's minimum-age policy of 13+ (primary account management 18+;
+      household minor profiles managed by adult guardians), stated in
+      `PRIVACY.md` Section 5 and acknowledged by users on first run.
 - [ ] **Issue #166 (human step, needs-human-review):** Play Console's Health
       apps declaration form filed before any Health Connect build reaches a
       Play track — see

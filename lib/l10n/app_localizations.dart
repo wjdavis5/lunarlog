@@ -811,7 +811,7 @@ abstract class AppLocalizations {
   /// Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary.
   ///
   /// In en, this message translates to:
-  /// **'LunarLog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Caregiver Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
+  /// **'LunarLog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Caregiver Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
   String get settingsPrivacyDialogBody;
 
   /// Close action of the settings dialogs.
@@ -903,6 +903,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'A label with one effect: this profile is kept out of this phone\'s Health app sync.'**
   String get firstRunMinorHint;
+
+  /// Checkbox label acknowledging the 13+ minimum-age statement on first-run profile creation.
+  ///
+  /// In en, this message translates to:
+  /// **'I am 13 or older, or a guardian managing a family profile'**
+  String get firstRunAgeAcknowledgementLabel;
+
+  /// One-line hint under the minimum-age acknowledgement checkbox in the first-run form.
+  ///
+  /// In en, this message translates to:
+  /// **'LunarLog requires users to be at least 13 years old, or managed by a parent or legal guardian.'**
+  String get firstRunAgeAcknowledgementHint;
+
+  /// Validation error shown when the minimum-age acknowledgement is not checked.
+  ///
+  /// In en, this message translates to:
+  /// **'Please acknowledge the minimum-age policy to continue.'**
+  String get firstRunAgeAcknowledgementRequired;
 
   /// Label above the care-mode dropdown in the first-run form (kept).
   ///

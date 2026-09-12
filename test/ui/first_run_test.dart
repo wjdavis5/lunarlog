@@ -209,6 +209,7 @@ void main() {
             pickDate}) async {
       final h = Harness(tester, pickDate: pickDate);
       await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
       await h.pump();
       await tester.enterText(find.byType(TextFormField), 'Nova');
       await tester.tap(find.byKey(const ValueKey('first-run-continue')));
@@ -220,6 +221,7 @@ void main() {
         (tester) async {
       final h = Harness(tester);
       await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
       await h.pump();
 
       await tester.tap(find.byKey(const ValueKey('first-run-continue')));
@@ -557,6 +559,7 @@ void main() {
         'chosen one', (tester) async {
       final h = Harness(tester);
       await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
       await h.pump();
       await tester.pumpAndSettle();
 
@@ -575,6 +578,85 @@ void main() {
       final profiles = await DriftProfilesRepository(h.db.storage).list();
       expect(profiles.single.displayName, 'Nova');
       expect(profiles.single.mode, ProfileMode.irregular);
+      await h.dispose();
+    });
+  });
+
+  group('minimum-age statement and acknowledgement (Issue #269)', () {
+    testWidgets('renders age acknowledgement checkbox adjacent to isMinor',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('first-run-age-ack-checkbox')),
+          findsOneWidget);
+      expect(
+          find.text(
+              'I am 13 or older, or a guardian managing a family profile'),
+          findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('first-run-age-ack-hint')), findsOneWidget);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'Continue without age acknowledgement shows validation error and blocks',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.pump();
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), 'Nova');
+      await tester.tap(find.byKey(const ValueKey('first-run-continue')));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.text('Please acknowledge the minimum-age policy to continue.'),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('cycle-typical-cycle')), findsNothing,
+          reason: 'blocked from proceeding to cycle questions');
+      await h.dispose();
+    });
+
+    testWidgets(
+        'checking age acknowledgement allows continuing and persists on profile creation',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.pump();
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), 'Nova');
+      await tester.tap(find.byKey(const ValueKey('first-run-age-ack-checkbox')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('first-run-continue')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('cycle-create')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+
+      expect(await h.settings.get(SettingsKeys.minimumAgeAcknowledged), 'true',
+          reason: 'minimum-age acknowledgement persisted in settings');
+      await h.dispose();
+    });
+
+    testWidgets(
+        'pre-acknowledged setting hides the age acknowledgement checkbox on relaunch',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      await h.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('first-run-age-ack-checkbox')),
+          findsNothing,
+          reason: 'not re-prompted when already acknowledged');
       await h.dispose();
     });
   });
