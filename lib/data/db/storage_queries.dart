@@ -173,6 +173,31 @@ mixin LunarLogStorageQueries {
     return query.watch();
   }
 
+  /// The observation (live OR tombstoned) for (profileId, source, sourceId),
+  /// or null when none exists — Issue #199: the observations-side analogue
+  /// of [findDayEntryBySource], so a Clue re-import dedups against the
+  /// exact triple the server's partial unique index
+  /// `observations_profile_source_source_id_uq` constrains, tombstones
+  /// included (a revived row keeps its id; see `upsertObservation`'s own
+  /// update path). Same `get()`-plus-first shape as [findDayEntryBySource]:
+  /// local rows are never guaranteed unique on this triple, so several
+  /// matches read as "found one", never throw.
+  Future<Observation?> findObservationBySource({
+    required String profileId,
+    required String source,
+    required String? sourceId,
+  }) async {
+    if (sourceId == null) return null;
+    final rows = await (db.select(db.observations)
+          ..where((t) =>
+              t.profileId.equals(profileId) &
+              t.source.equals(source) &
+              t.sourceId.equals(sourceId))
+          ..orderBy([(t) => OrderingTerm(expression: t.id)]))
+        .get();
+    return rows.isEmpty ? null : rows.first;
+  }
+
   /// Every observation attached to any of [profileId]'s day entries — Issue
   /// #240, used by [DriftObservationsRepository.listForProfile] for account
   /// export (`kAccountExportSchemaVersion` v3). UI reads (default) filter

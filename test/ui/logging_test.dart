@@ -908,6 +908,45 @@ void main() {
       },
     );
 
+    testWidgets(
+      'a day with an unrecognised import row renders it as readable text, '
+      'never invisible (#199)',
+      (tester) async {
+        final h = await pumpLogging(
+          tester,
+          seed: (db, profileId) async {
+            final saved = await DriftDayEntriesRepository(db.storage).save(
+              entryFor(profileId, kToday),
+            );
+            await db.storage.upsertObservation(
+              dayEntryId: saved.id,
+              profileId: profileId,
+              localDate: kToday.iso,
+              tz: 'UTC',
+              category: 'unmapped',
+              code: 'hot_flashes',
+              source: 'clue_import',
+              sourceId: 'clue:abcdef12:2026-08-30:hot_flashes:0',
+              raw:
+                  '{"date":"2026-08-30","type":"hot_flashes",'
+                  '"value":{"option":"moderate"}}',
+            );
+          },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        expect(find.byType(DaySheet), findsOneWidget);
+
+        expect(
+          find.byKey(const ValueKey('unmapped-observation-0')),
+          findsOneWidget,
+        );
+        expect(find.text('hot_flashes: moderate'), findsOneWidget);
+        await disposeLogging(tester, h);
+      },
+    );
+
     testWidgets('symptom-only day (flow none + tags) renders the secondary '
         'marker, not the bleed marker', (tester) async {
       final h = await pumpLogging(
