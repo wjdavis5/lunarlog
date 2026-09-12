@@ -10,6 +10,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart'
     show authFailureCopy, kMinPasswordLength;
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 
 class PasswordRecoveryScreen extends StatefulWidget {
@@ -80,10 +81,12 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(
-              _error!,
+            // Matches `sign_in_screen.dart`'s own 'auth-error' slot: no
+            // onRetry (the Save password button right below is the retry
+            // affordance).
+            InlineError(
               key: const ValueKey('auth-error'),
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              message: _error!,
             ),
           ],
           const SizedBox(height: 16),

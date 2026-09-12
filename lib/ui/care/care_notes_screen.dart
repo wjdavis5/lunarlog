@@ -30,6 +30,7 @@ import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
@@ -138,11 +139,13 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
+                  // #555: null onRetry -- this banner is shared across six
+                  // different mutations (add/delete note, add/toggle/delete
+                  // prep item, clear checked), so there is no single action
+                  // to retry; each row's own control is the retry surface.
+                  child: InlineError(
                     key: const ValueKey('care-error'),
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.error),
+                    message: _error!,
                   ),
                 ),
               _CareNotesSection(

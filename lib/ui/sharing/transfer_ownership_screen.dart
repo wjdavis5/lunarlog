@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
+import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
 import '../l10n/dates.dart' as dates;
 
@@ -331,7 +332,12 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
-          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          InlineError(
+            message: _error!,
+            onRetry: _loading || _selectedRole == null
+                ? null
+                : _handleTransferPressed,
+          ),
           const SizedBox(height: 12),
         ],
         Text('Your role after the transfer', style: theme.textTheme.titleMedium),
@@ -426,7 +432,10 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
-          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          InlineError(
+            message: _error!,
+            onRetry: _loading ? null : _cancelActiveTransfer,
+          ),
           const SizedBox(height: 12),
         ],
         FilledButton(
@@ -472,7 +481,10 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
-          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          InlineError(
+            message: _error!,
+            onRetry: _loading ? null : _cancelTransfer,
+          ),
           const SizedBox(height: 12),
         ],
         Wrap(

@@ -8,6 +8,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 
 /// What the operator chose. `null` (from [showDeleteAccountDialog]) means
 /// the dialog was dismissed some other way (e.g. the system back button);
@@ -73,10 +74,10 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
             ),
             if (exportError != null) ...[
               const SizedBox(height: 12),
-              Text(
-                exportError,
+              InlineError(
                 key: const ValueKey('account-delete-export-error'),
-                style: TextStyle(color: theme.colorScheme.error),
+                message: exportError,
+                onRetry: _exporting ? null : _handleExport,
               ),
             ],
           ],

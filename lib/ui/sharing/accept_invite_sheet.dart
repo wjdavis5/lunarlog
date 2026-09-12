@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 
 import '../../domain/sharing/sharing_service.dart';
+import '../components/inline_error.dart';
 
 class AcceptInviteSheet extends StatefulWidget {
   const AcceptInviteSheet({
@@ -109,13 +110,13 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
                 hintText: 'Shows when you log entries',
               ),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ],
+            if (_error != null)
+              // No onRetry: the Join button right below is the retry
+              // affordance. No leading SizedBox either -- InlineError
+              // already carries its own vertical padding, and this
+              // sheet's tight modal height has no room for both plus a
+              // TextButton row.
+              InlineError(message: _error!),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

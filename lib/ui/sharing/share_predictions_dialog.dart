@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
+import '../components/inline_error.dart';
 
 class SharePredictionsDialog extends StatefulWidget {
   const SharePredictionsDialog({
@@ -150,8 +151,10 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
             ),
             const SizedBox(height: 12),
             if (_error != null) ...[
-              Text(_error!,
-                  style: TextStyle(color: theme.colorScheme.error)),
+              InlineError(
+                message: _error!,
+                onRetry: _loading ? null : _createConnection,
+              ),
               const SizedBox(height: 8),
             ],
             TextField(

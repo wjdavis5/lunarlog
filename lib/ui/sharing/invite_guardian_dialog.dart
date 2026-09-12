@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/sharing/sharing_service.dart';
+import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
 
 class InviteGuardianDialog extends StatefulWidget {
@@ -127,7 +128,10 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_error != null) ...[
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+              InlineError(
+                message: _error!,
+                onRetry: _loading ? null : _createInvite,
+              ),
               const SizedBox(height: 8),
             ],
             const Text('Role:'),
