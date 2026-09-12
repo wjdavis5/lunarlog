@@ -70,6 +70,22 @@ mixin LunarLogStorageQueries {
     ).get();
   }
 
+  /// Whether [profileId] has any live day entry at all (issue #549):
+  /// `SELECT ... LIMIT 1` over just the id column, short-circuiting on the
+  /// first row via `ix_day_entries_profile_date` rather than decoding the
+  /// full history the way `getDayEntries(...).isNotEmpty` would. Existing
+  /// callers that only needed a non-emptiness check (the export tiles) were
+  /// paying for a full profile read on every `profiles` stream tick.
+  Future<bool> hasAnyEntries(String profileId) async {
+    final row = await (db.selectOnly(db.dayEntries)
+          ..addColumns([db.dayEntries.id])
+          ..where(db.dayEntries.profileId.equals(profileId) &
+              db.dayEntries.deletedAt.isNull())
+          ..limit(1))
+        .getSingleOrNull();
+    return row != null;
+  }
+
   /// The live day entry for (profileId, localDate), or null when that date
   /// holds no entry — including when its only row is a tombstone, which
   /// [getDayEntries] excludes for UI reads too. Scoped to the one
@@ -91,6 +107,13 @@ mixin LunarLogStorageQueries {
     ).get();
     return rows.isEmpty ? null : rows.first;
   }
+
+  /// The day entry row for [id], live or tombstoned, or null if no such row
+  /// exists. Issue #549: the single-row lookup
+  /// `DriftObservationsRepository.listForDayEntryWithLegacyAlias` uses to
+  /// check whether a specific day entry needs its `flow = 'spotting'` alias
+  /// observation synthesised, without a full-profile scan.
+  Future<DayEntry?> getDayEntryById(String id) => _dayEntryOrNull(id);
 
   /// The day entry (live OR tombstoned) for (profileId, source, sourceId),
   /// or null when none exists — Issue #140 review, item 5: an importer must

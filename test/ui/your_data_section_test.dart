@@ -81,6 +81,10 @@ class FakeDayEntriesRepository implements DayEntriesRepository {
       entriesByProfile[profileId] ?? const [];
 
   @override
+  Future<bool> hasAnyEntries(String profileId) async =>
+      (entriesByProfile[profileId] ?? const []).isNotEmpty;
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -93,6 +97,11 @@ class FakeObservationsRepository implements ObservationsRepository {
 
   @override
   Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
+      const [];
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+          String dayEntryId) async =>
       const [];
 
   @override

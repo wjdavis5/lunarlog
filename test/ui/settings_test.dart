@@ -51,6 +51,9 @@ class _FakeDayEntriesRepository implements DayEntriesRepository {
   Future<List<DayEntry>> listForProfile(String profileId) async => const [];
 
   @override
+  Future<bool> hasAnyEntries(String profileId) async => false;
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

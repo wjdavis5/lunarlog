@@ -79,6 +79,11 @@ class FakeObservationsRepository implements ObservationsRepository {
       const [];
 
   @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+          String dayEntryId) async =>
+      const [];
+
+  @override
   Future<Observation> save(Observation observation) async => observation;
 
   @override

@@ -366,6 +366,9 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   Future<List<DayEntry>> listForProfile(String profileId) async => seeded;
 
   @override
+  Future<bool> hasAnyEntries(String profileId) async => seeded.isNotEmpty;
+
+  @override
   Stream<List<DayEntry>> watchForProfile(
     String profileId, {
     LocalDate? from,
@@ -1368,8 +1371,10 @@ void main() {
         // The mapper reads a legacy `spotting` row as notBleeding
         // (`mappers.dart`'s `flowToDomain`) -- the chip row reflects that --
         // but the review fix means the Spotting toggle picks up the alias
-        // observation `DriftObservationsRepository.listForProfile`
-        // synthesises for it, even though no real observation row exists yet.
+        // observation `DriftObservationsRepository
+        // .listForDayEntryWithLegacyAlias` synthesises for it (issue #549:
+        // scoped to this one day entry, not a full-profile scan), even
+        // though no real observation row exists yet.
         expect(
           tester
               .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
@@ -1377,8 +1382,9 @@ void main() {
           isTrue,
           reason:
               'review fix (blocking): a legacy spotting day seeds the '
-              'Spotting toggle on via listForProfile\'s synthesised alias, '
-              'not listForDayEntry (which never sees it)',
+              'Spotting toggle on via listForDayEntryWithLegacyAlias\'s '
+              'synthesised alias, not plain listForDayEntry (which never '
+              'sees it)',
         );
 
         await tester.enterText(

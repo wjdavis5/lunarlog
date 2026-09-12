@@ -30,6 +30,11 @@ abstract interface class DayEntriesRepository {
   /// Live entries for the profile, ordered by civil date.
   Future<List<DayEntry>> listForProfile(String profileId);
 
+  /// Whether [profileId] has any live day entry at all, without loading the
+  /// entries themselves (issue #549) — for callers (e.g. the export tiles)
+  /// that only need to know the profile has *some* history, not what it is.
+  Future<bool> hasAnyEntries(String profileId);
+
   /// Reactive variant of [listForProfile]; emits again on every write or
   /// tombstone affecting that profile (tombstoned rows excluded).
   ///

@@ -503,24 +503,19 @@ class _DaySheetState extends State<DaySheet> {
   /// Issue #247: the day sheet doesn't otherwise load `observations` rows
   /// — this is the one exception, populating the "Spotting" toggle's
   /// initial state from any already-persisted spotting observation for
-  /// [dayEntryId]. Review fix (blocking): goes through
-  /// [ObservationsRepository.listForProfile] rather than
-  /// [ObservationsRepository.listForDayEntry] specifically because only
-  /// `listForProfile` synthesises the alias observation for a legacy
-  /// `flow = 'spotting'` row that hasn't synced the server-side backfill
-  /// yet (see that method's doc comment) — `listForDayEntry` alone would
-  /// leave this toggle off for such a day, and the next autosave would
-  /// then silently drop the spotting fact (raising the stored flow to
-  /// `notBleeding` with no accompanying observation, live or synthesised).
+  /// [dayEntryId]. Issue #549: goes through
+  /// [ObservationsRepository.listForDayEntryWithLegacyAlias] — scoped to
+  /// this one day entry via [ObservationsRepository.listForDayEntry] plus a
+  /// single-row day-entry lookup — rather than [ObservationsRepository]
+  /// .listForProfile, which decoded every observation and every day entry
+  /// the profile has ever logged just to answer this one-day question.
   Future<void> _loadExistingSpotting(String dayEntryId) async {
     final observations = await Provider.of<ObservationsRepository>(
       context,
       listen: false,
-    ).listForProfile(widget.profileId);
+    ).listForDayEntryWithLegacyAlias(dayEntryId);
     if (!mounted) return;
-    if (observations.any(
-      (o) => o.dayEntryId == dayEntryId && o.category == 'spotting',
-    )) {
+    if (observations.any((o) => o.category == 'spotting')) {
       setState(() {
         _spotting = true;
         _hadSpottingOnLoad = true;
