@@ -37,9 +37,8 @@ name: Supabase migrate
 # Realtime" toggle used against an already-migrated project. It is
 # idempotent and safe to run even when that migration was not part of this
 # push, and runs before the Apple-secret check so it is never skipped by a
-# missing Apple key. There is still no *periodic* reconciliation between
-# deploys -- see the tracked follow-up in AGENTS.md's Migration Flow
-# section.
+# missing Apple key. Periodic reconciliation between deploys runs weekly
+# via .github/workflows/supabase-reconcile.yml (Issue #453).
 #
 # The "Check for schema drift" step (issue #163 / D-19, D-21) runs
 # `supabase db diff --linked --schema public` and fails the job on any
