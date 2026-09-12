@@ -115,6 +115,7 @@ void main() {
   test('first-run notice key follows the settled settings naming convention',
       () {
     expect(SettingsKeys.firstRunNoticeShown, 'first_run_notice_shown');
+    expect(SettingsKeys.minimumAgeAcknowledged, 'minimum_age_acknowledged');
   });
 
   group('first run (F1)', () {
@@ -144,6 +145,8 @@ void main() {
 
       await tester.enterText(find.byType(TextFormField), 'Luna');
       await tester.tap(find.text('This profile is for a minor'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('first-run-age-ack-checkbox')));
       await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
@@ -176,6 +179,8 @@ void main() {
       await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), 'Luna');
+      await tester.tap(find.byKey(const ValueKey('first-run-age-ack-checkbox')));
+      await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Create profile'));

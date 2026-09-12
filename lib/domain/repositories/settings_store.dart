@@ -29,6 +29,10 @@ abstract final class SettingsKeys {
   static const String webModalAcknowledged = 'web_modal_acknowledged';
   static const String firstRunNoticeShown = 'first_run_notice_shown';
 
+  /// Whether the user has acknowledged the minimum-age statement (13+ policy,
+  /// Issue #269). Recorded locally so it is not re-prompted every launch.
+  static const String minimumAgeAcknowledged = 'minimum_age_acknowledged';
+
   /// Email of a sign-up whose confirmation link has not been opened on
   /// this device yet (AS10). Device-local; cleared (set to the empty
   /// string) once a signed-in session arrives.

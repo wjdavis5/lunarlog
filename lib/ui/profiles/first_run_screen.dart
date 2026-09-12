@@ -117,6 +117,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   bool _accountPending = false;
   bool _webAckPending = false;
   bool _isMinor = false;
+  bool _ageAcknowledged = false;
+  bool _ageAckError = false;
+  bool _ageAckPreviouslyRecorded = false;
 
   /// Care mode for the profile being created (Issue #131): selectable at
   /// creation, changeable later from the profile's edit dialog.
@@ -154,6 +157,18 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     if (widget.isWebBuild) {
       _checkWebAcknowledgment();
     }
+    _checkAgeAcknowledgment();
+  }
+
+  Future<void> _checkAgeAcknowledgment() async {
+    final store = context.read<SettingsStore>();
+    final acknowledged =
+        await store.get(SettingsKeys.minimumAgeAcknowledged) == 'true';
+    if (!mounted) return;
+    setState(() {
+      _ageAckPreviouslyRecorded = acknowledged;
+      _ageAcknowledged = acknowledged;
+    });
   }
 
   Future<void> _checkWebAcknowledgment() async {
@@ -287,6 +302,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// "Continue" on the name form: validate the name now so the final
   /// create cannot fail on it, then move to the cycle questions.
   void _continueToCycleQuestions() {
+    if (!_ageAckPreviouslyRecorded && !_ageAcknowledged) {
+      setState(() => _ageAckError = true);
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     setState(() => _cycleQuestionsPending = true);
   }
@@ -320,6 +339,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     final controller = context.read<ProfileController>();
     final l10n = AppLocalizations.of(context);
     final recorder = _resolveRecorder();
+    if (!_ageAckPreviouslyRecorded && _ageAcknowledged) {
+      final store = context.read<SettingsStore>();
+      await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      _ageAckPreviouslyRecorded = true;
+    }
     final profile = await controller.createProfile(
       displayName: _nameController.text,
       isMinor: _isMinor,
@@ -550,6 +574,33 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                       ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
+              if (!_ageAckPreviouslyRecorded) ...[
+                CheckboxListTile(
+                  key: const ValueKey('first-run-age-ack-checkbox'),
+                  value: _ageAcknowledged,
+                  onChanged: (value) => setState(() {
+                    _ageAcknowledged = value ?? false;
+                    if (_ageAcknowledged) _ageAckError = false;
+                  }),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(l10n.firstRunAgeAcknowledgementLabel),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 8),
+                  child: Text(
+                    _ageAckError
+                        ? l10n.firstRunAgeAcknowledgementRequired
+                        : l10n.firstRunAgeAcknowledgementHint,
+                    key: const ValueKey('first-run-age-ack-hint'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: _ageAckError
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerLeft,
