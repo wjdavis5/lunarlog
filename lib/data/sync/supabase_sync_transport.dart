@@ -70,6 +70,16 @@ class SupabaseSyncTransport implements SyncTransport {
           .order(_versionColumn, ascending: true)
           .limit(limit);
     } catch (error) {
+      // Issue #522: `deletedProfiles` is a new table added by a migration
+      // this PR does not include — a server predating it answers with
+      // PostgREST's "relation not found" shape. Every other table is
+      // expected to exist unconditionally, so this leniency is deliberately
+      // scoped to just this one, new, migration-gated table: an empty page
+      // (the caller reads exactly like "nothing to pull yet") rather than a
+      // cycle-failing error.
+      if (table == SyncTable.deletedProfiles && _isRelationNotFound(error)) {
+        return const [];
+      }
       throw mapSyncTransportError(error);
     }
     try {
@@ -88,6 +98,22 @@ class SupabaseSyncTransport implements SyncTransport {
   /// graceful-fallback contract: this transport's half of the fix must not
   /// depend on that migration having landed).
   static const String _functionNotFoundCode = 'PGRST202';
+
+  /// PostgREST "table not found in the schema cache" — the same
+  /// graceful-fallback shape as [_functionNotFoundCode], for
+  /// `deleted_profiles` (issue #522).
+  static const String _tableNotFoundCode = 'PGRST205';
+
+  /// Postgres `undefined_table` (SQLSTATE `42P01`): the same "does not
+  /// exist yet" outcome, reached if a table genuinely absent from the
+  /// database (rather than merely absent from PostgREST's schema cache)
+  /// surfaces as a raw SQL error instead.
+  static const String _undefinedTableSqlState = '42P01';
+
+  bool _isRelationNotFound(Object error) =>
+      error is PostgrestException &&
+      (error.code == _tableNotFoundCode ||
+          error.code == _undefinedTableSqlState);
 
   @override
   Future<int?> fetchWatermark() async {

@@ -377,6 +377,62 @@ void main() {
       expect(row.serverVersion, 11);
     });
 
+    test('deleted profiles use the deleted_profiles table (Issue #522)',
+        () async {
+      client = makeClient((_) async => json([
+            {
+              'profile_id': profileId,
+              'deleted_at': '2026-09-01T10:00:00+00:00',
+              'server_version': 9,
+            }
+          ]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.deletedProfiles,
+        afterVersion: 0,
+        limit: 100,
+      );
+      final request = requests.single;
+      expect(request.url.path, '/rest/v1/deleted_profiles');
+      final row = rows.single as RemoteDeletedProfileRow;
+      expect(row.profileId, profileId);
+      expect(row.deletedAt, DateTime.utc(2026, 9, 1, 10));
+      expect(row.serverVersion, 9);
+    });
+
+    test('deleted_profiles falls back to an empty page — never a cycle '
+        'failure — when the server has not run the migration adding it yet '
+        '(issue #522)', () async {
+      client = makeClient((_) async => json(
+            {
+              'message': 'Could not find the table \'public.deleted_profiles\'',
+              'code': 'PGRST205',
+            },
+            status: 404,
+          ));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.deletedProfiles,
+        afterVersion: 0,
+        limit: 100,
+      );
+      expect(rows, isEmpty);
+    });
+
+    test('a "table not found" response for any OTHER table still throws — '
+        'the leniency above is scoped to deleted_profiles only', () async {
+      client = makeClient((_) async => json(
+            {'message': 'Could not find the table', 'code': 'PGRST205'},
+            status: 404,
+          ));
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.profiles,
+          afterVersion: 0,
+          limit: 100,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
+      );
+    });
+
     test('an empty page decodes to an empty list', () async {
       client = makeClient((_) async => json([]));
       final rows = await SupabaseSyncTransport(client!).pullPage(

@@ -1033,6 +1033,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.cycleOverrides,
       SyncTable.careNotes,
       SyncTable.visitPrepItems,
+      // Issue #522: pulled last — it only ever tombstones a profile (and
+      // cascades the wipe) that this same cycle may have just pulled fresh
+      // content for above; running it last means the deletion always wins.
+      SyncTable.deletedProfiles,
     ]) {
       if (await _pullTable(table, uid, watermark: watermark)) retry = true;
     }
@@ -1122,6 +1126,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         SyncTable.careNotes => state.cursorCareNotes,
         SyncTable.visitPrepItems => state.cursorVisitPrepItems,
         SyncTable.profileGuardians => 0,
+        // Issue #522: no persisted cursor, same as profileGuardians above.
+        SyncTable.deletedProfiles => 0,
       };
 
   /// A page of [table] hit a [RetryableSyncApplyError]. Only profileGuardians
@@ -1177,6 +1183,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.cycleOverrides,
       SyncTable.careNotes,
       SyncTable.visitPrepItems,
+      // Issue #522: last, same reason as _pullIncremental above.
+      SyncTable.deletedProfiles,
     ]) {
       var after = 0;
       while (true) {

@@ -108,6 +108,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         await _applyCareNote(row, onlyExisting: false);
       case RemoteVisitPrepItemRow():
         await _applyVisitPrepItem(row, onlyExisting: false);
+      case RemoteDeletedProfileRow():
+        await _applyDeletedProfile(row);
     }
   }
 
@@ -130,6 +132,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         SyncTable.visitPrepItems =>
           SyncStateCompanion(cursorVisitPrepItems: Value(newCursor)),
         SyncTable.profileGuardians =>
+          const SyncStateCompanion(),
+        // Issue #522: no persisted cursor, same as profileGuardians above.
+        SyncTable.deletedProfiles =>
           const SyncStateCompanion(),
       },
     );
@@ -168,6 +173,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       }
       for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
         await _applyVisitPrepItem(row, onlyExisting: false);
+      }
+      // Issue #522: last, so a deletion signal for a profile that also had
+      // ordinary content rows in this same heterogeneous batch wins over
+      // them — the wipe is the final word, never undone by a row applied
+      // earlier in this loop.
+      for (final row in rows.whereType<RemoteDeletedProfileRow>()) {
+        await _applyDeletedProfile(row);
       }
     });
   }
@@ -495,6 +507,24 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           dirty: const Value(false),
         ));
   }
+
+  /// Issue #522: applies a `deleted_profiles` row — the narrow tombstone a
+  /// server-side hard purge (`delete_profile_data()`/`delete_account_data()`)
+  /// writes for a profile it physically `DELETE`s, since the ordinary
+  /// incremental pull and 24h reconcile only ever transport rows that still
+  /// exist. Cascades exactly like a guardian revocation ([_applyProfileGuardian]'s
+  /// [_tombstoneRevokedSharedProfile] call, issue #532): every profile-scoped
+  /// content table is wiped the same way and the local profile is
+  /// tombstoned, all in the caller's transaction. Idempotent: a profile
+  /// already tombstoned, or never held locally at all, still runs the wipe
+  /// harmlessly (every `UPDATE` matches zero rows).
+  ///
+  /// Unlike [_tombstoneRevokedSharedProfile]'s revocation case, there is no
+  /// "leave `updated_at` alone so a later re-share can win normally" concern
+  /// here — a hard-purged profile's server row is gone permanently, so
+  /// nothing will ever compete with this tombstone under KTD5's per-id rule.
+  Future<void> _applyDeletedProfile(RemoteDeletedProfileRow remote) =>
+      _tombstoneRevokedSharedProfile(remote.profileId, remote.deletedAt);
 
   Future<bool> _applyDayEntry(RemoteDayEntryRow remote,
       {required bool onlyExisting}) async {

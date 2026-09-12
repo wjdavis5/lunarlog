@@ -1449,6 +1449,10 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             .write(const VisitPrepItemsCompanion(dirty: Value(false)));
       case SyncTable.profileGuardians:
         changed = 0;
+      case SyncTable.deletedProfiles:
+        // Issue #522: pull-only, like profileGuardians above — never
+        // pushed, so there is nothing for this table to clear.
+        changed = 0;
     }
     return changed > 0;
   }

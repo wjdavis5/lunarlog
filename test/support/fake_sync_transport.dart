@@ -42,6 +42,7 @@ class FakeSyncTransport implements SyncTransport {
     SyncTable.cycleOverrides: [],
     SyncTable.careNotes: [],
     SyncTable.visitPrepItems: [],
+    SyncTable.deletedProfiles: [],
   };
 
   /// When set, wins over [pages]: computes each page from the call itself

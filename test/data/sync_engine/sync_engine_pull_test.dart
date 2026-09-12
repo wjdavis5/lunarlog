@@ -107,6 +107,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.deletedProfiles => const [],
           };
 
       await rig.start();
@@ -144,6 +145,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.deletedProfiles => const [],
           };
 
       await rig.start();
@@ -177,7 +179,7 @@ void main() {
       ));
       await rig.start();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0]);
+          [100, 0, 100, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522)
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
 
       // (c) A push with resolved rows makes a reconcile due.
@@ -193,21 +195,25 @@ void main() {
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+          // 9 incremental + 9 reconcile afterVersion values (deletedProfiles,
+          // issue #522, adds the 9th `0` to each half).
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
 
       // (d) Not otherwise: the next cycle is incremental only.
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0]);
+          [100, 0, 100, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522)
 
       // (e) Older than 24h: due again.
       rig.clock.now = rig.clock.now.add(const Duration(hours: 25));
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+          // 9 incremental + 9 reconcile afterVersion values (deletedProfiles,
+          // issue #522, adds the 9th `0` to each half).
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
     });
 
@@ -371,9 +377,10 @@ void main() {
       await rig.sync();
 
       // Incremental pull checks profiles, profileGuardians, dayEntries,
-      // observations (Issue #240), the two Issue #188 tables, and the two
-      // Issue #128 tables — 8 pull calls — and NO reconcile pull is made.
-      expect(rig.transport.pullCount, pullsBeforeCycle4 + 8,
+      // observations (Issue #240), the two Issue #188 tables, the two
+      // Issue #128 tables, and deletedProfiles (Issue #522) — 9 pull calls
+      // — and NO reconcile pull is made.
+      expect(rig.transport.pullCount, pullsBeforeCycle4 + 9,
           reason: 'cycle 4 ran incremental pulls only, no full reconcile');
     });
 
@@ -399,6 +406,7 @@ void main() {
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
             SyncTable.profileGuardians => [stuck],
+            SyncTable.deletedProfiles => const [],
           };
 
       // Re-primes cursorProfiles to a nonzero value before each cycle, so a

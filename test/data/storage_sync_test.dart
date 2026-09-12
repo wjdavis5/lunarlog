@@ -10,7 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
-import 'package:lunarlog/data/sync/remote_rows.dart' show RemoteProfileGuardianRow;
+import 'package:lunarlog/data/sync/remote_rows.dart'
+    show RemoteDeletedProfileRow, RemoteProfileGuardianRow;
 import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry;
 
 class FixedClock {
@@ -1337,6 +1338,60 @@ void main() {
       // Nothing wiped here is left dirty — the wipe must never be pushed
       // back to the server that already knows about the revocation.
       expect(await storage.dirtyCount(), 0);
+    });
+  });
+
+  group('deleted_profiles reader (issue #522)', () {
+    test('applying a deleted_profiles row tombstones the profile and '
+        'cascades exactly like a guardian revocation', () async {
+      final p = await storage.upsertProfile(displayName: 'Purged', isMinor: false);
+      final entry = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.medium);
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+      );
+      await storage.upsertCareNote(profileId: p.id, body: 'note');
+
+      final purgedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        RemoteDeletedProfileRow(profileId: p.id, deletedAt: purgedAt),
+      ]);
+
+      expect(await storage.getProfile(p.id), isNull);
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      expect(await storage.getObservationsForProfile(p.id), isEmpty);
+      expect(await storage.getCareNotesForProfile(p.id), isEmpty);
+      expect(await storage.dirtyCount(), 0,
+          reason: 'the wipe must never be pushed back');
+    });
+
+    test('a profile never held locally is a harmless no-op', () async {
+      await storage.applyRemoteRows([
+        RemoteDeletedProfileRow(profileId: 'never-held', deletedAt: t0),
+      ]);
+      expect(await storage.getProfile('never-held'), isNull);
+    });
+
+    test('applying it through applyRemotePage advances no cursor — '
+        'issue #522 pages from version 0 every cycle, like profileGuardians',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.applyRemotePage(
+        table: SyncTable.deletedProfiles,
+        rows: [RemoteDeletedProfileRow(profileId: p.id, deletedAt: t0)],
+        newCursor: 999,
+      );
+      expect((await storage.readSyncState()).cursorProfiles, 0,
+          reason: 'deletedProfiles has no persisted cursor of its own and '
+              'must not repurpose cursorProfiles either');
+      expect(await storage.getProfile(p.id), isNull);
     });
   });
 }
