@@ -70,6 +70,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 /// Debounce between the last change (chip, flow, or note keystroke) and the
 /// autosave write (#198 B-13). Short enough to feel commit-immediate, long
@@ -351,29 +352,66 @@ class _DaySheetState extends State<DaySheet> {
     _saveDebounce?.cancel();
     _savedIndicatorTimer?.cancel();
     if (_dirty && !_discardUnsaved) {
-      // Belt-and-braces flush (#198): normal dismissal flushes via the
-      // PopScope callback while still mounted; this covers a teardown that
-      // bypassed a pop. The entry is composed before the controller dies;
-      // the write itself is fire-and-forget — there is no sheet left to
-      // render a failure into, and the PopScope guard has already handled
-      // the interactive failure case above it. The spotting sync (#247)
-      // rides along so the persisted entry and its observation row can
-      // never disagree about whether the day had spotting.
-      final pending = _pendingEntry;
-      final repository = widget.repository;
-      final observations = _observationsRepository;
-      if (pending != null) {
-        scheduleMicrotask(() async {
-          try {
-            final (toUpsert, toDelete) =
-                await _computeObservationMutations(pending, observations);
-            await repository.saveDayEntryWithObservations(
-              entry: pending,
-              observationsToUpsert: toUpsert,
-              observationIdsToDelete: toDelete,
-            );
-          } catch (_) {}
-        });
+      if (_saving) {
+        // Issue #546: a `_performAutosave` write is already in flight (its
+        // own `await` still pending when dismissal raced the debounce).
+        // Firing a second, concurrent write here for the same entry would
+        // race it — two writes to the same row with no ordering guarantee
+        // between them. Queue instead, the same signal
+        // `_performAutosave`'s own re-entrancy guard sets
+        // (`if (_saving) { _saveQueued = true; return; }`): its
+        // continuation runs once the in-flight write completes regardless
+        // of `mounted` (`widget`/`_observationsRepository` stay valid to
+        // read), and now correctly fires — `_onAutosaveSuccess` resets
+        // `_saving` even once the sheet has gone, which it did not before
+        // this issue's fix, so this queued flag used to never get acted on
+        // and the edit was silently dropped.
+        _saveQueued = true;
+      } else {
+        // Belt-and-braces flush (#198): normal dismissal flushes via the
+        // PopScope callback while still mounted; this covers a teardown
+        // that bypassed a pop. The entry is composed before the controller
+        // dies; the write itself is fire-and-forget — there is no sheet
+        // left to render a failure into, and the PopScope guard has
+        // already handled the interactive failure case above it. The
+        // spotting sync (#247) rides along so the persisted entry and its
+        // observation row can never disagree about whether the day had
+        // spotting.
+        final pending = _pendingEntry;
+        final repository = widget.repository;
+        final observations = _observationsRepository;
+        if (pending != null) {
+          // Set the field directly, not via `_setAutosaveState` — calling
+          // `setState` synchronously from inside `dispose()` itself
+          // crashes (the `Element` is already `defunct` by the time a
+          // State's own `dispose()` body runs, regardless of what
+          // `mounted` reports); the deferred `finally` below runs later,
+          // once `mounted` is genuinely false, so `_setAutosaveState`
+          // there correctly skips `setState`.
+          _saving = true;
+          scheduleMicrotask(() async {
+            try {
+              final (toUpsert, toDelete) =
+                  await _computeObservationMutations(pending, observations);
+              await repository.saveDayEntryWithObservations(
+                entry: pending,
+                observationsToUpsert: toUpsert,
+                observationIdsToDelete: toDelete,
+              );
+            } catch (error, stackTrace) {
+              // Issue #546: this used to be a bare `catch (_) {}` — the
+              // operator's edit could be silently lost (DB locked during a
+              // sync apply, disk full, closing the DB during a reset)
+              // with nothing, UI or telemetry, ever saying so. There is
+              // no sheet left to show a retry banner in, so this is
+              // observability only, not recovery — captured the same way
+              // every other data-layer failure in this codebase is.
+              unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+            } finally {
+              _setAutosaveState(saving: false);
+            }
+          });
+        }
       }
     }
     _noteController.dispose();
@@ -443,14 +481,19 @@ class _DaySheetState extends State<DaySheet> {
     }
   }
 
-  /// Flips the autosave UI state; a no-op once the sheet has gone (a
-  /// dismissal-time flush outlives the widget that started it).
+  /// Updates the autosave state. Issue #546: `_saving`/`_saveFailed`
+  /// always update, even once the sheet has gone (a dismissal-time flush
+  /// outlives the widget that started it) — `_performAutosave`'s
+  /// re-entrancy guard (`if (_saving) { _saveQueued = true; return; }`)
+  /// and [dispose]'s own flush both read `_saving` to decide whether a
+  /// write is already in flight, and that must stay accurate whether or
+  /// not the sheet is still mounted. Only the `setState` rebuild — which
+  /// would throw once the widget is gone — is skipped while unmounted.
   void _setAutosaveState({required bool saving, bool failed = false}) {
+    _saving = saving;
+    _saveFailed = failed;
     if (!mounted) return;
-    setState(() {
-      _saving = saving;
-      _saveFailed = failed;
-    });
+    setState(() {});
   }
 
   /// Persists [pending] and its child observations atomically (Issue #471);
@@ -477,7 +520,19 @@ class _DaySheetState extends State<DaySheet> {
       );
       _persistedEntryId = saved.id;
       return true;
-    } catch (_) {
+    } on ArgumentError catch (error, stackTrace) {
+      // Issue #546: a genuine bug — a chip grid let an unrecognised code
+      // through `_sessionSelectedTags` — never the same "disk full/DB
+      // locked" transient failure the generic catch below covers. Split
+      // out so it is never lost in that same bucket, and captured with
+      // its real type rather than rendering the same generic "save
+      // failed" banner with no way to tell the two apart.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      _dirty = true;
+      _setAutosaveState(saving: false, failed: true);
+      return false;
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
       _dirty = true;
       _setAutosaveState(saving: false, failed: true);
       return false;
@@ -489,10 +544,28 @@ class _DaySheetState extends State<DaySheet> {
   /// is dismissed, not now, because an open modal sheet's barrier hides a
   /// SnackBar), and show the transient "Saved" micro-confirmation.
   void _onAutosaveSuccess() {
-    _pendingEntry = null;
+    // Issue #546: only clear `_pendingEntry` when nothing has changed since
+    // the write that just succeeded started (`!_dirty`) — an edit made
+    // while that write was in flight (`_markDirty` re-set `_dirty` and
+    // `_pendingEntry` after this call's own `_performAutosave` had already
+    // snapshotted the old value into `pending`) must survive so
+    // `_performAutosave`'s queued continuation (`if (_saveQueued) {
+    // _saveQueued = false; if (_dirty) unawaited(_performAutosave()); }`,
+    // or `dispose`'s own `_saveQueued = true` when a write was already in
+    // flight) has something real to write. Unconditionally nulling it here
+    // silently dropped that edit: the continuation's `_performAutosave`
+    // would immediately return on `pending == null`.
+    if (!_dirty) _pendingEntry = null;
+    // Issue #546: through `_setAutosaveState` so `_saving` resets even
+    // once the sheet has gone — this used to be a bare `setState(() =>
+    // _saving = false)` guarded by the same `if (!mounted) return` below,
+    // so a dismissal-time success left `_saving` permanently stuck `true`:
+    // `_performAutosave`'s own re-entrancy guard (`if (_saving) {
+    // _saveQueued = true; return; }`) would then queue a later edit
+    // forever without ever actually writing it.
+    _setAutosaveState(saving: false);
     if (!mounted) return;
     _offlineAckMessenger ??= _offlineConfirmationMessenger(context);
-    setState(() => _saving = false);
     _savedIndicatorTimer?.cancel();
     setState(() => _showSaved = true);
     _savedIndicatorTimer = Timer(kDaySheetSavedIndicatorDuration, () {
