@@ -19,6 +19,7 @@ library;
 
 import 'dart:async';
 
+import 'package:lunarlog/data/publish_retry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
@@ -62,6 +63,11 @@ class LocalPredictionProjectionPublisher
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
   final Map<String, Timer> _debounceTimers = {};
   final Map<String, ActivePrediction> _pending = {};
+  // Issue #547: consecutive-failure count per profile, feeding
+  // decidePublishRetry's exponential backoff — reset on any genuine
+  // prediction change ([_onPrediction]) so a fresh update never inherits a
+  // stale profile's long backoff.
+  final Map<String, int> _retryAttempts = {};
   bool _disposed = false;
 
   @override
@@ -95,9 +101,11 @@ class LocalPredictionProjectionPublisher
       // NotEnoughHistory: nothing derived to share right now.
       _debounceTimers.remove(profileId)?.cancel();
       _pending.remove(profileId);
+      _retryAttempts.remove(profileId);
       return;
     }
     _pending[profileId] = prediction;
+    _retryAttempts.remove(profileId);
     _debounceTimers[profileId]?.cancel();
     _debounceTimers[profileId] =
         Timer(debounce, () => unawaited(_flush(profileId)));
@@ -119,16 +127,32 @@ class LocalPredictionProjectionPublisher
         profileId: profileId,
         projection: buildPredictionProjection(prediction),
       );
-    } catch (_) {
-      // Best-effort background upkeep (the reminder-window publisher's
-      // posture): a failed publish must never surface to the UI or cancel
-      // the subscription — but it also must not go unaddressed until the
-      // next genuine change (see [retryDelay]).
+      _retryAttempts.remove(profileId);
+    } catch (error, stackTrace) {
+      // Issue #547: retry only a transient failure, with exponential
+      // backoff and an attempt cap — a permanent rejection (revoked
+      // access surfacing as a 4xx, a malformed payload) used to re-arm
+      // this same fixed 5-minute retry forever, a select + upsert every 5
+      // minutes indefinitely on cellular for a rejection that will never
+      // succeed. decidePublishRetry captures a non-retryable/exhausted
+      // failure to Sentry exactly once (never a bare swallow).
       if (_disposed) return;
+      final attempt = (_retryAttempts[profileId] ?? 0) + 1;
+      final decision = decidePublishRetry(
+        error,
+        stackTrace,
+        attempt: attempt,
+        backoff: (a) => exponentialPublishBackoff(a, initial: retryDelay),
+      );
+      if (!decision.shouldRetry) {
+        _retryAttempts.remove(profileId);
+        return;
+      }
+      _retryAttempts[profileId] = attempt;
       _pending[profileId] = prediction;
       _debounceTimers[profileId]?.cancel();
       _debounceTimers[profileId] =
-          Timer(retryDelay, () => unawaited(_flush(profileId)));
+          Timer(decision.delay!, () => unawaited(_flush(profileId)));
     }
   }
 
@@ -197,5 +221,6 @@ class LocalPredictionProjectionPublisher
     }
     _predictionSubs.clear();
     _pending.clear();
+    _retryAttempts.clear();
   }
 }
