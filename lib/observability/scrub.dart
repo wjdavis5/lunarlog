@@ -135,6 +135,14 @@ const List<String> sentryDataLayerTypeMarkers = [
 /// `lib/data` (the repositories and the Drift store) and, since issue #97
 /// U1, `lib/startup` (the reset/startup primitives that touch the database
 /// file directly).
+///
+/// Since issue #516, this predicate is no longer what decides whether
+/// [_scrubException] reduces a value — the default is now reduced
+/// regardless (see [_sentrySafeExceptionTypes]) because
+/// `--obfuscate --split-debug-info` can destroy both of this predicate's
+/// discriminators at once. It still runs as defense-in-depth: an
+/// allowlisted-safe type raised from `lib/data`/`lib/startup` is reduced
+/// anyway, on the chance the allowlist is ever wrong for a given call site.
 const List<String> _dataLayerPathMarkers = [
   'lib/data/',
   'lunarlog/data/',
@@ -274,13 +282,46 @@ bool _isDataLayerException(SentryException exception) {
   return false;
 }
 
+/// Exception types short-listed as safe to keep their `value` verbatim
+/// (issue #516): each is a well-known framework type whose message is
+/// Flutter's own static diagnostic text, never interpolated app content.
+///
+/// Deliberately short. Anything not on this list defaults to reduced —
+/// the inversion #516 asks for: `--obfuscate --split-debug-info`
+/// (`play-store-release.yml`, enabled by #211) destroys both of
+/// [_isDataLayerException]'s discriminators (the `type` name and every
+/// stack frame's path), so a real `SqliteException` can reach here with a
+/// mangled `type` like `'a1b'` and pathless frames. The old "reduce only
+/// when recognized as data-layer" default silently stopped reducing that
+/// case, because nothing about it looked recognizable. Inverting the
+/// default means an unrecognized (or mangled) type is reduced, not kept.
+const Set<String> _sentrySafeExceptionTypes = {
+  'FlutterError',
+};
+
+/// KTD12/#516: reduces [exception] to its type name unless it is on the
+/// short [_sentrySafeExceptionTypes] allowlist — and even then, only when
+/// it is neither raised from the data layer ([_isDataLayerException], kept
+/// as defense-in-depth against the allowlist being wrong for a given call
+/// site) nor mentions a deny-listed key itself ([mentionsDenyListedKey] —
+/// `SentryException.value` was never deny-list-checked before, so a
+/// "safe" type's message could still happen to name one).
 SentryException _scrubException(SentryException exception) {
-  final reduce = _isDataLayerException(exception);
+  final type = exception.type;
+  final value = exception.value;
+  final isSafeType = type != null && _sentrySafeExceptionTypes.contains(type);
+  final keepVerbatim = isSafeType &&
+      !_isDataLayerException(exception) &&
+      !(value != null && mentionsDenyListedKey(value));
   return SentryException(
-    type: exception.type,
+    type: type,
     // A data-layer message can embed SQL with bound arguments, a PostgREST
-    // `details` row, or an auth response with the email: keep only the type.
-    value: reduce ? exception.type : exception.value,
+    // `details` row, or an auth response with the email; an obfuscated
+    // build can also make any exception's type/frames unrecognizable
+    // (#516). So the default is reduced, not kept — only a short, explicit
+    // allowlist of known-safe types (further gated by
+    // mentionsDenyListedKey) survives verbatim.
+    value: keepVerbatim ? value : type,
     module: exception.module,
     stackTrace: exception.stackTrace,
     mechanism: exception.mechanism,

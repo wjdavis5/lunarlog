@@ -341,8 +341,10 @@ void main() {
       expect(_json(out), isNot(contains('/var/mobile')));
     });
 
-    test('#97/U1/R4: an unrelated exception from lib/domain keeps its value '
-        '(the new markers do not over-reduce)', () {
+    test('#516 supersedes #97/U1/R4: an unrelated exception from '
+        'lib/domain is reduced too now — the default-reduce posture no '
+        'longer trusts a not-recognized-as-data-layer type/path to prove an '
+        'exception is safe to keep verbatim', () {
       final out = scrubEvent(SentryEvent(exceptions: [
         SentryException(
           type: 'FormatException',
@@ -354,7 +356,66 @@ void main() {
           ]),
         ),
       ]))!;
-      expect(out.exceptions!.single.value, 'Unexpected character at offset 3');
+      expect(out.exceptions!.single.value, 'FormatException');
+    });
+
+    test('#516: an obfuscated exception — mangled type name, pathless '
+        'frames — with a SqliteException-shaped message and bound '
+        'parameters is still reduced, even though neither of '
+        '_isDataLayerException\'s old discriminators can fire', () {
+      const mangledParams = "['$_note', '2026-09-02']";
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          // --obfuscate --split-debug-info (play-store-release.yml)
+          // mangles the real type name away entirely.
+          type: 'a1b',
+          value: 'a1b(19): constraint failed, $_sql, parameters: '
+              '$mangledParams',
+          stackTrace: SentryStackTrace(frames: [
+            // Obfuscated frames carry a bare renamed function, no
+            // path/absPath/module/package at all.
+            SentryStackFrame(function: 'a2c'),
+          ]),
+        ),
+      ]))!;
+      final ex = out.exceptions!.single;
+      expect(ex.type, 'a1b');
+      expect(ex.value, 'a1b');
+      final json = _json(out);
+      expect(json, isNot(contains(_note)));
+      expect(json, isNot(contains('parameters')));
+      expect(json, isNot(contains('INSERT INTO')));
+    });
+
+    test('#516: another mangled type with no stack trace at all is reduced '
+        'by default (no allowlist match, nothing to fall back on)', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(type: 'c3d', value: 'c3d: row note=$_note'),
+      ]))!;
+      expect(out.exceptions!.single.value, 'c3d');
+    });
+
+    test('#516: an allowlisted safe type is still reduced when its value '
+        'itself mentions a deny-listed key', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'FlutterError',
+          value: 'note: $_note overflowed the layout',
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'FlutterError');
+    });
+
+    test('#516: an allowlisted safe type raised from lib/data is still '
+        'reduced (defense-in-depth over the allowlist)', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'FlutterError',
+          value: 'Bad state: $_note',
+          stackTrace: _dataLayerStack(),
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'FlutterError');
     });
 
     test('event tags lose deny-listed keys but keep the rest', () {
