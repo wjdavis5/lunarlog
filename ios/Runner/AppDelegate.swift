@@ -493,7 +493,7 @@ enum HealthKitChannelHandler {
     ofType sampleType: HKSampleType,
     predicate: NSPredicate?
   ) async throws -> [HKSample] {
-    try await withCheckedThrowingContinuation { continuation in
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HKSample], Error>) in
       let query = HKSampleQuery(
         sampleType: sampleType,
         predicate: predicate,
@@ -515,7 +515,7 @@ enum HealthKitChannelHandler {
   /// `delete(_:withCompletion:)` is bridged through a
   /// `withCheckedThrowingContinuation`.
   private static func delete(_ samples: [HKSample]) async throws {
-    try await withCheckedThrowingContinuation { continuation in
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       store.delete(samples) { _, error in
         if let error {
           continuation.resume(throwing: error)

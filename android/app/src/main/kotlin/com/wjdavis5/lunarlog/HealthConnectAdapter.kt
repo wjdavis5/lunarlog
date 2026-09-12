@@ -231,12 +231,12 @@ class HealthConnectAdapter(context: Context) {
                     flow = flow,
                     // User-logged cycle data (issue #254: never a derived
                     // value). Health Connect stamps dataOrigin itself from
-                    // the calling package. The direct Metadata constructor
-                    // requires the recording method explicitly (the old
-                    // `HcMetadata.manualEntry()` factory supplied it); this
-                    // app writes only manually-entered data.
-                    metadata = HcMetadata(
-                        recordingMethod = HcMetadata.RECORDING_METHOD_MANUAL_ENTRY,
+                    // the calling package. The Metadata constructor is
+                    // internal in connect-client 1.1.0, so the public
+                    // companion factory is used instead — it supplies the
+                    // manual-entry recording method itself; this app writes
+                    // only manually-entered data.
+                    metadata = HcMetadata.manualEntry(
                         clientRecordId = recordId,
                         clientRecordVersion = recordVersionMs,
                     ),
@@ -276,8 +276,7 @@ class HealthConnectAdapter(context: Context) {
                 val record = IntermenstrualBleedingRecord(
                     time = Instant.ofEpochMilli(instantMs),
                     zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
-                    metadata = HcMetadata(
-                        recordingMethod = HcMetadata.RECORDING_METHOD_MANUAL_ENTRY,
+                    metadata = HcMetadata.manualEntry(
                         clientRecordId = recordId,
                         clientRecordVersion = recordVersionMs,
                     ),
