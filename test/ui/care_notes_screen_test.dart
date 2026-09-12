@@ -150,7 +150,10 @@ void main() {
       final stored =
           await h.db.storage.getCareNotesForProfile(h.profile.id);
       expect(stored.single.body, 'Prefers the blue inhaler.');
-      expect(find.text(careAttributionDate(stored.single.updatedAt)),
+      expect(
+          find.text(careAttributionDate(
+              tester.element(find.byType(CareNotesScreen)),
+              stored.single.updatedAt)),
           findsOneWidget,
           reason: 'the write time shows even before the first sync stamps '
               'authorship');

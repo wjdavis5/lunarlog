@@ -30,19 +30,18 @@ import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
-/// Formats an instant as a bare civil date (`2026-08-31`) for the
-/// attribution line. Time-of-day is not shown: "who and roughly when" is
-/// the whole contract, and a date keeps the copy stable across zones.
-String careAttributionDate(DateTime instant) {
-  final local = instant.toLocal();
-  final month = local.month.toString().padLeft(2, '0');
-  final day = local.day.toString().padLeft(2, '0');
-  return '${local.year}-$month-$day';
-}
+/// Formats an instant as a bare, locale-aware civil date (issue #554 --
+/// was a hand-rolled, always `YYYY-MM-DD` string) for the attribution
+/// line. Time-of-day is not shown: "who and roughly when" is the whole
+/// contract, and a date keeps the copy stable across zones.
+String careAttributionDate(BuildContext context, DateTime instant) =>
+    dates.formatShortDate(instant.toLocal(),
+        locale: dates.calendarLocale(context));
 
 class CareNotesScreen extends StatefulWidget {
   const CareNotesScreen({
@@ -447,7 +446,7 @@ class _CareNoteRow extends StatelessWidget {
                 guardians: guardians,
               ),
             Text(
-              careAttributionDate(note.updatedAt),
+              careAttributionDate(context, note.updatedAt),
               key: ValueKey('care-note-by-${note.id}'),
             ),
           ],

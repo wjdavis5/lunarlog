@@ -284,7 +284,10 @@ void main() {
       expect(linkFinder, findsOneWidget);
       expect(
         find.textContaining(
-          formatTransferExpiry(DateTime.utc(2026, 9, 9, 12, 30)),
+          formatTransferExpiry(
+            tester.element(find.byType(TransferOwnershipScreen)),
+            DateTime.utc(2026, 9, 9, 12, 30),
+          ),
         ),
         findsOneWidget,
       );
@@ -427,7 +430,10 @@ void main() {
       expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
       expect(find.text('What changes'), findsNothing);
       expect(
-        find.textContaining(formatTransferExpiry(DateTime.utc(2026, 9, 10, 8, 0))),
+        find.textContaining(formatTransferExpiry(
+          tester.element(find.byType(TransferOwnershipScreen)),
+          DateTime.utc(2026, 9, 10, 8, 0),
+        )),
         findsOneWidget,
       );
 
@@ -472,7 +478,10 @@ void main() {
 
       expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
       expect(
-        find.textContaining(formatTransferExpiry(DateTime.utc(2026, 9, 11, 9, 0))),
+        find.textContaining(formatTransferExpiry(
+          tester.element(find.byType(TransferOwnershipScreen)),
+          DateTime.utc(2026, 9, 11, 9, 0),
+        )),
         findsOneWidget,
       );
 

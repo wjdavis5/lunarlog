@@ -14,14 +14,19 @@ import 'package:share_plus/share_plus.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../help/help_card_view.dart';
+import '../l10n/dates.dart' as dates;
 
-/// Renders [utc] in the device's local time as `YYYY-MM-DD HH:MM`, mirroring
-/// `formatCreatedDate` in `profile_picker_screen.dart`.
-String formatTransferExpiry(DateTime utc) {
+/// Renders [utc] in the device's local time, locale-aware date plus a
+/// clock-convention-aware time (issue #554) -- was a hand-rolled, always
+/// `YYYY-MM-DD HH:MM` string (mirrored in `formatCreatedDate` in
+/// `profile_picker_screen.dart`, which keeps its own hand-rolled form for
+/// now — see that file's PR note).
+String formatTransferExpiry(BuildContext context, DateTime utc) {
   final local = utc.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)} '
-      '${two(local.hour)}:${two(local.minute)}';
+  final date =
+      dates.formatShortDate(local, locale: dates.calendarLocale(context));
+  final time = TimeOfDay.fromDateTime(local).format(context);
+  return '$date $time';
 }
 
 class TransferOwnershipScreen extends StatefulWidget {
@@ -416,7 +421,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Expires ${formatTransferExpiry(active.expiresAt)}',
+          'Expires ${formatTransferExpiry(context, active.expiresAt)}',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
@@ -462,7 +467,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Expires ${formatTransferExpiry(transfer.expiresAt)}',
+          'Expires ${formatTransferExpiry(context, transfer.expiresAt)}',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),

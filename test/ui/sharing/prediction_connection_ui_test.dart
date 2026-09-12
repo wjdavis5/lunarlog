@@ -371,7 +371,10 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(home: PredictionConnectionsScreen(service: service)),
+        MaterialApp(
+          locale: const Locale('en'),
+          home: PredictionConnectionsScreen(service: service),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -380,6 +383,20 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Shared with me'), findsOneWidget);
+      // Issue #554: locale-aware short numeric date (`M/d/y` for `en`), not
+      // a hand-rolled always-`YYYY-MM-DD` string. The exact day depends on
+      // the test machine's local offset from the UTC `acceptedAt` (same
+      // `.toLocal()` conversion the pre-existing code already did), so
+      // this matches the shape rather than one hardcoded date.
+      final subtitle = tester
+          .widget<Text>(find.textContaining('phases only'))
+          .data!;
+      expect(
+        RegExp(r'^Shared \d{1,2}/\d{1,2}/2026 • phases only$')
+            .hasMatch(subtitle),
+        isTrue,
+        reason: 'got: $subtitle',
+      );
 
       await tester.tap(find.byKey(const ValueKey('prediction-connection-p1')));
       await tester.pumpAndSettle();
