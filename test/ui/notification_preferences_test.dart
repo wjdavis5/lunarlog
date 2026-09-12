@@ -277,6 +277,30 @@ void main() {
     expect(service.stored['profile-1']?.digestTimeMinutes, 8 * 60);
   });
 
+  testWidgets(
+      'issue #554: the digest time tile honours the device clock '
+      'convention instead of always rendering 12h', (tester) async {
+    final service = FakeNotificationPreferencesService();
+
+    await tester.pumpWidget(MaterialApp(
+      // Explicitly 24h -- proves the rendered text now actually depends
+      // on the ambient MediaQuery instead of the screen's old hand-rolled,
+      // always-12h formatter.
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const ValueKey('digest-time-tile')));
+    expect(find.text('08:00'), findsOneWidget);
+  });
+
   testWidgets('setting a quiet-hours range persists both times; clearing persists nulls', (tester) async {
     final service = FakeNotificationPreferencesService();
 

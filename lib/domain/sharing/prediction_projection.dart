@@ -10,6 +10,24 @@
 /// client receives only what this model holds, by construction on both
 /// ends.
 ///
+/// Issue #529 adds [confidenceTier] — the sharer's own [CycleConfidence]
+/// tier, carried so the recipient's calendar can show it alongside the
+/// disclaimers rather than presenting an undated estimate with no
+/// reliability framing. It is nullable end to end (an absent key
+/// deserializes to `null`, never a default tier) for two reasons: (1)
+/// backwards compatibility with a payload published before this field
+/// existed, and (2) that migration's `prediction_projections_payload_keys_
+/// check` CHECK constraint and `enforce_prediction_projection_payload()`
+/// trigger allowlist only the five original keys and reject anything
+/// else — widening that allowlist needs its own migration (out of scope
+/// here), so [PredictionProjectionPublisher]'s wire call strips this key
+/// before it ever reaches `upsert_prediction_projection`. Until that
+/// follow-up migration lands, [confidenceTier] round-trips through this
+/// model's own [toJson]/[fromJson] (and is covered by unit tests here)
+/// but never actually reaches a recipient's device — see
+/// `lib/data/sharing/supabase_prediction_connection_service.dart`'s
+/// `publishProjection` for the strip and its own comment.
+///
 /// The builder reads the sharer's own [ActivePrediction] (issue #213's
 /// engine — the only implementation of the algorithm) and derives:
 ///   * period days — the current open episode's days so far
@@ -50,6 +68,7 @@ class PredictionProjection {
     required this.fertileDays,
     required this.ovulationDays,
     required this.pmsDays,
+    this.confidenceTier,
   });
 
   /// The civil date the snapshot was computed as-of.
@@ -67,7 +86,17 @@ class PredictionProjection {
   /// PMS-window days, sorted, deduplicated.
   final List<LocalDate> pmsDays;
 
-  /// The server's key allowlist, in wire order.
+  /// The sharer's own confidence tier at publish time (issue #529),
+  /// reusing [CycleConfidence] rather than inventing a second vocabulary.
+  /// `null` when the field is absent from the payload (an older snapshot,
+  /// or one published before this field existed) — never a guessed
+  /// default. See the library doc comment for why this currently never
+  /// crosses the wire in production.
+  final CycleConfidence? confidenceTier;
+
+  /// The server's key allowlist, in wire order. Deliberately unchanged by
+  /// [confidenceTier] (issue #529) — see that field's doc comment; it is
+  /// not part of what the server currently accepts.
   static const List<String> allowedKeys = [
     'generated_at',
     'period_days',
@@ -76,19 +105,35 @@ class PredictionProjection {
     'pms_days',
   ];
 
-  /// Wire form: exactly the five allowlisted keys, dates as `yyyy-MM-dd`.
+  /// The wire key for [confidenceTier] when present. Held separately from
+  /// [allowedKeys] because the server does not (yet) allowlist it.
+  static const String confidenceTierKey = 'confidence_tier';
+
+  /// This model's own wire form: the five allowlisted keys plus
+  /// [confidenceTierKey] when [confidenceTier] is non-null (omitted, not
+  /// null, when absent — the same "absent means unknown" convention the
+  /// rest of this payload already uses). Dates are `yyyy-MM-dd`.
+  ///
+  /// Callers that publish to `upsert_prediction_projection` must strip
+  /// [confidenceTierKey] first — see the library doc comment — this
+  /// method is the full domain-level shape, not the current wire
+  /// contract that specific RPC accepts.
   Map<String, Object?> toJson() => {
         'generated_at': generatedAt.iso,
         'period_days': [for (final d in periodDays) d.iso],
         'fertile_days': [for (final d in fertileDays) d.iso],
         'ovulation_days': [for (final d in ovulationDays) d.iso],
         'pms_days': [for (final d in pmsDays) d.iso],
+        if (confidenceTier != null) confidenceTierKey: confidenceTier!.name,
       };
 
   /// Parses the server's payload. Unknown keys are ignored (a newer
   /// client's extra derived fields must not crash an older reader);
   /// malformed dates are skipped rather than thrown, so one bad value
-  /// never blanks a whole calendar.
+  /// never blanks a whole calendar. [confidenceTierKey] is optional: an
+  /// absent key, or a value that is not one of [CycleConfidence]'s names,
+  /// deserializes to `null` rather than throwing or guessing a tier
+  /// (issue #529's backwards-compatibility requirement).
   static PredictionProjection fromJson(Map<String, dynamic> json) {
     LocalDate? parseDate(Object? value) {
       if (value is! String) return null;
@@ -107,6 +152,14 @@ class PredictionProjection {
       return dates;
     }
 
+    CycleConfidence? parseTier(Object? value) {
+      if (value is! String) return null;
+      for (final tier in CycleConfidence.values) {
+        if (tier.name == value) return tier;
+      }
+      return null;
+    }
+
     final generatedAt = parseDate(json['generated_at']);
     return PredictionProjection(
       generatedAt: generatedAt ?? LocalDate.today(),
@@ -114,6 +167,7 @@ class PredictionProjection {
       fertileDays: parseDates(json['fertile_days']),
       ovulationDays: parseDates(json['ovulation_days']),
       pmsDays: parseDates(json['pms_days']),
+      confidenceTier: parseTier(json[confidenceTierKey]),
     );
   }
 
@@ -143,7 +197,8 @@ class PredictionProjection {
           _sameDays(other.periodDays, periodDays) &&
           _sameDays(other.fertileDays, fertileDays) &&
           _sameDays(other.ovulationDays, ovulationDays) &&
-          _sameDays(other.pmsDays, pmsDays);
+          _sameDays(other.pmsDays, pmsDays) &&
+          other.confidenceTier == confidenceTier;
 
   @override
   int get hashCode => Object.hash(
@@ -152,12 +207,14 @@ class PredictionProjection {
         Object.hashAll(fertileDays),
         Object.hashAll(ovulationDays),
         Object.hashAll(pmsDays),
+        confidenceTier,
       );
 
   @override
   String toString() => 'PredictionProjection(asOf: ${generatedAt.iso}, '
       'period: ${periodDays.length}d, fertile: ${fertileDays.length}d, '
-      'ovulation: ${ovulationDays.length}d, pms: ${pmsDays.length}d)';
+      'ovulation: ${ovulationDays.length}d, pms: ${pmsDays.length}d, '
+      'confidenceTier: ${confidenceTier?.name})';
 }
 
 /// The phases a prediction-only connection shares (issue #151: period,
@@ -176,6 +233,12 @@ bool _sameDays(List<LocalDate> a, List<LocalDate> b) {
 /// [ActivePrediction] the sharer's own calendar renders (see the library
 /// doc for the per-field derivation). Decomposed into one private helper
 /// per phase so each stays under the quality gate's CRAP ceiling.
+///
+/// [ActivePrediction.tier] is always populated on this type (it is a
+/// required, non-nullable field there), so [confidenceTier] is always set
+/// here — the only caller of this function ([LocalPredictionProjectionPublisher])
+/// already skips publishing entirely when the current prediction is not
+/// an [ActivePrediction] (`NotEnoughHistory`, no tier to share).
 PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
   final fertile = _fertileAndOvulationDays(prediction.forecast);
   return PredictionProjection(
@@ -183,6 +246,7 @@ PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
     periodDays: _cappedSorted(_periodDays(prediction)),
     fertileDays: _cappedSorted(fertile.fertile),
     ovulationDays: _cappedSorted(fertile.ovulation),
+    confidenceTier: prediction.tier,
     pmsDays: _cappedSorted(_pmsBand(prediction.pms)),
   );
 }

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:provider/provider.dart';
 
@@ -33,8 +34,10 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
   Future<void> _save() async {
     if (_busy) return;
     if (_password.text.length < kMinPasswordLength) {
-      setState(() => _error =
-          'Use at least $kMinPasswordLength characters for the password.');
+      setState(
+        () => _error =
+            'Use at least $kMinPasswordLength characters for the password.',
+      );
       return;
     }
     setState(() {
@@ -47,8 +50,9 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
       auth.consumeRecovery();
     } on AuthFailure catch (failure) {
       if (mounted) {
-        setState(() =>
-            _error = authFailureCopy(AppLocalizations.of(context), failure));
+        setState(
+          () => _error = authFailureCopy(AppLocalizations.of(context), failure),
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -83,11 +87,10 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(
-              _error!,
-              key: const ValueKey('auth-error'),
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
+            // Matches `sign_in_screen.dart`'s own 'auth-error' slot: no
+            // onRetry (the Save password button right below is the retry
+            // affordance).
+            InlineError(key: const ValueKey('auth-error'), message: _error!),
           ],
           const SizedBox(height: 16),
           FilledButton(

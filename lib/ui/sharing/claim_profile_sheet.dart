@@ -15,6 +15,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/transfer_failure_copy.dart';
 
 import '../../domain/sharing/ownership_transfer_service.dart';
+import '../components/inline_error.dart';
 
 class ClaimProfileSheet extends StatefulWidget {
   const ClaimProfileSheet({
@@ -132,13 +133,13 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                 hintText: 'Shows when they log entries',
               ),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ],
+            if (_error != null)
+              // No onRetry: the primary action button right below is the
+              // retry affordance. No leading SizedBox either --
+              // InlineError already carries its own vertical padding, and
+              // this sheet's tight modal height has no room for both plus
+              // a TextButton row.
+              InlineError(message: _error!),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

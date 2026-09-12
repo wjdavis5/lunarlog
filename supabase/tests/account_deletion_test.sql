@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(69);
+select plan(73);
 
 create temp table snap (name text primary key, v jsonb);
 -- Issue #167: section 12 below is the first place in this file that reads a
@@ -162,13 +162,39 @@ select pg_temp.snapshot('a_result', public.delete_account_data());
 -- (the same gap this file's AE3 checks avoid).
 select tests.clear_authentication();
 
+-- Issue #522: delete_account_data() now tombstones (payload cleared,
+-- server_version bumped) rather than hard-deletes A's own profiles and
+-- their day_entries/observations/care_notes/visit_prep_items/
+-- cycle_overrides - the rows must survive so the deletion propagates to
+-- any co-guardian via the ordinary incremental pull (see
+-- 20260913013000_deleted_profiles_tombstone_purge.sql's header). Every
+-- other table below is unchanged - still a real, immediate DELETE.
 select is(
   (select count(*) from public.profiles where user_id = tests.get_supabase_uid('user_a')),
-  0::bigint, 'AE2: zero profiles remain for A'
+  2::bigint, 'AE2: both of A''s profiles SURVIVE, tombstoned rather than deleted (Issue #522)'
+);
+select is(
+  (select count(*) from public.profiles
+    where user_id = tests.get_supabase_uid('user_a') and deleted_at is null),
+  0::bigint, 'AE2: neither of A''s profiles is LIVE any more'
+);
+select is(
+  (select bool_and(display_name = '' and not is_minor)
+     from public.profiles where user_id = tests.get_supabase_uid('user_a')),
+  true, 'AE2: A''s tombstoned profiles carry no payload'
+);
+select is(
+  (select count(*) from public.deleted_profiles where profile_id in (tests.ulid(1), tests.ulid(2))),
+  2::bigint, 'AE2: both profiles are logged in deleted_profiles'
 );
 select is(
   (select count(*) from public.day_entries where profile_id in (tests.ulid(1), tests.ulid(2))),
-  0::bigint, 'AE2: zero day_entries remain for A''s profiles'
+  5::bigint, 'AE2: all five day_entries SURVIVE, tombstoned (Issue #522)'
+);
+select is(
+  (select count(*) from public.day_entries
+    where profile_id in (tests.ulid(1), tests.ulid(2)) and deleted_at is null),
+  0::bigint, 'AE2: zero of A''s day_entries are LIVE any more'
 );
 select is(
   (select count(*) from public.settings where user_id = tests.get_supabase_uid('user_a')),
@@ -201,8 +227,8 @@ select is(
 -- 4. Returned jsonb carries the expected keys and correct counts.
 -- ---------------------------------------------------------------------------
 
-select is(pg_temp.snap('a_result') -> 'profiles', '2'::jsonb, 'result: profiles count is 2');
-select is(pg_temp.snap('a_result') -> 'day_entries', '5'::jsonb, 'result: day_entries count is 5');
+select is(pg_temp.snap('a_result') -> 'profiles', '2'::jsonb, 'result: profiles count is 2 (Issue #522: now tombstoned, not deleted)');
+select is(pg_temp.snap('a_result') -> 'day_entries', '5'::jsonb, 'result: day_entries count is 5 (Issue #522: now tombstoned, not deleted)');
 select is(pg_temp.snap('a_result') -> 'day_entries_rehomed', '0'::jsonb,
   'result: day_entries_rehomed is 0 (A owns every profile these entries are on)');
 select is(pg_temp.snap('a_result') -> 'settings', '3'::jsonb, 'result: settings count is 3');

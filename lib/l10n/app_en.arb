@@ -651,7 +651,7 @@
   "@firstRunCycleTypicalPeriodHint": {
     "description": "Hint inside the typical-period-length field."
   },
-  "firstRunCycleLengthRangeError": "Enter a number between 10 and 90",
+  "firstRunCycleLengthRangeError": "Enter a number between 15 and 60",
   "@firstRunCycleLengthRangeError": {
     "description": "Validation error for an out-of-range typical cycle length."
   },
@@ -771,6 +771,13 @@
     "description": "Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).",
     "placeholders": {
       "method": {"type": "String"}
+    }
+  },
+  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.",
+  "@predictionsSuppressedByModeBody": {
+    "description": "Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.",
+    "placeholders": {
+      "mode": {"type": "String"}
     }
   },
   "predictionsDisabledTitle": "Predictions turned off",

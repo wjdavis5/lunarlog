@@ -61,6 +61,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
@@ -126,8 +127,9 @@ LocalDate _firstOfMonth(int year, int month) => LocalDate(year, month, 1);
 
 /// The last civil date of [year]/[month].
 LocalDate _lastOfMonth(int year, int month) {
-  final firstOfNext =
-      month == 12 ? LocalDate(year + 1, 1, 1) : LocalDate(year, month + 1, 1);
+  final firstOfNext = month == 12
+      ? LocalDate(year + 1, 1, 1)
+      : LocalDate(year, month + 1, 1);
   return firstOfNext.addDays(-1);
 }
 
@@ -137,17 +139,9 @@ LocalDate _lastOfMonth(int year, int month) {
 /// and pure for direct testing, mirroring [dayCellSemanticLabel] and
 /// [canDrivePageController] elsewhere in this file.
 (LocalDate, LocalDate) calendarEntriesWindowFor(int year, int month) => (
-      _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
-      _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
-    );
-
-/// The [MediaQuery.textScalerOf] scale at and above which the legend strip
-/// starts collapsed by default (issue #312, large-text-budget item): past
-/// this scale the header/legend/layers stack above the single `Expanded`
-/// [PageView] otherwise squeezes the grid too far. Matched in
-/// [_MonthCalendarState._legendStrip]; the operator's own toggle always
-/// overrides this default once touched.
-const double kLegendCollapseTextScale = 1.6;
+  _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
+  _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
+);
 
 /// Confidence-appropriate band weight (KTD4): a hatched band's opacity by
 /// its cycle's tier. `high` reads strongest, `irregular` faintest — and
@@ -231,10 +225,7 @@ class DayCellMetrics {
 /// pixel-identical to before this pass and only grows from there.
 DayCellMetrics dayCellMetricsFor(double gridWidth, TextScaler textScaler) {
   final cellWidth = (gridWidth - 8) / 7;
-  final circleSize = math.min(
-    math.max(34.0, textScaler.scale(20)),
-    cellWidth,
-  );
+  final circleSize = math.min(math.max(34.0, textScaler.scale(20)), cellWidth);
   final markersHeight = math.max(14.0, textScaler.scale(12));
   final contentHeight = circleSize + 2 + markersHeight;
   final cellHeight = math.max(math.max(cellWidth, 48), contentHeight);
@@ -256,20 +247,20 @@ DayCellMetrics dayCellMetricsFor(double gridWidth, TextScaler textScaler) {
 /// reuses [LunarLogColors.flowHeavy]/`onFlowHeavy`, distinguished from
 /// plain `heavy` only by [_flowLevelMarkCount]'s extra mark (the design
 /// decision's documented fallback over adding a fifth ramp step).
-({Color fill, Color onFill}) _flowTone(FlowLevel level, LunarLogColors colors) =>
-    switch (level) {
-      // ignore: deprecated_member_use_from_same_package
-      FlowLevel.none || FlowLevel.spotting || FlowLevel.notBleeding => (
-        fill: colors.flowSpotting,
-        onFill: colors.onFlowSpotting,
-      ),
-      FlowLevel.light => (fill: colors.flowLight, onFill: colors.onFlowLight),
-      FlowLevel.medium => (fill: colors.flowMedium, onFill: colors.onFlowMedium),
-      FlowLevel.heavy || FlowLevel.superHeavy => (
-        fill: colors.flowHeavy,
-        onFill: colors.onFlowHeavy,
-      ),
-    };
+({Color fill, Color onFill}) _flowTone(
+  FlowLevel level,
+  LunarLogColors colors,
+) => switch (level) {
+  // ignore: deprecated_member_use_from_same_package
+  FlowLevel.none || FlowLevel.spotting || FlowLevel.notBleeding => (
+    fill: colors.flowSpotting,
+    onFill: colors.onFlowSpotting,
+  ),
+  FlowLevel.light => (fill: colors.flowLight, onFill: colors.onFlowLight),
+  FlowLevel.medium => (fill: colors.flowMedium, onFill: colors.onFlowMedium),
+  FlowLevel.heavy ||
+  FlowLevel.superHeavy => (fill: colors.flowHeavy, onFill: colors.onFlowHeavy),
+};
 
 /// The non-colour intensity channel (issue #191 B-2): a small dot count
 /// climbing from 1 (spotting) to 5 (super heavy, issue #247), independent
@@ -398,7 +389,9 @@ List<String> _loggedDayParts(DayEntry? entry, AppLocalizations l10n) {
   if (isBleed(entry.flow)) {
     return [
       l10n.calendarCellFlowState(localizedFlowLabel(entry.flow, l10n)),
-      hasSymptoms ? l10n.calendarCellSymptomsLogged : l10n.calendarCellNoSymptoms,
+      hasSymptoms
+          ? l10n.calendarCellSymptomsLogged
+          : l10n.calendarCellNoSymptoms,
     ];
   }
   if (hasSymptoms) return [l10n.calendarCellLoggedSymptoms];
@@ -591,10 +584,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
   Set<String> _activeLayers = const {};
   bool _layersExpanded = false;
 
-  /// The legend strip's expand/collapse state (issue #312): `null` until
-  /// the operator first touches the toggle, meaning
-  /// [_legendStrip] falls back to [kLegendCollapseTextScale]'s
-  /// scale-based default; once touched, the explicit choice always wins.
+  /// The legend strip's expand/collapse state (issue #312; #556 review:
+  /// no longer scale-dependent): `null` until the operator first touches
+  /// the toggle, meaning [_legendStrip] defaults to expanded; once
+  /// touched, the explicit choice always wins.
   bool? _legendExpanded;
 
   /// Issue #550: memoises the `(byIso, cycles, forecastByIso, pmsBandActive,
@@ -668,8 +661,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
     // 6-cycle averages anchored before the next predicted start, or null
     // (no PMS badge anywhere) below the 3-logged-interval minimum.
     final pmsEstimate = estimateActive ? prediction.pms : null;
-    final forecastByIso =
-        forecastDayCells(cycles: cycles, today: today, pms: pmsEstimate);
+    final forecastByIso = forecastDayCells(
+      cycles: cycles,
+      today: today,
+      pms: pmsEstimate,
+    );
     // Review follow-up on issue #197: `entries` here is [_entries]'s
     // windowed list (±45 days around the displayed month), not the
     // profile's full history — the default layer selection now only
@@ -861,7 +857,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final lastOfMonth = _lastOfMonth(year, month);
     final from = _entriesWindowFrom;
     final to = _entriesWindowTo;
-    final covered = from != null &&
+    final covered =
+        from != null &&
         to != null &&
         !firstOfMonth.isBefore(from) &&
         !lastOfMonth.isAfter(to);
@@ -873,9 +870,9 @@ class _MonthCalendarState extends State<MonthCalendar> {
     _entriesSub = _repository
         .watchForProfile(widget.profileId, from: newFrom, to: newTo)
         .listen((entries) {
-      if (!mounted) return;
-      setState(() => _entries = entries);
-    });
+          if (!mounted) return;
+          setState(() => _entries = entries);
+        });
   }
 
   @override
@@ -993,7 +990,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// than [kForwardMonthLimit] months past today).
   Future<void> _openMonthYearPicker() async {
     final today = widget.todayProvider();
-    final maxMonthIndex = _monthIndex(today.year, today.month) + kForwardMonthLimit;
+    final maxMonthIndex =
+        _monthIndex(today.year, today.month) + kForwardMonthLimit;
     final result = await showModalBottomSheet<(int, int)>(
       context: context,
       showDragHandle: true,
@@ -1057,9 +1055,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           key: const ValueKey('layer-limit-snack'),
-          content: Text(
-            AppLocalizations.of(context).calendarLayerLimitSnack,
-          ),
+          content: Text(AppLocalizations.of(context).calendarLayerLimitSnack),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -1089,36 +1085,89 @@ class _MonthCalendarState extends State<MonthCalendar> {
     if (entries == null) {
       return const Center(child: CircularProgressIndicator());
     }
+    return _predictionStreamBuilder(
+      context,
+      entries: entries,
+      today: today,
+      nextDisabled: nextDisabled,
+    );
+  }
+
+  /// Split out of [build] (issue #556 review: the CRAP gate's per-method
+  /// complexity cap) -- the #543 `hasError` branch this and
+  /// [_historyStreamBuilder] added pushed `build` itself over the
+  /// threshold once counted together with the nested StreamBuilder it
+  /// wraps.
+  Widget _predictionStreamBuilder(
+    BuildContext context, {
+    required List<DayEntry> entries,
+    required LocalDate today,
+    required bool nextDisabled,
+  }) {
     return StreamBuilder<CyclePrediction?>(
       stream: _predictionStream,
       builder: (context, predictionSnapshot) {
+        // #543: only a real injected stream can error — the pure-function
+        // fallback used when no service is provided (tests) never does.
+        if (_predictionStream != null && predictionSnapshot.hasError) {
+          return Center(
+            child: InlineError(
+              key: const ValueKey('calendar-prediction-error'),
+              message: 'Could not load the cycle estimate.',
+              onRetry: () => setState(_rewatchPrediction),
+            ),
+          );
+        }
         final prediction = _predictionStream == null
             ? computePredictionFromEntries(entries: entries, today: today)
             : predictionSnapshot.data;
         if (prediction == null) {
           return const Center(child: CircularProgressIndicator());
         }
-        return StreamBuilder<CycleHistoryView?>(
-          stream: _historyStream,
-          builder: (context, historySnapshot) {
-            final history = _historyStream == null
-                ? deriveCycleHistoryFromEntries(
-                    entries: entries,
-                    today: today,
-                  )
-                : historySnapshot.data;
-            if (history == null) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            return _calendar(
-              context,
-              entries: entries,
-              prediction: prediction,
-              history: history,
-              today: today,
-              nextDisabled: nextDisabled,
-            );
-          },
+        return _historyStreamBuilder(
+          context,
+          entries: entries,
+          today: today,
+          nextDisabled: nextDisabled,
+          prediction: prediction,
+        );
+      },
+    );
+  }
+
+  /// See [_predictionStreamBuilder]'s doc comment.
+  Widget _historyStreamBuilder(
+    BuildContext context, {
+    required List<DayEntry> entries,
+    required LocalDate today,
+    required bool nextDisabled,
+    required CyclePrediction prediction,
+  }) {
+    return StreamBuilder<CycleHistoryView?>(
+      stream: _historyStream,
+      builder: (context, historySnapshot) {
+        if (_historyStream != null && historySnapshot.hasError) {
+          return Center(
+            child: InlineError(
+              key: const ValueKey('calendar-history-error'),
+              message: 'Could not load cycle history.',
+              onRetry: () => setState(_rewatchPrediction),
+            ),
+          );
+        }
+        final history = _historyStream == null
+            ? deriveCycleHistoryFromEntries(entries: entries, today: today)
+            : historySnapshot.data;
+        if (history == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return _calendar(
+          context,
+          entries: entries,
+          prediction: prediction,
+          history: history,
+          today: today,
+          nextDisabled: nextDisabled,
         );
       },
     );
@@ -1161,175 +1210,228 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final locale = dates.calendarLocale(context);
     final fullWeekdays = dates.fullWeekdayNames(locale: locale);
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            IconButton(
-              tooltip: l10n.calendarPreviousMonthTooltip,
-              icon: const Icon(Icons.chevron_left),
-              onPressed: () => _shiftMonth(-1),
-            ),
-            Expanded(
-              child: InkWell(
-                key: const ValueKey('month-year-label'),
-                onTap: _openMonthYearPicker,
-                child: Center(
-                  child: Text(
-                    l10n.calendarMonthYearLabel(
-                      dates.monthNames(locale: locale)[_displayedMonth - 1],
-                      _displayedYear,
+    // #556: LayoutBuilder captures this widget's own total available height
+    // so the ConstrainedBox below can cap the legend/layers section as a
+    // *fraction* of it, rather than a fixed guess -- see that ConstrainedBox's
+    // own comment for why a fixed number is wrong (the layers panel alone
+    // can render 100+ FilterChips).
+    return LayoutBuilder(
+      builder: (context, outerConstraints) => Column(
+        children: [
+          Row(
+            children: [
+              IconButton(
+                tooltip: l10n.calendarPreviousMonthTooltip,
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => _shiftMonth(-1),
+              ),
+              Expanded(
+                child: InkWell(
+                  key: const ValueKey('month-year-label'),
+                  onTap: _openMonthYearPicker,
+                  child: Center(
+                    child: Text(
+                      l10n.calendarMonthYearLabel(
+                        dates.monthNames(locale: locale)[_displayedMonth - 1],
+                        _displayedYear,
+                      ),
+                      style: theme.textTheme.titleMedium,
                     ),
-                    style: theme.textTheme.titleMedium,
                   ),
                 ),
               ),
+              IconButton(
+                key: const ValueKey('today-button'),
+                tooltip: l10n.calendarTodayTooltip,
+                icon: const Icon(Icons.today_outlined),
+                onPressed: _goToToday,
+              ),
+              IconButton(
+                tooltip: l10n.calendarNextMonthTooltip,
+                icon: const Icon(Icons.chevron_right),
+                onPressed: nextDisabled ? null : () => _shiftMonth(1),
+              ),
+            ],
+          ),
+          // #556: the legend and layers header/panel used to sit here as
+          // plain (non-flex) Column children, sized to their own natural
+          // height unconditionally -- fine as long as the legend could
+          // auto-collapse to keep that height in budget. Now that it always
+          // defaults expanded (see _legendStrip's own doc comment), a very
+          // narrow phone at a very large text scale can grow this stack
+          // past the screen's remaining height. And separately, the layers
+          // panel alone can render 100+ FilterChips (kTagTaxonomy) when
+          // expanded, easily taller than any single fixed pixel budget on
+          // a small screen while being a trivial fraction of a tall one.
+          //
+          // ConstrainedBox+SingleChildScrollView (not Flexible/Expanded --
+          // deliberately still a plain, non-flex Column child, computed the
+          // same single-pass way the `Expanded(child: PageView...)` below
+          // always was, so that Expanded keeps getting *all* space this
+          // section doesn't use rather than a fixed flex share reserved
+          // whether or not the header actually needs it) is what fixes
+          // that: the cap is a *fraction of this whole widget's own
+          // available height* (captured by the LayoutBuilder wrapping this
+          // Column), not a fixed guess -- generous enough that this
+          // section's natural size stays under it on any screen where the
+          // grid below still has reasonable room left over, and it only
+          // actually engages scrolling once the section's own content
+          // would otherwise squeeze the grid out entirely.
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: outerConstraints.maxHeight * 0.6,
             ),
-            IconButton(
-              key: const ValueKey('today-button'),
-              tooltip: l10n.calendarTodayTooltip,
-              icon: const Icon(Icons.today_outlined),
-              onPressed: _goToToday,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  _legendStrip(context, theme, colors, pmsBandActive),
+                  _layersHeader(layerList, theme),
+                  if (_layersExpanded) _layersPanel(activeLayers),
+                ],
+              ),
             ),
-            IconButton(
-              tooltip: l10n.calendarNextMonthTooltip,
-              icon: const Icon(Icons.chevron_right),
-              onPressed: nextDisabled ? null : () => _shiftMonth(1),
-            ),
-          ],
-        ),
-        _legendStrip(context, theme, colors, pmsBandActive),
-        _layersHeader(layerList, theme),
-        if (_layersExpanded) _layersPanel(activeLayers),
-        Padding(
-          key: const ValueKey('calendar-weekday-header'),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            children: [
-              // #138 (B-23): the narrow initial stays the visual child, but
-              // each column carries the full day name as its Semantics
-              // label — two "S" and two "T" initials per week are ambiguous
-              // single characters to a screen reader, "Sunday"/"Saturday"
-              // and "Tuesday"/"Thursday" are not.
-              for (var i = 0; i < 7; i++)
-                Expanded(
-                  child: Center(
-                    child: Semantics(
-                      container: true,
-                      label: fullWeekdays[(kFirstDayOfWeek + i) % 7],
-                      excludeSemantics: true,
-                      child: Text(
-                        weekdayHeaderLabels(locale: locale)[i],
-                        style: theme.textTheme.labelSmall,
+          ),
+          Padding(
+            key: const ValueKey('calendar-weekday-header'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                // #138 (B-23): the narrow initial stays the visual child, but
+                // each column carries the full day name as its Semantics
+                // label — two "S" and two "T" initials per week are ambiguous
+                // single characters to a screen reader, "Sunday"/"Saturday"
+                // and "Tuesday"/"Thursday" are not.
+                for (var i = 0; i < 7; i++)
+                  Expanded(
+                    child: Center(
+                      child: Semantics(
+                        container: true,
+                        label: fullWeekdays[(kFirstDayOfWeek + i) % 7],
+                        excludeSemantics: true,
+                        child: Text(
+                          weekdayHeaderLabels(locale: locale)[i],
+                          style: theme.textTheme.labelSmall,
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        if (!estimateActive) _keepLoggingStrip(theme),
-        Expanded(
-          child: PageView.builder(
-            key: const ValueKey('calendar-page-view'),
-            controller: _pageController,
-            onPageChanged: _onPageChanged,
-            itemCount: maxPageIndex + 1,
-            itemBuilder: (context, pageIndex) {
-              final (year, month) = _monthForPageIndex(pageIndex);
-              // #138: the cell geometry derives from this page's own width
-              // and the ambient text scale, so the number circle and the
-              // cell row both grow with large text instead of clipping, and
-              // every cell keeps a 48dp-tall touch target.
-              return LayoutBuilder(
-                builder: (context, constraints) {
-                  final metrics = dayCellMetricsFor(
-                    constraints.maxWidth,
-                    MediaQuery.textScalerOf(context),
-                  );
-                  return SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Issue #187 (B-8): a month with zero entries otherwise
-                        // renders as a silent grid of bare day numbers with no
-                        // guidance. The grid itself stays fully tappable (its
-                        // cell/forecast rendering is #133/#191's, untouched
-                        // here) — this is an explanatory banner above it, not a
-                        // replacement, so logging any day in the empty month
-                        // still works exactly as it did before that issue.
-                        //
-                        // Issue #312 review: keyed off *this page's* `year`/
-                        // `month` (the page actually being built) rather than
-                        // `_displayed*` — `_displayed*` only updates once
-                        // `onPageChanged` settles, so reading it here made the
-                        // banner appear/disappear a beat after the swipe
-                        // landed and shifted the grid under the operator's
-                        // thumb.
-                        if (!_monthHasEntries(entries, year: year, month: month))
-                          EmptyState(
-                            // Issue #312 review: unique per page (previously a
-                            // single constant key shared by every page in the
-                            // PageView) — a `find.byKey` lookup on the shared
-                            // key was ambiguous once more than one page's
-                            // empty-state banner existed in the tree at once
-                            // (e.g. mid-swipe, both the outgoing and incoming
-                            // page built).
-                            key: ValueKey('calendar-month-empty-$year-$month'),
-                            title: l10n.calendarNoEntriesTitle,
-                            body: l10n.calendarNoEntriesBody,
-                          ),
-                        GridView.count(
-                          key: ValueKey('calendar-grid-$year-$month'),
-                          crossAxisCount: 7,
-                          // #138: derived (see [dayCellMetricsFor]) rather
-                          // than the historic implicit 1.0, so rows grow to
-                          // fit the scaled circle/markers — identical to the
-                          // old square cells at the default text scale.
-                          childAspectRatio: metrics.aspectRatio,
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          physics: const NeverScrollableScrollPhysics(),
-                          children: _cells(
+          if (!estimateActive) _keepLoggingStrip(theme),
+          Expanded(
+            child: PageView.builder(
+              key: const ValueKey('calendar-page-view'),
+              controller: _pageController,
+              onPageChanged: _onPageChanged,
+              itemCount: maxPageIndex + 1,
+              itemBuilder: (context, pageIndex) {
+                final (year, month) = _monthForPageIndex(pageIndex);
+                // #138: the cell geometry derives from this page's own width
+                // and the ambient text scale, so the number circle and the
+                // cell row both grow with large text instead of clipping, and
+                // every cell keeps a 48dp-tall touch target.
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final metrics = dayCellMetricsFor(
+                      constraints.maxWidth,
+                      MediaQuery.textScalerOf(context),
+                    );
+                    return SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          // Issue #187 (B-8): a month with zero entries otherwise
+                          // renders as a silent grid of bare day numbers with no
+                          // guidance. The grid itself stays fully tappable (its
+                          // cell/forecast rendering is #133/#191's, untouched
+                          // here) — this is an explanatory banner above it, not a
+                          // replacement, so logging any day in the empty month
+                          // still works exactly as it did before that issue.
+                          //
+                          // Issue #312 review: keyed off *this page's* `year`/
+                          // `month` (the page actually being built) rather than
+                          // `_displayed*` — `_displayed*` only updates once
+                          // `onPageChanged` settles, so reading it here made the
+                          // banner appear/disappear a beat after the swipe
+                          // landed and shifted the grid under the operator's
+                          // thumb.
+                          if (!_monthHasEntries(
+                            entries,
                             year: year,
                             month: month,
-                            byIso: byIso,
-                            forecastByIso: forecastByIso,
-                            cycles: cycles,
-                            today: today,
-                            theme: theme,
-                            colors: colors,
-                            layerList: layerList,
-                            palette: palette,
-                            metrics: metrics,
+                          ))
+                            EmptyState(
+                              // Issue #312 review: unique per page (previously a
+                              // single constant key shared by every page in the
+                              // PageView) — a `find.byKey` lookup on the shared
+                              // key was ambiguous once more than one page's
+                              // empty-state banner existed in the tree at once
+                              // (e.g. mid-swipe, both the outgoing and incoming
+                              // page built).
+                              key: ValueKey(
+                                'calendar-month-empty-$year-$month',
+                              ),
+                              title: l10n.calendarNoEntriesTitle,
+                              body: l10n.calendarNoEntriesBody,
+                            ),
+                          GridView.count(
+                            key: ValueKey('calendar-grid-$year-$month'),
+                            crossAxisCount: 7,
+                            // #138: derived (see [dayCellMetricsFor]) rather
+                            // than the historic implicit 1.0, so rows grow to
+                            // fit the scaled circle/markers — identical to the
+                            // old square cells at the default text scale.
+                            childAspectRatio: metrics.aspectRatio,
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: _cells(
+                              year: year,
+                              month: month,
+                              byIso: byIso,
+                              forecastByIso: forecastByIso,
+                              cycles: cycles,
+                              today: today,
+                              theme: theme,
+                              colors: colors,
+                              layerList: layerList,
+                              palette: palette,
+                              metrics: metrics,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              );
-            },
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   /// The legend strip under the month header (issue #191; B-2, B-11; issue
   /// #312 review: now also keys the PMS/cramps badges and the
-  /// symptom-layer dot palette, and collapses by default at large text
-  /// scales — [kLegendCollapseTextScale] — so the header stack above the
-  /// single `Expanded` [PageView] keeps its vertical budget). Keys every
-  /// mark the grid can show except the cycle-day numeral (a plain count,
-  /// not a colour/shape channel that needs a key of its own).
+  /// symptom-layer dot palette). Keys every mark the grid can show except
+  /// the cycle-day numeral (a plain count, not a colour/shape channel that
+  /// needs a key of its own).
+  ///
+  /// Issue #556: no longer auto-collapses at large text scale (#312's
+  /// original rationale — keeping the header stack's vertical budget under
+  /// the single `Expanded` `PageView` — made the legend hardest to reach
+  /// for exactly the users who need it most). It now always defaults
+  /// expanded and wraps its entries instead (`_legendEntries`'s `Wrap` and
+  /// `_legendChip`'s `Flexible` labels already handle that); the manual
+  /// toggle is unchanged and still collapses/re-expands on tap.
   Widget _legendStrip(
     BuildContext context,
     ThemeData theme,
     LunarLogColors colors,
     bool pmsBandActive,
   ) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final expanded = _legendExpanded ?? textScale < kLegendCollapseTextScale;
+    final expanded = _legendExpanded ?? true;
     final l10n = AppLocalizations.of(context);
     return Column(
       key: const ValueKey('calendar-legend'),
@@ -1344,16 +1446,31 @@ class _MonthCalendarState extends State<MonthCalendar> {
             child: InkWell(
               key: const ValueKey('legend-toggle'),
               onTap: () => setState(() => _legendExpanded = !expanded),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
+              // #556: the previous mainAxisSize.min Row (16dp icon,
+              // bodySmall text, no padding) hit ~20dp tall -- the control
+              // that explains every colour in the grid was the one
+              // failing hardest on tap-target size. SizedBox(height: 48)
+              // + Align keeps the compact visual row but gives it a full
+              // 48dp-tall (and full-width) tap area.
+              child: SizedBox(
+                height: 48,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        expanded ? Icons.expand_less : Icons.expand_more,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        l10n.calendarLegend,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 2),
-                  Text(l10n.calendarLegend, style: theme.textTheme.bodySmall),
-                ],
+                ),
               ),
             ),
           ),
@@ -1387,19 +1504,50 @@ class _MonthCalendarState extends State<MonthCalendar> {
       _LegendEntry('heavy', colors.flowHeavy, l10n.calendarLegendHeavy),
       // Issue #247: superHeavy shares heavy's ramp token, so the dot count in
       // the label is the only distinguishing signal (mirrors _flowLevelMarkCount).
-      _LegendEntry('superheavy', colors.flowHeavy, l10n.calendarLegendSuperHeavy),
+      _LegendEntry(
+        'superheavy',
+        colors.flowHeavy,
+        l10n.calendarLegendSuperHeavy,
+      ),
       _LegendEntry('symptom', colors.symptomDot, l10n.calendarLegendSymptom),
-      _LegendEntry('today', theme.colorScheme.primary, l10n.calendarLegendToday, style: _LegendSwatchStyle.ring),
-      _LegendEntry('predicted', colors.predictedBorder, l10n.calendarLegendPredicted, style: _LegendSwatchStyle.hatched),
+      _LegendEntry(
+        'today',
+        theme.colorScheme.primary,
+        l10n.calendarLegendToday,
+        style: _LegendSwatchStyle.ring,
+      ),
+      _LegendEntry(
+        'predicted',
+        colors.predictedBorder,
+        l10n.calendarLegendPredicted,
+        style: _LegendSwatchStyle.hatched,
+      ),
       if (_copy.showsFertileWindow)
-        _LegendEntry('fertile', colors.fertileBorder, _copy.fertileWindowLegend, style: _LegendSwatchStyle.dashed),
+        _LegendEntry(
+          'fertile',
+          colors.fertileBorder,
+          _copy.fertileWindowLegend,
+          style: _LegendSwatchStyle.dashed,
+        ),
       // Issue #220: only while the prediction actually carries a PMS band
       // (3+ logged PMS intervals) — below the hard minimum the grid never
       // shows a PMS badge, so keying it here would advertise a swatch
       // that can never appear.
       if (pmsBandActive)
-        _LegendEntry('pms', pmsBadgeColor(brightness), l10n.calendarLegendPms, style: _LegendSwatchStyle.icon, icon: Icons.spa),
-      _LegendEntry('cramps', crampsBadgeColor(brightness), l10n.calendarLegendCramps, style: _LegendSwatchStyle.icon, icon: Icons.bolt),
+        _LegendEntry(
+          'pms',
+          pmsBadgeColor(brightness),
+          l10n.calendarLegendPms,
+          style: _LegendSwatchStyle.icon,
+          icon: Icons.spa,
+        ),
+      _LegendEntry(
+        'cramps',
+        crampsBadgeColor(brightness),
+        l10n.calendarLegendCramps,
+        style: _LegendSwatchStyle.icon,
+        icon: Icons.bolt,
+      ),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -1459,13 +1607,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
         _legendSwatch(entry),
         const SizedBox(width: 4),
         // #138 (AC4): the label wraps inside the legend's Wrap rather
-        // than overflowing its row — the legend only collapses by default
-        // at kLegendCollapseTextScale and above, so 1.5x keeps it expanded
-        // and its longest entries ("Super heavy flow (5 marks)") no
-        // longer overflow a phone-class width.
-        Flexible(
-          child: Text(entry.label, style: theme.textTheme.labelSmall),
-        ),
+        // than overflowing its row -- the legend defaults expanded at
+        // every text scale (#556), so its longest entries ("Super heavy
+        // flow (5 marks)") rely on this wrap, not a collapse, to never
+        // overflow a phone-class width.
+        Flexible(child: Text(entry.label, style: theme.textTheme.labelSmall)),
       ],
     );
   }
@@ -1514,10 +1660,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// after the swipe landed), not the whole [entries] stream, so a quiet
   /// month shows the guidance banner even when other months have logged
   /// data.
-  bool _monthHasEntries(List<DayEntry> entries, {required int year, required int month}) =>
-      entries.any(
-        (entry) => entry.localDate.year == year && entry.localDate.month == month,
-      );
+  bool _monthHasEntries(
+    List<DayEntry> entries, {
+    required int year,
+    required int month,
+  }) => entries.any(
+    (entry) => entry.localDate.year == year && entry.localDate.month == month,
+  );
 
   /// The symptom-layers control (R2): a collapsed summary row (tap to
   /// expand) over the collapsible chip panel.
@@ -1530,13 +1679,14 @@ class _MonthCalendarState extends State<MonthCalendar> {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
+          // #556: VisualDensity.compact shrank this to ~40dp; dropping it
+          // returns to IconButton's default (48dp) tap target.
           IconButton(
             key: const ValueKey('symptom-layers-toggle'),
             tooltip: _layersExpanded
                 ? l10n.calendarHideSymptomLayers
                 : l10n.calendarShowSymptomLayers,
             icon: Icon(_layersExpanded ? Icons.expand_less : Icons.expand_more),
-            visualDensity: VisualDensity.compact,
             onPressed: () => setState(() => _layersExpanded = !_layersExpanded),
           ),
           Expanded(
@@ -1560,12 +1710,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
         spacing: 6,
         runSpacing: 0,
         children: [
+          // #556: VisualDensity.compact shrank these to ~40dp; dropping
+          // it returns to FilterChip's default (48dp) tap target.
           for (final tag in kTagTaxonomy)
             FilterChip(
               key: ValueKey('layer-chip-${tag.code}'),
               label: Text(tag.display),
               selected: activeLayers.contains(tag.code),
-              visualDensity: VisualDensity.compact,
               onSelected: (_) => _toggleLayer(tag.code, activeLayers),
             ),
         ],
@@ -1767,11 +1918,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           height: metrics.markersHeight,
           child: isFuture
               ? _futureMarkers(forecastCell, theme, date.iso)
-              : _loggedMarkers(
-                  entry,
-                  layerList: layerList,
-                  palette: palette,
-                ),
+              : _loggedMarkers(entry, layerList: layerList, palette: palette),
         ),
       ],
     );
@@ -1954,7 +2101,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
               key: ValueKey('flow-spotting-dot-$iso'),
               width: 8,
               height: 8,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: tone.fill),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tone.fill,
+              ),
             ),
           numeral,
           Positioned(
@@ -2073,7 +2223,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
         // The same token the legend's 'Symptom day' swatch draws (#176's
         // symptomDot, solved for >= 3:1 against surface) so the legend keys
         // the mark it actually explains (review finding on #191).
-        color: Theme.of(context).extension<LunarLogColors>()?.symptomDot ??
+        color:
+            Theme.of(context).extension<LunarLogColors>()?.symptomDot ??
             LunarLogColors.forColorScheme(Theme.of(context).colorScheme)
                 .symptomDot,
       ),
@@ -2116,7 +2267,11 @@ class _HatchedCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _HatchPainter(color: color, opacity: opacity, borderOpacity: borderOpacity),
+      painter: _HatchPainter(
+        color: color,
+        opacity: opacity,
+        borderOpacity: borderOpacity,
+      ),
       child: SizedBox(
         width: diameter,
         height: diameter,
@@ -2347,7 +2502,10 @@ class _FutureDayExplainer extends StatelessWidget {
         Text(
           cell.cycleDayNumber == null
               ? l10n.futureExplainerBand(spread)
-              : l10n.futureExplainerBandWithCycleDay(cell.cycleDayNumber!, spread),
+              : l10n.futureExplainerBandWithCycleDay(
+                  cell.cycleDayNumber!,
+                  spread,
+                ),
           key: const ValueKey('future-explainer-band'),
           style: body,
         ),
@@ -2524,9 +2682,8 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
             ? null
             : () => Navigator.of(context).pop((_year, month)),
         child: Text(
-          dates.shortMonthNames(
-            locale: dates.calendarLocale(context),
-          )[month - 1],
+          dates.shortMonthNames(locale: dates.calendarLocale(context))[month -
+              1],
         ),
       ),
     );

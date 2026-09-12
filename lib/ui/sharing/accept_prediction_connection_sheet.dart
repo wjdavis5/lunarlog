@@ -10,8 +10,11 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
+
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
+
+import '../components/inline_error.dart';
 
 class AcceptPredictionConnectionSheet extends StatefulWidget {
   const AcceptPredictionConnectionSheet({
@@ -57,7 +60,9 @@ class _AcceptPredictionConnectionSheetState
         setState(() {
           _loading = false;
           _error = predictionConnectionFailureCopy(
-              AppLocalizations.of(context), failure);
+            AppLocalizations.of(context),
+            failure,
+          );
         });
       }
     } catch (_) {
@@ -88,14 +93,19 @@ class _AcceptPredictionConnectionSheetState
           children: [
             Row(
               children: [
-                Icon(Icons.calendar_month,
-                    size: 28, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.calendar_month,
+                  size: 28,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 // Expanded: the title wraps instead of overflowing the
                 // sheet's width at large text scales.
                 Expanded(
-                  child: Text('Connect to cycle predictions',
-                      style: theme.textTheme.titleLarge),
+                  child: Text(
+                    'Connect to cycle predictions',
+                    style: theme.textTheme.titleLarge,
+                  ),
                 ),
               ],
             ),
@@ -106,19 +116,21 @@ class _AcceptPredictionConnectionSheetState
               'or logs are ever shared or synced to this device.',
               style: TextStyle(height: 1.35),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ],
+            if (_error != null)
+              // No onRetry: the Connect button right below is the retry
+              // affordance. No leading SizedBox either -- InlineError
+              // already carries its own vertical padding, and this
+              // sheet's tight modal height has no room for both plus a
+              // TextButton row.
+              InlineError(message: _error!),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _loading ? null : () => Navigator.of(context).pop(),
+                  onPressed: _loading
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: const Text('Decline'),
                 ),
                 const SizedBox(width: 8),

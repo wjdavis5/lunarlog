@@ -1,14 +1,19 @@
 /// Unit tests for the Issue #128 care-screen naming helpers:
 /// [careActorCopy] (every branch: self, named guardian, nameless guardian,
-/// stranger, null) and [careAttributionDate] (bare civil-date rendering).
-/// Widget-level attribution is proven in `care_notes_screen_test.dart`;
-/// this file pins the pure functions directly for the CRAP gate.
+/// stranger, null) and [careAttributionDate] (bare, locale-aware civil-date
+/// rendering, issue #554). Widget-level attribution is proven in
+/// `care_notes_screen_test.dart`; this file pins the pure/near-pure
+/// functions directly for the CRAP gate -- `careAttributionDate` needs a
+/// `BuildContext` (for locale) since #554, so its own group runs as a
+/// `testWidgets` with a bare `Builder` rather than a plain `test`.
 library;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 
 final _l10n = AppLocalizationsEn();
 
@@ -64,11 +69,31 @@ void main() {
   });
 
   group('careAttributionDate', () {
-    test('renders a bare civil date without the time of day', () {
-      expect(careAttributionDate(DateTime.utc(2026, 9, 2, 10, 30)),
-          '2026-09-02');
-      expect(careAttributionDate(DateTime.utc(2026, 1, 5, 23, 59)),
-          '2026-01-05');
+    testWidgets(
+        'renders a bare, locale-aware civil date without the time of day '
+        '-- delegating to dates.formatShortDate(instant.toLocal(), locale) '
+        'rather than a hand-rolled always-YYYY-MM-DD string (issue #554)',
+        (tester) async {
+      late BuildContext capturedContext;
+      await tester.pumpWidget(MaterialApp(
+        locale: const Locale('en'),
+        home: Builder(
+          builder: (context) {
+            capturedContext = context;
+            return const SizedBox.shrink();
+          },
+        ),
+      ));
+
+      for (final instant in [
+        DateTime.utc(2026, 9, 2, 10, 30),
+        DateTime.utc(2026, 1, 5, 23, 59),
+      ]) {
+        expect(
+          careAttributionDate(capturedContext, instant),
+          dates.formatShortDate(instant.toLocal(), locale: 'en'),
+        );
+      }
     });
   });
 }

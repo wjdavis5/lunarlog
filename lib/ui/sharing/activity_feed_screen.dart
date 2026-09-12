@@ -27,6 +27,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/l10n/activity_actor_copy.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/routes.dart';
@@ -65,7 +66,7 @@ class ActivityFeedScreen extends StatefulWidget {
 }
 
 class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
-  late final Stream<ActivityFeedSnapshot> _feedStream;
+  late Stream<ActivityFeedSnapshot> _feedStream;
   late final DayEntriesRepository _entriesRepository;
   String? _currentUserId;
   AuthController? _auth;
@@ -104,6 +105,12 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     setState(() => _currentUserId = auth.currentUserId);
   }
 
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level `StreamBuilder`.
+  void _retryFeed() {
+    setState(() => _feedStream = widget.repository.watch(widget.profile.id));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,18 +118,21 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       body: StreamBuilder<ActivityFeedSnapshot>(
         stream: _feedStream,
         builder: (context, snapshot) {
-          final data = snapshot.data;
-          if (data == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          _onFirstSnapshot(data);
-          if (!data.isShared) {
-            return _singleGuardianState(context);
-          }
-          if (data.items.isEmpty) {
-            return _noActivityState(context);
-          }
-          return _list(context, data);
+          return AsyncSnapshotView<ActivityFeedSnapshot>(
+            snapshot: snapshot,
+            errorMessage: 'Could not load the activity feed.',
+            onRetry: _retryFeed,
+            builder: (context, data) {
+              _onFirstSnapshot(data);
+              if (!data.isShared) {
+                return _singleGuardianState(context);
+              }
+              if (data.items.isEmpty) {
+                return _noActivityState(context);
+              }
+              return _list(context, data);
+            },
+          );
         },
       ),
     );
@@ -148,8 +158,11 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.people_outline,
-                size: 48, color: theme.colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.people_outline,
+              size: 48,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 12),
             Text('Just you for now', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
@@ -158,8 +171,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               'to review. When a second caregiver joins, both of your changes '
               'appear here.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -175,8 +189,11 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.event_note,
-                size: 48, color: theme.colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.event_note,
+              size: 48,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 12),
             Text('No activity yet', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
@@ -184,8 +201,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               'Changes either caregiver makes to this profile will appear '
               'here.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -208,8 +226,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               'earlier edits by the same caregiver are not recorded '
               'separately.',
               key: const ValueKey('activity-feed-caption'),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           );
         }
@@ -230,7 +249,8 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       key: ValueKey('activity-item-${item.id}'),
       leading: Icon(
         _iconFor(item.kind),
-        color: item.kind == ActivityKind.removed ||
+        color:
+            item.kind == ActivityKind.removed ||
                 item.kind == ActivityKind.mergeOutcome
             ? theme.colorScheme.tertiary
             : theme.colorScheme.onSurfaceVariant,
@@ -238,25 +258,27 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       title: Text(_title(item, data)),
       subtitle: Text(_subtitle(item, data)),
       trailing: _trailing(context, item),
-      onTap:
-          localDateIso == null ? null : () => _openDay(localDateIso, data),
+      onTap: localDateIso == null ? null : () => _openDay(localDateIso, data),
     );
   }
 
   IconData _iconFor(ActivityKind kind) => switch (kind) {
-        ActivityKind.logged => Icons.edit_note,
-        ActivityKind.updated => Icons.edit,
-        ActivityKind.removed => Icons.delete_outline,
-        ActivityKind.mergeOutcome => Icons.call_merge,
-        ActivityKind.accessRemoved => Icons.person_remove_outlined,
-      };
+    ActivityKind.logged => Icons.edit_note,
+    ActivityKind.updated => Icons.edit,
+    ActivityKind.removed => Icons.delete_outline,
+    ActivityKind.mergeOutcome => Icons.call_merge,
+    ActivityKind.accessRemoved => Icons.person_remove_outlined,
+  };
 
-  String _possessive(String label) =>
-      label == 'you' ? 'your' : "$label's";
+  String _possessive(String label) => label == 'you' ? 'your' : "$label's";
 
   String _title(ActivityItem item, ActivityFeedSnapshot data) {
     final actor = activityActorLabel(
-        AppLocalizations.of(context), item.actorId, _currentUserId, data.guardians);
+      AppLocalizations.of(context),
+      item.actorId,
+      _currentUserId,
+      data.guardians,
+    );
     switch (item.kind) {
       case ActivityKind.logged:
         return _byLine('Logged', actor);
@@ -314,14 +336,19 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   }
 
   String _mergeSubtitle(ActivityItem item, ActivityFeedSnapshot data) {
-    final loser = activityActorLabel(AppLocalizations.of(context),
-            item.secondaryActorId, _currentUserId, data.guardians) ??
+    final loser =
+        activityActorLabel(
+          AppLocalizations.of(context),
+          item.secondaryActorId,
+          _currentUserId,
+          data.guardians,
+        ) ??
         'one caregiver';
     final what = item.discardedNote && item.discardedFlow
         ? 'flow and note values were'
         : item.discardedNote
-            ? 'note was'
-            : 'flow value was';
+        ? 'note was'
+        : 'flow value was';
     return '${_possessive(loser)} $what discarded in a same-date merge';
   }
 
@@ -333,9 +360,12 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       children: [
         Text(
           relativeActivityAge(
-              item.occurredAt, widget.nowProvider ?? DateTime.now),
-          style: theme.textTheme.labelSmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            item.occurredAt,
+            widget.nowProvider ?? DateTime.now,
+          ),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         if (isActivityNew(item, _lastSeenAtOpen)) ...[
           const SizedBox(height: 2),
@@ -348,8 +378,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             ),
             child: Text(
               'New',
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: theme.colorScheme.onPrimary),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onPrimary,
+              ),
             ),
           ),
         ],
@@ -367,7 +398,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     if (!mounted) return;
     final viewerReadOnly =
         acceptedGuardianFor(data.guardians, _currentUserId)?.role.canLog ==
-            false;
+        false;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,

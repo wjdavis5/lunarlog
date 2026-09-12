@@ -71,6 +71,7 @@ import '../../domain/prediction/fertile_window.dart';
 import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
 import '../account/auth_controller.dart';
+import '../components/async_snapshot_view.dart';
 import '../components/empty_state.dart';
 import '../components/predictions_disabled_card.dart';
 import '../components/predictions_suppressed_card.dart';
@@ -124,6 +125,15 @@ class _AnalysisTabState extends State<AnalysisTab> {
     widget.profileId,
     today: widget.todayProvider,
   );
+
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level `StreamBuilder`.
+  void _retryPredictions() {
+    setState(() {
+      _predictions =
+          _service.watch(widget.profileId, today: widget.todayProvider);
+    });
+  }
 
   StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
   AuthController? _auth;
@@ -204,13 +214,14 @@ class _AnalysisTabState extends State<AnalysisTab> {
     return StreamBuilder<CyclePrediction>(
       stream: _predictions,
       builder: (context, snapshot) {
-        final prediction = snapshot.data;
-        if (prediction == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: _sections(context, prediction),
+        return AsyncSnapshotView<CyclePrediction>(
+          snapshot: snapshot,
+          errorMessage: 'Could not load your cycle analysis.',
+          onRetry: _retryPredictions,
+          builder: (context, prediction) => ListView(
+            padding: const EdgeInsets.all(16),
+            children: _sections(context, prediction),
+          ),
         );
       },
     );
@@ -229,11 +240,14 @@ class _AnalysisTabState extends State<AnalysisTab> {
       switch (prediction) {
         ActivePrediction() => _statsCard(context, prediction),
         NotEnoughHistory() => _notEnoughCard(context),
-        // Issue #233: an in-effect continuous method suppresses period
+        // Issue #233/#528: an in-effect continuous method, or a life-stage
+        // mode the averaging model doesn't apply to, suppresses period
         // prediction with an explicit named state — the stats card has no
         // mean/spread to show, so this renders the shared suppressed card.
-        PredictionsSuppressed() =>
-          PredictionsSuppressedCard(method: prediction.method),
+        PredictionsSuppressed() => PredictionsSuppressedCard(
+            method: prediction.method,
+            lifecycleMode: prediction.lifecycleMode,
+          ),
         // Issue #225: per-profile toggle turning off predictions.
         PredictionsDisabled() => const PredictionsDisabledCard(),
       },

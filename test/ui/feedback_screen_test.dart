@@ -9,6 +9,7 @@ import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
 import 'package:lunarlog/ui/l10n/feedback_failure_copy.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -40,7 +41,8 @@ DeviceDiagnosticsCollector _fakeCollector({BreadcrumbLog? breadcrumbLog}) =>
         version: '1.0.0',
         buildNumber: '1',
       ),
-      deviceInfoReader: () async => throw StateError('no fake device info in this test'),
+      deviceInfoReader: () async =>
+          throw StateError('no fake device info in this test'),
       localeSupplier: () => const Locale('en', 'US'),
       platform: TargetPlatform.iOS,
       breadcrumbLog: breadcrumbLog ?? BreadcrumbLog(),
@@ -62,9 +64,11 @@ Future<void> pumpFeedbackScreen(
           // The tree-provided seams `FeedbackScreen` falls back to when its
           // own test-seam params are null (mirrors `lib/app.dart`).
           Provider<DeviceDiagnosticsCollector>.value(
-              value: _fakeCollector(breadcrumbLog: breadcrumbLog)),
+            value: _fakeCollector(breadcrumbLog: breadcrumbLog),
+          ),
           Provider<AttachmentSource>.value(
-              value: attachmentSource ?? FakeAttachmentSource()),
+            value: attachmentSource ?? FakeAttachmentSource(),
+          ),
         ],
         child: FeedbackScreen(
           diagnosticsCollector: _fakeCollector(breadcrumbLog: breadcrumbLog),
@@ -86,48 +90,69 @@ Future<void> tapSubmit(WidgetTester tester, {bool warnIfMissed = true}) async {
   // bounds, not just off-screen - the default skipOffstage:true finder
   // treats that as "not found" rather than "found but needs scrolling",
   // which is exactly the case `ensureVisible` exists to handle.
-  final finder = find.byKey(const ValueKey('feedback-submit'), skipOffstage: false);
+  final finder = find.byKey(
+    const ValueKey('feedback-submit'),
+    skipOffstage: false,
+  );
   await tester.ensureVisible(finder);
   await tester.pump();
   await tester.tap(finder, warnIfMissed: warnIfMissed);
 }
 
 void main() {
-  testWidgets('submit is disabled while the message field is empty', (tester) async {
+  testWidgets('submit is disabled while the message field is empty', (
+    tester,
+  ) async {
     final service = FakeFeedbackService();
     await pumpFeedbackScreen(tester, service);
 
-    final submitButton = tester.widget<FilledButton>(find.byKey(const ValueKey('feedback-submit')));
+    final submitButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('feedback-submit')),
+    );
     expect(submitButton.onPressed, isNull);
   });
 
-  testWidgets('a message longer than 4000 characters shows an inline error and makes no service call',
-      (tester) async {
-    final service = FakeFeedbackService();
-    await pumpFeedbackScreen(tester, service);
+  testWidgets(
+    'a message longer than 4000 characters shows an inline error and makes no service call',
+    (tester) async {
+      final service = FakeFeedbackService();
+      await pumpFeedbackScreen(tester, service);
 
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'x' * 4001);
-    await tester.pump();
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'x' * 4001,
+      );
+      await tester.pump();
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
-    expect(service.submitCalls, 0);
-  });
+      expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
+      expect(service.submitCalls, 0);
+    },
+  );
 
-  testWidgets('a malformed reply email shows an inline error and makes no service call', (tester) async {
-    final service = FakeFeedbackService();
-    await pumpFeedbackScreen(tester, service);
+  testWidgets(
+    'a malformed reply email shows an inline error and makes no service call',
+    (tester) async {
+      final service = FakeFeedbackService();
+      await pumpFeedbackScreen(tester, service);
 
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'It crashed');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'not-an-email');
-    await tester.pump();
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'It crashed',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-reply-email')),
+        'not-an-email',
+      );
+      await tester.pump();
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
-    expect(service.submitCalls, 0);
-  });
+      expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
+      expect(service.submitCalls, 0);
+    },
+  );
 
   testWidgets('happy path: submit calls the service once with the selected category, trimmed message, '
       'reply email, and the diagnostics payload', (tester) async {
@@ -136,8 +161,14 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('feedback-category-support')));
     await tester.pump();
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), '  How do I export my data?  ');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-message')),
+      '  How do I export my data?  ',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-reply-email')),
+      'me@example.com',
+    );
     await tester.pump();
     await tapSubmit(tester);
     await tester.pumpAndSettle();
@@ -150,14 +181,22 @@ void main() {
     expect(find.byKey(const ValueKey('feedback-info')), findsOneWidget);
   });
 
-  testWidgets('diagnostics toggle off submits with no diagnostics attached', (tester) async {
+  testWidgets('diagnostics toggle off submits with no diagnostics attached', (
+    tester,
+  ) async {
     final service = FakeFeedbackService();
     await pumpFeedbackScreen(tester, service);
 
     await tester.tap(find.byKey(const ValueKey('feedback-diagnostics-toggle')));
     await tester.pump();
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'no diagnostics please');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-message')),
+      'no diagnostics please',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-reply-email')),
+      'me@example.com',
+    );
     await tester.pump();
     await tapSubmit(tester);
     await tester.pumpAndSettle();
@@ -166,14 +205,21 @@ void main() {
     expect(service.lastDiagnostics, isNull);
   });
 
-  testWidgets('the diagnostics panel renders every previewLines entry', (tester) async {
+  testWidgets('the diagnostics panel renders every previewLines entry', (
+    tester,
+  ) async {
     final service = FakeFeedbackService();
     await pumpFeedbackScreen(tester, service);
 
-    await tester.tap(find.byKey(const ValueKey('feedback-diagnostics-preview-toggle')));
+    await tester.tap(
+      find.byKey(const ValueKey('feedback-diagnostics-preview-toggle')),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('feedback-diagnostics-preview')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('feedback-diagnostics-preview')),
+      findsOneWidget,
+    );
     // Every payload includes a locale line regardless of platform-plugin
     // availability under `flutter test` (the collector falls back to
     // 'unknown' rather than throwing).
@@ -188,203 +234,307 @@ void main() {
     final service = FakeFeedbackService();
     await pumpFeedbackScreen(tester, service, breadcrumbLog: log);
 
-    await tester.tap(find.byKey(const ValueKey('feedback-diagnostics-preview-toggle')));
+    await tester.tap(
+      find.byKey(const ValueKey('feedback-diagnostics-preview-toggle')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.textContaining('navigation: SettingsScreen'), findsOneWidget);
     expect(find.textContaining('navigation: FeedbackScreen'), findsOneWidget);
   });
 
-  testWidgets('Covers AE8: a thrown FeedbackFailure.network renders its userFacingMessage, '
-      'leaves the message text in place, and re-enables submit', (tester) async {
-    final service = FakeFeedbackService()..failureToThrow = const FeedbackFailure.network();
-    await pumpFeedbackScreen(tester, service);
+  testWidgets(
+    'Covers AE8: a thrown FeedbackFailure.network renders its userFacingMessage, '
+    'leaves the message text in place, and re-enables submit',
+    (tester) async {
+      final service = FakeFeedbackService()
+        ..failureToThrow = const FeedbackFailure.network();
+      await pumpFeedbackScreen(tester, service);
 
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'still typed here');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
-    await tester.pump();
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'still typed here',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-reply-email')),
+        'me@example.com',
+      );
+      await tester.pump();
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
 
-    final errorText = tester.widget<Text>(find.byKey(const ValueKey('feedback-error')));
-    expect(errorText.data,
-        feedbackFailureCopy(AppLocalizationsEn(), const FeedbackFailure.network()));
-    expect(find.text('still typed here'), findsOneWidget);
-
-    final submitButton = tester.widget<FilledButton>(find.byKey(const ValueKey('feedback-submit')));
-    expect(submitButton.onPressed, isNotNull);
-  });
-
-  testWidgets('FeedbackFailure.rateLimited renders copy distinct from the network failure copy',
-      (tester) async {
-    final service = FakeFeedbackService()..failureToThrow = const FeedbackFailure.rateLimited();
-    await pumpFeedbackScreen(tester, service);
-
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'again');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
-    await tester.pump();
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
-
-    final errorText = tester.widget<Text>(find.byKey(const ValueKey('feedback-error')));
-    expect(
-        errorText.data,
+      final error = tester.widget<InlineError>(
+        find.byKey(const ValueKey('feedback-error')),
+      );
+      expect(
+        error.message,
         feedbackFailureCopy(
-            AppLocalizationsEn(), const FeedbackFailure.rateLimited()));
-    expect(
-      feedbackFailureCopy(AppLocalizationsEn(), const FeedbackFailure.rateLimited()),
-      isNot(feedbackFailureCopy(AppLocalizationsEn(), const FeedbackFailure.network())),
-    );
-  });
+          AppLocalizationsEn(),
+          const FeedbackFailure.network(),
+        ),
+      );
+      expect(find.text('still typed here'), findsOneWidget);
 
-  testWidgets('double-tapping submit while busy issues exactly one service call', (tester) async {
-    final service = FakeFeedbackService()..holdNextSubmit();
-    await pumpFeedbackScreen(tester, service);
-
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'slow submit');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
-    await tester.pump();
-
-    await tapSubmit(tester);
-    await tester.pump();
-    // The button is now disabled (busy); a second tap must be a no-op.
-    await tapSubmit(tester, warnIfMissed: false);
-    await tester.pump();
-
-    expect(service.submitCalls, 1);
-
-    service.completeSubmit(service.lastCategory == null
-        ? throw StateError('submit was never called')
-        : FeedbackTicket(
-            id: 't1',
-            category: service.lastCategory!,
-            message: service.lastMessage!,
-            replyEmail: service.lastReplyEmail!,
-            status: FeedbackTicketStatus.newTicket,
-            attachmentPaths: const [],
-            createdAt: DateTime.utc(2026, 9, 5),
-            updatedAt: DateTime.utc(2026, 9, 5),
-          ));
-    await tester.pumpAndSettle();
-
-    expect(service.submitCalls, 1);
-  });
+      final submitButton = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('feedback-submit')),
+      );
+      expect(submitButton.onPressed, isNotNull);
+    },
+  );
 
   testWidgets(
-      'a screenshot attached to a successful submission is not silently '
-      'reused on a second submission in the same screen session', (tester) async {
-    final service = FakeFeedbackService();
-    final attachmentSource = _FakeAttachmentSource()
-      ..nextResult = FeedbackAttachment(
-        bytes: List<int>.filled(1024, 1),
-        mimeType: 'image/png',
-        filename: 'shot.png',
+    'FeedbackFailure.rateLimited renders copy distinct from the network failure copy',
+    (tester) async {
+      final service = FakeFeedbackService()
+        ..failureToThrow = const FeedbackFailure.rateLimited();
+      await pumpFeedbackScreen(tester, service);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'again',
       );
-    await pumpFeedbackScreen(tester, service, attachmentSource: attachmentSource);
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-reply-email')),
+        'me@example.com',
+      );
+      await tester.pump();
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
 
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'first report');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
-    await tester.ensureVisible(find.byKey(const ValueKey('feedback-add-screenshot')));
-    await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsOneWidget);
-
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
-
-    expect(service.submitCalls, 1);
-    expect(service.lastAttachment, isNotNull);
-    // The picker itself resets, not just the internal field the screen
-    // sends to the service — otherwise a returning user would see the
-    // prior screenshot still listed as attached.
-    expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsNothing);
-    expect(find.byKey(const ValueKey('feedback-add-screenshot')), findsOneWidget);
-
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'second report, no new screenshot');
-    await tester.pump();
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
-
-    expect(service.submitCalls, 2);
-    expect(service.lastAttachment, isNull);
-  });
+      final error = tester.widget<InlineError>(
+        find.byKey(const ValueKey('feedback-error')),
+      );
+      expect(
+        error.message,
+        feedbackFailureCopy(
+          AppLocalizationsEn(),
+          const FeedbackFailure.rateLimited(),
+        ),
+      );
+      expect(
+        feedbackFailureCopy(
+          AppLocalizationsEn(),
+          const FeedbackFailure.rateLimited(),
+        ),
+        isNot(
+          feedbackFailureCopy(
+            AppLocalizationsEn(),
+            const FeedbackFailure.network(),
+          ),
+        ),
+      );
+    },
+  );
 
   testWidgets(
-      'a FeedbackAttachmentUploadFailedFailure clears the message and screenshot so a retry '
-      'cannot re-file a duplicate ticket with the same screenshot and no fresh consent',
-      (tester) async {
-    final ticket = FeedbackTicket(
-      id: 't1',
-      category: FeedbackCategory.bug,
-      message: 'it crashed',
-      replyEmail: 'me@example.com',
-      status: FeedbackTicketStatus.newTicket,
-      attachmentPaths: const [],
-      createdAt: DateTime.utc(2026, 9, 5),
-      updatedAt: DateTime.utc(2026, 9, 5),
-    );
-    final service = FakeFeedbackService()
-      ..failureToThrow = FeedbackAttachmentUploadFailedFailure(
-        ticket,
-        const FeedbackFailure.network(),
+    'double-tapping submit while busy issues exactly one service call',
+    (tester) async {
+      final service = FakeFeedbackService()..holdNextSubmit();
+      await pumpFeedbackScreen(tester, service);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'slow submit',
       );
-    final attachmentSource = _FakeAttachmentSource()
-      ..nextResult = FeedbackAttachment(
-        bytes: List<int>.filled(1024, 1),
-        mimeType: 'image/png',
-        filename: 'shot.png',
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-reply-email')),
+        'me@example.com',
       );
-    await pumpFeedbackScreen(tester, service, attachmentSource: attachmentSource);
+      await tester.pump();
 
-    await tester.enterText(find.byKey(const ValueKey('feedback-message')), 'it crashed');
-    await tester.enterText(find.byKey(const ValueKey('feedback-reply-email')), 'me@example.com');
-    await tester.ensureVisible(find.byKey(const ValueKey('feedback-add-screenshot')));
-    await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
-    await tester.pumpAndSettle();
+      await tapSubmit(tester);
+      await tester.pump();
+      // The button is now disabled (busy); a second tap must be a no-op.
+      await tapSubmit(tester, warnIfMissed: false);
+      await tester.pump();
 
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
+      expect(service.submitCalls, 1);
 
-    expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
-    // The message text is gone — a retry composes a fresh submission
-    // rather than looking like a continuation of the one that already
-    // committed a ticket row.
-    expect(find.text('it crashed'), findsNothing);
-    // The screenshot picker reset too: no stale attachment survives to
-    // ride along, silently and without fresh consent, on the next submit.
-    // This alone only pins `_formGeneration++` (it re-keys AttachmentField
-    // regardless of the parent's own `_attachment` field), so it would
-    // still pass even if `_attachment = null;` were deleted from the
-    // failure branch — the next two assertions close that gap by checking
-    // what the parent actually sends on a subsequent submit.
-    expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsNothing);
-    expect(find.byKey(const ValueKey('feedback-add-screenshot')), findsOneWidget);
+      service.completeSubmit(
+        service.lastCategory == null
+            ? throw StateError('submit was never called')
+            : FeedbackTicket(
+                id: 't1',
+                category: service.lastCategory!,
+                message: service.lastMessage!,
+                replyEmail: service.lastReplyEmail!,
+                status: FeedbackTicketStatus.newTicket,
+                attachmentPaths: const [],
+                createdAt: DateTime.utc(2026, 9, 5),
+                updatedAt: DateTime.utc(2026, 9, 5),
+              ),
+      );
+      await tester.pumpAndSettle();
 
-    // Retry without picking a new screenshot: only the *parent's* own
-    // `_attachment` field (not the picker widget's reset UI) decides what
-    // rides along with the next submission. If the failure branch stopped
-    // clearing it, this stale reference from the failed attempt would
-    // still be sent here even though the picker itself shows nothing
-    // attached.
-    await tester.enterText(
-      find.byKey(const ValueKey('feedback-message')),
-      'retry after upload failure',
-    );
-    await tester.pump();
-    await tapSubmit(tester);
-    await tester.pumpAndSettle();
+      expect(service.submitCalls, 1);
+    },
+  );
 
-    expect(service.submitCalls, 2);
-    expect(
-      service.lastAttachment,
-      isNull,
-      reason: 'a retry with no newly picked screenshot must not silently resend the '
-          'screenshot from the failed submission',
-    );
-  });
+  testWidgets(
+    'a screenshot attached to a successful submission is not silently '
+    'reused on a second submission in the same screen session',
+    (tester) async {
+      final service = FakeFeedbackService();
+      final attachmentSource = _FakeAttachmentSource()
+        ..nextResult = FeedbackAttachment(
+          bytes: List<int>.filled(1024, 1),
+          mimeType: 'image/png',
+          filename: 'shot.png',
+        );
+      await pumpFeedbackScreen(
+        tester,
+        service,
+        attachmentSource: attachmentSource,
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'first report',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-reply-email')),
+        'me@example.com',
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('feedback-add-screenshot')),
+      );
+      await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('feedback-attachment-consent-continue')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('feedback-attachment-selected')),
+        findsOneWidget,
+      );
+
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
+
+      expect(service.submitCalls, 1);
+      expect(service.lastAttachment, isNotNull);
+      // The picker itself resets, not just the internal field the screen
+      // sends to the service — otherwise a returning user would see the
+      // prior screenshot still listed as attached.
+      expect(
+        find.byKey(const ValueKey('feedback-attachment-selected')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('feedback-add-screenshot')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'second report, no new screenshot',
+      );
+      await tester.pump();
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
+
+      expect(service.submitCalls, 2);
+      expect(service.lastAttachment, isNull);
+    },
+  );
+
+  testWidgets(
+    'a FeedbackAttachmentUploadFailedFailure clears the message and screenshot so a retry '
+    'cannot re-file a duplicate ticket with the same screenshot and no fresh consent',
+    (tester) async {
+      final ticket = FeedbackTicket(
+        id: 't1',
+        category: FeedbackCategory.bug,
+        message: 'it crashed',
+        replyEmail: 'me@example.com',
+        status: FeedbackTicketStatus.newTicket,
+        attachmentPaths: const [],
+        createdAt: DateTime.utc(2026, 9, 5),
+        updatedAt: DateTime.utc(2026, 9, 5),
+      );
+      final service = FakeFeedbackService()
+        ..failureToThrow = FeedbackAttachmentUploadFailedFailure(
+          ticket,
+          const FeedbackFailure.network(),
+        );
+      final attachmentSource = _FakeAttachmentSource()
+        ..nextResult = FeedbackAttachment(
+          bytes: List<int>.filled(1024, 1),
+          mimeType: 'image/png',
+          filename: 'shot.png',
+        );
+      await pumpFeedbackScreen(
+        tester,
+        service,
+        attachmentSource: attachmentSource,
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'it crashed',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-reply-email')),
+        'me@example.com',
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('feedback-add-screenshot')),
+      );
+      await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('feedback-attachment-consent-continue')),
+      );
+      await tester.pumpAndSettle();
+
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('feedback-error')), findsOneWidget);
+      // The message text is gone — a retry composes a fresh submission
+      // rather than looking like a continuation of the one that already
+      // committed a ticket row.
+      expect(find.text('it crashed'), findsNothing);
+      // The screenshot picker reset too: no stale attachment survives to
+      // ride along, silently and without fresh consent, on the next submit.
+      // This alone only pins `_formGeneration++` (it re-keys AttachmentField
+      // regardless of the parent's own `_attachment` field), so it would
+      // still pass even if `_attachment = null;` were deleted from the
+      // failure branch — the next two assertions close that gap by checking
+      // what the parent actually sends on a subsequent submit.
+      expect(
+        find.byKey(const ValueKey('feedback-attachment-selected')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('feedback-add-screenshot')),
+        findsOneWidget,
+      );
+
+      // Retry without picking a new screenshot: only the *parent's* own
+      // `_attachment` field (not the picker widget's reset UI) decides what
+      // rides along with the next submission. If the failure branch stopped
+      // clearing it, this stale reference from the failed attempt would
+      // still be sent here even though the picker itself shows nothing
+      // attached.
+      await tester.enterText(
+        find.byKey(const ValueKey('feedback-message')),
+        'retry after upload failure',
+      );
+      await tester.pump();
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
+
+      expect(service.submitCalls, 2);
+      expect(
+        service.lastAttachment,
+        isNull,
+        reason:
+            'a retry with no newly picked screenshot must not silently resend the '
+            'screenshot from the failed submission',
+      );
+    },
+  );
 }

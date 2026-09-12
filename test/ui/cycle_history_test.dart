@@ -40,6 +40,8 @@ import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../support/erroring_day_entries_repository.dart';
+
 const String kDisclaimer = 'Estimates only — not medical advice.';
 const String kDeviceLocalNote =
     'Omissions stay on this device — other devices are not affected.';
@@ -533,6 +535,77 @@ void main() {
         ),
         findsOneWidget,
       );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+  });
+
+  group('issue #543: history stream error', () {
+    testWidgets(
+        'a thrown error on the history stream shows InlineError with retry '
+        'instead of silently rendering nothing', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final innerEntries = DriftDayEntriesRepository(db.storage);
+      final entries = ErroringDayEntriesRepository(innerEntries);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      for (final start in kSteadyStarts) {
+        for (var i = 0; i < 4; i++) {
+          await innerEntries.save(DayEntry(
+            id: '',
+            profileId: profile.id,
+            localDate: start.addDays(i),
+            tz: 'America/Chicago',
+            flow: FlowLevel.medium,
+            tags: const [],
+            note: null,
+            updatedAt: DateTime.utc(2026, 1, 1),
+            deletedAt: null,
+          ));
+        }
+      }
+
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<CycleHistoryService>.value(
+            value: CycleHistoryService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: CycleHistorySection(
+              profileId: profile.id,
+              todayProvider: () => aug30,
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget,
+          reason: 'sanity: healthy before the break');
+
+      entries.broken = true;
+      await innerEntries.save((await innerEntries.find(
+          profile.id, kSteadyStarts.last))!);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('cycle-history-error')), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      entries.broken = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget,
+          reason: 'retry re-subscribes and recovers once the failure clears');
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

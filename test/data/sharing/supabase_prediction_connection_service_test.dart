@@ -12,6 +12,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show CycleConfidence;
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/l10n/app_localizations_en.dart';
@@ -267,6 +269,38 @@ void main() {
           fertileDays: const [],
           ovulationDays: const [],
           pmsDays: const [],
+        ),
+      );
+    });
+
+    test('issue #529: strips confidence_tier even when the projection '
+        'carries one, so a tiered publish never trips '
+        "prediction_projections' server-side allowlist", () async {
+      final client = makeClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        final projection = body['p_projection'] as Map<String, dynamic>;
+        expect(
+          projection.keys.toSet(),
+          PredictionProjection.allowedKeys.toSet(),
+          reason: 'confidence_tier is not in the server allowlist yet '
+              '(20260909200000_prediction_connections.sql) - sending it '
+              'would fail the payload_keys_check CHECK constraint',
+        );
+        expect(projection.containsKey(PredictionProjection.confidenceTierKey),
+            isFalse);
+        return http.Response('null', 204);
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await service.publishProjection(
+        profileId: 'p1',
+        projection: PredictionProjection(
+          generatedAt: LocalDate(2026, 9, 7),
+          periodDays: [LocalDate(2026, 9, 10)],
+          fertileDays: const [],
+          ovulationDays: const [],
+          pmsDays: const [],
+          confidenceTier: CycleConfidence.high,
         ),
       );
     });
