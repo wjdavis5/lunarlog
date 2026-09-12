@@ -110,10 +110,15 @@ class SupabaseAuthService
   @override
   bool _googleInitialized = false;
 
+  // Issue #548: close_sinks only looks within the declaring class/mixin
+  // body, not across `part` files — these are closed in `dispose()` in
+  // `supabase_auth_session_state.dart` (part of this same library).
   @override
+  // ignore: close_sinks
   final StreamController<AuthSessionState> _states =
       StreamController<AuthSessionState>.broadcast();
   @override
+  // ignore: close_sinks
   final StreamController<AuthFailure> _linkFailures =
       StreamController<AuthFailure>.broadcast();
 
@@ -127,8 +132,13 @@ class SupabaseAuthService
   bool _started = false;
   @override
   String? _lastHandledLink;
+  // Issue #548: cancel_subscriptions has the same cross-part blind spot as
+  // close_sinks above — both are cancelled in dispose() in
+  // supabase_auth_session_state.dart.
   @override
+  // ignore: cancel_subscriptions
   StreamSubscription<AuthState>? _eventSub;
   @override
+  // ignore: cancel_subscriptions
   StreamSubscription<Uri>? _linkSub;
 }

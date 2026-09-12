@@ -53,14 +53,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     final store = context.read<SettingsStore>();
-    () async {
+    unawaited(() async {
       final value = await store.get(SettingsKeys.relockEnabled);
       if (!mounted) return;
       setState(() {
         _relock = value != 'false';
         _loaded = true;
       });
-    }();
+    }());
   }
 
   @override
@@ -148,9 +148,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _loaded
                 ? (value) {
                     setState(() => _relock = value);
-                    context
+                    unawaited(context
                         .read<SettingsStore>()
-                        .set(SettingsKeys.relockEnabled, value ? 'true' : 'false');
+                        .set(SettingsKeys.relockEnabled, value ? 'true' : 'false'));
                   }
                 : null,
           ),
@@ -237,7 +237,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// adding `url_launcher` for a single `mailto:` link.
   void _showContactSupport(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    showDialog<void>(
+    unawaited(showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(l10n.settingsContactSupport),
@@ -257,12 +257,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   void _showPrivacyPolicy(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    showDialog<void>(
+    unawaited(showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(l10n.settingsPrivacyDialogTitle),
@@ -276,7 +276,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

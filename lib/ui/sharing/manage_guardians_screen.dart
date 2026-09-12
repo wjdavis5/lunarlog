@@ -126,7 +126,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   void initState() {
     super.initState();
     _loadPendingInvites();
-    _loadPredictionConnection();
+    unawaited(_loadPredictionConnection());
   }
 
   @override
@@ -377,7 +377,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   void _openInviteDialog() {
-    showDialog<void>(
+    unawaited(showDialog<void>(
       context: context,
       builder: (ctx) => InviteGuardianDialog(
         profileId: widget.profile.id,
@@ -390,7 +390,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       // either way.
     ).then((_) {
       if (mounted) _loadPendingInvites();
-    });
+    }));
   }
 
   /// R3 invitation-cancellation ladder, mirroring [_canRevoke]'s guardian

@@ -280,7 +280,7 @@ void main() {
   });
 
   test('dispose detaches the gate listener', () {
-    var unlocked = false;
+    const unlocked = false;
     final gateListeners = <void Function()>[];
     final ex = executor(
       isUnlocked: () => unlocked,

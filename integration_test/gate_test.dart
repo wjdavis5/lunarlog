@@ -108,7 +108,7 @@ Future<void> main() async {
     ];
     final start = tester.binding.lifecycleState ?? AppLifecycleState.resumed;
     var from = path.indexOf(start);
-    var to = path.indexOf(target);
+    final to = path.indexOf(target);
     assert(from >= 0 && to >= 0, 'unsupported transition $start -> $target');
     while (from != to) {
       from += to > from ? 1 : -1;

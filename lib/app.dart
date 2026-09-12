@@ -807,7 +807,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _inviteSub?.cancel();
+    unawaited(_inviteSub?.cancel());
     _inviteSub = null;
     _authController?.dispose();
     _authController = null;
@@ -971,11 +971,15 @@ class _LunarLogAppState extends State<LunarLogApp>
             updateShouldNotify: (_, _) => false,
           ),
         ChangeNotifierProvider(
-          create: (context) => ProfileController(
-            profilesRepository: context.read<ProfilesRepository>(),
-            settingsStore: context.read<SettingsStore>(),
-            profileModesRepository: context.read<ProfileModesRepository>(),
-          )..load(),
+          create: (context) {
+            final controller = ProfileController(
+              profilesRepository: context.read<ProfilesRepository>(),
+              settingsStore: context.read<SettingsStore>(),
+              profileModesRepository: context.read<ProfileModesRepository>(),
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
       ],
       child: MaterialApp(

@@ -101,7 +101,7 @@ void main() {
 
   tearDown(() async {
     await coordinator.dispose();
-    settings.close();
+    await settings.close();
   });
 
   /// Seeds the settings and *then* starts the coordinator: the seeded

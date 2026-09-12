@@ -221,7 +221,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// Subscribes the inactivity toggle to the persisted setting (read after
   /// the database opens, so it is not available at construction).
   void attachSettings(SettingsStore store) {
-    _relockSub?.cancel();
+    unawaited(_relockSub?.cancel());
     _relockSub = store.watch(SettingsKeys.relockEnabled).listen((value) {
       _relockEnabled = value != 'false'; // absent ⇒ default ON (fail closed)
       if (_relockEnabled) {

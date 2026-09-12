@@ -4,6 +4,8 @@
 /// viewer's read-only path, and the two entry points.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -156,10 +158,14 @@ Future<Harness> pumpActivity(
         ),
         // ProfileDetailScreen reads this (switch-profile action).
         ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: profiles,
-            settingsStore: settings,
-          )..load(),
+          create: (_) {
+            final controller = ProfileController(
+              profilesRepository: profiles,
+              settingsStore: settings,
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
       ],
       child: MaterialApp(

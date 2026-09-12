@@ -271,7 +271,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
   void _copyLink() {
     final transfer = _transfer;
     if (transfer == null) return;
-    Clipboard.setData(ClipboardData(text: transfer.claimUri.toString()));
+    unawaited(Clipboard.setData(ClipboardData(text: transfer.claimUri.toString())));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Transfer link copied to clipboard')),
     );
@@ -285,7 +285,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     // text share (the link is a custom `lunarlog://` scheme, not a
     // browsable http(s) URL, so `ShareParams.text` is the right field
     // rather than `ShareParams.uri`).
-    SharePlus.instance.share(ShareParams(text: transfer.claimUri.toString()));
+    unawaited(SharePlus.instance.share(ShareParams(text: transfer.claimUri.toString())));
   }
 
   @override

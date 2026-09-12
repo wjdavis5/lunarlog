@@ -189,9 +189,12 @@ List<SingleChildWidget> loggingProviders({
   Provider<ObservationsRepository>.value(value: observations),
   Provider<SettingsStore>.value(value: settings),
   ChangeNotifierProvider(
-    create: (_) =>
-        ProfileController(profilesRepository: profiles, settingsStore: settings)
-          ..load(),
+    create: (_) {
+      final controller =
+          ProfileController(profilesRepository: profiles, settingsStore: settings);
+      unawaited(controller.load());
+      return controller;
+    },
   ),
   if (authController != null)
     ChangeNotifierProvider<AuthController>.value(value: authController),

@@ -783,7 +783,7 @@ class _MonthCalendarState extends State<MonthCalendar>
     final (newFrom, newTo) = calendarEntriesWindowFor(year, month);
     _entriesWindowFrom = newFrom;
     _entriesWindowTo = newTo;
-    _entriesSub?.cancel();
+    unawaited(_entriesSub?.cancel());
     _entriesSub = _repository
         .watchForProfile(widget.profileId, from: newFrom, to: newTo)
         .listen((entries) {
@@ -794,7 +794,7 @@ class _MonthCalendarState extends State<MonthCalendar>
 
   @override
   void dispose() {
-    _entriesSub?.cancel();
+    unawaited(_entriesSub?.cancel());
     _entriesSub = null;
     disposeGuardianWatch();
     _auth?.removeListener(_onAuthChanged);

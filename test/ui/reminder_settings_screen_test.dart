@@ -8,6 +8,8 @@
 /// scrolls the target into view.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
@@ -87,10 +89,14 @@ Future<void> _pump(
         ),
         Provider<SettingsStore>.value(value: store),
         ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: _FakeProfilesRepository(profiles),
-            settingsStore: store,
-          )..load(),
+          create: (_) {
+            final controller = ProfileController(
+              profilesRepository: _FakeProfilesRepository(profiles),
+              settingsStore: store,
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
         Provider<ReminderConfigService>.value(
           value: ReminderConfigService(store),

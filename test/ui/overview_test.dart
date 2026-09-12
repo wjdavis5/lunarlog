@@ -226,10 +226,14 @@ class Harness {
         if (authController != null)
           ChangeNotifierProvider<AuthController>.value(value: authController),
         ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: profiles,
-            settingsStore: _settings,
-          )..load(),
+          create: (_) {
+            final controller = ProfileController(
+              profilesRepository: profiles,
+              settingsStore: _settings,
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
       ],
       child: MaterialApp(

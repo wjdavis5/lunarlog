@@ -191,7 +191,7 @@ void main() {
 
     testWidgets('malformed bytes show a clear parse error and never call '
         'the coordinator', (tester) async {
-      var buildPlanCalls = 0;
+      const buildPlanCalls = 0;
       await _pump(
         tester,
         pickFile:

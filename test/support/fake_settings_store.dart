@@ -36,6 +36,10 @@ class FakeSettingsStore implements SettingsStore {
 
   @override
   Stream<String?> watch(String key) {
+    // Issue #548: close_sinks can't trace that this is the same instance
+    // stored in _controllers and closed by close() below — it's reached
+    // through the putIfAbsent indirection, not created here directly.
+    // ignore: close_sinks
     final controller = _controllers.putIfAbsent(
         key, () => StreamController<String?>.broadcast());
     return _seeded(_values[key], controller.stream);
@@ -53,9 +57,9 @@ class FakeSettingsStore implements SettingsStore {
 
   /// Closes every watch stream. Call from `addTearDown` so a subscription
   /// does not outlive the test.
-  void close() {
+  Future<void> close() async {
     for (final controller in _controllers.values) {
-      controller.close();
+      await controller.close();
     }
   }
 }

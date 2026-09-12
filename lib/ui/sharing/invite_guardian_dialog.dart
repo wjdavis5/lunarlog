@@ -1,6 +1,8 @@
 /// Dialog for generating a caregiver or viewer invitation link (U8; R6, R7, R8).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -68,7 +70,8 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
 
   void _copyLink() {
     if (_generatedInvite == null) return;
-    Clipboard.setData(ClipboardData(text: _generatedInvite!.inviteUri.toString()));
+    unawaited(
+        Clipboard.setData(ClipboardData(text: _generatedInvite!.inviteUri.toString())));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Invite link copied to clipboard')),
     );

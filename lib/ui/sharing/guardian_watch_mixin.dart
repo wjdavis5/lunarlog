@@ -54,7 +54,7 @@ mixin GuardianWatchMixin<T extends StatefulWidget> on State<T> {
     String profileId,
     void Function(List<ProfileGuardian> guardians) onGuardians,
   ) {
-    _guardianWatchSub?.cancel();
+    unawaited(_guardianWatchSub?.cancel());
     onGuardians(const []);
     if (repository == null) return;
     _guardianWatchSub =

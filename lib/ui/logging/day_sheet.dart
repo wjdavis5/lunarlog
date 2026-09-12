@@ -331,8 +331,8 @@ class _DaySheetState extends State<DaySheet> {
     // for the seeded value itself.
     _noteController.addListener(_markDirty);
     if (existing != null) {
-      _loadExistingSpotting(existing.id);
-      _loadExistingPainIntensity(existing.id);
+      unawaited(_loadExistingSpotting(existing.id));
+      unawaited(_loadExistingPainIntensity(existing.id));
     }
   }
 
@@ -837,7 +837,9 @@ class _DaySheetState extends State<DaySheet> {
   /// to close without an explicit discard ([_confirmDiscardWhileFailed]).
   void _onSheetPop(bool didPop, Object? result) {
     if (!didPop) {
-      if (_saveFailed && !_discardUnsaved) _confirmDiscardWhileFailed();
+      if (_saveFailed && !_discardUnsaved) {
+        unawaited(_confirmDiscardWhileFailed());
+      }
       return;
     }
     final flushPending = _dirty && !_discardUnsaved;

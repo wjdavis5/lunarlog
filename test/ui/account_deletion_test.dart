@@ -293,10 +293,10 @@ class DeletionHarness {
     await tester.pump();
   }
 
-  void dispose() {
+  Future<void> dispose() async {
     controller.dispose();
     gateController.dispose();
-    auth.dispose();
+    await auth.dispose();
     _sectionVisible.dispose();
   }
 }

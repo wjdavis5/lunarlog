@@ -6,6 +6,8 @@
 /// real repositories, [FakeAuthService]).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -382,10 +384,14 @@ void main() {
             Provider<CareContentRepository>.value(
                 value: DriftCareContentRepository(db.storage)),
             ChangeNotifierProvider(
-              create: (_) => ProfileController(
-                profilesRepository: profiles,
-                settingsStore: DriftSettingsStore(db.storage),
-              )..load(),
+              create: (_) {
+                final controller = ProfileController(
+                  profilesRepository: profiles,
+                  settingsStore: DriftSettingsStore(db.storage),
+                );
+                unawaited(controller.load());
+                return controller;
+              },
             ),
           ],
           child: MaterialApp(

@@ -6,6 +6,8 @@
 /// is deferred).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/limits.dart';
@@ -132,7 +134,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   @override
   void initState() {
     super.initState();
-    _loadProfileModeRow();
+    unawaited(_loadProfileModeRow());
   }
 
   Future<void> _loadProfileModeRow() async {

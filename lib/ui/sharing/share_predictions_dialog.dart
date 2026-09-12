@@ -4,6 +4,8 @@
 /// gets a read-only calendar of derived phases, nothing else.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -79,7 +81,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
 
   void _copyCode() {
     if (_invite == null) return;
-    Clipboard.setData(ClipboardData(text: _invite!.inviteUri.toString()));
+    unawaited(Clipboard.setData(ClipboardData(text: _invite!.inviteUri.toString())));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Connection link copied to clipboard')),
     );

@@ -141,7 +141,11 @@ void main() {
 
       final totalEntries = profiles.fold<int>(
         0,
-        (sum, p) => sum + (p as Map)['dayEntries'].length as int,
+        // Issue #548 (strict-casts): `as` binds looser than `+`, so the
+        // original `sum + (p as Map)['dayEntries'].length as int` cast the
+        // *sum* of a num and a dynamic, not the dynamic length alone —
+        // parenthesized so the length is cast to int before adding.
+        (sum, p) => sum + ((p as Map)['dayEntries'] as List).length,
       );
       expect(totalEntries, 5);
     });

@@ -210,7 +210,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   }
 
   void _watchSuggestionDismissed() {
-    _suggestionDismissedSub?.cancel();
+    unawaited(_suggestionDismissedSub?.cancel());
     _suggestionDismissedSub = null;
     _irregularSuggestionDismissed = false;
     final settings = _settings;
@@ -261,7 +261,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   @override
   void dispose() {
     disposeGuardianWatch();
-    _suggestionDismissedSub?.cancel();
+    unawaited(_suggestionDismissedSub?.cancel());
     _suggestionDismissedSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;

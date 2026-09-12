@@ -171,6 +171,10 @@ class _FakeProfiles implements ProfilesRepository {
 
 class _FakeDayEntries implements DayEntriesRepository {
   List<DayEntry> entries = const [];
+  // Issue #548: a per-test fake with no close() call — the test process is
+  // short-lived and nothing in this file ever emits on it, so there is no
+  // real leak to guard against.
+  // ignore: close_sinks
   final _changes = StreamController<List<DayEntry>>.broadcast();
 
   @override

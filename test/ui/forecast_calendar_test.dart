@@ -7,6 +7,8 @@
 /// checklist in both brightness themes.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -108,10 +110,14 @@ class Harness {
           value: CycleHistoryService(entries, settings: settings),
         ),
         ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: DriftProfilesRepository(db.storage),
-            settingsStore: settings,
-          )..load(),
+          create: (_) {
+            final controller = ProfileController(
+              profilesRepository: DriftProfilesRepository(db.storage),
+              settingsStore: settings,
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
       ],
       child: MaterialApp(
