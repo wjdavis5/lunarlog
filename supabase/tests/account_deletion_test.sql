@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(69);
+select plan(75);
 
 create temp table snap (name text primary key, v jsonb);
 -- Issue #167: section 12 below is the first place in this file that reads a
@@ -224,6 +224,8 @@ select is(
     -- Issue #128 adds these two counts to the returned document.
     'care_notes', 0, 'visit_prep_items', 0,
     'guardian_invitations', 0,
+    -- Issue #499 adds these two counts to the returned document.
+    'ownership_transfers', 0, 'prediction_connections', 0,
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,
     'notification_outbox', 0, 'profile_reminder_windows', 0,
@@ -813,6 +815,25 @@ values (tests.ulid(62), 'Q''s kid', true, 0, '2026-09-08T00:00:00Z', '2026-09-08
 insert into public.import_jobs (profile_id, source, status, total_rows, processed_rows, created_by)
 values (tests.ulid(62), 'clue_import', 'running', 100, 40, tests.get_supabase_uid('user_q'));
 
+-- Issue #499: ownership_transfers and prediction_connections fixtures.
+-- P initiates an ownership transfer on P's profile tests.ulid(60).
+-- Q initiates an ownership transfer on Q's profile tests.ulid(62).
+-- Inserted under service_role as neither table grants direct INSERT to authenticated.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
+insert into public.ownership_transfers (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
+values (tests.ulid(60), tests.get_supabase_uid('user_p'), repeat('1', 64), 'co_parent', now() + interval '1 day');
+
+insert into public.ownership_transfers (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
+values (tests.ulid(62), tests.get_supabase_uid('user_q'), repeat('2', 64), 'co_parent', now() + interval '1 day');
+
+insert into public.prediction_connections (profile_id, owner_user_id, token_hash, expires_at)
+values (tests.ulid(60), tests.get_supabase_uid('user_p'), repeat('3', 64), now() + interval '1 day');
+
+insert into public.prediction_connections (profile_id, owner_user_id, token_hash, expires_at)
+values (tests.ulid(62), tests.get_supabase_uid('user_q'), repeat('4', 64), now() + interval '1 day');
+
 select tests.authenticate_as('user_p');
 select pg_temp.snapshot('p_result', public.delete_account_data());
 
@@ -823,6 +844,14 @@ select is(
 select is(
   pg_temp.snap('p_result') -> 'import_jobs', '1'::jsonb,
   'Issue #167: result includes an import_jobs count of 1 (created_by = v_uid)'
+);
+select is(
+  pg_temp.snap('p_result') -> 'ownership_transfers', '1'::jsonb,
+  'Issue #499: result includes an ownership_transfers count of 1'
+);
+select is(
+  pg_temp.snap('p_result') -> 'prediction_connections', '1'::jsonb,
+  'Issue #499: result includes a prediction_connections count of 1'
 );
 
 select set_config('request.jwt.claims', '', true);
@@ -857,6 +886,26 @@ select is(
   (select count(*) from public.import_jobs where created_by = tests.get_supabase_uid('user_q')),
   1::bigint,
   'Issue #167: a different user''s own import job survives untouched'
+);
+select is(
+  (select count(*) from public.ownership_transfers where initiated_by = tests.get_supabase_uid('user_p')),
+  0::bigint,
+  'Issue #499: after delete_account_data, the caller has zero ownership_transfers rows'
+);
+select is(
+  (select count(*) from public.ownership_transfers where initiated_by = tests.get_supabase_uid('user_q')),
+  1::bigint,
+  'Issue #499: a different user''s ownership_transfers row survives untouched'
+);
+select is(
+  (select count(*) from public.prediction_connections where owner_user_id = tests.get_supabase_uid('user_p') or recipient_user_id = tests.get_supabase_uid('user_p')),
+  0::bigint,
+  'Issue #499: after delete_account_data, the caller has zero prediction_connections rows'
+);
+select is(
+  (select count(*) from public.prediction_connections where owner_user_id = tests.get_supabase_uid('user_q')),
+  1::bigint,
+  'Issue #499: a different user''s prediction_connections row survives untouched'
 );
 
 select tests.clear_authentication();
