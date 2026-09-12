@@ -222,11 +222,23 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       trailing: PopupMenuButton<String>(
         tooltip: 'Profile actions',
         onSelected: (action) => _onRowAction(context, profile, action),
-        itemBuilder: (context) => const [
-          PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
-          PopupMenuItem(value: 'rename', child: Text('Rename')),
-          PopupMenuItem(value: 'archive', child: Text('Archive')),
-        ],
+        itemBuilder: (context) {
+          // Issue #531: an unknown role (null - the guardian rows haven't
+          // synced, or this is a local-only/not-yet-shared profile) fails
+          // open to the full menu, matching the #13 null-vs-empty
+          // discipline documented on `acceptedGuardianFor` - only a known,
+          // resolved role that is actually insufficient hides an item.
+          final role = info.myRole;
+          final canEdit = role == null || role.canEditProfile;
+          final canDelete = role == null || role.canDeleteProfile;
+          return [
+            const PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
+            if (canEdit)
+              const PopupMenuItem(value: 'rename', child: Text('Rename')),
+            if (canDelete)
+              const PopupMenuItem(value: 'archive', child: Text('Archive')),
+          ];
+        },
       ),
     );
   }
