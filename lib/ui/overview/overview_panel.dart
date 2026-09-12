@@ -62,6 +62,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
@@ -71,6 +72,7 @@ import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
 // Issue #316 review: re-exported (not just imported) so
@@ -165,7 +167,11 @@ class _OverviewPanelState extends State<OverviewPanel> {
   // pattern) rather than re-reading context.read inside a button callback.
   late final CycleExclusionList _exclusions = context
       .read<CycleExclusionList>();
+  late final SettingsStore? _settings =
+      Provider.of<SettingsStore?>(context, listen: false);
   StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+  StreamSubscription<String?>? _suggestionDismissedSub;
+  bool _irregularSuggestionDismissed = false;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
@@ -188,6 +194,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
       _auth = auth;
     }
     _watchGuardians();
+    _watchSuggestionDismissed();
   }
 
   void _onAuthChanged() {
@@ -209,6 +216,29 @@ class _OverviewPanelState extends State<OverviewPanel> {
     });
   }
 
+  void _watchSuggestionDismissed() {
+    _suggestionDismissedSub?.cancel();
+    _suggestionDismissedSub = null;
+    _irregularSuggestionDismissed = false;
+    final settings = _settings;
+    if (settings == null) return;
+    _suggestionDismissedSub = settings
+        .watch(predictionsSuggestionDismissedSettingKey(widget.profileId))
+        .listen((val) {
+      if (!mounted) return;
+      setState(() => _irregularSuggestionDismissed = val == 'true');
+    });
+  }
+
+  Future<void> _dismissIrregularSuggestion() async {
+    final settings = _settings;
+    if (settings == null) return;
+    await settings.set(
+      predictionsSuggestionDismissedSettingKey(widget.profileId),
+      'true',
+    );
+  }
+
   @override
   void didUpdateWidget(covariant OverviewPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -218,6 +248,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
         today: widget.todayProvider,
       );
       _watchGuardians();
+      _watchSuggestionDismissed();
     }
   }
 
@@ -225,6 +256,8 @@ class _OverviewPanelState extends State<OverviewPanel> {
   void dispose() {
     _guardiansSub?.cancel();
     _guardiansSub = null;
+    _suggestionDismissedSub?.cancel();
+    _suggestionDismissedSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -355,6 +388,11 @@ class _OverviewPanelState extends State<OverviewPanel> {
               // never NotEnoughHistory and never a silent late/paused line.
               PredictionsSuppressed() =>
                 PredictionsSuppressedCard(method: prediction.method),
+              // Issue #225: per-profile predictions disabled toggle.
+              PredictionsDisabled() => PredictionsDisabledCard(
+                  onManageSettings: () =>
+                      pushNamedScreen<void>(context, kRouteSettingsScreen),
+                ),
             },
             _seeHistoryLink(context),
             if (availability == NotificationAvailability.denied)
@@ -479,6 +517,12 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 4),
+            ],
+            // Issue #225: auto-suggest turning off predictions when confidence is irregular.
+            if (prediction.tier == CycleConfidence.irregular &&
+                !_irregularSuggestionDismissed) ...[
+              _irregularSuggestionCard(context, theme),
+              const SizedBox(height: 8),
             ],
             // Issue #220: the predicted PMS phase — only when the profile
             // has the 3+ logged PMS intervals the hard minimum requires
@@ -632,20 +676,78 @@ class _OverviewPanelState extends State<OverviewPanel> {
                   onPressed: () => _excludeLongCycle(context, prediction),
                   child: Text(l10n.overviewLongCycleExclude),
                 ),
-                // TODO(#225): wire this up once profile-level "turn
-                // predictions off" exists. Until then it stays a disabled,
-                // honestly-labeled button rather than a live one that only
-                // ever shows a "coming soon" snackbar — a button that always
-                // just defers reads as broken, not as a placeholder.
+                // Issue #225: profile-level "turn predictions off" in Settings.
                 OutlinedButton(
                   key: const ValueKey('long-cycle-predictions-off'),
-                  onPressed: null,
+                  onPressed: () =>
+                      pushNamedScreen<void>(context, kRouteSettingsScreen),
                   child: Text(l10n.overviewLongCyclePredictionsOff),
                 ),
               ],
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Issue #225: dismissible suggestion card offered when confidence tier is
+  /// irregular. Matches Clue's "offer, do not force" posture; navigating to
+  /// Settings lets the user decide without the banner flipping the toggle itself.
+  Widget _irregularSuggestionCard(BuildContext context, ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
+    return Card(
+      key: const ValueKey('overview-irregular-prediction-suggestion'),
+      color: theme.colorScheme.surfaceContainerHighest,
+      margin: const EdgeInsets.only(top: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.lightbulb_outline,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l10n.overviewIrregularSuggestionTitle,
+                    key: const ValueKey('irregular-suggestion-title'),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              l10n.overviewIrregularSuggestionBody,
+              key: const ValueKey('irregular-suggestion-body'),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  key: const ValueKey('irregular-suggestion-dismiss'),
+                  onPressed: _dismissIrregularSuggestion,
+                  child: Text(l10n.overviewIrregularSuggestionDismiss),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('irregular-suggestion-settings'),
+                  onPressed: () =>
+                      pushNamedScreen<void>(context, kRouteSettingsScreen),
+                  child: Text(l10n.overviewIrregularSuggestionSettings),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

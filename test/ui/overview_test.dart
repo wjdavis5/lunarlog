@@ -536,17 +536,15 @@ void main() {
           findsOneWidget);
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
-      expect(find.text('Turn off predictions (coming soon)'), findsOneWidget);
+      expect(find.text('Turn off predictions'), findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(
               find.byKey(const ValueKey('long-cycle-predictions-off')),
             )
             .onPressed,
-        isNull,
-        reason: 'issue #225 is not built yet -- the button is an honestly '
-            'disabled placeholder, not a live one that only shows a '
-            'snackbar',
+        isNotNull,
+        reason: 'issue #225: button is wired to open Settings',
       );
       expect(find.text(kDisclaimer), findsWidgets,
           reason: 'the Today card and the resolver each carry it');

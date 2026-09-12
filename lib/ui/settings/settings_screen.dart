@@ -34,6 +34,7 @@ import 'package:lunarlog/ui/feedback/support_history_screen.dart'
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/family_sharing_section.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
+import 'package:lunarlog/ui/settings/predictions_settings_section.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:provider/provider.dart';
 
@@ -122,12 +123,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () => _showContactSupport(context),
             ),
           if (hasFeedback) const _SupportHistoryTile(),
-          const Divider(),
+          // Issue #225: per-profile predictions toggle section.
+          const PredictionsSettingsSection(),
           // Issue #136: the per-profile local reminder configuration.
           // Present whenever the app provides the reminder configuration
           // store (i.e. reminders exist — a scheduler was wired); hidden
           // in harnesses that never built one.
-          if (Provider.of<ReminderConfigService?>(context) != null)
+          if (Provider.of<ReminderConfigService?>(context) != null) ...[
             ListTile(
               key: const ValueKey('reminder-settings-tile'),
               leading: const Icon(Icons.notifications_outlined),
@@ -138,7 +140,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () =>
                   pushNamedScreen<void>(context, kRouteReminderSettingsScreen),
             ),
-          const Divider(),
+            const Divider(),
+          ],
           SwitchListTile(
             key: const ValueKey('relock-toggle'),
             title: Text(l10n.settingsRelockTitle),

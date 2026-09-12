@@ -421,9 +421,9 @@
   "@overviewLongCycleExclude": {
     "description": "Action excluding the open cycle from future averages."
   },
-  "overviewLongCyclePredictionsOff": "Turn off predictions (coming soon)",
+  "overviewLongCyclePredictionsOff": "Turn off predictions",
   "@overviewLongCyclePredictionsOff": {
-    "description": "Disabled placeholder action for turning predictions off (issue #225)."
+    "description": "Action navigating to Settings to manage or turn off predictions (issue #225)."
   },
   "overviewReminderHint": "Reminders unavailable — notifications are off",
   "@overviewReminderHint": {
@@ -772,6 +772,49 @@
     "placeholders": {
       "method": {"type": "String"}
     }
+  },
+  "predictionsDisabledTitle": "Predictions turned off",
+  "@predictionsDisabledTitle": {
+    "description": "Title of the card displayed when predictions are disabled for the profile (issue #225)."
+  },
+  "predictionsDisabledBody": "Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.",
+  "@predictionsDisabledBody": {
+    "description": "Body of the card explaining that predictions are disabled while tracking remains active (issue #225)."
+  },
+  "predictionsDisabledAction": "Manage in Settings",
+  "@predictionsDisabledAction": {
+    "description": "Button on predictions-disabled card opening Settings (issue #225)."
+  },
+  "settingsPredictionsTitle": "Show predictions",
+  "@settingsPredictionsTitle": {
+    "description": "Title of the prediction toggle in Settings when only one profile exists (issue #225)."
+  },
+  "settingsPredictionsProfileTitle": "Show predictions ({profileName})",
+  "@settingsPredictionsProfileTitle": {
+    "description": "Title of the prediction toggle in Settings for a specific profile (issue #225).",
+    "placeholders": {
+      "profileName": {"type": "String"}
+    }
+  },
+  "settingsPredictionsSubtitle": "Show cycle estimates, fertile window, and prediction reminders",
+  "@settingsPredictionsSubtitle": {
+    "description": "Subtitle describing the predictions toggle in Settings (issue #225)."
+  },
+  "overviewIrregularSuggestionTitle": "Cycles vary a lot",
+  "@overviewIrregularSuggestionTitle": {
+    "description": "Title of the suggestion banner offered when cycle variation is irregular (issue #225)."
+  },
+  "overviewIrregularSuggestionBody": "Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.",
+  "@overviewIrregularSuggestionBody": {
+    "description": "Body of the dismissible suggestion banner for irregular cycles (issue #225)."
+  },
+  "overviewIrregularSuggestionSettings": "Manage in Settings",
+  "@overviewIrregularSuggestionSettings": {
+    "description": "Action on the irregular suggestion banner opening Settings (issue #225)."
+  },
+  "overviewIrregularSuggestionDismiss": "Dismiss",
+  "@overviewIrregularSuggestionDismiss": {
+    "description": "Action dismissing the irregular suggestion banner (issue #225)."
   },
   "reminderSectionCycle": "Your cycle",
   "@reminderSectionCycle": {
