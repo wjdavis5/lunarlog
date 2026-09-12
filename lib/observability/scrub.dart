@@ -27,7 +27,12 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 /// the breadcrumb, and whose presence in `event.tags`, `event.logger`, or the
 /// message text scrubs that field. Listed in snake_case; [isDenyListedKey]
 /// also matches the camelCase spelling of each (`display_name` and
-/// `displayName` are the same key) and ignores case.
+/// `displayName` are the same key), ignores case, and (issue #520) matches
+/// [sentryDenyListedKeyStems] as a substring of the normalised key — so a
+/// prefixed or suffixed variant that is not spelled out verbatim below
+/// (`p_token_hash`, `reply_email`, `p_child_display_name`, `value_text`) is
+/// still caught. See [isDenyListedKey] for exactly how the two checks
+/// combine.
 ///
 /// Sources: local schema columns that carry health content (`note`, `tags`,
 /// `local_date`, `display_name`), account identity (`email`), the Supabase
@@ -44,11 +49,48 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 /// `sync_push` payload names that wrap whole rows (`p_care_notes`,
 /// `p_visit_prep_items`).
 ///
+/// Issue #497/#520: the three `sync_push` payload names (and bare table
+/// names) added by the observations/profile-modes/cycle-overrides features
+/// (`p_observations`, `p_profile_modes`, `p_cycle_overrides`) went
+/// unlisted, along with the health content and state columns those and
+/// earlier features added — `flow`, `pms`, `mode`, `birth_control_method`
+/// and its start/stop dates, `health_sync_consent`, the mode-change and
+/// cycle-fact dates, and the shared-prediction `projection` payload.
+/// `value_text`/`value_num` and `raw` (Observations' free-text and raw-JSON
+/// escape-hatch columns) are caught via the `value`/`raw` stems rather than
+/// listed verbatim — see [sentryDenyListedKeyStems].
+///
+/// Issue #520 also closes three drift gaps the same audit found outside the
+/// schema itself: `is_minor`/`birth_year` (profile demographic facts,
+/// exact-match only — neither matches a stem); the bulk importer's
+/// `p_rows` (a batch of whole imported day-entry-shaped rows, the same
+/// shape of gap `p_day_entries` already covered, just on a different RPC —
+/// see `lib/data/import/supabase_bulk_importer.dart`) and its
+/// `p_estimated_next_start` sibling in the reminder-window RPC (a predicted
+/// cycle-start date); and `recipient_label`/`p_recipient_label` (a
+/// user-typed label for a sharing/transfer recipient — the same kind of
+/// content as `display_name`, just not sharing its stem).
+///
+/// Deliberately NOT listed, even though issue #520 also flagged them as
+/// missing from `lib/data/db/tables.dart`: `category`/`code`/`unit`/
+/// `intensity`/`excluded` (Observations). These are short, mostly
+/// closed-vocabulary labels (`pain`, `bbt`, `migraine`) rather than open
+/// free text, and — unlike every other key here — they collide with
+/// harmless bare words already exercised as breadcrumb data elsewhere
+/// (`{'code': 'canceled'}` in a Google sign-in breadcrumb): deny-listing
+/// them as bare words would drop breadcrumbs that carry no health content
+/// at all. The guard test in `test/observability/deny_list_coverage_test.dart`
+/// waives them with this same reasoning, alongside every other column that
+/// is bookkeeping/opaque-id shaped rather than content shaped.
+///
 /// Bare words such as `name`, `token`, `user`, `sub`, and `session` are
 /// deliberately absent: [mentionsDenyListedKey] drops any message that
 /// mentions a listed key, and those words appear in ordinary Drift, gotrue,
 /// and HTTP messages. A `session` breadcrumb is already covered by the token
-/// keys nested inside it.
+/// keys nested inside it. `token` is also why [sentryDenyListedKeyStems]
+/// treats it as a whole-key exemption (see [isDenyListedKey]): a substring
+/// stem with no such exemption would silently resurrect this exact
+/// false-positive.
 const List<String> sentryDenyListedKeys = [
   'note',
   'tags',
@@ -93,7 +135,73 @@ const List<String> sentryDenyListedKeys = [
   'photo_url',
   'hd',
   'user_metadata',
+  // Issue #497/#520: observations, profile_modes, and cycle_overrides
+  // sync_push parameters and table names, plus the health content/state
+  // columns those and earlier features added.
+  'observations',
+  'p_observations',
+  'profile_modes',
+  'p_profile_modes',
+  'cycle_overrides',
+  'p_cycle_overrides',
+  'projection',
+  'p_projection',
+  'flow',
+  'pms',
+  'mode',
+  'is_minor',
+  'birth_year',
+  'birth_control_method',
+  'birth_control_started_on',
+  'birth_control_stopped_on',
+  'health_sync_consent',
+  'mode_started_on',
+  'cycle_start_date',
+  'last_period_start',
+  'typical_cycle_length_days',
+  'typical_period_length_days',
+  // Issue #520: the bulk importer's per-chunk payload (a batch of whole
+  // imported day-entry-shaped rows) and its reminder-window sibling (a
+  // predicted cycle-start date), plus a user-typed recipient label
+  // (display_name-shaped free text that does not share its stem).
+  'p_rows',
+  'p_estimated_next_start',
+  'recipient_label',
+  'p_recipient_label',
 ];
+
+/// Sensitive stems (issue #520): a key whose *normalised* form contains one
+/// of these as a substring is deny-listed even when it is not spelled out
+/// verbatim in [sentryDenyListedKeys] — catching a prefixed or suffixed
+/// variant like `p_token_hash` (contains `token` and `hash`), `reply_email`
+/// (contains `email`), `p_child_display_name`/`p_guardian_display_name`/
+/// `p_parent_display_name` (contain `displayname`), and Observations'
+/// `value_num`/`value_text` (contain `value`). Exact-match alone missed
+/// exactly these in #520's audit.
+///
+/// A short, deliberately narrow list — not every deny-listed word — keeps
+/// the false-positive surface small: see [isDenyListedKey] for the one
+/// exemption ([_wholeKeyExemptStems]) this still needs.
+const List<String> sentryDenyListedKeyStems = [
+  'token',
+  'hash',
+  'email',
+  'displayname',
+  'note',
+  'value',
+  'raw',
+];
+
+/// Stems from [sentryDenyListedKeyStems] matched only as a genuine
+/// compound, never as the whole normalised key. `token` is one of the "bare
+/// words... deliberately absent" from [sentryDenyListedKeys] (see its doc
+/// comment) precisely because it appears in ordinary Drift/gotrue/HTTP
+/// messages ("session token expired"); matching it as an unqualified
+/// substring would resurrect that exact false-positive for every message
+/// mentioning the bare word. `p_token`, `token_hash`, `p_token_hash`, and
+/// `access_token` are all still caught: each is strictly longer than the
+/// bare word `token`.
+const Set<String> _wholeKeyExemptStems = {'token'};
 
 /// Exception type-name fragments that mark an exception whose message
 /// embeds storage material — SQL, rows, PostgREST details, auth responses,
@@ -153,13 +261,27 @@ const List<String> _dataLayerPathMarkers = [
 final Set<String> _normalizedDenyList =
     sentryDenyListedKeys.map(_normalizeKey).toSet();
 
+final List<String> _normalizedDenyListedKeyStems =
+    sentryDenyListedKeyStems.map(_normalizeKey).toList(growable: false);
+
 /// Lower-cases and strips underscores so `display_name`, `displayName`, and
 /// `DISPLAY_NAME` compare equal.
 String _normalizeKey(String key) => key.toLowerCase().replaceAll('_', '');
 
-/// True when [key] is one of [sentryDenyListedKeys] in any spelling.
-bool isDenyListedKey(String key) =>
-    _normalizedDenyList.contains(_normalizeKey(key));
+/// True when [key] is one of [sentryDenyListedKeys] in any spelling, or its
+/// normalised form contains one of [sentryDenyListedKeyStems] as a genuine
+/// substring (issue #520) — except a stem in [_wholeKeyExemptStems] matching
+/// the *entire* normalised key, which is deliberately not enough on its own
+/// (see that constant's doc comment).
+bool isDenyListedKey(String key) {
+  final normalized = _normalizeKey(key);
+  if (_normalizedDenyList.contains(normalized)) return true;
+  for (final stem in _normalizedDenyListedKeyStems) {
+    if (normalized == stem && _wholeKeyExemptStems.contains(stem)) continue;
+    if (normalized.contains(stem)) return true;
+  }
+  return false;
+}
 
 /// True when [value] (a map, list, or scalar) contains a deny-listed key at
 /// any depth. Scalars never match: this checks key names, not values.
@@ -175,6 +297,20 @@ bool containsDenyListedKey(Object? value) {
   if (value is Iterable) {
     return value.any(containsDenyListedKey);
   }
+  return false;
+}
+
+/// True when [value] (a map, list, or scalar) contains a string that
+/// mentions a deny-listed key via [mentionsDenyListedKey], at any depth.
+/// Unlike [containsDenyListedKey] (which inspects only map keys, never
+/// values), this inspects string leaves — closing the gap issue #520
+/// identifies: an ordinary (non-navigation) breadcrumb's `data` can carry
+/// deny-listed content under a key that is not itself deny-listed, e.g.
+/// `{'error': 'UNIQUE constraint failed: day_entries.note'}`.
+bool _dataValuesMentionDenyListedKey(Object? value) {
+  if (value is String) return mentionsDenyListedKey(value);
+  if (value is Map) return value.values.any(_dataValuesMentionDenyListedKey);
+  if (value is Iterable) return value.any(_dataValuesMentionDenyListedKey);
   return false;
 }
 
@@ -299,12 +435,12 @@ const Set<String> _sentrySafeExceptionTypes = {
   'FlutterError',
 };
 
-/// KTD12/#516: reduces [exception] to its type name unless it is on the
-/// short [_sentrySafeExceptionTypes] allowlist — and even then, only when
-/// it is neither raised from the data layer ([_isDataLayerException], kept
-/// as defense-in-depth against the allowlist being wrong for a given call
-/// site) nor mentions a deny-listed key itself ([mentionsDenyListedKey] —
-/// `SentryException.value` was never deny-list-checked before, so a
+/// KTD12/#516/#520: reduces [exception] to its type name unless it is on
+/// the short [_sentrySafeExceptionTypes] allowlist — and even then, only
+/// when it is neither raised from the data layer ([_isDataLayerException],
+/// kept as defense-in-depth against the allowlist being wrong for a given
+/// call site) nor mentions a deny-listed key itself ([mentionsDenyListedKey]
+/// — issue #520: `SentryException.value` was never deny-list-checked, so a
 /// "safe" type's message could still happen to name one).
 SentryException _scrubException(SentryException exception) {
   final type = exception.type;
@@ -580,6 +716,15 @@ Breadcrumb? scrubBreadcrumb(Breadcrumb? breadcrumb) {
 
   final category = breadcrumb.category;
   final isHttp = category == 'http' || breadcrumb.type == 'http';
+  // Issue #520: containsDenyListedKey above inspects only *keys* — a
+  // non-navigation breadcrumb's data can carry deny-listed content under an
+  // innocuous key. Navigation data is exempt: scrubNavigationData below
+  // rebuilds it entirely under a route-name allowlist, so there is no
+  // free-text value left for this to find.
+  if (category != 'navigation' && _dataValuesMentionDenyListedKey(data)) {
+    return null;
+  }
+
   final Map<String, dynamic>? scrubbedData;
   if (category == 'navigation') {
     // Route names survive under an allowlist (KTD1/KTD2); arguments never
