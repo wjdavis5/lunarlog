@@ -384,6 +384,28 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// after revocation would keep a removed guardian's access alive on the
   /// device.
   ///
+  /// Issue #532: three more per-profile tables carry the same category of
+  /// health content and were missing from this wipe entirely — because the
+  /// wipe is an `UPDATE`, not a `DELETE`, sqlite's FK cascade never fires
+  /// for them (the per-day-entry observation cascade in
+  /// `softDeleteDayEntry` only runs for a *local* delete, and this
+  /// revocation path bypasses it with these raw bulk updates):
+  /// * `observations` — payload cleared exactly like [_softDeleteObservation]
+  ///   (`category`/`observedAt`/`code`/`valueNum`/`valueText`/`unit`/
+  ///   `intensity`/`raw` cleared, `excluded` reset to false; `sourceId`/
+  ///   `importId` survive, mirroring that method's own provenance
+  ///   exception).
+  /// * `cycle_overrides` — payload cleared exactly like
+  ///   [softDeleteCycleOverride] (`excludedFromAverage`/`manualStart` reset
+  ///   to false, `noteId` cleared; `cycleStartDate` (identity) kept).
+  /// * `profile_modes` — this table has NO tombstone (Issue #188's settled
+  ///   shape: an absent row already means `tracking`), so there is no
+  ///   `deletedAt` to set; the row is instead reset to that same absent-row
+  ///   default (`mode = tracking`, every optional column cleared) so a
+  ///   removed guardian's device stops showing the birth-control method or
+  ///   life-stage mode the moment access is revoked, exactly like every
+  ///   other table here stops showing its content.
+  ///
   /// `updated_at` is deliberately left untouched (finding #9): neither
   /// `revoke_guardian` nor `accept_guardian_invitation` bumps the server's
   /// `profiles.updated_at`, so stamping the tombstone with `revokedAt` would
@@ -392,6 +414,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// and the profile could never come back. Leaving `updated_at` where it
   /// was means a later server row (even one carrying its original,
   /// never-touched timestamp) ties or wins normally and un-tombstones it.
+  /// `profile_modes` has no per-id `updated_at` conflict of its own to
+  /// protect here (a later remote row still overwrites this reset row
+  /// outright under [_applyProfileMode]'s per-id LWW rule), so it is left
+  /// alone for the same reason the others are.
   Future<void> _tombstoneRevokedSharedProfile(
       String profileId, DateTime revokedAt) async {
     final stamp = revokedAt.toUtc();
@@ -404,6 +430,43 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           tags: const Value(<String>[]),
           deletedAt: Value(stamp),
           dirty: const Value(false),
+        ));
+    await (db.update(db.observations)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(ObservationsCompanion(
+          category: const Value(null),
+          observedAt: const Value(null),
+          code: const Value(null),
+          valueNum: const Value(null),
+          valueText: const Value(null),
+          unit: const Value(null),
+          intensity: const Value(null),
+          excluded: const Value(false),
+          raw: const Value(null),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    await (db.update(db.cycleOverrides)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(CycleOverridesCompanion(
+          excludedFromAverage: const Value(false),
+          manualStart: const Value(false),
+          noteId: const Value(null),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    await (db.update(db.profileModes)
+          ..where((t) => t.profileId.equals(profileId)))
+        .write(const ProfileModesCompanion(
+          mode: Value('tracking'),
+          modeStartedOn: Value(null),
+          birthControlMethod: Value(null),
+          birthControlStartedOn: Value(null),
+          birthControlStoppedOn: Value(null),
+          healthSyncConsent: Value(false),
+          dirty: Value(false),
         ));
     await (db.update(db.careNotes)
           ..where((t) =>

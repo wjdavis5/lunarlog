@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart' show RemoteProfileGuardianRow;
 import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry;
 
 class FixedClock {
@@ -1201,6 +1202,141 @@ void main() {
       expect(after.deviceId, '');
       expect(after.cursorProfiles, 0);
       expect(after.boundUserId, isNull);
+    });
+  });
+
+  group('revocation wipe (issue #532)', () {
+    RemoteProfileGuardianRow remoteGuardian(
+      String id, {
+      required String profileId,
+      required String userId,
+      String role = 'caregiver',
+      required String status,
+      required DateTime updatedAt,
+      DateTime? createdAt,
+    }) =>
+        RemoteProfileGuardianRow(
+          id: id,
+          profileId: profileId,
+          userId: userId,
+          role: role,
+          status: status,
+          displayName: null,
+          invitedBy: null,
+          createdAt: createdAt ?? updatedAt,
+          updatedAt: updatedAt,
+        );
+
+    /// Every table in `tables.dart` carrying a `profile_id` column,
+    /// discovered from the live schema rather than hand-copied — so a new
+    /// profile-scoped table added later shows up here automatically.
+    Set<String> profileScopedTableNames() => {
+          for (final table in db.allTables)
+            if (table.$columns.any((c) => c.name == 'profile_id'))
+              table.actualTableName,
+        };
+
+    /// The set [profileScopedTableNames] must equal today. Deliberately
+    /// hand-maintained (not derived) so adding a new profile_id-bearing
+    /// table without updating this set — and without extending the
+    /// revocation-wipe assertions below to cover it — fails loudly here,
+    /// rather than silently keeping a removed guardian's access to that
+    /// table's content alive on their device (exactly the bug class issue
+    /// #532 was).
+    const kKnownProfileScopedTables = {
+      'day_entries',
+      'profile_guardians',
+      'observations',
+      'profile_modes',
+      'cycle_overrides',
+      'care_notes',
+      'visit_prep_items',
+    };
+
+    test('tables.dart\'s profile_id-bearing tables match the set this '
+        'file\'s wipe coverage below is written against', () {
+      expect(profileScopedTableNames(), kKnownProfileScopedTables,
+          reason:
+              'a table with a new profile_id column was added to tables.dart '
+              '— add it to kKnownProfileScopedTables above AND to the '
+              'coverage assertions in the test below (and, if it holds '
+              'sync content rather than membership metadata, to '
+              '_tombstoneRevokedSharedProfile\'s wipe itself), or a removed '
+              'guardian keeps that table\'s content on their device forever');
+    });
+
+    test('every profile-scoped content table (all but the membership row '
+        'itself) has no live row left after a revocation apply', () async {
+      const uid = 'user-a';
+      await storage.writeSyncState(
+          kDefaultSyncState.copyWith(boundUserId: const Value(uid)));
+
+      final p = await storage.upsertProfile(displayName: 'Shared', isMinor: false);
+      final entry = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          note: 'symptom log');
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+        code: 'migraine',
+        intensity: 3,
+      );
+      await storage.upsertProfileMode(
+        profileId: p.id,
+        mode: 'perimenopause',
+        birthControlMethod: 'iud_hormonal',
+      );
+      await storage.upsertCycleOverride(
+        profileId: p.id,
+        cycleStartDate: '2026-01-01',
+        excludedFromAverage: true,
+        manualStart: true,
+        noteId: 'note-1',
+      );
+      await storage.upsertCareNote(profileId: p.id, body: 'call the doctor');
+      await storage.addVisitPrepItem(profileId: p.id, body: 'ask about X');
+
+      // Sanity: every table actually holds live content before revocation.
+      expect((await storage.getDayEntries(profileId: p.id)), isNotEmpty);
+      expect((await storage.getObservationsForProfile(p.id)), isNotEmpty);
+      expect((await storage.getProfileMode(p.id))?.mode, 'perimenopause');
+      expect((await storage.getCycleOverridesForProfile(p.id)), isNotEmpty);
+      expect((await storage.getCareNotesForProfile(p.id)), isNotEmpty);
+      expect((await storage.getVisitPrepItemsForProfile(p.id)), isNotEmpty);
+
+      final revokedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        remoteGuardian('g-1',
+            profileId: p.id, userId: uid, status: 'revoked', updatedAt: revokedAt),
+      ]);
+
+      expect(await storage.getProfile(p.id), isNull,
+          reason: 'the profile itself must be tombstoned');
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      expect(await storage.getObservationsForProfile(p.id), isEmpty,
+          reason: 'issue #532: observations were missing from the wipe');
+      expect(await storage.getCycleOverridesForProfile(p.id), isEmpty,
+          reason: 'issue #532: cycle_overrides were missing from the wipe');
+      expect(await storage.getCareNotesForProfile(p.id), isEmpty);
+      expect(await storage.getVisitPrepItemsForProfile(p.id), isEmpty);
+
+      // profile_modes has no tombstone (Issue #188): an absent-row-equivalent
+      // reset is the wipe for this table (issue #532).
+      final mode = await storage.getProfileMode(p.id);
+      expect(mode, isNotNull);
+      expect(mode!.mode, 'tracking');
+      expect(mode.birthControlMethod, isNull);
+      expect(mode.dirty, isFalse);
+
+      // Nothing wiped here is left dirty — the wipe must never be pushed
+      // back to the server that already knows about the revocation.
+      expect(await storage.dirtyCount(), 0);
     });
   });
 }
