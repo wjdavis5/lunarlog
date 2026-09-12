@@ -1,8 +1,14 @@
 /// The sync loop, trigger gating and transport coordination (U5; KTD1,
 /// KTD2, KTD4, KTD10, KTD11): pushes dirty rows through `sync_push` in
 /// batches, pulls remote pages per table by `server_version`, reconciles
-/// fully on bind / after resolutions / daily, and enforces the device
-/// binding guard with a non-destructive mismatch state.
+/// fully on bind / daily, and enforces the device binding guard with a
+/// non-destructive mismatch state.
+///
+/// Issue #525: a push batch's `resolved` rows are no longer, on their own,
+/// a reason to run a full reconcile — [SupabaseSyncApply.applyPushResult]
+/// already applies every resolved row as the correct per-row response
+/// (atomically, since issue #523), so forcing an 8-table-plus reconcile on
+/// top of that was pure overhead with no correctness benefit.
 ///
 /// The apply half of the same cycle — recording rejections, clearing
 /// `dirty` on accepted rows, storing the server's `resolved` copies and
@@ -577,13 +583,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       // that follows re-evaluates it.
       final reconcileDueBeforePush = _reconcileDueBeforePush(bindNow, state);
 
-      final resolvedSeen = await _push(uid);
+      await _push(uid);
       final pullRetry = await _pullIncremental(uid);
       state = await _storage.readSyncState();
       final reconcileRetry = await _reconcileIfDue(
         uid: uid,
         reconcileDueBeforePush: reconcileDueBeforePush,
-        resolvedSeen: resolvedSeen,
       );
       _logRetryIfNeeded(pullRetry: pullRetry, reconcileRetry: reconcileRetry);
 
@@ -690,16 +695,18 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return due;
   }
 
-  /// [_cycle]'s reconcile dispatch, split out verbatim. Due either because
-  /// [_reconcileDueBeforePush] already said so, or because the push saw a
-  /// resolved row ([resolvedSeen]). Returns whether the reconcile (if it
-  /// ran) hit a retryable apply failure.
+  /// [_cycle]'s reconcile dispatch, split out verbatim. Due exactly when
+  /// [_reconcileDueBeforePush] already said so (bind, forced, or the daily
+  /// staleness window) — issue #525 dropped a push batch's `resolved` rows
+  /// as an independent trigger here: [SupabaseSyncApply.applyPushResult]
+  /// already applies every one of them as the correct per-row response, so
+  /// this method no longer needs to know whether the push saw any. Returns
+  /// whether the reconcile (if it ran) hit a retryable apply failure.
   Future<bool> _reconcileIfDue({
     required String uid,
     required bool reconcileDueBeforePush,
-    required bool resolvedSeen,
   }) async {
-    if (!reconcileDueBeforePush && !resolvedSeen) return false;
+    if (!reconcileDueBeforePush) return false;
     final reconcileRetry = await _reconcile(uid);
     if (!reconcileRetry) {
       _consecutiveReconcileRetries = 0;
@@ -818,14 +825,17 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// so the next cycle's fresh keyset scan (this method starting over
   /// with a fresh [_PushCursor]) sees only the rows still `dirty` and
   /// resumes from there — there is no separate persisted resume cursor to
-  /// maintain. Returns whether any batch answered with resolved rows (a
-  /// reconcile trigger).
-  Future<bool> _push(String uid) async {
+  /// maintain.
+  ///
+  /// Issue #525: no longer returns whether any batch saw resolved rows —
+  /// that used to be a second, independent reconcile trigger
+  /// ([_reconcileIfDue]'s old `resolvedSeen` parameter), dropped because
+  /// [_pushBatch] already applies every resolved row correctly on its own.
+  Future<void> _push(String uid) async {
     final totalDirty = await _storage.dirtyCount();
     _emit(_snapshot.copyWith(pushedRows: 0, totalDirtyRows: totalDirty));
-    if (totalDirty == 0) return false;
+    if (totalDirty == 0) return;
 
-    var resolvedSeen = false;
     var pushedRows = 0;
     final cursor = _PushCursor(_storage, _batchSize);
     while (true) {
@@ -834,13 +844,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         if (round.done) break;
         continue;
       }
-      final outcome = await _pushBatch(uid, round.batch);
-      if (outcome.resolvedSeen) resolvedSeen = true;
+      await _pushBatch(uid, round.batch);
       pushedRows += round.batch.length;
       _emit(_snapshot.copyWith(pushedRows: pushedRows));
       if (round.done) break;
     }
-    return resolvedSeen;
   }
 
   /// One round of [_push]: a fresh profiles page is read on *every* call
@@ -959,10 +967,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   }
 
   /// One push batch's request/response handling, split out of [_push]
-  /// verbatim — same sequencing, same conditions. `offset == null` means
-  /// the batch hit [SyncTransportRejectedError] (no server clock reading
-  /// to take).
-  Future<({bool resolvedSeen, Duration? offset})> _pushBatch(
+  /// verbatim — same sequencing, same conditions. Issue #525: no longer
+  /// returns whether the batch saw resolved rows (see [_push]'s doc); the
+  /// clock offset computed below is applied internally and was never read
+  /// by the caller either, so this method's return value is dropped
+  /// entirely rather than kept as unused plumbing.
+  Future<void> _pushBatch(
     String uid,
     List<SyncPushItem> batch,
   ) async {
@@ -982,7 +992,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       // A transport without per-row results: the named rows are rejected,
       // the rest of the batch stays dirty for the next cycle.
       _apply.markRejected(batch, error.ids);
-      return (resolvedSeen: false, offset: null);
+      return;
     }
     await _apply.applyPushResult(batch, result);
     // The in-memory offset takes effect immediately (it stamps the next
@@ -991,7 +1001,6 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     _storage.setClockOffset(offset);
     await _updateState(
         (s) => s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));
-    return (resolvedSeen: result.resolved.isNotEmpty, offset: offset);
   }
 
   // ------------------------------------------------------------------- pull
@@ -1061,9 +1070,6 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// cycle by the caller's `retry` flag).
   Future<bool> _pullTable(SyncTable table, String uid, {int? watermark}) async {
     final state = await _storage.readSyncState();
-    // profileGuardians has no persisted cursor yet (schema v3): it pages
-    // from 0 every cycle, but `after` still advances locally so a full
-    // first page terminates instead of looping on the same page.
     var after = _startingCursor(table, state);
     var failed = false;
     while (true) {
@@ -1113,10 +1119,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return clamped > floor ? clamped : floor;
   }
 
-  /// [_pullTable]'s persisted-cursor lookup (profileGuardians pages from 0
-  /// every cycle — it has no cursor column, schema v3). Split out so
-  /// [_pullTable]'s branch count stays under the CRAP gate as tables are
-  /// added (Issue #188 added two cases; Issue #128 two more).
+  /// [_pullTable]'s persisted-cursor lookup. Split out so [_pullTable]'s
+  /// branch count stays under the CRAP gate as tables are added (Issue
+  /// #188 added two cases; Issue #128 two more). Issue #525:
+  /// `profileGuardians` now reads a real persisted cursor too, instead of
+  /// always starting at 0 (schema v3's original, un-cursored shape) — every
+  /// cycle used to force a full sequential scan of the global
+  /// `profile_guardians` table. `deletedProfiles` (issue #522) is the one
+  /// remaining table that deliberately still has no cursor column — see
+  /// its own doc comment.
   int _startingCursor(SyncTable table, SyncStateRow state) => switch (table) {
         SyncTable.profiles => state.cursorProfiles,
         SyncTable.dayEntries => state.cursorDayEntries,
@@ -1125,7 +1136,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         SyncTable.cycleOverrides => state.cursorCycleOverrides,
         SyncTable.careNotes => state.cursorCareNotes,
         SyncTable.visitPrepItems => state.cursorVisitPrepItems,
-        SyncTable.profileGuardians => 0,
+        SyncTable.profileGuardians => state.cursorProfileGuardians,
         // Issue #522: no persisted cursor, same as profileGuardians above.
         SyncTable.deletedProfiles => 0,
       };

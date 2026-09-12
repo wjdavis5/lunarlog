@@ -1022,6 +1022,30 @@ void main() {
       expect((await storage.readSyncState()).cursorProfiles, 7);
     });
 
+    test('issue #525: profileGuardians now persists its own cursor, '
+        'independent of every other table', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.applyRemotePage(
+        table: SyncTable.profileGuardians,
+        rows: [
+          RemoteProfileGuardianRow(
+            id: 'g-1',
+            profileId: p.id,
+            userId: 'user-a',
+            role: 'viewer',
+            status: 'accepted',
+            createdAt: t0,
+            updatedAt: t0,
+          ),
+        ],
+        newCursor: 17,
+      );
+      final state = await storage.readSyncState();
+      expect(state.cursorProfileGuardians, 17);
+      expect(state.cursorProfiles, 0,
+          reason: 'profileGuardians\' cursor must not bleed into another '
+              'table\'s');
+    });
   });
 
   group('clock offset', () {

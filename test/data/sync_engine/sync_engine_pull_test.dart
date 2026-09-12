@@ -158,9 +158,9 @@ void main() {
       expect(state.lastFullPullAt!.toUtc(), t0);
     });
 
-    test('full reconcile runs on bind, after a push that returned resolved '
-        'rows, and when the last full pull is older than 24h; not otherwise',
-        () async {
+    test('full reconcile runs on bind and when the last full pull is older '
+        'than 24h; not otherwise, and NOT just because a push saw resolved '
+        'rows (issue #525)', () async {
       // (a) Bind on an empty database: reconcile stamps last_full_pull_at.
       final bindRig = Rig();
       addTearDown(bindRig.dispose);
@@ -182,7 +182,10 @@ void main() {
           [100, 0, 100, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522)
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
 
-      // (c) A push with resolved rows makes a reconcile due.
+      // (c) Issue #525: a push whose answer carries resolved rows is no
+      // longer, on its own, a reconcile trigger — applyPushResult already
+      // applies each one correctly. The next cycle stays incremental-only
+      // and lastFullPullAt is untouched.
       rig.clock.now = t0.add(const Duration(hours: 1));
       final p = await rig.storage.upsertProfile(
           displayName: 'A', isMinor: false);
@@ -195,12 +198,13 @@ void main() {
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          // 9 incremental + 9 reconcile afterVersion values (deletedProfiles,
-          // issue #522, adds the 9th `0` to each half).
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-      expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
+          [100, 0, 100, 0, 0, 0, 0, 0, 0], // 9th 0 is deletedProfiles (#522)
+          reason: 'resolved rows in a push answer must not force a '
+              'full reconcile (issue #525)');
+      expect((await rig.state()).lastFullPullAt?.toUtc(), t0,
+          reason: 'lastFullPullAt is untouched — no reconcile ran');
 
-      // (d) Not otherwise: the next cycle is incremental only.
+      // (d) Still not otherwise: the following cycle is incremental only too.
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
@@ -545,6 +549,40 @@ void main() {
       expect(entries, hasLength(1));
       expect(entries.single.deletedAt, isNull);
       expect(entries.single.note, 'from remote');
+    });
+
+    test('issue #525: profileGuardians pages from its own persisted cursor, '
+        'not from 0, on the second cycle onward', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final pA = ulidN(1);
+      rig.transport.scriptPage(SyncTable.profiles, [
+        remoteProfile(pA, updatedAt: t0, serverVersion: 1),
+      ]);
+      rig.transport.scriptPage(SyncTable.profileGuardians, [
+        remoteGuardian('g-1',
+            profileId: pA, userId: uidA, status: 'accepted', updatedAt: t0,
+            serverVersion: 50),
+      ]);
+      await rig.start();
+      expect((await rig.state()).cursorProfileGuardians, 50);
+
+      // A second cycle: the guardian pull must start from the persisted
+      // cursor (50), not re-scan the whole table from 0 — the exact perf
+      // regression issue #525 closes.
+      rig.transport.pulls.clear();
+      rig.transport.scriptPage(SyncTable.profiles, const []);
+      rig.transport.scriptPage(SyncTable.profileGuardians, const []);
+      await rig.sync();
+
+      final guardianCalls = rig.transport.pulls
+          .where((c) => c.table == SyncTable.profileGuardians)
+          .toList();
+      expect(guardianCalls, hasLength(1));
+      expect(guardianCalls.single.afterVersion, 50,
+          reason: 'must resume from the persisted cursor, not re-scan '
+              'from version 0 every cycle');
     });
 
     group('issue #521: cursor watermark clamp and lookback fallback', () {

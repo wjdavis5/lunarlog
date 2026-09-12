@@ -131,9 +131,11 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           SyncStateCompanion(cursorCareNotes: Value(newCursor)),
         SyncTable.visitPrepItems =>
           SyncStateCompanion(cursorVisitPrepItems: Value(newCursor)),
+        // Issue #525: profileGuardians now has a persisted cursor too.
         SyncTable.profileGuardians =>
-          const SyncStateCompanion(),
-        // Issue #522: no persisted cursor, same as profileGuardians above.
+          SyncStateCompanion(cursorProfileGuardians: Value(newCursor)),
+        // Issue #522: no persisted cursor — see SyncTable.deletedProfiles's
+        // doc comment.
         SyncTable.deletedProfiles =>
           const SyncStateCompanion(),
       },
