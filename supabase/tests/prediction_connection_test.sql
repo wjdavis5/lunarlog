@@ -16,7 +16,7 @@
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(102);
+select plan(115);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -676,6 +676,76 @@ select tests.authenticate_as('stranger');
 select is(
   public.get_prediction_projection(tests.ulid(901)),
   null, 'the guardian-revoked recipient has no residual access');
+
+-- ---------------------------------------------------------------------------
+-- 8b. Residual access: an ownership transfer revokes active prediction
+--     connections and pending invites (Issue #496).
+-- ---------------------------------------------------------------------------
+-- 1. Active connection revocation upon transfer:
+select tests.authenticate_as('mom');
+select ok(
+  public.create_prediction_connection(tests.ulid(901), pg_temp.token(403), 'Partner', 72)
+    is not null,
+  'a fresh prediction connection arms for the ownership-transfer test');
+select tests.authenticate_as('stranger');
+insert into r select 'accept_403', public.accept_prediction_connection(pg_temp.token(403));
+select is(
+  (select v ->> 'profile_id' from r where name = 'accept_403'),
+  tests.ulid(901),
+  'the connection activates');
+
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(
+  tests.ulid(901),
+  '{"generated_at":"2026-09-08","period_days":["2026-09-10"]}'::jsonb);
+select is(
+  pg_temp.proj_count(),
+  1::bigint, 'the snapshot is published for the active connection');
+
+select ok(
+  public.create_ownership_transfer(tests.ulid(901), 'co_parent', pg_temp.token(410)) is not null,
+  'Mom arms ownership transfer to Dad');
+
+select tests.authenticate_as('dad');
+select ok(
+  public.accept_ownership_transfer(pg_temp.token(410)) is not null,
+  'Dad accepts ownership transfer');
+
+select is(
+  pg_temp.conn_revoked(pg_temp.token(403)),
+  true, 'Issue #496: ownership transfer revoked active prediction connection');
+select is(
+  pg_temp.proj_count(),
+  0::bigint, 'Issue #496: and deleted the snapshot in the same transaction');
+select tests.authenticate_as('stranger');
+select is(
+  public.get_prediction_projection(tests.ulid(901)),
+  null, 'Issue #496: recipient has no residual projection access');
+
+-- 2. Pending unaccepted invite revocation upon transfer:
+select tests.authenticate_as('dad');
+select ok(
+  public.create_prediction_connection(tests.ulid(901), pg_temp.token(404), 'Nanny', 72) is not null,
+  'Dad arms pending prediction connection');
+
+select ok(
+  public.create_ownership_transfer(tests.ulid(901), 'co_parent', pg_temp.token(411)) is not null,
+  'Dad arms ownership transfer back to Mom');
+
+select tests.authenticate_as('mom');
+select ok(
+  public.accept_ownership_transfer(pg_temp.token(411)) is not null,
+  'Mom accepts ownership transfer back');
+
+select is(
+  pg_temp.conn_revoked(pg_temp.token(404)),
+  true, 'Issue #496: pending prediction invite was revoked by ownership transfer');
+
+select tests.authenticate_as('nanny');
+select throws_ok(
+  format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(404)),
+  '55000', null,
+  'Issue #496: accepting revoked pending prediction connection is refused');
 
 -- ---------------------------------------------------------------------------
 -- 9. Realtime: reconcile_realtime_publication reverts a Studio toggle on
