@@ -2,11 +2,9 @@
 /// R1, R3, R4, R6, R8). Guardian rows come from [ProfileGuardiansRepository]
 /// (R14/R16): no Drift row type crosses into this file.
 ///
-/// Route naming (U2 Approach 2b): the "Remove guardian?" confirm is a
-/// trivial confirm/cancel choice, deliberately left unnamed.
-/// [InviteGuardianDialog] is a real form, not a bare confirm, but is left
-/// unnamed here too — not on this plan's explicit route list; worth naming
-/// in a follow-up if invite-flow crashes need their own triage dimension.
+/// Route naming: the "Remove guardian?" confirm is a trivial confirm/cancel
+/// choice, deliberately left unnamed. [InviteGuardianDialog] is pushed as a
+/// modal sheet named [kRouteInviteGuardianSheet] (Issue #250).
 ///
 /// Issue #3 gap-closure plan (Unit U3) adds a pending-invitations section
 /// below the guardian list: it lists outstanding invitations and lets an
@@ -28,6 +26,7 @@ import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../domain/sharing/sharing_service.dart';
 import '../../observability/route_names.dart';
+import '../components/destructive_button.dart';
 import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
 import '../routes.dart';
@@ -202,18 +201,19 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('End prediction sharing?'),
-        content: const Text(
+        content: const SingleChildScrollView(
+          child: Text(
             'They will immediately lose the shared predictions calendar. '
-            'You can create a new connection any time.'),
+            'You can create a new connection any time.',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('End sharing'),
           ),
         ],
@@ -335,19 +335,20 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Remove ${guardian.displayName ?? guardian.role.label}?'),
-        content: Text(
-          guardian.userId == widget.currentUserId
-              ? 'You will leave this profile and no longer receive updates or sync its entries.'
-              : 'This caregiver will lose access to ${widget.profile.displayName}\'s calendar and entries.',
+        content: SingleChildScrollView(
+          child: Text(
+            guardian.userId == widget.currentUserId
+                ? 'You will leave this profile and no longer receive updates or sync its entries.'
+                : 'This caregiver will lose access to ${widget.profile.displayName}\'s calendar and entries.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('Remove'),
           ),
         ],
@@ -376,8 +377,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   void _openInviteDialog() {
-    showDialog<void>(
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      routeSettings: const RouteSettings(name: kRouteInviteGuardianSheet),
       builder: (ctx) => InviteGuardianDialog(
         profileId: widget.profile.id,
         profileName: widget.profile.displayName,
@@ -424,16 +427,17 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       builder: (ctx) => AlertDialog(
         title: Text(
             'Cancel invitation for ${invite.recipientLabel?.isNotEmpty == true ? invite.recipientLabel! : invite.role.label}?'),
-        content: const Text(
-            'The invite link will stop working immediately. You can send a new one any time.'),
+        content: const SingleChildScrollView(
+          child: Text(
+              'The invite link will stop working immediately. You can send a new one any time.'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Keep Invitation'),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('Cancel Invitation'),
           ),
         ],
@@ -857,11 +861,13 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Change role to ${newRole.label}?'),
-        content: Text(
-          '$name currently has ${guardian.role.label} access. '
-          '${roleChangeConsequence(guardian.role, newRole)} '
-          'No new invitation is needed — the new role applies on their '
-          'next sync.',
+        content: SingleChildScrollView(
+          child: Text(
+            '$name currently has ${guardian.role.label} access. '
+            '${roleChangeConsequence(guardian.role, newRole)} '
+            'No new invitation is needed — the new role applies on their '
+            'next sync.',
+          ),
         ),
         actions: [
           TextButton(

@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
+import '../components/destructive_button.dart';
 import '../help/help_card_view.dart';
 
 /// Renders [utc] in the device's local time as `YYYY-MM-DD HH:MM`, mirroring
@@ -94,21 +95,20 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Transfer ownership?'),
-        content: Text(
-          '${widget.profile.displayName} will become the owner of this '
-          "profile. You'll keep access as ${role.label}, and they can "
-          'remove that access at any time.',
+        content: SingleChildScrollView(
+          child: Text(
+            '${widget.profile.displayName} will become the owner of this '
+            "profile. You'll keep access as ${role.label}, and they can "
+            'remove that access at any time.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
             child: const Text('Transfer'),
           ),
         ],

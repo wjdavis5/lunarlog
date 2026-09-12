@@ -5,9 +5,9 @@
 /// sign-in state) and, when the build provides an [AuthController], the
 /// Account section (U6) beneath it. Reachable from the profile picker.
 ///
-/// Route naming (U2 Approach 2b): the "Contact support" and "Privacy
-/// policy" `showDialog` calls are deliberately left unnamed — both are
-/// informational-only (no action beyond Close), not distinct destinations.
+/// Route naming: "Contact support" is deliberately left unnamed as an
+/// informational dialog (no action beyond Close). "Privacy policy" is a
+/// full-screen route (`kRoutePrivacyPolicyScreen`).
 library;
 
 import 'dart:async';
@@ -241,14 +241,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(l10n.settingsContactSupport),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l10n.settingsContactSupportDialogBody),
-            const SizedBox(height: 8),
-            const SelectableText(kSupportEmailAddress),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n.settingsContactSupportDialogBody),
+              const SizedBox(height: 8),
+              const SelectableText(kSupportEmailAddress),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -261,22 +263,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showPrivacyPolicy(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.settingsPrivacyDialogTitle),
-        content: SingleChildScrollView(
-          child: Text(l10n.settingsPrivacyDialogBody),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.settingsClose),
-          ),
-        ],
-      ),
-    );
+    pushNamedScreen<void>(context, kRoutePrivacyPolicyScreen);
   }
 }
 

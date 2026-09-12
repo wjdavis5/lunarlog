@@ -12,6 +12,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// Banner copy for the default web build (no account, no sync).
@@ -80,19 +81,21 @@ class WebDevBanner extends StatelessWidget {
       context: dialogContext,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Erase all local data?'),
-        content: Text(
-          webSyncEnabled
-              ? 'Erases all data stored in this browser and signs out. '
-                  'This cannot be undone here; data already in your account '
-                  'stays there.'
-              : 'Erases all data stored in this browser. This cannot be undone.',
+        content: SingleChildScrollView(
+          child: Text(
+            webSyncEnabled
+                ? 'Erases all data stored in this browser and signs out. '
+                    'This cannot be undone here; data already in your account '
+                    'stays there.'
+                : 'Erases all data stored in this browser. This cannot be undone.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          DestructiveButton(
             key: const Key('web-wipe-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Erase everything'),
@@ -161,9 +164,11 @@ Future<bool> showWebFirstRunAcknowledgment(
       canPop: false,
       child: AlertDialog(
         title: const Text('Development build'),
-        content: const Text(
-          'This is a development build, not for real data. Data in this '
-          'browser is not encrypted and not backed up.',
+        content: const SingleChildScrollView(
+          child: Text(
+            'This is a development build, not for real data. Data in this '
+            'browser is not encrypted and not backed up.',
+          ),
         ),
         actions: [
           FilledButton(

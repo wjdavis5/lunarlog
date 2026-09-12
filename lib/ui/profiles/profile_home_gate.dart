@@ -74,6 +74,10 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// moving through pushing/pulling. Cleared when the retry reaches idle.
   bool _restoreRetryPending = false;
 
+  /// Finding #3 in #37 / Issue #250: when restore fails persistently, allows
+  /// the operator to continue into first-run profile creation in offline mode.
+  bool _restoreBypassed = false;
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ProfileController>();
@@ -97,20 +101,25 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// database has no profiles ([ProfileController.needsFirstRun]), a failed
   /// restore ([SyncPhase.error]) presents a dedicated retry screen rather than
   /// falling through to first-run profile creation, preventing divergent data.
+  /// Issue #250: offers "Continue without syncing" and "Sign out" escape
+  /// actions so a persistently failing restore never permanently locks the user out.
   Widget? _restoreErrorScreen(
     SyncStatusController? sync,
     ProfileController controller,
     AuthController? auth,
   ) {
+    if (_restoreBypassed) return null;
     if (sync == null) return null;
     final isBound = sync.snapshot.boundUserId != null ||
         (auth != null && auth.currentUser != null);
     if (!isBound || !controller.needsFirstRun) {
       _restoreRetryPending = false;
+      _restoreBypassed = false;
       return null;
     }
     if (sync.phase == SyncPhase.idle) {
       _restoreRetryPending = false;
+      _restoreBypassed = false;
       return null;
     }
     if (sync.phase == SyncPhase.error || _restoreRetryPending) {
@@ -119,6 +128,12 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
           setState(() => _restoreRetryPending = true);
           sync.requestSync();
         },
+        onContinueWithoutSyncing: () {
+          setState(() => _restoreBypassed = true);
+        },
+        onSignOut: auth == null
+            ? null
+            : () => auth.signOut(scope: AuthSignOutScope.local),
       );
     }
     return null;

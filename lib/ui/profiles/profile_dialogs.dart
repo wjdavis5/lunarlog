@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:provider/provider.dart';
 
@@ -93,12 +94,20 @@ Future<ProfileEditResult?> showProfileEditDialog(
   BuildContext context, {
   Profile? existing,
 }) {
-  return showDialog<ProfileEditResult>(
+  return showModalBottomSheet<ProfileEditResult>(
     context: context,
+    isScrollControlled: true,
     routeSettings: const RouteSettings(name: kRouteProfileEditDialog),
     builder: (dialogContext) => _ProfileEditDialog(existing: existing),
   );
 }
+
+/// Sheet alias for [showProfileEditDialog] following the dialog/sheet rule (Issue #250).
+Future<ProfileEditResult?> showProfileEditSheet(
+  BuildContext context, {
+  Profile? existing,
+}) =>
+    showProfileEditDialog(context, existing: existing);
 
 class _ProfileEditDialog extends StatefulWidget {
   const _ProfileEditDialog({this.existing});
@@ -159,172 +168,197 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   @override
   Widget build(BuildContext context) {
     final existing = widget.existing;
-    return AlertDialog(
-      title: Text(existing == null ? 'Add profile' : 'Rename profile'),
-      // The mode picker plus its hint line make the form taller than a
-      // small viewport's dialog inset; scroll rather than overflow.
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _name,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Name'),
-                maxLength: kMaxDisplayNameLength,
-                maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                validator: validateProfileName,
-              ),
-              CheckboxListTile(
-                value: _isMinor,
-                onChanged: (value) => setState(() => _isMinor = value ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('This profile is for a minor'),
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Care mode',
-                  key: const ValueKey('care-mode-label'),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              DropdownButton<ProfileMode>(
-                key: const ValueKey('care-mode-dropdown'),
-                value: _mode,
-                isExpanded: true,
-                onChanged: (value) =>
-                    setState(() => _mode = value ?? ProfileMode.standard),
-                items: [
-                  for (final mode in ProfileMode.values)
-                    DropdownMenuItem<ProfileMode>(
-                      value: mode,
-                      child: Text(mode.label),
-                    ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 8),
-                child: Text(
-                  _mode.hint,
-                  key: const ValueKey('care-mode-hint'),
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-              ),
-              TextFormField(
-                controller: _birthYear,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Birth year (optional)',
-                ),
-                validator: validateBirthYear,
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Relationship',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              DropdownButton<ProfileRelationship?>(
-                value: _relationship,
-                isExpanded: true,
-                onChanged: (value) => setState(() => _relationship = value),
-                items: [
-                  const DropdownMenuItem<ProfileRelationship?>(
-                    child: Text('None'),
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              existing == null ? 'Add profile' : 'Rename profile',
+              style: theme.textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: _name,
+                        autofocus: true,
+                        decoration: const InputDecoration(labelText: 'Name'),
+                        maxLength: kMaxDisplayNameLength,
+                        maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                        validator: validateProfileName,
+                      ),
+                      CheckboxListTile(
+                        value: _isMinor,
+                        onChanged: (value) => setState(() => _isMinor = value ?? false),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('This profile is for a minor'),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Care mode',
+                          key: const ValueKey('care-mode-label'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      DropdownButton<ProfileMode>(
+                        key: const ValueKey('care-mode-dropdown'),
+                        value: _mode,
+                        isExpanded: true,
+                        onChanged: (value) =>
+                            setState(() => _mode = value ?? ProfileMode.standard),
+                        items: [
+                          for (final mode in ProfileMode.values)
+                            DropdownMenuItem<ProfileMode>(
+                              value: mode,
+                              child: Text(mode.label),
+                            ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 8),
+                        child: Text(
+                          _mode.hint,
+                          key: const ValueKey('care-mode-hint'),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                      TextFormField(
+                        controller: _birthYear,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Birth year (optional)',
+                        ),
+                        validator: validateBirthYear,
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Relationship',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      DropdownButton<ProfileRelationship?>(
+                        value: _relationship,
+                        isExpanded: true,
+                        onChanged: (value) => setState(() => _relationship = value),
+                        items: [
+                          const DropdownMenuItem<ProfileRelationship?>(
+                            child: Text('None'),
+                          ),
+                          for (final relationship in ProfileRelationship.values)
+                            DropdownMenuItem<ProfileRelationship?>(
+                              value: relationship,
+                              child: Text(relationship.label),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          AppLocalizations.of(context).lifeStageModeLabel,
+                          key: const ValueKey('edit-lifecycle-label'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      DropdownButton<LifecycleMode>(
+                        key: const ValueKey('edit-lifecycle-dropdown'),
+                        value: _lifecycleMode,
+                        isExpanded: true,
+                        onChanged: (value) => setState(
+                            () => _lifecycleMode = value ?? LifecycleMode.tracking),
+                        items: [
+                          for (final mode in LifecycleMode.values)
+                            DropdownMenuItem<LifecycleMode>(
+                              value: mode,
+                              child: Text(mode.label),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          AppLocalizations.of(context).firstRunCycleBirthControlLabel,
+                          key: const ValueKey('edit-birth-control-label'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      DropdownButton<BirthControlChoice>(
+                        key: const ValueKey('edit-birth-control-dropdown'),
+                        value: _birthControl,
+                        isExpanded: true,
+                        onChanged: (value) => setState(() =>
+                            _birthControl = value ?? BirthControlChoice.notAnswered),
+                        items: [
+                          for (final choice in BirthControlChoice.values)
+                            DropdownMenuItem<BirthControlChoice>(
+                              value: choice,
+                              child: Text(birthControlChoiceLabel(
+                                  choice, AppLocalizations.of(context))),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
-                  for (final relationship in ProfileRelationship.values)
-                    DropdownMenuItem<ProfileRelationship?>(
-                      value: relationship,
-                      child: Text(relationship.label),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  AppLocalizations.of(context).lifeStageModeLabel,
-                  key: const ValueKey('edit-lifecycle-label'),
-                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-              DropdownButton<LifecycleMode>(
-                key: const ValueKey('edit-lifecycle-dropdown'),
-                value: _lifecycleMode,
-                isExpanded: true,
-                onChanged: (value) => setState(
-                    () => _lifecycleMode = value ?? LifecycleMode.tracking),
-                items: [
-                  for (final mode in LifecycleMode.values)
-                    DropdownMenuItem<LifecycleMode>(
-                      value: mode,
-                      child: Text(mode.label),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  AppLocalizations.of(context).firstRunCycleBirthControlLabel,
-                  key: const ValueKey('edit-birth-control-label'),
-                  style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 8,
+              overflowSpacing: 8,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
                 ),
-              ),
-              DropdownButton<BirthControlChoice>(
-                key: const ValueKey('edit-birth-control-dropdown'),
-                value: _birthControl,
-                isExpanded: true,
-                onChanged: (value) => setState(() =>
-                    _birthControl = value ?? BirthControlChoice.notAnswered),
-                items: [
-                  for (final choice in BirthControlChoice.values)
-                    DropdownMenuItem<BirthControlChoice>(
-                      value: choice,
-                      child: Text(birthControlChoiceLabel(
-                          choice, AppLocalizations.of(context))),
-                    ),
-                ],
-              ),
-            ],
-          ),
+                FilledButton(
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      final trimmedBirthYear = _birthYear.text.trim();
+                      Navigator.of(context).pop(
+                        ProfileEditResult(
+                          _name.text,
+                          _isMinor,
+                          mode: _mode,
+                          birthYear: trimmedBirthYear.isEmpty
+                              ? null
+                              : int.tryParse(trimmedBirthYear),
+                          relationship: _relationship,
+                          lifecycleMode: _lifecycleMode,
+                          birthControlChoice: _birthControl,
+                        ),
+                      );
+                    }
+                  },
+                  child: Text(existing == null ? 'Create' : 'Save'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              final trimmedBirthYear = _birthYear.text.trim();
-              Navigator.of(context).pop(
-                ProfileEditResult(
-                  _name.text,
-                  _isMinor,
-                  mode: _mode,
-                  birthYear: trimmedBirthYear.isEmpty
-                      ? null
-                      : int.tryParse(trimmedBirthYear),
-                  relationship: _relationship,
-                  lifecycleMode: _lifecycleMode,
-                  birthControlChoice: _birthControl,
-                ),
-              );
-            }
-          },
-          child: Text(existing == null ? 'Create' : 'Save'),
-        ),
-      ],
     );
   }
 }
@@ -338,16 +372,18 @@ Future<bool> confirmArchiveProfile(
     routeSettings: const RouteSettings(name: kRouteProfileArchiveDialog),
     builder: (dialogContext) => AlertDialog(
       title: Text('Archive ${profile.displayName}?'),
-      content: const Text(
-        'The profile moves to the archived list and out of everyday use. '
-        'Its history stays on this device and can be restored at any time.',
+      content: const SingleChildScrollView(
+        child: Text(
+          'The profile moves to the archived list and out of everyday use. '
+          'Its history stays on this device and can be restored at any time.',
+        ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        DestructiveButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
           child: const Text('Archive'),
         ),
