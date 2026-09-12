@@ -139,6 +139,12 @@ const String kRouteAcceptPredictionConnectionSheet =
 /// per-profile local reminder configuration, pushed from Settings.
 const String kRouteReminderSettingsScreen = 'ReminderSettingsScreen';
 
+/// `lib/ui/help/help_library_screen.dart` (Issue #139) — offline help cards.
+const String kRouteHelpLibraryScreen = 'HelpLibraryScreen';
+
+/// `lib/ui/help/help_card_view.dart` (Issue #139) — contextual help card sheet.
+const String kRouteHelpCardSheet = 'HelpCardSheet';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -172,4 +178,7 @@ const Set<String> kSentryRouteNames = {
   kRoutePredictionCalendarScreen,
   kRouteAcceptPredictionConnectionSheet,
   kRouteReminderSettingsScreen,
+  kRouteHelpLibraryScreen,
+  kRouteHelpCardSheet,
 };
+

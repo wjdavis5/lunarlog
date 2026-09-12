@@ -192,7 +192,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'and sharing — works offline'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
+              buildNamedRoute<void>(
+                name: kRouteHelpLibraryScreen,
                 builder: (_) => const HelpLibraryScreen(),
               ),
             ),
