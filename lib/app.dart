@@ -829,12 +829,21 @@ class _LunarLogAppState extends State<LunarLogApp>
         _healthSyncTombstoneCoordinator?.dispose() ?? Future<void>.value();
     _healthFlowCoordinator = null;
     _healthSyncTombstoneCoordinator = null;
+    // Issue #541: the reminder coordinator above is disposed first (so its
+    // `changes` subscription is already gone), then the service's own
+    // remaining watch subscriptions and its broadcast controller are torn
+    // down — otherwise a device reset (KTD16) would leave them attached to
+    // a since-closed, deleted database.
+    final reminderConfigTeardown =
+        _reminderConfigService?.dispose() ?? Future<void>.value();
+    _reminderConfigService = null;
     final teardown = Future.wait([
       coordinatorTeardown,
       publisherTeardown,
       projectionPublisherTeardown,
       healthFlowTeardown,
       healthSyncTeardown,
+      reminderConfigTeardown,
     ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {

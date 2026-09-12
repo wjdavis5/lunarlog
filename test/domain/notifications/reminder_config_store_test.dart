@@ -97,6 +97,101 @@ void main() {
     expect(emissions, greaterThan(afterSave));
   });
 
+  group('changes lifecycle (issue #541)', () {
+    test(
+        'listening subscribes to all four settings keys; cancelling the '
+        'last listener unsubscribes from all four', () async {
+      final sub = service.changes.listen((_) {});
+      await pumpEventQueue();
+
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isTrue);
+      expect(store.hasListeners(SettingsKeys.reminderLateSnoozes), isTrue);
+      expect(
+          store.hasListeners(SettingsKeys.reminderStatisticBaselines), isTrue);
+      expect(store.hasListeners(SettingsKeys.reminderStatisticChangeSignals),
+          isTrue);
+
+      await sub.cancel();
+      await pumpEventQueue();
+
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isFalse);
+      expect(store.hasListeners(SettingsKeys.reminderLateSnoozes), isFalse);
+      expect(store.hasListeners(SettingsKeys.reminderStatisticBaselines),
+          isFalse);
+      expect(store.hasListeners(SettingsKeys.reminderStatisticChangeSignals),
+          isFalse);
+    });
+
+    test('dispose cancels every underlying watch subscription', () async {
+      final sub = service.changes.listen((_) {});
+      await pumpEventQueue();
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isTrue);
+
+      await service.dispose();
+
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isFalse);
+      expect(store.hasListeners(SettingsKeys.reminderLateSnoozes), isFalse);
+      expect(
+          store.hasListeners(SettingsKeys.reminderStatisticBaselines), isFalse);
+      expect(store.hasListeners(SettingsKeys.reminderStatisticChangeSignals),
+          isFalse);
+      await sub.cancel();
+    });
+
+    test('dispose is safe to call with no listener ever attached', () async {
+      await service.dispose();
+    });
+
+    test('dispose is idempotent', () async {
+      final sub = service.changes.listen((_) {});
+      await pumpEventQueue();
+      await service.dispose();
+      await service.dispose();
+      await sub.cancel();
+    });
+
+    test(
+        'a write after dispose reaches no stale listener (simulating a '
+        'device reset reopening onto a fresh service, issue #541)',
+        () async {
+      final events = <void>[];
+      final sub = service.changes.listen(events.add);
+      await pumpEventQueue();
+      final seeded = events.length;
+
+      await service.dispose();
+      // A write on the (still-open, from the fake's perspective) settings
+      // key after dispose must never reach the disposed service's stream.
+      await store.set(SettingsKeys.reminderConfigs, '{"p1":{}}');
+      await pumpEventQueue();
+
+      expect(events.length, seeded,
+          reason: 'dispose already cancelled the subscription feeding this '
+              'stream, so this write is never observed');
+      await sub.cancel();
+    });
+
+    test('listening again after a full cancel resubscribes (broadcast '
+        'controller is reused across listen/cancel cycles until dispose)',
+        () async {
+      final firstSub = service.changes.listen((_) {});
+      await pumpEventQueue();
+      await firstSub.cancel();
+      await pumpEventQueue();
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isFalse);
+
+      var emissions = 0;
+      final secondSub = service.changes.listen((_) => emissions++);
+      await pumpEventQueue();
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isTrue);
+
+      await service.save('p1', ReminderConfig.standard);
+      await pumpEventQueue();
+      expect(emissions, greaterThan(0));
+      await secondSub.cancel();
+    });
+  });
+
   test('the stored document is the settings key the docs promise', () async {
     await service.save('p1', ReminderConfig.standard);
     expect(

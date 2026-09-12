@@ -30,6 +30,9 @@ class ReminderConfigService {
 
   final SettingsStore _settings;
 
+  StreamController<void>? _changesController;
+  final List<StreamSubscription<Object?>> _changeSubscriptions = [];
+
   /// Emits (with no payload) after every [save] and every [snoozeLate],
   /// and again whenever the underlying settings key changes for any other
   /// reason. The reminder coordinator subscribes and replans — a settings
@@ -37,21 +40,68 @@ class ReminderConfigService {
   /// mode switch does (Issue #131's posture). Emissions are not coalesced
   /// here: a save touches both keys at most, and the coordinator's own
   /// replan debounce collapses any burst into one pass.
-  late final Stream<void> changes = () {
-    final controller = StreamController<void>.broadcast();
-    void ping(_) => controller.add(null);
-    _settings.watch(SettingsKeys.reminderConfigs).listen(ping);
-    _settings.watch(SettingsKeys.reminderLateSnoozes).listen(ping);
-    // Issue #178: the coordinator's own baseline/signal writes also ride
-    // the changes stream. The replan they trigger re-reads the baselines,
-    // finds no *new* meaningful change, and writes nothing — so this never
-    // loops beyond one debounced no-op pass.
-    _settings.watch(SettingsKeys.reminderStatisticBaselines).listen(ping);
-    _settings
-        .watch(SettingsKeys.reminderStatisticChangeSignals)
-        .listen(ping);
-    return controller.stream;
-  }();
+  ///
+  /// Issue #541: the four `SettingsStore.watch` subscriptions behind this
+  /// only exist between the stream's first listener and its last
+  /// cancellation ([_onListen]/[_onCancel], mirroring
+  /// `DriftActivityFeedRepository.watch`'s own onListen/onCancel shape)
+  /// rather than for this service's entire lifetime, and [dispose] cancels
+  /// them outright — a device reset
+  /// (`resetDevice`, KTD16) closes and deletes the database, then a new
+  /// [ReminderConfigService] is built over the reopened one; without this,
+  /// the old subscriptions kept firing against the closed database with
+  /// nothing left to cancel them, an unhandled root-zone async error, four
+  /// more accumulating per reset.
+  Stream<void> get changes =>
+      (_changesController ??= StreamController<void>.broadcast(
+        onListen: _onListen,
+        onCancel: _onCancel,
+      ))
+          .stream;
+
+  void _onListen() {
+    void ping(_) => _changesController?.add(null);
+    void onError(Object error, StackTrace stackTrace) {
+      _changesController?.addError(error, stackTrace);
+    }
+
+    _changeSubscriptions.addAll([
+      _settings
+          .watch(SettingsKeys.reminderConfigs)
+          .listen(ping, onError: onError),
+      _settings
+          .watch(SettingsKeys.reminderLateSnoozes)
+          .listen(ping, onError: onError),
+      // Issue #178: the coordinator's own baseline/signal writes also ride
+      // the changes stream. The replan they trigger re-reads the baselines,
+      // finds no *new* meaningful change, and writes nothing — so this
+      // never loops beyond one debounced no-op pass.
+      _settings
+          .watch(SettingsKeys.reminderStatisticBaselines)
+          .listen(ping, onError: onError),
+      _settings
+          .watch(SettingsKeys.reminderStatisticChangeSignals)
+          .listen(ping, onError: onError),
+    ]);
+  }
+
+  Future<void> _onCancel() async {
+    await Future.wait([for (final sub in _changeSubscriptions) sub.cancel()]);
+    _changeSubscriptions.clear();
+  }
+
+  /// Tears down [changes]'s subscriptions and closes its controller. Called
+  /// from `_AppState.dispose()` (issue #541) — the coordinator that
+  /// subscribes to [changes] is disposed first, so this stream typically
+  /// has no listener left by the time this runs, meaning [_onCancel] has
+  /// already fired; this is the fallback for the case where it hasn't
+  /// (e.g. no coordinator was ever built) and for closing the controller
+  /// itself, which [_onCancel] alone never does.
+  Future<void> dispose() async {
+    await _onCancel();
+    await _changesController?.close();
+    _changesController = null;
+  }
 
   /// Every stored per-profile config, keyed by profile id. Profiles with
   /// no stored config are simply absent — callers fall back to the

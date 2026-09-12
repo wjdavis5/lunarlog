@@ -46,6 +46,11 @@ class FakeSettingsStore implements SettingsStore {
     yield* changes;
   }
 
+  /// Whether [key]'s watch stream currently has an active subscriber — for
+  /// asserting a caller actually cancelled its subscription rather than
+  /// leaking it (issue #541).
+  bool hasListeners(String key) => _controllers[key]?.hasListener ?? false;
+
   /// Closes every watch stream. Call from `addTearDown` so a subscription
   /// does not outlive the test.
   void close() {
