@@ -48,6 +48,8 @@ library;
 
 import 'dart:convert';
 
+import 'package:meta/meta.dart' show visibleForTesting;
+
 import '../export/account_export.dart' show kAccountExportSchemaVersion;
 import '../limits.dart';
 import '../models/day_entry.dart';
@@ -737,7 +739,11 @@ String _snakeToCamel(String raw) => raw.replaceAllMapped(
 /// itself, only whether the result happens to land on a real enum name.
 /// This is a plain conversion helper, not part of the flow-parsing
 /// contract — it does not validate that the result is a recognised
-/// [FlowLevel].
+/// [FlowLevel]. Issue #575: Dart privacy is per-file, so a test in a
+/// different library still needs a public symbol to reach
+/// [_snakeToCamel] at all — [visibleForTesting] is this file's way of
+/// saying "not real API" without actually being able to make it private.
+@visibleForTesting
 String flowNameFromWire(String raw) => _snakeToCamel(raw);
 
 ImportedObservation _parseObservation(Object? raw,
@@ -1354,4 +1360,9 @@ ImportPlan planImport({
   ]);
 }
 
-bool _noOtherGuardians(Profile existingProfile) => false;
+/// The default [planImport] wires for `hasOtherGuardians`: a caller that
+/// never checks (or has no guardians concept at all) gets the conservative
+/// assumption "no other guardians hold this profile" — the argument is
+/// deliberately unused, not a bug; this is a constant stand-in for "not
+/// wired", not a real per-profile check.
+bool _noOtherGuardians(Profile _) => false;

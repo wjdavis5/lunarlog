@@ -78,14 +78,6 @@ const int kMaxDayEntrySourceIdLength = 128;
 /// untrusted file previously had no client-side length check at all.
 const int kMaxTzLength = 64;
 
-/// Maximum `day_entries.import_id`/`observations.import_id` length as read
-/// from an untrusted import file (Issue #140 review): the column itself is
-/// an unconstrained `uuid` server-side (Issue #159's placeholder FK), so
-/// there is no server bound to mirror — this is a generous cap
-/// (well over a canonical UUID's 36 characters) purely so a malformed file
-/// cannot smuggle an unbounded string through this column.
-const int kMaxImportIdLength = 128;
-
 /// Maximum `profile_modes.birth_control_method` length (Issue #188,
 /// `profile_modes_birth_control_method_length_check` in
 /// `supabase/migrations/20260909000000_profile_modes_and_cycle_overrides.sql`).

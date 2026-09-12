@@ -26,9 +26,6 @@ import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
-typedef ActiveProfilesStream = Stream<List<Profile>>;
-typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
-
 class LocalPredictionProjectionPublisher
     implements PredictionProjectionPublisher {
   LocalPredictionProjectionPublisher({

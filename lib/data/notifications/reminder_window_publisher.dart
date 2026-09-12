@@ -22,9 +22,6 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
-typedef ActiveProfilesStream = Stream<List<Profile>>;
-typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
-
 class ReminderWindowPublisher {
   ReminderWindowPublisher({
     required ActiveProfilesStream activeProfiles,
