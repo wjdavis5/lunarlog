@@ -34,13 +34,11 @@ void main() {
     });
 
     test(
-        'declares exactly the v1 menstruation-baseline health permissions -- '
-        'not history/background/sexual-activity/BBT (those are '
-        '#186/#210/#228)', () {
+        'declares exactly the v1 menstruation-baseline WRITE health '
+        'permissions -- not history/background/sexual-activity/BBT (those '
+        'are #186/#210/#228)', () {
       for (final permission in [
-        'android.permission.health.READ_MENSTRUATION',
         'android.permission.health.WRITE_MENSTRUATION',
-        'android.permission.health.READ_INTERMENSTRUAL_BLEEDING',
         'android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING',
       ]) {
         expect(manifest, contains('android:name="$permission"'),
@@ -53,6 +51,21 @@ void main() {
         'BASAL_BODY_TEMPERATURE',
       ]) {
         expect(manifest, isNot(contains(outOfScope)), reason: outOfScope);
+      }
+    });
+
+    test(
+        'declares no READ_* health permission -- write-only by design '
+        '(issue #515): HealthConnectAdapter.kt never requests '
+        'getReadPermission, so the earlier READ_MENSTRUATION/'
+        'READ_INTERMENSTRUAL_BLEEDING declarations were dead and were '
+        'removed rather than kept unused', () {
+      for (final permission in [
+        'android.permission.health.READ_MENSTRUATION',
+        'android.permission.health.READ_INTERMENSTRUAL_BLEEDING',
+      ]) {
+        expect(manifest, isNot(contains('android:name="$permission"')),
+            reason: permission);
       }
     });
 
