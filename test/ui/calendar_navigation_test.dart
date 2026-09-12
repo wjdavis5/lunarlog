@@ -21,6 +21,8 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -114,6 +116,14 @@ Future<Harness> pumpCalendar(
   // real `DriftDayEntriesRepository` in a `RecordingDayEntriesRepository`.
   DayEntriesRepository Function(DriftDayEntriesRepository real)?
       wrapRepository,
+  // Issue #550: wires real CyclePredictionService/CycleHistoryService
+  // providers (rather than leaving MonthCalendar on its no-service
+  // computePredictionFromEntries/deriveCycleHistoryFromEntries fallback,
+  // which recomputes a fresh, non-identical prediction/history object
+  // every build). Needed only by tests that must observe a *stable*
+  // ActivePrediction across an unrelated rebuild — the #550 memoisation
+  // guard, so far.
+  bool withPredictionServices = false,
 }) async {
   tester.view.physicalSize = physicalSize;
   tester.view.devicePixelRatio = 1.0;
@@ -129,7 +139,17 @@ Future<Harness> pumpCalendar(
 
   await tester.pumpWidget(
     MultiProvider(
-      providers: [Provider<DayEntriesRepository>.value(value: repository)],
+      providers: [
+        Provider<DayEntriesRepository>.value(value: repository),
+        if (withPredictionServices) ...[
+          Provider<CyclePredictionService?>.value(
+            value: CyclePredictionService(repository),
+          ),
+          Provider<CycleHistoryService?>.value(
+            value: CycleHistoryService(repository),
+          ),
+        ],
+      ],
       child: MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
@@ -851,6 +871,100 @@ void main() {
       expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget,
           reason: 'the PageView must stay mounted through the crossing, '
               'not be replaced by a spinner mid-animation');
+
+      await disposeCalendar(tester, h);
+    });
+  });
+
+  group('forecast-compute memoisation (issue #550)', () {
+    /// Six 30-day episodes ending 2026-08-05 (the same shape
+    /// `test/ui/overview_test.dart`'s `kActiveStarts` and
+    /// `test/ui/forecast_calendar_test.dart`'s `kSteadyStarts` use): high
+    /// confidence, an active estimate, so `deriveForecast` actually has
+    /// something to compute on every real recompute.
+    final steadyStarts = [
+      LocalDate(2026, 3, 8),
+      LocalDate(2026, 4, 7),
+      LocalDate(2026, 5, 7),
+      LocalDate(2026, 6, 6),
+      LocalDate(2026, 7, 6),
+      LocalDate(2026, 8, 5),
+    ];
+
+    testWidgets(
+        'toggling the legend does not re-run deriveForecast/forecastDayCells '
+        '(the byIso/cycles/forecastByIso/activeLayers compute path is '
+        'memoised, not re-derived on every setState)', (tester) async {
+      final h = await pumpCalendar(
+        tester,
+        withPredictionServices: true,
+        seed: (db, profileId) async {
+          final entries = DriftDayEntriesRepository(db.storage);
+          for (final start in steadyStarts) {
+            for (var i = 0; i < 4; i++) {
+              await entries.save(_entryFor(
+                profileId,
+                start.addDays(i),
+                FlowLevel.medium,
+              ));
+            }
+          }
+        },
+      );
+
+      final computesAfterInitialLoad = debugForecastComputeCount;
+      expect(computesAfterInitialLoad, greaterThan(0),
+          reason: 'the initial load must compute the forecast at least '
+              'once, or this test cannot tell memoisation from a compute '
+              'that never ran');
+
+      // Toggling the legend twice (collapse, then re-expand) is two
+      // ordinary `setState` calls whose inputs — entries, prediction,
+      // history, today, and the layer selection — are all unchanged.
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(debugForecastComputeCount, computesAfterInitialLoad,
+          reason: 'toggling the legend re-ran the forecast compute path; '
+              'it should have reused the memoised byIso/cycles/'
+              'forecastByIso/activeLayers fields instead');
+
+      await disposeCalendar(tester, h);
+    });
+
+    testWidgets(
+        'a genuine input change (a symptom-layer toggle) still recomputes',
+        (tester) async {
+      final h = await pumpCalendar(
+        tester,
+        withPredictionServices: true,
+        seed: (db, profileId) async {
+          final entries = DriftDayEntriesRepository(db.storage);
+          for (final start in steadyStarts) {
+            for (var i = 0; i < 4; i++) {
+              await entries.save(_entryFor(
+                profileId,
+                start.addDays(i),
+                FlowLevel.medium,
+              ));
+            }
+          }
+        },
+      );
+
+      final computesAfterInitialLoad = debugForecastComputeCount;
+
+      await tester.tap(find.byKey(const ValueKey('symptom-layers-toggle')));
+      await tester.pumpAndSettle();
+      final chip = find.byType(FilterChip).first;
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+
+      expect(debugForecastComputeCount, greaterThan(computesAfterInitialLoad),
+          reason: 'the memoisation guard must not swallow a real layer-'
+              'selection change');
 
       await disposeCalendar(tester, h);
     });

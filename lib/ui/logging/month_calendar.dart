@@ -484,6 +484,15 @@ class _LegendEntry {
   final IconData? icon;
 }
 
+/// Bumped every time [_MonthCalendarState._ensureComputed] actually
+/// recomputes the forecast (a cache miss) rather than reusing its memoised
+/// fields — a test seam (Issue #550) proving a `setState` with unchanged
+/// inputs, like the legend toggle, never re-runs `deriveForecast`. A
+/// top-level variable (not a member of the private `_MonthCalendarState`)
+/// so a test file can read and reset it. Never read in production code.
+@visibleForTesting
+int debugForecastComputeCount = 0;
+
 class MonthCalendar extends StatefulWidget {
   const MonthCalendar({
     super.key,
@@ -588,12 +597,103 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// scale-based default; once touched, the explicit choice always wins.
   bool? _legendExpanded;
 
-  /// Issue #220: whether the current prediction carries a PMS band at all
-  /// (at least `kMinPmsIntervalsForPrediction` logged PMS intervals). Set
-  /// during [_calendar]'s build pass, read by [_legendEntries] further
-  /// down the same pass — the "PMS window" legend entry only renders while
-  /// the band it keys can actually appear on the grid.
-  bool _pmsBandActive = false;
+  /// Issue #550: memoises the `(byIso, cycles, forecastByIso, pmsBandActive,
+  /// activeLayers)` compute path — [deriveForecast]/[forecastDayCells] walk
+  /// up to `kForecastMaxCycles × cycleLength` days, and [defaultLayerTags]
+  /// scans every windowed entry — so a `setState` whose inputs didn't
+  /// change (the legend toggle, the layers panel expand/collapse,
+  /// `onPageChanged`'s own re-render of the *other* page) doesn't re-run
+  /// any of it. [_ensureComputed] is the only writer; everything else reads
+  /// the `_computed*` fields. Recomputed whenever [entries]/[prediction]/
+  /// [history]/`today` or the layer selection ([_layersUserSet]/
+  /// [_activeLayers]) actually changes — `==` on [_entries] and the stream
+  /// snapshots is identity by default (neither overrides it), which is
+  /// exactly the right check: those fields are only ever reassigned on a
+  /// genuine stream emission, never as a side effect of an unrelated
+  /// `setState`.
+  List<DayEntry>? _computeInputEntries;
+  CyclePrediction? _computeInputPrediction;
+  CycleHistoryView? _computeInputHistory;
+  LocalDate? _computeInputToday;
+  bool _computeInputLayersUserSet = false;
+  Set<String> _computeInputActiveLayers = const {};
+
+  late Map<String, DayEntry> _computedByIso;
+  late List<ForecastCycle> _computedCycles;
+  late Map<String, ForecastDayCell> _computedForecastByIso;
+  late Set<String> _computedActiveLayers;
+  bool _computedPmsBandActive = false;
+
+  bool _computeInputsUnchanged({
+    required List<DayEntry> entries,
+    required CyclePrediction prediction,
+    required CycleHistoryView history,
+    required LocalDate today,
+  }) =>
+      _computeInputEntries == entries &&
+      _computeInputPrediction == prediction &&
+      _computeInputHistory == history &&
+      _computeInputToday == today &&
+      _computeInputLayersUserSet == _layersUserSet &&
+      _setEquals(_computeInputActiveLayers, _activeLayers);
+
+  static bool _setEquals<T>(Set<T> a, Set<T> b) =>
+      a.length == b.length && a.containsAll(b);
+
+  /// Fills the `_computed*` fields from [entries]/[prediction]/[history]/
+  /// [today] and the current layer selection, but only when at least one
+  /// of them differs from the last call — see the fields' own doc comment.
+  void _ensureComputed({
+    required List<DayEntry> entries,
+    required CyclePrediction prediction,
+    required CycleHistoryView history,
+    required LocalDate today,
+  }) {
+    if (_computeInputsUnchanged(
+      entries: entries,
+      prediction: prediction,
+      history: history,
+      today: today,
+    )) {
+      return;
+    }
+    debugForecastComputeCount++;
+
+    final byIso = {for (final entry in entries) entry.localDate.iso: entry};
+    final estimateActive = prediction is ActivePrediction;
+    final cycles = estimateActive
+        ? deriveForecast(prediction: prediction, history: history, today: today)
+        : const <ForecastCycle>[];
+    // Issue #220: the PMS band is data-driven — the estimate's own
+    // 6-cycle averages anchored before the next predicted start, or null
+    // (no PMS badge anywhere) below the 3-logged-interval minimum.
+    final pmsEstimate = estimateActive ? prediction.pms : null;
+    final forecastByIso =
+        forecastDayCells(cycles: cycles, today: today, pms: pmsEstimate);
+    // Review follow-up on issue #197: `entries` here is [_entries]'s
+    // windowed list (±45 days around the displayed month), not the
+    // profile's full history — the default layer selection now only
+    // ranks tags from within that window. Documented, not treated as a
+    // bug: `lib/ui/README.md`'s "Calendar windowed entries subscription"
+    // section covers why this is an accepted behaviour change rather than
+    // a full-history stream kept just for this.
+    final activeLayers = _layersUserSet
+        ? _activeLayers
+        : {for (final tag in defaultLayerTags(entries)) tag};
+
+    _computeInputEntries = entries;
+    _computeInputPrediction = prediction;
+    _computeInputHistory = history;
+    _computeInputToday = today;
+    _computeInputLayersUserSet = _layersUserSet;
+    _computeInputActiveLayers = Set.of(_activeLayers);
+
+    _computedByIso = byIso;
+    _computedCycles = cycles;
+    _computedForecastByIso = forecastByIso;
+    _computedActiveLayers = activeLayers;
+    _computedPmsBandActive = pmsEstimate != null;
+  }
 
   /// Swipe navigation (issue #191): one page per month, indexed by
   /// [_pageIndexFor]/[_monthForPageIndex] against a fixed epoch offset so
@@ -989,7 +1089,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
     if (entries == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    final byIso = {for (final entry in entries) entry.localDate.iso: entry};
     return StreamBuilder<CyclePrediction?>(
       stream: _predictionStream,
       builder: (context, predictionSnapshot) {
@@ -1013,7 +1112,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
             }
             return _calendar(
               context,
-              byIso: byIso,
               entries: entries,
               prediction: prediction,
               history: history,
@@ -1028,7 +1126,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
 
   Widget _calendar(
     BuildContext context, {
-    required Map<String, DayEntry> byIso,
     required List<DayEntry> entries,
     required CyclePrediction prediction,
     required CycleHistoryView history,
@@ -1039,31 +1136,23 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final colors =
         theme.extension<LunarLogColors>() ??
         LunarLogColors.forColorScheme(theme.colorScheme);
+    // Issue #550: byIso/cycles/forecastByIso/activeLayers/pmsBandActive are
+    // memoised in `_computed*` fields, recomputed only when their inputs
+    // change — see [_ensureComputed]'s doc comment. `pmsBandActive` is read
+    // into a local here and threaded into [_legendStrip] below rather than
+    // written to an instance field during build.
+    _ensureComputed(
+      entries: entries,
+      prediction: prediction,
+      history: history,
+      today: today,
+    );
+    final byIso = _computedByIso;
+    final cycles = _computedCycles;
+    final forecastByIso = _computedForecastByIso;
+    final activeLayers = _computedActiveLayers;
+    final pmsBandActive = _computedPmsBandActive;
     final estimateActive = prediction is ActivePrediction;
-    final cycles = estimateActive
-        ? deriveForecast(prediction: prediction, history: history, today: today)
-        : const <ForecastCycle>[];
-    // Issue #220: the PMS band is data-driven — the estimate's own
-    // 6-cycle averages anchored before the next predicted start, or null
-    // (no PMS badge anywhere) below the 3-logged-interval minimum.
-    final pmsEstimate = estimateActive ? prediction.pms : null;
-    // Latched for the legend strip further down this same build pass
-    // (field assignment, not setState — both read it in the same frame):
-    // the "PMS window" legend entry only renders while a band actually
-    // exists, mirroring the cells themselves.
-    _pmsBandActive = pmsEstimate != null;
-    final forecastByIso =
-        forecastDayCells(cycles: cycles, today: today, pms: pmsEstimate);
-    // Review follow-up on issue #197: `entries` here is [_entries]'s
-    // windowed list (±45 days around the displayed month), not the
-    // profile's full history — the default layer selection now only
-    // ranks tags from within that window. Documented, not treated as a
-    // bug: `lib/ui/README.md`'s "Calendar windowed entries subscription"
-    // section covers why this is an accepted behaviour change rather than
-    // a full-history stream kept just for this.
-    final activeLayers = _layersUserSet
-        ? _activeLayers
-        : {for (final tag in defaultLayerTags(entries)) tag};
     final layerList = activeLayers.toList(growable: false);
     final palette = symptomLayerPalette(theme.brightness);
     final maxPageIndex =
@@ -1109,7 +1198,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
           ],
         ),
-        _legendStrip(context, theme, colors),
+        _legendStrip(context, theme, colors, pmsBandActive),
         _layersHeader(layerList, theme),
         if (_layersExpanded) _layersPanel(activeLayers),
         Padding(
@@ -1233,7 +1322,12 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// single `Expanded` [PageView] keeps its vertical budget). Keys every
   /// mark the grid can show except the cycle-day numeral (a plain count,
   /// not a colour/shape channel that needs a key of its own).
-  Widget _legendStrip(BuildContext context, ThemeData theme, LunarLogColors colors) {
+  Widget _legendStrip(
+    BuildContext context,
+    ThemeData theme,
+    LunarLogColors colors,
+    bool pmsBandActive,
+  ) {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final expanded = _legendExpanded ?? textScale < kLegendCollapseTextScale;
     final l10n = AppLocalizations.of(context);
@@ -1264,7 +1358,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
           ),
         ),
-        if (expanded) _legendEntries(theme, colors),
+        if (expanded) _legendEntries(theme, colors, pmsBandActive),
       ],
     );
   }
@@ -1280,7 +1374,11 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// sheet renders as a modal over this still-mounted calendar, so a bare
   /// "Medium"/"Heavy" here would collide with `find.text` in every widget
   /// test that opens it with a chip selected.
-  Widget _legendEntries(ThemeData theme, LunarLogColors colors) {
+  Widget _legendEntries(
+    ThemeData theme,
+    LunarLogColors colors,
+    bool pmsBandActive,
+  ) {
     final brightness = theme.brightness;
     final l10n = AppLocalizations.of(context);
     final entries = [
@@ -1299,7 +1397,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       // (3+ logged PMS intervals) — below the hard minimum the grid never
       // shows a PMS badge, so keying it here would advertise a swatch
       // that can never appear.
-      if (_pmsBandActive)
+      if (pmsBandActive)
         _LegendEntry('pms', pmsBadgeColor(brightness), l10n.calendarLegendPms, style: _LegendSwatchStyle.icon, icon: Icons.spa),
       _LegendEntry('cramps', crampsBadgeColor(brightness), l10n.calendarLegendCramps, style: _LegendSwatchStyle.icon, icon: Icons.bolt),
     ];
