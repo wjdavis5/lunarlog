@@ -88,6 +88,36 @@ Deno.test("sendPush: a 404 with FCM's UNREGISTERED error yields unregistered", a
   if (!result.ok) assertEquals(result.reason, "unregistered");
 });
 
+Deno.test(
+  "sendPush: a 404 with no UNREGISTERED marker (e.g. a mistyped FCM_PROJECT_ID hitting a nonexistent " +
+    "endpoint) yields other, not unregistered (#526 fix (e))",
+  async () => {
+    const creds = await testCredsPromise;
+    const result = await withFetchStub(
+      (async (input: RequestInfo | URL) => {
+        if (isOauthTokenRequest(input)) return oauthOk();
+        // FCM's own endpoint-level 404 (no per-token detail at all): every
+        // send to this misconfigured project would fail identically,
+        // regardless of which device it targets.
+        return new Response(
+          JSON.stringify({ error: { code: 404, message: "Requested entity was not found.", status: "NOT_FOUND" } }),
+          { status: 404 },
+        );
+      }) as typeof fetch,
+      () => sendPush(creds, { message: {} }),
+    );
+    assertEquals(result.ok, false);
+    if (!result.ok) {
+      assertEquals(
+        result.reason,
+        "other",
+        "an endpoint-level 404 (bad project id) must never be classified unregistered -- doing so would " +
+          "mass-disable every push_devices row the first time a misconfigured FCM_PROJECT_ID fires",
+      );
+    }
+  },
+);
+
 Deno.test("sendPush: an aborting fetch yields timeout", async () => {
   const creds = await testCredsPromise;
   const result = await withFetchStub(

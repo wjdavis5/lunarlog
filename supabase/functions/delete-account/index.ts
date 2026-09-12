@@ -6,7 +6,8 @@
 // feedback-attachments Storage objects (Issue #243/D-24 fix, reordered
 // round 2 - see below), run U1's `delete_account_data()` RPC as the caller
 // (so RLS/auth.uid() semantics hold), revoke Apple when the account has an
-// Apple identity (U3), re-home once more (P1 fix below), then delete the
+// Apple identity and hasn't already been revoked by a prior attempt (U3;
+// Issue #527 below), re-home once more (P1 fix below), then delete the
 // `auth.users` row last - the only irreversible, non-retryable step (KTD4).
 // An Apple identity with no authorization code supplied fails closed
 // exactly like a failed revocation - it never falls through to deleting the
@@ -27,10 +28,10 @@
 //     closing - the window between the RPC's one-time re-home and the
 //     `auth.users` row actually being removed, during which a stray write
 //     from this caller's own device could in principle still land on a
-//     profile they don't own and be reached by that row's
-//     `on delete cascade`. Closing this fully would mean pausing this
-//     user's sync engine for the whole flow, which is out of scope here;
-//     see `20260906120000_account_deletion_final_rehome.sql` for the full
+//     profile they don't own and be reached by that row's `on delete cascade`.
+//     Closing this fully would mean pausing this user's sync engine for the
+//     whole flow, which is out of scope here; see
+//     `20260906120000_account_deletion_final_rehome.sql` for the full
 //     writeup of the residual risk and why this pass is best-effort.
 //   * A failure in the final `auth.admin.deleteUser` step now returns its
 //     own `delete_user_failed` code rather than the generic `unknown` one.
@@ -133,6 +134,49 @@
 //     option at its library default rather than the explicit off this
 //     function always used is a needless behavior change to carry forward.
 //
+// Issue #559 fix (2026-09-13): the listing above paginated and recursed to
+// any depth, but stayed *unbounded* in total object count and depth - a
+// caller who PUTs a few thousand objects under their own uid prefix (nothing
+// in the bucket's insert policy caps count, depth, or per-ticket size) could
+// make listing alone exceed the function's wall clock, and every retry would
+// fail identically: an in-app account deletion made permanently impossible
+// by the account's own owner, entirely within policy. `listFolderPaths` now
+// enforces MAX_ATTACHMENT_OBJECTS/MAX_ATTACHMENT_DEPTH caps, surfaced as a
+// distinct `attachment_cleanup_unbounded` (422) code rather than the generic
+// `attachment_cleanup_failed` - support-routed rather than silently
+// unretryable, per the issue's fix.
+//
+// Issue #560 fix (2026-09-13): the Apple authorization code was exchanged
+// and its refresh token revoked without ever checking *whose* Apple grant it
+// belonged to - Apple's `client_id` binding on the token endpoint only
+// proves the code was minted for this app, not for the calling user. An
+// attacker holding a valid code for victim B could call delete-account
+// authenticated as themselves while supplying B's code, revoking B's grant
+// instead of their own. `getUser` now also resolves the caller's own Apple
+// identity id (`identities[provider=="apple"].id`) and passes it to
+// `revokeApple`, which (see `_shared/apple_revoke.ts`) decodes the
+// exchanged `id_token`'s `sub` and refuses to revoke on a mismatch. A
+// GoTrue response that omits `identities` entirely (as opposed to a
+// present-but-empty array - a determination *failure*, not "no linked
+// identities") now fails the whole deletion closed rather than silently
+// treating the account as non-Apple and skipping revocation, the one
+// non-fail-closed Apple branch this file used to have.
+//
+// Issue #527 fix (2026-09-13): a `deleteUser` failure (Step 8) used to
+// strand the account permanently whenever it had an Apple identity - Apple
+// authorization codes are one-time-use, so a retry's fresh code exchange
+// still hits an already-revoked grant on Apple's side, resolving to
+// `apple_rejected` -> `apple_revoke_failed` (409) -> a return *before*
+// `deleteUser` is ever attempted again. `public.account_deletion_progress`
+// (a new migration) now records `apple_revoked_at` the instant revocation
+// actually succeeds, checked before Steps 3/6 run: once set, a retry skips
+// both the Apple-code precondition and the revoke call entirely and goes
+// straight back to `deleteUser` - the only step that could have failed and
+// left the account stranded. Every supabase-js call in this file is also
+// now wrapped with `withTimeout` (a hung call, unlike every third-party
+// fetch in `_shared/apple_revoke.ts`/`_shared/push.ts`, previously had no
+// bound of its own here).
+//
 // Never echoes Supabase/Apple error text, tokens, emails, or row content
 // into the response or the log: only a stable error `code`, an HTTP status,
 // and (server-side only) an error *type* or U1's row-count summary are ever
@@ -147,6 +191,52 @@ import { revokeAppleToken, type AppleRevokeResult } from "../_shared/apple_revok
  * shaped `<uid>/<ticket_id>/<uuid>.<ext>`. */
 const FEEDBACK_ATTACHMENTS_BUCKET = "feedback-attachments";
 
+/** Issue #527: a hung supabase-js call (unlike every third-party fetch in
+ * this file's `_shared` dependencies, which already carry their own
+ * `AbortSignal.timeout`) previously had no bound at all here - a network
+ * partition mid-call could park an invocation indefinitely between two
+ * steps whose ordering this file's header comment depends on. */
+const SUPABASE_CALL_TIMEOUT_MS = 10_000;
+
+/** Issue #559: caps on the feedback-attachments listing this function does
+ * before touching any row, so a caller who PUTs enough objects under their
+ * own uid prefix (nothing in the bucket's insert policy bounds count or
+ * depth) cannot make listing alone exceed the function's wall clock and so
+ * make their own account permanently undeletable. Generous relative to the
+ * product's own 3-attachments-per-ticket cap (a different CHECK, on
+ * feedback_tickets) while still comfortably inside a single invocation's
+ * time budget. */
+const MAX_ATTACHMENT_OBJECTS = 2000;
+const MAX_ATTACHMENT_DEPTH = 8;
+
+/** Races [promise] against a timeout so a hung supabase-js call cannot park
+ * this invocation indefinitely (Issue #527). Rejects with a plain `Error` on
+ * timeout; each call site below folds that into whatever failure shape it
+ * already returns for any other error (null, `{ error }`, `false`, etc.),
+ * so this stays one small, reusable primitive rather than a special case at
+ * every call site. Untyped (`any` in, `any` out) rather than generic:
+ * `clientFactory`'s own `any` return (see `SupabaseClientFactory` below)
+ * already means every supabase-js call site this wraps was untyped before
+ * this function existed - a generic signature here just relocates that
+ * `any` into a type-parameter inference that, for an `any`-typed argument,
+ * TypeScript resolves to `unknown` with nothing further to narrow it. */
+// deno-lint-ignore no-explicit-any
+function withTimeout(promise: Promise<any>, ms: number = SUPABASE_CALL_TIMEOUT_MS): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`supabase call timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 interface DeleteAccountRequestBody {
   /** A fresh Sign in with Apple authorization code, obtained by the client
    * at delete time (KTD3) - omitted for a non-Apple account. Any other
@@ -157,9 +247,11 @@ interface DeleteAccountRequestBody {
 
 type ErrorCode =
   | "unauthorized"
+  | "identity_check_failed"
   | "apple_code_required"
   | "apple_revoke_failed"
   | "attachment_cleanup_failed"
+  | "attachment_cleanup_unbounded"
   | "delete_user_failed"
   | "unknown";
 
@@ -201,7 +293,34 @@ export interface DeleteAccountCaller {
   /** Every identity provider linked to this account (e.g. "apple", "google",
    * "email"). Used only to detect an Apple-linked account (AE6). */
   providers: string[];
+  /** The caller's own Apple identity id (`identities[provider=="apple"].id`,
+   * equal to Apple's `sub` claim) if this account has one linked - null
+   * otherwise. Bound against the revoked id_token's own `sub` before any
+   * revocation call is made (Issue #560). */
+  appleIdentityId: string | null;
+  /** False only when GoTrue's response omitted `identities` entirely (as
+   * opposed to a present-but-empty array) - a determination *failure* that
+   * must fail the whole deletion closed rather than silently treating the
+   * account as having no linked Apple identity (Issue #560: this used to be
+   * the one non-fail-closed Apple branch in this file). */
+  identitiesKnown: boolean;
 }
+
+/** The account's Apple-revocation progress (Issue #527), read before Steps
+ * 3/6 run and written immediately after a successful revoke. */
+export interface DeletionProgress {
+  /** Set once Apple revocation has actually succeeded for this account. A
+   * retry that sees this already set skips straight past the Apple-code
+   * precondition and the revoke call to `deleteUser` - the only step that
+   * could have failed and left the account stranded. */
+  appleRevokedAt: string | null;
+}
+
+/** Bounded/failed listing outcome (Issue #559). */
+export type ListAttachmentsResult =
+  | { ok: true; paths: string[] }
+  | { ok: false; reason: "list_failed" }
+  | { ok: false; reason: "too_many_objects" | "too_deep" };
 
 /** Every real I/O call `handleDeleteAccount` needs, injected so tests can
  * supply fakes instead of a live Supabase project / Apple credentials. */
@@ -209,12 +328,22 @@ export interface DeleteAccountDeps {
   /** Resolves the caller from their forwarded Authorization header. Null on
    * any invalid/failed lookup. */
   getUser(authHeader: string): Promise<DeleteAccountCaller | null>;
+  /** Reads this account's Apple-revocation progress marker (Issue #527). */
+  getDeletionProgress(uid: string): Promise<DeletionProgress>;
+  /** Records that Apple revocation has succeeded for this account, so a
+   * later retry (after a `deleteUser` failure) skips straight back to
+   * `deleteUser` (Issue #527). Best-effort: a failure here is logged but
+   * never fails the request - the revoke itself already succeeded, and the
+   * worst case of a lost marker write is a future retry needing one more
+   * fresh Apple code, not data loss. */
+  markAppleRevoked(uid: string): Promise<void>;
   /** Lists every object path under `<uid>/` in the feedback-attachments
-   * bucket, paginating and recursing into nested folders to any depth
-   * (Issue #243/D-24; round 2 fix). Null on any listing failure - the
-   * caller must treat that the same as a removal failure and fail the
-   * whole deletion closed, before any row is touched. */
-  listAttachmentPaths(uid: string): Promise<string[] | null>;
+   * bucket, paginating and recursing into nested folders (Issue #243/D-24;
+   * round 2 fix), bounded by MAX_ATTACHMENT_OBJECTS/MAX_ATTACHMENT_DEPTH
+   * (Issue #559) so a caller with an unbounded number of objects under
+   * their own prefix cannot make listing alone exceed this function's wall
+   * clock. */
+  listAttachmentPaths(uid: string): Promise<ListAttachmentsResult>;
   /** Removes the given object paths from the feedback-attachments bucket,
    * batching internally. Resolves false on any removal failure. Never
    * called with an empty array. */
@@ -223,8 +352,9 @@ export interface DeleteAccountDeps {
    * RLS/auth.uid() semantics hold) - the row-deletion half of account
    * deletion (U1). */
   deleteAccountData(authHeader: string): Promise<{ data: unknown; error: unknown }>;
-  /** Exchanges and revokes a Sign in with Apple authorization code (U3). */
-  revokeApple(authorizationCode: string): Promise<AppleRevokeResult>;
+  /** Exchanges and revokes a Sign in with Apple authorization code, binding
+   * it to [expectedAppleUserId] before revoking (U3; Issue #560). */
+  revokeApple(authorizationCode: string, expectedAppleUserId: string): Promise<AppleRevokeResult>;
   /** Best-effort re-home pass on the service-role client with an explicit
    * caller id (#17 P1 round 2 fix - see the header comment). */
   rehomeStrayDayEntries(uid: string): Promise<{ error: unknown }>;
@@ -233,8 +363,9 @@ export interface DeleteAccountDeps {
 }
 
 /** The full request-handling logic (Issue #17 U2/U3; Issue #243/D-24
- * attachment cleanup). See the header comment for the full step-by-step
- * contract and the fixes layered onto it over time. */
+ * attachment cleanup; Issue #526's neighbours #527/#559/#560). See the
+ * header comment for the full step-by-step contract and the fixes layered
+ * onto it over time. */
 export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps): Promise<Response> {
   // Step 1: no Authorization header -> 401 without touching the database.
   const authHeader = req.headers.get("Authorization");
@@ -249,10 +380,31 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   if (!user) {
     return errorResponse("unauthorized", 401);
   }
-  const body = await readBody(req);
 
+  // Issue #560: a GoTrue response that omitted `identities` entirely means
+  // this function cannot determine whether the account has a linked Apple
+  // identity at all - previously that degraded to "treat as non-Apple,
+  // skip revocation", the one Apple branch in this file that was not
+  // fail-closed. Fail the whole deletion closed instead; nothing has been
+  // touched yet.
+  if (!user.identitiesKnown) {
+    console.error(
+      "delete-account: caller's identity list could not be determined (GoTrue response omitted " +
+        "`identities`); failing closed before anything is touched",
+    );
+    return errorResponse("identity_check_failed", 500);
+  }
+
+  const body = await readBody(req);
   const appleCode = body.appleAuthorizationCode;
-  const hasAppleIdentity = user.providers.includes("apple");
+  const hasAppleIdentity = user.appleIdentityId !== null;
+
+  // Issue #527: an account whose Apple grant was already confirmed revoked
+  // by an earlier attempt (deletion progress marker set) needs neither a
+  // fresh code nor another revoke call - a retry after a `deleteUser`
+  // failure goes straight through Steps 3/6 to Step 8.
+  const progress = hasAppleIdentity ? await deps.getDeletionProgress(user.id) : { appleRevokedAt: null };
+  const appleAlreadyRevoked = hasAppleIdentity && progress.appleRevokedAt !== null;
 
   // Step 3 (#17 P1 fix - moved ahead of the destructive RPC): an Apple
   // identity with no authorization code supplied fails closed here, before
@@ -269,7 +421,10 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   // client-side copy correctly says "your account data was deleted, but...".
   // Reusing it here would say the same false thing about a call that never
   // touched a single row.
-  if (hasAppleIdentity && !appleCode) {
+  //
+  // Issue #527: skipped entirely once `appleAlreadyRevoked` - a retry needs
+  // no code at all once revocation has already succeeded.
+  if (hasAppleIdentity && !appleAlreadyRevoked && !appleCode) {
     console.error(
       "delete-account: apple identity present but no authorization code supplied; nothing touched",
     );
@@ -288,13 +443,25 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   // deleted" (the client's attachmentCleanupFailed copy) is actually true,
   // and a retry starts completely fresh rather than re-running an
   // already-idempotent RPC.
-  const attachmentPaths = await deps.listAttachmentPaths(user.id);
-  if (attachmentPaths === null) {
+  const listResult = await deps.listAttachmentPaths(user.id);
+  if (!listResult.ok) {
+    if (listResult.reason === "too_many_objects" || listResult.reason === "too_deep") {
+      // Issue #559: a distinct, support-routed code - this is not a
+      // transient failure a bare retry can ever fix (the caller's own
+      // object count/depth is what tripped the bound), unlike
+      // `attachment_cleanup_failed` below.
+      console.error(
+        `delete-account: attachment listing exceeded the ${listResult.reason} bound for uid ${user.id}; ` +
+          "nothing touched - routed to support rather than retried automatically (Issue #559)",
+      );
+      return errorResponse("attachment_cleanup_unbounded", 422);
+    }
     console.error(
       "delete-account: attachment listing failed; nothing touched, so the whole account stays untouched and retryable",
     );
     return errorResponse("attachment_cleanup_failed", 409);
   }
+  const attachmentPaths = listResult.paths;
   if (attachmentPaths.length > 0) {
     const removed = await deps.removeAttachmentPaths(attachmentPaths);
     if (!removed) {
@@ -322,14 +489,21 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   // so the whole call is safe to retry (KTD4). Rows are already gone at
   // this point; retrying re-runs U1's RPC idempotently (it reports zero
   // counts the second time) and retries the Apple step.
-  if (hasAppleIdentity) {
-    const revoked = await deps.revokeApple(appleCode!);
+  //
+  // Issue #527: skipped entirely once `appleAlreadyRevoked` - re-running it
+  // would exchange a fresh code against an already-revoked grant for no
+  // reason. On success here, the deletion-progress marker is stamped
+  // *before* proceeding, so a `deleteUser` failure below can retry straight
+  // through to Step 8 next time without repeating this step.
+  if (hasAppleIdentity && !appleAlreadyRevoked) {
+    const revoked = await deps.revokeApple(appleCode!, user.appleIdentityId!);
     if (revoked.kind !== "ok") {
       console.error(
         `delete-account: apple revoke failed (${revoked.kind}); rows already removed`,
       );
       return errorResponse("apple_revoke_failed", 409);
     }
+    await deps.markAppleRevoked(user.id);
   }
 
   // Step 7 (#17 P1 fix; round 2 fix on top): a second, best-effort re-home
@@ -375,7 +549,10 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
     // account owns is already gone by this point (Step 5 succeeded), so
     // "your account was not deleted" (unknown's client-side copy) would be
     // false, and telling the operator to sign in again is not the right
-    // guidance for this specific, narrow failure.
+    // guidance for this specific, narrow failure. Issue #527: a retry from
+    // here re-enters this function with `appleAlreadyRevoked` now true (the
+    // marker was stamped above before this step ever ran), so it skips
+    // straight back to this exact step rather than repeating Steps 3/6.
     console.error(
       `delete-account: auth.admin.deleteUser failed (${errorType(deleteUserError)}); rows already removed`,
     );
@@ -419,53 +596,72 @@ const REMOVE_BATCH_SIZE = 100;
 /** Lists every object path under `prefix` in `bucket`, paginating with
  * `offset` until a page returns fewer than `LIST_PAGE_SIZE` entries, and
  * recursing into any nested folder entry (Supabase Storage marks a folder
- * with a null `id`; a real object has a non-null one) to any depth - not
- * just one level per ticket folder (Issue #243 round 2 fix). The
- * `feedback-attachments` bucket's insert policy only constrains the first
- * path segment (the uid), so `<uid>/a/b/c.png` is a possible path a
- * one-level-deep listing would miss. Returns null - rather than throwing -
- * on any listing failure at any depth or page, so the whole cleanup fails
- * closed (Issue #243/D-24).
+ * with a null `id`; a real object has a non-null one) up to
+ * MAX_ATTACHMENT_DEPTH levels deep (Issue #559 - not "any depth" as before:
+ * an unbounded recursion is itself part of the same wall-clock risk this
+ * bound closes). `counter` is a running total shared across the whole
+ * recursion tree (not just this call's own subtree), so
+ * MAX_ATTACHMENT_OBJECTS bounds the *total* number of objects found under
+ * the top-level prefix, not merely the count at any one level. Returns a
+ * discriminated failure - rather than throwing - on any listing failure, a
+ * depth bound trip, or an object-count bound trip, so the whole cleanup
+ * fails closed with a code that distinguishes "try again later" from "this
+ * account needs support" (Issue #259/#559).
  */
 async function listFolderPaths(
   // deno-lint-ignore no-explicit-any
   bucket: any,
   prefix: string,
-): Promise<string[] | null> {
+  depth: number,
+  counter: { count: number },
+): Promise<ListAttachmentsResult> {
+  if (depth > MAX_ATTACHMENT_DEPTH) {
+    return { ok: false, reason: "too_deep" };
+  }
   const paths: string[] = [];
   let offset = 0;
   for (;;) {
-    const { data: entries, error } = await bucket.list(prefix, {
-      limit: LIST_PAGE_SIZE,
-      offset,
-    });
-    if (error) return null;
-    const page: Array<{ id: string | null; name: string }> = entries ?? [];
+    let entries: Array<{ id: string | null; name: string }> | null;
+    let error: unknown;
+    try {
+      const result = await withTimeout(bucket.list(prefix, { limit: LIST_PAGE_SIZE, offset }));
+      entries = result.data ?? null;
+      error = result.error;
+    } catch (thrown) {
+      error = thrown;
+      entries = null;
+    }
+    if (error) return { ok: false, reason: "list_failed" };
+    const page = entries ?? [];
     for (const entry of page) {
       if (entry.id === null) {
-        const sub = await listFolderPaths(bucket, `${prefix}/${entry.name}`);
-        if (sub === null) return null;
-        paths.push(...sub);
+        const sub = await listFolderPaths(bucket, `${prefix}/${entry.name}`, depth + 1, counter);
+        if (!sub.ok) return sub;
+        paths.push(...sub.paths);
       } else {
+        counter.count++;
+        if (counter.count > MAX_ATTACHMENT_OBJECTS) {
+          return { ok: false, reason: "too_many_objects" };
+        }
         paths.push(`${prefix}/${entry.name}`);
       }
     }
     if (page.length < LIST_PAGE_SIZE) break;
     offset += LIST_PAGE_SIZE;
   }
-  return paths;
+  return { ok: true, paths };
 }
 
 /** Lists every object path under `<uid>/` in the feedback-attachments
- * bucket (see `listFolderPaths` above for the pagination/recursion
+ * bucket (see `listFolderPaths` above for the pagination/recursion/bound
  * contract). */
 async function listFeedbackAttachmentPaths(
   // deno-lint-ignore no-explicit-any
   adminClient: any,
   uid: string,
-): Promise<string[] | null> {
+): Promise<ListAttachmentsResult> {
   const bucket = adminClient.storage.from(FEEDBACK_ATTACHMENTS_BUCKET);
-  return listFolderPaths(bucket, uid);
+  return listFolderPaths(bucket, uid, 0, { count: 0 });
 }
 
 /** Builds the production `DeleteAccountDeps` as a plain function of its
@@ -493,20 +689,85 @@ export function buildDeps(env: DeleteAccountEnv, clientFactory: SupabaseClientFa
         auth: { persistSession: false },
         global: { headers: { Authorization: authHeader } },
       });
-      const { data, error } = await userClient.auth.getUser(jwt);
+      let data: { user: Record<string, unknown> | null } | undefined;
+      let error: unknown;
+      try {
+        const result = await withTimeout(userClient.auth.getUser(jwt));
+        data = result.data;
+        error = result.error;
+      } catch (thrown) {
+        error = thrown;
+      }
       if (error || !data?.user) return null;
-      const providers = (data.user.identities ?? []).map(
-        // deno-lint-ignore no-explicit-any
-        (identity: any) => identity.provider,
-      );
-      return { id: data.user.id, providers };
+      // Issue #560: `identities` omitted entirely (undefined/null) is a
+      // determination *failure*, distinct from a present-but-empty array
+      // (an account with genuinely no linked third-party identity). Only
+      // the latter means "no Apple identity" - the former must fail the
+      // whole deletion closed (see handleDeleteAccount).
+      const rawIdentities = data.user.identities;
+      const identitiesKnown = Array.isArray(rawIdentities);
+      // deno-lint-ignore no-explicit-any
+      const identities = (identitiesKnown ? rawIdentities : []) as any[];
+      const providers = identities.map((identity) => identity.provider as string);
+      // deno-lint-ignore no-explicit-any
+      const appleIdentity = identities.find((identity: any) => identity.provider === "apple");
+      return {
+        id: data.user.id as string,
+        providers,
+        appleIdentityId: appleIdentity ? (appleIdentity.id as string) : null,
+        identitiesKnown,
+      };
+    },
+    getDeletionProgress: async (uid) => {
+      try {
+        const { data, error } = await withTimeout(
+          adminClient
+            .from("account_deletion_progress")
+            .select("apple_revoked_at")
+            .eq("user_id", uid)
+            .maybeSingle(),
+        );
+        if (error || !data) return { appleRevokedAt: null };
+        return { appleRevokedAt: (data.apple_revoked_at as string | null) ?? null };
+      } catch (error) {
+        // Issue #527: unable to determine progress - treat as "not yet
+        // revoked" (the safe default: at worst this asks the caller for one
+        // more Apple code it didn't strictly need, never data loss).
+        console.error(
+          `delete-account: failed to read deletion progress marker (${errorType(error)}); treating as not yet revoked`,
+        );
+        return { appleRevokedAt: null };
+      }
+    },
+    markAppleRevoked: async (uid) => {
+      try {
+        const { error } = await withTimeout(
+          adminClient
+            .from("account_deletion_progress")
+            .upsert({ user_id: uid, apple_revoked_at: new Date().toISOString() }),
+        );
+        if (error) {
+          console.error(
+            "delete-account: failed to persist the apple_revoked_at marker; a deleteUser failure after " +
+              `this point would repeat the (now-pointless) apple revoke on retry (${error.message ?? "unknown error"})`,
+          );
+        }
+      } catch (error) {
+        console.error(`delete-account: apple_revoked_at marker write threw unexpectedly (${errorType(error)})`);
+      }
     },
     listAttachmentPaths: (uid) => listFeedbackAttachmentPaths(adminClient, uid),
     removeAttachmentPaths: async (paths) => {
       for (let i = 0; i < paths.length; i += REMOVE_BATCH_SIZE) {
         const batch = paths.slice(i, i + REMOVE_BATCH_SIZE);
-        const { error } = await adminClient.storage.from(FEEDBACK_ATTACHMENTS_BUCKET).remove(batch);
-        if (error) return false;
+        try {
+          const { error } = await withTimeout(
+            adminClient.storage.from(FEEDBACK_ATTACHMENTS_BUCKET).remove(batch),
+          );
+          if (error) return false;
+        } catch {
+          return false;
+        }
       }
       return true;
     },
@@ -515,17 +776,26 @@ export function buildDeps(env: DeleteAccountEnv, clientFactory: SupabaseClientFa
         auth: { persistSession: false },
         global: { headers: { Authorization: authHeader } },
       });
-      const { data, error } = await userClient.rpc("delete_account_data");
-      return { data, error };
+      try {
+        const { data, error } = await withTimeout(userClient.rpc("delete_account_data"));
+        return { data, error };
+      } catch (error) {
+        return { data: null, error };
+      }
     },
-    revokeApple: (authorizationCode) => revokeAppleToken(authorizationCode),
+    revokeApple: (authorizationCode, expectedAppleUserId) =>
+      revokeAppleToken(authorizationCode, expectedAppleUserId),
     rehomeStrayDayEntries: async (uid) => {
-      const { error } = await adminClient.rpc("rehome_stray_day_entries", { p_user_id: uid });
+      const { error } = await withTimeout(adminClient.rpc("rehome_stray_day_entries", { p_user_id: uid }));
       return { error };
     },
     deleteUser: async (uid) => {
-      const { error } = await adminClient.auth.admin.deleteUser(uid);
-      return { error };
+      try {
+        const { error } = await withTimeout(adminClient.auth.admin.deleteUser(uid));
+        return { error };
+      } catch (error) {
+        return { error };
+      }
     },
   };
 }
