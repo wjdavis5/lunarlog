@@ -110,6 +110,20 @@ const int kMaxConsecutiveReconcileRetries = 3;
 /// versions costs a little duplicate work, never correctness.
 const int kCursorLookback = 50;
 
+/// Issue #566: the weight a fresh clock-offset sample carries against the
+/// previously smoothed value (a simple exponential moving average — `next =
+/// previous + alpha * (sample - previous)`). `serverNow - deviceNow` is
+/// measured once per push batch (see [SupabaseSyncEngine._pushBatch]'s
+/// `sentAt`), and a single sample can be noisy — a slow or congested
+/// request inflates the apparent one-way trip, and `serverNow` is the
+/// transaction-start instant of a batch that may still be writing up to
+/// [PushBatch.maxRows] rows per table when it stamps that instant. `0.2`
+/// reacts within a handful of pushes (a real clock skew shows up quickly)
+/// while damping any one sample's noise rather than snapping the whole
+/// storage clock to it. `1.0` would disable smoothing entirely (every
+/// sample replaces the previous one outright, the pre-#566 behavior).
+const double kClockOffsetSmoothingAlpha = 0.2;
+
 final Random _jitter = Random();
 
 /// Exponential backoff with up to 25% jitter, capped at ten minutes:
@@ -305,6 +319,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   bool _writeDuringCycle = false;
   int _consecutiveNetworkFailures = 0;
   int _consecutiveReconcileRetries = 0;
+
+  /// Issue #566: the EMA-smoothed clock offset, seeded from the persisted
+  /// value on the first cycle ([_restoreOffset]) so smoothing continues
+  /// across app restarts instead of re-learning from a single fresh sample
+  /// every launch. `null` only before any sample has ever been taken (a
+  /// brand-new device, never yet synced) or restored.
+  Duration? _smoothedOffset;
 
   /// Consecutive cycles in a row where a profileGuardians page hit a
   /// [RetryableSyncApplyError] (finding #4): bounds the `cursorProfiles`
@@ -800,7 +821,32 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (_offsetRestored) return;
     _offsetRestored = true;
     final ms = state.serverClockOffsetMs;
-    if (ms != null) _storage.setClockOffset(Duration(milliseconds: ms));
+    if (ms != null) {
+      final restored = Duration(milliseconds: ms);
+      _storage.setClockOffset(restored);
+      // Issue #566: seed the EMA from the last persisted value rather than
+      // starting fresh — otherwise every app restart would re-learn the
+      // offset from a single, unsmoothed sample.
+      _smoothedOffset = restored;
+    }
+  }
+
+  /// Issue #566: folds [sample] into [_smoothedOffset] via a simple EMA
+  /// ([kClockOffsetSmoothingAlpha]) and returns the new smoothed value. The
+  /// very first sample (no prior smoothed value, and [_restoreOffset] found
+  /// nothing persisted) is taken as-is — there is nothing to smooth against
+  /// yet.
+  Duration _smoothOffset(Duration sample) {
+    final previous = _smoothedOffset;
+    final smoothed = previous == null
+        ? sample
+        : Duration(
+            milliseconds: (previous.inMilliseconds +
+                    kClockOffsetSmoothingAlpha *
+                        (sample.inMilliseconds - previous.inMilliseconds))
+                .round());
+    _smoothedOffset = smoothed;
+    return smoothed;
   }
 
   Future<void> _updateState(SyncStateRow Function(SyncStateRow) change) async {
@@ -972,11 +1018,22 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// clock offset computed below is applied internally and was never read
   /// by the caller either, so this method's return value is dropped
   /// entirely rather than kept as unused plumbing.
+  ///
+  /// Issue #566: `sentAt` is read immediately before [_transport.push] —
+  /// not after it returns — so the offset measures `serverNow - sentAt`
+  /// rather than `serverNow - (a clock reading taken after the full round
+  /// trip and after [SupabaseSyncApply.applyPushResult] has written up to
+  /// [PushBatch.maxRows] rows locally)`. The old, later reading was biased
+  /// on a slow link: a 2s-RTT / 500-row batch used to stamp every
+  /// subsequent local write a couple of seconds into the past, which loses
+  /// LWW races that device should win. The raw sample is then smoothed via
+  /// [_smoothOffset] before it is applied or persisted.
   Future<void> _pushBatch(
     String uid,
     List<SyncPushItem> batch,
   ) async {
     _checkpoint(uid);
+    final sentAt = _clock();
     final PushResult result;
     try {
       result = await _transport.push(PushBatch(
@@ -997,7 +1054,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     await _apply.applyPushResult(batch, result);
     // The in-memory offset takes effect immediately (it stamps the next
     // local writes) and is persisted to sync_state for this committed batch.
-    final offset = result.serverNow.toUtc().difference(_clock().toUtc());
+    final sample = result.serverNow.toUtc().difference(sentAt.toUtc());
+    final offset = _smoothOffset(sample);
     _storage.setClockOffset(offset);
     await _updateState(
         (s) => s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));

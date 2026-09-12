@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/supabase_sync_engine.dart'
+    show kClockOffsetSmoothingAlpha;
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -546,6 +548,60 @@ void main() {
           tz: 'UTC',
           flow: FlowLevel.light);
       expect(e.updatedAt, t0.add(const Duration(minutes: 5, seconds: 1)));
+    });
+
+    test('issue #566: the offset is measured from sentAt (captured before '
+        'the request), not from the clock after the round trip and after '
+        'applyPushResult\'s writes', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: t0.add(const Duration(minutes: 5)));
+      // Simulate a slow round trip: the clock advances *during* the
+      // request, well after sentAt would already have been captured.
+      rig.transport.onPush = (_) async {
+        rig.clock.now = rig.clock.now.add(const Duration(seconds: 30));
+      };
+
+      await rig.start();
+
+      // Before the fix, offset = serverNow - clock() (read AFTER the RTT)
+      // would have measured only 4m30s. With sentAt captured before the
+      // call, the true 5-minute offset is measured regardless of how long
+      // the round trip took.
+      expect(rig.storage.clockOffset, const Duration(minutes: 5));
+    });
+
+    test('issue #566: the offset is smoothed across cycles (a simple EMA), '
+        'not replaced wholesale by each new sample', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: t0.add(const Duration(minutes: 5)));
+      await rig.start();
+      expect(rig.storage.clockOffset, const Duration(minutes: 5),
+          reason: 'the very first sample is taken as-is - nothing to '
+              'smooth against yet');
+
+      // A second, very different (noisy) sample: smoothing means the
+      // result moves toward it, not straight to it.
+      await rig.storage.upsertProfile(displayName: 'B', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: rig.clock.now.add(const Duration(minutes: 15)));
+      await rig.sync();
+
+      final firstSampleMs = const Duration(minutes: 5).inMilliseconds;
+      final secondSampleMs = const Duration(minutes: 15).inMilliseconds;
+      final expectedSmoothedMs = (firstSampleMs +
+              kClockOffsetSmoothingAlpha * (secondSampleMs - firstSampleMs))
+          .round();
+      expect(rig.storage.clockOffset,
+          Duration(milliseconds: expectedSmoothedMs));
+      expect((await rig.state()).serverClockOffsetMs, expectedSmoothedMs);
     });
 
     test('a rejected row stays dirty, is not retried until edited again, and '
