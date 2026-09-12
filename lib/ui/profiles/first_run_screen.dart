@@ -626,25 +626,35 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(l10n.firstRunCareModeLabel,
-                    key: const ValueKey('care-mode-label'),
-                    style: Theme.of(context).textTheme.bodySmall),
-              ),
-              DropdownButton<ProfileMode>(
-                key: const ValueKey('care-mode-dropdown'),
-                value: _mode,
-                isExpanded: true,
-                onChanged: (value) =>
-                    setState(() => _mode = value ?? ProfileMode.standard),
-                items: [
-                  for (final mode in ProfileMode.values)
-                    DropdownMenuItem<ProfileMode>(
-                      value: mode,
-                      child: Text(mode.label),
+              // #557: MergeSemantics folds the label into the dropdown's
+              // own announcement, so a screen reader hears the question
+              // ("Care mode") instead of just the bare selected value.
+              MergeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(l10n.firstRunCareModeLabel,
+                          key: const ValueKey('care-mode-label'),
+                          style: Theme.of(context).textTheme.bodySmall),
                     ),
-                ],
+                    DropdownButton<ProfileMode>(
+                      key: const ValueKey('care-mode-dropdown'),
+                      value: _mode,
+                      isExpanded: true,
+                      onChanged: (value) => setState(
+                          () => _mode = value ?? ProfileMode.standard),
+                      items: [
+                        for (final mode in ProfileMode.values)
+                          DropdownMenuItem<ProfileMode>(
+                            value: mode,
+                            child: Text(mode.label),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -729,38 +739,52 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            _labelAbove(l10n.firstRunCycleBirthControlLabel,
-                const ValueKey('cycle-birth-control-label')),
-            DropdownButton<BirthControlChoice>(
-              key: const ValueKey('cycle-birth-control'),
-              value: _birthControl,
-              isExpanded: true,
-              onChanged: (value) => setState(() =>
-                  _birthControl = value ?? BirthControlChoice.notAnswered),
-              items: [
-                for (final choice in BirthControlChoice.values)
-                  DropdownMenuItem<BirthControlChoice>(
-                    value: choice,
-                    child: Text(birthControlChoiceLabel(choice, l10n)),
+            MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _labelAbove(l10n.firstRunCycleBirthControlLabel,
+                      const ValueKey('cycle-birth-control-label')),
+                  DropdownButton<BirthControlChoice>(
+                    key: const ValueKey('cycle-birth-control'),
+                    value: _birthControl,
+                    isExpanded: true,
+                    onChanged: (value) => setState(() => _birthControl =
+                        value ?? BirthControlChoice.notAnswered),
+                    items: [
+                      for (final choice in BirthControlChoice.values)
+                        DropdownMenuItem<BirthControlChoice>(
+                          value: choice,
+                          child: Text(birthControlChoiceLabel(choice, l10n)),
+                        ),
+                    ],
                   ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 12),
-            _labelAbove(l10n.firstRunCycleGoalLabel,
-                const ValueKey('cycle-goal-label')),
-            DropdownButton<LifecycleMode>(
-              key: const ValueKey('cycle-goal'),
-              value: _lifecycleMode,
-              isExpanded: true,
-              onChanged: (value) => setState(
-                  () => _lifecycleMode = value ?? LifecycleMode.tracking),
-              items: [
-                for (final mode in LifecycleMode.values)
-                  DropdownMenuItem<LifecycleMode>(
-                    value: mode,
-                    child: Text(mode.label),
+            MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _labelAbove(l10n.firstRunCycleGoalLabel,
+                      const ValueKey('cycle-goal-label')),
+                  DropdownButton<LifecycleMode>(
+                    key: const ValueKey('cycle-goal'),
+                    value: _lifecycleMode,
+                    isExpanded: true,
+                    onChanged: (value) => setState(() =>
+                        _lifecycleMode = value ?? LifecycleMode.tracking),
+                    items: [
+                      for (final mode in LifecycleMode.values)
+                        DropdownMenuItem<LifecycleMode>(
+                          value: mode,
+                          child: Text(mode.label),
+                        ),
+                    ],
                   ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             FilledButton(

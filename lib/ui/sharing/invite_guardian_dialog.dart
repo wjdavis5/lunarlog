@@ -134,30 +134,44 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
               ),
               const SizedBox(height: 8),
             ],
-            const Text('Role:'),
-            const SizedBox(height: 4),
-            DropdownButton<GuardianRole>(
-              value: _selectedRole,
-              isExpanded: true,
-              onChanged: _loading
-                  ? null
-                  : (role) {
-                      if (role != null) setState(() => _selectedRole = role);
-                    },
-              items: const [
-                DropdownMenuItem(
-                  value: GuardianRole.coParent,
-                  child: Text('Co-Parent (Can log, edit profile & invite)'),
-                ),
-                DropdownMenuItem(
-                  value: GuardianRole.caregiver,
-                  child: Text('Caregiver (Can log symptoms & periods)'),
-                ),
-                DropdownMenuItem(
-                  value: GuardianRole.viewer,
-                  child: Text('Viewer (Read-only access)'),
-                ),
-              ],
+            // #557: MergeSemantics folds "Role:" into the dropdown's own
+            // announcement, so a screen reader hears "Role, <value>"
+            // instead of just the bare value.
+            MergeSemantics(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Role:'),
+                  const SizedBox(height: 4),
+                  DropdownButton<GuardianRole>(
+                    value: _selectedRole,
+                    isExpanded: true,
+                    onChanged: _loading
+                        ? null
+                        : (role) {
+                            if (role != null) {
+                              setState(() => _selectedRole = role);
+                            }
+                          },
+                    items: const [
+                      DropdownMenuItem(
+                        value: GuardianRole.coParent,
+                        child:
+                            Text('Co-Parent (Can log, edit profile & invite)'),
+                      ),
+                      DropdownMenuItem(
+                        value: GuardianRole.caregiver,
+                        child: Text('Caregiver (Can log symptoms & periods)'),
+                      ),
+                      DropdownMenuItem(
+                        value: GuardianRole.viewer,
+                        child: Text('Viewer (Read-only access)'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             TextField(

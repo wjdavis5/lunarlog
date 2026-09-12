@@ -857,6 +857,29 @@ void main() {
     });
   });
 
+  group('issue #557: dropdown label semantics', () {
+    testWidgets(
+        'the care-mode dropdown announces its label, not just the bare '
+        'selected value', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      await h.pump();
+
+      expect(find.byKey(const ValueKey('care-mode-dropdown')), findsOneWidget);
+      final merged =
+          tester.getSemantics(find.byKey(const ValueKey('care-mode-label')));
+      expect(merged.label, contains('Care mode'));
+      expect(merged.label, contains('Standard'),
+          reason: 'MergeSemantics folds the label and the dropdown\'s '
+              'current value into one announcement');
+
+      handle.dispose();
+      await h.dispose();
+    });
+  });
+
   group('issue #544: create-profile busy state', () {
     Future<Harness> pumpedToCycle(
       WidgetTester tester,
