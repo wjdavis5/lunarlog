@@ -121,6 +121,13 @@ class SupabaseSyncTransport implements SyncTransport {
       final data = await _client.rpc<dynamic>(_watermarkRpc);
       if (data is int) return data;
       if (data is num) return data.toInt();
+      // public.sync_watermark() returns `bigint` (PR #582): PostgREST
+      // renders it as a JSON number in practice, but a bigint's wire
+      // representation is not guaranteed never to be a quoted string (some
+      // Postgres/PostgREST configurations render bigint that way to avoid
+      // silent precision loss past 2^53) — accept either shape rather than
+      // fail a perfectly good watermark on a representation detail.
+      if (data is String) return int.tryParse(data);
       return null;
     } on PostgrestException catch (error) {
       if (error.code == _functionNotFoundCode) return null;

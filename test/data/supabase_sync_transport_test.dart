@@ -511,6 +511,18 @@ void main() {
       client = makeClient((_) async => json({'not': 'a number'}));
       expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
     });
+
+    test('a quoted-string bigint (PR #582\'s public.sync_watermark() '
+        'returns `bigint`, which some renderers quote to avoid precision '
+        'loss) still decodes', () async {
+      client = makeClient((_) async => json('12345'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), 12345);
+    });
+
+    test('a non-numeric string falls back to null', () async {
+      client = makeClient((_) async => json('not-a-number'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
   });
 
   group('error mapping over HTTP', () {
