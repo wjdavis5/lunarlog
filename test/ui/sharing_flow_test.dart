@@ -373,6 +373,57 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    testWidgets(
+        'issue #558: once the single-use link is generated, a stray tap '
+        'outside the dialog cannot dismiss it, "Copy Link" shows its '
+        'confirmation inside the dialog, and Done closes it', (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.person_add));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+      expect(find.text('Invitation Created'), findsOneWidget);
+
+      // A tap on the scrim (the barrier), well away from the dialog card
+      // itself, must not dismiss it now that the link exists.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Invitation Created'), findsOneWidget,
+          reason: 'barrierDismissible: false -- the server never stores '
+              'this raw token again, so a stray tap must not destroy '
+              'access to it');
+
+      expect(find.byKey(const ValueKey('invite-copied-confirmation')),
+          findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, 'Copy Link'));
+      await tester.pump();
+      expect(find.text('Copied to clipboard'), findsOneWidget,
+          reason: 'shown inside the dialog -- a ScaffoldMessenger SnackBar '
+              'here would paint behind this dialog\'s own barrier');
+
+      await tester.tap(find.widgetWithText(TextButton, 'Done'));
+      await tester.pumpAndSettle();
+      expect(find.text('Invitation Created'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
     testWidgets('hides invite and revocation controls from a caregiver (U8)',
         (tester) async {
       await storage.applyRemoteRows([

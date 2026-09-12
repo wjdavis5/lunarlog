@@ -33,6 +33,15 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
   GeneratedInvite? _generatedInvite;
   String? _error;
 
+  /// #558: the "copied" confirmation used to go through
+  /// `ScaffoldMessenger.of(context).showSnackBar` -- resolved against the
+  /// *underlying screen's* Scaffold (this dialog itself hosts none), which
+  /// paints in an OverlayEntry inserted *before* this dialog's own barrier,
+  /// so the SnackBar rendered behind the scrim, invisible. Rendering the
+  /// confirmation inside the dialog's own content instead needs no such
+  /// z-order reasoning.
+  bool _justCopied = false;
+
   @override
   void dispose() {
     _labelController.dispose();
@@ -70,9 +79,7 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
   void _copyLink() {
     if (_generatedInvite == null) return;
     Clipboard.setData(ClipboardData(text: _generatedInvite!.inviteUri.toString()));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Invite link copied to clipboard')),
-    );
+    setState(() => _justCopied = true);
   }
 
   @override
@@ -104,12 +111,31 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
               'Expires in 48 hours. Can be redeemed once.',
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
+            if (_justCopied) ...[
+              const SizedBox(height: 8),
+              Semantics(
+                liveRegion: true,
+                child: Row(
+                  key: const ValueKey('invite-copied-confirmation'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle,
+                        size: 16, color: theme.colorScheme.primary),
+                    const SizedBox(width: 4),
+                    Text('Copied to clipboard',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.primary)),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
           TextButton(
+            key: const ValueKey('invite-done'),
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: const Text('Done'),
           ),
           FilledButton.icon(
             onPressed: _copyLink,

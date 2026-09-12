@@ -931,6 +931,41 @@ void main() {
 
       await unmount(tester);
     });
+
+    testWidgets(
+        'issue #558: once the single-use code is generated, a stray tap '
+        'outside the dialog cannot dismiss it, and "Copy Link" shows its '
+        'confirmation inside the dialog', (tester) async {
+      connectionService.getActiveConnectionResult = null;
+      await pumpScreen(tester);
+
+      await tester.tap(find.byKey(const ValueKey('share-predictions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Create Link'));
+      await tester.pumpAndSettle();
+      expect(find.text('Connection created'), findsOneWidget);
+
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Connection created'), findsOneWidget,
+          reason: 'barrierDismissible: false -- the server never stores '
+              'this raw token again, so a stray tap must not destroy '
+              'access to it');
+
+      expect(
+        find.byKey(const ValueKey('share-predictions-copied-confirmation')),
+        findsNothing,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Copy Link'));
+      await tester.pump();
+      expect(find.text('Copied to clipboard'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Done'));
+      await tester.pumpAndSettle();
+      expect(find.text('Connection created'), findsNothing);
+
+      await unmount(tester);
+    });
   });
 
   group('kind=prediction deep links through the app shell (issue #151)', () {

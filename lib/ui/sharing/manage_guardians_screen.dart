@@ -216,6 +216,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     if (service == null) return;
     await showDialog<void>(
       context: context,
+      // #558: once a single-use connection code is generated, the server
+      // never stores its raw token again -- a stray tap outside the
+      // dialog must not be able to destroy access to it.
+      barrierDismissible: false,
       builder: (ctx) => SharePredictionsDialog(
         profileId: widget.profile.id,
         profileName: widget.profile.displayName,
@@ -421,6 +425,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   void _openInviteDialog() {
     showDialog<void>(
       context: context,
+      // #558: once a single-use invite link is generated, the server never
+      // stores its raw token again -- a stray tap outside the dialog must
+      // not be able to destroy access to it.
+      barrierDismissible: false,
       builder: (ctx) => InviteGuardianDialog(
         profileId: widget.profile.id,
         profileName: widget.profile.displayName,
