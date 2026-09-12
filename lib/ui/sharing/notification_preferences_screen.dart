@@ -76,16 +76,7 @@ class _NotificationPreferencesScreenState
     try {
       await widget.preferencesService.save(widget.profile.id, next);
     } catch (error) {
-      if (!mounted) return;
-      if (error is NotificationPreferencesInvalidTimeZoneFailure) {
-        setState(() => _timeZoneError = error);
-        return;
-      }
-      final message = error is NotificationPreferencesFailure
-          ? error.userFacingMessage
-          : 'Failed to save notification preferences. Please try again.';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      _handleSaveError(error);
     }
   }
 
@@ -94,17 +85,21 @@ class _NotificationPreferencesScreenState
     try {
       await widget.preferencesService.save(widget.profile.id, _prefs);
     } catch (error) {
-      if (!mounted) return;
-      if (error is NotificationPreferencesInvalidTimeZoneFailure) {
-        setState(() => _timeZoneError = error);
-        return;
-      }
-      final message = error is NotificationPreferencesFailure
-          ? error.userFacingMessage
-          : 'Failed to save notification preferences. Please try again.';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      _handleSaveError(error);
     }
+  }
+
+  void _handleSaveError(Object error) {
+    if (!mounted) return;
+    if (error is NotificationPreferencesInvalidTimeZoneFailure) {
+      setState(() => _timeZoneError = error);
+      return;
+    }
+    final message = error is NotificationPreferencesFailure
+        ? error.userFacingMessage
+        : 'Failed to save notification preferences. Please try again.';
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _confirmSaveWithoutTimeZone() async {

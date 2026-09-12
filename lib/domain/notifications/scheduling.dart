@@ -342,41 +342,80 @@ List<PlannedReminder> _planLogNudge({
   }
 
   final anchor = config.anchorDate ?? today;
-  final planned = <PlannedReminder>[];
 
   if (cadence == ReminderCadence.weekly ||
       cadence == ReminderCadence.fortnightly) {
-    final intervalDays = cadence == ReminderCadence.weekly ? 7 : 14;
-    final offsetDays = today.difference(anchor);
-    final k =
-        offsetDays <= 0 ? 0 : (offsetDays + intervalDays - 1) ~/ intervalDays;
-    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++) {
-      planned.add(_planOne(
+    return _planIntervalLogNudge(
+      profileId: profileId,
+      anchor: anchor,
+      today: today,
+      config: config,
+      quietHours: quietHours,
+      cadence: cadence,
+    );
+  } else if (cadence == ReminderCadence.monthly) {
+    return _planMonthlyLogNudge(
+      profileId: profileId,
+      anchor: anchor,
+      today: today,
+      config: config,
+      quietHours: quietHours,
+    );
+  }
+
+  return const [];
+}
+
+/// Weekly/fortnightly leg of [_planLogNudge]: occurrences on the interval
+/// grid at or after [today], pre-arming [kLogNudgeCadencePreArmOccurrences].
+List<PlannedReminder> _planIntervalLogNudge({
+  required String profileId,
+  required LocalDate anchor,
+  required LocalDate today,
+  required ReminderTypeConfig config,
+  required QuietHours? quietHours,
+  required ReminderCadence cadence,
+}) {
+  final intervalDays = cadence == ReminderCadence.weekly ? 7 : 14;
+  final offsetDays = today.difference(anchor);
+  final k =
+      offsetDays <= 0 ? 0 : (offsetDays + intervalDays - 1) ~/ intervalDays;
+  return [
+    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++)
+      _planOne(
         profileId,
         ReminderKind.log,
         anchor.addDays((k + i) * intervalDays),
         config.timeOfDayMinutes,
         quietHours,
-      ));
-    }
-  } else if (cadence == ReminderCadence.monthly) {
-    final monthsDiff =
-        (today.year - anchor.year) * 12 + (today.month - anchor.month);
-    final candidate = anchor.addMonths(monthsDiff);
-    final startOffset =
-        candidate.isBefore(today) ? monthsDiff + 1 : monthsDiff;
-    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++) {
-      planned.add(_planOne(
+      ),
+  ];
+}
+
+/// Monthly leg of [_planLogNudge]: month-grid occurrences at or after
+/// [today], pre-arming [kLogNudgeCadencePreArmOccurrences].
+List<PlannedReminder> _planMonthlyLogNudge({
+  required String profileId,
+  required LocalDate anchor,
+  required LocalDate today,
+  required ReminderTypeConfig config,
+  required QuietHours? quietHours,
+}) {
+  final monthsDiff =
+      (today.year - anchor.year) * 12 + (today.month - anchor.month);
+  final candidate = anchor.addMonths(monthsDiff);
+  final startOffset =
+      candidate.isBefore(today) ? monthsDiff + 1 : monthsDiff;
+  return [
+    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++)
+      _planOne(
         profileId,
         ReminderKind.log,
         anchor.addMonths(startOffset + i),
         config.timeOfDayMinutes,
         quietHours,
-      ));
-    }
-  }
-
-  return planned;
+      ),
+  ];
 }
 
 /// The birth-control adherence kinds (Issue #183). A profile plans a kind
