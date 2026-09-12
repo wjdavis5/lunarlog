@@ -1131,6 +1131,123 @@ void main() {
     });
   });
 
+  group('row menu follows guardian role (issue #531)', () {
+    /// Opens [profileId]'s row menu, asserts Rename/Archive presence
+    /// against [canEdit]/[canDelete] (Caregivers is unconditional and
+    /// always checked), then dismisses onto the barrier so a following
+    /// assertion in the same test starts clean.
+    Future<void> expectRowMenu(
+      WidgetTester tester,
+      String profileId, {
+      required bool canEdit,
+      required bool canDelete,
+    }) async {
+      await tester.tap(find.descendant(
+        of: find.byKey(ValueKey('profile-row-$profileId')),
+        matching: find.byType(PopupMenuButton<String>),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Caregivers'), findsOneWidget);
+      expect(find.text('Rename'), canEdit ? findsOneWidget : findsNothing);
+      expect(find.text('Archive'), canDelete ? findsOneWidget : findsNothing);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+        'primary_guardian sees Rename and Archive '
+        '(canEditProfile and canDeleteProfile both true)', (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final ids = await _seedFamily(db);
+        await tester.pumpAndSettle();
+        // Alice: Mom is primary_guardian.
+        await expectRowMenu(tester, ids.alice, canEdit: true, canDelete: true);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'co_parent sees Rename but not Archive '
+        '(canEditProfile true, canDeleteProfile false)', (tester) async {
+      final auth = _signedInAs('user-dad');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final ids = await _seedFamily(db);
+        await tester.pumpAndSettle();
+        // Alice: Dad is co_parent.
+        await expectRowMenu(tester, ids.alice,
+            canEdit: true, canDelete: false);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'viewer sees neither Rename nor Archive '
+        '(canEditProfile and canDeleteProfile both false)', (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final ids = await _seedFamily(db);
+        await tester.pumpAndSettle();
+        // Zoe: Mom is viewer.
+        await expectRowMenu(tester, ids.zoe,
+            canEdit: false, canDelete: false);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'caregiver sees neither Rename nor Archive '
+        '(canEditProfile and canDeleteProfile both false)', (tester) async {
+      final auth = _signedInAs('user-sitter');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final profiles = DriftProfilesRepository(db.storage);
+        final kid = await profiles.create(displayName: 'Kid', isMinor: true);
+        await db.storage.applyRemoteRows([
+          _row(kid.id, 0, 'user-mom', 'primary_guardian', 'Mom'),
+          _row(kid.id, 1, 'user-sitter', 'caregiver', 'Sitter'),
+        ]);
+        await tester.pumpAndSettle();
+        await expectRowMenu(tester, kid.id, canEdit: false, canDelete: false);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'unresolved/unknown role keeps the full menu '
+        '(fails open per the null-vs-empty discipline)', (tester) async {
+      final auth = _signedInAs('user-solo');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        // A local-only profile with no guardian rows at all: `myRole`
+        // never resolves to anything, matching the null-vs-empty
+        // discipline documented on `acceptedGuardianFor`
+        // (lib/domain/models/profile_guardian.dart) — a null result reads
+        // as "not known to be anything in particular", never as
+        // "known to be read-only", so the menu stays full.
+        final profile = await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Solo', isMinor: false);
+        await tester.pumpAndSettle();
+        await expectRowMenu(tester, profile.id,
+            canEdit: true, canDelete: true);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+  });
+
   group('settings entry point (AC1)', () {
     testWidgets('section lists profiles and routes each to Manage Guardians',
         (tester) async {

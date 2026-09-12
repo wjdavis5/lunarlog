@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
 
@@ -43,6 +44,43 @@ void main() {
       );
       expect(body.data, isNot(contains('not enough history')));
       expect(body.data, contains('Copper IUD'));
+    });
+  });
+
+  group('PredictionsSuppressedCard for a lifecycle mode (issue #528)', () {
+    testWidgets('renders the explicit suppressed state and names the mode',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const PredictionsSuppressedCard(
+          lifecycleMode: LifecycleMode.pregnancy,
+        ),
+      ));
+
+      expect(find.byKey(const ValueKey('predictions-suppressed')),
+          findsOneWidget);
+      final body = tester.widget<Text>(
+        find.byKey(const ValueKey('predictions-suppressed-body')),
+      );
+      expect(body.data, contains('Pregnancy'));
+      expect(body.data, isNot(contains('not enough history')));
+      expect(
+        find.byKey(const ValueKey('predictions-suppressed-disclaimer')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('names postpartum and perimenopause too', (tester) async {
+      for (final mode in [
+        LifecycleMode.postpartum,
+        LifecycleMode.perimenopause,
+      ]) {
+        await tester.pumpWidget(
+            _wrap(PredictionsSuppressedCard(lifecycleMode: mode)));
+        final body = tester.widget<Text>(
+          find.byKey(const ValueKey('predictions-suppressed-body')),
+        );
+        expect(body.data, contains(mode.label), reason: mode.name);
+      }
     });
   });
 }

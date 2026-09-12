@@ -96,9 +96,9 @@ export 'package:lunarlog/ui/overview/estimate_copy.dart'
 /// replacing the old `kMonthNames` list this file used to re-import.
 String _estimateDateText(ActivePrediction prediction, String locale) {
   String format(LocalDate date) => dates.formatMonthDayYear(
-        DateTime(date.year, date.month, date.day),
-        locale: locale,
-      );
+    DateTime(date.year, date.month, date.day),
+    locale: locale,
+  );
   if (prediction.tier == CycleConfidence.high) {
     return format(prediction.estimatedNextStart);
   }
@@ -169,16 +169,21 @@ class _OverviewPanelState extends State<OverviewPanel> {
   /// callback on the top-level `StreamBuilder`.
   void _retryPredictions() {
     setState(() {
-      _predictions =
-          _service.watch(widget.profileId, today: widget.todayProvider);
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
     });
   }
+
   // Captured once (matches _resolverFor/cycle_history_section.dart's
   // pattern) rather than re-reading context.read inside a button callback.
   late final CycleExclusionList _exclusions = context
       .read<CycleExclusionList>();
-  late final SettingsStore? _settings =
-      Provider.of<SettingsStore?>(context, listen: false);
+  late final SettingsStore? _settings = Provider.of<SettingsStore?>(
+    context,
+    listen: false,
+  );
   StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
   StreamSubscription<String?>? _suggestionDismissedSub;
   bool _irregularSuggestionDismissed = false;
@@ -235,9 +240,9 @@ class _OverviewPanelState extends State<OverviewPanel> {
     _suggestionDismissedSub = settings
         .watch(predictionsSuggestionDismissedSettingKey(widget.profileId))
         .listen((val) {
-      if (!mounted) return;
-      setState(() => _irregularSuggestionDismissed = val == 'true');
-    });
+          if (!mounted) return;
+          setState(() => _irregularSuggestionDismissed = val == 'true');
+        });
   }
 
   Future<void> _dismissIrregularSuggestion() async {
@@ -338,7 +343,8 @@ class _OverviewPanelState extends State<OverviewPanel> {
     if (!mounted) return;
     final flow = quickLogFlowLevel(previous?.flow);
     final tz = (widget.timezoneProvider ?? resolveCurrentTimeZoneSync)();
-    final entry = previous?.copyWith(flow: flow, tz: tz) ??
+    final entry =
+        previous?.copyWith(flow: flow, tz: tz) ??
         DayEntry(
           id: '',
           profileId: widget.profileId,
@@ -351,16 +357,18 @@ class _OverviewPanelState extends State<OverviewPanel> {
     await repository.save(entry);
     if (!mounted) return;
     final l10n = AppLocalizations.of(context);
-    messenger.showSnackBar(SnackBar(
-      content: Text(
-        l10n.overviewLoggedSnackbar,
-        key: const ValueKey('today-card-logged-snackbar'),
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          l10n.overviewLoggedSnackbar,
+          key: const ValueKey('today-card-logged-snackbar'),
+        ),
+        action: SnackBarAction(
+          label: l10n.overviewUndo,
+          onPressed: () => _undoLogToday(previous, today),
+        ),
       ),
-      action: SnackBarAction(
-        label: l10n.overviewUndo,
-        onPressed: () => _undoLogToday(previous, today),
-      ),
-    ));
+    );
   }
 
   /// Restores exactly what [_logPeriodStartedToday] overwrote: the prior
@@ -387,11 +395,8 @@ class _OverviewPanelState extends State<OverviewPanel> {
           snapshot: snapshot,
           errorMessage: 'Could not load your cycle estimate.',
           onRetry: _retryPredictions,
-          builder: (context, prediction) => _overviewBody(
-            context,
-            prediction,
-            availability,
-          ),
+          builder: (context, prediction) =>
+              _overviewBody(context, prediction, availability),
         );
       },
     );
@@ -408,16 +413,20 @@ class _OverviewPanelState extends State<OverviewPanel> {
         switch (prediction) {
           ActivePrediction() => _activeCard(context, prediction),
           NotEnoughHistory() => _notEnoughCard(context),
-          // Issue #233: an in-effect continuous birth-control method
-          // replaces the estimate with an explicit suppressed state —
-          // never NotEnoughHistory and never a silent late/paused line.
-          PredictionsSuppressed() =>
-            PredictionsSuppressedCard(method: prediction.method),
+          // Issue #233/#528: an in-effect continuous birth-control
+          // method, or a life-stage mode the averaging model doesn't
+          // apply to, replaces the estimate with an explicit suppressed
+          // state — never NotEnoughHistory and never a silent
+          // late/paused line.
+          PredictionsSuppressed() => PredictionsSuppressedCard(
+            method: prediction.method,
+            lifecycleMode: prediction.lifecycleMode,
+          ),
           // Issue #225: per-profile predictions disabled toggle.
           PredictionsDisabled() => PredictionsDisabledCard(
-              onManageSettings: () =>
-                  pushNamedScreen<void>(context, kRouteSettingsScreen),
-            ),
+            onManageSettings: () =>
+                pushNamedScreen<void>(context, kRouteSettingsScreen),
+          ),
         },
         _seeHistoryLink(context),
         if (availability == NotificationAvailability.denied)
@@ -584,11 +593,10 @@ class _OverviewPanelState extends State<OverviewPanel> {
   Widget _pmsSection(BuildContext context, PmsEstimate pms, ThemeData theme) {
     final l10n = AppLocalizations.of(context);
     String format(LocalDate date) => dates.formatMonthDayYear(
-          DateTime(date.year, date.month, date.day),
-          locale: dates.calendarLocale(context),
-        );
-    final range =
-        '${format(pms.predictedStart)} – ${format(pms.predictedEnd)}';
+      DateTime(date.year, date.month, date.day),
+      locale: dates.calendarLocale(context),
+    );
+    final range = '${format(pms.predictedStart)} – ${format(pms.predictedEnd)}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -639,9 +647,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final copy = AppLocalizations.of(context).overviewExcludedSnackbar;
     await _exclusions.omit(widget.profileId, prediction.lastEpisodeStart);
     if (!mounted) return;
-    messenger.showSnackBar(
-      SnackBar(content: Text(copy)),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(copy)));
   }
 
   /// Issue #221/A2-12: replaces the old dead-end "predictions paused" card.

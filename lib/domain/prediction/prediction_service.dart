@@ -39,10 +39,21 @@
 /// an unrelated profile-mode row change (e.g. only the mode axis editing)
 /// reuses the cached prediction. A null provider keeps the exact pre-#233
 /// behavior.
+///
+/// Issue #528: a [lifecycleModeFor] provider (a `Stream<LifecycleMode>` per
+/// profile — the same drift `profile_modes` row #233 already watches, just
+/// its `mode` column instead of its birth-control columns) joins the combine
+/// too. [_resolve] checks it first, before either the birth-control branch
+/// or the ordinary history computation: `pregnancy`/`postpartum`/
+/// `perimenopause` always return [PredictionsSuppressed], regardless of what
+/// history or birth-control state the profile also carries. A null provider
+/// (tests, unconfigured wiring) keeps the exact pre-#528 behavior — every
+/// profile resolves as [LifecycleMode.tracking].
 library;
 
 import '../birth_control.dart';
 import '../models/day_entry.dart';
+import '../models/lifecycle_mode.dart';
 import '../models/local_date.dart';
 import '../models/profile.dart';
 import '../repositories/day_entries_repository.dart';
@@ -134,24 +145,28 @@ bool _sameOmissions(Set<LocalDate> a, Set<LocalDate> b) {
 /// depends on) must re-derive, while an unrelated mode-row edit reuses the
 /// cache. (The record's structural equality is what keeps that honest, and
 /// [today] is already in the key, so the effective-window edge against the
-/// calendar is covered by the date alone.)
+/// calendar is covered by the date alone.) Issue #528 adds [LifecycleMode]
+/// to the same key for the same reason: a life-stage switch must re-derive
+/// even when entries/facts/birth-control state are unchanged.
 class _PredictionMemo {
   _EntriesFingerprint? _fingerprint;
   Set<LocalDate>? _omissions;
   LocalDate? _today;
   CycleFacts? _facts;
   BirthControlState? _birthControlState;
+  LifecycleMode? _lifecycleMode;
   CyclePrediction? _prediction;
 
   /// The cached prediction when [fingerprint]/[omissions]/[today]/[facts]/
-  /// [birthControlState] all match the last computed call, or null when a
-  /// fresh [computePredictionFromEntries] is needed.
+  /// [birthControlState]/[lifecycleMode] all match the last computed call,
+  /// or null when a fresh [computePredictionFromEntries] is needed.
   CyclePrediction? cached(
     _EntriesFingerprint fingerprint,
     Set<LocalDate> omissions,
     LocalDate today,
     CycleFacts facts,
     BirthControlState? birthControlState,
+    LifecycleMode lifecycleMode,
   ) {
     final prediction = _prediction;
     if (prediction == null) return null;
@@ -160,6 +175,7 @@ class _PredictionMemo {
     if (!_sameOmissions(_omissions ?? const {}, omissions)) return null;
     if (_facts != facts) return null;
     if (_birthControlState != birthControlState) return null;
+    if (_lifecycleMode != lifecycleMode) return null;
     return prediction;
   }
 
@@ -169,6 +185,7 @@ class _PredictionMemo {
     LocalDate today,
     CycleFacts facts,
     BirthControlState? birthControlState,
+    LifecycleMode lifecycleMode,
     CyclePrediction value,
   ) {
     _fingerprint = fingerprint;
@@ -176,6 +193,7 @@ class _PredictionMemo {
     _today = today;
     _facts = facts;
     _birthControlState = birthControlState;
+    _lifecycleMode = lifecycleMode;
     _prediction = value;
   }
 }
@@ -185,7 +203,8 @@ class CyclePredictionService {
       {SettingsStore? settings,
       ProfilesRepository? profiles,
       Stream<BirthControlState?> Function(String profileId)?
-          birthControlStateFor})
+          birthControlStateFor,
+      Stream<LifecycleMode> Function(String profileId)? lifecycleModeFor})
       : _settings = settings,
         _exclusions = settings == null ? null : CycleExclusionList(settings),
         // A named parameter cannot be private, so this direct
@@ -194,7 +213,9 @@ class CyclePredictionService {
         // ignore: prefer_initializing_formals
         _profiles = profiles,
         // ignore: prefer_initializing_formals
-        _birthControlStateFor = birthControlStateFor;
+        _birthControlStateFor = birthControlStateFor,
+        // ignore: prefer_initializing_formals
+        _lifecycleModeFor = lifecycleModeFor;
 
   final DayEntriesRepository _dayEntries;
   final SettingsStore? _settings;
@@ -212,6 +233,14 @@ class CyclePredictionService {
   /// birth-control-aware prediction).
   final Stream<BirthControlState?> Function(String profileId)?
       _birthControlStateFor;
+
+  /// Issue #528: per-profile `profile_modes` life-stage mode watcher.
+  /// [_resolve] short-circuits to [PredictionsSuppressed] for
+  /// `pregnancy`/`postpartum`/`perimenopause` before either the
+  /// birth-control branch or the ordinary history computation runs. Null
+  /// keeps the exact pre-#528 behavior — every profile resolves as
+  /// [LifecycleMode.tracking].
+  final Stream<LifecycleMode> Function(String profileId)? _lifecycleModeFor;
 
   /// Recomputed on every emission of the profile's day-entry stream and,
   /// when a settings store is wired, of the profile's omission-list key —
@@ -236,17 +265,35 @@ class CyclePredictionService {
       _factsFor(profileId),
       _birthControlFor(profileId),
     );
+    // Issue #528: the life-stage mode joins on top of the entries/facts/
+    // birth-control triple, folded down to a flat record the same way
+    // exclusions folds on below.
+    final withMode = combineLatest2(core, _lifecycleModeForProfile(profileId))
+        .map((latest) =>
+            (latest.$1.$1, latest.$1.$2, latest.$1.$3, latest.$2));
     final Stream<
-            (List<DayEntry>, Set<LocalDate>, CycleFacts, BirthControlState?)>
+            (
+              List<DayEntry>,
+              Set<LocalDate>,
+              CycleFacts,
+              BirthControlState?,
+              LifecycleMode
+            )>
         withExclusions;
     if (exclusions == null) {
-      withExclusions = core.map(
-        (latest) => (latest.$1, const <LocalDate>{}, latest.$2, latest.$3),
+      withExclusions = withMode.map(
+        (latest) =>
+            (latest.$1, const <LocalDate>{}, latest.$2, latest.$3, latest.$4),
       );
     } else {
-      withExclusions = combineLatest2(core, exclusions.watch(profileId)).map(
-        (latest) => (latest.$1.$1, latest.$2, latest.$1.$2, latest.$1.$3),
-      );
+      withExclusions = combineLatest2(withMode, exclusions.watch(profileId))
+          .map((latest) => (
+                latest.$1.$1,
+                latest.$2,
+                latest.$1.$2,
+                latest.$1.$3,
+                latest.$1.$4,
+              ));
     }
     return combineLatest2(withExclusions, _predictionsEnabledFor(profileId))
         .map((latest) {
@@ -260,6 +307,7 @@ class CyclePredictionService {
         today: todayOf(),
         facts: data.$3,
         birthControlState: data.$4,
+        lifecycleMode: data.$5,
       );
     });
   }
@@ -279,6 +327,16 @@ class CyclePredictionService {
   Stream<BirthControlState?> _birthControlFor(String profileId) {
     final provider = _birthControlStateFor;
     if (provider == null) return Stream.value(null);
+    return provider(profileId);
+  }
+
+  /// The profile's life-stage mode (issue #528), or
+  /// [LifecycleMode.tracking] when no [_lifecycleModeFor] provider is
+  /// wired. Re-emitted on every `profile_modes` row change; [LifecycleMode]
+  /// is an enum so the #197 memo's equality check on it is exact.
+  Stream<LifecycleMode> _lifecycleModeForProfile(String profileId) {
+    final provider = _lifecycleModeFor;
+    if (provider == null) return Stream.value(LifecycleMode.tracking);
     return provider(profileId);
   }
 
@@ -346,10 +404,11 @@ class CyclePredictionService {
     required LocalDate today,
     required CycleFacts facts,
     required BirthControlState? birthControlState,
+    required LifecycleMode lifecycleMode,
   }) {
     final fingerprint = _fingerprintOf(entries);
-    final cached =
-        memo.cached(fingerprint, omissions, today, facts, birthControlState);
+    final cached = memo.cached(fingerprint, omissions, today, facts,
+        birthControlState, lifecycleMode);
     if (cached != null) return cached;
     final prediction = _resolve(
       entries: entries,
@@ -357,9 +416,10 @@ class CyclePredictionService {
       today: today,
       facts: facts,
       birthControlState: birthControlState,
+      lifecycleMode: lifecycleMode,
     );
     memo.store(fingerprint, omissions, today, facts, birthControlState,
-        prediction);
+        lifecycleMode, prediction);
     return prediction;
   }
 
@@ -377,13 +437,26 @@ class CyclePredictionService {
   /// [NotEnoughHistory]-only provisional fallback never applies to a
   /// profile with an in-effect method. The explicit `birthControl == null`
   /// guard on the fallback documents that precedence.
+  ///
+  /// Issue #528: [lifecycleMode] is checked first, ahead of both #218 and
+  /// #233 — `pregnancy`/`postpartum`/`perimenopause` return
+  /// [PredictionsSuppressed] outright, regardless of what history or
+  /// birth-control state the profile also carries. Unlike the birth-control
+  /// branch (owned by [computePredictionFromEntries], since it also
+  /// produces a pack-driven [ActivePrediction] for a withdrawal-bleed
+  /// method), this branch has only one outcome, so it lives here rather
+  /// than adding a [LifecycleMode] parameter to that pure function.
   CyclePrediction _resolve({
     required List<DayEntry> entries,
     required Set<LocalDate> omissions,
     required LocalDate today,
     required CycleFacts facts,
     required BirthControlState? birthControlState,
+    required LifecycleMode lifecycleMode,
   }) {
+    if (_suppressesPrediction(lifecycleMode)) {
+      return PredictionsSuppressed(lifecycleMode: lifecycleMode);
+    }
     final birthControl = _activeBirthControlFor(birthControlState, today);
     final computed = computePredictionFromEntries(
       entries: entries,
@@ -398,6 +471,18 @@ class CyclePredictionService {
     }
     return computed;
   }
+
+  /// The life-stage modes issue #528 suppresses period prediction for: none
+  /// of these are the regular ovulatory cycle the averaging model assumes.
+  /// `tracking` and `conceive` are unaffected — conceive is still trying to
+  /// predict a fertile window from an ordinary cycle.
+  static bool _suppressesPrediction(LifecycleMode mode) => switch (mode) {
+        LifecycleMode.pregnancy ||
+        LifecycleMode.postpartum ||
+        LifecycleMode.perimenopause =>
+          true,
+        LifecycleMode.tracking || LifecycleMode.conceive => false,
+      };
 
   /// One-shot computation from current stored entries (and the current
   /// omission list, cycle facts, and birth-control state when their
@@ -424,6 +509,10 @@ class CyclePredictionService {
     final birthControlState = birthControlStateFor == null
         ? null
         : await birthControlStateFor(profileId).first;
+    final lifecycleModeFor = _lifecycleModeFor;
+    final lifecycleMode = lifecycleModeFor == null
+        ? LifecycleMode.tracking
+        : await lifecycleModeFor(profileId).first;
     return _resolve(
       entries: await _dayEntries.listForProfile(profileId),
       omissions: omissions,
@@ -434,6 +523,7 @@ class CyclePredictionService {
         typicalPeriodLengthDays: profile?.typicalPeriodLengthDays,
       ),
       birthControlState: birthControlState,
+      lifecycleMode: lifecycleMode,
     );
   }
 }

@@ -2,17 +2,34 @@
 /// Offers unlock/retry — a declined credential never shows data and never
 /// exits the app. Its own [MaterialApp] because it renders above (and
 /// independent of) the app content in the shell's stack.
+///
+/// Issue #534: [GateDenialReason.noCredentialEnrolled] gets its own
+/// prominent copy and a settings deep link, distinct from
+/// [GateDenialReason.deniedByUser]'s retry — a device with no screen lock
+/// at all was previously stuck behind the same generic denial message and
+/// a footnote below an apparently-broken Unlock button.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/gate/device_settings_launcher.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 
 class LockScreen extends StatelessWidget {
-  const LockScreen({super.key, required this.controller});
+  const LockScreen({
+    super.key,
+    required this.controller,
+    this.openDeviceSettings = defaultOpenDeviceSettings,
+  });
 
   final GateController controller;
+
+  /// Issue #534: the "Open device settings" action's platform call.
+  /// Injectable so tests substitute a fake and never touch
+  /// `url_launcher`'s platform channel — same seam pattern as
+  /// `AccountSection`'s `appleAuthorizationCodeRequest`.
+  final DeviceSettingsLauncher openDeviceSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -40,41 +57,11 @@ class LockScreen extends StatelessWidget {
                 Text('lunarlog is locked',
                     style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),
-                const Text(
-                  'Your data is protected. Unlock to continue.',
-                  textAlign: TextAlign.center,
-                ),
-                if (controller.lastAttemptDenied &&
-                    !controller.authenticating) ...[
-                  const SizedBox(height: 12),
-                  const Text(
-                    key: ValueKey('lock-denied-message'),
-                    'Not unlocked. Your data stays hidden until the device '
-                    'credential is accepted.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-                const SizedBox(height: 24),
-                FilledButton(
-                  key: const ValueKey('unlock-button'),
-                  onPressed: controller.authenticating
-                      ? null
-                      : () => controller.unlock(),
-                  child: controller.authenticating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Unlock'),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'If this device has no screen lock set, add one in system '
-                  'settings — lunarlog will not open without it.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall,
-                ),
+                if (controller.denialReason ==
+                    GateDenialReason.noCredentialEnrolled)
+                  ..._noCredentialContent(theme)
+                else
+                  ..._normalContent(theme),
               ],
             ),
           ),
@@ -82,4 +69,77 @@ class LockScreen extends StatelessWidget {
       ),
     );
   }
+
+  /// [GateDenialReason.none] (never attempted, or last attempt succeeded)
+  /// and [GateDenialReason.deniedByUser]: the OS did present a prompt, so
+  /// "try again" is the primary action.
+  List<Widget> _normalContent(ThemeData theme) => [
+        const Text(
+          'Your data is protected. Unlock to continue.',
+          textAlign: TextAlign.center,
+        ),
+        if (controller.denialReason == GateDenialReason.deniedByUser &&
+            !controller.authenticating) ...[
+          const SizedBox(height: 12),
+          const Text(
+            key: ValueKey('lock-denied-message'),
+            'Not unlocked. Your data stays hidden until the device '
+            'credential is accepted.',
+            textAlign: TextAlign.center,
+          ),
+        ],
+        const SizedBox(height: 24),
+        FilledButton(
+          key: const ValueKey('unlock-button'),
+          onPressed:
+              controller.authenticating ? null : () => controller.unlock(),
+          child: controller.authenticating
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Unlock'),
+        ),
+      ];
+
+  /// [GateDenialReason.noCredentialEnrolled]: `local_auth` reports no
+  /// credential exists at all, so no prompt was ever shown — a plain
+  /// retry would just silently fail again. This is the primary, prominent
+  /// message (not a footnote below a dead-end button), with "Open device
+  /// settings" as the primary action. [GateController.unlock] also
+  /// re-checks this automatically when the app resumes from background
+  /// (issue #534), so an operator who adds a passcode and comes back
+  /// unlocks without tapping anything here.
+  List<Widget> _noCredentialContent(ThemeData theme) => [
+        Text(
+          key: const ValueKey('no-credential-message'),
+          'This device has no screen lock set. lunarlog protects your '
+          "family's data using your device's own screen lock, so it can't "
+          'open until you add one — a passcode, PIN, pattern, or biometric '
+          'lock all work.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyLarge,
+        ),
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          key: const ValueKey('open-device-settings-button'),
+          onPressed: () => openDeviceSettings(),
+          icon: const Icon(Icons.settings),
+          label: const Text('Open device settings'),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          key: const ValueKey('unlock-retry-button'),
+          onPressed:
+              controller.authenticating ? null : () => controller.unlock(),
+          child: controller.authenticating
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Try again'),
+        ),
+      ];
 }

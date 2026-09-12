@@ -238,11 +238,14 @@ class _AnalysisTabState extends State<AnalysisTab> {
       switch (prediction) {
         ActivePrediction() => _statsCard(context, prediction),
         NotEnoughHistory() => _notEnoughCard(context),
-        // Issue #233: an in-effect continuous method suppresses period
+        // Issue #233/#528: an in-effect continuous method, or a life-stage
+        // mode the averaging model doesn't apply to, suppresses period
         // prediction with an explicit named state — the stats card has no
         // mean/spread to show, so this renders the shared suppressed card.
-        PredictionsSuppressed() =>
-          PredictionsSuppressedCard(method: prediction.method),
+        PredictionsSuppressed() => PredictionsSuppressedCard(
+            method: prediction.method,
+            lifecycleMode: prediction.lifecycleMode,
+          ),
         // Issue #225: per-profile toggle turning off predictions.
         PredictionsDisabled() => const PredictionsDisabledCard(),
       },

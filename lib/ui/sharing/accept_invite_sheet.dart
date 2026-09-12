@@ -96,9 +96,19 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
               ],
             ),
             const SizedBox(height: 12),
+            // Issue #535 (a): the server has no pre-accept preview RPC —
+            // `accept_guardian_invitation` is the only call available, and
+            // it commits the acceptance as part of returning the profile
+            // name and role (see SupabaseSharingService.acceptInvite). This
+            // sheet cannot know who or what it's joining until after that
+            // commit, so the copy stays neutral rather than assuming a
+            // minor's profile (the previous wording hardcoded "child",
+            // which is wrong whenever two adults share one adult's
+            // profile).
             Text(
-              'You have been invited to care for a child profile in LunarLog. '
-              'Accepting will sync their cycle calendar and health logs to this device.',
+              "You've been invited to a shared profile in LunarLog. "
+              'Accepting will sync its cycle calendar and health logs to '
+              'this device.',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),

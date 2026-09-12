@@ -14,14 +14,27 @@
 /// sharer's device has not published its first snapshot yet) renders a
 /// distinct "waiting for the first update" state instead, so a
 /// just-redeemed code never reads as a dead connection.
+///
+/// Issue #529: this is the one place a *third party* (never the profile's
+/// own operator) sees derived cycle-phase data, so [kEstimateDisclaimer]
+/// and [kFertileWindowDisclaimer] — carried everywhere else this estimate
+/// is shown — render here too, above the fold (the first thing in the
+/// scroll view, before the calendar itself), never behind a tap or below
+/// a scroll. The confidence tier renders alongside them when the
+/// projection carries one ([PredictionProjection.confidenceTier] — see
+/// that field's doc comment for why a real snapshot from today's server
+/// never actually carries it yet).
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../domain/models/local_date.dart';
+import '../../domain/prediction/prediction.dart' show CycleConfidence;
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../domain/sharing/prediction_projection.dart';
 import '../components/inline_error.dart';
+import '../overview/estimate_copy.dart'
+    show kEstimateDisclaimer, kFertileWindowDisclaimer;
 
 class PredictionConnectionCalendarScreen extends StatefulWidget {
   const PredictionConnectionCalendarScreen({
@@ -163,6 +176,13 @@ class _PredictionConnectionCalendarScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Issue #529: above the fold — the first thing this screen
+                // shows, before the month nav or the grid — never a
+                // footer requiring a scroll past the calendar first.
+                _DisclaimerBanner(
+                  confidenceTier: load.projection!.confidenceTier,
+                ),
+                const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -231,6 +251,61 @@ class _EmptyState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Issue #529: the non-medical disclaimer this estimate carries
+/// everywhere it is shown to the profile's own operator
+/// ([kEstimateDisclaimer], plus [kFertileWindowDisclaimer] alongside the
+/// fertile/ovulation marks this screen renders), now carried to the
+/// recipient too — a third party who never saw the onboarding, settings,
+/// or any of the other places that copy already lives. Renders above the
+/// fold: it is the first widget in the screen's scrollable column, ahead
+/// of the month nav and the grid, never a tap-to-reveal or a footer.
+class _DisclaimerBanner extends StatelessWidget {
+  const _DisclaimerBanner({required this.confidenceTier});
+
+  /// The sharer's confidence tier at publish time, when the projection
+  /// carries one; `null` renders no tier line rather than guessing one.
+  final CycleConfidence? confidenceTier;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tier = confidenceTier;
+    return Container(
+      key: const ValueKey('prediction-disclaimer-banner'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            kEstimateDisclaimer,
+            key: const ValueKey('prediction-disclaimer-estimate'),
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            kFertileWindowDisclaimer,
+            key: const ValueKey('prediction-disclaimer-fertile'),
+            style: theme.textTheme.bodySmall,
+          ),
+          if (tier != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Estimate confidence: ${tier.label}',
+              key: const ValueKey('prediction-confidence-tier'),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ],
       ),
     );
   }

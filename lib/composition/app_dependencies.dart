@@ -83,6 +83,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_state_repository.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
@@ -254,6 +255,11 @@ AppDependencies buildAppDependencies({
     // predictor's branch (withdrawal-bleed -> pack schedule, continuous ->
     // suppressed). Mirrors the reminder coordinator's birthControlStateFor
     // wiring in lib/app.dart.
+    //
+    // Issue #528: the same profile_modes row's `mode` column feeds the
+    // life-stage suppression branch (pregnancy/postpartum/perimenopause ->
+    // suppressed), via a second `.map` over the identical watcher rather
+    // than a second subscription.
     prediction: CyclePredictionService(dayEntries,
         settings: settings,
         profiles: profiles,
@@ -265,7 +271,10 @@ AppDependencies buildAppDependencies({
                     method: row.birthControlMethod,
                     startedOn: row.birthControlStartedOn,
                     stoppedOn: row.birthControlStoppedOn,
-                  ))),
+                  )),
+        lifecycleModeFor: (profileId) => storage
+            .watchProfileMode(profileId)
+            .map((row) => LifecycleMode.fromDb(row?.mode))),
     cycleHistory: CycleHistoryService(dayEntries, settings: settings),
     cycleExclusions: CycleExclusionList(settings),
     authService: authService,

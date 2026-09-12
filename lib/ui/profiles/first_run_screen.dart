@@ -35,10 +35,12 @@ import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart' show CycleFacts;
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
-import 'package:lunarlog/observability/route_names.dart' show kRouteImportScreen;
+import 'package:lunarlog/observability/route_names.dart'
+    show kRouteImportScreen;
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
@@ -60,18 +62,24 @@ const String kFirstRunBrandName = 'LunarLog';
 
 /// The date-picker callable, injectable so widget tests can answer the
 /// last-period question without driving the Material dialog.
-typedef FirstRunDatePicker =
-    Future<DateTime?> Function(BuildContext context, DateTime initialDate,
-        DateTime firstDate, DateTime lastDate);
+typedef FirstRunDatePicker = Future<DateTime?> Function(
+  BuildContext context,
+  DateTime initialDate,
+  DateTime firstDate,
+  DateTime lastDate,
+);
 
-Future<DateTime?> _showMaterialDatePicker(BuildContext context,
-        DateTime initialDate, DateTime firstDate, DateTime lastDate) =>
-    showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
-    );
+Future<DateTime?> _showMaterialDatePicker(
+  BuildContext context,
+  DateTime initialDate,
+  DateTime firstDate,
+  DateTime lastDate,
+) => showDatePicker(
+  context: context,
+  initialDate: initialDate,
+  firstDate: firstDate,
+  lastDate: lastDate,
+);
 
 /// How far back the last-period-start picker reaches: a generous year —
 /// the question asks about the *last* period, so anything older is a
@@ -185,8 +193,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     if (!mounted) return;
     if (acknowledged) return;
     setState(() => _webAckPending = true);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _showWebAcknowledgmentDialog(store));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _showWebAcknowledgmentDialog(store),
+    );
   }
 
   /// The blocking dialog itself, split out of [_checkWebAcknowledgment] so
@@ -283,19 +292,16 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// `error`, `awaitingUploadConsent` and `accountMismatch` end the wait
   /// immediately — the home gate renders its own screen for each of these
   /// above this one, so there is nothing left here to guard.
-  bool _restoreDoneForPhase(SyncSnapshot snapshot) =>
-      switch (snapshot.phase) {
-        SyncPhase.restoring => _markSawRestoringAndReturnFalse(),
-        SyncPhase.error ||
-        SyncPhase.awaitingUploadConsent ||
-        SyncPhase.accountMismatch =>
-          true,
-        SyncPhase.idle ||
-        SyncPhase.paused ||
-        SyncPhase.pushing ||
-        SyncPhase.pulling =>
-          _sawRestoring || snapshot.boundUserId != null,
-      };
+  bool _restoreDoneForPhase(SyncSnapshot snapshot) => switch (snapshot.phase) {
+    SyncPhase.restoring => _markSawRestoringAndReturnFalse(),
+    SyncPhase.error ||
+    SyncPhase.awaitingUploadConsent ||
+    SyncPhase.accountMismatch => true,
+    SyncPhase.idle ||
+    SyncPhase.paused ||
+    SyncPhase.pushing ||
+    SyncPhase.pulling => _sawRestoring || snapshot.boundUserId != null,
+  };
 
   /// The `restoring` arm's side effect, pulled out since switch-expression
   /// arms must be single expressions.
@@ -331,8 +337,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     setState(() => _lastPeriodStart = LocalDate.fromDateTime(picked));
   }
 
-  DateTime _nowAsDateTime() =>
-      _localDateToDateTime(widget.todayProvider());
+  DateTime _nowAsDateTime() => _localDateToDateTime(widget.todayProvider());
 
   DateTime _localDateToDateTime(LocalDate date) =>
       DateTime(date.year, date.month, date.day);
@@ -363,6 +368,13 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         displayName: _nameController.text,
         isMinor: _isMinor,
         mode: _mode,
+        // Issue #530: the three cycle answers feed provisional seeding —
+        // captured here, not just in the recorder.
+        facts: CycleFacts(
+          lastPeriodStart: _lastPeriodStart,
+          typicalCycleLengthDays: _optionalInt(_typicalCycleController.text),
+          typicalPeriodLengthDays: _optionalInt(_typicalPeriodController.text),
+        ),
       );
       await recorder?.record(profile.id, _collectedAnswers(l10n));
     } catch (_) {
@@ -384,12 +396,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   OnboardingCycleAnswers _collectedAnswers(AppLocalizations l10n) =>
       OnboardingCycleAnswers(
         lastPeriodStart: _lastPeriodStart,
-        typicalCycleLengthDays:
-            _optionalInt(_typicalCycleController.text),
-        typicalPeriodLengthDays:
-            _optionalInt(_typicalPeriodController.text),
-        birthControlMethod:
-            birthControlStoredValue(_birthControl),
+        typicalCycleLengthDays: _optionalInt(_typicalCycleController.text),
+        typicalPeriodLengthDays: _optionalInt(_typicalPeriodController.text),
+        birthControlMethod: birthControlStoredValue(_birthControl),
         lifecycleMode: _lifecycleMode,
       );
 
@@ -462,9 +471,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   FilledButton(
                     key: const ValueKey('first-run-next'),
                     onPressed: _advanceIntro,
-                    child: Text(_introIndex < 2
-                        ? l10n.firstRunNext
-                        : l10n.firstRunUnderstand),
+                    child: Text(
+                      _introIndex < 2
+                          ? l10n.firstRunNext
+                          : l10n.firstRunUnderstand,
+                    ),
                   ),
                 ],
               ),
@@ -498,59 +509,56 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   }
 
   Widget _valueCard(AppLocalizations l10n) => Column(
-        key: const ValueKey('first-run-card-value'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(Icons.nights_stay, size: 48),
-          const SizedBox(height: 8),
-          Text(
-            kFirstRunBrandName,
-            textAlign: TextAlign.center,
-            style: LLType.titleMedium.toTextStyle(),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            l10n.firstRunValueHeadline,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(l10n.firstRunValueBody),
-        ],
-      );
+    key: const ValueKey('first-run-card-value'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Icon(Icons.nights_stay, size: 48),
+      const SizedBox(height: 8),
+      Text(
+        kFirstRunBrandName,
+        textAlign: TextAlign.center,
+        style: LLType.titleMedium.toTextStyle(),
+      ),
+      const SizedBox(height: 16),
+      Text(
+        l10n.firstRunValueHeadline,
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 8),
+      Text(l10n.firstRunValueBody),
+    ],
+  );
 
   Widget _guardiansCard(AppLocalizations l10n) => Column(
-        key: const ValueKey('first-run-card-guardians'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.firstRunGuardiansTitle,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(l10n.firstRunGuardiansBody),
-          const SizedBox(height: 16),
-          Text(
-            l10n.firstRunMinorExplainerTitle,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(l10n.firstRunMinorExplainerBody),
-        ],
-      );
+    key: const ValueKey('first-run-card-guardians'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        l10n.firstRunGuardiansTitle,
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 8),
+      Text(l10n.firstRunGuardiansBody),
+      const SizedBox(height: 16),
+      Text(
+        l10n.firstRunMinorExplainerTitle,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 8),
+      Text(l10n.firstRunMinorExplainerBody),
+    ],
+  );
 
   Widget _noticeCard(AppLocalizations l10n) => Column(
-        key: const ValueKey('first-run-card-notice'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.firstRunNoticeBody,
-            style: LLType.titleMedium.toTextStyle(),
-          ),
-        ],
-      );
+    key: const ValueKey('first-run-card-notice'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(l10n.firstRunNoticeBody, style: LLType.titleMedium.toTextStyle()),
+    ],
+  );
 
   /// The existing name form, with its submit moved to "Continue" and a
   /// one-line truthful hint under the minor checkbox (#216's
@@ -569,7 +577,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: SyncStatusTile(
-                      webSyncOff: widget.isWebBuild && sync == null),
+                    webSyncOff: widget.isWebBuild && sync == null,
+                  ),
                 ),
               TextFormField(
                 controller: _nameController,
@@ -581,8 +590,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               ),
               CheckboxListTile(
                 value: _isMinor,
-                onChanged: (value) =>
-                    setState(() => _isMinor = value ?? false),
+                onChanged: (value) => setState(() => _isMinor = value ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
                 title: Text(l10n.firstRunMinorLabel),
@@ -592,10 +600,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 child: Text(
                   l10n.firstRunMinorHint,
                   key: const ValueKey('first-run-minor-hint'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               if (!_ageAckPreviouslyRecorded) ...[
@@ -618,10 +625,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                         : l10n.firstRunAgeAcknowledgementHint,
                     key: const ValueKey('first-run-age-ack-hint'),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: _ageAckError
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: _ageAckError
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -635,16 +642,18 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   children: [
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: Text(l10n.firstRunCareModeLabel,
-                          key: const ValueKey('care-mode-label'),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      child: Text(
+                        l10n.firstRunCareModeLabel,
+                        key: const ValueKey('care-mode-label'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ),
                     DropdownButton<ProfileMode>(
                       key: const ValueKey('care-mode-dropdown'),
                       value: _mode,
                       isExpanded: true,
-                      onChanged: (value) => setState(
-                          () => _mode = value ?? ProfileMode.standard),
+                      onChanged: (value) =>
+                          setState(() => _mode = value ?? ProfileMode.standard),
                       items: [
                         for (final mode in ProfileMode.values)
                           DropdownMenuItem<ProfileMode>(
@@ -661,10 +670,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 child: Text(
                   _mode.hint,
                   key: const ValueKey('care-mode-hint'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               const SizedBox(height: LLSpace.space4),
@@ -743,14 +751,18 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _labelAbove(l10n.firstRunCycleBirthControlLabel,
-                      const ValueKey('cycle-birth-control-label')),
+                  _labelAbove(
+                    l10n.firstRunCycleBirthControlLabel,
+                    const ValueKey('cycle-birth-control-label'),
+                  ),
                   DropdownButton<BirthControlChoice>(
                     key: const ValueKey('cycle-birth-control'),
                     value: _birthControl,
                     isExpanded: true,
-                    onChanged: (value) => setState(() => _birthControl =
-                        value ?? BirthControlChoice.notAnswered),
+                    onChanged: (value) => setState(
+                      () => _birthControl =
+                          value ?? BirthControlChoice.notAnswered,
+                    ),
                     items: [
                       for (final choice in BirthControlChoice.values)
                         DropdownMenuItem<BirthControlChoice>(
@@ -767,14 +779,17 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _labelAbove(l10n.firstRunCycleGoalLabel,
-                      const ValueKey('cycle-goal-label')),
+                  _labelAbove(
+                    l10n.firstRunCycleGoalLabel,
+                    const ValueKey('cycle-goal-label'),
+                  ),
                   DropdownButton<LifecycleMode>(
                     key: const ValueKey('cycle-goal'),
                     value: _lifecycleMode,
                     isExpanded: true,
-                    onChanged: (value) => setState(() =>
-                        _lifecycleMode = value ?? LifecycleMode.tracking),
+                    onChanged: (value) => setState(
+                      () => _lifecycleMode = value ?? LifecycleMode.tracking,
+                    ),
                     items: [
                       for (final mode in LifecycleMode.values)
                         DropdownMenuItem<LifecycleMode>(
@@ -813,56 +828,56 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   }
 
   Widget _lastPeriodField(AppLocalizations l10n) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _labelAbove(l10n.firstRunCycleLastPeriodLabel,
-              const ValueKey('cycle-last-period-label')),
-          if (_lastPeriodStart == null)
-            OutlinedButton.icon(
-              key: const ValueKey('cycle-last-period-choose'),
-              onPressed: _pickLastPeriodDate,
-              icon: const Icon(Icons.calendar_today),
-              label: Text(l10n.firstRunCycleChooseDate),
-            )
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    formatMonthDayYear(
-                        _localDateToDateTime(_lastPeriodStart!)),
-                    key: const ValueKey('cycle-last-period-value'),
-                  ),
-                ),
-                TextButton(
-                  onPressed: _pickLastPeriodDate,
-                  child: Text(l10n.firstRunCycleChangeDate),
-                ),
-                TextButton(
-                  key: const ValueKey('cycle-last-period-clear'),
-                  onPressed: () =>
-                      setState(() => _lastPeriodStart = null),
-                  child: Text(l10n.firstRunCycleClearDate),
-                ),
-              ],
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _labelAbove(
+        l10n.firstRunCycleLastPeriodLabel,
+        const ValueKey('cycle-last-period-label'),
+      ),
+      if (_lastPeriodStart == null)
+        OutlinedButton.icon(
+          key: const ValueKey('cycle-last-period-choose'),
+          onPressed: _pickLastPeriodDate,
+          icon: const Icon(Icons.calendar_today),
+          label: Text(l10n.firstRunCycleChooseDate),
+        )
+      else
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                formatMonthDayYear(_localDateToDateTime(_lastPeriodStart!)),
+                key: const ValueKey('cycle-last-period-value'),
+              ),
             ),
-        ],
-      );
+            TextButton(
+              onPressed: _pickLastPeriodDate,
+              child: Text(l10n.firstRunCycleChangeDate),
+            ),
+            TextButton(
+              key: const ValueKey('cycle-last-period-clear'),
+              onPressed: () => setState(() => _lastPeriodStart = null),
+              child: Text(l10n.firstRunCycleClearDate),
+            ),
+          ],
+        ),
+    ],
+  );
 
   Widget _labelAbove(String label, Key key) => Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          label,
-          key: key,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
+    alignment: Alignment.centerLeft,
+    child: Text(label, key: key, style: Theme.of(context).textTheme.bodySmall),
+  );
 
   /// Optional-day-count validation: blank passes (the question is
   /// skippable); anything else must parse as a whole number inside
   /// [min]–[max] inclusive, else [errorMessage].
   String? _validateDayRange(
-      String? value, String errorMessage, int min, int max) {
+    String? value,
+    String errorMessage,
+    int min,
+    int max,
+  ) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return null;
     final parsed = int.tryParse(trimmed);
