@@ -9,7 +9,7 @@
 -- (the role write bumps server_version so the next pull delivers it), and
 -- the grant posture (authenticated-only, matching revoke_guardian).
 begin;
-select plan(33);
+select plan(38);
 
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('dad');
@@ -319,6 +319,80 @@ select ok(
     where profile_id = tests.ulid(901) and user_id = tests.get_supabase_uid('doctor'))
   > (select server_version from tmp_doctor_version),
   'The role write advances server_version, so the next pull delivers it'
+);
+
+-- ---------------------------------------------------------------------------
+-- 34-38. Issue #519: narrowing a target away from an invite-capable role
+-- (primary_guardian/co_parent) cancels their still-live invitations - the
+-- same guarantee revoke_guardian gives on a full revocation (#81), now
+-- applied to a role change alone.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('stepdad');
+select tests.create_supabase_user('babysitter');
+
+select tests.authenticate_as('mom');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(903), 'Jordan', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_guardian_invitation(
+  tests.ulid(903), 'co_parent', 'Stepdad', repeat('0e', 32), 48
+);
+select tests.authenticate_as('stepdad');
+select public.accept_guardian_invitation(repeat('0e', 32), 'Stepdad');
+
+-- Stepdad (co_parent) invites a caregiver and keeps the raw token live.
+select public.create_guardian_invitation(
+  tests.ulid(903), 'caregiver', 'Babysitter', repeat('0f', 32), 48
+);
+
+-- Mom demotes stepdad from co_parent to viewer - the "you may no longer
+-- add people" action the issue describes.
+select tests.authenticate_as('mom');
+select is(
+  (select (public.update_guardian_role(
+    tests.ulid(903), tests.get_supabase_uid('stepdad'), 'viewer'
+  ) ->> 'invitations_cancelled')::bigint),
+  1::bigint,
+  'Issue #519: demoting a co_parent away from an invite-capable role reports one cancelled invitation'
+);
+
+select isnt(
+  (select revoked_at from public.guardian_invitations
+    where id = tests.invitation_id_by_hash(repeat('0f', 32))),
+  null,
+  'Issue #519: the demoted co_parent''s still-live invitation is cancelled'
+);
+
+select tests.authenticate_as('babysitter');
+select throws_ok(
+  $$select public.accept_guardian_invitation(repeat('0f', 32))$$,
+  '55000', null,
+  'Issue #519: the cancelled invitation is no longer redeemable'
+);
+
+-- Narrowing a role that was never invite-capable to begin with (a
+-- caregiver, who cannot create invitations) reports zero cancellations -
+-- no over-broad cancellation on a role change that was never the attack
+-- surface.
+select tests.authenticate_as('mom');
+select public.create_guardian_invitation(
+  tests.ulid(903), 'viewer', 'Spare', repeat('2c', 32), 48
+);
+select public.update_guardian_role(
+  tests.ulid(903), tests.get_supabase_uid('stepdad'), 'caregiver'
+);
+select is(
+  (select (public.update_guardian_role(
+    tests.ulid(903), tests.get_supabase_uid('stepdad'), 'viewer'
+  ) ->> 'invitations_cancelled')::bigint),
+  0::bigint,
+  'Issue #519: narrowing an already-non-invite-capable role (caregiver->viewer) cancels nothing'
+);
+select is(
+  (select revoked_at from public.guardian_invitations
+    where id = tests.invitation_id_by_hash(repeat('2c', 32))),
+  null,
+  'Issue #519: an unrelated pending invitation survives a non-invite-capable narrowing'
 );
 
 -- ---------------------------------------------------------------------------

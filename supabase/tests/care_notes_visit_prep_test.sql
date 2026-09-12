@@ -569,14 +569,24 @@ select is((select count(*) from public.visit_prep_items where profile_id = tests
   3::bigint, 'delete_account_data: the owning family''s prep items survive a caregiver''s deletion (R7)');
 
 insert into r select 'mom_delete', public.delete_account_data();
-select is((select (v ->> 'care_notes')::integer from r where name = 'mom_delete'), 3,
-  'delete_account_data: the owner''s care notes are counted (910 tombstoned, 911, 917)');
+-- Issue #522: delete_account_data() now tombstones (rather than hard-
+-- deletes) an owned profile's care_notes, and its returned count reflects
+-- rows NEWLY tombstoned by THIS call - 910 was already tombstoned earlier
+-- in this file (line ~433-440) and so is excluded here (it needs no
+-- further write to reach the already-achieved end state), leaving 911 and
+-- 917 as the two rows this call actually touches.
+select is((select (v ->> 'care_notes')::integer from r where name = 'mom_delete'), 2,
+  'delete_account_data: the owner''s care notes newly tombstoned by this call are counted (911, 917 - 910 was already tombstoned)');
 select is((select (v ->> 'visit_prep_items')::integer from r where name = 'mom_delete'), 3,
   'delete_account_data: the owner''s prep items are counted (920, 930, 931)');
-select is((select count(*) from public.care_notes where profile_id = tests.ulid(901)),
-  0::bigint, 'delete_account_data: the owner''s care notes are gone');
-select is((select count(*) from public.visit_prep_items where profile_id = tests.ulid(901)),
-  0::bigint, 'delete_account_data: the owner''s prep items are gone');
+-- Issue #522: care_notes/visit_prep_items are now tombstoned rather than
+-- hard-deleted, so the rows still exist - only zero of them are LIVE.
+select is((select count(*) from public.care_notes
+    where profile_id = tests.ulid(901) and deleted_at is null),
+  0::bigint, 'delete_account_data: none of the owner''s care notes are LIVE any more');
+select is((select count(*) from public.visit_prep_items
+    where profile_id = tests.ulid(901) and deleted_at is null),
+  0::bigint, 'delete_account_data: none of the owner''s prep items are LIVE any more');
 
 select * from finish();
 rollback;
