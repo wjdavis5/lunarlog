@@ -81,6 +81,34 @@ class SupabaseSyncTransport implements SyncTransport {
     }
   }
 
+  static const String _watermarkRpc = 'sync_watermark';
+
+  /// PostgREST "function not found in the schema cache" — a server that
+  /// has not yet run the migration adding `sync_watermark()` (issue #521's
+  /// graceful-fallback contract: this transport's half of the fix must not
+  /// depend on that migration having landed).
+  static const String _functionNotFoundCode = 'PGRST202';
+
+  @override
+  Future<int?> fetchWatermark() async {
+    try {
+      final data = await _client.rpc<dynamic>(_watermarkRpc);
+      if (data is int) return data;
+      if (data is num) return data.toInt();
+      return null;
+    } on PostgrestException catch (error) {
+      if (error.code == _functionNotFoundCode) return null;
+      // Any other failure (network, auth, an unexpected shape) is treated
+      // the same way: the watermark is an optimization, never a
+      // correctness requirement (the caller's lookback fallback is always
+      // safe), so a hiccup fetching it must never fail the whole pull
+      // cycle.
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   PushResult _decodePushResult(Object? data) {
     if (data is! Map) throw const SyncTransportError.other();
     final resolvedJson = data['resolved'];

@@ -7,6 +7,7 @@ import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/supabase_sync_engine.dart' show kCursorLookback;
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 
@@ -536,6 +537,97 @@ void main() {
       expect(entries, hasLength(1));
       expect(entries.single.deletedAt, isNull);
       expect(entries.single.note, 'from remote');
+    });
+
+    group('issue #521: cursor watermark clamp and lookback fallback', () {
+      test('a watermark below a page\'s max version holds the cursor there '
+          'instead of skipping past it; a later cycle with an advanced '
+          'watermark completes the pull', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.bind(uidA);
+        final pA = ulidN(1);
+        final pB = ulidN(2);
+        // One page carries both rows (nextval order, not commit order): a
+        // naive `cursor = max(page)` would advance straight to 100 and
+        // never look below it again.
+        rig.transport.scriptPage(SyncTable.profiles, [
+          remoteProfile(pA, updatedAt: t0, serverVersion: 55),
+          remoteProfile(pB, updatedAt: t0, serverVersion: 100),
+        ]);
+        // A commit-safe watermark of 60 means: only server_version <= 60 is
+        // guaranteed to have nothing still in flight below it.
+        rig.transport.watermark = 60;
+
+        await rig.start();
+
+        expect((await rig.state()).cursorProfiles, 60,
+            reason:
+                'the cursor must not advance past the watermark even though '
+                'the page\'s own maximum version was 100');
+        // Both rows still apply this cycle — the clamp only bounds the
+        // cursor, never what a delivered page applies.
+        expect(await rig.storage.getProfile(pA), isNotNull);
+        expect(await rig.storage.getProfile(pB), isNotNull);
+
+        // A later cycle: the watermark has caught up, and the transport
+        // (a real one would no longer return an already-delivered row
+        // below the new `afterVersion`) serves nothing new — the persisted
+        // cursor itself is what advances now that it is safe to.
+        rig.transport.watermark = 150;
+        rig.transport.scriptPage(SyncTable.profiles, const []);
+        await rig.sync();
+        expect((await rig.state()).cursorProfiles, 60,
+            reason: 'nothing left below the new watermark to advance past — '
+                'an empty page cannot itself move the cursor');
+      });
+
+      test('no watermark (the RPC is unavailable) falls back to a fixed '
+          'lookback below the page\'s max version, floored at the previous '
+          'cursor', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.bind(uidA);
+        rig.transport.watermark = null; // simulates a server predating #521
+        final pA = ulidN(1);
+        rig.transport.scriptPage(
+          SyncTable.profiles,
+          [remoteProfile(pA, updatedAt: t0, serverVersion: 1000)],
+        );
+
+        await rig.start();
+
+        expect((await rig.state()).cursorProfiles, 1000 - kCursorLookback,
+            reason: 'falls back to maxVersion - kCursorLookback when the '
+                'watermark RPC is unavailable');
+      });
+
+      test('the lookback fallback never regresses the cursor below where '
+          'it already was', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.storage.writeSyncState(kDefaultSyncState.copyWith(
+          boundUserId: const Value(uidA),
+          deviceId: 'device-1',
+          cursorProfiles: 40,
+          lastFullPullAt: Value(t0),
+        ));
+        rig.transport.watermark = null;
+        final pA = ulidN(1);
+        // maxVersion(page, floor: 40) - kCursorLookback(50) would be
+        // negative — must floor at the previous cursor (40), not go
+        // backward.
+        rig.transport.scriptPage(
+          SyncTable.profiles,
+          [remoteProfile(pA, updatedAt: t0, serverVersion: 55)],
+        );
+
+        await rig.start();
+
+        expect((await rig.state()).cursorProfiles, 40,
+            reason: 'the lookback clamp must never move the cursor '
+                'backward past its previous value');
+      });
     });
   });
 }

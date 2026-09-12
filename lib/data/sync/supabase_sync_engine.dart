@@ -80,6 +80,30 @@ const Duration kSyncFullPullInterval = Duration(hours: 24);
 /// [SupabaseSyncEngine._pullIncremental].
 const int kMaxConsecutiveReconcileRetries = 3;
 
+/// Issue #521: the incremental pull cursor is a value from the global
+/// `sync_version_seq`, assigned to a row *before* it commits — so `nextval`
+/// order is not commit order. Two writers (two guardians sharing a profile
+/// hold different advisory locks; several server-side paths take none at
+/// all) can commit out of that order, and the naive `cursor =
+/// max(page.server_version)` then skips whichever commit lands second: the
+/// device advances its cursor past a version another transaction is still
+/// in the middle of writing, and that row is never seen again until the
+/// next full reconcile (up to [kSyncFullPullInterval] later).
+///
+/// [SupabaseSyncEngine._pullTable] prefers a server-computed commit-safe
+/// watermark ([SyncTransport.fetchWatermark]) to clamp the new cursor.
+/// When that RPC is not available yet (a server predating its migration),
+/// this constant is the fallback instead: the new cursor is
+/// `max(page.server_version) - kCursorLookback`, never advancing past a
+/// point this many versions behind the page's own maximum. Fifty is a
+/// generous margin for the concurrency this app actually has (at most a
+/// handful of guardians writing one profile at once) while staying cheap —
+/// every remote apply is LWW-idempotent (an already-applied row re-arrives
+/// on the next page and re-applies as a no-op, or correctly overwrites, but
+/// is never applied wrongly), so re-fetching a small band of already-seen
+/// versions costs a little duplicate work, never correctness.
+const int kCursorLookback = 50;
+
 final Random _jitter = Random();
 
 /// Exponential backoff with up to 25% jitter, capped at ten minutes:
@@ -975,6 +999,14 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// Incremental pull per table, profiles first (KTD2). Returns whether a
   /// page hit a retryable apply failure (left for the next cycle).
   ///
+  /// Issue #521: fetches the commit-safe cursor watermark once for the
+  /// whole cycle (not once per table) before paging any table, and hands
+  /// it to every [_pullTable] call — a single call is enough since the
+  /// watermark only ever gets *less* stale as the cycle progresses, and one
+  /// fewer round trip per cycle is one fewer failure mode to handle. `null`
+  /// (the RPC is unavailable) makes every table fall back to
+  /// [kCursorLookback] independently.
+  ///
   /// Per-table paging and the profileGuardians-specific retry bookkeeping
   /// are split into [_pullTable]/[_onTablePullFailure]/
   /// [_onTablePullSettled] (finding #4 follow-up) so this stays a plain
@@ -983,6 +1015,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// it.
   Future<bool> _pullIncremental(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
+    final watermark = await _fetchWatermark();
     var retry = false;
     for (final table in const [
       SyncTable.profiles,
@@ -1001,15 +1034,28 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.careNotes,
       SyncTable.visitPrepItems,
     ]) {
-      if (await _pullTable(table, uid)) retry = true;
+      if (await _pullTable(table, uid, watermark: watermark)) retry = true;
     }
     return retry;
+  }
+
+  /// [_pullIncremental]'s watermark fetch, wrapped so a transport that
+  /// forgets its own graceful-fallback contract (throws instead of
+  /// returning null) still degrades to [kCursorLookback] instead of failing
+  /// the whole cycle — the watermark is an optimization the pull cursor can
+  /// always do without, never a correctness requirement.
+  Future<int?> _fetchWatermark() async {
+    try {
+      return await _transport.fetchWatermark();
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Pages [table] incrementally until exhausted or a page hits a
   /// retryable apply failure. Returns whether it failed (left for the next
   /// cycle by the caller's `retry` flag).
-  Future<bool> _pullTable(SyncTable table, String uid) async {
+  Future<bool> _pullTable(SyncTable table, String uid, {int? watermark}) async {
     final state = await _storage.readSyncState();
     // profileGuardians has no persisted cursor yet (schema v3): it pages
     // from 0 every cycle, but `after` still advances locally so a full
@@ -1021,7 +1067,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       final page = await _transport.pullPage(
           table: table, afterVersion: after, limit: _pageSize);
       if (page.isEmpty) break;
-      final newCursor = _apply.maxVersion(page, after);
+      final newCursor = _clampedCursor(page, floor: after, watermark: watermark);
       try {
         await _storage.applyRemotePage(
             table: table, rows: page, newCursor: newCursor);
@@ -1032,10 +1078,35 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       }
       final progressed = newCursor > after;
       after = newCursor;
+      // Issue #521: when the clamp below holds the cursor short of the
+      // page's own maximum version, a full-size page no longer proves the
+      // table is exhausted the way it used to — but if the clamp also
+      // stops the cursor from progressing at all, looping on an identical
+      // page forever would be wrong, so `!progressed` still ends this
+      // table's turn here; the rows above the clamp are left for a later
+      // cycle, once the watermark (or, on reconcile, a page-less scan from
+      // zero) has caught up.
       if (page.length < _pageSize || !progressed) break;
     }
     _onTablePullSettled(table, failed);
     return failed;
+  }
+
+  /// The new cursor for one page (issue #521): [maxVersion] of [page]
+  /// (floored at [floor], never regressing), clamped to at most
+  /// [watermark] when one was supplied by the server, or otherwise to at
+  /// most [kCursorLookback] below that maximum. Either way the result never
+  /// drops below [floor] — a stale or lagging watermark must never move the
+  /// cursor backward, only fail to advance it as far as the page allows.
+  int _clampedCursor(
+    List<RemoteRow> page, {
+    required int floor,
+    required int? watermark,
+  }) {
+    final maxVersion = _apply.maxVersion(page, floor);
+    final target = watermark ?? (maxVersion - kCursorLookback);
+    final clamped = target < maxVersion ? target : maxVersion;
+    return clamped > floor ? clamped : floor;
   }
 
   /// [_pullTable]'s persisted-cursor lookup (profileGuardians pages from 0

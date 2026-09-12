@@ -417,6 +417,46 @@ void main() {
     });
   });
 
+  group('fetchWatermark (issue #521)', () {
+    test('POSTs to /rpc/sync_watermark and returns the decoded value',
+        () async {
+      client = makeClient((_) async => json(12345));
+      final watermark = await SupabaseSyncTransport(client!).fetchWatermark();
+
+      expect(requests, hasLength(1));
+      expect(requests.single.method, 'POST');
+      expect(requests.single.url.toString(),
+          '$baseUrl/rest/v1/rpc/sync_watermark');
+      expect(watermark, 12345);
+    });
+
+    test('a PGRST202 "function not found" response falls back to null — '
+        'the server has not run the paired migration yet', () async {
+      client = makeClient((_) async => json(
+            {'message': 'Could not find the function', 'code': 'PGRST202'},
+            status: 404,
+          ));
+      final watermark = await SupabaseSyncTransport(client!).fetchWatermark();
+      expect(watermark, isNull);
+    });
+
+    test('any other transport failure also falls back to null — the '
+        'watermark is an optimization, never a correctness requirement',
+        () async {
+      client = makeClient((_) async => http.Response('bad gateway', 502));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+      await client!.dispose();
+
+      client = makeClient((_) async => throw const SocketException('down'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+
+    test('a malformed (non-numeric) response falls back to null', () async {
+      client = makeClient((_) async => json({'not': 'a number'}));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+  });
+
   group('error mapping over HTTP', () {
     test('401 maps to auth on push and pull', () async {
       client = makeClient((_) async => json(

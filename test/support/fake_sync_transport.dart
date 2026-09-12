@@ -68,6 +68,17 @@ class FakeSyncTransport implements SyncTransport {
   FutureOr<void> Function(PullCall call)? onPull;
   FutureOr<void> Function(PushBatch batch)? onPush;
 
+  /// Scripted answer for [fetchWatermark] (issue #521). Defaults to a very
+  /// large sentinel — "every version committed so far is watermark-safe" —
+  /// so every pre-existing pull test's exact `cursor = max(page)`
+  /// expectations keep holding unless a test deliberately narrows this
+  /// (to exercise the clamp) or sets it to `null` (to exercise the
+  /// lookback fallback for a server without the RPC yet).
+  int? watermark = 1 << 40;
+
+  /// Every [fetchWatermark] call, recorded in order.
+  int fetchWatermarkCount = 0;
+
   int get pushCount => pushes.length;
   int get pullCount => pulls.length;
 
@@ -138,5 +149,11 @@ class FakeSyncTransport implements SyncTransport {
     final queue = pages[table]!;
     if (queue.isEmpty) return const [];
     return queue.removeAt(0);
+  }
+
+  @override
+  Future<int?> fetchWatermark() async {
+    fetchWatermarkCount++;
+    return watermark;
   }
 }
