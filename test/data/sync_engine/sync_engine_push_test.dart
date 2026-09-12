@@ -3,7 +3,7 @@
 /// touches Supabase.
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
@@ -304,6 +304,103 @@ void main() {
                 'batch size — this is exactly what the pre-fix '
                 '_unrejectEntriesOf\'s unbounded read would trip');
       }
+    });
+
+    test('Issue #290: _hasPushableDirty reads at most one row per table with 5,000 dirty rows', () async {
+      final rig = Rig(
+        storageFactory: (db, clock) => CountingStorage(db, clock: clock),
+      );
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final counting = rig.storage as CountingStorage;
+
+      final p = await rig.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await rig.storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: (await rig.storage.readDirtyProfiles()).single.localRev,
+      );
+
+      // Seed 5,000 dirty day entries in a fast batch.
+      final start = DateTime.utc(2020, 1, 1);
+      final companions = <DayEntriesCompanion>[];
+      for (var i = 0; i < 5000; i++) {
+        final d = start.add(Duration(days: i));
+        final date = '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+            '${d.day.toString().padLeft(2, '0')}';
+        companions.add(DayEntriesCompanion.insert(
+          id: 'bulk_entry_$i',
+          profileId: p.id,
+          localDate: date,
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          dirty: const Value(true),
+          localRev: const Value(1),
+          updatedAt: t0,
+        ));
+      }
+      await rig.db.batch((b) => b.insertAll(rig.db.dayEntries, companions));
+
+      counting.profilePageLengths.clear();
+      counting.dayEntryPageLengths.clear();
+
+      final hasPushable = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushable, isTrue);
+
+      expect(counting.profilePageLengths, everyElement(lessThanOrEqualTo(1)));
+      expect(counting.dayEntryPageLengths, everyElement(lessThanOrEqualTo(1)));
+      expect(counting.dayEntryPageLengths.single, 1,
+          reason: 'stopped after reading exactly one dirty row');
+    });
+
+    test('Issue #290: _hasPushableDirty returns false when all dirty rows are rejected', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      final p = await rig.storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e1 = await rig.storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+      final e2 = await rig.storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-02',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+
+      await rig.storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: (await rig.storage.readDirtyProfiles()).single.localRev,
+      );
+
+      // Push and reject both entries.
+      rig.transport.scriptPushResult(rejectedIds: [e1.id, e2.id]);
+      await rig.start();
+
+      expect(rig.engine.snapshot.rejectedCount, 2);
+
+      // Both entries are dirty in DB but rejected at their current localRev.
+      final hasPushable = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushable, isFalse,
+          reason: 'all dirty rows are rejected, cycle must not be re-queued');
+
+      // Edit e1 locally to bump localRev.
+      await rig.storage.upsertDayEntry(
+        id: e1.id,
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+      );
+
+      final hasPushableAfterEdit = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushableAfterEdit, isTrue,
+          reason: 'e1 was edited locally and has a newer localRev');
     });
 
     test('Issue #177: a _SyncPaused between batches (the device locks '
