@@ -24,18 +24,59 @@ import 'package:url_launcher/url_launcher.dart';
 /// same pattern as `AccountSection`'s `appleAuthorizationCodeRequest`.
 typedef DeviceSettingsLauncher = Future<void> Function();
 
+/// The `url_launcher` call shape [openDeviceSettingsWith] depends on,
+/// narrowed to the two arguments it actually uses so a test can substitute
+/// a recording fake without depending on the package's own surface.
+typedef LaunchUrlFn = Future<bool> Function(Uri url, {LaunchMode mode});
+
+/// Resolves this app's Android package name for the App-info fallback
+/// intent. Real implementation reads `package_info_plus`.
+typedef PackageNameProvider = Future<String> Function();
+
 /// The Android intent URI for the Security settings screen
 /// (`android.provider.Settings.ACTION_SECURITY_SETTINGS`), where the
 /// screen-lock/passcode setup lives on stock Android.
 const String kAndroidSecuritySettingsIntent =
     'intent://#Intent;action=android.settings.SECURITY_SETTINGS;end';
 
-/// Real implementation, wired as [LockScreen]'s default.
+/// The iOS `UIApplicationOpenSettingsURLString` scheme — opens this app's
+/// own page in the Settings app with no extra entitlement or Info.plist
+/// declaration (a system scheme, not a third-party app's).
+const String kIosAppSettingsUrl = 'app-settings:';
+
+/// The App-info fallback intent for [packageName] — see
+/// [openDeviceSettingsWith] for why it exists.
+String androidAppDetailsIntent(String packageName) =>
+    'intent://#Intent;'
+    'action=android.settings.APPLICATION_DETAILS_SETTINGS;'
+    'package=$packageName;end';
+
+Future<bool> _launchUrl(
+  Uri url, {
+  LaunchMode mode = LaunchMode.platformDefault,
+}) => launchUrl(url, mode: mode);
+
+Future<String> _packageName() async =>
+    (await PackageInfo.fromPlatform()).packageName;
+
+/// Real implementation, wired as [LockScreen]'s default. Only resolves the
+/// platform defaults and delegates to [openDeviceSettingsWith], which holds
+/// all of the behaviour and is what the unit tests exercise (the CRAP gate
+/// scores untested platform-channel code harshly, so the logic and the
+/// platform glue are deliberately kept in separate functions).
+Future<void> defaultOpenDeviceSettings({BreadcrumbLog? breadcrumbLog}) =>
+    openDeviceSettingsWith(
+      breadcrumbLog: breadcrumbLog ?? defaultBreadcrumbLog,
+      launch: _launchUrl,
+      packageName: _packageName,
+      platform: defaultTargetPlatform,
+      isWeb: kIsWeb,
+    );
+
+/// The behaviour behind [defaultOpenDeviceSettings], with every platform
+/// dependency injected.
 ///
-/// iOS: `app-settings:` is Apple's documented
-/// `UIApplicationOpenSettingsURLString` — it opens this app's own page in
-/// the Settings app and needs no extra entitlement or Info.plist
-/// declaration (it is a system scheme, not a third-party app's).
+/// iOS: launches [kIosAppSettingsUrl].
 ///
 /// Android: there is no single plain-URL scheme for "Security > screen
 /// lock" the way there is for notification settings, but
@@ -45,34 +86,44 @@ const String kAndroidSecuritySettingsIntent =
 /// back to this app's own "App info" page
 /// (`ACTION_APPLICATION_DETAILS_SETTINGS`), which always exists and gets
 /// the operator one tap from Security settings regardless of skin. The
-/// package name comes from `package_info_plus` (already a dependency)
-/// rather than a hardcoded `applicationId`.
+/// package name comes from [packageName] (`package_info_plus` in
+/// production) rather than a hardcoded `applicationId`.
+///
+/// Web and every other platform: no-op — there is no gate there.
 ///
 /// Never throws: every platform call is best-effort, matching
 /// `applyPlatformPrivacyProtections`'s posture in `gate_controller.dart` —
 /// a failed settings launch must never crash the lock screen the operator
-/// is trying to get past.
-Future<void> defaultOpenDeviceSettings({
-  BreadcrumbLog? breadcrumbLog,
+/// is trying to get past. A failure is recorded as a breadcrumb and sent
+/// to Sentry (type name only).
+Future<void> openDeviceSettingsWith({
+  required BreadcrumbLog breadcrumbLog,
+  required LaunchUrlFn launch,
+  required PackageNameProvider packageName,
+  required TargetPlatform platform,
+  required bool isWeb,
 }) async {
-  final log = breadcrumbLog ?? defaultBreadcrumbLog;
-  if (kIsWeb) return;
+  if (isWeb) return;
   try {
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      await launchUrl(Uri.parse('app-settings:'));
+    if (platform == TargetPlatform.iOS) {
+      await launch(Uri.parse(kIosAppSettingsUrl));
       return;
     }
-    if (defaultTargetPlatform != TargetPlatform.android) return;
-    await _openAndroidSecuritySettings(log);
+    if (platform != TargetPlatform.android) return;
+    await _openAndroidSecuritySettings(breadcrumbLog, launch, packageName);
   } catch (error, stackTrace) {
-    log.record('gate', error.runtimeType.toString());
+    breadcrumbLog.record('gate', error.runtimeType.toString());
     unawaited(Sentry.captureException(error, stackTrace: stackTrace));
   }
 }
 
-Future<void> _openAndroidSecuritySettings(BreadcrumbLog log) async {
+Future<void> _openAndroidSecuritySettings(
+  BreadcrumbLog log,
+  LaunchUrlFn launch,
+  PackageNameProvider packageName,
+) async {
   try {
-    await launchUrl(
+    await launch(
       Uri.parse(kAndroidSecuritySettingsIntent),
       mode: LaunchMode.externalApplication,
     );
@@ -81,13 +132,8 @@ Future<void> _openAndroidSecuritySettings(BreadcrumbLog log) async {
     // action — fall back to this app's own settings page, which always
     // exists and is one tap from Security settings on every skin.
     log.record('gate', 'AndroidSecuritySettingsUnavailable');
-    final packageName = (await PackageInfo.fromPlatform()).packageName;
-    await launchUrl(
-      Uri.parse(
-        'intent://#Intent;'
-        'action=android.settings.APPLICATION_DETAILS_SETTINGS;'
-        'package=$packageName;end',
-      ),
+    await launch(
+      Uri.parse(androidAppDetailsIntent(await packageName())),
       mode: LaunchMode.externalApplication,
     );
   }

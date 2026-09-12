@@ -118,13 +118,17 @@ Future<_DeleteAccountBlastRadius> _loadBlastRadius(BuildContext context) async {
     final info = SharingProfileInfo.fromGuardians(guardians, currentUserId);
     if (info.group != ProfileSharingGroup.owned) continue;
     final otherGuardianCount = guardians
-        .where((g) =>
-            g.status == GuardianStatus.accepted && g.userId != currentUserId)
+        .where(
+          (g) =>
+              g.status == GuardianStatus.accepted && g.userId != currentUserId,
+        )
         .length;
-    owned.add(_OwnedProfileImpact(
-      profile: profile,
-      otherGuardianCount: otherGuardianCount,
-    ));
+    owned.add(
+      _OwnedProfileImpact(
+        profile: profile,
+        otherGuardianCount: otherGuardianCount,
+      ),
+    );
   }
   return _DeleteAccountBlastRadius(ownedProfiles: owned);
 }
@@ -187,8 +191,9 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
       await widget.onExport();
     } catch (error) {
       if (mounted) {
-        setState(() =>
-            _exportError = 'Could not export your data. Please try again.');
+        setState(
+          () => _exportError = 'Could not export your data. Please try again.',
+        );
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -281,8 +286,9 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                       value: _acknowledged,
                       onChanged: _exporting
                           ? null
-                          : (checked) =>
-                              setState(() => _acknowledged = checked ?? false),
+                          : (checked) => setState(
+                              () => _acknowledged = checked ?? false,
+                            ),
                       controlAffinity: ListTileControlAffinity.leading,
                       contentPadding: EdgeInsets.zero,
                       title: const Text(
@@ -302,57 +308,63 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                 ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: _exporting
-                    ? null
-                    : () =>
-                        Navigator.of(context).pop(DeleteAccountDecision.cancel),
-                child: const Text('Cancel'),
-              ),
-              if (blastRadius != null && blastRadius.hasSharedOwnedProfile)
-                TextButton(
-                  key: const ValueKey('account-delete-transfer-first'),
-                  onPressed: _exporting
-                      ? null
-                      : () => _handleTransferOwnership(blastRadius),
-                  child: const Text('Transfer ownership first'),
-                ),
-              TextButton(
-                key: const ValueKey('account-delete-export-first'),
-                onPressed: _exporting ? null : _handleExport,
-                child: _exporting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Export first'),
-              ),
-              FilledButton(
-                key: const ValueKey('account-delete-confirm'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: theme.colorScheme.error,
-                  foregroundColor: theme.colorScheme.onError,
-                ),
-                // #17 P1 fix: guarded the same way as "Export first" above -
-                // confirming delete while an export is reading the database
-                // would let resetDevice() tear the database out from under
-                // that in-flight read. #533: also gated on the blast radius
-                // having loaded and, when it names a shared owned profile,
-                // on the acknowledgement checkbox above.
-                onPressed: _confirmEnabled(blastRadius)
-                    ? () => Navigator.of(context)
-                        .pop(DeleteAccountDecision.delete)
-                    : null,
-                child: const Text('Delete account'),
-              ),
-            ],
+            actions: _buildActions(context, theme, blastRadius),
           );
         },
       ),
     );
   }
+
+  /// The dialog's action row, split out of [build] to keep that method
+  /// under the CRAP gate's complexity budget.
+  List<Widget> _buildActions(
+    BuildContext context,
+    ThemeData theme,
+    _DeleteAccountBlastRadius? blastRadius,
+  ) => [
+    TextButton(
+      onPressed: _exporting
+          ? null
+          : () => Navigator.of(context).pop(DeleteAccountDecision.cancel),
+      child: const Text('Cancel'),
+    ),
+    if (blastRadius != null && blastRadius.hasSharedOwnedProfile)
+      TextButton(
+        key: const ValueKey('account-delete-transfer-first'),
+        onPressed: _exporting
+            ? null
+            : () => _handleTransferOwnership(blastRadius),
+        child: const Text('Transfer ownership first'),
+      ),
+    TextButton(
+      key: const ValueKey('account-delete-export-first'),
+      onPressed: _exporting ? null : _handleExport,
+      child: _exporting
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Text('Export first'),
+    ),
+    FilledButton(
+      key: const ValueKey('account-delete-confirm'),
+      style: FilledButton.styleFrom(
+        backgroundColor: theme.colorScheme.error,
+        foregroundColor: theme.colorScheme.onError,
+      ),
+      // #17 P1 fix: guarded the same way as "Export first" above -
+      // confirming delete while an export is reading the database
+      // would let resetDevice() tear the database out from under
+      // that in-flight read. #533: also gated on the blast radius
+      // having loaded and, when it names a shared owned profile,
+      // on the acknowledgement checkbox above.
+      onPressed: _confirmEnabled(blastRadius)
+          ? () => Navigator.of(context).pop(DeleteAccountDecision.delete)
+          : null,
+      child: const Text('Delete account'),
+    ),
+  ];
 }
 
 /// Shows [DeleteAccountDialog] and returns the operator's decision, or
@@ -361,13 +373,12 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
 Future<DeleteAccountDecision?> showDeleteAccountDialog(
   BuildContext context, {
   required Future<void> Function() onExport,
-}) =>
-    showDialog<DeleteAccountDecision>(
-      context: context,
-      // #17 P1 fix: paired with the dialog's own PopScope(canPop: !
-      // _exporting) - a barrier tap can't dismiss the dialog out from under
-      // an in-flight export either.
-      barrierDismissible: false,
-      routeSettings: const RouteSettings(name: kRouteDeleteAccountDialog),
-      builder: (_) => DeleteAccountDialog(onExport: onExport),
-    );
+}) => showDialog<DeleteAccountDecision>(
+  context: context,
+  // #17 P1 fix: paired with the dialog's own PopScope(canPop: !
+  // _exporting) - a barrier tap can't dismiss the dialog out from under
+  // an in-flight export either.
+  barrierDismissible: false,
+  routeSettings: const RouteSettings(name: kRouteDeleteAccountDialog),
+  builder: (_) => DeleteAccountDialog(onExport: onExport),
+);

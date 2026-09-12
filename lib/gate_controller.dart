@@ -74,8 +74,10 @@ Future<void> applyPlatformPrivacyProtections({
     await const MethodChannel(kPrivacyChannel)
         .invokeMethod<void>('setFlagSecure', true);
   } catch (error, stackTrace) {
-    (breadcrumbLog ?? defaultBreadcrumbLog)
-        .record('privacy', error.runtimeType.toString());
+    (breadcrumbLog ?? defaultBreadcrumbLog).record(
+      'privacy',
+      error.runtimeType.toString(),
+    );
     unawaited(Sentry.captureException(error, stackTrace: stackTrace));
   }
 }
@@ -87,7 +89,9 @@ abstract interface class InactivityTimer {
 }
 
 typedef InactivityTimerFactory = InactivityTimer Function(
-    Duration delay, VoidCallback onTimeout);
+  Duration delay,
+  VoidCallback onTimeout,
+);
 
 class _RealInactivityTimer implements InactivityTimer {
   _RealInactivityTimer(this._timer);
@@ -99,8 +103,9 @@ class _RealInactivityTimer implements InactivityTimer {
 }
 
 InactivityTimer defaultInactivityTimerFactory(
-        Duration delay, VoidCallback onTimeout) =>
-    _RealInactivityTimer(Timer(delay, onTimeout));
+  Duration delay,
+  VoidCallback onTimeout,
+) => _RealInactivityTimer(Timer(delay, onTimeout));
 
 /// Why the last credential attempt left the gate locked (issue #534). A
 /// single `_denied` boolean used to cover two very different situations —
@@ -320,7 +325,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer = null;
     _systemUiTimer?.cancel();
     _systemUiTimer = inactivityTimerFactory(
-        systemUiDeadline, () => _systemUiDeadlineExpired(epoch));
+      systemUiDeadline,
+      () => _systemUiDeadlineExpired(epoch),
+    );
     if (!wasObscured) notifyListeners();
     return epoch;
   }
@@ -337,7 +344,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _settling = true;
     _settleTimer?.cancel();
     _settleTimer = inactivityTimerFactory(
-        settleTimeout, () => _onSettleTimeout(epoch));
+      settleTimeout,
+      () => _onSettleTimeout(epoch),
+    );
   }
 
   /// The settle timer fired. Guarded because a cancelled-but-already-queued
@@ -538,29 +547,14 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
     if (!_relockEnabled || _locked || _suppressingLock) return;
-    _inactivityTimer = inactivityTimerFactory(
-        inactivityTimeout, () => lock());
+    _inactivityTimer = inactivityTimerFactory(inactivityTimeout, () => lock());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        _resumed = true;
-        if (_systemUiWindows == 0) _obscured = false;
-        if (!_locked && !_suppressingLock) _armInactivity();
-        // Issue #534: a `noCredentialEnrolled` denial means no prompt was
-        // ever shown, so there is nothing an operator could have "come
-        // back from" except the device's own settings. Re-check now
-        // rather than stranding them on the same denial screen until they
-        // tap Unlock again — [unlock] re-verifies `canAuthenticate()` and,
-        // if a credential was added, carries straight on to the real
-        // prompt.
-        if (_locked &&
-            _denialReason == GateDenialReason.noCredentialEnrolled) {
-          unawaited(unlock());
-        }
-        notifyListeners();
+        _resumedToForeground();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
@@ -569,6 +563,25 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
       case AppLifecycleState.detached:
         break;
     }
+  }
+
+  /// The `resumed` half of [didChangeAppLifecycleState], split out to keep
+  /// that switch under the CRAP gate's complexity budget.
+  void _resumedToForeground() {
+    _resumed = true;
+    if (_systemUiWindows == 0) _obscured = false;
+    if (!_locked && !_suppressingLock) _armInactivity();
+    // Issue #534: a `noCredentialEnrolled` denial means no prompt was
+    // ever shown, so there is nothing an operator could have "come
+    // back from" except the device's own settings. Re-check now
+    // rather than stranding them on the same denial screen until they
+    // tap Unlock again — [unlock] re-verifies `canAuthenticate()` and,
+    // if a credential was added, carries straight on to the real
+    // prompt.
+    if (_locked && _denialReason == GateDenialReason.noCredentialEnrolled) {
+      unawaited(unlock());
+    }
+    notifyListeners();
   }
 
   /// Any departure from the foreground: cover the content (snapshots), and
