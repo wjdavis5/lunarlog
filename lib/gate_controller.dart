@@ -102,6 +102,28 @@ InactivityTimer defaultInactivityTimerFactory(
         Duration delay, VoidCallback onTimeout) =>
     _RealInactivityTimer(Timer(delay, onTimeout));
 
+/// Why the last credential attempt left the gate locked (issue #534). A
+/// single `_denied` boolean used to cover two very different situations —
+/// the operator saw the OS prompt and declined/failed it, versus the
+/// device never had a prompt to show because nothing is enrolled at all —
+/// with one generic denial message for both. [GateController.unlock] tells
+/// them apart by checking [AppGate.canAuthenticate] itself before ever
+/// calling [AppGate.requestAccess], and [LockScreen] renders distinct copy
+/// for each.
+enum GateDenialReason {
+  /// No attempt has failed, or the last attempt succeeded.
+  none,
+
+  /// The OS presented the credential prompt and the operator declined,
+  /// cancelled, or failed it.
+  deniedByUser,
+
+  /// The OS reports no credential is enrolled at all — no prompt was ever
+  /// shown. The lock screen's primary action here is a settings deep link,
+  /// not a retry.
+  noCredentialEnrolled,
+}
+
 /// Owns the locked/unlocked session state and everything that flips it.
 ///
 /// Notifications drive both the root's state machine and the
@@ -134,7 +156,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
 
   bool _locked = false;
   bool _authenticating = false;
-  bool _denied = false;
+  GateDenialReason _denialReason = GateDenialReason.none;
   bool _obscured = false;
   bool _relockEnabled = true;
   String? _pendingLaunchProfileId;
@@ -192,7 +214,17 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   bool get authenticating => _authenticating;
 
   /// True when the last credential attempt was declined or unavailable.
-  bool get lastAttemptDenied => _denied;
+  /// Back-compat shorthand for `denialReason != GateDenialReason.none`
+  /// (issue #534) — new code should read [denialReason] instead, to tell
+  /// [GateDenialReason.deniedByUser] apart from
+  /// [GateDenialReason.noCredentialEnrolled].
+  bool get lastAttemptDenied => _denialReason != GateDenialReason.none;
+
+  /// Why the last credential attempt left the gate locked, or
+  /// [GateDenialReason.none] if the last attempt succeeded or none has run
+  /// yet (issue #534). Drives [LockScreen]'s copy and its settings deep
+  /// link.
+  GateDenialReason get denialReason => _denialReason;
 
   /// True while content must be covered: either the lifecycle is not resumed
   /// or system UI opened by the app is still active.
@@ -394,12 +426,26 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// discards a grant: that check could never be implemented correctly,
   /// and on iOS — where the Face ID prompt reports `inactive` itself — it
   /// meant the app could not be unlocked at all (issue #65).
+  ///
+  /// Checks [AppGate.canAuthenticate] first (issue #534): when the device
+  /// has no credential enrolled at all, [AppGate.requestAccess] would
+  /// return false without ever presenting a prompt, and wrapping that
+  /// no-op in [duringSystemUi] would still open (and then have to settle)
+  /// a system-UI window for a prompt that never appeared. Failing here
+  /// instead sets [GateDenialReason.noCredentialEnrolled] without touching
+  /// the system-UI machinery at all.
   Future<void> unlock() async {
     if (!_locked || _authenticating) return;
     _authenticating = true;
     notifyListeners();
     final generation = _generation;
     try {
+      final canAuthenticate = await _gate.canAuthenticate();
+      if (_disposed || generation != _generation) return;
+      if (!canAuthenticate) {
+        _denialReason = GateDenialReason.noCredentialEnrolled;
+        return;
+      }
       final granted = await duringSystemUi(_gate.requestAccess);
       if (_disposed || generation != _generation) {
         // The window deadline already locked while this request hung.
@@ -407,11 +453,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       if (granted) {
-        _denied = false;
+        _denialReason = GateDenialReason.none;
         _locked = false;
         _armInactivity();
       } else {
-        _denied = true;
+        _denialReason = GateDenialReason.deniedByUser;
       }
       // The cover is not cleared here: it is reconciled against the
       // lifecycle when the window settles (#65 KTD9).
@@ -503,6 +549,17 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
         _resumed = true;
         if (_systemUiWindows == 0) _obscured = false;
         if (!_locked && !_suppressingLock) _armInactivity();
+        // Issue #534: a `noCredentialEnrolled` denial means no prompt was
+        // ever shown, so there is nothing an operator could have "come
+        // back from" except the device's own settings. Re-check now
+        // rather than stranding them on the same denial screen until they
+        // tap Unlock again — [unlock] re-verifies `canAuthenticate()` and,
+        // if a credential was added, carries straight on to the real
+        // prompt.
+        if (_locked &&
+            _denialReason == GateDenialReason.noCredentialEnrolled) {
+          unawaited(unlock());
+        }
         notifyListeners();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:

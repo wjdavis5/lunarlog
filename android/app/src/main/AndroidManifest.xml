@@ -150,5 +150,16 @@
              built into the OS (Android 14+) or a separate installable app
              (Android 9-13). -->
         <package android:name="com.google.android.apps.healthdata"/>
+        <!-- Issue #534: the lock screen's "Open device settings" action
+             (no credential enrolled) launches these via `url_launcher`'s
+             `intent://` support. Security settings first; this app's own
+             "App info" page as the fallback when an OEM skin doesn't
+             expose ACTION_SECURITY_SETTINGS. -->
+        <intent>
+            <action android:name="android.settings.SECURITY_SETTINGS"/>
+        </intent>
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS"/>
+        </intent>
     </queries>
 </manifest>

@@ -108,6 +108,59 @@ void main() {
     });
   });
 
+  // Issue #534: [LocalAuthAppGate.canAuthenticate] is the availability
+  // check `GateController.unlock` now calls *before* [requestAccess], so it
+  // can tell "the operator declined the prompt" apart from "there was
+  // never a prompt to decline". These pin its own contract independent of
+  // `requestAccess`'s (which delegates to it).
+  group('LocalAuthAppGate.canAuthenticate', () {
+    test('true when biometrics can be checked', () async {
+      final fakeAuth = FakeLocalAuthentication()
+        ..canCheck = true
+        ..isSupported = false;
+      final gate = LocalAuthAppGate(
+          localAuth: fakeAuth, breadcrumbLog: BreadcrumbLog());
+
+      expect(await gate.canAuthenticate(), isTrue);
+    });
+
+    test('true when the device supports credentials but not biometrics',
+        () async {
+      final fakeAuth = FakeLocalAuthentication()
+        ..canCheck = false
+        ..isSupported = true;
+      final gate = LocalAuthAppGate(
+          localAuth: fakeAuth, breadcrumbLog: BreadcrumbLog());
+
+      expect(await gate.canAuthenticate(), isTrue);
+    });
+
+    test('false when neither biometrics nor a device credential is enrolled',
+        () async {
+      final fakeAuth = FakeLocalAuthentication()
+        ..canCheck = false
+        ..isSupported = false;
+      final log = BreadcrumbLog();
+      final gate = LocalAuthAppGate(localAuth: fakeAuth, breadcrumbLog: log);
+
+      expect(await gate.canAuthenticate(), isFalse);
+      expect(log.snapshot(), isEmpty,
+          reason: 'a negative answer is not a platform error');
+    });
+
+    test('false with a breadcrumb on a canCheckBiometrics PlatformException',
+        () async {
+      final fakeAuth = FakeLocalAuthentication()
+        ..canCheckError =
+            PlatformException(code: 'UNAVAILABLE', message: 'nope');
+      final log = BreadcrumbLog();
+      final gate = LocalAuthAppGate(localAuth: fakeAuth, breadcrumbLog: log);
+
+      expect(await gate.canAuthenticate(), isFalse);
+      expect(log.snapshot(), ['gate: PlatformException']);
+    });
+  });
+
   group('applyPlatformPrivacyProtections', () {
     tearDown(() {
       debugDefaultTargetPlatformOverride = null;

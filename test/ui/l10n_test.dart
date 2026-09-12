@@ -34,6 +34,9 @@ class _NoopGate implements AppGate {
   bool get requiresUnlock => true;
 
   @override
+  Future<bool> canAuthenticate() async => true;
+
+  @override
   Future<bool> requestAccess() async => true;
 }
 
