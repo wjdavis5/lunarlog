@@ -35,6 +35,7 @@ import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart' show CycleFacts;
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -348,6 +349,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       displayName: _nameController.text,
       isMinor: _isMinor,
       mode: _mode,
+      facts: CycleFacts(
+        lastPeriodStart: _lastPeriodStart,
+        typicalCycleLengthDays: _optionalInt(_typicalCycleController.text),
+        typicalPeriodLengthDays: _optionalInt(_typicalPeriodController.text),
+      ),
     );
     await recorder?.record(profile.id, _collectedAnswers(l10n));
   }

@@ -534,7 +534,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunCycleLengthRangeError =>
-      'Enter a number between 10 and 90';
+      'Enter a number between 15 and 60';
 
   @override
   String get firstRunPeriodLengthRangeError =>

@@ -651,7 +651,7 @@
   "@firstRunCycleTypicalPeriodHint": {
     "description": "Hint inside the typical-period-length field."
   },
-  "firstRunCycleLengthRangeError": "Enter a number between 10 and 90",
+  "firstRunCycleLengthRangeError": "Enter a number between 15 and 60",
   "@firstRunCycleLengthRangeError": {
     "description": "Validation error for an out-of-range typical cycle length."
   },

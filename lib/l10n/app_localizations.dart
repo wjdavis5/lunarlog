@@ -997,7 +997,7 @@ abstract class AppLocalizations {
   /// Validation error for an out-of-range typical cycle length.
   ///
   /// In en, this message translates to:
-  /// **'Enter a number between 10 and 90'**
+  /// **'Enter a number between 15 and 60'**
   String get firstRunCycleLengthRangeError;
 
   /// Validation error for an out-of-range typical period length.
