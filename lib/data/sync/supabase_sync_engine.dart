@@ -426,35 +426,75 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (await _hasPushableDirty()) requestSync();
   }
 
+  @visibleForTesting
+  Future<bool> hasPushableDirtyForTest() => _hasPushableDirty();
+
+  Future<bool> _hasPushable<T>({
+    required Future<List<T>> Function({int? limit, String? afterId}) readPage,
+    required String Function(T) id,
+    required int Function(T) localRev,
+  }) async {
+    String? afterId;
+    while (!_disposed) {
+      final page = await readPage(limit: 1, afterId: afterId);
+      if (page.isEmpty) return false;
+      final row = page.first;
+      if (_apply.pushable([row], id, localRev).isNotEmpty) {
+        return true;
+      }
+      afterId = id(row);
+    }
+    return false;
+  }
+
   Future<bool> _hasPushableDirty() async {
-    final profiles = await _storage.readDirtyProfiles();
-    if (_apply.pushable(profiles, (p) => p.id, (p) => p.localRev).isNotEmpty) {
+    if (await _hasPushable(
+      readPage: _storage.readDirtyProfiles,
+      id: (p) => p.id,
+      localRev: (p) => p.localRev,
+    )) {
       return true;
     }
-    final entries = await _storage.readDirtyDayEntries();
-    if (_apply.pushable(entries, (e) => e.id, (e) => e.localRev).isNotEmpty) {
+    if (await _hasPushable(
+      readPage: _storage.readDirtyDayEntries,
+      id: (e) => e.id,
+      localRev: (e) => e.localRev,
+    )) {
       return true;
     }
-    final observations = await _storage.readDirtyObservations();
-    if (_apply.pushable(observations, (o) => o.id, (o) => o.localRev).isNotEmpty) {
+    if (await _hasPushable(
+      readPage: _storage.readDirtyObservations,
+      id: (o) => o.id,
+      localRev: (o) => o.localRev,
+    )) {
       return true;
     }
-    final profileModes = await _storage.readDirtyProfileModes();
-    if (_apply.pushable(profileModes, (m) => m.profileId, (m) => m.localRev)
-        .isNotEmpty) {
+    if (await _hasPushable(
+      readPage: _storage.readDirtyProfileModes,
+      id: (m) => m.profileId,
+      localRev: (m) => m.localRev,
+    )) {
       return true;
     }
-    final cycleOverrides = await _storage.readDirtyCycleOverrides();
-    if (_apply.pushable(cycleOverrides, (o) => o.id, (o) => o.localRev).isNotEmpty) {
+    if (await _hasPushable(
+      readPage: _storage.readDirtyCycleOverrides,
+      id: (o) => o.id,
+      localRev: (o) => o.localRev,
+    )) {
       return true;
     }
-    final careNotes = await _storage.readDirtyCareNotes();
-    if (_apply.pushable(careNotes, (n) => n.id, (n) => n.localRev).isNotEmpty) {
+    if (await _hasPushable(
+      readPage: _storage.readDirtyCareNotes,
+      id: (n) => n.id,
+      localRev: (n) => n.localRev,
+    )) {
       return true;
     }
-    final visitPrepItems = await _storage.readDirtyVisitPrepItems();
-    return _apply.pushable(visitPrepItems, (i) => i.id, (i) => i.localRev)
-        .isNotEmpty;
+    return _hasPushable(
+      readPage: _storage.readDirtyVisitPrepItems,
+      id: (i) => i.id,
+      localRev: (i) => i.localRev,
+    );
   }
 
   // ------------------------------------------------------------------- loop
