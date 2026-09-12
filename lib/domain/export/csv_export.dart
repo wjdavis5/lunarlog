@@ -9,18 +9,54 @@ import '../models/local_date.dart';
 import '../models/observation.dart';
 import '../prediction/prediction.dart' show kMinCycleDays, kMaxCycleDays;
 
-/// Escapes a single field according to RFC 4180 §2.5-2.7.
+/// Field-content prefixes (Issue #563; OWASP CSV/formula injection) that a
+/// spreadsheet application (Excel, Google Sheets, LibreOffice) treats as
+/// the start of a formula rather than literal text — `=`, `+`, `-`, `@`, a
+/// tab, and a bare CR. All six are otherwise unremarkable, unquoted RFC
+/// 4180 field content, which is exactly why RFC 4180 escaping alone does
+/// not defend against them.
+const String _csvFormulaTriggerChars = '=+-@\t\r';
+
+/// True when [field] would be interpreted as a formula by a spreadsheet
+/// application reading it verbatim from a CSV cell.
+bool _startsWithCsvFormulaTrigger(String field) =>
+    field.isNotEmpty && _csvFormulaTriggerChars.contains(field[0]);
+
+/// Escapes a single field according to RFC 4180 §2.5-2.7, plus the
+/// spreadsheet formula-injection guard issue #563 asks for: a field
+/// starting with one of [_csvFormulaTriggerChars] is prefixed with `'` —
+/// the "force text" marker Excel/Sheets/LibreOffice strip on display — and
+/// force-quoted, whether or not RFC 4180 alone would have quoted it.
 ///
 /// If the field contains a comma, double-quote, CR (`\r`), or LF (`\n`), it must
 /// be enclosed in double-quotes, and any embedded double-quotes must be escaped as `""`.
+///
+/// Applied unconditionally, to every field this file exports — not only
+/// the obviously free-text ones (a day entry's `note`, its `tags`,
+/// an observation's `code`). In a multi-guardian household the note's
+/// author and the person opening the export are routinely different
+/// people (issue #563's own example: a caregiver's `=HYPERLINK(...)` note,
+/// opened by the owner or a clinician it is forwarded to), so nothing
+/// reaching this function is trusted.
+///
+/// This is safe for lunarlog's numeric columns specifically, which is why
+/// the guard lives here rather than only on the free-text columns: `bbt`
+/// and `weight` are physical measurements that are always positive, and
+/// every other numeric field this file emits (`cycle_number`,
+/// `*_length_days`) is a non-negative count or an ISO date
+/// (`yyyy-MM-dd`, which starts with a digit) — none of them can
+/// legitimately start with `-` or `+`. A column that genuinely can be
+/// negative would need to bypass this guard rather than rely on it.
 String escapeCsvField(String field) {
-  if (field.contains(',') ||
-      field.contains('"') ||
-      field.contains('\n') ||
-      field.contains('\r')) {
-    return '"${field.replaceAll('"', '""')}"';
-  }
-  return field;
+  final triggered = _startsWithCsvFormulaTrigger(field);
+  final guarded = triggered ? "'$field" : field;
+  final needsQuoting = triggered ||
+      guarded.contains(',') ||
+      guarded.contains('"') ||
+      guarded.contains('\n') ||
+      guarded.contains('\r');
+  if (!needsQuoting) return guarded;
+  return '"${guarded.replaceAll('"', '""')}"';
 }
 
 /// Formats a single CSV record row using RFC 4180 escaping.
