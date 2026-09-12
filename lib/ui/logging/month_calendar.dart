@@ -65,6 +65,7 @@ import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:provider/provider.dart';
@@ -518,7 +519,8 @@ class MonthCalendar extends StatefulWidget {
   State<MonthCalendar> createState() => _MonthCalendarState();
 }
 
-class _MonthCalendarState extends State<MonthCalendar> {
+class _MonthCalendarState extends State<MonthCalendar>
+    with GuardianWatchMixin<MonthCalendar> {
   late DayEntriesRepository _repository;
   int _displayedYear = 1970;
   int _displayedMonth = 1;
@@ -550,7 +552,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
   /// "Logged by you" at the real call site. Null/empty in local-only use.
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
   AuthController? _auth;
 
   /// Forecast seams (KTD9): the prediction and history services when the
@@ -687,20 +688,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
     setState(() => _currentUserId = auth.currentUserId);
   }
 
+  // Reset immediately (not just on the new stream's first tick) so a
+  // profile switch never keeps rendering the previous profile's guardians
+  // in the meantime (residual note on #11) — [GuardianWatchMixin] does
+  // this before subscribing.
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    // Reset immediately (not just on the new stream's first tick) so a
-    // profile switch never keeps rendering the previous profile's
-    // guardians in the meantime (residual note on #11).
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
-    if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
-    ) {
-      if (!mounted) return;
-      setState(() => _guardians = guardians);
-    });
+    watchGuardiansForProfile(widget.guardiansRepository, widget.profileId,
+        (guardians) => setState(() => _guardians = guardians));
   }
 
   void _rewatchPrediction() {
@@ -782,8 +776,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   void dispose() {
     _entriesSub?.cancel();
     _entriesSub = null;
-    _guardiansSub?.cancel();
-    _guardiansSub = null;
+    disposeGuardianWatch();
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     _pageController.dispose();

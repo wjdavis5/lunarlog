@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:provider/provider.dart';
 
@@ -59,8 +60,8 @@ class TodayLogFab extends StatefulWidget {
   State<TodayLogFab> createState() => _TodayLogFabState();
 }
 
-class _TodayLogFabState extends State<TodayLogFab> {
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+class _TodayLogFabState extends State<TodayLogFab>
+    with GuardianWatchMixin<TodayLogFab> {
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
@@ -84,16 +85,8 @@ class _TodayLogFabState extends State<TodayLogFab> {
   }
 
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
-    if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
-    ) {
-      if (!mounted) return;
-      setState(() => _guardians = guardians);
-    });
+    watchGuardiansForProfile(widget.guardiansRepository, widget.profileId,
+        (guardians) => setState(() => _guardians = guardians));
   }
 
   @override
@@ -106,7 +99,7 @@ class _TodayLogFabState extends State<TodayLogFab> {
 
   @override
   void dispose() {
-    _guardiansSub?.cancel();
+    disposeGuardianWatch();
     _auth?.removeListener(_onAuthChanged);
     super.dispose();
   }

@@ -32,6 +32,7 @@ import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
 import '../routes.dart';
 import 'activity_feed_screen.dart';
+import 'guardian_watch_mixin.dart';
 import 'invite_guardian_dialog.dart';
 import 'notification_preferences_screen.dart';
 import 'share_predictions_dialog.dart';
@@ -258,8 +259,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// FAB gate below, which only hide controls once rows have actually
   /// arrived).
   Stream<List<ProfileGuardian>?> get _guardianRows =>
-      widget.guardiansRepository
-          .watchForProfile(widget.profile.id)
+      watchGuardiansForProfileSafely(
+              widget.guardiansRepository, widget.profile.id)
           .map((rows) => rows.isEmpty ? null : rows);
 
   List<ProfileGuardian> _acceptedOf(List<ProfileGuardian>? rows) =>

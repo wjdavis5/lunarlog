@@ -115,13 +115,25 @@ domain.Observation observationToDomain(db.Observation row) =>
       lastModifiedByUserId: row.lastModifiedByUserId,
     );
 
+/// Issue #540: fails *closed* on an unrecognised `role`/`status` rather than
+/// propagating [domain.GuardianRole.fromDb]/[domain.GuardianStatus.fromDb]'s
+/// null through to a `ProfileGuardian` this codebase has no null-role/
+/// null-status representation for — an unknown role maps to
+/// [domain.GuardianRole.viewer] (least privilege: read-only, cannot log,
+/// cannot manage guardians, cannot delete the profile — see that enum's
+/// `can*` getters) and an unknown status maps to
+/// [domain.GuardianStatus.revoked] (never treated as an accepted
+/// membership). Cross-references [domain.GuardianRole.fromDb] and
+/// [domain.GuardianStatus.fromDb], whose own doc comments explain why they
+/// return null instead of throwing.
 domain.ProfileGuardian profileGuardianToDomain(db.ProfileGuardianData row) =>
     domain.ProfileGuardian(
       id: row.id,
       profileId: row.profileId,
       userId: row.userId,
-      role: domain.GuardianRole.fromDb(row.role),
-      status: domain.GuardianStatus.fromDb(row.status),
+      role: domain.GuardianRole.fromDb(row.role) ?? domain.GuardianRole.viewer,
+      status:
+          domain.GuardianStatus.fromDb(row.status) ?? domain.GuardianStatus.revoked,
       displayName: row.displayName,
       invitedBy: row.invitedBy,
       createdAt: row.createdAt,

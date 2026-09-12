@@ -73,6 +73,7 @@ import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:provider/provider.dart';
 
 // Issue #316 review: re-exported (not just imported) so
@@ -160,7 +161,8 @@ class OverviewPanel extends StatefulWidget {
   State<OverviewPanel> createState() => _OverviewPanelState();
 }
 
-class _OverviewPanelState extends State<OverviewPanel> {
+class _OverviewPanelState extends State<OverviewPanel>
+    with GuardianWatchMixin<OverviewPanel> {
   late CyclePredictionService _service;
   late Stream<CyclePrediction> _predictions;
   // Captured once (matches _resolverFor/cycle_history_section.dart's
@@ -169,7 +171,6 @@ class _OverviewPanelState extends State<OverviewPanel> {
       .read<CycleExclusionList>();
   late final SettingsStore? _settings =
       Provider.of<SettingsStore?>(context, listen: false);
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
   StreamSubscription<String?>? _suggestionDismissedSub;
   bool _irregularSuggestionDismissed = false;
   AuthController? _auth;
@@ -204,16 +205,8 @@ class _OverviewPanelState extends State<OverviewPanel> {
   }
 
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
-    if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
-    ) {
-      if (!mounted) return;
-      setState(() => _guardians = guardians);
-    });
+    watchGuardiansForProfile(widget.guardiansRepository, widget.profileId,
+        (guardians) => setState(() => _guardians = guardians));
   }
 
   void _watchSuggestionDismissed() {
@@ -254,8 +247,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
 
   @override
   void dispose() {
-    _guardiansSub?.cancel();
-    _guardiansSub = null;
+    disposeGuardianWatch();
     _suggestionDismissedSub?.cancel();
     _suggestionDismissedSub = null;
     _auth?.removeListener(_onAuthChanged);

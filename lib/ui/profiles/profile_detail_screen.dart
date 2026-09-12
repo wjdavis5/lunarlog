@@ -30,6 +30,7 @@ import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:provider/provider.dart';
 
@@ -188,7 +189,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     ProfileGuardiansRepository guardiansRepository,
   ) {
     return StreamBuilder<List<ProfileGuardian>>(
-      stream: guardiansRepository.watchForProfile(widget.profile.id),
+      stream: watchGuardiansForProfileSafely(
+          guardiansRepository, widget.profile.id),
       builder: (context, snapshot) {
         final accepted = [
           for (final guardian in snapshot.data ?? const <ProfileGuardian>[])

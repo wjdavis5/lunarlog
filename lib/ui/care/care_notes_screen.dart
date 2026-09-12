@@ -32,6 +32,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:provider/provider.dart';
 
 /// Formats an instant as a bare civil date (`2026-08-31`) for the
@@ -82,8 +83,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     super.initState();
     _notesStream = widget.repository.watchCareNotes(widget.profile.id);
     _prepStream = widget.repository.watchPrepItems(widget.profile.id);
-    _guardiansStream =
-        widget.guardiansRepository.watchForProfile(widget.profile.id);
+    _guardiansStream = watchGuardiansForProfileSafely(
+        widget.guardiansRepository, widget.profile.id);
     final auth = context.read<AuthController?>();
     if (auth != null) {
       _currentUserId = auth.currentUserId;

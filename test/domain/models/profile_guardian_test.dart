@@ -103,9 +103,12 @@ void main() {
       }
     });
 
-    test('unknown db value throws ArgumentError', () {
-      expect(() => GuardianRole.fromDb('unknown'), throwsArgumentError);
-      expect(() => GuardianStatus.fromDb('unknown'), throwsArgumentError);
+    // Issue #540: fromDb returns null on an unrecognised value rather than
+    // throwing — profileGuardianToDomain is what fails closed, tested in
+    // mappers_test.dart.
+    test('unknown db value returns null, not a thrown ArgumentError', () {
+      expect(GuardianRole.fromDb('unknown'), isNull);
+      expect(GuardianStatus.fromDb('unknown'), isNull);
     });
 
     test('readOnlyReason is set only for the one role that cannot log '

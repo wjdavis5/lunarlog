@@ -79,6 +79,7 @@ import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
+import '../sharing/guardian_watch_mixin.dart';
 
 class AnalysisTab extends StatefulWidget {
   const AnalysisTab({
@@ -115,7 +116,8 @@ class AnalysisTab extends StatefulWidget {
   State<AnalysisTab> createState() => _AnalysisTabState();
 }
 
-class _AnalysisTabState extends State<AnalysisTab> {
+class _AnalysisTabState extends State<AnalysisTab>
+    with GuardianWatchMixin<AnalysisTab> {
   late final CyclePredictionService _service =
       context.read<CyclePredictionService>();
   late Stream<CyclePrediction> _predictions = _service.watch(
@@ -123,7 +125,6 @@ class _AnalysisTabState extends State<AnalysisTab> {
     today: widget.todayProvider,
   );
 
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
@@ -151,21 +152,9 @@ class _AnalysisTabState extends State<AnalysisTab> {
     setState(() => _currentUserId = _auth?.currentUserId);
   }
 
-  /// Same shape as [OverviewPanel._watchGuardians]: resubscribes on every
-  /// call (profile switch included) and resets to an empty list first so
-  /// a still-arriving subscription for the old profile can never be
-  /// mistaken for the new one's guardians.
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
-    if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
-    ) {
-      if (!mounted) return;
-      setState(() => _guardians = guardians);
-    });
+    watchGuardiansForProfile(widget.guardiansRepository, widget.profileId,
+        (guardians) => setState(() => _guardians = guardians));
   }
 
   @override
@@ -182,8 +171,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
 
   @override
   void dispose() {
-    _guardiansSub?.cancel();
-    _guardiansSub = null;
+    disposeGuardianWatch();
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
