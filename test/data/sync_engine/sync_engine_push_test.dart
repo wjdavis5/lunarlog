@@ -646,6 +646,47 @@ void main() {
       expect(rig.engine.snapshot.rejectedCount, 0);
     });
 
+    test('issue #568: retryRejected() bumps local_rev on every rejected row '
+        'so the next cycle pushes it again, without waiting for an '
+        'unrelated edit', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p = await rig.storage.upsertProfile(
+          displayName: 'A', isMinor: false);
+      final e = await rig.storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      rig.transport.scriptPushResult(rejectedIds: [e.id]);
+
+      await rig.start();
+      expect(rig.transport.pushes, hasLength(1));
+      final rejectedRev = (await rig.entry(p.id, e.id)).localRev;
+      expect(rig.engine.snapshot.rejectedCount, 1);
+
+      // Without retryRejected, a plain requestSync never re-pushes it.
+      await rig.sync();
+      expect(rig.transport.pushes, hasLength(1));
+
+      await rig.engine.retryRejected();
+      await rig.engine.flush();
+
+      expect(rig.transport.pushes, hasLength(2),
+          reason: 'retryRejected must have made the row pushable again');
+      expect(ids(rig.transport.pushes[1].dayEntries), [e.id]);
+      final retried = await rig.entry(p.id, e.id);
+      expect(retried.localRev, greaterThan(rejectedRev),
+          reason: 'retryRejected bumps local_rev, never touching content');
+      expect(retried.flow, FlowLevel.light,
+          reason: 'the row\'s content is untouched by the retry');
+      expect((await rig.entry(p.id, e.id)).dirty, isFalse,
+          reason: 'the retried push was accepted this time (no scripted '
+              'rejection left)');
+      expect(rig.engine.snapshot.rejectedCount, 0);
+    });
+
     test('SyncTransportError.rejected (a transport with no per-row results) '
         'marks the whole batch rejected, not a cycle failure, and is not '
         're-pushed until edited again', () async {

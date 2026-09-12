@@ -59,12 +59,16 @@ class SupabaseSyncApply {
   final LunarLogStorage _storage;
 
   /// Rows the server rejected: id → (`local_rev` at rejection, owning
-  /// profile id — `null` for a profile row itself). A row is excluded from
-  /// pushes while its `local_rev` still equals the rejected one; a later
-  /// local write bumps it and the row is retried. The `profileId` lets
+  /// profile id — `null` for a profile row itself, and the row's own
+  /// table). A row is excluded from pushes while its `local_rev` still
+  /// equals the rejected one; a later local write bumps it and the row is
+  /// retried — either by an unrelated edit, or by [retryRejected] (issue
+  /// #568) doing exactly that on demand. The `profileId` lets
   /// [_unrejectEntriesOf] filter this map in memory when a profile is
-  /// accepted, with no storage read (finding #2).
-  final Map<String, ({int localRev, String? profileId})> _rejected = {};
+  /// accepted, with no storage read (finding #2); `table` lets
+  /// [retryRejected] bump the right table's `local_rev` without a lookup.
+  final Map<String, ({int localRev, String? profileId, SyncTable table})>
+      _rejected = {};
 
   /// How many ids are currently held as rejected.
   int get rejectedCount => _rejected.length;
@@ -91,8 +95,27 @@ class SupabaseSyncApply {
     for (final id in rejectedIds) {
       final item = byId[id];
       if (item != null) {
-        _rejected[id] = (localRev: item.localRev, profileId: item.profileId);
+        _rejected[id] = (
+          localRev: item.localRev,
+          profileId: item.profileId,
+          table: item.table,
+        );
       }
+    }
+  }
+
+  /// Issue #568: makes the rejected state actionable. Bumps `local_rev`
+  /// (via [LunarLogStorage.bumpLocalRevForRetry]) on every currently-held
+  /// rejection so the next push's dirty scan picks each one up again — the
+  /// row's content is untouched, only its push eligibility changes — and
+  /// clears the rejection bookkeeping for all of them: the next push's
+  /// outcome establishes a fresh verdict rather than immediately
+  /// re-excluding a row whose `local_rev` this call itself just bumped.
+  Future<void> retryRejected() async {
+    final rows = _rejected.entries.toList();
+    _rejected.clear();
+    for (final entry in rows) {
+      await _storage.bumpLocalRevForRetry(table: entry.value.table, id: entry.key);
     }
   }
 
@@ -117,8 +140,11 @@ class SupabaseSyncApply {
     final accepted = <({SyncTable table, String id, int localRevAtPush})>[];
     for (final item in batch) {
       if (rejected.contains(item.id)) {
-        _rejected[item.id] =
-            (localRev: item.localRev, profileId: item.profileId);
+        _rejected[item.id] = (
+          localRev: item.localRev,
+          profileId: item.profileId,
+          table: item.table,
+        );
         continue;
       }
       _rejected.remove(item.id);

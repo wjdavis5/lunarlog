@@ -418,6 +418,14 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   }
 
   @override
+  Future<void> retryRejected() async {
+    if (_disposed) return;
+    await _apply.retryRejected();
+    _emit(_snapshot.copyWith(rejectedCount: _apply.rejectedCount));
+    requestSync();
+  }
+
+  @override
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
