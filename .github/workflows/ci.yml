@@ -31,7 +31,16 @@ jobs:
     # by pushing to main. No Flutter, Java, or Supabase toolchain and no
     # secrets, so this stays fast.
     name: Release guard scripts (unit tests + actionlint)
-    runs-on: self-hosted
+    # Issue #569: this job needs only bash, python3, and actionlint, and its
+    # whole purpose is to be the ubuntu/bash-5 counterpart to
+    # release-guards-macos below (which proves the same scripts survive
+    # macOS's frozen Bash 3.2). It briefly moved to `self-hosted` alongside
+    # `ios`/`ios-simulator` after #352 -- landing it on the same
+    # (non-ephemeral, macOS) runner as those jobs collapsed the matrix
+    # to one OS/bash version and serialized 15s of work behind a 60-minute
+    # release build. Back on a GitHub-hosted runner: fast, free, and an
+    # actual Linux/bash-5 arm again.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -71,7 +80,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: actionlint
-          key: actionlint-${{ runner.os }}-1.7.7
+          key: actionlint-${{ runner.os }}-${{ runner.arch }}-1.7.7
 
       - name: Install actionlint
         if: always() && steps.actionlint-cache.outputs.cache-hit != 'true'
@@ -79,16 +88,36 @@ jobs:
           ACTIONLINT_VERSION: '1.7.7'
         run: |
           set -euo pipefail
-          # OS/arch-aware download (#352, #361): this job can land on the self-hosted macOS runner, where a linux binary fails with "cannot execute binary file" (exit 126).
+          # OS/arch-aware download (#352, #361; #569 moved this job back to
+          # ubuntu-latest, but the case below is kept -- it's harmless and
+          # keeps this step correct if the runner ever changes, e.g. an
+          # arm64 GitHub-hosted runner, or landing back on self-hosted
+          # macOS). Each asset is pinned to its published sha256 (issue
+          # #570) so a hijacked or corrupted release asset can never
+          # silently become `./actionlint` -- verified against
+          # actionlint_1.7.7_checksums.txt from the v1.7.7 GitHub release.
           case "${{ runner.os }}/${{ runner.arch }}" in
-            macOS/ARM64)  ASSET=darwin_arm64 ;;
-            macOS/*)      ASSET=darwin_amd64 ;;
-            Linux/ARM64|Linux/ARM) ASSET=linux_arm64 ;;
-            *)            ASSET=linux_amd64 ;;
+            macOS/ARM64)
+              ASSET=darwin_arm64
+              ACTIONLINT_SHA256=2693315b9093aeacb4ebd91a993fea54fc215057bf0da2659056b4bc033873db
+              ;;
+            macOS/*)
+              ASSET=darwin_amd64
+              ACTIONLINT_SHA256=28e5de5a05fc558474f638323d736d822fff183d2d492f0aecb2b73cc44584f5
+              ;;
+            Linux/ARM64|Linux/ARM)
+              ASSET=linux_arm64
+              ACTIONLINT_SHA256=401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0
+              ;;
+            *)
+              ASSET=linux_amd64
+              ACTIONLINT_SHA256=023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+              ;;
           esac
 
-          curl -sSL -o actionlint.tar.gz \
+          curl -sSL --fail -o actionlint.tar.gz \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_${ASSET}.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | shasum -a 256 -c -
           tar -xzf actionlint.tar.gz actionlint
           chmod +x actionlint
           rm actionlint.tar.gz
@@ -102,15 +131,23 @@ jobs:
         run: ./actionlint .github/workflows/*.yml
 
   release-guards-macos:
-    # The guard scripts actually execute on ios-release.yml's macos-latest
-    # runner, which ships a frozen Bash 3.2 (no bash-4+ syntax) -- a real
-    # bash-4-only construct (${var,,}) slipped into check-release-gate.sh
-    # during this same branch's development and would have crashed the
-    # TestFlight pipeline silently, since the ubuntu-only release-guards job
-    # above cannot see a macOS-only shell incompatibility. Same three test
-    # scripts, no actionlint (that check is OS-independent).
+    # The guard scripts actually execute on ios-release.yml's self-hosted
+    # williams-mini runner, which ships a frozen Bash 3.2 (no bash-4+
+    # syntax) -- a real bash-4-only construct (${var,,}) slipped into
+    # check-release-gate.sh during this same branch's development and would
+    # have crashed the TestFlight pipeline silently, since the ubuntu-only
+    # release-guards job above cannot see a macOS-only shell incompatibility.
+    # Same three test scripts, no actionlint (that check is OS-independent).
+    #
+    # Deliberately kept on the self-hosted runner (issue #569: it is the one
+    # macOS/bash-3.2 arm of the matrix; release-guards above went back to
+    # ubuntu-latest so the two jobs are no longer the same runner/bash
+    # version running the same scripts twice).
     name: Release guard scripts on macOS (bash 3.2 compatibility)
-    runs-on: self-hosted
+    # Fork PRs never reach a self-hosted job (issue #514): this is the same
+    # runner ios-release.yml signs releases on.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -156,14 +193,37 @@ jobs:
         # failing on a dirty tree catches a table or schemaVersion change
         # whose codegen (or schema dump, which the schema-verification
         # harness in test/data/db/schema_migration_test.dart reads) was
-        # never regenerated. When bumping schemaVersion, update the file
-        # name in the second command below to
-        # drift_schema_v<new version>.json (see AGENTS.md's Codegen bullet
-        # for the full "bump -> dump -> generate -> test" procedure).
+        # never regenerated.
+        #
+        # Issue #576: the drift-dump filename is derived from
+        # lib/data/db/db.dart's `schemaVersion` getter instead of being
+        # hardcoded, so a schemaVersion bump whose author forgot to rename
+        # the dump target still produces the right file (or a missing-file
+        # failure below) instead of silently re-dumping the old version's
+        # file. The dirty-tree check uses `git status --porcelain
+        # --untracked-files=all` rather than `git diff --exit-code`: `git
+        # diff` only reports modifications to already-tracked files, so a
+        # brand new generated file (e.g. a new table's .g.dart, or a new
+        # schemaVersion's drift_schema_vN.json) that was never committed is
+        # invisible to it and the gate passes green.
         run: |
+          set -euo pipefail
           dart run build_runner build --delete-conflicting-outputs
-          dart run drift_dev schema dump lib/data/db/db.dart drift_schemas/drift_schema_v14.json
-          git diff --exit-code
+
+          version="$(grep -oE 'schemaVersion => [0-9]+' lib/data/db/db.dart | grep -oE '[0-9]+')"
+          if [ -z "$version" ]; then
+            echo "::error::Could not find 'schemaVersion => <N>' in lib/data/db/db.dart"
+            exit 1
+          fi
+          dart run drift_dev schema dump lib/data/db/db.dart "drift_schemas/drift_schema_v${version}.json"
+
+          dirty="$(git status --porcelain --untracked-files=all)"
+          if [ -n "$dirty" ]; then
+            echo "::error::Codegen or the drift schema dump is out of sync with the committed source (tracked changes and/or untracked generated files below). Run 'dart run build_runner build --delete-conflicting-outputs' and 'dart run drift_dev schema dump lib/data/db/db.dart drift_schemas/drift_schema_v${version}.json' locally and commit the results."
+            echo "$dirty"
+            git diff
+            exit 1
+          fi
 
       - name: Analyze
         run: flutter analyze
@@ -182,19 +242,39 @@ jobs:
         # The defines resolve to empty strings on forks and PRs without
         # secrets; the app treats empty as "unconfigured", so the build
         # must succeed either way. LUNARLOG_WEB_SYNC is never set in CI.
+        #
+        # Issue #572: secrets are passed through env: and referenced quoted
+        # rather than interpolated straight into the shell command. An
+        # unquoted `${{ secrets.* }}` splice is a word-splitting/glob hazard
+        # in general, and this is also where a version string containing a
+        # stray `#` (see extract-marketing-version.sh's hardening) would
+        # have silently commented out every flag after it in the release
+        # workflows that build `--build-name=`/`--build-number=` this way.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
           flutter build web --release \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
-            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
-            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
-            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
-            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
-            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
-            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
   edge-functions:
     # Runs the Deno test suite for supabase/functions (Issue #6, issue #103
@@ -266,23 +346,38 @@ jobs:
         run: flutter pub get
 
       - name: Build debug APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
           flutter build apk --debug \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
-            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
-            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
-            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
-            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
-            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
-            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
   ios:
     name: Build iOS (unsigned)
-    runs-on: self-hosted
+    # Fork PRs never reach a self-hosted job (issue #514): this is the same
+    # runner ios-release.yml signs releases on.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -310,19 +405,31 @@ jobs:
       - name: Build iOS (unsigned)
         # Unsigned: a PR from a fork cannot read signing secrets, and this
         # only needs to prove the app still compiles for a device.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
           flutter build ios --release --no-codesign \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
-            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
-            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
-            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
-            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
-            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
-            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
   ios-simulator:
     # Runs on Williams-Mini (the lab's Mac mini, see AGENTS.md "iOS Local
@@ -337,15 +444,30 @@ jobs:
     #
     # Security note: this repo is public. A workflow step here executes
     # directly on lab hardware, so this job (and this runner) must only
-    # ever run trusted code -- see the repo's Settings -> Actions ->
-    # General -> "Fork pull request workflows from outside collaborators"
-    # (set to require approval for outside collaborators) before trusting
-    # this job's `pull_request` trigger.
+    # ever run trusted code. Issue #514: the repo Settings -> Actions ->
+    # General "Fork pull request workflows from outside collaborators"
+    # setting alone only gates *first-time* contributors on a public repo,
+    # so this job's own `if:` below is the actual enforcement -- a fork PR
+    # is never scheduled on this (or any other) self-hosted runner,
+    # regardless of the repo setting.
     name: iOS Simulator tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        # Issue #570: this job previously went straight to `flutter pub get`
+        # with whatever Flutter was ambient on williams-mini's PATH
+        # (Homebrew) -- a `brew upgrade` on that machine could silently move
+        # this job to a different Flutter version than every other job here
+        # (all pinned via this same action) and the shipped app. Pinned the
+        # same way as the rest of CI.
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
 
       - name: Get dependencies
         run: flutter pub get
