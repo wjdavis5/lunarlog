@@ -13,6 +13,14 @@ name: Supabase migrate
 # FCM_PRIVATE_KEY, PUSH_DISPATCH_WEBHOOK_SECRET) -- see AGENTS.md's "Config
 # & Credential Locations".
 #
+# Issue #538: the dry run (`db push --dry-run`) is its own `dry-run` job,
+# which the `migrate` job below `needs`-gates on and which also fails
+# closed on a DROP/ALTER ... TYPE statement in any not-yet-applied
+# migration. Both jobs run inside the `production` environment, so a run
+# requires two separate required-reviewer approvals -- one to let the dry
+# run and destructive-statement scan execute, a second (with that job's
+# output now visible) to let the real push happen.
+#
 # The Apple-secret and push-dispatch-secret checks are each scoped to their
 # own function's secret-set step only, not to the whole job: an unrelated
 # supabase/** push (a new migration, another function) must not fail purely
@@ -82,8 +90,111 @@ permissions:
   contents: read
 
 jobs:
+  dry-run:
+    # Issue #538: this gate used to be `List pending migrations` (`db push
+    # --dry-run`) immediately followed by the real `db push` in the same
+    # job -- decorative output, never actually consulted before the push it
+    # was meant to precede. Split into its own job that `migrate` below
+    # `needs`-gates on: the `production` environment's required reviewer
+    # must approve *this* job (seeing nothing yet but the diff under
+    # review) and then, separately, approve `migrate` -- by which point
+    # this job's dry-run output and destructive-statement scan are visible
+    # in its logs. Two separate environment approvals, not one.
+    name: Preview and gate pending migrations (dry run)
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # Same IPv4-pooler rationale as migration-gate.yml: the direct host
+      # publishes AAAA-only records and GitHub-hosted runners have no IPv6
+      # route.
+      POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-0-us-west-2.pooler.supabase.com' }}
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PGSSLMODE: require
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1.7.1
+        with:
+          # Pinned to the version the migrations and tests were written against.
+          version: 2.116.0
+
+      - name: Check deploy credentials
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set. Create a Supabase personal access token (supabase.com dashboard -> Account -> Access Tokens) and add it as a \`production\` environment secret named SUPABASE_ACCESS_TOKEN (repository Settings -> Environments -> production -> Environment secrets), then re-run this workflow."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::error::SUPABASE_DB_PASSWORD is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
+            exit 1
+          fi
+
+      - name: Link project
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: List pending migrations
+        run: supabase db push --dry-run
+
+      - name: Install psql
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null 2>&1 || {
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          }
+          psql --version
+
+      - name: Fail on a destructive statement in an unapplied migration
+        # Issue #538: asserts on the actual SQL of every migration file not
+        # yet recorded as applied in production (the same repo-vs-applied
+        # diff ios-release.yml's migration-gate job runs, just inverted --
+        # that job fails on a migration missing from prod, this one fails
+        # on a migration about to be *added* to it that looks destructive).
+        # DROP TABLE/COLUMN and ALTER TABLE ... TYPE are the two statement
+        # shapes that can destroy data or fail outright against a non-empty
+        # table; this is a text-pattern heuristic, not a query against the
+        # target tables' actual row counts, so it can't distinguish an
+        # empty table from a populated one -- it fails closed on the
+        # pattern either way. That is deliberate: a destructive schema
+        # change should never ship through the unattended path. Apply it
+        # by hand (a manual `supabase db push` or `psql` session) after
+        # reviewing it directly.
+        run: |
+          set -euo pipefail
+
+          applied="$(psql -h "$POOLER_HOST" -p 5432 -U "postgres.${SUPABASE_PROJECT_REF}" -d postgres \
+                       -t -A -c "select version from supabase_migrations.schema_migrations" \
+                     | tr -d '\r' | sed '/^$/d' | sort -u)"
+
+          hit=0
+          checked=0
+          for f in supabase/migrations/*.sql; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f")"
+            ver="$(printf '%s\n' "$base" | sed -E 's/^([0-9]+)_.*/\1/')"
+            if printf '%s\n' "$applied" | grep -qx "$ver"; then
+              continue # already applied in production; not part of this push
+            fi
+            checked=$((checked + 1))
+            if grep -EinH '(^|[^[:alnum:]_])drop[[:space:]]+(table|column)([^[:alnum:]_]|$)|(^|[^[:alnum:]_])alter[[:space:]]+table\b.*\btype\b' "$f"; then
+              echo "::error::$f is not yet applied to production and contains a DROP or ALTER ... TYPE statement -- potentially destructive against a non-empty table. Blocked from the unattended push above."
+              hit=1
+            fi
+          done
+
+          echo "Scanned $checked pending migration(s) for destructive statements."
+          [ "$hit" -eq 0 ] || exit 1
+
   migrate:
     name: Push migrations
+    needs: dry-run
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 15
@@ -124,9 +235,6 @@ jobs:
 
       - name: Link project
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
-
-      - name: List pending migrations
-        run: supabase db push --dry-run
 
       - name: Push migrations
         run: supabase db push
