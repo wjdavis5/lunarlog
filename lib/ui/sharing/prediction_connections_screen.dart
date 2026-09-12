@@ -51,32 +51,16 @@ class _PredictionConnectionsScreenState
   }
 
   Future<void> _enterCode() async {
+    // Issue #574: was a `TextEditingController()` constructed directly
+    // inside `showDialog`'s `builder`, which Flutter may invoke more than
+    // once (a theme/MediaQuery change, a route rebuild) — each invocation
+    // minted a new, never-disposed controller, and a rotation mid-dialog
+    // detached the TextField from whichever controller the Connect button
+    // still read. `_EnterCodeDialog` owns one controller for the dialog's
+    // whole lifetime and disposes it.
     final code = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        final controller = TextEditingController();
-        return AlertDialog(
-          title: const Text('Enter connection code'),
-          content: TextField(
-            key: const ValueKey('prediction-code-field'),
-            controller: controller,
-            autofocus: true,
-            decoration:
-                const InputDecoration(hintText: 'Paste the code you received'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.of(ctx).pop(controller.text.trim()),
-              child: const Text('Connect'),
-            ),
-          ],
-        );
-      },
+      builder: (ctx) => const _EnterCodeDialog(),
     );
     if (code == null || code.isEmpty || !mounted) return;
 
@@ -198,6 +182,52 @@ class _PredictionConnectionsScreenState
           );
         },
       ),
+    );
+  }
+}
+
+/// The "Enter connection code" dialog body (issue #574): a small
+/// [StatefulWidget] so its [TextEditingController] survives a rebuild
+/// (theme/MediaQuery change, route rebuild) of the dialog rather than
+/// being reminted by `showDialog`'s `builder` on every such rebuild, and
+/// is disposed exactly once when the dialog itself is.
+class _EnterCodeDialog extends StatefulWidget {
+  const _EnterCodeDialog();
+
+  @override
+  State<_EnterCodeDialog> createState() => _EnterCodeDialogState();
+}
+
+class _EnterCodeDialogState extends State<_EnterCodeDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Enter connection code'),
+      content: TextField(
+        key: const ValueKey('prediction-code-field'),
+        controller: _controller,
+        autofocus: true,
+        decoration:
+            const InputDecoration(hintText: 'Paste the code you received'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Connect'),
+        ),
+      ],
     );
   }
 }

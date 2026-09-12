@@ -242,6 +242,19 @@ class _OverviewPanelState extends State<OverviewPanel>
       );
       _watchGuardians();
       _watchSuggestionDismissed();
+      return;
+    }
+    // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
+    // changed underneath it — re-run just the watch that reads the changed
+    // collaborator.
+    if (oldWidget.guardiansRepository != widget.guardiansRepository) {
+      _watchGuardians();
+    }
+    if (oldWidget.todayProvider != widget.todayProvider) {
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
     }
   }
 

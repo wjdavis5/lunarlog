@@ -662,6 +662,14 @@ class _MonthCalendarState extends State<MonthCalendar>
   @override
   void initState() {
     super.initState();
+    // Issue #574: captured once here, not re-read on every build — safe
+    // today because nothing above this widget in the tree ever swaps
+    // these providers after first build (they come from the one
+    // AppDependencies bundle a running app never rebuilds with a
+    // different instance); worth this comment because a future provider
+    // that *can* change would need a didChangeDependencies re-read
+    // instead, the same way `ProfileGuardiansRepository` already gets a
+    // live re-subscribe via `didUpdateWidget` rather than a one-shot read.
     _repository = context.read<DayEntriesRepository>();
     _predictionService = context.read<CyclePredictionService?>();
     _historyService = context.read<CycleHistoryService?>();
@@ -732,6 +740,18 @@ class _MonthCalendarState extends State<MonthCalendar>
           _pageIndexFor(_displayedYear, _displayedMonth),
         );
       }
+      return;
+    }
+    // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
+    // changed underneath it (e.g. a test harness swapping collaborators,
+    // or a provider rebuild upstream) — re-run just the watch that reads
+    // the changed collaborator, without profileId's full reset (there is
+    // no new data set to bridge into here).
+    if (oldWidget.guardiansRepository != widget.guardiansRepository) {
+      _watchGuardians();
+    }
+    if (oldWidget.todayProvider != widget.todayProvider) {
+      _rewatchPrediction();
     }
   }
 

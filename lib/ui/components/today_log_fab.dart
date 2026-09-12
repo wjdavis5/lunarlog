@@ -92,7 +92,11 @@ class _TodayLogFabState extends State<TodayLogFab>
   @override
   void didUpdateWidget(covariant TodayLogFab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.profileId != widget.profileId) {
+    // Issue #574: `guardiansRepository` also needs a fresh subscription on
+    // its own — `todayProvider` needs none, since every read of it
+    // (`widget.todayProvider()`) already happens at use time, never cached.
+    if (oldWidget.profileId != widget.profileId ||
+        oldWidget.guardiansRepository != widget.guardiansRepository) {
       _watchGuardians();
     }
   }

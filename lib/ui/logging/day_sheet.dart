@@ -779,22 +779,23 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   Future<void> _delete() async {
+    // Issue #574: resolved once, not on every Text/label below.
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(AppLocalizations.of(context).daySheetDeleteTitle),
+        title: Text(l10n.daySheetDeleteTitle),
         content: Text(
-          AppLocalizations.of(context)
-              .daySheetDeleteBody(daySheetDateLabel(widget.date, widget.today)),
+          l10n.daySheetDeleteBody(daySheetDateLabel(widget.date, widget.today)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(AppLocalizations.of(context).daySheetCancel),
+            child: Text(l10n.daySheetCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(AppLocalizations.of(context).daySheetDelete),
+            child: Text(l10n.daySheetDelete),
           ),
         ],
       ),
@@ -862,10 +863,12 @@ class _DaySheetState extends State<DaySheet> {
   Future<void> _confirmDiscardWhileFailed() async {
     if (_discardDialogOpen) return;
     _discardDialogOpen = true;
+    // Issue #574: resolved once, not on every Text/label below.
+    final l10n = AppLocalizations.of(context);
     final discard = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(AppLocalizations.of(context).daySheetDiscardTitle),
+        title: Text(l10n.daySheetDiscardTitle),
         content: const Text(
           "The last change couldn't be saved. Discarding removes it from "
           'this device.',
@@ -873,11 +876,11 @@ class _DaySheetState extends State<DaySheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(AppLocalizations.of(context).daySheetKeepEditing),
+            child: Text(l10n.daySheetKeepEditing),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(AppLocalizations.of(context).daySheetDiscard),
+            child: Text(l10n.daySheetDiscard),
           ),
         ],
       ),
