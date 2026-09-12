@@ -885,6 +885,84 @@ void main() {
     });
   });
 
+  group('applyPushResult (issue #523: atomic accepted + resolved apply)', () {
+    test('a failure applying a resolved row rolls back every markPushed '
+        'write from the same call — nothing is half-committed', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          note: 'local');
+      expect(e.dirty, isTrue);
+      expect(e.localRev, 1);
+
+      // A resolved row for the SAME local id (so `onlyExisting` does not
+      // skip it) whose profile is not held locally — `_applyDayEntry`
+      // throws `RetryableSyncApplyError` from `_ensureDayEntryProfileExists`
+      // partway through the resolved half of the call, *after* the accepted
+      // half's `markPushed` write for `e` has already run inside the same
+      // transaction.
+      final badResolved = remoteEntry(
+        e.id,
+        profileId: 'profile-not-held-locally',
+        localDate: e.localDate,
+        updatedAt: e.updatedAt.add(const Duration(seconds: 1)),
+      );
+
+      await expectLater(
+        storage.applyPushResult(
+          accepted: [
+            (table: SyncTable.dayEntries, id: e.id, localRevAtPush: e.localRev),
+          ],
+          resolved: [badResolved],
+        ),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+
+      final reread = await entryById(p.id, e.id);
+      expect(reread.dirty, isTrue,
+          reason: 'the markPushed write inside the same transaction as the '
+              'failing resolved apply must have rolled back too — this is '
+              'exactly the divergence issue #523 describes: a declined row '
+              'left dirty = false holding the losing value forever');
+      expect(reread.localRev, e.localRev);
+      expect(reread.note, 'local',
+          reason: 'the resolved apply itself must never have landed either');
+    });
+
+    test('a clean call clears dirty on every accepted row and applies every '
+        'resolved row, in one pass', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          note: 'local');
+      final resolvedAt = e.updatedAt.add(const Duration(seconds: 1));
+
+      await storage.applyPushResult(
+        accepted: [
+          (table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev),
+        ],
+        resolved: [
+          remoteEntry(e.id,
+              profileId: p.id,
+              updatedAt: resolvedAt,
+              note: 'server wins'),
+        ],
+      );
+
+      final rereadProfile = await profileById(p.id);
+      expect(rereadProfile.dirty, isFalse);
+      final rereadEntry = await entryById(p.id, e.id);
+      expect(rereadEntry.dirty, isFalse);
+      expect(rereadEntry.note, 'server wins');
+    });
+  });
+
   group('applyRemotePage', () {
     test('commits rows and the table cursor together; a throwing row '
         'leaves both untouched', () async {

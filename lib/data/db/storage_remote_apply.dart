@@ -205,6 +205,50 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     });
   }
 
+  /// Issue #523: the atomic entry point for one push batch's storage-side
+  /// outcome — clearing `dirty` on every [accepted] row ([markPushed]) and
+  /// applying the server's [resolved] copies ([applyResolved]), all in ONE
+  /// `db.transaction()`.
+  ///
+  /// Before this method existed, `SupabaseSyncApply.applyPushResult` ran
+  /// these as separate transactions (each `markPushed` call is its own
+  /// atomic write; `applyResolved` opens its own transaction afterwards). A
+  /// crash — or a failing write — between the last `markPushed` and
+  /// `applyResolved` left a *declined* row `dirty = false` holding the
+  /// client's LOSING value: a declined row is never `UPDATE`d server-side,
+  /// so its `server_version` never advances past the client's persisted
+  /// cursor, and the incremental pull never corrects it either. The
+  /// divergence was silent and permanent until the next 24h full reconcile
+  /// happened to re-page that row.
+  ///
+  /// `db.transaction()` nests safely (drift runs a nested call in the
+  /// existing transaction zone rather than opening a second one — see
+  /// `ConnectionUser.transaction` in the `drift` package), so this method
+  /// simply calls the two already-transactional pieces from within one
+  /// outer transaction: either the whole batch's outcome lands, or a
+  /// failure partway through (a resolved row whose referenced parent is not
+  /// held locally, say) rolls back every `markPushed` write alongside it,
+  /// and the next cycle's dirty scan sees the row still dirty and pushes it
+  /// again — never a mix of "pushed" and "wrong content".
+  Future<void> applyPushResult({
+    required List<({SyncTable table, String id, int localRevAtPush})>
+        accepted,
+    required List<RemoteRow> resolved,
+  }) async {
+    await db.transaction(() async {
+      for (final item in accepted) {
+        await markPushed(
+          table: item.table,
+          id: item.id,
+          localRevAtPush: item.localRevAtPush,
+        );
+      }
+      if (resolved.isNotEmpty) {
+        await applyResolved(resolved);
+      }
+    });
+  }
+
   // ---------------------------------------------------------------- internal
 
   Future<bool> _applyProfile(RemoteProfileRow remote,

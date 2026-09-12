@@ -100,10 +100,21 @@ class SupabaseSyncApply {
   /// item is cleared via `markPushed`, newly-accepted profiles un-reject
   /// their entries, and the server's `resolved` copies are applied with
   /// `dirty = false`.
+  ///
+  /// Issue #523: the two storage writes (`markPushed` for every accepted
+  /// item, `applyResolved` for the server's authoritative copies) go
+  /// through [LunarLogStorage.applyPushResult] in ONE `db.transaction()` —
+  /// a crash or failing write partway through used to leave a declined row
+  /// `dirty = false` holding the client's losing value, permanently, since
+  /// a declined row's `server_version` never advances to correct it via a
+  /// later pull. The in-memory [_rejected] bookkeeping below has no
+  /// database effect and needs no transaction of its own; only the two
+  /// storage writes did.
   Future<void> applyPushResult(
       List<SyncPushItem> batch, PushResult result) async {
     final rejected = result.rejectedIds.toSet();
     final acceptedProfileIds = <String>{};
+    final accepted = <({SyncTable table, String id, int localRevAtPush})>[];
     for (final item in batch) {
       if (rejected.contains(item.id)) {
         _rejected[item.id] =
@@ -114,15 +125,13 @@ class SupabaseSyncApply {
       if (item.table == SyncTable.profiles) {
         acceptedProfileIds.add(item.id);
       }
-      await _storage.markPushed(
-          table: item.table, id: item.id, localRevAtPush: item.localRev);
+      accepted
+          .add((table: item.table, id: item.id, localRevAtPush: item.localRev));
     }
     if (acceptedProfileIds.isNotEmpty) {
       _unrejectEntriesOf(acceptedProfileIds, rejected);
     }
-    if (result.resolved.isNotEmpty) {
-      await _storage.applyResolved(result.resolved);
-    }
+    await _storage.applyPushResult(accepted: accepted, resolved: result.resolved);
   }
 
   /// A day entry rejected alongside its profile is un-rejected once that
