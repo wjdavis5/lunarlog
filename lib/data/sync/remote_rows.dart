@@ -236,6 +236,7 @@ final class RemoteObservationRow extends RemoteRow {
     this.source = 'manual',
     this.sourceId,
     this.importId,
+    this.exportedToPlatformAt,
     this.raw,
     required this.updatedAt,
     required this.deletedAt,
@@ -281,6 +282,12 @@ final class RemoteObservationRow extends RemoteRow {
 
   /// The original datapoint's JSON, undecoded (escape hatch, A1-45).
   final String? raw;
+
+  /// The UTC instant this row's content was last written to a health
+  /// platform (Issue #186). Synced like any other observations column so a
+  /// round-trip write is detectable when the same row returns through a
+  /// future import (#217/#228); null until the export flow stamps it.
+  final DateTime? exportedToPlatformAt;
 
   @override
   final DateTime updatedAt;

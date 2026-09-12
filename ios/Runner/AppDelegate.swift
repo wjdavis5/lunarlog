@@ -353,20 +353,28 @@ enum HealthKitChannelHandler {
         let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
         let flowWire = args?["flow"] as? String,
         let flow = MenstrualFlowRawValue(wire: flowWire),
-        let cycleStartNumber = args?["cycleStart"] as? NSNumber
+        let cycleStartNumber = args?["cycleStart"] as? NSNumber,
+        let recordId = args?["recordId"] as? String
       else {
-        badArgs(result, "writeMenstrualFlow requires startMs/endMs/flow/cycleStart")
+        badArgs(result, "writeMenstrualFlow requires startMs/endMs/flow/cycleStart/recordId")
         return
       }
       // #193: HKMetadataKeyMenstrualCycleStart is required on every
       // menstrualFlow sample — true on the first day of a cycle, false
       // otherwise (sourced on the Dart side from episodes.dart).
+      // #186: HKMetadataKeyExternalUUID carries lunarlog's own record id
+      // (the day_entry ULID) so a future re-import can recognise this
+      // sample as our own write (the backup loop-breaker) and a tombstone
+      // can locate and delete exactly it.
       let sample = HKCategorySample(
         type: menstrualFlowType,
         value: flow.rawValue,
         start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
         end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
-        metadata: [HKMetadataKeyMenstrualCycleStart: cycleStartNumber]
+        metadata: [
+          HKMetadataKeyMenstrualCycleStart: cycleStartNumber,
+          HKMetadataKeyExternalUUID: recordId,
+        ]
       )
       save([sample], result: result)
 
@@ -386,20 +394,83 @@ enum HealthKitChannelHandler {
       }
       guard
         let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
-        let endMs = (args?["endMs"] as? NSNumber)?.int64Value
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let recordId = args?["recordId"] as? String
       else {
-        badArgs(result, "writeIntermenstrualBleeding requires startMs/endMs")
+        badArgs(result, "writeIntermenstrualBleeding requires startMs/endMs/recordId")
         return
       }
       // No intensity on this type: HKCategoryValueNotApplicable — the
       // sample's existence is the datum (#193/A3-4).
+      // #186: HKMetadataKeyExternalUUID, as for writeMenstrualFlow.
       let sample = HKCategorySample(
         type: intermenstrualBleedingType,
         value: HKCategoryValue.notApplicable.rawValue,
         start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
-        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0)
+        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+        metadata: [HKMetadataKeyExternalUUID: recordId]
       )
       save([sample], result: result)
+
+    case "deleteRecords":
+      // Issue #186 tombstone propagation: delete the samples whose
+      // HKMetadataKeyExternalUUID is one of the supplied lunarlog record
+      // ids. HealthKit can only delete samples the app itself saved, so we
+      // first query the two types this app writes by their external-UUID
+      // metadata, then delete exactly those — a record we never wrote (or a
+      // per-type mismatch) is simply absent from the query result. Behind
+      // the same guard as every write (a deletion is a health-API touch).
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "deleteRecords requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard let recordIds = args?["recordIds"] as? [String], !recordIds.isEmpty else {
+        badArgs(result, "deleteRecords requires recordIds")
+        return
+      }
+      Task {
+        do {
+          let predicate = HKQuery.predicateForObjects(
+            withMetadataKey: HKMetadataKeyExternalUUID,
+            allowedValues: recordIds)
+          // Query both types this app writes by their external-UUID
+          // metadata, then delete exactly those samples. HealthKit's
+          // delete(_:) can only remove samples the app itself saved, so a
+          // record we never wrote is simply absent from the query result.
+          // `HKHealthStore` has no `samples(ofType:predicate:limit:)` method
+          // and no async `delete` overload, so both calls below go through
+          // the standard callback-based APIs wrapped in continuations
+          // (`HKSampleQuery` + `store.execute(_:)`, and
+          // `store.delete(_:withCompletion:)`).
+          let samples = try await querySamples(
+            ofType: menstrualFlowType,
+            predicate: predicate)
+          let intermenstrual = try await querySamples(
+            ofType: intermenstrualBleedingType,
+            predicate: predicate)
+          var toDelete = samples
+          toDelete.append(contentsOf: intermenstrual)
+          if !toDelete.isEmpty {
+            try await delete(toDelete)
+          }
+          result("allowed")
+        } catch {
+          result(
+            FlutterError(
+              code: "writeFailed",
+              message: "deleteRecords failed: \(error.localizedDescription)",
+              details: nil))
+        }
+      }
 
     default:
       result(FlutterMethodNotImplemented)
@@ -412,6 +483,47 @@ enum HealthKitChannelHandler {
 
   private static var intermenstrualBleedingType: HKCategoryType {
     HKObjectType.categoryType(forIdentifier: .intermenstrualBleeding)!
+  }
+
+  /// Runs an `HKSampleQuery` over `store` and awaits its results. HealthKit
+  /// has no `HKHealthStore.samples(ofType:predicate:limit:)` async method, so
+  /// the callback-based query is bridged through a
+  /// `withCheckedThrowingContinuation`.
+  private static func querySamples(
+    ofType sampleType: HKSampleType,
+    predicate: NSPredicate?
+  ) async throws -> [HKSample] {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HKSample], Error>) in
+      let query = HKSampleQuery(
+        sampleType: sampleType,
+        predicate: predicate,
+        limit: HKObjectQueryNoLimit,
+        sortDescriptors: nil
+      ) { _, samples, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else {
+          continuation.resume(returning: samples ?? [])
+        }
+      }
+      store.execute(query)
+    }
+  }
+
+  /// Deletes samples from `store` and awaits completion. HealthKit has no
+  /// async `HKHealthStore.delete(_:)` overload, so the callback-based
+  /// `delete(_:withCompletion:)` is bridged through a
+  /// `withCheckedThrowingContinuation`.
+  private static func delete(_ samples: [HKSample]) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      store.delete(samples) { _, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else {
+          continuation.resume()
+        }
+      }
+    }
   }
 
   private static func save(_ samples: [HKSample], result: @escaping FlutterResult) {

@@ -1495,4 +1495,12 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         .insertOnConflictUpdate(state.copyWith(id: 1).toCompanion(false));
   }
 
+  /// Upserts the device-local `health_sync_state` anchor for its platform
+  /// (Issue #186 — never synced to the server; keyed by `platform`).
+  Future<void> writeHealthSyncAnchor(HealthSyncStateRow anchor) async {
+    await db
+        .into(db.healthSyncState)
+        .insertOnConflictUpdate(anchor.toCompanion(false));
+  }
+
 }

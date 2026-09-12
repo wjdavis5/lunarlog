@@ -26,6 +26,7 @@ Observation _observation({
   String? raw,
   DateTime? observedAt,
   DateTime? deletedAt,
+  DateTime? exportedToPlatformAt,
 }) =>
     Observation(
       id: observationId,
@@ -44,6 +45,7 @@ Observation _observation({
       source: source,
       sourceId: sourceId,
       raw: raw,
+      exportedToPlatformAt: exportedToPlatformAt,
       updatedAt: DateTime.utc(2026, 9, 1, 10, 0, 0, 123, 456),
       deletedAt: deletedAt,
       dirty: true,
@@ -61,6 +63,7 @@ JsonRow _json({
   Object? excluded = false,
   Object? source = 'manual',
   Object? raw,
+  Object? exportedToPlatformAt,
   Object? updatedAt = '2026-09-01T10:00:00.123456Z',
   Object? deletedAt,
   Object? serverVersion,
@@ -82,6 +85,7 @@ JsonRow _json({
       'excluded': excluded,
       'source': source,
       'source_id': null,
+      'exported_to_platform_at': exportedToPlatformAt,
       'raw': raw,
       'updated_at': updatedAt,
       'deleted_at': deletedAt,
@@ -104,6 +108,15 @@ void main() {
       expect(json['source'], 'manual');
       expect(json['updated_at'], '2026-09-01T10:00:00.123456Z');
       expect(json['deleted_at'], isNull);
+    });
+
+    test('emits exported_to_platform_at (Issue #186 round-trip marker)', () {
+      final exported = DateTime.utc(2026, 9, 2, 8);
+      final json = encodeObservation(_observation(exportedToPlatformAt: exported));
+      expect(json['exported_to_platform_at'], '2026-09-02T08:00:00.000Z');
+      // Never exported -> null on the wire.
+      expect(encodeObservation(_observation())['exported_to_platform_at'],
+          isNull);
     });
 
     test('throws invalidId for a malformed id', () {
@@ -162,6 +175,16 @@ void main() {
       expect(row.serverVersion, 7);
       expect(row.table, SyncTable.observations);
       expect(row.isTombstone, isFalse);
+    });
+
+    test('decodes exported_to_platform_at; an absent key decodes to null '
+        '(Issue #186)', () {
+      final row = decodeObservation(
+          _json(exportedToPlatformAt: '2026-09-02T08:00:00Z'));
+      expect(row.exportedToPlatformAt, DateTime.utc(2026, 9, 2, 8));
+      // A pre-#186 server never sends the key — the pull must not fail.
+      final absent = decodeObservation(_json(exportedToPlatformAt: null));
+      expect(absent.exportedToPlatformAt, isNull);
     });
 
     test('server_version null (absent) defaults to 0', () {

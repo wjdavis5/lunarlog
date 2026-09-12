@@ -459,6 +459,15 @@ mixin LunarLogStorageQueries {
     return row ?? kDefaultSyncState;
   }
 
+  /// The device-local `health_sync_state` anchor for [platform], or null
+  /// when never written (Issue #186 — never synced to the server).
+  Future<HealthSyncStateRow?> readHealthSyncAnchor(String platform) async {
+    final row = await (db.select(db.healthSyncState)
+          ..where((t) => t.platform.equals(platform)))
+        .getSingleOrNull();
+    return row;
+  }
+
   Future<List<ProfileGuardianData>> getGuardiansForProfile(String profileId) =>
       (db.select(db.profileGuardians)..where((t) => t.profileId.equals(profileId)))
           .get();

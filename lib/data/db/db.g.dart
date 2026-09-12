@@ -2858,6 +2858,17 @@ class $ObservationsTable extends Observations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _exportedToPlatformAtMeta =
+      const VerificationMeta('exportedToPlatformAt');
+  @override
+  late final GeneratedColumn<DateTime> exportedToPlatformAt =
+      GeneratedColumn<DateTime>(
+        'exported_to_platform_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _rawMeta = const VerificationMeta('raw');
   @override
   late final GeneratedColumn<String> raw = GeneratedColumn<String>(
@@ -2954,6 +2965,7 @@ class $ObservationsTable extends Observations
     source,
     sourceId,
     importId,
+    exportedToPlatformAt,
     raw,
     updatedAt,
     deletedAt,
@@ -3075,6 +3087,15 @@ class $ObservationsTable extends Observations
       context.handle(
         _importIdMeta,
         importId.isAcceptableOrUnknown(data['import_id']!, _importIdMeta),
+      );
+    }
+    if (data.containsKey('exported_to_platform_at')) {
+      context.handle(
+        _exportedToPlatformAtMeta,
+        exportedToPlatformAt.isAcceptableOrUnknown(
+          data['exported_to_platform_at']!,
+          _exportedToPlatformAtMeta,
+        ),
       );
     }
     if (data.containsKey('raw')) {
@@ -3200,6 +3221,10 @@ class $ObservationsTable extends Observations
         DriftSqlType.string,
         data['${effectivePrefix}import_id'],
       ),
+      exportedToPlatformAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}exported_to_platform_at'],
+      ),
       raw: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}raw'],
@@ -3293,6 +3318,16 @@ class Observation extends DataClass implements Insertable<Observation> {
   /// unconstrained server-side until #167 adds that table).
   final String? importId;
 
+  /// Issue #186 (sync mechanics): the UTC instant this row's content was
+  /// last written to a health platform (HealthKit/Health Connect), so a
+  /// round-trip write is detectable when the same row comes back through a
+  /// future import (#217/#228). Client-stamped at export time and synced
+  /// like any other observations column (the migration applies the
+  /// established `v_row ? 'key'` containment guard so an old client's
+  /// payload never clears an already-stored value). Null until the export
+  /// flow writes it — inert until #217/#228 own that flow.
+  final DateTime? exportedToPlatformAt;
+
   /// Escape hatch for an unrecognised type/value shape (A1-45); the entire
   /// original datapoint as JSON text.
   final String? raw;
@@ -3327,6 +3362,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     required this.source,
     this.sourceId,
     this.importId,
+    this.exportedToPlatformAt,
     this.raw,
     required this.updatedAt,
     this.deletedAt,
@@ -3371,6 +3407,9 @@ class Observation extends DataClass implements Insertable<Observation> {
     }
     if (!nullToAbsent || importId != null) {
       map['import_id'] = Variable<String>(importId);
+    }
+    if (!nullToAbsent || exportedToPlatformAt != null) {
+      map['exported_to_platform_at'] = Variable<DateTime>(exportedToPlatformAt);
     }
     if (!nullToAbsent || raw != null) {
       map['raw'] = Variable<String>(raw);
@@ -3422,6 +3461,9 @@ class Observation extends DataClass implements Insertable<Observation> {
       importId: importId == null && nullToAbsent
           ? const Value.absent()
           : Value(importId),
+      exportedToPlatformAt: exportedToPlatformAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exportedToPlatformAt),
       raw: raw == null && nullToAbsent ? const Value.absent() : Value(raw),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -3460,6 +3502,9 @@ class Observation extends DataClass implements Insertable<Observation> {
       source: serializer.fromJson<String>(json['source']),
       sourceId: serializer.fromJson<String?>(json['sourceId']),
       importId: serializer.fromJson<String?>(json['importId']),
+      exportedToPlatformAt: serializer.fromJson<DateTime?>(
+        json['exportedToPlatformAt'],
+      ),
       raw: serializer.fromJson<String?>(json['raw']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -3491,6 +3536,9 @@ class Observation extends DataClass implements Insertable<Observation> {
       'source': serializer.toJson<String>(source),
       'sourceId': serializer.toJson<String?>(sourceId),
       'importId': serializer.toJson<String?>(importId),
+      'exportedToPlatformAt': serializer.toJson<DateTime?>(
+        exportedToPlatformAt,
+      ),
       'raw': serializer.toJson<String?>(raw),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -3518,6 +3566,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     String? source,
     Value<String?> sourceId = const Value.absent(),
     Value<String?> importId = const Value.absent(),
+    Value<DateTime?> exportedToPlatformAt = const Value.absent(),
     Value<String?> raw = const Value.absent(),
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -3542,6 +3591,9 @@ class Observation extends DataClass implements Insertable<Observation> {
     source: source ?? this.source,
     sourceId: sourceId.present ? sourceId.value : this.sourceId,
     importId: importId.present ? importId.value : this.importId,
+    exportedToPlatformAt: exportedToPlatformAt.present
+        ? exportedToPlatformAt.value
+        : this.exportedToPlatformAt,
     raw: raw.present ? raw.value : this.raw,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -3576,6 +3628,9 @@ class Observation extends DataClass implements Insertable<Observation> {
       source: data.source.present ? data.source.value : this.source,
       sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
       importId: data.importId.present ? data.importId.value : this.importId,
+      exportedToPlatformAt: data.exportedToPlatformAt.present
+          ? data.exportedToPlatformAt.value
+          : this.exportedToPlatformAt,
       raw: data.raw.present ? data.raw.value : this.raw,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -3609,6 +3664,7 @@ class Observation extends DataClass implements Insertable<Observation> {
           ..write('source: $source, ')
           ..write('sourceId: $sourceId, ')
           ..write('importId: $importId, ')
+          ..write('exportedToPlatformAt: $exportedToPlatformAt, ')
           ..write('raw: $raw, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -3638,6 +3694,7 @@ class Observation extends DataClass implements Insertable<Observation> {
     source,
     sourceId,
     importId,
+    exportedToPlatformAt,
     raw,
     updatedAt,
     deletedAt,
@@ -3666,6 +3723,7 @@ class Observation extends DataClass implements Insertable<Observation> {
           other.source == this.source &&
           other.sourceId == this.sourceId &&
           other.importId == this.importId &&
+          other.exportedToPlatformAt == this.exportedToPlatformAt &&
           other.raw == this.raw &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
@@ -3692,6 +3750,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
   final Value<String> source;
   final Value<String?> sourceId;
   final Value<String?> importId;
+  final Value<DateTime?> exportedToPlatformAt;
   final Value<String?> raw;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -3717,6 +3776,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     this.source = const Value.absent(),
     this.sourceId = const Value.absent(),
     this.importId = const Value.absent(),
+    this.exportedToPlatformAt = const Value.absent(),
     this.raw = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3743,6 +3803,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     this.source = const Value.absent(),
     this.sourceId = const Value.absent(),
     this.importId = const Value.absent(),
+    this.exportedToPlatformAt = const Value.absent(),
     this.raw = const Value.absent(),
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
@@ -3774,6 +3835,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     Expression<String>? source,
     Expression<String>? sourceId,
     Expression<String>? importId,
+    Expression<DateTime>? exportedToPlatformAt,
     Expression<String>? raw,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -3800,6 +3862,8 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
       if (source != null) 'source': source,
       if (sourceId != null) 'source_id': sourceId,
       if (importId != null) 'import_id': importId,
+      if (exportedToPlatformAt != null)
+        'exported_to_platform_at': exportedToPlatformAt,
       if (raw != null) 'raw': raw,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -3829,6 +3893,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     Value<String>? source,
     Value<String?>? sourceId,
     Value<String?>? importId,
+    Value<DateTime?>? exportedToPlatformAt,
     Value<String?>? raw,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -3855,6 +3920,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
       source: source ?? this.source,
       sourceId: sourceId ?? this.sourceId,
       importId: importId ?? this.importId,
+      exportedToPlatformAt: exportedToPlatformAt ?? this.exportedToPlatformAt,
       raw: raw ?? this.raw,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -3917,6 +3983,11 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
     if (importId.present) {
       map['import_id'] = Variable<String>(importId.value);
     }
+    if (exportedToPlatformAt.present) {
+      map['exported_to_platform_at'] = Variable<DateTime>(
+        exportedToPlatformAt.value,
+      );
+    }
     if (raw.present) {
       map['raw'] = Variable<String>(raw.value);
     }
@@ -3965,6 +4036,7 @@ class ObservationsCompanion extends UpdateCompanion<Observation> {
           ..write('source: $source, ')
           ..write('sourceId: $sourceId, ')
           ..write('importId: $importId, ')
+          ..write('exportedToPlatformAt: $exportedToPlatformAt, ')
           ..write('raw: $raw, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -7793,6 +7865,291 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   }
 }
 
+class $HealthSyncStateTable extends HealthSyncState
+    with TableInfo<$HealthSyncStateTable, HealthSyncStateRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HealthSyncStateTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _platformMeta = const VerificationMeta(
+    'platform',
+  );
+  @override
+  late final GeneratedColumn<String> platform = GeneratedColumn<String>(
+    'platform',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _anchorMeta = const VerificationMeta('anchor');
+  @override
+  late final GeneratedColumn<String> anchor = GeneratedColumn<String>(
+    'anchor',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastSyncedAtMeta = const VerificationMeta(
+    'lastSyncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
+    'last_synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [platform, anchor, lastSyncedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'health_sync_state';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HealthSyncStateRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('platform')) {
+      context.handle(
+        _platformMeta,
+        platform.isAcceptableOrUnknown(data['platform']!, _platformMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_platformMeta);
+    }
+    if (data.containsKey('anchor')) {
+      context.handle(
+        _anchorMeta,
+        anchor.isAcceptableOrUnknown(data['anchor']!, _anchorMeta),
+      );
+    }
+    if (data.containsKey('last_synced_at')) {
+      context.handle(
+        _lastSyncedAtMeta,
+        lastSyncedAt.isAcceptableOrUnknown(
+          data['last_synced_at']!,
+          _lastSyncedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {platform};
+  @override
+  HealthSyncStateRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HealthSyncStateRow(
+      platform: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}platform'],
+      )!,
+      anchor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}anchor'],
+      ),
+      lastSyncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_synced_at'],
+      ),
+    );
+  }
+
+  @override
+  $HealthSyncStateTable createAlias(String alias) {
+    return $HealthSyncStateTable(attachedDatabase, alias);
+  }
+}
+
+class HealthSyncStateRow extends DataClass
+    implements Insertable<HealthSyncStateRow> {
+  /// The OS health platform this anchor belongs to: `healthkit` |
+  /// `health_connect`.
+  final String platform;
+
+  /// The platform's opaque change anchor: Health Connect's
+  /// `getChangesToken` token, or HealthKit's anchor UUID / last-read
+  /// instant as a string. Null before the first successful read; clearing
+  /// it signals "no anchor — do a full time-range read" (the
+  /// `ChangesTokenExpiredException` fallback of issue #186).
+  final String? anchor;
+
+  /// The UTC instant this anchor was last persisted at.
+  final DateTime? lastSyncedAt;
+  const HealthSyncStateRow({
+    required this.platform,
+    this.anchor,
+    this.lastSyncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['platform'] = Variable<String>(platform);
+    if (!nullToAbsent || anchor != null) {
+      map['anchor'] = Variable<String>(anchor);
+    }
+    if (!nullToAbsent || lastSyncedAt != null) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
+    return map;
+  }
+
+  HealthSyncStateCompanion toCompanion(bool nullToAbsent) {
+    return HealthSyncStateCompanion(
+      platform: Value(platform),
+      anchor: anchor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(anchor),
+      lastSyncedAt: lastSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSyncedAt),
+    );
+  }
+
+  factory HealthSyncStateRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HealthSyncStateRow(
+      platform: serializer.fromJson<String>(json['platform']),
+      anchor: serializer.fromJson<String?>(json['anchor']),
+      lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'platform': serializer.toJson<String>(platform),
+      'anchor': serializer.toJson<String?>(anchor),
+      'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
+    };
+  }
+
+  HealthSyncStateRow copyWith({
+    String? platform,
+    Value<String?> anchor = const Value.absent(),
+    Value<DateTime?> lastSyncedAt = const Value.absent(),
+  }) => HealthSyncStateRow(
+    platform: platform ?? this.platform,
+    anchor: anchor.present ? anchor.value : this.anchor,
+    lastSyncedAt: lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
+  );
+  HealthSyncStateRow copyWithCompanion(HealthSyncStateCompanion data) {
+    return HealthSyncStateRow(
+      platform: data.platform.present ? data.platform.value : this.platform,
+      anchor: data.anchor.present ? data.anchor.value : this.anchor,
+      lastSyncedAt: data.lastSyncedAt.present
+          ? data.lastSyncedAt.value
+          : this.lastSyncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HealthSyncStateRow(')
+          ..write('platform: $platform, ')
+          ..write('anchor: $anchor, ')
+          ..write('lastSyncedAt: $lastSyncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(platform, anchor, lastSyncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HealthSyncStateRow &&
+          other.platform == this.platform &&
+          other.anchor == this.anchor &&
+          other.lastSyncedAt == this.lastSyncedAt);
+}
+
+class HealthSyncStateCompanion extends UpdateCompanion<HealthSyncStateRow> {
+  final Value<String> platform;
+  final Value<String?> anchor;
+  final Value<DateTime?> lastSyncedAt;
+  final Value<int> rowid;
+  const HealthSyncStateCompanion({
+    this.platform = const Value.absent(),
+    this.anchor = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  HealthSyncStateCompanion.insert({
+    required String platform,
+    this.anchor = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : platform = Value(platform);
+  static Insertable<HealthSyncStateRow> custom({
+    Expression<String>? platform,
+    Expression<String>? anchor,
+    Expression<DateTime>? lastSyncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (platform != null) 'platform': platform,
+      if (anchor != null) 'anchor': anchor,
+      if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  HealthSyncStateCompanion copyWith({
+    Value<String>? platform,
+    Value<String?>? anchor,
+    Value<DateTime?>? lastSyncedAt,
+    Value<int>? rowid,
+  }) {
+    return HealthSyncStateCompanion(
+      platform: platform ?? this.platform,
+      anchor: anchor ?? this.anchor,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (platform.present) {
+      map['platform'] = Variable<String>(platform.value);
+    }
+    if (anchor.present) {
+      map['anchor'] = Variable<String>(anchor.value);
+    }
+    if (lastSyncedAt.present) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HealthSyncStateCompanion(')
+          ..write('platform: $platform, ')
+          ..write('anchor: $anchor, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$LunarLogDatabase extends GeneratedDatabase {
   _$LunarLogDatabase(QueryExecutor e) : super(e);
   $LunarLogDatabaseManager get managers => $LunarLogDatabaseManager(this);
@@ -7808,6 +8165,9 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   late final $VisitPrepItemsTable visitPrepItems = $VisitPrepItemsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
+  late final $HealthSyncStateTable healthSyncState = $HealthSyncStateTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7823,6 +8183,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     visitPrepItems,
     appSettings,
     syncState,
+    healthSyncState,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -10032,6 +10393,7 @@ typedef $$ObservationsTableCreateCompanionBuilder =
       Value<String> source,
       Value<String?> sourceId,
       Value<String?> importId,
+      Value<DateTime?> exportedToPlatformAt,
       Value<String?> raw,
       required DateTime updatedAt,
       Value<DateTime?> deletedAt,
@@ -10059,6 +10421,7 @@ typedef $$ObservationsTableUpdateCompanionBuilder =
       Value<String> source,
       Value<String?> sourceId,
       Value<String?> importId,
+      Value<DateTime?> exportedToPlatformAt,
       Value<String?> raw,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -10185,6 +10548,11 @@ class $$ObservationsTableFilterComposer
 
   ColumnFilters<String> get importId => $composableBuilder(
     column: $table.importId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get exportedToPlatformAt => $composableBuilder(
+    column: $table.exportedToPlatformAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10349,6 +10717,11 @@ class $$ObservationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get exportedToPlatformAt => $composableBuilder(
+    column: $table.exportedToPlatformAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get raw => $composableBuilder(
     column: $table.raw,
     builder: (column) => ColumnOrderings(column),
@@ -10484,6 +10857,11 @@ class $$ObservationsTableAnnotationComposer
   GeneratedColumn<String> get importId =>
       $composableBuilder(column: $table.importId, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get exportedToPlatformAt => $composableBuilder(
+    column: $table.exportedToPlatformAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get raw =>
       $composableBuilder(column: $table.raw, builder: (column) => column);
 
@@ -10602,6 +10980,7 @@ class $$ObservationsTableTableManager
                 Value<String> source = const Value.absent(),
                 Value<String?> sourceId = const Value.absent(),
                 Value<String?> importId = const Value.absent(),
+                Value<DateTime?> exportedToPlatformAt = const Value.absent(),
                 Value<String?> raw = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10627,6 +11006,7 @@ class $$ObservationsTableTableManager
                 source: source,
                 sourceId: sourceId,
                 importId: importId,
+                exportedToPlatformAt: exportedToPlatformAt,
                 raw: raw,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -10654,6 +11034,7 @@ class $$ObservationsTableTableManager
                 Value<String> source = const Value.absent(),
                 Value<String?> sourceId = const Value.absent(),
                 Value<String?> importId = const Value.absent(),
+                Value<DateTime?> exportedToPlatformAt = const Value.absent(),
                 Value<String?> raw = const Value.absent(),
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10679,6 +11060,7 @@ class $$ObservationsTableTableManager
                 source: source,
                 sourceId: sourceId,
                 importId: importId,
+                exportedToPlatformAt: exportedToPlatformAt,
                 raw: raw,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -13041,6 +13423,189 @@ typedef $$SyncStateTableProcessedTableManager =
       SyncStateRow,
       PrefetchHooks Function()
     >;
+typedef $$HealthSyncStateTableCreateCompanionBuilder =
+    HealthSyncStateCompanion Function({
+      required String platform,
+      Value<String?> anchor,
+      Value<DateTime?> lastSyncedAt,
+      Value<int> rowid,
+    });
+typedef $$HealthSyncStateTableUpdateCompanionBuilder =
+    HealthSyncStateCompanion Function({
+      Value<String> platform,
+      Value<String?> anchor,
+      Value<DateTime?> lastSyncedAt,
+      Value<int> rowid,
+    });
+
+class $$HealthSyncStateTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $HealthSyncStateTable> {
+  $$HealthSyncStateTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get platform => $composableBuilder(
+    column: $table.platform,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get anchor => $composableBuilder(
+    column: $table.anchor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$HealthSyncStateTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $HealthSyncStateTable> {
+  $$HealthSyncStateTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get platform => $composableBuilder(
+    column: $table.platform,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get anchor => $composableBuilder(
+    column: $table.anchor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$HealthSyncStateTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $HealthSyncStateTable> {
+  $$HealthSyncStateTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get platform =>
+      $composableBuilder(column: $table.platform, builder: (column) => column);
+
+  GeneratedColumn<String> get anchor =>
+      $composableBuilder(column: $table.anchor, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$HealthSyncStateTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $HealthSyncStateTable,
+          HealthSyncStateRow,
+          $$HealthSyncStateTableFilterComposer,
+          $$HealthSyncStateTableOrderingComposer,
+          $$HealthSyncStateTableAnnotationComposer,
+          $$HealthSyncStateTableCreateCompanionBuilder,
+          $$HealthSyncStateTableUpdateCompanionBuilder,
+          (
+            HealthSyncStateRow,
+            BaseReferences<
+              _$LunarLogDatabase,
+              $HealthSyncStateTable,
+              HealthSyncStateRow
+            >,
+          ),
+          HealthSyncStateRow,
+          PrefetchHooks Function()
+        > {
+  $$HealthSyncStateTableTableManager(
+    _$LunarLogDatabase db,
+    $HealthSyncStateTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HealthSyncStateTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HealthSyncStateTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HealthSyncStateTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> platform = const Value.absent(),
+                Value<String?> anchor = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => HealthSyncStateCompanion(
+                platform: platform,
+                anchor: anchor,
+                lastSyncedAt: lastSyncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String platform,
+                Value<String?> anchor = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => HealthSyncStateCompanion.insert(
+                platform: platform,
+                anchor: anchor,
+                lastSyncedAt: lastSyncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$HealthSyncStateTable, HealthSyncStateRow>(table),
+                  BaseReferences<
+                    _$LunarLogDatabase,
+                    $HealthSyncStateTable,
+                    HealthSyncStateRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$HealthSyncStateTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $HealthSyncStateTable,
+      HealthSyncStateRow,
+      $$HealthSyncStateTableFilterComposer,
+      $$HealthSyncStateTableOrderingComposer,
+      $$HealthSyncStateTableAnnotationComposer,
+      $$HealthSyncStateTableCreateCompanionBuilder,
+      $$HealthSyncStateTableUpdateCompanionBuilder,
+      (
+        HealthSyncStateRow,
+        BaseReferences<
+          _$LunarLogDatabase,
+          $HealthSyncStateTable,
+          HealthSyncStateRow
+        >,
+      ),
+      HealthSyncStateRow,
+      PrefetchHooks Function()
+    >;
 
 class $LunarLogDatabaseManager {
   final _$LunarLogDatabase _db;
@@ -13065,4 +13630,6 @@ class $LunarLogDatabaseManager {
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$SyncStateTableTableManager get syncState =>
       $$SyncStateTableTableManager(_db, _db.syncState);
+  $$HealthSyncStateTableTableManager get healthSyncState =>
+      $$HealthSyncStateTableTableManager(_db, _db.healthSyncState);
 }

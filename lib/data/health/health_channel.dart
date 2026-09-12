@@ -202,6 +202,11 @@ class MethodChannelHealthPlatform implements HealthPlatformStore {
         payloadArgs: () => {
           'flow': write.flow.toWire(),
           'cycleStart': write.cycleStart,
+          // Issue #186 sync mechanics: the source record id rides the
+          // write so the native side can stamp it as clientRecordId /
+          // HKMetadataKeyExternalUUID (idempotence + deletability).
+          'recordId': write.recordId,
+          'recordVersionMs': write.recordVersionMs,
         },
       );
 
@@ -213,6 +218,21 @@ class MethodChannelHealthPlatform implements HealthPlatformStore {
         HealthChannelMethods.writeIntermenstrualBleeding,
         write.facts,
         dayArgs: () => encodeDayArgs(write.date, write.tzName),
+        payloadArgs: () => {
+          'recordId': write.recordId,
+          'recordVersionMs': write.recordVersionMs,
+        },
+      );
+
+  @override
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
+  ) =>
+      _invokeGuarded(
+        HealthChannelMethods.deleteRecords,
+        facts,
+        payloadArgs: () => {'recordIds': recordIds},
       );
 }
 
@@ -250,6 +270,13 @@ class UnsupportedHealthPlatform implements HealthPlatformStore {
   @override
   Future<HealthPlatformResult> writeIntermenstrualBleeding(
     HealthIntermenstrualBleedingWrite write,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
   ) async =>
       const HealthPlatformResult.unavailable();
 }

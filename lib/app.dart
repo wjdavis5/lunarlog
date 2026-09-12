@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/composition/app_dependencies.dart';
+import 'package:lunarlog/data/health/health_sync_tombstone_coordinator.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
@@ -275,6 +276,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   ReminderWindowPublisher? _reminderWindowPublisher;
   PredictionProjectionPublisher? _predictionProjectionPublisher;
   HealthFlowWriteCoordinator? _healthFlowCoordinator;
+  HealthSyncTombstoneCoordinator? _healthSyncTombstoneCoordinator;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
@@ -337,6 +339,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _accountImportCoordinator = _deps.accountImportCoordinator;
     _initAuthController();
     _initHealthFlowWriter();
+    _initHealthSyncTombstonePropagation();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
     // Issue #373: started on its own, never nested inside the push-gated
@@ -507,6 +510,24 @@ class _LunarLogAppState extends State<LunarLogApp>
     );
     if (coordinator == null) return;
     _healthFlowCoordinator = coordinator;
+    coordinator.start();
+  }
+
+  /// Issue #186, AC6: tombstone propagation — a soft-deleted bound-profile
+  /// entry's ULID (the recorded health-store external id) is deleted from
+  /// the OS health store so a deleted entry never leaves an orphaned
+  /// sample. AC2: construction lives in `lib/composition/` (which owns the
+  /// same iOS-only gating as the write flow); this only starts it.
+  void _initHealthSyncTombstonePropagation() {
+    final coordinator = buildHealthSyncTombstoneCoordinator(
+      settings: _settings,
+      profiles: _profiles,
+      dayEntries: _dayEntries,
+      guardiansForProfile: _profileGuardians.getForProfile,
+      signedInUserId: () => confirmedHealthSyncUserId(_authController),
+    );
+    if (coordinator == null) return;
+    _healthSyncTombstoneCoordinator = coordinator;
     coordinator.start();
   }
 
@@ -804,12 +825,16 @@ class _LunarLogAppState extends State<LunarLogApp>
     _predictionProjectionPublisher = null;
     final healthFlowTeardown =
         _healthFlowCoordinator?.dispose() ?? Future<void>.value();
+    final healthSyncTeardown =
+        _healthSyncTombstoneCoordinator?.dispose() ?? Future<void>.value();
     _healthFlowCoordinator = null;
+    _healthSyncTombstoneCoordinator = null;
     final teardown = Future.wait([
       coordinatorTeardown,
       publisherTeardown,
       projectionPublisherTeardown,
       healthFlowTeardown,
+      healthSyncTeardown,
     ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {

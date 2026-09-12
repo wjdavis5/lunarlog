@@ -96,12 +96,17 @@ void main() {
         minorBindingAllowed: minorBindingAllowed,
       );
 
+  const flowWriteRecordId = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
+  const flowWriteRecordVersionMs = 1234567890000;
+
   final flowWrite = HealthMenstrualFlowWrite(
     facts: _facts(),
     date: LocalDate(2026, 8, 30),
     tzName: 'America/New_York',
     flow: HealthFlowValue.heavy,
     cycleStart: true,
+    recordId: flowWriteRecordId,
+    recordVersionMs: flowWriteRecordVersionMs,
   );
 
   group('guard ordering: a denied write never reaches the channel', () {
@@ -128,6 +133,8 @@ void main() {
           tzName: 'America/New_York',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expectRefusedWithoutInvocation(result, HealthSyncCheck.profileNotBound);
@@ -141,6 +148,8 @@ void main() {
           tzName: 'America/New_York',
           flow: HealthFlowValue.medium,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expectRefusedWithoutInvocation(result, HealthSyncCheck.notOwner);
@@ -155,6 +164,8 @@ void main() {
           tzName: 'America/New_York',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expectRefusedWithoutInvocation(
@@ -182,6 +193,8 @@ void main() {
             facts: notOwnerFacts,
             date: LocalDate(2026, 8, 30),
             tzName: 'America/New_York',
+            recordId: flowWriteRecordId,
+            recordVersionMs: flowWriteRecordVersionMs,
           ),
         ),
         HealthSyncCheck.notOwner,
@@ -217,6 +230,25 @@ void main() {
       // Payload.
       expect(args['flow'], 'heavy');
       expect(args['cycleStart'], true);
+      // Issue #186 sync mechanics: the source record id and version ride
+      // the write for clientRecordId / HKMetadataKeyExternalUUID stamping.
+      expect(args['recordId'], flowWriteRecordId);
+      expect(args['recordVersionMs'], flowWriteRecordVersionMs);
+    });
+
+    test('deleteRecords sends guard args + recordIds', () async {
+      await makePlatform().deleteRecords(
+        _facts(),
+        const [flowWriteRecordId, '01ARZ3NDEKTSV4RRFFQ69G5FBC'],
+      );
+
+      expect(calls, hasLength(1));
+      final call = calls.single;
+      expect(call.method, 'deleteRecords');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['profileId'], 'p1');
+      expect(args['recordIds'],
+          [flowWriteRecordId, '01ARZ3NDEKTSV4RRFFQ69G5FBC']);
     });
 
     test('writeIntermenstrualBleeding sends guard + day args, no flow key',
@@ -226,6 +258,8 @@ void main() {
           facts: _facts(),
           date: LocalDate(2026, 8, 30),
           tzName: 'America/New_York',
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expect(calls, hasLength(1));
@@ -235,6 +269,9 @@ void main() {
       expect(args['instantMs'], isNotNull);
       expect(args.containsKey('flow'), isFalse);
       expect(args.containsKey('cycleStart'), isFalse);
+      // Issue #186: the record id/version ride this write too.
+      expect(args['recordId'], flowWriteRecordId);
+      expect(args['recordVersionMs'], flowWriteRecordVersionMs);
     });
 
     test('bindProfile and requestWriteAuthorization send guard args',
@@ -336,6 +373,8 @@ void main() {
           tzName: 'Not/AZone',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expect(result, isA<HealthPlatformFailed>());
@@ -352,6 +391,8 @@ void main() {
           tzName: 'Not/AZone',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expect(result, isA<HealthPlatformRefused>());
@@ -376,6 +417,8 @@ void main() {
             facts: _facts(),
             date: LocalDate(2026, 8, 30),
             tzName: 'America/New_York',
+            recordId: flowWriteRecordId,
+            recordVersionMs: flowWriteRecordVersionMs,
           ),
         ),
         isA<HealthPlatformUnavailable>(),
