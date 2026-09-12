@@ -16,17 +16,27 @@ void main() {
     testWidgets('renders title and body, no illustration/action by default', (
       tester,
     ) async {
-      await _pump(
-        tester,
-        const EmptyState(
-          title: 'No entries this month',
-          body: 'Tap a day to log it',
+      final theme = ThemeData();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: const Scaffold(
+            body: EmptyState(
+              title: 'No entries this month',
+              body: 'Tap a day to log it',
+            ),
+          ),
         ),
       );
 
       expect(find.text('No entries this month'), findsOneWidget);
       expect(find.text('Tap a day to log it'), findsOneWidget);
       expect(find.byType(FilledButton), findsNothing);
+
+      // Pins the default title style: titleMedium
+      final title = tester.widget<Text>(find.text('No entries this month'));
+      final context = tester.element(find.text('No entries this month'));
+      expect(title.style, Theme.of(context).textTheme.titleMedium);
     });
 
     testWidgets('renders the illustration slot when given', (tester) async {
@@ -80,7 +90,7 @@ void main() {
     testWidgets(
         'titleStyle overrides the default titleMedium weight, and '
         'crossAxisAlignment.start left-aligns the title/body text '
-        '(issue #308)', (tester) async {
+        'with zero padding and Align(topStart) (issues #308, #326)', (tester) async {
       final theme = ThemeData();
       await tester.pumpWidget(
         MaterialApp(
@@ -103,8 +113,29 @@ void main() {
       final body = tester.widget<Text>(find.text('Body'));
       expect(body.textAlign, TextAlign.start);
 
-      final column = tester.widget<Column>(find.byType(Column));
+      final column = tester.widget<Column>(
+        find.descendant(
+          of: find.byType(EmptyState),
+          matching: find.byType(Column),
+        ),
+      );
       expect(column.crossAxisAlignment, CrossAxisAlignment.start);
+
+      final align = tester.widget<Align>(
+        find.descendant(
+          of: find.byType(EmptyState),
+          matching: find.byType(Align),
+        ),
+      );
+      expect(align.alignment, AlignmentDirectional.topStart);
+
+      final padding = tester.widget<Padding>(
+        find.ancestor(
+          of: find.byType(Column),
+          matching: find.byType(Padding),
+        ),
+      );
+      expect(padding.padding, EdgeInsets.zero);
     });
 
     test('asserts label and callback are both set or both absent', () {

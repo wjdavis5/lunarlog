@@ -60,6 +60,19 @@ void main() {
       expect(LocalDate(2026, 1, 1).addDays(-1), LocalDate(2025, 12, 31));
     });
 
+    test('addMonths adds months, clamping day to month end when needed', () {
+      expect(LocalDate(2026, 1, 31).addMonths(1), LocalDate(2026, 2, 28));
+      expect(LocalDate(2024, 1, 31).addMonths(1), LocalDate(2024, 2, 29));
+      expect(LocalDate(2026, 3, 31).addMonths(1), LocalDate(2026, 4, 30));
+      expect(LocalDate(2026, 5, 31).addMonths(1), LocalDate(2026, 6, 30));
+      expect(LocalDate(2026, 8, 31).addMonths(1), LocalDate(2026, 9, 30));
+      expect(LocalDate(2026, 10, 31).addMonths(1), LocalDate(2026, 11, 30));
+      expect(LocalDate(2026, 1, 15).addMonths(1), LocalDate(2026, 2, 15));
+      expect(LocalDate(2026, 1, 15).addMonths(12), LocalDate(2027, 1, 15));
+      expect(LocalDate(2026, 3, 31).addMonths(-1), LocalDate(2026, 2, 28));
+      expect(LocalDate(2026, 1, 15).addMonths(-1), LocalDate(2025, 12, 15));
+    });
+
     test('difference counts whole civil days and is antisymmetric', () {
       final a = LocalDate(2026, 2, 28);
       final b = LocalDate(2026, 3, 5);

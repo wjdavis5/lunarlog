@@ -173,11 +173,7 @@ class SupabaseNotificationPreferencesService
     if (_isUnauthorized(code, msg)) {
       return const NotificationPreferencesFailure.unauthorized();
     }
-    if (code == '23514' ||
-        msg.contains('time_zone') ||
-        msg.contains('notification_preferences_time_zone_valid') ||
-        details.contains('time_zone') ||
-        details.contains('notification_preferences_time_zone_valid')) {
+    if (_isInvalidTimeZone(code, msg, details)) {
       return const NotificationPreferencesFailure.invalidTimeZone();
     }
     final status = int.tryParse(code);
@@ -186,6 +182,13 @@ class SupabaseNotificationPreferencesService
     }
     return const NotificationPreferencesFailure.other();
   }
+
+  bool _isInvalidTimeZone(String code, String msg, String details) =>
+      code == '23514' ||
+      msg.contains('time_zone') ||
+      msg.contains('notification_preferences_time_zone_valid') ||
+      details.contains('time_zone') ||
+      details.contains('notification_preferences_time_zone_valid');
 
   bool _isUnauthorized(String code, String msg) =>
       code == 'PGRST301' ||

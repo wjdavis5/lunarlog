@@ -251,6 +251,66 @@ void main() {
           ReminderTypeConfig.birthControlShot);
       expect(legacy['p1']!.log.enabled, isTrue);
     });
+
+    test('#463 log nudge cadence and anchorDate round-trip and decode tolerantly', () {
+      final config = ReminderConfig(
+        log: ReminderTypeConfig(
+          enabled: true,
+          timeOfDayMinutes: 20 * 60,
+          cadence: ReminderCadence.weekly,
+          anchorDate: LocalDate(2026, 9, 11),
+        ),
+      );
+      final decoded =
+          decodeReminderConfigs(encodeReminderConfigs({'p1': config}));
+      expect(decoded['p1'], config);
+      expect(decoded['p1']!.log.cadence, ReminderCadence.weekly);
+      expect(decoded['p1']!.log.anchorDate, LocalDate(2026, 9, 11));
+
+      // Daily cadence omits 'cadence' and 'anchorDate' in JSON
+      const dailyConfig = ReminderConfig(
+        log: ReminderTypeConfig(
+          enabled: true,
+          timeOfDayMinutes: 20 * 60,
+          cadence: ReminderCadence.daily,
+        ),
+      );
+      final dailyDecoded =
+          decodeReminderConfigs(encodeReminderConfigs({'p1': dailyConfig}));
+      expect(dailyDecoded['p1']!.log.cadence, ReminderCadence.daily);
+      expect(dailyDecoded['p1']!.log.anchorDate, isNull);
+
+      // Malformed cadence / anchorDate falls back cleanly
+      final badDecoded = decodeReminderConfigs('''
+{
+  "v": 1,
+  "profiles": {
+    "p1": {
+      "log": {"enabled": true, "timeOfDay": 600, "cadence": "unsupported", "anchorDate": "invalid-date"}
+    }
+  }
+}
+''');
+      expect(badDecoded['p1']!.log.cadence, ReminderCadence.daily);
+      expect(badDecoded['p1']!.log.anchorDate, isNull);
+    });
+  });
+
+  group('ReminderCadence', () {
+    test('label matches expected strings', () {
+      expect(ReminderCadence.daily.label, 'Daily');
+      expect(ReminderCadence.weekly.label, 'Weekly');
+      expect(ReminderCadence.fortnightly.label, 'Fortnightly');
+      expect(ReminderCadence.monthly.label, 'Monthly');
+    });
+
+    test('toJson and fromJson round-trip and tolerate invalid strings', () {
+      for (final cadence in ReminderCadence.values) {
+        expect(ReminderCadence.fromJson(cadence.toJson()), cadence);
+      }
+      expect(ReminderCadence.fromJson(null), ReminderCadence.daily);
+      expect(ReminderCadence.fromJson('bogus'), ReminderCadence.daily);
+    });
   });
 
   group('late-snooze JSON', () {
