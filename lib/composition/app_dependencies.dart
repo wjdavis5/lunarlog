@@ -8,6 +8,8 @@
 /// individual domain contracts from the provider tree.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
@@ -41,6 +43,7 @@ import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/notifications/supabase_reminder_window_remote.dart';
 import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
+import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
@@ -210,6 +213,28 @@ AppDependencies buildAppDependencies({
   final settings = DriftSettingsStore(storage);
   final profileGuardians = DriftProfileGuardiansRepository(storage);
   final accountImporter = DriftAccountImporter(storage);
+  // Issue #568 (b): the synced source of truth cycle-history omissions read
+  // and write through now, instead of the device-local settings list.
+  final cycleOverrides = DriftCycleOverridesRepository(storage);
+  // One-time carry-over of any pre-existing device-local omissions into
+  // cycle_overrides rows (see migrateOmittedCyclesToCycleOverrides's own
+  // doc comment for its idempotency). Fired and forgotten:
+  // buildAppDependencies itself is synchronous and nothing downstream needs
+  // this to have finished — the migration's own settings flag makes every
+  // later launch's call an immediate no-op regardless of how this one
+  // resolves. Errors are swallowed rather than left unhandled: the database
+  // can legitimately close (a short-lived test harness, a fast app
+  // shutdown) before this finishes, and a background best-effort migration
+  // must never surface as an unhandled Future error or crash-report noise
+  // for something the next launch's call will simply retry.
+  unawaited(profiles
+      .list()
+      .then((allProfiles) => migrateOmittedCyclesToCycleOverrides(
+            settings: settings,
+            overrides: cycleOverrides,
+            profileIds: [for (final profile in allProfiles) profile.id],
+          ))
+      .catchError((_) {}));
 
   // Issue #418, AC5: client-derived services gate on `client != null &&
   // authService != null` — the old `_startSyncEngine` required auth (and
@@ -256,6 +281,7 @@ AppDependencies buildAppDependencies({
     // wiring in lib/app.dart.
     prediction: CyclePredictionService(dayEntries,
         settings: settings,
+        cycleOverrides: cycleOverrides,
         profiles: profiles,
         birthControlStateFor: (profileId) => storage
             .watchProfileMode(profileId)
@@ -266,8 +292,9 @@ AppDependencies buildAppDependencies({
                     startedOn: row.birthControlStartedOn,
                     stoppedOn: row.birthControlStoppedOn,
                   ))),
-    cycleHistory: CycleHistoryService(dayEntries, settings: settings),
-    cycleExclusions: CycleExclusionList(settings),
+    cycleHistory: CycleHistoryService(dayEntries,
+        settings: settings, cycleOverrides: cycleOverrides),
+    cycleExclusions: CycleExclusionList(settings, overrides: cycleOverrides),
     authService: authService,
     syncEngine: syncEngine,
     sharingService: _resolve(
