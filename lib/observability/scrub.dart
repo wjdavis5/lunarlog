@@ -44,6 +44,14 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 /// `sync_push` payload names that wrap whole rows (`p_care_notes`,
 /// `p_visit_prep_items`).
 ///
+/// Tracking model and observations (Issue #240, Issue #497): `value_text`
+/// (free-text symptom notes), `raw` (JSON payload), `observation(s)`, and
+/// `p_observations`.
+///
+/// Modes, cycle overrides and predictions (Issue #188, Issue #151, Issue #497):
+/// `profile_mode(s)`, `p_profile_modes`, `cycle_override(s)`,
+/// `p_cycle_overrides`, `prediction_projection(s)`, and `projection`.
+///
 /// Bare words such as `name`, `token`, `user`, `sub`, and `session` are
 /// deliberately absent: [mentionsDenyListedKey] drops any message that
 /// mentions a listed key, and those words appear in ordinary Drift, gotrue,
@@ -60,6 +68,23 @@ const List<String> sentryDenyListedKeys = [
   'visit_prep_items',
   'prep_item',
   'prep_items',
+  // Tracking model & observations (#240, #497).
+  'observation',
+  'observations',
+  'p_observations',
+  'value_text',
+  'raw',
+  // Modes & overrides (#188, #497).
+  'profile_mode',
+  'profile_modes',
+  'p_profile_modes',
+  'cycle_override',
+  'cycle_overrides',
+  'p_cycle_overrides',
+  // Predictions (#151, #497).
+  'projection',
+  'prediction_projection',
+  'prediction_projections',
   'display_name',
   'local_date',
   'email',

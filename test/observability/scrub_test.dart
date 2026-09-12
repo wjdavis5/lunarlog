@@ -802,6 +802,63 @@ void main() {
           reason: 'a content-free metadata breadcrumb survives; only the '
               'breadcrumb carrying a deny-listed key is dropped');
     });
+
+    test('Issue #497: observation, mode, override, and projection keys are deny-listed', () {
+      for (final key in [
+        'observation',
+        'observations',
+        'p_observations',
+        'value_text',
+        'valueText',
+        'raw',
+        'profile_mode',
+        'profile_modes',
+        'p_profile_modes',
+        'profileMode',
+        'profileModes',
+        'pProfileModes',
+        'cycle_override',
+        'cycle_overrides',
+        'p_cycle_overrides',
+        'cycleOverride',
+        'cycleOverrides',
+        'pCycleOverrides',
+        'projection',
+        'prediction_projection',
+        'prediction_projections',
+        'predictionProjection',
+        'predictionProjections',
+      ]) {
+        expect(isDenyListedKey(key), isTrue, reason: key);
+      }
+    });
+
+    test('Issue #497: observation and prediction data never survives an event', () {
+      const freeText = 'Severe headache and cramping';
+      final out = scrubEvent(SentryEvent(
+        logger: 'observations.value_text',
+        message: SentryMessage('saved observation $freeText', params: [freeText]),
+        // ignore: deprecated_member_use
+        extra: {
+          'observations': [
+            {'value_text': freeText}
+          ],
+        },
+        tags: {'p_observations': freeText, 'environment': 'development'},
+        breadcrumbs: [
+          Breadcrumb(category: 'sync', data: {
+            'prediction_projection': {'next_period': '2026-10-01'},
+          }),
+          Breadcrumb(category: 'sync', data: const {'status': 'ok'}),
+        ],
+      ))!;
+      final json = _json(out);
+      expect(json, isNot(contains(freeText)));
+      expect(json, isNot(contains('observations')));
+      expect(json, isNot(contains('prediction_projection')));
+      expect(json, contains('environment'));
+      expect(json, contains('status'));
+    });
   });
 
   group('scrubTransaction (U4; KTD9, R9, R10)', () {
