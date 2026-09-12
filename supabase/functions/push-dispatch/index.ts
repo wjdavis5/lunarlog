@@ -41,6 +41,11 @@ export interface OutboxRow {
   profile_id: string;
   recipient_user_id: string;
   kind: string;
+  /** The exact `claimed_at` value this invocation claimed the row with --
+   * threaded back into releaseClaim as an optimistic-lock token (Issue #526
+   * fix (b)) rather than releaseClaim re-reading it itself (the old
+   * non-atomic select-then-update this replaces). */
+  claimed_at: string;
 }
 
 export interface PushDeviceRow {
@@ -55,20 +60,34 @@ export interface PushDispatchDeps {
    * config degrades to "nothing dispatched" rather than a visible failure --
    * both callers (webhook, cron) treat this function as best-effort. */
   configured: boolean;
-  /** Atomically claims up to [limit] pending, due, not-yet-exhausted rows.
-   * Implemented as one conditional UPDATE per candidate id (KTD2, mirroring
-   * feedback-notify's single-row claim), so two overlapping invocations
-   * (the webhook and a cron sweep, or two cron sweeps) can never both claim
-   * the same row. */
+  /** Atomically claims up to [limit] pending, due, not-yet-exhausted, not
+   * already-sent rows. Implemented as one conditional UPDATE per candidate
+   * id (KTD2, mirroring feedback-notify's single-row claim), so two
+   * overlapping invocations (the webhook and a cron sweep, or two cron
+   * sweeps) can never both claim the same row. */
   claimBatch(limit: number): Promise<OutboxRow[]>;
   /** The recipient's active (non-disabled) devices. */
   devicesFor(userId: string): Promise<PushDeviceRow[]>;
+  /** Device ids already recorded as successfully delivered for this outbox
+   * row, from this or an earlier claim of it (Issue #526 fix (a): per-device
+   * delivery tracking). A device in this set is never re-sent to on a later
+   * attempt at the same row -- this is what stops one failing device on a
+   * multi-device recipient from causing every already-succeeded device to
+   * be re-alerted on every retry. */
+  deliveredDeviceIds(outboxId: string): Promise<Set<string>>;
+  /** Records a successful delivery to one device for one outbox row.
+   * Idempotent (an upsert) -- recording the same (outboxId, deviceId) pair
+   * twice, e.g. across two overlapping invocations, is harmless. */
+  recordDelivery(outboxId: string, deviceId: string): Promise<void>;
   /** Stamps sent_at, the terminal success state for a row. */
   markSent(id: string): Promise<void>;
-  /** Releases a claim this same invocation just won, after every device
-   * attempt for it failed: clears claimed_at (so a later claim can retry
-   * it), increments attempts, and records last_error_kind. */
-  releaseClaim(id: string, errorKind: string): Promise<void>;
+  /** Atomically releases a claim this same invocation just won, after at
+   * least one device attempt for it failed: clears claimed_at (so a later
+   * claim can retry it), increments attempts, and records last_error_kind --
+   * one `UPDATE ... WHERE id = $1 AND claimed_at = $2` (Issue #526 fix (b)),
+   * replacing a prior non-atomic read-modify-write on `attempts` that could
+   * silently drop an increment or reset the counter to 1 on a failed read. */
+  releaseClaim(id: string, claimedAt: string, errorKind: string): Promise<void>;
   /** Marks a device row disabled after FCM reports its token unregistered --
    * that device stops being returned by devicesFor from then on. */
   disableDevice(deviceId: string): Promise<void>;
@@ -109,10 +128,20 @@ export async function handlePushDispatch(deps: PushDispatchDeps): Promise<Dispat
 
   for (const row of rows) {
     const devices = await deps.devicesFor(row.recipient_user_id);
+    // Issue #526 fix (a): per-device delivery tracking. A device already
+    // recorded as delivered (from this row's current claim or an earlier
+    // one) is never sent to again -- without this, one failing device on a
+    // multi-device recipient (releaseClaim below) re-triggered a resend to
+    // *every* device on the next retry, including ones that had already
+    // succeeded.
+    const delivered = await deps.deliveredDeviceIds(row.id);
+    const pending = devices.filter((device) => !delivered.has(device.id));
 
-    if (devices.length === 0) {
-      // Nothing to send to -- mark sent rather than retrying forever
-      // against a recipient with no registered device.
+    if (pending.length === 0) {
+      // Nothing left to send to -- either the recipient has zero devices at
+      // all, or every device has already been successfully delivered to on
+      // a prior attempt at this row. Mark sent rather than retrying
+      // forever, or re-sending to devices that already succeeded.
       await deps.markSent(row.id);
       processed++;
       continue;
@@ -121,10 +150,12 @@ export async function handlePushDispatch(deps: PushDispatchDeps): Promise<Dispat
     let anyFailure = false;
     let lastErrorKind = "";
 
-    for (const device of devices) {
+    for (const device of pending) {
       const message = buildPushMessage(row.profile_id, device.token);
       const result = await deps.sendPush(message);
-      if (!result.ok) {
+      if (result.ok) {
+        await deps.recordDelivery(row.id, device.id);
+      } else {
         anyFailure = true;
         lastErrorKind = result.reason;
         if (result.reason === "unregistered") {
@@ -134,7 +165,7 @@ export async function handlePushDispatch(deps: PushDispatchDeps): Promise<Dispat
     }
 
     if (anyFailure) {
-      await deps.releaseClaim(row.id, lastErrorKind);
+      await deps.releaseClaim(row.id, row.claimed_at, lastErrorKind);
     } else {
       await deps.markSent(row.id);
     }
@@ -183,10 +214,18 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
   return {
     configured,
     claimBatch: async (limit) => {
+      // Issue #526 fix (d): `.is("sent_at", null)` -- without it, a row a
+      // slow/duplicated invocation had already sent (but whose claimed_at
+      // release raced ahead of, or was never reached because of, a
+      // markSent that then also succeeded) could be re-claimed and
+      // re-sent. deliver_after/attempts bound *when* and *how many times*
+      // a row is retried; sent_at is the separate terminal-state guard that
+      // stops an already-delivered row from ever being claimed again.
       const { data: candidates, error } = await client!
         .from("notification_outbox")
-        .select("id, profile_id, recipient_user_id, kind")
+        .select("id, profile_id, recipient_user_id, kind, claimed_at")
         .is("claimed_at", null)
+        .is("sent_at", null)
         .lte("deliver_after", new Date().toISOString())
         .lt("attempts", MAX_ATTEMPTS)
         .order("created_at", { ascending: true })
@@ -200,7 +239,7 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
           .update({ claimed_at: new Date().toISOString() })
           .eq("id", candidate.id)
           .is("claimed_at", null)
-          .select("id, profile_id, recipient_user_id, kind")
+          .select("id, profile_id, recipient_user_id, kind, claimed_at")
           .maybeSingle();
         if (!claimError && data) claimed.push(data as OutboxRow);
       }
@@ -214,20 +253,40 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
         .is("disabled_at", null);
       return error || !data ? [] : (data as PushDeviceRow[]);
     },
+    deliveredDeviceIds: async (outboxId) => {
+      const { data, error } = await client!
+        .from("notification_outbox_deliveries")
+        .select("device_id")
+        .eq("outbox_id", outboxId);
+      if (error || !data) return new Set<string>();
+      return new Set((data as Array<{ device_id: string }>).map((row) => row.device_id));
+    },
+    recordDelivery: async (outboxId, deviceId) => {
+      const { error } = await client!
+        .from("notification_outbox_deliveries")
+        .upsert({ outbox_id: outboxId, device_id: deviceId, sent_at: new Date().toISOString() });
+      if (error) {
+        console.error(
+          `push-dispatch: failed to record delivery for outbox row ${outboxId} device ${deviceId}: ` +
+            `a retry of this row could re-send to this device (${error.message ?? "unknown error"})`,
+        );
+      }
+    },
     markSent: async (id) => {
       await client!.from("notification_outbox").update({ sent_at: new Date().toISOString() }).eq("id", id);
     },
-    releaseClaim: async (id, errorKind) => {
-      const { data } = await client!
-        .from("notification_outbox")
-        .select("attempts")
-        .eq("id", id)
-        .maybeSingle();
-      const attempts = (data?.attempts as number | undefined) ?? 0;
-      await client!
-        .from("notification_outbox")
-        .update({ claimed_at: null, attempts: attempts + 1, last_error_kind: errorKind })
-        .eq("id", id);
+    releaseClaim: async (id, claimedAt, errorKind) => {
+      // Issue #526 fix (b): one atomic RPC (`UPDATE ... WHERE id = $1 AND
+      // claimed_at = $2`) replaces the old non-atomic
+      // select-then-update -- see the migration for the full rationale.
+      const { error } = await client!.rpc("release_notification_outbox_claim", {
+        p_id: id,
+        p_claimed_at: claimedAt,
+        p_error_kind: errorKind,
+      });
+      if (error) {
+        console.error(`push-dispatch: release_notification_outbox_claim failed for row ${id}: ${error.message ?? "unknown error"}`);
+      }
     },
     disableDevice: async (deviceId) => {
       await client!.from("push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceId);

@@ -1,17 +1,19 @@
-// index.test.ts (Issue #243/D-24, round 2 fix; #17 U2/U3)
+// index.test.ts (Issue #243/D-24, round 2 fix; #17 U2/U3; #526's neighbours
+// #527/#559/#560)
 //
 // `delete-account` previously had no `deno test` file at all - it was only
 // proven by local `supabase functions serve` + curl smoke tests (see
 // docs/ops/supabase-go-live.md). This suite does not attempt to cover every
-// branch that runbook already exercises (in particular the Apple-revoke
-// paths beyond a bare failure/success check); it covers what Issue #243
-// added and then hardened: the fail-closed feedback-attachments Storage
-// cleanup step (now Step 4, reordered ahead of row deletion and Apple
-// revocation by the round 2 fix) and its ordering relative to the other
-// steps, plus the paginated/recursive listing and batched removal the round
-// 2 fix added. `handleDeleteAccount` takes all real I/O as an injected
-// `DeleteAccountDeps`, so every case here runs with fakes: no live Supabase
-// project, no Apple credentials, no network.
+// branch that runbook already exercises (in particular the real Apple-revoke
+// network calls, which live in `_shared/apple_revoke.ts` and are faked here
+// via `revokeApple`); it covers the fail-closed/ordering contracts of
+// `handleDeleteAccount` itself: the feedback-attachments Storage cleanup
+// step (Step 4, fail-closed and bounded per Issue #559), the Apple-identity
+// determination and revoke-once-then-skip-on-retry behavior (Issues
+// #560/#527), and their ordering relative to the other steps.
+// `handleDeleteAccount` takes all real I/O as an injected `DeleteAccountDeps`,
+// so every case here runs with fakes: no live Supabase project, no Apple
+// credentials, no network.
 //
 // Run locally with `deno test supabase/functions/delete-account/`.
 
@@ -22,6 +24,8 @@ import {
   type DeleteAccountCaller,
   type DeleteAccountDeps,
   type DeleteAccountEnv,
+  type DeletionProgress,
+  type ListAttachmentsResult,
   type SupabaseClientFactory,
 } from "./index.ts";
 import type { AppleRevokeResult } from "../_shared/apple_revoke.ts";
@@ -34,11 +38,22 @@ function postRequest(body: Record<string, unknown> = {}, { withAuth = true }: { 
   });
 }
 
+function baseUser(overrides: Partial<DeleteAccountCaller> = {}): DeleteAccountCaller {
+  return {
+    id: "user-1",
+    providers: [],
+    appleIdentityId: null,
+    identitiesKnown: true,
+    ...overrides,
+  };
+}
+
 interface FakeDepsOverrides {
   user?: DeleteAccountCaller | null;
+  progress?: DeletionProgress;
   deleteAccountDataResult?: { data: unknown; error: unknown };
   revokeResult?: AppleRevokeResult;
-  attachmentPaths?: string[] | null;
+  listResult?: ListAttachmentsResult;
   removeResult?: boolean;
   rehomeError?: unknown;
   deleteUserError?: unknown;
@@ -53,11 +68,18 @@ function fakeDeps(overrides: FakeDepsOverrides = {}): { deps: DeleteAccountDeps;
   const deps: DeleteAccountDeps = {
     getUser: async () => {
       calls.push("getUser");
-      return overrides.user === undefined ? { id: "user-1", providers: [] } : overrides.user;
+      return overrides.user === undefined ? baseUser() : overrides.user;
+    },
+    getDeletionProgress: async (uid) => {
+      calls.push(`getDeletionProgress:${uid}`);
+      return overrides.progress ?? { appleRevokedAt: null };
+    },
+    markAppleRevoked: async (uid) => {
+      calls.push(`markAppleRevoked:${uid}`);
     },
     listAttachmentPaths: async (uid) => {
       calls.push(`listAttachmentPaths:${uid}`);
-      return overrides.attachmentPaths === undefined ? [] : overrides.attachmentPaths;
+      return overrides.listResult ?? { ok: true, paths: [] };
     },
     removeAttachmentPaths: async (paths) => {
       calls.push(`removeAttachmentPaths:${paths.join(",")}`);
@@ -67,8 +89,8 @@ function fakeDeps(overrides: FakeDepsOverrides = {}): { deps: DeleteAccountDeps;
       calls.push("deleteAccountData");
       return overrides.deleteAccountDataResult ?? { data: { profiles: 1 }, error: null };
     },
-    revokeApple: async () => {
-      calls.push("revokeApple");
+    revokeApple: async (_code, expectedAppleUserId) => {
+      calls.push(`revokeApple:${expectedAppleUserId}`);
       return overrides.revokeResult ?? { kind: "ok" };
     },
     rehomeStrayDayEntries: async () => {
@@ -103,22 +125,159 @@ Deno.test("an invalid caller identity (getUser returns null) is rejected with 40
   assertEquals(calls, ["getUser"], "nothing past auth resolution runs for an unresolvable caller");
 });
 
-Deno.test("an apple identity with no authorization code fails closed with 400, before any row is touched", async () => {
-  const { deps, calls } = fakeDeps({ user: { id: "user-1", providers: ["apple"] } });
-
-  const response = await handleDeleteAccount(postRequest({}), deps);
-
-  assertEquals(response.status, 400);
-  const body = await response.json();
-  assertEquals(body.code, "apple_code_required");
-  assertEquals(calls, ["getUser"], "nothing - not even attachment listing - must run without a required apple code");
-});
+// ---------------------------------------------------------------------------
+// Issue #560: identity determination and Apple-identity binding.
+// ---------------------------------------------------------------------------
 
 Deno.test(
-  "attachment listing failure fails the whole deletion closed, before any row is touched: 409 " +
+  "#560: a caller whose identities could not be determined (GoTrue omitted `identities`) fails closed " +
+    "with 500, before anything is touched",
+  async () => {
+    const { deps, calls } = fakeDeps({ user: baseUser({ identitiesKnown: false }) });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 500);
+    const body = await response.json();
+    assertEquals(body.code, "identity_check_failed");
+    assertEquals(calls, ["getUser"], "nothing must run once identity determination itself has failed");
+  },
+);
+
+Deno.test(
+  "#560: revokeApple is called with the caller's own appleIdentityId, never anything from the request body",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+    });
+
+    const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "code-1" }), deps);
+
+    assertEquals(response.status, 200);
+    assertEquals(calls.includes("revokeApple:apple-sub-123"), true);
+  },
+);
+
+Deno.test("#560: an identity_mismatch revoke result is treated the same as any other revoke failure (409)", async () => {
+  const { deps, calls } = fakeDeps({
+    user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+    revokeResult: { kind: "identity_mismatch" },
+  });
+
+  const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "victims-code" }), deps);
+
+  assertEquals(response.status, 409);
+  const body = await response.json();
+  assertEquals(body.code, "apple_revoke_failed");
+  assertEquals(calls.includes("deleteUser"), false, "the user must not be deleted after an identity mismatch");
+  assertEquals(calls.includes("markAppleRevoked:user-1"), false, "a mismatched identity must never be marked revoked");
+});
+
+// ---------------------------------------------------------------------------
+// Issue #527: the deletion-progress marker skips Steps 3/6 on retry.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "#527: a successful apple revoke marks the progress marker before deleteUser runs",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+    });
+
+    const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "code-1" }), deps);
+
+    assertEquals(response.status, 200);
+    const revokeIdx = calls.indexOf("revokeApple:apple-sub-123");
+    const markIdx = calls.indexOf("markAppleRevoked:user-1");
+    const deleteUserIdx = calls.indexOf("deleteUser");
+    assertEquals(revokeIdx >= 0 && markIdx > revokeIdx && deleteUserIdx > markIdx, true,
+      "the marker must be written after a successful revoke and before deleteUser");
+  },
+);
+
+Deno.test(
+  "#527: once the progress marker shows apple_revoked_at set, a retry needs no Apple code at all and " +
+    "never calls revokeApple again",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+      progress: { appleRevokedAt: "2026-09-13T00:00:00.000Z" },
+    });
+
+    // No appleAuthorizationCode in the body at all - a retry after a
+    // deleteUser failure should not need the client to fetch a fresh code.
+    const response = await handleDeleteAccount(postRequest({}), deps);
+
+    assertEquals(response.status, 200);
+    assertEquals(calls.includes("revokeApple:apple-sub-123"), false, "an already-revoked grant must not be re-revoked");
+    assertEquals(calls.includes("markAppleRevoked:user-1"), false, "the marker must not be re-written when already set");
+    assertEquals(calls, [
+      "getUser",
+      "getDeletionProgress:user-1",
+      "listAttachmentPaths:user-1",
+      "deleteAccountData",
+      "rehomeStrayDayEntries",
+      "deleteUser",
+    ]);
+  },
+);
+
+Deno.test(
+  "#527: without a progress marker, an apple identity with no code still fails closed with " +
+    "apple_code_required (unchanged from the original #17 fix)",
+  async () => {
+    const { deps, calls } = fakeDeps({ user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }) });
+
+    const response = await handleDeleteAccount(postRequest({}), deps);
+
+    assertEquals(response.status, 400);
+    const body = await response.json();
+    assertEquals(body.code, "apple_code_required");
+    assertEquals(
+      calls,
+      ["getUser", "getDeletionProgress:user-1"],
+      "nothing - not even attachment listing - must run without a required apple code",
+    );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Issue #559: bounded attachment listing.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "#559: a listing that exceeds the object-count bound fails closed with a distinct 422 " +
+    "attachment_cleanup_unbounded code, before any row is touched",
+  async () => {
+    const { deps, calls } = fakeDeps({ listResult: { ok: false, reason: "too_many_objects" } });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 422);
+    const body = await response.json();
+    assertEquals(body.code, "attachment_cleanup_unbounded");
+    assertEquals(calls, ["getUser", "listAttachmentPaths:user-1"]);
+  },
+);
+
+Deno.test(
+  "#559: a listing that exceeds the depth bound fails closed with the same distinct 422 code",
+  async () => {
+    const { deps } = fakeDeps({ listResult: { ok: false, reason: "too_deep" } });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 422);
+    const body = await response.json();
+    assertEquals(body.code, "attachment_cleanup_unbounded");
+  },
+);
+
+Deno.test(
+  "attachment listing failure (not a bound trip) fails the whole deletion closed, before any row is touched: 409 " +
     "attachment_cleanup_failed, deleteAccountData/deleteUser never called (round 2 fix: reordered ahead of row deletion)",
   async () => {
-    const { deps, calls } = fakeDeps({ attachmentPaths: null });
+    const { deps, calls } = fakeDeps({ listResult: { ok: false, reason: "list_failed" } });
 
     const response = await handleDeleteAccount(postRequest(), deps);
 
@@ -138,7 +297,7 @@ Deno.test(
     "attachment_cleanup_failed, deleteAccountData/deleteUser never called",
   async () => {
     const { deps, calls } = fakeDeps({
-      attachmentPaths: ["user-1/t1/a.png"],
+      listResult: { ok: true, paths: ["user-1/t1/a.png"] },
       removeResult: false,
     });
 
@@ -161,7 +320,7 @@ Deno.test(
   "no attachments to remove (empty prefix): removeAttachmentPaths is never called, and deletion still succeeds " +
     "with deleteUser still called",
   async () => {
-    const { deps, calls } = fakeDeps({ attachmentPaths: [] });
+    const { deps, calls } = fakeDeps({ listResult: { ok: true, paths: [] } });
 
     const response = await handleDeleteAccount(postRequest(), deps);
 
@@ -181,8 +340,8 @@ Deno.test(
     "exactly those paths, before any row deletion or deleteUser",
   async () => {
     const { deps, calls } = fakeDeps({
-      user: { id: "uid-42", providers: [] },
-      attachmentPaths: ["uid-42/t1/a.png", "uid-42/t2/b.jpg"],
+      user: baseUser({ id: "uid-42" }),
+      listResult: { ok: true, paths: ["uid-42/t1/a.png", "uid-42/t2/b.jpg"] },
     });
 
     const response = await handleDeleteAccount(postRequest(), deps);
@@ -221,7 +380,7 @@ Deno.test(
     "row deletion already succeeded by this point)",
   async () => {
     const { deps, calls } = fakeDeps({
-      user: { id: "user-1", providers: ["apple"] },
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-1" }),
       revokeResult: { kind: "apple_rejected" },
     });
 
@@ -230,13 +389,19 @@ Deno.test(
     assertEquals(response.status, 409);
     const body = await response.json();
     assertEquals(body.code, "apple_revoke_failed");
-    assertEquals(calls, ["getUser", "listAttachmentPaths:user-1", "deleteAccountData", "revokeApple"]);
+    assertEquals(calls, [
+      "getUser",
+      "getDeletionProgress:user-1",
+      "listAttachmentPaths:user-1",
+      "deleteAccountData",
+      "revokeApple:apple-sub-1",
+    ]);
     assertEquals(calls.includes("deleteUser"), false, "the user must not be deleted after a failed apple revoke");
   },
 );
 
 Deno.test("happy path (no apple identity): succeeds end to end with 200 ok:true", async () => {
-  const { deps } = fakeDeps({ attachmentPaths: ["user-1/t1/a.png"] });
+  const { deps } = fakeDeps({ listResult: { ok: true, paths: ["user-1/t1/a.png"] } });
 
   const response = await handleDeleteAccount(postRequest(), deps);
 
@@ -337,10 +502,11 @@ Deno.test(
     });
     const deps = buildDeps(fullEnv, factory);
 
-    const paths = await deps.listAttachmentPaths("uid1");
+    const result = await deps.listAttachmentPaths("uid1");
 
+    if (!result.ok) throw new Error("expected ok");
     assertEquals(
-      (paths ?? []).sort(),
+      result.paths.sort(),
       ["uid1/ticket-a/file1.png", "uid1/ticket-b/file2.png", "uid1/ticket-b/file3.jpg"].sort(),
     );
   },
@@ -360,9 +526,10 @@ Deno.test(
     });
     const deps = buildDeps(fullEnv, factory);
 
-    const paths = await deps.listAttachmentPaths("uid1");
+    const result = await deps.listAttachmentPaths("uid1");
 
-    assertEquals(paths, ["uid1/a/b/c/deep.png"]);
+    if (!result.ok) throw new Error("expected ok");
+    assertEquals(result.paths, ["uid1/a/b/c/deep.png"]);
   },
 );
 
@@ -373,7 +540,8 @@ Deno.test(
     // 1003 entries at "uid1": production's LIST_PAGE_SIZE (1000) means the
     // first list() call returns exactly 1000 (a full page, forcing a
     // second call), and the second returns the remaining 3 (a partial
-    // page, ending the loop).
+    // page, ending the loop). This is comfortably under Issue #559's
+    // MAX_ATTACHMENT_OBJECTS bound (2000).
     const allEntries: FakeListEntry[] = Array.from({ length: 1003 }, (_, i) => ({
       id: `obj-${i}`,
       name: `file${i}.png`,
@@ -383,11 +551,12 @@ Deno.test(
     });
     const deps = buildDeps(fullEnv, factory);
 
-    const paths = await deps.listAttachmentPaths("uid1");
+    const result = await deps.listAttachmentPaths("uid1");
 
+    if (!result.ok) throw new Error("expected ok");
     const expected = allEntries.map((e) => `uid1/${e.name}`);
-    assertEquals((paths ?? []).sort(), expected.sort());
-    assertEquals(paths?.length, 1003, "both the full first page and the partial second page must be collected");
+    assertEquals(result.paths.sort(), expected.sort());
+    assertEquals(result.paths.length, 1003, "both the full first page and the partial second page must be collected");
   },
 );
 
@@ -395,21 +564,22 @@ Deno.test("buildDeps: listAttachmentPaths returns an empty array when the caller
   const { factory } = fakeStorageClientFactory({ listResults: { "uid1": [] } });
   const deps = buildDeps(fullEnv, factory);
 
-  const paths = await deps.listAttachmentPaths("uid1");
+  const result = await deps.listAttachmentPaths("uid1");
 
-  assertEquals(paths, []);
+  if (!result.ok) throw new Error("expected ok");
+  assertEquals(result.paths, []);
 });
 
-Deno.test("buildDeps: listAttachmentPaths returns null when the top-level list call fails", async () => {
+Deno.test("buildDeps: listAttachmentPaths reports list_failed when the top-level list call fails", async () => {
   const { factory } = fakeStorageClientFactory({ listResults: { "uid1": "error" } });
   const deps = buildDeps(fullEnv, factory);
 
-  const paths = await deps.listAttachmentPaths("uid1");
+  const result = await deps.listAttachmentPaths("uid1");
 
-  assertEquals(paths, null);
+  assertEquals(result, { ok: false, reason: "list_failed" });
 });
 
-Deno.test("buildDeps: listAttachmentPaths returns null when a nested ticket-folder list call fails", async () => {
+Deno.test("buildDeps: listAttachmentPaths reports list_failed when a nested ticket-folder list call fails", async () => {
   const { factory } = fakeStorageClientFactory({
     listResults: {
       "uid1": [{ id: null, name: "ticket-a" }],
@@ -418,20 +588,68 @@ Deno.test("buildDeps: listAttachmentPaths returns null when a nested ticket-fold
   });
   const deps = buildDeps(fullEnv, factory);
 
-  const paths = await deps.listAttachmentPaths("uid1");
+  const result = await deps.listAttachmentPaths("uid1");
 
-  assertEquals(paths, null);
+  assertEquals(result, { ok: false, reason: "list_failed" });
 });
 
-Deno.test("buildDeps: removeAttachmentPaths calls storage remove with exactly the given paths when under the batch size", async () => {
-  const { factory, removedCalls } = fakeStorageClientFactory({ listResults: {} });
-  const deps = buildDeps(fullEnv, factory);
+// ---------------------------------------------------------------------------
+// Issue #559: object-count and depth bounds.
+// ---------------------------------------------------------------------------
 
-  const ok = await deps.removeAttachmentPaths(["uid1/t1/a.png", "uid1/t2/b.png"]);
+Deno.test(
+  "#559: a caller with more than MAX_ATTACHMENT_OBJECTS objects reports too_many_objects rather than " +
+    "listing forever",
+  async () => {
+    // 2001 objects: one over the production MAX_ATTACHMENT_OBJECTS (2000)
+    // bound.
+    const allEntries: FakeListEntry[] = Array.from({ length: 2001 }, (_, i) => ({
+      id: `obj-${i}`,
+      name: `file${i}.png`,
+    }));
+    const { factory } = fakeStorageClientFactory({ listResults: { "uid1": allEntries } });
+    const deps = buildDeps(fullEnv, factory);
 
-  assertEquals(ok, true);
-  assertEquals(removedCalls, [["uid1/t1/a.png", "uid1/t2/b.png"]]);
-});
+    const result = await deps.listAttachmentPaths("uid1");
+
+    assertEquals(result, { ok: false, reason: "too_many_objects" });
+  },
+);
+
+Deno.test(
+  "#559: a caller nested deeper than MAX_ATTACHMENT_DEPTH reports too_deep rather than recursing forever",
+  async () => {
+    // Nine nested folder levels - one past the production MAX_ATTACHMENT_DEPTH
+    // (8) bound.
+    const listResults: Record<string, FakeListEntry[]> = {};
+    let path = "uid1";
+    for (let level = 0; level < 9; level++) {
+      const name = `d${level}`;
+      listResults[path] = [{ id: null, name }];
+      path = `${path}/${name}`;
+    }
+    listResults[path] = [{ id: "obj-1", name: "deep.png" }];
+    const { factory } = fakeStorageClientFactory({ listResults });
+    const deps = buildDeps(fullEnv, factory);
+
+    const result = await deps.listAttachmentPaths("uid1");
+
+    assertEquals(result, { ok: false, reason: "too_deep" });
+  },
+);
+
+Deno.test(
+  "buildDeps: removeAttachmentPaths calls storage remove with exactly the given paths when under the batch size",
+  async () => {
+    const { factory, removedCalls } = fakeStorageClientFactory({ listResults: {} });
+    const deps = buildDeps(fullEnv, factory);
+
+    const ok = await deps.removeAttachmentPaths(["uid1/t1/a.png", "uid1/t2/b.png"]);
+
+    assertEquals(ok, true);
+    assertEquals(removedCalls, [["uid1/t1/a.png", "uid1/t2/b.png"]]);
+  },
+);
 
 Deno.test(
   "buildDeps: removeAttachmentPaths batches at 100 paths per storage remove() call (round 2 fix)",
@@ -471,3 +689,55 @@ Deno.test(
     assertEquals(removedCalls.length, 1, "the first failing batch must stop further removal calls");
   },
 );
+
+// ---------------------------------------------------------------------------
+// buildDeps: getUser's Apple identity resolution (Issue #560).
+// ---------------------------------------------------------------------------
+
+function fakeAuthClientFactory(user: Record<string, unknown> | null): SupabaseClientFactory {
+  const client = {
+    auth: {
+      async getUser() {
+        return user ? { data: { user }, error: null } : { data: { user: null }, error: { message: "invalid" } };
+      },
+    },
+  };
+  return () => client;
+}
+
+Deno.test("buildDeps: getUser resolves appleIdentityId from identities[provider==apple].id", async () => {
+  const deps = buildDeps(
+    fullEnv,
+    fakeAuthClientFactory({
+      id: "user-1",
+      identities: [
+        { provider: "apple", id: "apple-sub-abc" },
+        { provider: "email", id: "email-id" },
+      ],
+    }),
+  );
+
+  const user = await deps.getUser("Bearer jwt");
+
+  assertEquals(user?.identitiesKnown, true);
+  assertEquals(user?.appleIdentityId, "apple-sub-abc");
+  assertEquals(user?.providers.sort(), ["apple", "email"]);
+});
+
+Deno.test("buildDeps: getUser reports identitiesKnown=false when identities is omitted entirely", async () => {
+  const deps = buildDeps(fullEnv, fakeAuthClientFactory({ id: "user-1" }));
+
+  const user = await deps.getUser("Bearer jwt");
+
+  assertEquals(user?.identitiesKnown, false);
+  assertEquals(user?.appleIdentityId, null);
+});
+
+Deno.test("buildDeps: getUser reports identitiesKnown=true with a null appleIdentityId for a non-Apple account", async () => {
+  const deps = buildDeps(fullEnv, fakeAuthClientFactory({ id: "user-1", identities: [{ provider: "email", id: "e" }] }));
+
+  const user = await deps.getUser("Bearer jwt");
+
+  assertEquals(user?.identitiesKnown, true);
+  assertEquals(user?.appleIdentityId, null);
+});

