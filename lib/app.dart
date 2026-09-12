@@ -823,13 +823,16 @@ class _LunarLogAppState extends State<LunarLogApp>
     _predictionProjectionPublisher = null;
     final healthFlowTeardown =
         _healthFlowCoordinator?.dispose() ?? Future<void>.value();
+    final healthSyncTeardown =
         _healthSyncTombstoneCoordinator?.dispose() ?? Future<void>.value();
     _healthFlowCoordinator = null;
+    _healthSyncTombstoneCoordinator = null;
     final teardown = Future.wait([
       coordinatorTeardown,
       publisherTeardown,
       projectionPublisherTeardown,
       healthFlowTeardown,
+      healthSyncTeardown,
     ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {
