@@ -44,6 +44,7 @@ import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -139,6 +140,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// step holds until the snapshot has passed through `restoring`.
   bool _awaitingRestore = false;
   bool _sawRestoring = false;
+
+  /// #544: guards [_create] against a double-tap on slow network (which
+  /// would otherwise create two profiles) and surfaces a thrown failure
+  /// instead of leaving the button looking like it did nothing.
+  bool _creating = false;
+  String? _createError;
 
   @override
   void initState() {
@@ -336,20 +343,37 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// exists, so nothing may touch [context] after it).
   Future<void> _create() async {
     if (!_cycleFormKey.currentState!.validate()) return;
+    // #544: without this guard, a double-tap on slow network fires two
+    // overlapping calls and creates two profiles on first run.
+    if (_creating) return;
     final controller = context.read<ProfileController>();
     final l10n = AppLocalizations.of(context);
     final recorder = _resolveRecorder();
-    if (!_ageAckPreviouslyRecorded && _ageAcknowledged) {
-      final store = context.read<SettingsStore>();
-      await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
-      _ageAckPreviouslyRecorded = true;
+    setState(() {
+      _creating = true;
+      _createError = null;
+    });
+    try {
+      if (!_ageAckPreviouslyRecorded && _ageAcknowledged) {
+        final store = context.read<SettingsStore>();
+        await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+        _ageAckPreviouslyRecorded = true;
+      }
+      final profile = await controller.createProfile(
+        displayName: _nameController.text,
+        isMinor: _isMinor,
+        mode: _mode,
+      );
+      await recorder?.record(profile.id, _collectedAnswers(l10n));
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _createError = 'Could not create the profile. Please try again.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
     }
-    final profile = await controller.createProfile(
-      displayName: _nameController.text,
-      isMinor: _isMinor,
-      mode: _mode,
-    );
-    await recorder?.record(profile.id, _collectedAnswers(l10n));
   }
 
   /// The recorder seam, or null on a tree with none wired (the local-only
@@ -741,9 +765,23 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
             const SizedBox(height: 16),
             FilledButton(
               key: const ValueKey('cycle-create'),
-              onPressed: _create,
-              child: Text(l10n.firstRunCreateButton),
+              onPressed: _creating ? null : _create,
+              child: _creating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(l10n.firstRunCreateButton),
             ),
+            if (_createError != null) ...[
+              const SizedBox(height: 8),
+              InlineError(
+                key: const ValueKey('cycle-create-error'),
+                message: _createError!,
+                onRetry: _creating ? null : _create,
+              ),
+            ],
           ],
         ),
       ),

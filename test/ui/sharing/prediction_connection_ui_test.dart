@@ -87,10 +87,15 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
         );
   }
 
+  /// #544: lets a test assert the pending-poll timer stopped calling this
+  /// after too many consecutive failures.
+  int getActiveConnectionCalls = 0;
+
   @override
   Future<ActivePredictionConnection?> getActiveConnection({
     required String profileId,
   }) async {
+    getActiveConnectionCalls++;
     final genericError = getActiveConnectionGenericError;
     if (genericError != null) throw genericError;
     final failure = getActiveConnectionFailure;
@@ -764,6 +769,48 @@ void main() {
       await tester.pump(ManageGuardiansScreen.pendingPollInterval * 3);
       await tester.pumpAndSettle();
       expect(published, [testProfile.id]);
+
+      await unmount(tester);
+    });
+
+    testWidgets(
+        '#544: the pending poll stops after too many consecutive failures '
+        'instead of hammering the network every interval indefinitely', (
+      tester,
+    ) async {
+      final pendingRow = ActivePredictionConnection(
+        connectionId: 'conn-1',
+        profileId: testProfile.id,
+        pending: true,
+        recipientLabel: 'Partner',
+        createdAt: DateTime.utc(2026, 9, 1),
+        expiresAt: DateTime.utc(2026, 9, 8),
+      );
+      connectionService.getActiveConnectionResult = pendingRow;
+      await pumpScreen(tester);
+      expect(find.text('pending'), findsOneWidget);
+      final callsBeforeFailures = connectionService.getActiveConnectionCalls;
+
+      // Every subsequent read fails.
+      connectionService.getActiveConnectionFailure =
+          const PredictionConnectionFailure.network();
+
+      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+      await tester.pumpAndSettle();
+      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+      await tester.pumpAndSettle();
+      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+      await tester.pumpAndSettle();
+      final callsAtShutoff = connectionService.getActiveConnectionCalls;
+      expect(callsAtShutoff, callsBeforeFailures + 3,
+          reason: 'three consecutive failures reaches the shutoff');
+
+      // Further intervals must not call the service again -- the poll
+      // stopped, rather than continuing to hit the network every interval.
+      await tester.pump(ManageGuardiansScreen.pendingPollInterval * 5);
+      await tester.pumpAndSettle();
+      expect(connectionService.getActiveConnectionCalls, callsAtShutoff,
+          reason: 'the timer was cancelled, not merely still failing');
 
       await unmount(tester);
     });

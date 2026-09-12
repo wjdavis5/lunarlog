@@ -71,11 +71,18 @@ class FakeSharingService implements SharingService {
 
   Object? scriptedRevokeError;
 
+  /// #544: lets a test observe the busy state mid-flight — set before the
+  /// tap, then complete once the test has asserted the trigger disabled
+  /// itself.
+  Completer<void>? revokeHold;
+
   @override
   Future<void> revokeGuardian({
     required String profileId,
     required String targetUserId,
   }) async {
+    final hold = revokeHold;
+    if (hold != null) await hold.future;
     if (scriptedRevokeError != null) {
       throw scriptedRevokeError!;
     }
@@ -801,6 +808,59 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    testWidgets(
+        '#544: the revoke trigger disables itself while its RPC is in '
+        'flight, and re-enables once it settles', (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+      ]);
+      final hold = Completer<void>();
+      final service = FakeSharingService()..revokeHold = hold;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
+            sharingService: service,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.descendant(
+        of: find.widgetWithText(ListTile, 'Dad'),
+        matching: find.byIcon(Icons.remove_circle_outline),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('revoke-user-dad')), findsNothing,
+          reason: 'the trigger itself is gone while the RPC is in flight');
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      hold.complete();
+      await tester.pumpAndSettle();
+
+      expect(service.lastRevokedUserId, 'user-dad');
+      expect(find.byKey(const ValueKey('revoke-user-dad')), findsOneWidget,
+          reason: 're-enabled once the RPC settles (the fake service does '
+              "not itself touch local storage, so Dad's row is unchanged)");
+      expect(
+        tester
+            .widget<IconButton>(
+                find.byKey(const ValueKey('revoke-user-dad')))
+            .onPressed,
+        isNotNull,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
     testWidgets('a viewer sees no invite action and cannot revoke others, '
         'but can leave (#13)', (tester) async {
       await storage.applyRemoteRows([
@@ -875,6 +935,44 @@ void main() {
       expect(find.byIcon(Icons.person_add), findsOneWidget);
       expect(find.text('No caregivers linked yet'), findsOneWidget);
       expect(find.byIcon(Icons.remove_circle_outline), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets(
+        "#544: shows a spinner before the guardian stream's first "
+        'emission, never "No caregivers linked yet" (which would read as '
+        'a synced, empty profile rather than still loading)', (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+      ]);
+
+      // Deliberately no settle after this pump: the Drift watch's first
+      // emission needs at least one microtask/async gap, so the single
+      // frame `pumpWidget` itself performs is still before it.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+
+      expect(find.text('No caregivers linked yet'), findsNothing,
+          reason: 'must not flash the empty state before the first real '
+              'answer arrives');
+      // Also still waiting on the pending-invitations FutureBuilder at
+      // this point, so more than one spinner is expected here.
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+
+      await tester.pumpAndSettle();
+      expect(find.text('Mom'), findsOneWidget,
+          reason: 'the real (non-empty) answer renders once it lands');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
