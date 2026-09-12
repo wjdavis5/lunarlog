@@ -10,6 +10,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -70,10 +71,12 @@ void main() {
   });
 
   group('defaultLocalTimeZoneProvider', () {
-    test('falls back safely to UTC on test environment without platform channel', () async {
-      final tzName = await defaultLocalTimeZoneProvider();
-      expect(tzName, isNotEmpty);
+    test('falls back safely to UTC on test environment without platform channel and records breadcrumb', () async {
+      final log = BreadcrumbLog();
+      final tzName = await defaultLocalTimeZoneProvider(breadcrumbLog: log);
+      expect(tzName, 'UTC');
       expect(isValidIanaTimeZone(tzName), isTrue);
+      expect(log.snapshot(), ['timezone: MissingPluginException']);
     });
 
     test('a failed refresh resets a previously configured zone to UTC',

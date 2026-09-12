@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/notifications/push_registration.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 
 import '../../support/fake_push_token_source.dart';
 
@@ -385,6 +386,99 @@ void main() {
     await pumpEventQueue();
 
     expect(registry.registerCalls, hasLength(1), reason: 'no activity after dispose');
+    await tokenSource.close();
+  });
+
+  test('tokenRefreshes and taps stream errors record breadcrumbs with runtime type only', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry();
+    final log = BreadcrumbLog();
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+      breadcrumbLog: log,
+    );
+    await coordinator.start();
+
+    tokenSource.emitRefreshError(FormatException('invalid token stream'));
+    tokenSource.emitTapError(StateError('tap stream died'));
+    await pumpEventQueue();
+
+    expect(log.snapshot(), contains('push: FormatException'));
+    expect(log.snapshot(), contains('push: StateError'));
+    expect(log.snapshot().any((entry) => entry.contains('invalid token stream')), isFalse);
+    expect(log.snapshot().any((entry) => entry.contains('tap stream died')), isFalse);
+
+    await coordinator.dispose();
+    await tokenSource.close();
+  });
+
+  test('consecutive registration failures increment count and record breadcrumbs, resetting on success', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry()..nextRegisterError = Exception('registration failed 1');
+    final log = BreadcrumbLog();
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+      breadcrumbLog: log,
+    );
+    await coordinator.start();
+
+    expect(coordinator.consecutiveRegistrationFailures, 1);
+    expect(log.snapshot(), ['push: _Exception']);
+    expect(log.snapshot().single, isNot(contains('registration failed 1')));
+
+    registry.nextRegisterError = Exception('registration failed 2');
+    tokenSource.emitRefresh('token-2');
+    await pumpEventQueue();
+    expect(coordinator.consecutiveRegistrationFailures, 2);
+
+    registry.nextRegisterError = Exception('registration failed 3');
+    tokenSource.emitRefresh('token-3');
+    await pumpEventQueue();
+    expect(coordinator.consecutiveRegistrationFailures, 3);
+
+    // Successful registration resets the consecutive failure counter to 0
+    tokenSource.emitRefresh('token-4');
+    await pumpEventQueue();
+    expect(coordinator.consecutiveRegistrationFailures, 0);
+
+    await coordinator.dispose();
+    await tokenSource.close();
+  });
+
+  test('removeRegistration and removeAllRegistrations record breadcrumbs on error', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry()
+      ..nextRemoveError = StateError('remove failed')
+      ..nextRemoveAllError = UnsupportedError('removeAll failed');
+    final log = BreadcrumbLog();
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedIn,
+      breadcrumbLog: log,
+    );
+    await coordinator.start();
+
+    await coordinator.removeRegistration();
+    await coordinator.removeAllRegistrations();
+
+    expect(log.snapshot(), contains('push: StateError'));
+    expect(log.snapshot(), contains('push: UnsupportedError'));
+
+    await coordinator.dispose();
     await tokenSource.close();
   });
 }

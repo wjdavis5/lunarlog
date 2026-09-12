@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 
 import '../../domain/sharing/sharing_service.dart';
 
@@ -12,12 +13,14 @@ class AcceptInviteSheet extends StatefulWidget {
     required this.sharingService,
     this.initialProfileId,
     this.onAccepted,
+    this.breadcrumbLog,
   });
 
   final String rawToken;
   final SharingService sharingService;
   final String? initialProfileId;
   final void Function(AcceptedInviteResult result)? onAccepted;
+  final BreadcrumbLog? breadcrumbLog;
 
   @override
   State<AcceptInviteSheet> createState() => _AcceptInviteSheetState();
@@ -56,7 +59,9 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
           _error = failure.userFacingMessage;
         });
       }
-    } catch (_) {
+    } catch (error) {
+      (widget.breadcrumbLog ?? defaultBreadcrumbLog)
+          .record('sharing', error.runtimeType.toString());
       if (mounted) {
         setState(() {
           _loading = false;

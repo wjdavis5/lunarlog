@@ -43,6 +43,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lunarlog/domain/gate/app_gate.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Platform channel used to set Android FLAG_SECURE (snapshot/screenshot
 /// suppression at the window level). Best effort — see
@@ -64,13 +66,17 @@ const Duration kSystemUiSettleTimeout = Duration(seconds: 3);
 /// Currently: FLAG_SECURE on Android (blocks app-switcher snapshots and
 /// screenshots natively). Failures are swallowed — the opaque lifecycle
 /// cover remains the cross-platform baseline.
-Future<void> applyPlatformPrivacyProtections() async {
+Future<void> applyPlatformPrivacyProtections({
+  BreadcrumbLog? breadcrumbLog,
+}) async {
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
   try {
     await const MethodChannel(kPrivacyChannel)
         .invokeMethod<void>('setFlagSecure', true);
-  } catch (_) {
-    // Best effort only.
+  } catch (error, stackTrace) {
+    (breadcrumbLog ?? defaultBreadcrumbLog)
+        .record('privacy', error.runtimeType.toString());
+    unawaited(Sentry.captureException(error, stackTrace: stackTrace));
   }
 }
 

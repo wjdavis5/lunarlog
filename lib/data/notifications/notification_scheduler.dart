@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
 import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -70,11 +71,15 @@ tz.TZDateTime calculateReminderFireAt({
 
 /// Resolves the host device's IANA time zone identifier via platform channels.
 /// Falls back to 'UTC' if unavailable.
-Future<String> defaultLocalTimeZoneProvider() async {
+Future<String> defaultLocalTimeZoneProvider({
+  BreadcrumbLog? breadcrumbLog,
+}) async {
   try {
     final info = await FlutterTimezone.getLocalTimezone();
     return info.identifier;
-  } catch (_) {
+  } catch (error) {
+    (breadcrumbLog ?? defaultBreadcrumbLog)
+        .record('timezone', error.runtimeType.toString());
     return 'UTC';
   }
 }
