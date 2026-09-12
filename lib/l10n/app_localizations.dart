@@ -1150,6 +1150,18 @@ abstract class AppLocalizations {
   /// **'usually starts about {days} days before your period and lasts about {length} days'**
   String overviewPmsDaysBeforePeriod(int days, int length);
 
+  /// Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233).
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions are suppressed'**
+  String get predictionsSuppressedTitle;
+
+  /// Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).
+  ///
+  /// In en, this message translates to:
+  /// **'Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.'**
+  String predictionsSuppressedBody(String method);
+
   /// Reminder settings header for the cycle reminders group (Issue #178), matching Clue's information architecture.
   ///
   /// In en, this message translates to:

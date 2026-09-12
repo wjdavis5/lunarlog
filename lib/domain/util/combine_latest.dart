@@ -15,6 +15,91 @@ library;
 
 import 'dart:async';
 
+/// Combines [a], [b], and [c] into a stream of their latest triple —
+/// the same semantics as [combineLatest2] (nothing until all three have
+/// emitted; every later event re-emits the latest triple; errors forward;
+/// output closes once all three close). Added for issue #233, where the
+/// prediction combine gained the profile's birth-control state alongside
+/// its day-entry history and cycle facts.
+Stream<(A, B, C)> combineLatest3<A, B, C>(
+  Stream<A> a,
+  Stream<B> b,
+  Stream<C> c,
+) {
+  late final StreamController<(A, B, C)> controller;
+  StreamSubscription<A>? aSub;
+  StreamSubscription<B>? bSub;
+  StreamSubscription<C>? cSub;
+  A? latestA;
+  B? latestB;
+  C? latestC;
+  var seenA = false;
+  var seenB = false;
+  var seenC = false;
+  var doneA = false;
+  var doneB = false;
+  var doneC = false;
+
+  void maybeClose() {
+    if (doneA && doneB && doneC && !controller.isClosed) {
+      controller.close();
+    }
+  }
+
+  void maybeEmit() {
+    if (seenA && seenB && seenC && !controller.isClosed) {
+      controller.add((latestA as A, latestB as B, latestC as C));
+    }
+  }
+
+  controller = StreamController<(A, B, C)>(
+    onListen: () {
+      aSub = a.listen(
+        (value) {
+          latestA = value;
+          seenA = true;
+          maybeEmit();
+        },
+        onError: controller.addError,
+        onDone: () {
+          doneA = true;
+          maybeClose();
+        },
+      );
+      bSub = b.listen(
+        (value) {
+          latestB = value;
+          seenB = true;
+          maybeEmit();
+        },
+        onError: controller.addError,
+        onDone: () {
+          doneB = true;
+          maybeClose();
+        },
+      );
+      cSub = c.listen(
+        (value) {
+          latestC = value;
+          seenC = true;
+          maybeEmit();
+        },
+        onError: controller.addError,
+        onDone: () {
+          doneC = true;
+          maybeClose();
+        },
+      );
+    },
+    onCancel: () async {
+      await aSub?.cancel();
+      await bSub?.cancel();
+      await cSub?.cancel();
+    },
+  );
+  return controller.stream;
+}
+
 /// Combines [left] and [right] into a stream of their latest pair.
 Stream<(A, B)> combineLatest2<A, B>(Stream<A> left, Stream<B> right) {
   late final StreamController<(A, B)> controller;

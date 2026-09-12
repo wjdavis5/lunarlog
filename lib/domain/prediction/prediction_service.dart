@@ -29,8 +29,19 @@
 /// tick, or a duplicate/no-op tick from the underlying stream) reuses the
 /// previous result instead of re-deriving episodes and cycle stats from
 /// scratch.
+///
+/// Issue #233: a [birthControlStateFor] provider (a `Stream<BirthControlState?>`
+/// per profile — the drift `profile_modes` watcher in production) joins the
+/// combine, resolved against [today] via `birthControlMethodInEffectOn` into
+/// an [ActiveBirthControl] that [computePredictionFromEntries] branches on.
+/// The raw state rides the #197 memo key, so a recorded-method change or an
+/// effective-window edge (start/stop date crossing today) re-derives, while
+/// an unrelated profile-mode row change (e.g. only the mode axis editing)
+/// reuses the cached prediction. A null provider keeps the exact pre-#233
+/// behavior.
 library;
 
+import '../birth_control.dart';
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
 import '../models/profile.dart';
@@ -116,22 +127,31 @@ bool _sameOmissions(Set<LocalDate> a, Set<LocalDate> b) {
 /// key: an emission carrying unchanged entries but a changed facts answer
 /// (an onboarding/profile-settings edit) must re-derive, and conversely an
 /// unrelated profile-row change (e.g. a rename) that leaves the facts
-/// equal must still reuse the cached prediction.
+/// equal must still reuse the cached prediction. Issue #233 adds the raw
+/// `profile_modes` birth-control state to the key for the same reason: a
+/// recorded-method change, or an effective-window edge (a start/stop date
+/// crossing today, which the `birthControlMethodInEffectOn` resolution
+/// depends on) must re-derive, while an unrelated mode-row edit reuses the
+/// cache. (The record's structural equality is what keeps that honest, and
+/// [today] is already in the key, so the effective-window edge against the
+/// calendar is covered by the date alone.)
 class _PredictionMemo {
   _EntriesFingerprint? _fingerprint;
   Set<LocalDate>? _omissions;
   LocalDate? _today;
   CycleFacts? _facts;
+  BirthControlState? _birthControlState;
   CyclePrediction? _prediction;
 
-  /// The cached prediction when [fingerprint]/[omissions]/[today]/[facts]
-  /// all match the last computed call, or null when a fresh
-  /// [computePredictionFromEntries] is needed.
+  /// The cached prediction when [fingerprint]/[omissions]/[today]/[facts]/
+  /// [birthControlState] all match the last computed call, or null when a
+  /// fresh [computePredictionFromEntries] is needed.
   CyclePrediction? cached(
     _EntriesFingerprint fingerprint,
     Set<LocalDate> omissions,
     LocalDate today,
     CycleFacts facts,
+    BirthControlState? birthControlState,
   ) {
     final prediction = _prediction;
     if (prediction == null) return null;
@@ -139,6 +159,7 @@ class _PredictionMemo {
     if (_today != today) return null;
     if (!_sameOmissions(_omissions ?? const {}, omissions)) return null;
     if (_facts != facts) return null;
+    if (_birthControlState != birthControlState) return null;
     return prediction;
   }
 
@@ -147,25 +168,32 @@ class _PredictionMemo {
     Set<LocalDate> omissions,
     LocalDate today,
     CycleFacts facts,
+    BirthControlState? birthControlState,
     CyclePrediction value,
   ) {
     _fingerprint = fingerprint;
     _omissions = omissions;
     _today = today;
     _facts = facts;
+    _birthControlState = birthControlState;
     _prediction = value;
   }
 }
 
 class CyclePredictionService {
   CyclePredictionService(this._dayEntries,
-      {SettingsStore? settings, ProfilesRepository? profiles})
+      {SettingsStore? settings,
+      ProfilesRepository? profiles,
+      Stream<BirthControlState?> Function(String profileId)?
+          birthControlStateFor})
       : _exclusions = settings == null ? null : CycleExclusionList(settings),
         // A named parameter cannot be private, so this direct
         // pass-through cannot be an initializing formal (the same reason
         // the coordinator/publisher files carry file-level ignores).
         // ignore: prefer_initializing_formals
-        _profiles = profiles;
+        _profiles = profiles,
+        // ignore: prefer_initializing_formals
+        _birthControlStateFor = birthControlStateFor;
 
   final DayEntriesRepository _dayEntries;
   final CycleExclusionList? _exclusions;
@@ -174,6 +202,14 @@ class CyclePredictionService {
   /// onboarding cycle facts. Null keeps the exact pre-#218 behavior (no
   /// seeding, no facts in the combine).
   final ProfilesRepository? _profiles;
+
+  /// Issue #233: per-profile `profile_modes` birth-control state watcher
+  /// (a `Stream<BirthControlState?>`), resolved against [today] via
+  /// `birthControlMethodInEffectOn` into the [ActiveBirthControl] the
+  /// predictor branches on. Null keeps the exact pre-#233 behavior (no
+  /// birth-control-aware prediction).
+  final Stream<BirthControlState?> Function(String profileId)?
+      _birthControlStateFor;
 
   /// Recomputed on every emission of the profile's day-entry stream and,
   /// when a settings store is wired, of the profile's omission-list key —
@@ -188,29 +224,78 @@ class CyclePredictionService {
     final entries = _dayEntries.watchForProfile(profileId);
     final exclusions = _exclusions;
     final memo = _PredictionMemo();
+    // entries + facts + birth-control state (issue #233). When the
+    // exclusions store is wired it rides on top of this triple.
+    final core = combineLatest3(
+      entries,
+      _factsFor(profileId),
+      _birthControlFor(profileId),
+    );
     if (exclusions == null) {
-      return combineLatest2(entries, _factsFor(profileId)).map(
+      return core.map(
         (latest) => _predictionFor(
           memo: memo,
           entries: latest.$1,
           omissions: const {},
           today: todayOf(),
           facts: latest.$2,
+          birthControlState: latest.$3,
         ),
       );
     }
-    return combineLatest2(
-      combineLatest2(entries, _factsFor(profileId)),
-      exclusions.watch(profileId),
-    ).map(
+    return combineLatest2(core, exclusions.watch(profileId)).map(
       (latest) => _predictionFor(
         memo: memo,
         entries: latest.$1.$1,
         omissions: latest.$2,
         today: todayOf(),
         facts: latest.$1.$2,
+        birthControlState: latest.$1.$3,
       ),
     );
+  }
+
+  /// The profile's raw birth-control state (issue #233), or null when no
+  /// [birthControlStateFor] provider is wired. Re-emitted on every
+  /// `profile_modes` row change; the record's structural equality keeps the
+  /// #197 memo honest about which changes actually matter.
+  Stream<BirthControlState?> _birthControlFor(String profileId) {
+    final provider = _birthControlStateFor;
+    if (provider == null) return Stream.value(null);
+    return provider(profileId);
+  }
+
+  /// Resolves the raw birth-control state against [today] into the
+  /// [ActiveBirthControl] the predictor branches on, via the
+  /// `birthControlMethodInEffectOn` seam (issue #260 AC5 — never re-parsed
+  /// here). Null when no tracked method is in effect on [today]. A
+  /// malformed start date (defensive — the columns are CHECK-bounded
+  /// `yyyy-MM-dd`) degrades to null, failing to the no-method path.
+  static ActiveBirthControl? _activeBirthControlFor(
+    BirthControlState? state,
+    LocalDate today,
+  ) {
+    if (state == null) return null;
+    final method = birthControlMethodInEffectOn(
+      storedMethod: state.method,
+      startedOn: state.startedOn,
+      stoppedOn: state.stoppedOn,
+      date: today,
+    );
+    if (method == null) return null;
+    return ActiveBirthControl(
+      method: method,
+      startedOn: _parseStartDate(state.startedOn),
+    );
+  }
+
+  static LocalDate? _parseStartDate(String? iso) {
+    if (iso == null || iso.isEmpty) return null;
+    try {
+      return LocalDate.fromIso(iso);
+    } on ArgumentError {
+      return null;
+    }
   }
 
   /// The profile's current cycle facts (issue #218), or
@@ -243,17 +328,21 @@ class CyclePredictionService {
     required Set<LocalDate> omissions,
     required LocalDate today,
     required CycleFacts facts,
+    required BirthControlState? birthControlState,
   }) {
     final fingerprint = _fingerprintOf(entries);
-    final cached = memo.cached(fingerprint, omissions, today, facts);
+    final cached =
+        memo.cached(fingerprint, omissions, today, facts, birthControlState);
     if (cached != null) return cached;
     final prediction = _resolve(
       entries: entries,
       omissions: omissions,
       today: today,
       facts: facts,
+      birthControlState: birthControlState,
     );
-    memo.store(fingerprint, omissions, today, facts, prediction);
+    memo.store(fingerprint, omissions, today, facts, birthControlState,
+        prediction);
     return prediction;
   }
 
@@ -263,25 +352,39 @@ class CyclePredictionService {
   /// seeded provisional prediction; (3) otherwise return the computed
   /// result unchanged — including its counts, so an all-skipped onboarding
   /// reads bit-identically to a pre-#218 profile.
+  ///
+  /// Issue #233: a tracked method in effect ([birthControl]) short-circuits
+  /// before both — [computePredictionFromEntries] returns
+  /// [PredictionsSuppressed] (continuous) or a pack-driven
+  /// [ActivePrediction] (withdrawal-bleed) directly, so the
+  /// [NotEnoughHistory]-only provisional fallback never applies to a
+  /// profile with an in-effect method. The explicit `birthControl == null`
+  /// guard on the fallback documents that precedence.
   CyclePrediction _resolve({
     required List<DayEntry> entries,
     required Set<LocalDate> omissions,
     required LocalDate today,
     required CycleFacts facts,
+    required BirthControlState? birthControlState,
   }) {
+    final birthControl = _activeBirthControlFor(birthControlState, today);
     final computed = computePredictionFromEntries(
       entries: entries,
       today: today,
       omittedCycleStarts: omissions,
+      birthControl: birthControl,
     );
-    if (computed is NotEnoughHistory && facts.canSeed) {
+    if (birthControl == null &&
+        computed is NotEnoughHistory &&
+        facts.canSeed) {
       return seedProvisionalPrediction(facts: facts, today: today);
     }
     return computed;
   }
 
   /// One-shot computation from current stored entries (and the current
-  /// omission list and cycle facts, when settings/profiles are wired).
+  /// omission list, cycle facts, and birth-control state when their
+  /// providers are wired).
   Future<CyclePrediction> current(String profileId,
       {LocalDate Function()? today}) async {
     final todayOf = today ?? LocalDate.today;
@@ -290,6 +393,10 @@ class CyclePredictionService {
         ? const <LocalDate>{}
         : await exclusions.load(profileId);
     final profile = await _profiles?.findById(profileId);
+    final birthControlStateFor = _birthControlStateFor;
+    final birthControlState = birthControlStateFor == null
+        ? null
+        : await birthControlStateFor(profileId).first;
     return _resolve(
       entries: await _dayEntries.listForProfile(profileId),
       omissions: omissions,
@@ -299,6 +406,7 @@ class CyclePredictionService {
         typicalCycleLengthDays: profile?.typicalCycleLengthDays,
         typicalPeriodLengthDays: profile?.typicalPeriodLengthDays,
       ),
+      birthControlState: birthControlState,
     );
   }
 }

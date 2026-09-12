@@ -410,6 +410,8 @@ void main() {
             outputs.addAll([phaseLabel, untilNextPeriodLabel]);
           case NotEnoughHistory(:final statusLabel):
             outputs.add(statusLabel);
+          case PredictionsSuppressed(:final statusLabel):
+            outputs.add(statusLabel);
         }
       }
       // Also assert the phase vocabulary is exactly the settled one.

@@ -62,6 +62,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
@@ -349,6 +350,11 @@ class _OverviewPanelState extends State<OverviewPanel> {
             switch (prediction) {
               ActivePrediction() => _activeCard(context, prediction),
               NotEnoughHistory() => _notEnoughCard(context),
+              // Issue #233: an in-effect continuous birth-control method
+              // replaces the estimate with an explicit suppressed state —
+              // never NotEnoughHistory and never a silent late/paused line.
+              PredictionsSuppressed() =>
+                PredictionsSuppressedCard(method: prediction.method),
             },
             _seeHistoryLink(context),
             if (availability == NotificationAvailability.denied)

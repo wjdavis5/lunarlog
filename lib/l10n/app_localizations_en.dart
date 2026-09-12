@@ -618,6 +618,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get predictionsSuppressedTitle => 'Predictions are suppressed';
+
+  @override
+  String predictionsSuppressedBody(String method) {
+    return 'Because $method typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.';
+  }
+
+  @override
   String get reminderSectionCycle => 'Your cycle';
 
   @override

@@ -762,6 +762,17 @@
       "length": {"type": "int"}
     }
   },
+  "predictionsSuppressedTitle": "Predictions are suppressed",
+  "@predictionsSuppressedTitle": {
+    "description": "Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233)."
+  },
+  "predictionsSuppressedBody": "Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.",
+  "@predictionsSuppressedBody": {
+    "description": "Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).",
+    "placeholders": {
+      "method": {"type": "String"}
+    }
+  },
   "reminderSectionCycle": "Your cycle",
   "@reminderSectionCycle": {
     "description": "Reminder settings header for the cycle reminders group (Issue #178), matching Clue's information architecture."

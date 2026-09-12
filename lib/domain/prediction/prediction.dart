@@ -16,6 +16,15 @@
 /// dates the operator has excluded from the averages ("omit from average"
 /// in the history list, "skip this cycle" in the late resolver). Omitted
 /// cycles stay in history; their lengths simply never feed a mean.
+/// Issue #233 (A2-15/A2-3) documents skipping a *withdrawal* bleed while
+/// on hormonal birth control as a canonical case for that exclusion
+/// mechanism: a pill/patch/ring withdrawal bleed that does not arrive
+/// (e.g. running packs together to skip it) is not a real cycle boundary,
+/// so its expected start belongs in the omission set rather than being
+/// averaged as an atypically long cycle once the next bleed lands. The
+/// pack-driven branch ([_packDrivenPrediction]) itself never averages, so
+/// it needs no exclusion; this note is the canonical-case documentation for
+/// the history-based path.
 ///
 /// Issue #213 rebuilds the window/confidence/forecast machinery this file
 /// owns so #132's history/confidence framing and #133's forward calendar
@@ -47,10 +56,19 @@
 /// it) is the *service* (`prediction_service.dart`); this file's
 /// `computePrediction` path is unchanged by #218 — a profile with no
 /// supplied facts gets exactly the same [NotEnoughHistory] it always did.
+///
+/// Issue #233 adds the birth-control branch: an in-effect
+/// ([ActiveBirthControl]) continuous method returns the named
+/// [PredictionsSuppressed] state and a withdrawal-bleed method returns a
+/// pack-schedule-driven [ActivePrediction], so neither falls into
+/// [NotEnoughHistory] or a silent late/paused state. See [computePrediction]
+/// and [_packDrivenPrediction]. This file also owns the prediction
+/// classification of the #260 method enum ([birthControlPredictionKind]).
 library;
 
 import 'dart:math' show sqrt;
 
+import '../birth_control.dart';
 import '../episodes/episodes.dart';
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
@@ -114,6 +132,65 @@ const int kLateGraceDays = 2;
 /// skipped cycle's real length is excluded from the average like any other
 /// omitted cycle, so an atypically long cycle never poisons the mean.
 const int kSkipAdvanceCycles = 1;
+
+/// PROVISIONAL (issue #233): the fixed regimen length a withdrawal-bleed
+/// birth-control method's bleed is predicted on — the standard 28-day pack
+/// (21 active + 7 hormone-free) shared by the combined pill, patch, and
+/// ring on a cyclic regimen. The pack schedule is a known, fixed quantity
+/// ("more reliable than statistical inference", A2-15), and lunarlog has no
+/// per-regimen length field in the birth-control state (#188/#260 store
+/// only method + start/stop dates), so this named constant stands in for
+/// one. Pending the same calibration the #213 thresholds carry (Clue does
+/// not publish a regimen length either).
+const int kPackCycleLengthDays = 28;
+
+/// The two prediction-relevant behavioral classes of a tracked
+/// birth-control method (issue #233). The enum vocabulary itself is owned
+/// by #260/#188 — this issue only classifies it for the predictor, and
+/// never renames or stores it.
+enum BirthControlPredictionKind {
+  /// Cyclic methods whose bleed is pack-driven (combined pill, patch, ring
+  /// on a cyclic regimen): the next withdrawal bleed follows the pack
+  /// schedule ([kPackCycleLengthDays]) anchored on the regimen start, not
+  /// follicular statistics.
+  withdrawalBleed,
+
+  /// Methods that typically stop or irregularly affect periods (IUD,
+  /// implant, shot, continuous-regimen pill): period prediction is
+  /// suppressed for the duration the method is active.
+  continuous,
+}
+
+/// Classifies [method] for prediction, or null for the non-tracked answers
+/// ([none]/[condom]/[other]/[unknown]) which never reach the predictor —
+/// the effective-method seam (`birthControlMethodInEffectOn`) returns null
+/// for them, so this null is defensive-only.
+///
+/// Judgment call (documented in issue #233's PR): the stored `pill` value
+/// cannot distinguish a combined (cyclic) pill from a continuous-regimen
+/// pill or the progestin-only minipill, because the #260 enum carries one
+/// `pill` member. This classification treats `pill` as the canonical
+/// combined/cyclic pill (withdrawal-bleed) — the pack-schedule branch —
+/// and leaves `continuous` for the unambiguously continuous methods. A
+/// future #260 vocabulary that splits `pill` by regimen would reclassify
+/// here without touching the predictor's branches.
+BirthControlPredictionKind? birthControlPredictionKind(BirthControlMethod method) =>
+    switch (method) {
+      BirthControlMethod.pill ||
+      BirthControlMethod.patch ||
+      BirthControlMethod.ring =>
+        BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.shot ||
+      BirthControlMethod.implant ||
+      BirthControlMethod.hormonalIud ||
+      BirthControlMethod.copperIud =>
+        BirthControlPredictionKind.continuous,
+      BirthControlMethod.none ||
+      BirthControlMethod.condom ||
+      BirthControlMethod.other ||
+      BirthControlMethod.unknown =>
+        null,
+    };
 
 /// PROVISIONAL (issue #213): the confidence tier thresholds below are named
 /// constants pending calibration against real user histories (A2's own
@@ -294,6 +371,49 @@ class NotEnoughHistory extends CyclePrediction {
   String toString() => 'NotEnoughHistory(episodes: $episodeCount, '
       'completedCycles: $completedCycleCount, validCycles: $validCycleCount, '
       'status: $statusLabel)';
+}
+
+/// A birth-control method currently in effect, resolved by the service
+/// (issue #233) from the raw `profile_modes` state via the
+/// `birthControlMethodInEffectOn` seam — never re-parsed by the predictor
+/// itself. [startedOn] is the regimen's start date (`birth_control_started_on`,
+/// `yyyy-MM-dd`), the anchor the withdrawal-bleed branch predicts the pack
+/// cadence from. Null when no tracked method is in effect on the date of
+/// interest.
+class ActiveBirthControl {
+  const ActiveBirthControl({required this.method, required this.startedOn});
+
+  final BirthControlMethod method;
+  final LocalDate? startedOn;
+
+  /// Deliberately no `==`/`hashCode`: the prediction service's memo keys on
+  /// the raw `BirthControlState` record (which has structural equality),
+  /// not on this resolved value, so an identity-typed value object needs no
+  /// value equality of its own.
+  @override
+  String toString() =>
+      'ActiveBirthControl(${method.name}, started: ${startedOn?.iso})';
+}
+
+/// Period prediction is deliberately turned off for a profile whose
+/// birth-control method in effect on the date of interest is a continuous
+/// one (IUD, implant, shot, continuous-regimen pill — issue #233): these
+/// methods typically stop or irregularly affect periods, so any
+/// follicular-style estimate (or a pack-driven withdrawal-bleed estimate)
+/// would be misleading. This is a distinct, named state — explicitly NOT
+/// [NotEnoughHistory] (which would read as "log more cycles" even though
+/// logging more won't help) and NOT a silent late/paused state — carrying
+/// the method so the UI can explain why.
+class PredictionsSuppressed extends CyclePrediction {
+  const PredictionsSuppressed({required this.method});
+
+  final BirthControlMethod method;
+
+  String get statusLabel =>
+      'predictions suppressed because of ${method.name}';
+
+  @override
+  String toString() => 'PredictionsSuppressed(${method.name})';
 }
 
 /// A live estimate: last episode start + mean of the most recent usable
@@ -477,7 +597,20 @@ class ActivePrediction extends CyclePrediction {
 /// current civil date, and (issue #132) the device-local set of omitted
 /// cycle starts.
 ///
+/// Issue #233: when a tracked birth-control method is in effect
+/// ([birthControl]), the predictor branches before any history gate —
+/// a continuous method returns [PredictionsSuppressed] outright, and a
+/// withdrawal-bleed method returns a pack-schedule-driven
+/// [ActivePrediction] (see [_packDrivenPrediction]) — so neither falls
+/// into [NotEnoughHistory] or a silent late/paused state. With no method
+/// in effect the behavior is exactly as before. A withdrawal-bleed method
+/// with no recorded regimen start ([ActiveBirthControl.startedOn] null)
+/// falls through to the history-based path defensively, since there is no
+/// pack anchor to predict from.
+///
 /// Ordering of the gates:
+/// 0. [birthControl] in effect → [PredictionsSuppressed] (continuous) or
+///    [_packDrivenPrediction] (withdrawal-bleed with a start date).
 /// 1. No episodes, or fewer than [kMinCompletedValidCycles] completed
 ///    *usable* cycles (valid per the 15–60 window and not omitted, within
 ///    [kRecencyWindowCycles] of the raw chronological list — issue #213) →
@@ -496,7 +629,22 @@ CyclePrediction computePrediction({
   required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
   Set<LocalDate> pmsDates = const {},
+  ActiveBirthControl? birthControl,
 }) {
+  final kind = birthControl == null
+      ? null
+      : birthControlPredictionKind(birthControl.method);
+  if (kind == BirthControlPredictionKind.continuous) {
+    return PredictionsSuppressed(method: birthControl!.method);
+  }
+  if (kind == BirthControlPredictionKind.withdrawalBleed &&
+      birthControl!.startedOn != null) {
+    return _packDrivenPrediction(
+      episodes: episodes,
+      startedOn: birthControl.startedOn!,
+      today: today,
+    );
+  }
   final sorted = [...episodes]..sort();
   if (sorted.isEmpty) {
     return const NotEnoughHistory(
@@ -582,6 +730,85 @@ CyclePrediction computePrediction({
     forecast: forecast,
     unusuallyLongCycle: unusuallyLongCycle,
     pms: pms,
+  );
+}
+
+/// The withdrawal-bleed branch of the predictor (issue #233): a bleed on a
+/// cyclic combined-pill/patch/ring regimen is pack-driven, not follicular,
+/// so the next withdrawal bleed is predicted from the pack schedule rather
+/// than from a mean-of-valid-cycles calculation. The anchor is the most
+/// recent bleed logged on or after [startedOn] (the regimen start — the
+/// latest such bleed *is* the most recent withdrawal bleed), or [startedOn]
+/// itself when none has been logged yet (the cadence begins with the first
+/// pack). The estimate is [startedOn]/anchor + [kPackCycleLengthDays],
+/// rolled forward in whole pack-length steps once late ([_rollLateEstimate],
+/// issue #221), exactly as the history-based path rolls a mean-cycle-length
+/// step. Confidence is [CycleConfidence.high] with zero spread — the pack
+/// schedule is a known, fixed quantity, the issue's stated reason this
+/// branch exists over statistical inference.
+///
+/// Deliberately independent of [omittedCycleStarts]: omission is an
+/// editorial "don't average this cycle" signal for the statistical
+/// predictor, and this branch averages nothing.
+///
+/// No cycles are claimed to exist by this branch's construction: history
+/// counts are still reported for context, but [averagedCycleLengths] is
+/// empty and [meanCycleLengthDays] carries the fixed regimen length, not a
+/// mean of observed cycles.
+ActivePrediction _packDrivenPrediction({
+  required List<Episode> episodes,
+  required LocalDate startedOn,
+  required LocalDate today,
+}) {
+  final sorted = [...episodes]..sort();
+  final starts = [for (final episode in sorted) episode.start];
+
+  // The most recent withdrawal bleed: the latest episode start on/after the
+  // regimen start, else the regimen start itself.
+  var anchor = startedOn;
+  for (final start in starts) {
+    if (!start.isBefore(startedOn)) anchor = start;
+  }
+
+  final originalEstimate = anchor.addDays(kPackCycleLengthDays);
+  final rolledStart = _rollLateEstimate(
+    original: originalEstimate,
+    today: today,
+    stepDays: kPackCycleLengthDays,
+  );
+  final periodLength = _meanPeriodLength(
+    sorted: sorted,
+    omittedCycleStarts: const {},
+    meanCycleDays: kPackCycleLengthDays,
+  );
+  final forecast = _buildForecast(
+    firstStart: rolledStart,
+    meanCycleDays: kPackCycleLengthDays,
+    periodLengthDays: periodLength.periodLengthDays,
+    baseTier: CycleConfidence.high,
+    baseSpreadDays: 0,
+  );
+
+  // History-context counts (both windows) — reported but never used for the
+  // estimate, mirroring how the history path separates stats from the mean.
+  final windows = _recentValidCycles(starts, const {});
+
+  return ActivePrediction(
+    today: today,
+    lastEpisodeStart: anchor,
+    estimatedNextStart: forecast.first.start,
+    originalEstimatedNextStart: originalEstimate,
+    averagedCycleLengths: const [],
+    meanCycleLengthDays: kPackCycleLengthDays.toDouble(),
+    cycleDay: today.isBefore(anchor) ? 1 : today.difference(anchor) + 1,
+    duringEpisode: sorted.any((episode) => episode.contains(today)),
+    completedCycleCount: windows.lengths.length,
+    validCycleCount: windows.validLengths.length,
+    meanPeriodLengthDays: periodLength.meanPeriodLengthDays,
+    spreadDays: 0,
+    tier: CycleConfidence.high,
+    forecast: forecast,
+    unusuallyLongCycle: false,
   );
 }
 
@@ -1020,15 +1247,19 @@ CyclePrediction seedProvisionalPrediction({
 
 /// Convenience: derives episodes from raw entries first, then predicts.
 /// The entries' PMS markers (Issue #220) join the derivation in the same
-/// pass — the PMS estimate rides [ActivePrediction.pms].
+/// pass — the PMS estimate rides [ActivePrediction.pms]. [birthControl]
+/// (issue #233) is the in-effect method the predictor branches on; null
+/// keeps the pre-#233 behavior.
 CyclePrediction computePredictionFromEntries({
   required Iterable<DayEntry> entries,
   required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
+  ActiveBirthControl? birthControl,
 }) =>
     computePrediction(
       episodes: deriveEpisodes(bleedDatesOf(entries)),
       today: today,
       omittedCycleStarts: omittedCycleStarts,
       pmsDates: pmsDatesOf(entries),
+      birthControl: birthControl,
     );
