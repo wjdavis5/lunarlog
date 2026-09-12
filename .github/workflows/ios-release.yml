@@ -351,6 +351,14 @@ jobs:
             --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
 
       - name: Install CocoaPods dependencies
+        env:
+          # Self-hosted runner's default shell locale is not UTF-8, which
+          # crashes CocoaPods in Pod::Config#installation_root
+          # (Encoding::CompatibilityError: Unicode Normalization not
+          # appropriate for ASCII-8BIT) when it unicode_normalizes the
+          # installation path. CocoaPods' own fix is exactly this export.
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
         run: cd ios && pod install && cd ..
 
       - name: Archive
