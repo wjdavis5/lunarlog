@@ -212,9 +212,23 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Run deno test
+      - name: Run deno check and deno test
+        # Issue #567: previously only `deno test` ran here - a type error in
+        # any Edge Function (in particular `feedback-reply`, which had zero
+        # automated coverage of any kind until this issue) could ship green.
+        # `deno check` type-checks every file `deno test` would otherwise
+        # only check indirectly through whichever files a test happens to
+        # import. `deno lint` is deliberately not added here: with the
+        # repo's default rule set it currently reports 68 pre-existing
+        # findings across nearly every file in this directory (a
+        # `no-import-prefix` hit on every `jsr:`-prefixed import, and a
+        # `require-await` hit on every fake's async interface method with no
+        # `await` in its body) - none introduced by this change, and not a
+        # same-PR-sized cleanup.
         working-directory: supabase/functions
-        run: deno test
+        run: |
+          deno check **/*.ts
+          deno test
 
   db-tests:
     name: Database tests (pgTAP)
