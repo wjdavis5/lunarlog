@@ -4,6 +4,8 @@
 /// `ActivePrediction` — see `lib/data/notifications/reminder_coordinator.dart`)
 /// instead of silently running the ordinary "days late" estimate against a
 /// cycle that isn't the regular ovulatory one the model assumes.
+library;
+
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
