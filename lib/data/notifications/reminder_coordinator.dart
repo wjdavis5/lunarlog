@@ -30,9 +30,8 @@ library;
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
-import 'package:lunarlog/domain/notifications/reminder_payload.dart';
-import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
-import 'package:lunarlog/domain/notifications/scheduling.dart';
+import 'package:lunarlog/data/notifications/notification_scheduler.dart'
+    show LocalTimeZoneProvider, defaultLocalTimeZoneProvider;
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -40,9 +39,14 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
+import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/notifications/statistic_change.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/util/timezone.dart' show isValidIanaTimeZone;
+import 'package:timezone/timezone.dart' as tz;
 
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
@@ -66,6 +70,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
     ReminderConfigService? localSettings,
     BirthControlStateStream? birthControlStateFor,
     LocalDate Function()? today,
+    LocalTimeZoneProvider? localTimeZoneProvider,
     this.replanDebounce = const Duration(milliseconds: 250),
   })  : _scheduler = scheduler,
         _permissionState = permissionState,
@@ -73,7 +78,9 @@ class ReminderCoordinator with WidgetsBindingObserver {
         _predictionFor = predictionFor,
         _localSettings = localSettings,
         _birthControlStateFor = birthControlStateFor,
-        today = today ?? LocalDate.today {
+        today = today ?? LocalDate.today,
+        _localTimeZoneProvider =
+            localTimeZoneProvider ?? defaultLocalTimeZoneProvider {
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -81,6 +88,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
   final NotificationAvailabilitySink _permissionState;
   final ActiveProfilesStream _activeProfiles;
   final PredictionStream _predictionFor;
+  final LocalTimeZoneProvider _localTimeZoneProvider;
 
   /// Issue #183: the per-profile birth-control row watcher. Null keeps the
   /// pre-#183 shape (no birth-control reminders are planned); when
@@ -339,6 +347,16 @@ class ReminderCoordinator with WidgetsBindingObserver {
     final availability = await _scheduler.checkAvailability();
     if (_disposed || generation != _permissionProbeGeneration) return;
     _setAvailability(availability);
+
+    // Issue #169: re-resolve device timezone on resume instead of once at init.
+    try {
+      final tzName = await _localTimeZoneProvider();
+      if (tz.local.name != tzName && isValidIanaTimeZone(tzName)) {
+        final loc = tz.getLocation(tzName);
+        tz.setLocalLocation(loc);
+      }
+    } catch (_) {}
+
     // "At every app open": permissions or the civil day may have changed.
     _scheduleReplan();
   }

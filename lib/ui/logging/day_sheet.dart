@@ -397,7 +397,7 @@ class _DaySheetState extends State<DaySheet> {
   /// #335's explicit Save did, on every debounced write.
   DayEntry _composeEntry() {
     final note = _noteController.text.trim();
-    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
+    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZoneSync)();
     final entryId = _persistedEntryId ?? widget.existing?.id ?? '';
     return DayEntry(
       id: entryId,

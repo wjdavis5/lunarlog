@@ -71,7 +71,7 @@ class ReminderActionExecutor {
         _configService = configService,
         _isUnlocked = isUnlocked,
         _today = today ?? LocalDate.today,
-        _timezone = timezoneProvider ?? resolveCurrentTimeZone {
+        _timezone = timezoneProvider ?? resolveCurrentTimeZoneSync {
     if (addUnlockListener != null) {
       addUnlockListener(_onGateChanged);
       _removeUnlockListener = removeUnlockListener;

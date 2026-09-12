@@ -363,6 +363,7 @@ ReminderCoordinator buildReminderCoordinator({
   required ReminderConfigService localSettings,
   required Stream<BirthControlState?> Function(String profileId)?
       birthControlStateFor,
+  LocalTimeZoneProvider? localTimeZoneProvider,
 }) =>
     ReminderCoordinator(
       scheduler: scheduler,
@@ -371,6 +372,7 @@ ReminderCoordinator buildReminderCoordinator({
       predictionFor: predictionFor,
       localSettings: localSettings,
       birthControlStateFor: birthControlStateFor,
+      localTimeZoneProvider: localTimeZoneProvider,
     );
 
 /// Constructs the reminder-window publisher, or null when either

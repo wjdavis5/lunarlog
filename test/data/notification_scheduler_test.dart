@@ -99,14 +99,14 @@ void main() {
   });
 
   group('Timezone resolution integration with resolveCurrentTimeZone', () {
-    test('setting local location updates domain resolveCurrentTimeZone', () {
+    test('setting local location updates domain resolveCurrentTimeZone', () async {
       final paris = tz.getLocation('Europe/Paris');
       tz.setLocalLocation(paris);
-      expect(resolveCurrentTimeZone(), 'Europe/Paris');
+      expect(await resolveCurrentTimeZone(), 'Europe/Paris');
 
       final chicago = tz.getLocation('America/Chicago');
       tz.setLocalLocation(chicago);
-      expect(resolveCurrentTimeZone(), 'America/Chicago');
+      expect(await resolveCurrentTimeZone(), 'America/Chicago');
     });
   });
 

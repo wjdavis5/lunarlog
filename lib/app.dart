@@ -56,6 +56,7 @@ import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
@@ -300,6 +301,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   void initState() {
     super.initState();
+    unawaited(resolveCurrentTimeZone());
     // AC1: the one bundle this widget's lifetime is bound to, supplied by
     // the composition root. No fallback construction here.
     _deps = widget.dependencies;
