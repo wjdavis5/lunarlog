@@ -229,7 +229,7 @@ void main() {
           isA<TransferUnauthorizedFailure>());
       expect(const TransferFailure.invalidToken(),
           isA<TransferInvalidTokenFailure>());
-      expect(const TransferFailure.other('boom'), isA<TransferOtherFailure>());
+      expect(const TransferFailure.other(), isA<TransferOtherFailure>());
     });
 
     const allFailures = <TransferFailure>[
@@ -243,7 +243,7 @@ void main() {
       TransferFailure.alreadyArmed(),
       TransferFailure.unauthorized(),
       TransferFailure.invalidToken(),
-      TransferFailure.other('boom'),
+      TransferFailure.other(),
     ];
 
     test('every subclass has a non-empty userFacingMessage', () {
@@ -283,11 +283,14 @@ void main() {
           const TransferFailure.alreadyArmed());
     });
 
-    test('two instances of TransferOtherFailure with the same message are equal', () {
-      expect(const TransferFailure.other('boom'),
-          const TransferFailure.other('boom'));
-      expect(const TransferFailure.other('boom').hashCode,
-          const TransferFailure.other('boom').hashCode);
+    // Issue #552: `.other()` is fieldless like every other variant, so this
+    // is no longer a special case that needs its own equality override — a
+    // diagnostic difference between two `.other()` failures now lives only
+    // in a breadcrumb at the throw site, never in the failure value itself.
+    test('two instances of TransferOtherFailure are equal', () {
+      expect(const TransferFailure.other(), const TransferFailure.other());
+      expect(const TransferFailure.other().hashCode,
+          const TransferFailure.other().hashCode);
     });
 
     test('different subclasses are not equal to each other', () {
@@ -301,11 +304,5 @@ void main() {
       }
     });
 
-    test('TransferOtherFailure carries its diagnostic message', () {
-      const failure = TransferFailure.other('rpc exploded');
-      expect(failure, isA<TransferOtherFailure>());
-      expect((failure as TransferOtherFailure).message, 'rpc exploded');
-      expect(failure.toString(), contains('rpc exploded'));
-    });
   });
 }

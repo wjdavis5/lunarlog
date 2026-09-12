@@ -201,7 +201,7 @@ sealed class TransferFailure implements Exception {
   const factory TransferFailure.alreadyArmed() = TransferAlreadyArmedFailure;
   const factory TransferFailure.unauthorized() = TransferUnauthorizedFailure;
   const factory TransferFailure.invalidToken() = TransferInvalidTokenFailure;
-  const factory TransferFailure.other(String message) = TransferOtherFailure;
+  const factory TransferFailure.other() = TransferOtherFailure;
 
   String get userFacingMessage;
 
@@ -300,18 +300,21 @@ final class TransferInvalidTokenFailure extends TransferFailure {
   String toString() => 'TransferFailure.invalidToken';
 }
 
-/// Catch-all failure, carrying a diagnostic [message] that is never shown to
-/// the operator (mirrors [TransferFailure.userFacingMessage]'s no-raw-error
-/// rule) but is useful in logs and `toString`.
+/// Catch-all failure. Fieldless like the other nine variants (issue #552):
+/// [TransferFailure]'s inherited `operator==` compares only `runtimeType`,
+/// so a variant carrying a payload the operator never sees would make two
+/// unrelated diagnoses compare equal — every distinct diagnostic instead
+/// goes to a breadcrumb at its own throw site in
+/// `supabase_ownership_transfer_service.dart` (`_mapError`, `_mapPostgrestError`,
+/// `_mapInvalidParameter`, and the two `unexpected ... shape` sites), never
+/// shown to the operator (mirrors [userFacingMessage]'s no-raw-error rule).
 final class TransferOtherFailure extends TransferFailure {
-  const TransferOtherFailure(this.message);
-
-  final String message;
+  const TransferOtherFailure();
 
   @override
   String get userFacingMessage => 'Something went wrong. Please try again.';
   @override
-  String toString() => 'TransferFailure.other: $message';
+  String toString() => 'TransferFailure.other';
 }
 
 /// Contract for arming, cancelling, and claiming an ownership transfer.
