@@ -394,6 +394,40 @@ Deno.test("a non-POST method is rejected with 405 regardless of config", async (
   assertEquals(response.status, 405);
 });
 
+Deno.test(
+  "an unexpected thrown error is logged (never silent) but still resolves 204, per R21's best-effort contract",
+  async () => {
+    const deps = fakeDeps({ callerId: "owner-1", ticket: baseTicket() });
+    const throwingDeps: FeedbackNotifyDeps = {
+      ...deps,
+      getTicket: async () => {
+        throw new Error("boom - some unexpected dependency failure");
+      },
+    };
+
+    const originalError = console.error;
+    const calls: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      calls.push(args);
+    };
+    let response;
+    try {
+      response = await handleFeedbackNotify(postRequest("t-123"), throwingDeps);
+    } finally {
+      console.error = originalError;
+    }
+
+    assertEquals(response.status, 204, "R21's best-effort contract: this endpoint still resolves 204 either way");
+    assertEquals(calls.length, 1, "an unhandled error must be logged rather than silently swallowed");
+    assertEquals(String(calls[0][0]).includes("unhandled error"), true);
+    assertEquals(
+      String(calls[0][0]).includes("boom"),
+      false,
+      "only the error's type name is logged, never its message (which can embed provider detail)",
+    );
+  },
+);
+
 Deno.test("a missing ticket_id in the body is rejected with 400", async () => {
   const deps = fakeDeps();
   const request = new Request("https://example.test/feedback-notify", {

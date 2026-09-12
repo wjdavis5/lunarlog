@@ -186,9 +186,18 @@ export async function handleFeedbackNotify(req: Request, deps: FeedbackNotifyDep
       await deps.releaseClaim(ticketId);
       return new Response(null, { status: 502 });
     }
-  } catch (_error) {
-    // Never surface provider detail; this endpoint's contract is 204
-    // either way (R21's best-effort promise extends to this handler).
+  } catch (error) {
+    // #526's neighbour (issue review): this catch used to be silent, so an
+    // unexpected failure anywhere in the ownership/claim/send path (a
+    // thrown error from a fake or real dependency the two explicit
+    // failure branches above don't already cover) left no trace anywhere -
+    // this endpoint's contract is 204 either way (R21's best-effort promise
+    // extends to this handler), but that must not mean unobservable. Only
+    // the error's type name is logged, never its message - it can embed
+    // provider detail, a token, or row content.
+    console.error(
+      `feedback-notify: unhandled error for ticket ${ticketId}: ${error instanceof Error ? error.constructor.name : typeof error}`,
+    );
   }
 
   return new Response(null, { status: 204 });
