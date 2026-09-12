@@ -176,16 +176,16 @@ void main() {
       }
     });
 
-    test('row count matches taxonomy size exactly (86, issue #252)', () {
-      expect(kTagClinicalCodes, hasLength(86));
-      expect(kTagTaxonomy, hasLength(86));
+    test('row count matches taxonomy size exactly (108, issue #253)', () {
+      expect(kTagClinicalCodes, hasLength(108));
+      expect(kTagTaxonomy, hasLength(108));
     });
   });
 
   group('kTagClinicalCodes — golden table (BLOCKING: fails loudly on any '
       'edit to a verified tag mapping)', () {
     test('matches the full expected (system, code, display) triple for all '
-        '86 tags', () {
+        '108 tags', () {
       const snomed = 'http://snomed.info/sct';
       const local =
           'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
@@ -306,6 +306,51 @@ void main() {
         'allergy': (local, 'allergy', 'Allergy'),
         'injury': (local, 'injury', 'Injury'),
         'fever': (local, 'fever', 'Fever'),
+        // issue #253's 22 new codes - every one an explicit local decision
+        // (no SNOMED concept fetch-verified yet; see
+        // docs/clinical/terminology.md's #253 section).
+        'no_sex_today': (local, 'no_sex_today', 'No sex today'),
+        'low_sex_drive': (local, 'low_sex_drive', 'Low sex drive'),
+        'high_sex_drive': (local, 'high_sex_drive', 'High sex drive'),
+        'masturbation': (local, 'masturbation', 'Masturbation'),
+        'withdrawal': (local, 'withdrawal', 'Withdrawal'),
+        'protected_sex': (local, 'protected_sex', 'Protected sex'),
+        'unprotected_sex': (local, 'unprotected_sex', 'Unprotected sex'),
+        'sex_toys': (local, 'sex_toys', 'Sex toys'),
+        'orgasm': (local, 'orgasm', 'Orgasm'),
+        'no_orgasm': (local, 'no_orgasm', 'No orgasm'),
+        'fantasies': (local, 'fantasies', 'Fantasies'),
+        'painful_intercourse': (
+          local,
+          'painful_intercourse',
+          'Painful intercourse',
+        ),
+        'none': (local, 'none', 'No discharge'),
+        'sticky': (local, 'sticky', 'Sticky'),
+        'creamy': (local, 'creamy', 'Creamy'),
+        'egg_white': (local, 'egg_white', 'Egg white'),
+        'atypical': (local, 'atypical', 'Atypical'),
+        'ovulation_negative': (
+          local,
+          'ovulation_negative',
+          'Ovulation · negative',
+        ),
+        'ovulation_positive': (
+          local,
+          'ovulation_positive',
+          'Ovulation · positive',
+        ),
+        'ovulation_peak': (local, 'ovulation_peak', 'Ovulation · peak'),
+        'pregnancy_negative': (
+          local,
+          'pregnancy_negative',
+          'Pregnancy · negative',
+        ),
+        'pregnancy_positive': (
+          local,
+          'pregnancy_positive',
+          'Pregnancy · positive',
+        ),
       };
       expect(kTagClinicalCodes, hasLength(expected.length));
       expect(kTagClinicalCodes.keys.toSet(), expected.keys.toSet());

@@ -141,6 +141,10 @@ const Map<TagCategory, String> _standardCategoryLabels = {
   TagCategory.medication: 'Medication',
   TagCategory.ailments: 'Ailments',
   TagCategory.supplements: 'Supplements',
+  // Issue #253's sensitive and fertility categories.
+  TagCategory.sexLife: 'Sex life',
+  TagCategory.discharge: 'Discharge',
+  TagCategory.tests: 'Tests',
 };
 
 const CareModeCopy _standard = CareModeCopy(
@@ -208,6 +212,11 @@ const CareModeCopy _teen = CareModeCopy(
     TagCategory.medication,
     TagCategory.ailments,
     TagCategory.supplements,
+    // Issue #253's sensitive and fertility categories, appended after the
+    // events/care cluster (the order stays a permutation, never a subset).
+    TagCategory.sexLife,
+    TagCategory.discharge,
+    TagCategory.tests,
   ],
   categoryLabels: {
     TagCategory.pain: 'Pain',
@@ -240,6 +249,11 @@ const CareModeCopy _teen = CareModeCopy(
     TagCategory.medication: 'Medication',
     TagCategory.ailments: 'Ailments',
     TagCategory.supplements: 'Supplements',
+    // Issue #253's sensitive and fertility categories (same headings as
+    // standard — only body gets teen-specific vocabulary).
+    TagCategory.sexLife: 'Sex life',
+    TagCategory.discharge: 'Discharge',
+    TagCategory.tests: 'Tests',
   },
 );
 

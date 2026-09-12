@@ -979,14 +979,30 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   /// Adds or removes [code] from the taxonomy grid — shared by the visible
-  /// chip and its semantics tap (#138).
+  /// chip and its semantics tap (#138). Issue #253: adding a code whose
+  /// category is single-select ([kSingleSelectTagCategories]) first removes
+  /// the day's other selected codes of that same category, so the picker
+  /// never holds two discharge options at once.
   void _toggleTag(String code) {
     LLHaptics.selection();
+    final tag = tagByCode(code);
+    final singleSelect =
+        tag != null && kSingleSelectTagCategories.contains(tag.category);
     setState(() {
       if (_tags.contains(code)) {
         _tags.remove(code);
         _sessionSelectedTags.remove(code);
       } else {
+        if (singleSelect) {
+          final others = [
+            for (final existing in _tags)
+              if (tagByCode(existing)?.category == tag.category) existing,
+          ];
+          for (final other in others) {
+            _tags.remove(other);
+            _sessionSelectedTags.remove(other);
+          }
+        }
         _tags.add(code);
         _sessionSelectedTags.add(code);
       }
