@@ -152,38 +152,41 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// applies.
   Future<void> applyRemoteRows(List<RemoteRow> rows) async {
     await db.transaction(() async {
-      for (final row in rows.whereType<RemoteProfileRow>()) {
-        await _applyProfile(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteProfileGuardianRow>()) {
-        await _applyProfileGuardian(row);
-      }
-      for (final row in rows.whereType<RemoteDayEntryRow>()) {
-        await _applyDayEntry(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteObservationRow>()) {
-        await _applyObservation(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteProfileModeRow>()) {
-        await _applyProfileMode(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteCycleOverrideRow>()) {
-        await _applyCycleOverride(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteCareNoteRow>()) {
-        await _applyCareNote(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
-        await _applyVisitPrepItem(row, onlyExisting: false);
-      }
+      await _applyEach<RemoteProfileRow>(
+          rows, (row) => _applyProfile(row, onlyExisting: false));
+      await _applyEach<RemoteProfileGuardianRow>(rows, _applyProfileGuardian);
+      await _applyEach<RemoteDayEntryRow>(
+          rows, (row) => _applyDayEntry(row, onlyExisting: false));
+      await _applyEach<RemoteObservationRow>(
+          rows, (row) => _applyObservation(row, onlyExisting: false));
+      await _applyEach<RemoteProfileModeRow>(
+          rows, (row) => _applyProfileMode(row, onlyExisting: false));
+      await _applyEach<RemoteCycleOverrideRow>(
+          rows, (row) => _applyCycleOverride(row, onlyExisting: false));
+      await _applyEach<RemoteCareNoteRow>(
+          rows, (row) => _applyCareNote(row, onlyExisting: false));
+      await _applyEach<RemoteVisitPrepItemRow>(
+          rows, (row) => _applyVisitPrepItem(row, onlyExisting: false));
       // Issue #522: last, so a deletion signal for a profile that also had
       // ordinary content rows in this same heterogeneous batch wins over
       // them — the wipe is the final word, never undone by a row applied
       // earlier in this loop.
-      for (final row in rows.whereType<RemoteDeletedProfileRow>()) {
-        await _applyDeletedProfile(row);
-      }
+      await _applyEach<RemoteDeletedProfileRow>(rows, _applyDeletedProfile);
     });
+  }
+
+  /// [applyRemoteRows]'s per-type dispatch, split out (issue #525 review)
+  /// so that method reads as a flat sequence of statements with no
+  /// decision points of its own, instead of nine `for` loops whose branch
+  /// count kept pushing its CRAP score over the gate as tables were added.
+  /// This one loop is exercised once per type instead.
+  Future<void> _applyEach<T extends RemoteRow>(
+    List<RemoteRow> rows,
+    Future<void> Function(T row) apply,
+  ) async {
+    for (final row in rows.whereType<T>()) {
+      await apply(row);
+    }
   }
 
   /// Applies the server's `resolved` copies returned by a push (rows the

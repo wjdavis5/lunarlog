@@ -126,19 +126,17 @@ String syncTableName(SyncTable table) => switch (table) {
       SyncTable.deletedProfiles => 'deleted_profiles',
     };
 
+/// [syncTableName]'s inverse, precomputed once from it rather than
+/// hand-duplicating the name/table pairing a second time (issue #525
+/// review: a second 9-arm switch here pushed [syncTableFromName]'s CRAP
+/// score over the gate as tables were added, on top of being one more
+/// place a new [SyncTable] value could be forgotten).
+final Map<String, SyncTable> _syncTableByName = {
+  for (final table in SyncTable.values) syncTableName(table): table,
+};
+
 /// Inverse of [syncTableName]; null for anything else.
-SyncTable? syncTableFromName(String name) => switch (name) {
-      'profiles' => SyncTable.profiles,
-      'day_entries' => SyncTable.dayEntries,
-      'profile_guardians' => SyncTable.profileGuardians,
-      'observations' => SyncTable.observations,
-      'profile_modes' => SyncTable.profileModes,
-      'cycle_overrides' => SyncTable.cycleOverrides,
-      'care_notes' => SyncTable.careNotes,
-      'visit_prep_items' => SyncTable.visitPrepItems,
-      'deleted_profiles' => SyncTable.deletedProfiles,
-      _ => null,
-    };
+SyncTable? syncTableFromName(String name) => _syncTableByName[name];
 
 // ---------------------------------------------------------------------------
 // timestamps

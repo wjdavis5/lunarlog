@@ -1418,4 +1418,109 @@ void main() {
       expect(await storage.getProfile(p.id), isNull);
     });
   });
+
+  group('bumpLocalRevForRetry (issue #568)', () {
+    test('bumps local_rev and re-marks dirty on every pushable table, '
+        'content untouched, and is a harmless no-op on the two pull-only '
+        'tables', () async {
+      final p = await storage.upsertProfile(displayName: 'A', isMinor: false);
+      await storage.markPushed(
+          table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.profiles, id: p.id);
+      var profile = await storage.getProfile(p.id);
+      expect(profile!.localRev, p.localRev + 1);
+      expect(profile.dirty, isTrue);
+      expect(profile.displayName, 'A', reason: 'content is untouched');
+
+      final e = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      await storage.markPushed(
+          table: SyncTable.dayEntries, id: e.id, localRevAtPush: e.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.dayEntries, id: e.id);
+      var entry = await entryById(p.id, e.id);
+      expect(entry.localRev, e.localRev + 1);
+      expect(entry.dirty, isTrue);
+      expect(entry.flow, FlowLevel.light);
+
+      final o = await storage.upsertObservation(
+          dayEntryId: e.id,
+          profileId: p.id,
+          localDate: e.localDate,
+          tz: 'UTC',
+          category: 'pain');
+      await storage.markPushed(
+          table: SyncTable.observations, id: o.id, localRevAtPush: o.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.observations, id: o.id);
+      var observation =
+          (await storage.getObservationsForDayEntry(e.id)).single;
+      expect(observation.localRev, o.localRev + 1);
+      expect(observation.dirty, isTrue);
+      expect(observation.category, 'pain');
+
+      await storage.upsertProfileMode(profileId: p.id, mode: 'tracking');
+      final mode0 = (await storage.getProfileMode(p.id))!;
+      await storage.markPushed(
+          table: SyncTable.profileModes,
+          id: p.id,
+          localRevAtPush: mode0.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.profileModes, id: p.id);
+      var mode = (await storage.getProfileMode(p.id))!;
+      expect(mode.localRev, mode0.localRev + 1);
+      expect(mode.dirty, isTrue);
+      expect(mode.mode, 'tracking');
+
+      final co = await storage.upsertCycleOverride(
+          profileId: p.id, cycleStartDate: '2026-01-01');
+      await storage.markPushed(
+          table: SyncTable.cycleOverrides, id: co.id, localRevAtPush: co.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.cycleOverrides, id: co.id);
+      var override =
+          (await storage.getCycleOverridesForProfile(p.id)).single;
+      expect(override.localRev, co.localRev + 1);
+      expect(override.dirty, isTrue);
+      expect(override.cycleStartDate, '2026-01-01');
+
+      final cn = await storage.upsertCareNote(profileId: p.id, body: 'note');
+      await storage.markPushed(
+          table: SyncTable.careNotes, id: cn.id, localRevAtPush: cn.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.careNotes, id: cn.id);
+      var note = (await storage.getCareNotesForProfile(p.id)).single;
+      expect(note.localRev, cn.localRev + 1);
+      expect(note.dirty, isTrue);
+      expect(note.body, 'note');
+
+      final vp = await storage.addVisitPrepItem(profileId: p.id, body: 'ask');
+      await storage.markPushed(
+          table: SyncTable.visitPrepItems, id: vp.id, localRevAtPush: vp.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.visitPrepItems, id: vp.id);
+      var item = (await storage.getVisitPrepItemsForProfile(p.id)).single;
+      expect(item.localRev, vp.localRev + 1);
+      expect(item.dirty, isTrue);
+      expect(item.body, 'ask');
+
+      // Pull-only tables: nothing to bump, must not throw.
+      await storage.bumpLocalRevForRetry(
+          table: SyncTable.profileGuardians, id: 'irrelevant');
+      await storage.bumpLocalRevForRetry(
+          table: SyncTable.deletedProfiles, id: 'irrelevant');
+    });
+
+    test('markPushed on the two pull-only tables is a harmless no-op', () async {
+      expect(
+          await storage.markPushed(
+              table: SyncTable.profileGuardians,
+              id: 'irrelevant',
+              localRevAtPush: 0),
+          isFalse);
+      expect(
+          await storage.markPushed(
+              table: SyncTable.deletedProfiles,
+              id: 'irrelevant',
+              localRevAtPush: 0),
+          isFalse);
+    });
+  });
 }
