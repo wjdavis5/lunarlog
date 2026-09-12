@@ -246,7 +246,37 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     }
   }
 
+  /// #553: a care note is a shared, multi-guardian record — any accepted
+  /// guardian can see (and, before this fix, one mistap could destroy)
+  /// text another guardian wrote. A confirmation matches the destructive-
+  /// action pattern used elsewhere (e.g. `profile_dialogs.dart`'s archive
+  /// confirm, `manage_guardians_screen.dart`'s remove/cancel confirms).
   Future<void> _deleteNote(CareNote note) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this care note?'),
+        content: const Text(
+          'Every guardian with access to this profile can see this note. '
+          'Deleting it removes it for everyone and cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('care-note-delete-confirm'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
     setState(() => _error = null);
     try {
       await widget.repository.deleteCareNote(note.id);
