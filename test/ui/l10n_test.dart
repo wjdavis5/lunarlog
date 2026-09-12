@@ -34,6 +34,9 @@ class _NoopGate implements AppGate {
   bool get requiresUnlock => true;
 
   @override
+  Future<bool> canAuthenticate() async => true;
+
+  @override
   Future<bool> requestAccess() async => true;
 }
 
@@ -376,7 +379,7 @@ void main() {
           'Typical period length (days)');
       expect(l10n.firstRunCycleTypicalPeriodHint, 'e.g. 5');
       expect(l10n.firstRunCycleLengthRangeError,
-          'Enter a number between 10 and 90');
+          'Enter a number between 15 and 60');
       expect(l10n.firstRunPeriodLengthRangeError,
           'Enter a number between 1 and 14');
       expect(l10n.firstRunCycleBirthControlLabel, 'Birth-control method');

@@ -13,5 +13,8 @@ class WebAppGate implements AppGate {
   bool get requiresUnlock => false;
 
   @override
+  Future<bool> canAuthenticate() async => true;
+
+  @override
   Future<bool> requestAccess() async => true;
 }

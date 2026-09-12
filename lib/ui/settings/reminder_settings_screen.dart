@@ -77,11 +77,6 @@ const List<ReminderKind> kCycleGroupKinds = [
 /// daily check-in both map onto the existing daily log nudge.
 const List<ReminderKind> kOtherGroupKinds = [ReminderKind.log];
 
-String _formatTimeOfDay(int minutes) {
-  final hour = (minutes ~/ 60).toString().padLeft(2, '0');
-  final minute = (minutes % 60).toString().padLeft(2, '0');
-  return '$hour:$minute';
-}
 
 /// Localized label for each kind. A map (not a switch) keeps the
 /// per-kind complexity out of the CRAP gate's reach — one literal per
@@ -586,8 +581,8 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     return ListTile(
       key: ValueKey('reminder-time-${kind.name}'),
       title: const Text('Time'),
-      trailing:
-          Text(_formatTimeOfDay(typeConfig.timeOfDayMinutes)),
+      trailing: Text(
+          _timeOfDay(typeConfig.timeOfDayMinutes).format(context)),
       onTap:
           typeConfig.enabled ? () => _pickTime(kind) : null,
     );
@@ -611,13 +606,13 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         ListTile(
           key: const ValueKey('reminder-quiet-start'),
           title: const Text('Starts'),
-          trailing: Text(_formatTimeOfDay(quiet.startMinutes)),
+          trailing: Text(_timeOfDay(quiet.startMinutes).format(context)),
           onTap: () => _pickQuietBoundary(start: true),
         ),
         ListTile(
           key: const ValueKey('reminder-quiet-end'),
           title: const Text('Ends'),
-          trailing: Text(_formatTimeOfDay(quiet.endMinutes)),
+          trailing: Text(_timeOfDay(quiet.endMinutes).format(context)),
           onTap: () => _pickQuietBoundary(start: false),
         ),
       ],

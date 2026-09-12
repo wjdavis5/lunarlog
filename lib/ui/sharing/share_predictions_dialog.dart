@@ -6,8 +6,11 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
+import '../components/inline_error.dart';
 
 class SharePredictionsDialog extends StatefulWidget {
   const SharePredictionsDialog({
@@ -32,6 +35,11 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
   bool _loading = false;
   GeneratedPredictionInvite? _invite;
   String? _error;
+
+  /// #558: see `InviteGuardianDialog._justCopied`'s doc comment -- a
+  /// `ScaffoldMessenger` SnackBar here would resolve to the underlying
+  /// screen's Scaffold and paint behind this dialog's own barrier.
+  bool _justCopied = false;
 
   @override
   void dispose() {
@@ -61,7 +69,8 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
     } on PredictionConnectionFailure catch (failure) {
       if (mounted) {
         setState(() {
-          _error = failure.userFacingMessage;
+          _error = predictionConnectionFailureCopy(
+              AppLocalizations.of(context), failure);
           _loading = false;
         });
       }
@@ -80,9 +89,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
   void _copyCode() {
     if (_invite == null) return;
     Clipboard.setData(ClipboardData(text: _invite!.inviteUri.toString()));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Connection link copied to clipboard')),
-    );
+    setState(() => _justCopied = true);
   }
 
   @override
@@ -120,12 +127,31 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
+            if (_justCopied) ...[
+              const SizedBox(height: 8),
+              Semantics(
+                liveRegion: true,
+                child: Row(
+                  key: const ValueKey('share-predictions-copied-confirmation'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle,
+                        size: 16, color: theme.colorScheme.primary),
+                    const SizedBox(width: 4),
+                    Text('Copied to clipboard',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.primary)),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
           TextButton(
+            key: const ValueKey('share-predictions-done'),
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: const Text('Done'),
           ),
           FilledButton.icon(
             onPressed: _copyCode,
@@ -150,8 +176,10 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
             ),
             const SizedBox(height: 12),
             if (_error != null) ...[
-              Text(_error!,
-                  style: TextStyle(color: theme.colorScheme.error)),
+              InlineError(
+                message: _error!,
+                onRetry: _loading ? null : _createConnection,
+              ),
               const SizedBox(height: 8),
             ],
             TextField(

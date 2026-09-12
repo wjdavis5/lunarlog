@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/feedback/attachment_field.dart';
 import 'package:provider/provider.dart';
 
@@ -74,6 +75,8 @@ Future<GatedField> pumpGatedField(
 
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: ChangeNotifierProvider<GateController>.value(
         value: gateController,
         child: Scaffold(
@@ -91,6 +94,8 @@ FeedbackAttachment _makeAttachment({int bytes = 1024, String mimeType = 'image/p
 Future<void> pumpField(WidgetTester tester, FakeAttachmentSource source, ValueChanged<FeedbackAttachment?> onChanged) {
   return tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
         body: AttachmentField(source: source, onChanged: onChanged),
       ),

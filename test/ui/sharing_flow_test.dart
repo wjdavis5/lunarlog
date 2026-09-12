@@ -14,8 +14,10 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
@@ -46,7 +48,9 @@ class FakeSharingService implements SharingService {
           role: role,
           rawToken: 'raw-token-xyz',
           tokenHash: 'token-hash-xyz',
-          inviteUri: Uri.parse('lunarlog://invite?code=raw-token-xyz&profile=$profileId'),
+          inviteUri: Uri.parse(
+            'lunarlog://invite?code=raw-token-xyz&profile=$profileId',
+          ),
           expiresAt: DateTime.utc(2026, 9, 6),
         );
   }
@@ -71,11 +75,18 @@ class FakeSharingService implements SharingService {
 
   Object? scriptedRevokeError;
 
+  /// #544: lets a test observe the busy state mid-flight — set before the
+  /// tap, then complete once the test has asserted the trigger disabled
+  /// itself.
+  Completer<void>? revokeHold;
+
   @override
   Future<void> revokeGuardian({
     required String profileId,
     required String targetUserId,
   }) async {
+    final hold = revokeHold;
+    if (hold != null) await hold.future;
     if (scriptedRevokeError != null) {
       throw scriptedRevokeError!;
     }
@@ -140,7 +151,9 @@ class FakeOwnershipTransferService implements OwnershipTransferService {
   ClaimedProfileResult? scriptedClaim;
   Object? scriptedClaimError;
   final claimCalls =
-      <({String rawToken, String? childDisplayName, String? parentDisplayName})>[];
+      <
+        ({String rawToken, String? childDisplayName, String? parentDisplayName})
+      >[];
 
   @override
   Future<GeneratedTransfer> createTransfer({
@@ -186,6 +199,52 @@ class FakeOwnershipTransferService implements OwnershipTransferService {
   }
 }
 
+/// Issue #535 (d): a minimal [SharingService] whose [createInvite] throws a
+/// scripted, reassignable [SharingFailure] - proves InviteGuardianDialog's
+/// own catch clause maps each failure type to its distinct
+/// [SharingFailure.userFacingMessage] rather than collapsing everything
+/// into one generic string.
+class _ThrowingSharingService implements SharingService {
+  _ThrowingSharingService(this.failure);
+
+  SharingFailure failure;
+
+  @override
+  Future<GeneratedInvite> createInvite({
+    required String profileId,
+    required GuardianRole role,
+    String? recipientLabel,
+    Duration ttl = const Duration(hours: 48),
+  }) async => throw failure;
+
+  @override
+  Future<AcceptedInviteResult> acceptInvite({
+    required String rawToken,
+    String? displayName,
+  }) => throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<void> revokeGuardian({
+    required String profileId,
+    required String targetUserId,
+  }) => throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<List<PendingInvite>> listPendingInvites(String profileId) =>
+      throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<InviteCancellation> cancelInvite(String invitationId) =>
+      throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  }) => throw UnimplementedError('not exercised by these tests');
+}
+
 void main() {
   late LunarLogDatabase db;
   late LunarLogStorage storage;
@@ -196,7 +255,9 @@ void main() {
     db = LunarLogDatabase(NativeDatabase.memory());
     storage = LunarLogStorage(db);
     sharingService = FakeSharingService();
-    testProfile = profileToDomain(await storage.upsertProfile(displayName: 'Luna', isMinor: true));
+    testProfile = profileToDomain(
+      await storage.upsertProfile(displayName: 'Luna', isMinor: true),
+    );
   });
 
   tearDown(() async {
@@ -207,6 +268,8 @@ void main() {
     testWidgets('creates invite link and shows copy action', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: InviteGuardianDialog(
               profileId: testProfile.id,
@@ -227,14 +290,105 @@ void main() {
       expect(find.text('Copy Link'), findsOneWidget);
       expect(sharingService.lastCreatedRole, 'co_parent');
     });
+
+    // Issue #535 (c): share_plus is already a dependency; a Share button
+    // sits beside Copy Link so the invite link isn't limited to a manual
+    // copy-paste.
+    testWidgets('shows a Share action beside Copy Link once a link exists', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InviteGuardianDialog(
+              profileId: testProfile.id,
+              profileName: testProfile.displayName,
+              sharingService: sharingService,
+            ),
+          ),
+        ),
+      );
+
+      // Not offered before a link exists.
+      expect(find.text('Share'), findsNothing);
+
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Copy Link'), findsOneWidget);
+      expect(find.text('Share'), findsOneWidget);
+      expect(find.byIcon(Icons.share), findsOneWidget);
+    });
+
+    // Issue #535 (d): distinct SharingFailure types get their own accurate
+    // copy via userFacingMessage, rather than every failure - including
+    // unauthorized - collapsing into the generic "check your connection"
+    // message (AcceptInviteSheet's catch clause already gets this right;
+    // this mirrors it).
+    testWidgets('unauthorized and network SharingFailures produce distinct '
+        'userFacingMessage copy, not the generic collapse', (tester) async {
+      // createInvite has no scriptedError hook on FakeSharingService, so a
+      // dedicated throwing fake proves the dialog's own catch-clause
+      // behavior independent of what the fake happens to script.
+      final failing = _ThrowingSharingService(
+        const SharingFailure.unauthorized(),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: InviteGuardianDialog(
+              profileId: testProfile.id,
+              profileName: testProfile.displayName,
+              sharingService: failing,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('You do not have permission for this action.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Failed to generate invite. Please check your connection and try again.',
+        ),
+        findsNothing,
+      );
+
+      // A network failure gets its own distinct copy too, not the same
+      // unauthorized text and not the generic collapse either.
+      failing.failure = const SharingFailure.network();
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Network error. Please check your connection.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('You do not have permission for this action.'),
+        findsNothing,
+      );
+    });
   });
 
   group('AcceptInviteSheet', () {
-    testWidgets('allows entering display name and accepting invite', (tester) async {
+    testWidgets('allows entering display name and accepting invite', (
+      tester,
+    ) async {
       AcceptedInviteResult? result;
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -262,6 +416,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -284,6 +440,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -301,6 +459,37 @@ void main() {
       expect(log.snapshot(), ['sharing: _Exception']);
       expect(log.snapshot().single, isNot(contains('network crashed')));
     });
+
+    // Issue #535 (a): no server RPC returns a profile's name or role before
+    // acceptance (accept_guardian_invitation is the only call, and it
+    // commits the acceptance as part of returning them - see
+    // SupabaseSharingService.acceptInvite and this issue's investigation
+    // notes). The pre-accept copy must therefore never assume a minor's
+    // profile - the previous hardcoded "child" wording was wrong whenever
+    // two adults share one adult's profile.
+    testWidgets('never renders the hardcoded child wording, and shows neutral '
+        'profile copy instead of assuming a minor', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AcceptInviteSheet(
+              rawToken: 'test-raw-token',
+              sharingService: sharingService,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('child'), findsNothing);
+      expect(
+        find.text(
+          "You've been invited to a shared profile in LunarLog. "
+          'Accepting will sync its cycle calendar and health logs to '
+          'this device.',
+        ),
+        findsOneWidget,
+      );
+    });
   });
 
   group('ManageGuardiansScreen', () {
@@ -310,21 +499,22 @@ void main() {
       String role,
       String? displayName, {
       int serverVersion = 1,
-    }) =>
-        RemoteProfileGuardianRow(
-          id: id,
-          profileId: testProfile.id,
-          userId: userId,
-          role: role,
-          status: 'accepted',
-          displayName: displayName,
-          invitedBy: null,
-          createdAt: DateTime.utc(2026, 1, 1),
-          updatedAt: DateTime.utc(2026, 1, 1),
-          serverVersion: serverVersion,
-        );
+    }) => RemoteProfileGuardianRow(
+      id: id,
+      profileId: testProfile.id,
+      userId: userId,
+      role: role,
+      status: 'accepted',
+      displayName: displayName,
+      invitedBy: null,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+      serverVersion: serverVersion,
+    );
 
-    testWidgets('renders active guardians and handles revocation', (tester) async {
+    testWidgets('renders active guardians and handles revocation', (
+      tester,
+    ) async {
       // The server always carries the creator's primary row; seed it so
       // the caller's role resolves (mom = primary_guardian).
       await storage.applyRemoteRows([
@@ -334,6 +524,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -350,10 +542,12 @@ void main() {
       expect(find.byIcon(Icons.person_add), findsOneWidget);
 
       // Tap the revoke icon on Dad's row (Mom's own row offers self-leave).
-      await tester.tap(find.descendant(
-        of: find.widgetWithText(ListTile, 'Dad'),
-        matching: find.byIcon(Icons.remove_circle_outline),
-      ));
+      await tester.tap(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Dad'),
+          matching: find.byIcon(Icons.remove_circle_outline),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Remove Dad?'), findsOneWidget);
@@ -366,8 +560,74 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('hides invite and revocation controls from a caregiver (U8)',
-        (tester) async {
+    testWidgets(
+      'issue #558: once the single-use link is generated, a stray tap '
+      'outside the dialog cannot dismiss it, "Copy Link" shows its '
+      'confirmation inside the dialog, and Done closes it',
+      (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        ]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.person_add));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Create Link'));
+        await tester.pumpAndSettle();
+        expect(find.text('Invitation Created'), findsOneWidget);
+
+        // A tap on the scrim (the barrier), well away from the dialog card
+        // itself, must not dismiss it now that the link exists.
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Invitation Created'),
+          findsOneWidget,
+          reason:
+              'barrierDismissible: false -- the server never stores '
+              'this raw token again, so a stray tap must not destroy '
+              'access to it',
+        );
+
+        expect(
+          find.byKey(const ValueKey('invite-copied-confirmation')),
+          findsNothing,
+        );
+        await tester.tap(find.widgetWithText(FilledButton, 'Copy Link'));
+        await tester.pump();
+        expect(
+          find.text('Copied to clipboard'),
+          findsOneWidget,
+          reason:
+              'shown inside the dialog -- a ScaffoldMessenger SnackBar '
+              'here would paint behind this dialog\'s own barrier',
+        );
+
+        await tester.tap(find.widgetWithText(TextButton, 'Done'));
+        await tester.pumpAndSettle();
+        expect(find.text('Invitation Created'), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
+
+    testWidgets('hides invite and revocation controls from a caregiver (U8)', (
+      tester,
+    ) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
         guardianRow('g-2', 'user-sitter', 'caregiver', 'Sue'),
@@ -375,6 +635,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -395,8 +657,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('co-parent cannot remove the primary guardian (R4)',
-        (tester) async {
+    testWidgets('co-parent cannot remove the primary guardian (R4)', (
+      tester,
+    ) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
         guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
@@ -405,6 +668,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -438,61 +703,71 @@ void main() {
     });
 
     testWidgets(
-        'primary guardian changes a viewer to caregiver with confirmation (Issue #127)',
-        (tester) async {
-      await storage.applyRemoteRows([
-        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        guardianRow('g-2', 'user-sue', 'viewer', 'Sue'),
-      ]);
+      'primary guardian changes a viewer to caregiver with confirmation (Issue #127)',
+      (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-2', 'user-sue', 'viewer', 'Sue'),
+        ]);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ManageGuardiansScreen(
-            profile: testProfile,
-            guardiansRepository: DriftProfileGuardiansRepository(storage),
-            sharingService: sharingService,
-            currentUserId: 'user-mom',
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Sue's row offers a role control; Mom's own row does not (AC4: no
-      // self-change, so no control on the caller's own row).
-      expect(find.byKey(const ValueKey('change-role-user-sue')), findsOneWidget);
-      expect(find.byKey(const ValueKey('change-role-user-mom')), findsNothing);
+        // Sue's row offers a role control; Mom's own row does not (AC4: no
+        // self-change, so no control on the caller's own row).
+        expect(
+          find.byKey(const ValueKey('change-role-user-sue')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('change-role-user-mom')),
+          findsNothing,
+        );
 
-      await tester.tap(find.byKey(const ValueKey('change-role-user-sue')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('change-role-user-sue')));
+        await tester.pumpAndSettle();
 
-      // Viewer -> caregiver and co-parent are offered; viewer itself and
-      // primary_guardian never are (AC5) - exactly two menu items.
-      expect(find.byType(PopupMenuItem<GuardianRole>), findsNWidgets(2));
-      expect(find.text('Caregiver'), findsOneWidget);
-      expect(find.text('Co-Parent'), findsOneWidget);
+        // Viewer -> caregiver and co-parent are offered; viewer itself and
+        // primary_guardian never are (AC5) - exactly two menu items.
+        expect(find.byType(PopupMenuItem<GuardianRole>), findsNWidgets(2));
+        expect(find.text('Caregiver'), findsOneWidget);
+        expect(find.text('Co-Parent'), findsOneWidget);
 
-      await tester.tap(find.text('Caregiver'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Caregiver'));
+        await tester.pumpAndSettle();
 
-      // The confirmation names the access being added.
-      expect(find.text('Change role to Caregiver?'), findsOneWidget);
-      expect(
-        find.textContaining('gain the ability to log entries'),
-        findsOneWidget,
-      );
-      await tester.tap(find.widgetWithText(FilledButton, 'Change role'));
-      await tester.pumpAndSettle();
+        // The confirmation names the access being added.
+        expect(find.text('Change role to Caregiver?'), findsOneWidget);
+        expect(
+          find.textContaining('gain the ability to log entries'),
+          findsOneWidget,
+        );
+        await tester.tap(find.widgetWithText(FilledButton, 'Change role'));
+        await tester.pumpAndSettle();
 
-      expect(sharingService.lastRoleChangeUserId, 'user-sue');
-      expect(sharingService.lastRoleChangeNewRole, GuardianRole.caregiver);
-      expect(find.text('Role updated to Caregiver'), findsOneWidget);
+        expect(sharingService.lastRoleChangeUserId, 'user-sue');
+        expect(sharingService.lastRoleChangeNewRole, GuardianRole.caregiver);
+        expect(find.text('Role updated to Caregiver'), findsOneWidget);
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
 
-    testWidgets('cancelling the role confirmation changes nothing',
-        (tester) async {
+    testWidgets('cancelling the role confirmation changes nothing', (
+      tester,
+    ) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
         guardianRow('g-2', 'user-sue', 'viewer', 'Sue'),
@@ -500,6 +775,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -524,8 +801,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('role change failure surfaces an error message',
-        (tester) async {
+    testWidgets('role change failure surfaces an error message', (
+      tester,
+    ) async {
       sharingService.scriptedRoleChangeError =
           const SharingUnauthorizedFailure();
       await storage.applyRemoteRows([
@@ -535,6 +813,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -562,8 +842,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('co-parent sees a role control only on caregiver/viewer rows',
-        (tester) async {
+    testWidgets('co-parent sees a role control only on caregiver/viewer rows', (
+      tester,
+    ) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
         guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
@@ -572,6 +853,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -584,7 +867,10 @@ void main() {
 
       // AC3: Sue's row offers the control; Mom's row and Dad's own row do
       // not.
-      expect(find.byKey(const ValueKey('change-role-user-sue')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('change-role-user-sue')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('change-role-user-mom')), findsNothing);
       expect(find.byKey(const ValueKey('change-role-user-dad')), findsNothing);
 
@@ -592,8 +878,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('narrowing copy names the read-only outcome (Issue #127)',
-        (tester) async {
+    testWidgets('narrowing copy names the read-only outcome (Issue #127)', (
+      tester,
+    ) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
         guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
@@ -601,6 +888,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -637,6 +926,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -654,42 +945,45 @@ void main() {
     });
 
     testWidgets(
-        'a sole primary guardian has no self-leave control (#5): the RPC '
-        'would reject it', (tester) async {
-      await storage.applyRemoteRows([
-        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        guardianRow('g-2', 'user-sitter', 'caregiver', 'Sue'),
-      ]);
+      'a sole primary guardian has no self-leave control (#5): the RPC '
+      'would reject it',
+      (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-2', 'user-sitter', 'caregiver', 'Sue'),
+        ]);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ManageGuardiansScreen(
-            profile: testProfile,
-            guardiansRepository: DriftProfileGuardiansRepository(storage),
-            sharingService: sharingService,
-            currentUserId: 'user-mom',
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Mom can revoke Sue but has no self-leave control of her own: she's
-      // the only accepted primary guardian.
-      expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.widgetWithText(ListTile, 'Mom'),
-          matching: find.byIcon(Icons.remove_circle_outline),
-        ),
-        findsNothing,
-      );
+        // Mom can revoke Sue but has no self-leave control of her own: she's
+        // the only accepted primary guardian.
+        expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.widgetWithText(ListTile, 'Mom'),
+            matching: find.byIcon(Icons.remove_circle_outline),
+          ),
+          findsNothing,
+        );
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
 
-    testWidgets(
-        'a primary guardian can leave once another accepted primary '
+    testWidgets('a primary guardian can leave once another accepted primary '
         'guardian exists (#5)', (tester) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
@@ -698,6 +992,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -721,51 +1017,58 @@ void main() {
     });
 
     testWidgets(
-        'a failed self-leave by a primary guardian reports the sole-primary '
-        'reason instead of a generic connection error (#5)', (tester) async {
-      // Two accepted primary guardians so the self-leave control is shown
-      // client-side; the service still rejects the call, simulating a
-      // concurrent revoke on another device making Mom the sole primary
-      // guardian between the tap and the RPC landing.
-      await storage.applyRemoteRows([
-        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        guardianRow('g-1', 'user-dad', 'primary_guardian', 'Dad'),
-      ]);
-      final failingService = FakeSharingService()
-        ..scriptedRevokeError = Exception('object_not_in_prerequisite_state');
+      'a failed self-leave by a primary guardian reports the sole-primary '
+      'reason instead of a generic connection error (#5)',
+      (tester) async {
+        // Two accepted primary guardians so the self-leave control is shown
+        // client-side; the service still rejects the call, simulating a
+        // concurrent revoke on another device making Mom the sole primary
+        // guardian between the tap and the RPC landing.
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-1', 'user-dad', 'primary_guardian', 'Dad'),
+        ]);
+        final failingService = FakeSharingService()
+          ..scriptedRevokeError = Exception('object_not_in_prerequisite_state');
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ManageGuardiansScreen(
-            profile: testProfile,
-            guardiansRepository: DriftProfileGuardiansRepository(storage),
-            sharingService: failingService,
-            currentUserId: 'user-mom',
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: failingService,
+              currentUserId: 'user-mom',
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.descendant(
-        of: find.widgetWithText(ListTile, 'Mom'),
-        matching: find.byIcon(Icons.remove_circle_outline),
-      ));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
-      await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.widgetWithText(ListTile, 'Mom'),
+            matching: find.byIcon(Icons.remove_circle_outline),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+        await tester.pumpAndSettle();
 
-      expect(
-        find.text("You're now the only primary guardian, so you can't "
-            'leave. Add another primary guardian first, then try again.'),
-        findsOneWidget,
-      );
+        expect(
+          find.text(
+            "You're now the only primary guardian, so you can't "
+            'leave. Add another primary guardian first, then try again.',
+          ),
+          findsOneWidget,
+        );
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
 
-    testWidgets(
-        'a failed revoke of someone else falls back to the generic '
+    testWidgets('a failed revoke of someone else falls back to the generic '
         'connection message', (tester) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
@@ -776,6 +1079,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -786,16 +1091,82 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.descendant(
-        of: find.widgetWithText(ListTile, 'Dad'),
-        matching: find.byIcon(Icons.remove_circle_outline),
-      ));
+      await tester.tap(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Dad'),
+          matching: find.byIcon(Icons.remove_circle_outline),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to remove guardian. Check connection.'),
-          findsOneWidget);
+      expect(
+        find.text('Failed to remove guardian. Check connection.'),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    testWidgets('#544: the revoke trigger disables itself while its RPC is in '
+        'flight, and re-enables once it settles', (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+      ]);
+      final hold = Completer<void>();
+      final service = FakeSharingService()..revokeHold = hold;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
+            sharingService: service,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Dad'),
+          matching: find.byIcon(Icons.remove_circle_outline),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('revoke-user-dad')),
+        findsNothing,
+        reason: 'the trigger itself is gone while the RPC is in flight',
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      hold.complete();
+      await tester.pumpAndSettle();
+
+      expect(service.lastRevokedUserId, 'user-dad');
+      expect(
+        find.byKey(const ValueKey('revoke-user-dad')),
+        findsOneWidget,
+        reason:
+            're-enabled once the RPC settles (the fake service does '
+            "not itself touch local storage, so Dad's row is unchanged)",
+      );
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const ValueKey('revoke-user-dad')))
+            .onPressed,
+        isNotNull,
+      );
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -810,6 +1181,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -828,8 +1201,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets(
-        'a currentUserId with no matching synced guardian row sees no '
+    testWidgets('a currentUserId with no matching synced guardian row sees no '
         'controls (#13)', (tester) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
@@ -838,6 +1210,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -855,13 +1229,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets(
-        'shows the invite action before any guardian row has synced, '
+    testWidgets('shows the invite action before any guardian row has synced, '
         'rather than hiding it (#13)', (tester) async {
       // No applyRemoteRows call: this profile was just created locally and
       // nothing has written a guardian row for it yet.
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -880,90 +1255,159 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    testWidgets("#544: shows a spinner before the guardian stream's first "
+        'emission, never "No caregivers linked yet" (which would read as '
+        'a synced, empty profile rather than still loading)', (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+      ]);
+
+      // Deliberately no settle after this pump: the Drift watch's first
+      // emission needs at least one microtask/async gap, so the single
+      // frame `pumpWidget` itself performs is still before it.
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+
+      expect(
+        find.text('No caregivers linked yet'),
+        findsNothing,
+        reason:
+            'must not flash the empty state before the first real '
+            'answer arrives',
+      );
+      // Also still waiting on the pending-invitations FutureBuilder at
+      // this point, so more than one spinner is expected here.
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Mom'),
+        findsOneWidget,
+        reason: 'the real (non-empty) answer renders once it lands',
+      );
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
     group('pending invitations (Issue #3 gap-closure plan, Unit U3)', () {
       PendingInvite pendingInvite({
         String id = 'inv-1',
         GuardianRole role = GuardianRole.caregiver,
         String? recipientLabel = 'Sitter',
         DateTime? expiresAt,
-      }) =>
-          PendingInvite(
-            invitationId: id,
-            profileId: testProfile.id,
-            role: role,
-            recipientLabel: recipientLabel,
-            createdAt: DateTime.now().toUtc(),
-            expiresAt:
-                expiresAt ?? DateTime.now().toUtc().add(const Duration(hours: 6)),
+      }) => PendingInvite(
+        invitationId: id,
+        profileId: testProfile.id,
+        role: role,
+        recipientLabel: recipientLabel,
+        createdAt: DateTime.now().toUtc(),
+        expiresAt:
+            expiresAt ?? DateTime.now().toUtc().add(const Duration(hours: 6)),
+      );
+
+      testWidgets(
+        'primary guardian sees the pending section listing invitations '
+        'with their roles and labels',
+        (tester) async {
+          await storage.applyRemoteRows([
+            guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          ]);
+          sharingService.scriptedPendingInvites = [
+            pendingInvite(
+              id: 'inv-1',
+              role: GuardianRole.caregiver,
+              recipientLabel: 'Sitter',
+            ),
+            pendingInvite(
+              id: 'inv-2',
+              role: GuardianRole.viewer,
+              recipientLabel: 'Grandma',
+            ),
+          ];
+
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Pending invitations'), findsOneWidget);
+          expect(find.text('Sitter'), findsOneWidget);
+          expect(find.text('Grandma'), findsOneWidget);
+          expect(find.textContaining('Caregiver'), findsWidgets);
+          expect(find.textContaining('Viewer'), findsWidgets);
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets(
+        'co-parent sees the pending section (R3 allows them to cancel '
+        'some invitations)',
+        (tester) async {
+          await storage.applyRemoteRows([
+            guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+            guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+          ]);
+          sharingService.scriptedPendingInvites = [
+            pendingInvite(
+              id: 'inv-1',
+              role: GuardianRole.caregiver,
+              recipientLabel: 'Sitter',
+            ),
+          ];
+
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-dad',
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Pending invitations'), findsOneWidget);
+          expect(find.text('Sitter'), findsOneWidget);
+          expect(
+            find.byIcon(Icons.cancel_outlined),
+            findsOneWidget,
+            reason: 'a co-parent may cancel a caregiver invitation (R3)',
           );
 
-      testWidgets(
-          'primary guardian sees the pending section listing invitations '
-          'with their roles and labels', (tester) async {
-        await storage.applyRemoteRows([
-          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        ]);
-        sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', role: GuardianRole.caregiver, recipientLabel: 'Sitter'),
-          pendingInvite(id: 'inv-2', role: GuardianRole.viewer, recipientLabel: 'Grandma'),
-        ];
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-mom',
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.text('Pending invitations'), findsOneWidget);
-        expect(find.text('Sitter'), findsOneWidget);
-        expect(find.text('Grandma'), findsOneWidget);
-        expect(find.textContaining('Caregiver'), findsWidgets);
-        expect(find.textContaining('Viewer'), findsWidgets);
-
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
-
-      testWidgets(
-          'co-parent sees the pending section (R3 allows them to cancel '
-          'some invitations)', (tester) async {
-        await storage.applyRemoteRows([
-          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-          guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
-        ]);
-        sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', role: GuardianRole.caregiver, recipientLabel: 'Sitter'),
-        ];
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-dad',
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.text('Pending invitations'), findsOneWidget);
-        expect(find.text('Sitter'), findsOneWidget);
-        expect(find.byIcon(Icons.cancel_outlined), findsOneWidget,
-            reason: 'a co-parent may cancel a caregiver invitation (R3)');
-
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
-
-      testWidgets('caregiver does not see the pending section at all',
-          (tester) async {
+      testWidgets('caregiver does not see the pending section at all', (
+        tester,
+      ) async {
         await storage.applyRemoteRows([
           guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
           guardianRow('g-2', 'user-sitter', 'caregiver', 'Sue'),
@@ -972,6 +1416,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -988,8 +1434,9 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       });
 
-      testWidgets('viewer does not see the pending section at all',
-          (tester) async {
+      testWidgets('viewer does not see the pending section at all', (
+        tester,
+      ) async {
         await storage.applyRemoteRows([
           guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
           guardianRow('g-3', 'user-aunt', 'viewer', 'Aunt'),
@@ -998,6 +1445,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1015,117 +1464,140 @@ void main() {
       });
 
       testWidgets(
-          'guardian rows not yet synced does not collapse the section into '
-          'a not-a-manager state', (tester) async {
-        // No applyRemoteRows call, matching "before any guardian row has
-        // synced" above (#13's null-vs-empty discipline).
-        sharingService.scriptedPendingInvites = [pendingInvite()];
+        'guardian rows not yet synced does not collapse the section into '
+        'a not-a-manager state',
+        (tester) async {
+          // No applyRemoteRows call, matching "before any guardian row has
+          // synced" above (#13's null-vs-empty discipline).
+          sharingService.scriptedPendingInvites = [pendingInvite()];
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-mom',
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        expect(find.text('Pending invitations'), findsOneWidget);
+          expect(find.text('Pending invitations'), findsOneWidget);
 
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
 
       testWidgets(
-          'tapping cancel shows a confirmation dialog; dismissing it makes '
-          'no service call', (tester) async {
-        await storage.applyRemoteRows([
-          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        ]);
-        sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
-        ];
+        'tapping cancel shows a confirmation dialog; dismissing it makes '
+        'no service call',
+        (tester) async {
+          await storage.applyRemoteRows([
+            guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          ]);
+          sharingService.scriptedPendingInvites = [
+            pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+          ];
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-mom',
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.cancel_outlined));
-        await tester.pumpAndSettle();
+          await tester.tap(find.byIcon(Icons.cancel_outlined));
+          await tester.pumpAndSettle();
 
-        expect(find.text('Cancel invitation for Sitter?'), findsOneWidget);
-        await tester.tap(find.widgetWithText(TextButton, 'Keep Invitation'));
-        await tester.pumpAndSettle();
+          expect(find.text('Cancel invitation for Sitter?'), findsOneWidget);
+          await tester.tap(find.widgetWithText(TextButton, 'Keep Invitation'));
+          await tester.pumpAndSettle();
 
-        expect(sharingService.lastCancelledInvitationId, isNull);
-        expect(find.text('Sitter'), findsOneWidget,
-            reason: 'dismissing the dialog leaves the row in place');
+          expect(sharingService.lastCancelledInvitationId, isNull);
+          expect(
+            find.text('Sitter'),
+            findsOneWidget,
+            reason: 'dismissing the dialog leaves the row in place',
+          );
 
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
 
       testWidgets(
-          "confirming cancel calls cancelInvite with that invitation's id "
-          'and removes the row on refresh', (tester) async {
-        await storage.applyRemoteRows([
-          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        ]);
-        sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
-        ];
-        sharingService.scriptedCancelOutcome = InviteCancellation.revoked;
+        "confirming cancel calls cancelInvite with that invitation's id "
+        'and removes the row on refresh',
+        (tester) async {
+          await storage.applyRemoteRows([
+            guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          ]);
+          sharingService.scriptedPendingInvites = [
+            pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+          ];
+          sharingService.scriptedCancelOutcome = InviteCancellation.revoked;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-mom',
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.cancel_outlined));
-        await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Cancel Invitation'));
-        await tester.pumpAndSettle();
+          await tester.tap(find.byIcon(Icons.cancel_outlined));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.widgetWithText(FilledButton, 'Cancel Invitation'),
+          );
+          await tester.pumpAndSettle();
 
-        expect(sharingService.lastCancelledInvitationId, 'inv-1');
-        expect(find.text('Sitter'), findsNothing);
-        expect(find.text('No pending invitations'), findsOneWidget);
+          expect(sharingService.lastCancelledInvitationId, 'inv-1');
+          expect(find.text('Sitter'), findsNothing);
+          expect(find.text('No pending invitations'), findsOneWidget);
 
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
 
-      testWidgets(
-          'a co-parent viewing a co_parent invitation created by the '
-          'primary guardian sees no cancel control on that row (R3)',
-          (tester) async {
+      testWidgets('a co-parent viewing a co_parent invitation created by the '
+          'primary guardian sees no cancel control on that row (R3)', (
+        tester,
+      ) async {
         await storage.applyRemoteRows([
           guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
           guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
         ]);
         sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', role: GuardianRole.coParent, recipientLabel: 'Second Co-Parent'),
+          pendingInvite(
+            id: 'inv-1',
+            role: GuardianRole.coParent,
+            recipientLabel: 'Second Co-Parent',
+          ),
         ];
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1136,8 +1608,11 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Second Co-Parent'), findsOneWidget,
-            reason: 'visible but not actionable (Q2)');
+        expect(
+          find.text('Second Co-Parent'),
+          findsOneWidget,
+          reason: 'visible but not actionable (Q2)',
+        );
         expect(find.byIcon(Icons.cancel_outlined), findsNothing);
 
         await tester.pumpWidget(const SizedBox.shrink());
@@ -1145,110 +1620,132 @@ void main() {
       });
 
       testWidgets(
-          'cancelInvite returning alreadyAccepted refreshes rather than '
-          'leaving a stale pending row on screen', (tester) async {
-        await storage.applyRemoteRows([
-          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        ]);
-        sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
-        ];
-        sharingService.scriptedCancelOutcome = InviteCancellation.alreadyAccepted;
+        'cancelInvite returning alreadyAccepted refreshes rather than '
+        'leaving a stale pending row on screen',
+        (tester) async {
+          await storage.applyRemoteRows([
+            guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          ]);
+          sharingService.scriptedPendingInvites = [
+            pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+          ];
+          sharingService.scriptedCancelOutcome =
+              InviteCancellation.alreadyAccepted;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-mom',
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.cancel_outlined));
-        await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Cancel Invitation'));
-        await tester.pumpAndSettle();
+          await tester.tap(find.byIcon(Icons.cancel_outlined));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.widgetWithText(FilledButton, 'Cancel Invitation'),
+          );
+          await tester.pumpAndSettle();
 
-        expect(find.text('Sitter'), findsNothing);
-        expect(find.text('That invitation was already accepted'), findsOneWidget);
+          expect(find.text('Sitter'), findsNothing);
+          expect(
+            find.text('That invitation was already accepted'),
+            findsOneWidget,
+          );
 
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
 
       testWidgets(
-          'a listPendingInvites failure renders the retry affordance and '
-          'leaves the guardian list rendered', (tester) async {
-        await storage.applyRemoteRows([
-          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        ]);
-        sharingService.scriptedListError = Exception('offline');
+        'a listPendingInvites failure renders the retry affordance and '
+        'leaves the guardian list rendered',
+        (tester) async {
+          await storage.applyRemoteRows([
+            guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          ]);
+          sharingService.scriptedListError = Exception('offline');
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-mom',
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        expect(find.text('Mom'), findsOneWidget,
-            reason: 'the guardian list (local Drift) keeps working offline');
-        expect(find.text('Could not load pending invitations.'), findsOneWidget);
-        expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+          expect(
+            find.text('Mom'),
+            findsOneWidget,
+            reason: 'the guardian list (local Drift) keeps working offline',
+          );
+          expect(
+            find.text('Could not load pending invitations.'),
+            findsOneWidget,
+          );
+          expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
 
-        sharingService.scriptedListError = null;
-        sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
-        ];
-        await tester.tap(find.widgetWithText(TextButton, 'Retry'));
-        await tester.pumpAndSettle();
+          sharingService.scriptedListError = null;
+          sharingService.scriptedPendingInvites = [
+            pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+          ];
+          await tester.tap(find.widgetWithText(TextButton, 'Retry'));
+          await tester.pumpAndSettle();
 
-        expect(find.text('Sitter'), findsOneWidget);
+          expect(find.text('Sitter'), findsOneWidget);
 
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
 
       testWidgets(
-          'no widget in the section renders a token, hash, or invite URI',
-          (tester) async {
-        await storage.applyRemoteRows([
-          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
-        ]);
-        sharingService.scriptedPendingInvites = [
-          pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
-        ];
+        'no widget in the section renders a token, hash, or invite URI',
+        (tester) async {
+          await storage.applyRemoteRows([
+            guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          ]);
+          sharingService.scriptedPendingInvites = [
+            pendingInvite(id: 'inv-1', recipientLabel: 'Sitter'),
+          ];
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ManageGuardiansScreen(
-              profile: testProfile,
-              guardiansRepository: DriftProfileGuardiansRepository(storage),
-              sharingService: sharingService,
-              currentUserId: 'user-mom',
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        expect(find.textContaining('lunarlog://'), findsNothing);
-        expect(find.textContaining('token'), findsNothing);
-        expect(find.textContaining('hash'), findsNothing);
+          expect(find.textContaining('lunarlog://'), findsNothing);
+          expect(find.textContaining('token'), findsNothing);
+          expect(find.textContaining('hash'), findsNothing);
 
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 100));
-      });
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
 
-      testWidgets(
-          'an expired invitation renders as an Expired row with Resend '
+      testWidgets('an expired invitation renders as an Expired row with Resend '
           '(negative time remaining is never shown)', (tester) async {
         await storage.applyRemoteRows([
           guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
@@ -1257,12 +1754,16 @@ void main() {
           pendingInvite(
             id: 'inv-1',
             recipientLabel: 'Sitter',
-            expiresAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
+            expiresAt: DateTime.now().toUtc().subtract(
+              const Duration(hours: 2),
+            ),
           ),
         ];
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1283,8 +1784,9 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       });
 
-      testWidgets('Resend on an expired row re-opens the invite flow',
-          (tester) async {
+      testWidgets('Resend on an expired row re-opens the invite flow', (
+        tester,
+      ) async {
         await storage.applyRemoteRows([
           guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
         ]);
@@ -1292,12 +1794,16 @@ void main() {
           pendingInvite(
             id: 'inv-1',
             recipientLabel: 'Sitter',
-            expiresAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
+            expiresAt: DateTime.now().toUtc().subtract(
+              const Duration(hours: 2),
+            ),
           ),
         ];
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1320,44 +1826,56 @@ void main() {
 
   group('ManageGuardiansScreen notification tile (Issue #5, U8)', () {
     testWidgets(
-        'with a service provided, shows the Notifications tile and tapping it pushes the screen',
-        (tester) async {
-      final notificationPreferencesService = FakeNotificationPreferencesService();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ManageGuardiansScreen(
-            profile: testProfile,
-            guardiansRepository: DriftProfileGuardiansRepository(storage),
-            sharingService: sharingService,
-            currentUserId: 'user-mom',
-            notificationPreferencesService: notificationPreferencesService,
+      'with a service provided, shows the Notifications tile and tapping it pushes the screen',
+      (tester) async {
+        final notificationPreferencesService =
+            FakeNotificationPreferencesService();
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+              notificationPreferencesService: notificationPreferencesService,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('notifications-action')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('notifications-action')),
+          findsOneWidget,
+        );
 
-      await tester.tap(find.byKey(const ValueKey('notifications-action')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('notifications-action')));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Notifications'), findsOneWidget);
-      expect(find.byKey(const ValueKey('discretion-copy')), findsOneWidget);
-      // Issue #313: previously pushed with no RouteSettings at all,
-      // invisible to the Sentry route observer.
-      final route = ModalRoute.of(
-        tester.element(find.byKey(const ValueKey('discretion-copy'))),
-      );
-      expect(route?.settings.name, kRouteNotificationPreferencesScreen);
-      expect(kSentryRouteNames, contains(kRouteNotificationPreferencesScreen));
+        expect(find.text('Notifications'), findsOneWidget);
+        expect(find.byKey(const ValueKey('discretion-copy')), findsOneWidget);
+        // Issue #313: previously pushed with no RouteSettings at all,
+        // invisible to the Sentry route observer.
+        final route = ModalRoute.of(
+          tester.element(find.byKey(const ValueKey('discretion-copy'))),
+        );
+        expect(route?.settings.name, kRouteNotificationPreferencesScreen);
+        expect(
+          kSentryRouteNames,
+          contains(kRouteNotificationPreferencesScreen),
+        );
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
 
     testWidgets('with no service provided, the tile is absent', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1376,8 +1894,7 @@ void main() {
   });
 
   group('ManageGuardiansScreen Transfer ownership action (issue #313)', () {
-    testWidgets(
-        'the primary guardian sees the action and it pushes '
+    testWidgets('the primary guardian sees the action and it pushes '
         'TransferOwnershipScreen as a named route', (tester) async {
       await storage.applyRemoteRows([
         RemoteProfileGuardianRow(
@@ -1396,6 +1913,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1436,31 +1955,37 @@ void main() {
       bool useSharing = true,
       OwnershipTransferService? ownershipTransferService,
     }) async {
-      await tester.pumpWidget(LunarLogApp.withCollaborators(
-        db: db,
-        authService: auth,
-        sharingService: useSharing ? sharingService : null,
-        ownershipTransferService: ownershipTransferService,
-        inviteLinks: inviteLinks,
-        initialInviteCode: initialInviteCode,
-        initialInviteProfileId: initialInviteProfileId,
-        initialInviteKind: initialInviteKind,
-      ));
+      await tester.pumpWidget(
+        LunarLogApp.withCollaborators(
+          db: db,
+          authService: auth,
+          sharingService: useSharing ? sharingService : null,
+          ownershipTransferService: ownershipTransferService,
+          inviteLinks: inviteLinks,
+          initialInviteCode: initialInviteCode,
+          initialInviteProfileId: initialInviteProfileId,
+          initialInviteKind: initialInviteKind,
+        ),
+      );
       await tester.pumpAndSettle();
     }
 
-    testWidgets('a live link presents the accept sheet when signed in',
-        (tester) async {
+    testWidgets('a live link presents the accept sheet when signed in', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-dad'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-dad'),
+      );
 
       await pumpAppWithInvite(
         tester,
         auth,
         inviteLinks: Stream.value(
-            Uri.parse('lunarlog://invite?code=raw-token&profile=p-1')),
+          Uri.parse('lunarlog://invite?code=raw-token&profile=p-1'),
+        ),
       );
 
       expect(find.text('Join Shared Profile'), findsOneWidget);
@@ -1468,8 +1993,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('a cold-start code waits for sign-in, then presents (R9)',
-        (tester) async {
+    testWidgets('a cold-start code waits for sign-in, then presents (R9)', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
 
@@ -1477,8 +2003,10 @@ void main() {
 
       expect(find.text('Join Shared Profile'), findsNothing);
 
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-dad'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-dad'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Join Shared Profile'), findsOneWidget);
@@ -1486,11 +2014,86 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    // Issue #535 (b): a latched invite code was previously consumed once,
+    // silently, on sign-in - a signed-out recipient who doesn't sign in
+    // right away got no feedback at all that an invite was waiting.
+    group('pending-invite sign-in banner (Issue #535 b)', () {
+      testWidgets(
+        'renders while the invite is latched and the recipient is signed '
+        'out, and disappears once signed in',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+          );
+
+          expect(
+            find.byKey(const Key('pending-invite-sign-in-banner')),
+            findsOneWidget,
+          );
+          expect(find.text('Sign in to accept your invite'), findsOneWidget);
+
+          auth.emit(
+            AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-dad'),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byKey(const Key('pending-invite-sign-in-banner')),
+            findsNothing,
+          );
+          expect(find.text('Join Shared Profile'), findsOneWidget);
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets('is absent when there is no pending invite', (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+
+        await pumpAppWithInvite(tester, auth);
+
+        expect(
+          find.byKey(const Key('pending-invite-sign-in-banner')),
+          findsNothing,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets("tapping the banner's action routes to sign-in", (
+        tester,
+      ) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+
+        await pumpAppWithInvite(tester, auth, initialInviteCode: 'cold-token');
+
+        await tester.tap(find.text('Sign In'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SignInScreen), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+    });
+
     testWidgets('links without a code are ignored', (tester) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-dad'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-dad'),
+      );
 
       await pumpAppWithInvite(
         tester,
@@ -1503,19 +2106,23 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('links do nothing when no sharing service is configured',
-        (tester) async {
+    testWidgets('links do nothing when no sharing service is configured', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-dad'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-dad'),
+      );
 
       await pumpAppWithInvite(
         tester,
         auth,
         useSharing: false,
         inviteLinks: Stream.value(
-            Uri.parse('lunarlog://invite?code=raw-token&profile=p-1')),
+          Uri.parse('lunarlog://invite?code=raw-token&profile=p-1'),
+        ),
       );
 
       expect(find.text('Join Shared Profile'), findsNothing);
@@ -1524,121 +2131,150 @@ void main() {
     });
 
     testWidgets(
-        'a kind=claim link while signed in opens ClaimProfileSheet, not '
-        'AcceptInviteSheet', (tester) async {
-      final auth = FakeAuthService();
-      addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-child'));
-      final transferService = FakeOwnershipTransferService();
+      'a kind=claim link while signed in opens ClaimProfileSheet, not '
+      'AcceptInviteSheet',
+      (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+        auth.emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'),
+        );
+        final transferService = FakeOwnershipTransferService();
 
-      await pumpAppWithInvite(
-        tester,
-        auth,
-        ownershipTransferService: transferService,
-        inviteLinks: Stream.value(Uri.parse(
-            'lunarlog://invite?code=raw-token&profile=p-1&kind=claim')),
-      );
+        await pumpAppWithInvite(
+          tester,
+          auth,
+          ownershipTransferService: transferService,
+          inviteLinks: Stream.value(
+            Uri.parse(
+              'lunarlog://invite?code=raw-token&profile=p-1&kind=claim',
+            ),
+          ),
+        );
 
-      expect(find.byType(ClaimProfileSheet), findsOneWidget);
-      expect(find.byType(AcceptInviteSheet), findsNothing);
-      expect(find.text('Become the Owner'), findsOneWidget);
-      expect(find.text('Join Shared Profile'), findsNothing);
-      // Issue #182: the claim sheet is pushed as a named route, visible to
-      // the Sentry route observer.
-      final claimRoute =
-          ModalRoute.of(tester.element(find.byType(ClaimProfileSheet)));
-      expect(claimRoute?.settings.name, kRouteClaimProfileSheet);
-      expect(kSentryRouteNames, contains(kRouteClaimProfileSheet));
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
-
-    testWidgets(
-        'a link with an unrecognised kind still opens AcceptInviteSheet',
-        (tester) async {
-      final auth = FakeAuthService();
-      addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-dad'));
-
-      await pumpAppWithInvite(
-        tester,
-        auth,
-        inviteLinks: Stream.value(Uri.parse(
-            'lunarlog://invite?code=raw-token&profile=p-1&kind=something-else')),
-      );
-
-      expect(find.byType(AcceptInviteSheet), findsOneWidget);
-      expect(find.byType(ClaimProfileSheet), findsNothing);
-      expect(find.text('Join Shared Profile'), findsOneWidget);
-      // Issue #182: the accept sheet is pushed as a named route too.
-      final acceptRoute =
-          ModalRoute.of(tester.element(find.byType(AcceptInviteSheet)));
-      expect(acceptRoute?.settings.name, kRouteAcceptInviteSheet);
-      expect(kSentryRouteNames, contains(kRouteAcceptInviteSheet));
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
+        expect(find.byType(ClaimProfileSheet), findsOneWidget);
+        expect(find.byType(AcceptInviteSheet), findsNothing);
+        expect(find.text('Become the Owner'), findsOneWidget);
+        expect(find.text('Join Shared Profile'), findsNothing);
+        // Issue #182: the claim sheet is pushed as a named route, visible to
+        // the Sentry route observer.
+        final claimRoute = ModalRoute.of(
+          tester.element(find.byType(ClaimProfileSheet)),
+        );
+        expect(claimRoute?.settings.name, kRouteClaimProfileSheet);
+        expect(kSentryRouteNames, contains(kRouteClaimProfileSheet));
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
 
     testWidgets(
-        'a claim link received while signed out is latched, and opens the '
-        'claim sheet once signed in (R27)', (tester) async {
-      final auth = FakeAuthService();
-      addTearDown(auth.dispose);
-      final transferService = FakeOwnershipTransferService();
+      'a link with an unrecognised kind still opens AcceptInviteSheet',
+      (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+        auth.emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-dad'),
+        );
 
-      await pumpAppWithInvite(
-        tester,
-        auth,
-        ownershipTransferService: transferService,
-        inviteLinks: Stream.value(Uri.parse(
-            'lunarlog://invite?code=cold-claim-token&profile=p-1&kind=claim')),
-      );
+        await pumpAppWithInvite(
+          tester,
+          auth,
+          inviteLinks: Stream.value(
+            Uri.parse(
+              'lunarlog://invite?code=raw-token&profile=p-1&kind=something-else',
+            ),
+          ),
+        );
 
-      expect(find.byType(ClaimProfileSheet), findsNothing);
-      expect(find.byType(AcceptInviteSheet), findsNothing);
-
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-child'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(ClaimProfileSheet), findsOneWidget);
-      expect(find.byType(AcceptInviteSheet), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
+        expect(find.byType(AcceptInviteSheet), findsOneWidget);
+        expect(find.byType(ClaimProfileSheet), findsNothing);
+        expect(find.text('Join Shared Profile'), findsOneWidget);
+        // Issue #182: the accept sheet is pushed as a named route too.
+        final acceptRoute = ModalRoute.of(
+          tester.element(find.byType(AcceptInviteSheet)),
+        );
+        expect(acceptRoute?.settings.name, kRouteAcceptInviteSheet);
+        expect(kSentryRouteNames, contains(kRouteAcceptInviteSheet));
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
 
     testWidgets(
-        'a cold-start claim link supplied as the initial link opens the '
-        'sheet after the first frame', (tester) async {
+      'a claim link received while signed out is latched, and opens the '
+      'claim sheet once signed in (R27)',
+      (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+        final transferService = FakeOwnershipTransferService();
+
+        await pumpAppWithInvite(
+          tester,
+          auth,
+          ownershipTransferService: transferService,
+          inviteLinks: Stream.value(
+            Uri.parse(
+              'lunarlog://invite?code=cold-claim-token&profile=p-1&kind=claim',
+            ),
+          ),
+        );
+
+        expect(find.byType(ClaimProfileSheet), findsNothing);
+        expect(find.byType(AcceptInviteSheet), findsNothing);
+
+        auth.emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ClaimProfileSheet), findsOneWidget);
+        expect(find.byType(AcceptInviteSheet), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
+
+    testWidgets(
+      'a cold-start claim link supplied as the initial link opens the '
+      'sheet after the first frame',
+      (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+        auth.emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'),
+        );
+        final transferService = FakeOwnershipTransferService();
+
+        await pumpAppWithInvite(
+          tester,
+          auth,
+          ownershipTransferService: transferService,
+          initialInviteCode: 'cold-claim-token',
+          initialInviteProfileId: 'p-1',
+          initialInviteKind: 'claim',
+        );
+
+        expect(find.byType(ClaimProfileSheet), findsOneWidget);
+        expect(find.byType(AcceptInviteSheet), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
+
+    testWidgets('two claim links in quick succession open one sheet, not two', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-child'));
-      final transferService = FakeOwnershipTransferService();
-
-      await pumpAppWithInvite(
-        tester,
-        auth,
-        ownershipTransferService: transferService,
-        initialInviteCode: 'cold-claim-token',
-        initialInviteProfileId: 'p-1',
-        initialInviteKind: 'claim',
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-child'),
       );
-
-      expect(find.byType(ClaimProfileSheet), findsOneWidget);
-      expect(find.byType(AcceptInviteSheet), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-    });
-
-    testWidgets('two claim links in quick succession open one sheet, not two',
-        (tester) async {
-      final auth = FakeAuthService();
-      addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-child'));
       final transferService = FakeOwnershipTransferService();
       final controller = StreamController<Uri>();
       addTearDown(controller.close);
@@ -1650,10 +2286,12 @@ void main() {
         inviteLinks: controller.stream,
       );
 
-      controller.add(Uri.parse(
-          'lunarlog://invite?code=raw-token&profile=p-1&kind=claim'));
-      controller.add(Uri.parse(
-          'lunarlog://invite?code=raw-token-2&profile=p-1&kind=claim'));
+      controller.add(
+        Uri.parse('lunarlog://invite?code=raw-token&profile=p-1&kind=claim'),
+      );
+      controller.add(
+        Uri.parse('lunarlog://invite?code=raw-token-2&profile=p-1&kind=claim'),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byType(ClaimProfileSheet), findsOneWidget);
@@ -1663,11 +2301,15 @@ void main() {
   });
 
   group('Profile picker caregivers action', () {
-    testWidgets('opens the manage screen for the signed-in guardian',
-        (tester) async {
+    testWidgets('opens the manage screen for the signed-in guardian', (
+      tester,
+    ) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-mom'));
+      auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'user-mom'),
+      );
       await storage.applyRemoteRows([
         RemoteProfileGuardianRow(
           id: 'g-0',
@@ -1682,17 +2324,25 @@ void main() {
         ),
       ]);
 
-      await tester.pumpWidget(LunarLogApp.withCollaborators(
-        db: db,
-        authService: auth,
-        sharingService: sharingService,
-      ));
+      await tester.pumpWidget(
+        LunarLogApp.withCollaborators(
+          db: db,
+          authService: auth,
+          sharingService: sharingService,
+        ),
+      );
       await tester.pumpAndSettle();
 
-      final lunaTile =
-          find.ancestor(of: find.text('Luna'), matching: find.byType(ListTile));
-      await tester.tap(find.descendant(
-          of: lunaTile, matching: find.byType(PopupMenuButton<String>)));
+      final lunaTile = find.ancestor(
+        of: find.text('Luna'),
+        matching: find.byType(ListTile),
+      );
+      await tester.tap(
+        find.descendant(
+          of: lunaTile,
+          matching: find.byType(PopupMenuButton<String>),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Caregivers'));
       await tester.pumpAndSettle();

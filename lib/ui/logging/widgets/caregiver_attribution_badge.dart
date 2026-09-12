@@ -2,6 +2,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 
 import '../../../domain/models/profile_guardian.dart';
 
@@ -27,7 +29,7 @@ class CaregiverAttributionBadge extends StatelessWidget {
   /// manual.
   final String source;
 
-  String _formatUser(String userId) {
+  String _formatUser(AppLocalizations l10n, String userId) {
     if (currentUserId != null && userId == currentUserId) {
       return 'you';
     }
@@ -39,7 +41,7 @@ class CaregiverAttributionBadge extends StatelessWidget {
       if (match.displayName != null && match.displayName!.isNotEmpty) {
         return match.displayName!;
       }
-      return match.role.label;
+      return guardianRoleLabel(l10n, match.role);
     }
     return 'Caregiver';
   }
@@ -57,12 +59,14 @@ class CaregiverAttributionBadge extends StatelessWidget {
         _ => 'Imported',
       };
 
-  String _attributionText() {
+  String _attributionText(AppLocalizations l10n) {
     final isModified = lastModifiedByUserId != null &&
         loggedByUserId != null &&
         lastModifiedByUserId != loggedByUserId;
-    final loggedByName = loggedByUserId != null ? _formatUser(loggedByUserId!) : null;
-    final modifiedByName = isModified ? _formatUser(lastModifiedByUserId!) : null;
+    final loggedByName =
+        loggedByUserId != null ? _formatUser(l10n, loggedByUserId!) : null;
+    final modifiedByName =
+        isModified ? _formatUser(l10n, lastModifiedByUserId!) : null;
 
     final text = StringBuffer();
     if (loggedByName != null) {
@@ -85,7 +89,9 @@ class CaregiverAttributionBadge extends StatelessWidget {
     final theme = Theme.of(context);
     // Issue #159 (acceptance criteria): a non-manual row never falls back
     // to "logged by <guardian>" — the import source is the whole story.
-    final text = isImported ? _sourceLabel(source) : _attributionText();
+    final text = isImported
+        ? _sourceLabel(source)
+        : _attributionText(AppLocalizations.of(context));
 
     return Semantics(
       // #138: the badge is one announcement ("Logged by Dad"), not a
