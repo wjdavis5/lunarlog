@@ -58,6 +58,7 @@ concurrency:
 
 permissions:
   contents: read
+  checks: read
 
 jobs:
   verify:
@@ -192,9 +193,24 @@ jobs:
           RELEASE_GATE_ACCOUNT_DELETION: ${{ vars.RELEASE_GATE_ACCOUNT_DELETION }}
         run: bash .github/scripts/check-release-gate.sh
 
+  ci-gate:
+    # Issue #498: Gate release on successful completion of CI verification runs
+    # (pgTAP database tests, Deno edge function tests, and quality gate).
+    name: Verify CI check runs on commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Verify CI checks passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: bash .github/scripts/check-ci-gate.sh
+
   release:
     name: Build, sign, and upload to TestFlight
-    needs: [verify, migration-gate, release-gate]
+    needs: [verify, migration-gate, release-gate, ci-gate]
     runs-on: self-hosted
     timeout-minutes: 60
     steps:

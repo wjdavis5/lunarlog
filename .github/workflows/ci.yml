@@ -57,6 +57,10 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
 
+      - name: Run check-ci-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-ci-gate.test.sh
+
       - name: Run tool/coord tests
         if: always()
         run: python3 -m unittest discover -s tool/coord/tests
@@ -132,6 +136,10 @@ jobs:
       - name: Run upload-sentry-symbols-setup tests
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
+
+      - name: Run check-ci-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-ci-gate.test.sh
 
   check:
     name: Analyze, test, build web
