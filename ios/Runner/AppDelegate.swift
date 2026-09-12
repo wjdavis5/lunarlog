@@ -446,18 +446,21 @@ enum HealthKitChannelHandler {
           // metadata, then delete exactly those samples. HealthKit's
           // delete(_:) can only remove samples the app itself saved, so a
           // record we never wrote is simply absent from the query result.
-          let samples = try await store.samples(
+          // `HKHealthStore` has no `samples(ofType:predicate:limit:)` method
+          // and no async `delete` overload, so both calls below go through
+          // the standard callback-based APIs wrapped in continuations
+          // (`HKSampleQuery` + `store.execute(_:)`, and
+          // `store.delete(_:withCompletion:)`).
+          let samples = try await querySamples(
             ofType: menstrualFlowType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit)
-          let intermenstrual = try await store.samples(
+            predicate: predicate)
+          let intermenstrual = try await querySamples(
             ofType: intermenstrualBleedingType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit)
+            predicate: predicate)
           var toDelete = samples
           toDelete.append(contentsOf: intermenstrual)
           if !toDelete.isEmpty {
-            try await store.delete(toDelete)
+            try await delete(toDelete)
           }
           result("allowed")
         } catch {
@@ -480,6 +483,47 @@ enum HealthKitChannelHandler {
 
   private static var intermenstrualBleedingType: HKCategoryType {
     HKObjectType.categoryType(forIdentifier: .intermenstrualBleeding)!
+  }
+
+  /// Runs an `HKSampleQuery` over `store` and awaits its results. HealthKit
+  /// has no `HKHealthStore.samples(ofType:predicate:limit:)` async method, so
+  /// the callback-based query is bridged through a
+  /// `withCheckedThrowingContinuation`.
+  private static func querySamples(
+    ofType sampleType: HKSampleType,
+    predicate: NSPredicate?
+  ) async throws -> [HKSample] {
+    try await withCheckedThrowingContinuation { continuation in
+      let query = HKSampleQuery(
+        sampleType: sampleType,
+        predicate: predicate,
+        limit: HKObjectQueryNoLimit,
+        sortDescriptors: nil
+      ) { _, samples, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else {
+          continuation.resume(returning: samples ?? [])
+        }
+      }
+      store.execute(query)
+    }
+  }
+
+  /// Deletes samples from `store` and awaits completion. HealthKit has no
+  /// async `HKHealthStore.delete(_:)` overload, so the callback-based
+  /// `delete(_:withCompletion:)` is bridged through a
+  /// `withCheckedThrowingContinuation`.
+  private static func delete(_ samples: [HKSample]) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      store.delete(samples) { _, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else {
+          continuation.resume()
+        }
+      }
+    }
   }
 
   private static func save(_ samples: [HKSample], result: @escaping FlutterResult) {

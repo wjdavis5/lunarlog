@@ -231,8 +231,12 @@ class HealthConnectAdapter(context: Context) {
                     flow = flow,
                     // User-logged cycle data (issue #254: never a derived
                     // value). Health Connect stamps dataOrigin itself from
-                    // the calling package.
+                    // the calling package. The direct Metadata constructor
+                    // requires the recording method explicitly (the old
+                    // `HcMetadata.manualEntry()` factory supplied it); this
+                    // app writes only manually-entered data.
                     metadata = HcMetadata(
+                        recordingMethod = HcMetadata.RECORDING_METHOD_MANUAL_ENTRY,
                         clientRecordId = recordId,
                         clientRecordVersion = recordVersionMs,
                     ),
@@ -273,6 +277,7 @@ class HealthConnectAdapter(context: Context) {
                     time = Instant.ofEpochMilli(instantMs),
                     zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
                     metadata = HcMetadata(
+                        recordingMethod = HcMetadata.RECORDING_METHOD_MANUAL_ENTRY,
                         clientRecordId = recordId,
                         clientRecordVersion = recordVersionMs,
                     ),
@@ -307,10 +312,20 @@ class HealthConnectAdapter(context: Context) {
                 }
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
+                        // connect-client 1.1.0's delete-by-identifier overload
+                        // takes (recordType, recordIdsList, clientRecordIdsList)
+                        // — no dataOrigin argument in this version (deletion is
+                        // automatically scoped to the calling app's own
+                        // records). We delete purely by our lunarlog
+                        // clientRecordIds, so the record-id list is empty.
                         client.deleteRecords(
-                            MenstruationFlowRecord::class, clientRecordIds = ids)
+                            MenstruationFlowRecord::class,
+                            recordIdsList = emptyList(),
+                            clientRecordIdsList = ids)
                         client.deleteRecords(
-                            IntermenstrualBleedingRecord::class, clientRecordIds = ids)
+                            IntermenstrualBleedingRecord::class,
+                            recordIdsList = emptyList(),
+                            clientRecordIdsList = ids)
                         result.success("allowed")
                     } catch (e: SecurityException) {
                         result.success("permissionDenied")
