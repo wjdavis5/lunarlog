@@ -16,6 +16,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
 import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
@@ -26,6 +27,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/l10n/activity_actor_copy.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
@@ -253,8 +255,8 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       label == 'you' ? 'your' : "$label's";
 
   String _title(ActivityItem item, ActivityFeedSnapshot data) {
-    final actor =
-        activityActorLabel(item.actorId, _currentUserId, data.guardians);
+    final actor = activityActorLabel(
+        AppLocalizations.of(context), item.actorId, _currentUserId, data.guardians);
     switch (item.kind) {
       case ActivityKind.logged:
         return _byLine('Logged', actor);
@@ -302,7 +304,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       if (item.localDateIso != null) 'for ${item.localDateIso}',
       if (item.kind == ActivityKind.updated && item.secondaryActorId != null)
         'logged by '
-            '${activityActorLabel(item.secondaryActorId, _currentUserId, data.guardians) ?? 'a guardian'}',
+            '${activityActorLabel(AppLocalizations.of(context), item.secondaryActorId, _currentUserId, data.guardians) ?? AppLocalizations.of(context).activityActorGuardianFallback}',
       if (item.flow != null) flowLabel(item.flow!),
       if (item.tagCount > 0)
         '${item.tagCount} tag${item.tagCount == 1 ? '' : 's'}',
@@ -312,7 +314,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   }
 
   String _mergeSubtitle(ActivityItem item, ActivityFeedSnapshot data) {
-    final loser = activityActorLabel(
+    final loser = activityActorLabel(AppLocalizations.of(context),
             item.secondaryActorId, _currentUserId, data.guardians) ??
         'one caregiver';
     final what = item.discardedNote && item.discardedFlow
@@ -439,7 +441,7 @@ class _ActivityFeedButtonState extends State<ActivityFeedButton> {
         final hasNew = snapshot.data?.hasNewItems ?? false;
         return IconButton(
           key: const ValueKey('activity-feed-button'),
-          tooltip: 'Activity',
+          tooltip: AppLocalizations.of(context).activityFeedTooltip,
           icon: hasNew
               ? const Badge(
                   key: ValueKey('activity-feed-button-new'),

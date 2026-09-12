@@ -14,7 +14,11 @@ import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dar
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+final _l10n = AppLocalizationsEn();
 
 SupabaseClient makeClient(
     Future<http.Response> Function(http.Request) handler) {
@@ -116,7 +120,8 @@ void main() {
         throwsA(const PredictionConnectionFailure.minorProfile()),
       );
       expect(
-        const PredictionConnectionFailure.minorProfile().userFacingMessage,
+        predictionConnectionFailureCopy(
+            _l10n, const PredictionConnectionFailure.minorProfile()),
         contains("minor's profile"),
       );
       expect(const PredictionConnectionFailure.minorProfile().toString(),

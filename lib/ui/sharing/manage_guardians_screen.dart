@@ -17,6 +17,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
+import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
 
 import '../../domain/repositories/activity_feed_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
@@ -331,10 +334,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   Future<void> _revoke(ProfileGuardian guardian) async {
+    final l10n = AppLocalizations.of(context);
+    final roleLabel = guardianRoleLabel(l10n, guardian.role);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Remove ${guardian.displayName ?? guardian.role.label}?'),
+        title: Text('Remove ${guardian.displayName ?? roleLabel}?'),
         content: Text(
           guardian.userId == widget.currentUserId
               ? 'You will leave this profile and no longer receive updates or sync its entries.'
@@ -363,7 +368,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Removed ${guardian.displayName ?? guardian.role.label}')),
+          SnackBar(content: Text('Removed ${guardian.displayName ?? roleLabel}')),
         );
       }
     } catch (e) {
@@ -419,11 +424,13 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   Future<void> _cancelInvite(PendingInvite invite) async {
+    final l10n = AppLocalizations.of(context);
+    final inviteRoleLabel = guardianRoleLabel(l10n, invite.role);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-            'Cancel invitation for ${invite.recipientLabel?.isNotEmpty == true ? invite.recipientLabel! : invite.role.label}?'),
+            'Cancel invitation for ${invite.recipientLabel?.isNotEmpty == true ? invite.recipientLabel! : inviteRoleLabel}?'),
         content: const Text(
             'The invite link will stop working immediately. You can send a new one any time.'),
         actions: [
@@ -445,8 +452,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     try {
       final outcome = await widget.sharingService.cancelInvite(invite.invitationId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(outcome.userFacingMessage)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              inviteCancellationCopy(AppLocalizations.of(context), outcome))));
       // Every outcome is terminal for this row (R5): refresh regardless, so
       // an already-accepted invitation never lingers as a stale pending
       // row - the accepted guardian itself shows up via the live guardian
@@ -525,9 +533,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   Widget _pendingInviteTile(PendingInvite invite, GuardianRole? callerRole) {
+    final l10n = AppLocalizations.of(context);
+    final roleLabel = guardianRoleLabel(l10n, invite.role);
     final label = invite.recipientLabel?.isNotEmpty == true
         ? invite.recipientLabel!
-        : invite.role.label;
+        : roleLabel;
     // Issue #362: a recently expired invitation renders as a distinct row
     // state - an `Expired` subtitle (never a negative countdown) with a
     // Resend action that re-opens the existing invite flow, then reloads.
@@ -536,7 +546,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         key: ValueKey('pending-invite-${invite.invitationId}'),
         leading: const Icon(Icons.mail_outline),
         title: Text(label),
-        subtitle: Text('${invite.role.label} • Expired'),
+        subtitle: Text('$roleLabel • Expired'),
         trailing: _canCancelInvite(invite, callerRole)
             ? TextButton(
                 onPressed: _openInviteDialog,
@@ -549,11 +559,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       key: ValueKey('pending-invite-${invite.invitationId}'),
       leading: const Icon(Icons.mail_outline),
       title: Text(label),
-      subtitle: Text('${invite.role.label} • ${_expiryLabel(invite.expiresAt)}'),
+      subtitle: Text('$roleLabel • ${_expiryLabel(invite.expiresAt)}'),
       trailing: _canCancelInvite(invite, callerRole)
           ? IconButton(
               icon: const Icon(Icons.cancel_outlined),
-              tooltip: 'Cancel invitation',
+              tooltip: l10n.manageGuardiansCancelInviteTooltip,
               onPressed: () => _cancelInvite(invite),
             )
           : null,
@@ -563,6 +573,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     final notificationPreferencesService = widget.notificationPreferencesService;
     return Scaffold(
@@ -575,7 +586,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           // Issue #139: contextual entry point to the guardian-roles card.
           IconButton(
             key: const ValueKey('guardians-help-action'),
-            tooltip: 'About roles',
+            tooltip: l10n.manageGuardiansAboutRolesTooltip,
             icon: const Icon(Icons.help_outline),
             onPressed: () => showHelpCardSheet(
               context,
@@ -599,7 +610,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                 return const SizedBox.shrink();
               }
               return IconButton(
-                tooltip: 'Transfer ownership',
+                tooltip: l10n.manageGuardiansTransferOwnershipTooltip,
                 icon: const Icon(Icons.compare_arrows),
                 onPressed: () => Navigator.of(context).push(
                   buildNamedRoute<void>(
@@ -616,7 +627,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           if (notificationPreferencesService != null)
             IconButton(
               key: const ValueKey('notifications-action'),
-              tooltip: 'Notifications',
+              tooltip: l10n.manageGuardiansNotificationsTooltip,
               icon: const Icon(Icons.notifications_outlined),
               onPressed: () => Navigator.of(context).push(
                 buildNamedRoute<void>(
@@ -786,6 +797,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
 
   Widget _predictionTile(ActivePredictionConnection connection, bool isPrimary) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final title = connection.pending
         ? (connection.recipientLabel?.isNotEmpty == true
             ? connection.recipientLabel!
@@ -818,7 +830,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           ? IconButton(
               key: const ValueKey('revoke-prediction-connection'),
               icon: const Icon(Icons.link_off),
-              tooltip: 'End prediction sharing',
+              tooltip: l10n.manageGuardiansEndSharingTooltip,
               onPressed: _revokePredictionConnection,
             )
           : null,
@@ -850,15 +862,18 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     ProfileGuardian guardian,
     GuardianRole newRole,
   ) async {
+    final l10n = AppLocalizations.of(context);
+    final currentRoleLabel = guardianRoleLabel(l10n, guardian.role);
+    final newRoleLabel = guardianRoleLabel(l10n, newRole);
     final name = guardian.displayName?.isNotEmpty == true
         ? guardian.displayName!
-        : guardian.role.label;
+        : currentRoleLabel;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Change role to ${newRole.label}?'),
+        title: Text('Change role to $newRoleLabel?'),
         content: Text(
-          '$name currently has ${guardian.role.label} access. '
+          '$name currently has $currentRoleLabel access. '
           '${roleChangeConsequence(guardian.role, newRole)} '
           'No new invitation is needed — the new role applies on their '
           'next sync.',
@@ -886,7 +901,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Role updated to ${newRole.label}')),
+          SnackBar(content: Text('Role updated to $newRoleLabel')),
         );
       }
     } catch (e) {
@@ -905,6 +920,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     List<ProfileGuardian> activeGuardians,
   ) {
     final theme = Theme.of(context);
+    final roleLabel = guardianRoleLabel(AppLocalizations.of(context), guardian.role);
     final isMe =
         widget.currentUserId != null && guardian.userId == widget.currentUserId;
 
@@ -930,14 +946,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           Text(
             guardian.displayName?.isNotEmpty == true
                 ? guardian.displayName!
-                : guardian.role.label,
+                : roleLabel,
             style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
           ),
           if (isMe)
             Text('(you)', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
         ],
       ),
-      subtitle: Text(guardian.role.label),
+      subtitle: Text(roleLabel),
       trailing: _guardianTrailing(context, guardian, callerRole, activeGuardians),
     );
   }
@@ -954,6 +970,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     final newRoles = _allowedNewRoles(guardian, callerRole);
     final canRevoke = _canRevoke(guardian, callerRole, activeGuardians);
     if (newRoles.isEmpty && !canRevoke) return null;
+    final l10n = AppLocalizations.of(context);
     final isMe =
         widget.currentUserId != null && guardian.userId == widget.currentUserId;
     return Row(
@@ -962,21 +979,23 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         if (newRoles.isNotEmpty)
           PopupMenuButton<GuardianRole>(
             key: ValueKey('change-role-${guardian.userId}'),
-            tooltip: 'Change role',
+            tooltip: l10n.manageGuardiansChangeRoleTooltip,
             icon: const Icon(Icons.manage_accounts_outlined),
             onSelected: (role) => _changeRole(guardian, role),
             itemBuilder: (ctx) => [
               for (final role in newRoles)
                 PopupMenuItem<GuardianRole>(
                   value: role,
-                  child: Text(role.label),
+                  child: Text(guardianRoleLabel(l10n, role)),
                 ),
             ],
           ),
         if (canRevoke)
           IconButton(
             icon: const Icon(Icons.remove_circle_outline),
-            tooltip: isMe ? 'Leave profile' : 'Remove caregiver',
+            tooltip: isMe
+                ? l10n.manageGuardiansLeaveProfileTooltip
+                : l10n.manageGuardiansRemoveCaregiverTooltip,
             onPressed: () => _revoke(guardian),
           ),
       ],

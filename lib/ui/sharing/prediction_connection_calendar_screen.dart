@@ -17,6 +17,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 
 import '../../domain/models/local_date.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
@@ -103,11 +104,12 @@ class _PredictionConnectionCalendarScreenState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(widget.profileName), actions: [
         IconButton(
           key: const ValueKey('prediction-refresh'),
-          tooltip: 'Refresh',
+          tooltip: l10n.predictionCalendarRefreshTooltip,
           icon: const Icon(Icons.refresh),
           onPressed: _reload,
         ),
@@ -167,13 +169,13 @@ class _PredictionConnectionCalendarScreenState
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      tooltip: 'Previous month',
+                      tooltip: l10n.calendarPreviousMonthTooltip,
                       icon: const Icon(Icons.chevron_left),
                       onPressed: () => _shiftMonth(-1),
                     ),
                     Text(_monthLabel(_month), style: theme.textTheme.titleMedium),
                     IconButton(
-                      tooltip: 'Next month',
+                      tooltip: l10n.calendarNextMonthTooltip,
                       icon: const Icon(Icons.chevron_right),
                       onPressed: () => _shiftMonth(1),
                     ),

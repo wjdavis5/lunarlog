@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
@@ -207,6 +208,8 @@ void main() {
     testWidgets('creates invite link and shows copy action', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: InviteGuardianDialog(
               profileId: testProfile.id,
@@ -235,6 +238,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -262,6 +267,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -284,6 +291,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -334,6 +343,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -375,6 +386,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -405,6 +418,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -447,6 +462,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -500,6 +517,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -535,6 +554,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -572,6 +593,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -601,6 +624,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -637,6 +662,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -663,6 +690,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -698,6 +727,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -736,6 +767,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -776,6 +809,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -810,6 +845,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -838,6 +875,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -862,6 +901,8 @@ void main() {
       // nothing has written a guardian row for it yet.
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -910,6 +951,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -943,6 +986,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -972,6 +1017,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -998,6 +1045,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1023,6 +1072,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1051,6 +1102,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1089,6 +1142,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1126,6 +1181,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1157,6 +1214,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1189,6 +1248,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1229,6 +1290,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1263,6 +1326,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1298,6 +1363,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ManageGuardiansScreen(
               profile: testProfile,
               guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1325,6 +1392,8 @@ void main() {
       final notificationPreferencesService = FakeNotificationPreferencesService();
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1358,6 +1427,8 @@ void main() {
     testWidgets('with no service provided, the tile is absent', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -1396,6 +1467,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),

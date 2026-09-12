@@ -10,6 +10,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 
 class AcceptPredictionConnectionSheet extends StatefulWidget {
   const AcceptPredictionConnectionSheet({
@@ -54,7 +56,8 @@ class _AcceptPredictionConnectionSheetState
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = failure.userFacingMessage;
+          _error = predictionConnectionFailureCopy(
+              AppLocalizations.of(context), failure);
         });
       }
     } catch (_) {

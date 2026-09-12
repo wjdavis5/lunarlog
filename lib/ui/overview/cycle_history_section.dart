@@ -21,7 +21,9 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
@@ -38,9 +40,14 @@ String _formatDate(LocalDate date, BuildContext context) =>
 
 /// Shared with `AnalysisTab` (issue #223 follow-up) so both headline-stat
 /// renderings format identically without a second copy of this logic.
-String formatDays(double value) => value == value.roundToDouble()
-    ? '${value.round()} days'
-    : '${value.toStringAsFixed(1)} days';
+/// Issue #545: routes the "day"/"days" word through ICU plural via
+/// [AppLocalizations.daysValue] instead of always appending "days" (a bare
+/// count of exactly 1 rendered as "1 days").
+String formatDays(AppLocalizations l10n, double value) {
+  final isWhole = value == value.roundToDouble();
+  final display = isWhole ? value.round().toString() : value.toStringAsFixed(1);
+  return l10n.daysValue(value, display);
+}
 
 class CycleHistorySection extends StatefulWidget {
   const CycleHistorySection({
@@ -187,7 +194,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        view.confidence!.label,
+        tierLabel(AppLocalizations.of(context), view.confidence!),
         style: theme.textTheme.labelMedium?.copyWith(color: color),
       ),
     );
@@ -211,6 +218,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
 
   Widget _statsRow(BuildContext context, CycleHistoryView view) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Row(
       key: const ValueKey('history-stats'),
       children: [
@@ -219,21 +227,21 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
           label: 'Avg cycle',
           value: view.meanCycleLengthDays == null
               ? '—'
-              : formatDays(view.meanCycleLengthDays!),
+              : formatDays(l10n, view.meanCycleLengthDays!),
         ),
         _stat(
           theme,
           label: 'Avg period',
           value: view.meanPeriodLengthDays == null
               ? '—'
-              : formatDays(view.meanPeriodLengthDays!),
+              : formatDays(l10n, view.meanPeriodLengthDays!),
         ),
         _stat(
           theme,
           label: 'Variation',
           value: view.variationDays == null
               ? '—'
-              : '${view.variationDays} days',
+              : l10n.daysCount(view.variationDays!),
         ),
       ],
     );
@@ -279,14 +287,14 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
                 key: ValueKey('history-outlier-$iso'),
               )
             : null,
-        trailing: _trailing(item),
+        trailing: _trailing(context, item),
       ),
     );
   }
 
-  Widget? _trailing(CycleHistoryItem item) {
+  Widget? _trailing(BuildContext context, CycleHistoryItem item) {
     if (item.isOpen) return null;
-    final length = '${item.lengthDays} days';
+    final length = AppLocalizations.of(context).daysCount(item.lengthDays!);
     if (item.outlier) {
       // Outliers are excluded automatically (the 15–60 window); a manual
       // omit on top would be a no-op, so none is offered.

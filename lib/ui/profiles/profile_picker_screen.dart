@@ -18,6 +18,8 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
@@ -93,6 +95,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       overview.observeProfiles([for (final profile in active) profile.id]);
     }
     final sharing = Provider.of<SharingService?>(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profiles'),
@@ -100,12 +103,12 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
           if (hasSync) SyncStatusGlyph(onPressed: openSettings),
           const SharedWithMeAction(),
           IconButton(
-            tooltip: 'Settings',
+            tooltip: l10n.settingsTooltip,
             icon: const Icon(Icons.settings),
             onPressed: openSettings,
           ),
           IconButton(
-            tooltip: 'Add profile',
+            tooltip: l10n.profilePickerAddProfileTooltip,
             icon: const Icon(Icons.person_add),
             onPressed: () => _addProfile(context),
           ),
@@ -142,7 +145,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
                             ),
                           ),
                           trailing: IconButton(
-                            tooltip: 'Unarchive',
+                            tooltip: l10n.profilePickerUnarchiveTooltip,
                             icon: const Icon(Icons.unarchive),
                             onPressed: () =>
                                 controller.unarchiveProfile(profile.id),
@@ -210,7 +213,8 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     Profile profile,
   ) {
     final info = overview?.infoFor(profile.id) ?? const SharingProfileInfo.unknown();
-    final roleSubtitle = SharingProfileInfo.roleSubtitle(info);
+    final roleSubtitle =
+        sharingProfileRoleSubtitle(AppLocalizations.of(context), info);
     return ProfileSharingTile(
       key: ValueKey('profile-row-${profile.id}'),
       profile: profile,
@@ -220,7 +224,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       subtitle: roleSubtitle ?? 'Created ${formatCreatedDate(profile.createdAt)}',
       onTap: () => context.read<ProfileController>().selectProfile(profile.id),
       trailing: PopupMenuButton<String>(
-        tooltip: 'Profile actions',
+        tooltip: AppLocalizations.of(context).profilePickerActionsTooltip,
         onSelected: (action) => _onRowAction(context, profile, action),
         itemBuilder: (context) => const [
           PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
@@ -313,7 +317,7 @@ class SharedWithMeAction extends StatelessWidget {
     if (service == null) return const SizedBox.shrink();
     return IconButton(
       key: const ValueKey('shared-with-me'),
-      tooltip: 'Shared with me',
+      tooltip: AppLocalizations.of(context).profilePickerSharedWithMeTooltip,
       icon: const Icon(Icons.calendar_month),
       onPressed: () => Navigator.of(context).push(
         buildNamedRoute<void>(

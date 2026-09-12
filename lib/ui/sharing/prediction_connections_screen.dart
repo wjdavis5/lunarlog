@@ -9,6 +9,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../observability/route_names.dart';
@@ -80,17 +82,24 @@ class _PredictionConnectionsScreenState
     );
     if (code == null || code.isEmpty || !mounted) return;
 
-    String? error;
+    PredictionConnectionFailure? typedFailure;
+    bool unexpectedFailure = false;
     AcceptedPredictionConnection? result;
     try {
       result = await widget.service.acceptConnection(rawToken: code);
     } on PredictionConnectionFailure catch (failure) {
-      error = failure.userFacingMessage;
+      typedFailure = failure;
     } catch (_) {
-      error = 'An unexpected error occurred.';
+      unexpectedFailure = true;
     }
     if (!mounted) return;
     if (result == null) {
+      final l10n = AppLocalizations.of(context);
+      final error = typedFailure != null
+          ? predictionConnectionFailureCopy(l10n, typedFailure)
+          : unexpectedFailure
+              ? 'An unexpected error occurred.'
+              : null;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error ?? 'Connection failed.')));
       return;

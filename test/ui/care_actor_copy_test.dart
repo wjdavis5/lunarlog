@@ -7,7 +7,10 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
+
+final _l10n = AppLocalizationsEn();
 
 ProfileGuardian _guardian(
   String userId, {
@@ -33,30 +36,30 @@ void main() {
     ];
 
     test('the current operator reads as "you"', () {
-      expect(careActorCopy('user-mom', guardians, 'user-mom'), 'you');
+      expect(careActorCopy(_l10n, 'user-mom', guardians, 'user-mom'), 'you');
     });
 
     test('a named guardian resolves to the display name', () {
       expect(
-          careActorCopy('user-mom', guardians, 'user-dad'), 'Mom');
+          careActorCopy(_l10n, 'user-mom', guardians, 'user-dad'), 'Mom');
     });
 
     test('a nameless guardian resolves to the role label', () {
-      expect(careActorCopy('user-nanny', guardians, 'user-dad'),
+      expect(careActorCopy(_l10n, 'user-nanny', guardians, 'user-dad'),
           'Caregiver');
     });
 
     test('a stranger resolves to the "Caregiver" fallback', () {
-      expect(careActorCopy('user-stranger', guardians, 'user-dad'),
+      expect(careActorCopy(_l10n, 'user-stranger', guardians, 'user-dad'),
           'Caregiver');
-      expect(careActorCopy('user-stranger', const [], 'user-dad'),
+      expect(careActorCopy(_l10n, 'user-stranger', const [], 'user-dad'),
           'Caregiver');
     });
 
     test('a null user id resolves to the "Caregiver" fallback, never "you"',
         () {
-      expect(careActorCopy(null, guardians, 'user-dad'), 'Caregiver');
-      expect(careActorCopy(null, guardians, null), 'Caregiver');
+      expect(careActorCopy(_l10n, null, guardians, 'user-dad'), 'Caregiver');
+      expect(careActorCopy(_l10n, null, guardians, null), 'Caregiver');
     });
   });
 

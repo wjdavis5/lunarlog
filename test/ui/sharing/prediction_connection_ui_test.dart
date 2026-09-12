@@ -34,6 +34,7 @@ import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/sharing/share_predictions_dialog.dart';
 import 'package:provider/provider.dart';
 
@@ -179,6 +180,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -237,6 +240,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -273,6 +278,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -327,6 +334,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -366,7 +375,10 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(home: PredictionConnectionsScreen(service: service)),
+        MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: PredictionConnectionsScreen(service: service)),
       );
       await tester.pumpAndSettle();
 
@@ -401,6 +413,8 @@ void main() {
       AcceptedPredictionConnection? connectedResult;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionsScreen(
             service: service,
             onConnected: (result) => connectedResult = result,
@@ -434,7 +448,10 @@ void main() {
       service.acceptFailure = const PredictionConnectionFailure.pregnancyMode();
 
       await tester.pumpWidget(
-        MaterialApp(home: PredictionConnectionsScreen(service: service)),
+        MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: PredictionConnectionsScreen(service: service)),
       );
       await tester.pumpAndSettle();
 
@@ -466,6 +483,8 @@ void main() {
       AcceptedPredictionConnection? popped;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) {
@@ -510,6 +529,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) {
@@ -555,6 +576,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) {
@@ -645,6 +668,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: profile ?? testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),

@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:provider/provider.dart';
 
@@ -168,7 +169,7 @@ class _AttachmentFieldState extends State<AttachmentField> {
             trailing: IconButton(
               key: const ValueKey('feedback-attachment-remove'),
               icon: const Icon(Icons.close),
-              tooltip: 'Remove attachment',
+              tooltip: AppLocalizations.of(context).feedbackRemoveAttachmentTooltip,
               onPressed: _remove,
             ),
           ),

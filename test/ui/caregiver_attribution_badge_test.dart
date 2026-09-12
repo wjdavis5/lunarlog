@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 
 void main() {
@@ -29,6 +30,8 @@ void main() {
   testWidgets('renders nothing when attribution ids are null', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CaregiverAttributionBadge(
             loggedByUserId: null,
@@ -45,6 +48,8 @@ void main() {
   testWidgets('renders "Logged by you" when loggedByUserId equals currentUserId', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CaregiverAttributionBadge(
             loggedByUserId: 'user-me',
@@ -61,6 +66,8 @@ void main() {
   testWidgets('renders guardian display name when available', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CaregiverAttributionBadge(
             loggedByUserId: 'user-dad',
@@ -84,6 +91,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
@@ -123,6 +132,8 @@ void main() {
   testWidgets('renders both logged by and modified by when different users modified', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CaregiverAttributionBadge(
             loggedByUserId: 'user-dad',
@@ -141,6 +152,8 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CaregiverAttributionBadge(
             loggedByUserId: 'user-dad',
@@ -159,6 +172,8 @@ void main() {
   testWidgets('renders even with no attribution ids when source is non-manual', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CaregiverAttributionBadge(
             loggedByUserId: null,
@@ -175,6 +190,8 @@ void main() {
   testWidgets('falls back to "Imported" for an unrecognised source value', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: CaregiverAttributionBadge(
             loggedByUserId: null,
@@ -202,6 +219,8 @@ void main() {
     testWidgets('renders "$label" for a $source row', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: CaregiverAttributionBadge(
               loggedByUserId: null,

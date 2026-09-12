@@ -28,8 +28,10 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
@@ -119,11 +121,14 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
               acceptedGuardianFor(guardians, _currentUserId)?.role.canLog ==
                   false;
           final effectiveReadOnly = widget.readOnly || viewerReadOnly;
+          final viewerGuardianRole =
+              acceptedGuardianFor(guardians, _currentUserId)?.role;
           final readOnlyReason = widget.readOnly
               ? 'This profile is archived.'
-              : acceptedGuardianFor(guardians, _currentUserId)
-                  ?.role
-                  .readOnlyReason;
+              : viewerGuardianRole == null
+                  ? null
+                  : guardianRoleReadOnlyReason(
+                      AppLocalizations.of(context), viewerGuardianRole);
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -274,6 +279,7 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
 /// the guardian's display name when known, the role label, "Caregiver" as
 /// the fallback) — never a raw uuid (the activity-feed precedent).
 String careActorCopy(
+  AppLocalizations l10n,
   String? userId,
   List<ProfileGuardian> guardians,
   String? currentUserId,
@@ -283,7 +289,9 @@ String careActorCopy(
     final guardian = _guardianFor(userId, guardians);
     if (guardian != null) {
       final name = guardian.displayName;
-      return (name == null || name.isEmpty) ? guardian.role.label : name;
+      return (name == null || name.isEmpty)
+          ? guardianRoleLabel(l10n, guardian.role)
+          : name;
     }
   }
   return 'Caregiver';
@@ -425,7 +433,7 @@ class _CareNoteRow extends StatelessWidget {
         trailing: canWrite
             ? IconButton(
                 key: ValueKey('care-note-delete-${note.id}'),
-                tooltip: 'Remove note',
+                tooltip: AppLocalizations.of(context).careNotesRemoveNoteTooltip,
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () => onDelete(note),
               )
@@ -547,7 +555,8 @@ class _VisitPrepRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final checkedBy = item.isChecked
-        ? careActorCopy(item.checkedByUserId, guardians, currentUserId)
+        ? careActorCopy(AppLocalizations.of(context), item.checkedByUserId,
+            guardians, currentUserId)
         : null;
     return Card(
       key: ValueKey('visit-prep-${item.id}'),
@@ -565,7 +574,7 @@ class _VisitPrepRow extends StatelessWidget {
         secondary: canWrite
             ? IconButton(
                 key: ValueKey('visit-prep-delete-${item.id}'),
-                tooltip: 'Remove item',
+                tooltip: AppLocalizations.of(context).careNotesRemoveItemTooltip,
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () => onDelete(item),
               )
@@ -596,7 +605,7 @@ class CareNotesButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       key: const ValueKey('care-notes-button'),
-      tooltip: 'Care notes & visit prep',
+      tooltip: AppLocalizations.of(context).careNotesButtonTooltip,
       icon: const Icon(Icons.medical_information_outlined),
       onPressed: () => Navigator.of(context).push(
         buildNamedRoute<void>(

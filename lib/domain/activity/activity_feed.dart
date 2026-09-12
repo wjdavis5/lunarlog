@@ -210,29 +210,6 @@ ActivityItem _guardianItem(ProfileGuardian guardian) => ActivityItem(
       actorId: guardian.userId,
     );
 
-/// Resolves a user id for display, mirroring the attribution badge's ladder
-/// (issue #124): `you` for the current user, then the guardian's display
-/// name, then the role label, then the neutral "a guardian" — and null for
-/// a null id, so an unattributed row renders without an actor phrase and a
-/// raw uuid is never shown. Names come from guardian rows of any status: a
-/// revoked guardian's own past entries still deserve their name.
-String? activityActorLabel(
-  String? userId,
-  String? currentUserId,
-  List<ProfileGuardian> guardians,
-) {
-  if (userId == null) return null;
-  if (currentUserId != null && userId == currentUserId) return 'you';
-  for (final guardian in guardians) {
-    if (guardian.userId == userId) {
-      final name = guardian.displayName;
-      if (name != null && name.isNotEmpty) return name;
-      return guardian.role.label;
-    }
-  }
-  return 'a guardian';
-}
-
 /// Whether [item] is newer than the device-local [lastSeen] stamp (R8). A
 /// null stamp — this device never opened the feed — marks nothing new: the
 /// first visit baselines everything as already seen rather than painting

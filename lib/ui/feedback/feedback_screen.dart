@@ -15,9 +15,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/feedback/attachment_field.dart';
 import 'package:lunarlog/ui/feedback/feedback_controller.dart';
+import 'package:lunarlog/ui/l10n/feedback_failure_copy.dart';
 import 'package:provider/provider.dart';
 
 /// The support address shown when no feedback form is available (R23).
@@ -110,7 +112,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     } on FeedbackFailure catch (failure) {
       if (mounted) {
         setState(() {
-          _error = failure.userFacingMessage;
+          _error = feedbackFailureCopy(AppLocalizations.of(context), failure);
           if (failure is FeedbackAttachmentUploadFailedFailure) {
             // The ticket row already committed with this message text —
             // unlike every other FeedbackFailure case, a retry here is not
@@ -129,7 +131,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     } catch (error) {
       debugPrint('lunarlog feedback: submit failed (${error.runtimeType})');
       if (mounted) {
-        setState(() => _error = const FeedbackFailure.other().userFacingMessage);
+        setState(() => _error = feedbackFailureCopy(
+            AppLocalizations.of(context), const FeedbackFailure.other()));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

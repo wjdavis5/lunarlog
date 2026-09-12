@@ -1407,6 +1407,480 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Waits for a start date on the recorded method — re-record the method in profile settings to set one'**
   String get reminderBirthControlNeedsStartDate;
+
+  /// Issue #545: shared failure copy reused by every …FailureCopy mapper under lib/ui/l10n/ whose domain sealed failure has a plain network-error case (sharing, ownership transfer, prediction connections, notification preferences).
+  ///
+  /// In en, this message translates to:
+  /// **'Network error. Please check your connection.'**
+  String get commonNetworkError;
+
+  /// Issue #545: shared failure copy reused by the auth and feedback failure mappers, whose network case names the server rather than the connection generically.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server. Check your connection and try again.'**
+  String get commonServerUnreachable;
+
+  /// Issue #545: shared failure copy reused by every …FailureCopy mapper for an unauthorized/forbidden case.
+  ///
+  /// In en, this message translates to:
+  /// **'You do not have permission for this action.'**
+  String get commonUnauthorized;
+
+  /// Issue #545: shared catch-all failure copy reused by every …FailureCopy mapper's 'other'/unknown case.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Please try again.'**
+  String get commonSomethingWentWrong;
+
+  /// SharingFailure.notFound copy, rendered by sharingFailureCopy (lib/ui/l10n/sharing_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation not found or invalid link.'**
+  String get sharingFailureNotFound;
+
+  /// SharingFailure.expired copy.
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation has expired.'**
+  String get sharingFailureExpired;
+
+  /// SharingFailure.alreadyAccepted copy.
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation was already accepted.'**
+  String get sharingFailureAlreadyAccepted;
+
+  /// SharingFailure.alreadyGuardian copy.
+  ///
+  /// In en, this message translates to:
+  /// **'You are already an active guardian for this child.'**
+  String get sharingFailureAlreadyGuardian;
+
+  /// SharingFailure.invalidToken copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid invitation link.'**
+  String get sharingFailureInvalidToken;
+
+  /// SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to accept invitation. Please try again.'**
+  String get sharingFailureOther;
+
+  /// InviteCancellation.revoked copy, rendered by inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation cancelled'**
+  String get inviteCancellationRevoked;
+
+  /// InviteCancellation.alreadyAccepted copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That invitation was already accepted'**
+  String get inviteCancellationAlreadyAccepted;
+
+  /// InviteCancellation.alreadyRevoked copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That invitation was already cancelled'**
+  String get inviteCancellationAlreadyRevoked;
+
+  /// InviteCancellation.expired copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That invitation had already expired'**
+  String get inviteCancellationExpired;
+
+  /// TransferFailure.notFound copy, rendered by transferFailureCopy (lib/ui/l10n/transfer_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer not found or invalid link.'**
+  String get transferFailureNotFound;
+
+  /// TransferFailure.expired copy.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer link has expired.'**
+  String get transferFailureExpired;
+
+  /// TransferFailure.cancelled copy.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer was cancelled.'**
+  String get transferFailureCancelled;
+
+  /// TransferFailure.alreadyAccepted copy.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer was already accepted.'**
+  String get transferFailureAlreadyAccepted;
+
+  /// TransferFailure.selfTransfer copy.
+  ///
+  /// In en, this message translates to:
+  /// **'You can\'t claim a transfer you created yourself.'**
+  String get transferFailureSelfTransfer;
+
+  /// TransferFailure.staleOwner copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Your role on this profile has changed, so this transfer is no longer valid.'**
+  String get transferFailureStaleOwner;
+
+  /// TransferFailure.alreadyArmed copy.
+  ///
+  /// In en, this message translates to:
+  /// **'A transfer is already pending for this profile. Cancel it before starting a new one.'**
+  String get transferFailureAlreadyArmed;
+
+  /// TransferFailure.invalidToken copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid transfer link.'**
+  String get transferFailureInvalidToken;
+
+  /// PredictionConnectionFailure.notFound copy, rendered by predictionConnectionFailureCopy (lib/ui/l10n/prediction_connection_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'That code is not valid.'**
+  String get predictionConnectionFailureNotFound;
+
+  /// PredictionConnectionFailure.expired copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That code has expired.'**
+  String get predictionConnectionFailureExpired;
+
+  /// PredictionConnectionFailure.alreadyAccepted copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That code was already used.'**
+  String get predictionConnectionFailureAlreadyAccepted;
+
+  /// PredictionConnectionFailure.alreadyGuardian copy.
+  ///
+  /// In en, this message translates to:
+  /// **'You already have full guardian access to this profile.'**
+  String get predictionConnectionFailureAlreadyGuardian;
+
+  /// PredictionConnectionFailure.invalidToken copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid connection code.'**
+  String get predictionConnectionFailureInvalidToken;
+
+  /// PredictionConnectionFailure.pregnancyMode copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing is unavailable while this profile is in Pregnancy mode.'**
+  String get predictionConnectionFailurePregnancyMode;
+
+  /// PredictionConnectionFailure.alreadyConnected copy.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile already has a prediction connection. Revoke it before sharing with someone else.'**
+  String get predictionConnectionFailureAlreadyConnected;
+
+  /// PredictionConnectionFailure.oneDirectional copy.
+  ///
+  /// In en, this message translates to:
+  /// **'You cannot share and view predictions with the same person at the same time.'**
+  String get predictionConnectionFailureOneDirectional;
+
+  /// PredictionConnectionFailure.minorProfile copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing is not available for a minor\'s profile.'**
+  String get predictionConnectionFailureMinorProfile;
+
+  /// FeedbackFailure.rateLimited copy, rendered by feedbackFailureCopy (lib/ui/l10n/feedback_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve sent a few reports already — please try again in a bit.'**
+  String get feedbackFailureRateLimited;
+
+  /// FeedbackFailure.invalidInput copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your message and try again.'**
+  String get feedbackFailureInvalidInput;
+
+  /// FeedbackFailure.attachmentTooLarge copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That image is too large. Choose one under 5 MB.'**
+  String get feedbackFailureAttachmentTooLarge;
+
+  /// FeedbackFailure.attachmentRejected copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That file type is not supported. Choose a PNG, JPEG, or WebP image.'**
+  String get feedbackFailureAttachmentRejected;
+
+  /// FeedbackFailure.notFound copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That ticket could not be found.'**
+  String get feedbackFailureNotFound;
+
+  /// FeedbackAttachmentUploadFailedFailure copy; {attachmentReason} is the nested attachment failure's own copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Your message was sent — no need to resend it. The attachment did not upload ({attachmentReason}) You can find your ticket in Support history.'**
+  String feedbackFailureAttachmentUploadFailed(String attachmentReason);
+
+  /// NotificationPreferencesFailure.invalidTimeZone copy, rendered by notificationPreferencesFailureCopy (lib/ui/l10n/notification_preferences_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Your device\'s time zone isn\'t recognised by the server yet — quiet hours will use UTC until it is'**
+  String get notificationPreferencesFailureInvalidTimeZone;
+
+  /// NotificationPreferencesFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always a preferences-save attempt.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save notification preferences. Please try again.'**
+  String get notificationPreferencesFailureOther;
+
+  /// GuardianRole.primaryGuardian's display label, rendered by guardianRoleLabel (lib/ui/l10n/guardian_role_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Primary Guardian'**
+  String get guardianRoleLabelPrimaryGuardian;
+
+  /// GuardianRole.coParent's display label.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-Parent'**
+  String get guardianRoleLabelCoParent;
+
+  /// GuardianRole.caregiver's display label.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver'**
+  String get guardianRoleLabelCaregiver;
+
+  /// GuardianRole.viewer's display label.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer'**
+  String get guardianRoleLabelViewer;
+
+  /// Why a viewer's day sheet (and other write surfaces) is read-only, rendered by guardianRoleReadOnlyReason.
+  ///
+  /// In en, this message translates to:
+  /// **'You have view-only access to this profile.'**
+  String get guardianRoleReadOnlyReasonViewer;
+
+  /// Issue #545: moved from lib/domain/activity/activity_feed.dart's activityActorLabel (now lib/ui/l10n/activity_actor_copy.dart) — the current operator's own name in an activity feed row.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get activityActorYou;
+
+  /// Issue #545: moved from activityActorLabel — fallback name for an actor whose guardian row is not (or no longer) known.
+  ///
+  /// In en, this message translates to:
+  /// **'a guardian'**
+  String get activityActorGuardianFallback;
+
+  /// Issue #545: moved from SharingProfileInfo.roleSubtitle (lib/domain/sharing/sharing_overview.dart) — a profile row's subtitle for a profile shared with the operator, naming their role. Rendered by sharingProfileRoleSubtitle (lib/ui/l10n/guardian_role_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me · {role}'**
+  String profilePickerSharedRoleSubtitle(String role);
+
+  /// AuthWrongPasswordFailure copy, rendered by authFailureCopy (lib/ui/l10n/auth_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'That email and password combination was not accepted.'**
+  String get authFailureWrongPassword;
+
+  /// AuthWeakPasswordFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a stronger password of at least {minLength} characters.'**
+  String authFailureWeakPassword(int minLength);
+
+  /// AuthProviderUnavailableFailure copy — deliberately generic (also covers a passkey ceremony that could not run), so it must never name Google, Apple, or "passkey" specifically.
+  ///
+  /// In en, this message translates to:
+  /// **'That sign-in method isn\'t available on this device. Use email instead.'**
+  String get authFailureProviderUnavailable;
+
+  /// AuthRateLimitedFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Wait a little while, then try again.'**
+  String get authFailureRateLimited;
+
+  /// AuthMisconfiguredFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That sign-in method is not set up for this app right now. Try another way to sign in.'**
+  String get authFailureMisconfigured;
+
+  /// AuthExpiredLinkFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That sign-in link is no longer valid. Request a new one.'**
+  String get authFailureExpiredLink;
+
+  /// AuthInvalidCodeFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That code was not accepted. Check it or request a new email.'**
+  String get authFailureInvalidCode;
+
+  /// AuthIdentityTakenFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That sign-in method already belongs to another account.'**
+  String get authFailureIdentityTaken;
+
+  /// AuthSignUpClosedFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'New accounts for this app are set up by the account owner.'**
+  String get authFailureSignUpClosed;
+
+  /// AuthLastSignInMethodFailure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'That is the only way left to sign in to this account. Add another method first.'**
+  String get authFailureLastSignInMethod;
+
+  /// Tooltip on a care note's delete icon button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove note'**
+  String get careNotesRemoveNoteTooltip;
+
+  /// Tooltip on a visit-prep item's delete icon button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove item'**
+  String get careNotesRemoveItemTooltip;
+
+  /// Tooltip on the profile app bar's care notes entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Care notes & visit prep'**
+  String get careNotesButtonTooltip;
+
+  /// Tooltip on the activity feed app bar action.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity'**
+  String get activityFeedTooltip;
+
+  /// Tooltip on a pending invitation's cancel icon button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel invitation'**
+  String get manageGuardiansCancelInviteTooltip;
+
+  /// Tooltip on Manage Guardians' guardian-roles help action.
+  ///
+  /// In en, this message translates to:
+  /// **'About roles'**
+  String get manageGuardiansAboutRolesTooltip;
+
+  /// Tooltip on Manage Guardians' transfer-ownership app bar action.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer ownership'**
+  String get manageGuardiansTransferOwnershipTooltip;
+
+  /// Tooltip on Manage Guardians' notification-preferences app bar action.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get manageGuardiansNotificationsTooltip;
+
+  /// Tooltip on the prediction-connection tile's revoke icon button.
+  ///
+  /// In en, this message translates to:
+  /// **'End prediction sharing'**
+  String get manageGuardiansEndSharingTooltip;
+
+  /// Tooltip on a guardian row's role-change menu button.
+  ///
+  /// In en, this message translates to:
+  /// **'Change role'**
+  String get manageGuardiansChangeRoleTooltip;
+
+  /// Tooltip on a guardian row's revoke button when the row is the caller's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave profile'**
+  String get manageGuardiansLeaveProfileTooltip;
+
+  /// Tooltip on a guardian row's revoke button when the row belongs to someone else.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove caregiver'**
+  String get manageGuardiansRemoveCaregiverTooltip;
+
+  /// Tooltip on the feedback form's attachment-remove icon button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove attachment'**
+  String get feedbackRemoveAttachmentTooltip;
+
+  /// Tooltip on the prediction connection calendar's refresh action.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get predictionCalendarRefreshTooltip;
+
+  /// Tooltip on a Settings icon button, shared by the app shell's bottom nav and the profile picker's app bar action.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTooltip;
+
+  /// Tooltip on the profile picker's add-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add profile'**
+  String get profilePickerAddProfileTooltip;
+
+  /// Tooltip on an archived profile row's unarchive icon button.
+  ///
+  /// In en, this message translates to:
+  /// **'Unarchive'**
+  String get profilePickerUnarchiveTooltip;
+
+  /// Tooltip on a profile row's overflow-actions icon button.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile actions'**
+  String get profilePickerActionsTooltip;
+
+  /// Tooltip on the profile picker's shared-predictions entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me'**
+  String get profilePickerSharedWithMeTooltip;
+
+  /// Tooltip on the profile detail screen's switch-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch profile'**
+  String get profileDetailSwitchProfileTooltip;
+
+  /// Issue #545: a bare integer day count, correctly pluralized (fixes 'N days' rendering as '1 days'). Shared by the cycle-history section's variation/period-length stats and the late-resolver's fallback line.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} {count, plural, =1{day} other{days}}'**
+  String daysCount(int count);
+
+  /// Issue #545: a possibly-fractional day value (e.g. '3.5 days') with its plural word chosen from the underlying numeric count. {value} is the already-formatted display string; {count} is only used to select 'day' vs 'days'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{{value} day} other{{value} days}}'**
+  String daysValue(num count, String value);
 }
 
 class _AppLocalizationsDelegate

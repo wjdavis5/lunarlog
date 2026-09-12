@@ -2,8 +2,8 @@
 /// (Issue #4, U10; R11, R27, R28).
 ///
 /// Mirrors `AcceptInviteSheet` closely: a loading state, an optional-field
-/// form, and [TransferFailure.userFacingMessage] rendered inline on error
-/// so the sheet stays open and retryable. Success pops immediately with the
+/// form, and [transferFailureCopy] rendered inline on error so the sheet
+/// stays open and retryable. Success pops immediately with the
 /// [ClaimedProfileResult] (matching `AcceptInviteSheet`'s shape exactly)
 /// rather than showing a separate inline confirmation state — the caller
 /// (or a snackbar it drives from [onClaimed]) is the simpler, more
@@ -11,6 +11,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/transfer_failure_copy.dart';
 
 import '../../domain/sharing/ownership_transfer_service.dart';
 
@@ -69,7 +71,7 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = failure.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), failure);
         });
       }
     } catch (_) {

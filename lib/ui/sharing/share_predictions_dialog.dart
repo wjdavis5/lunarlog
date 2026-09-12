@@ -6,6 +6,8 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
 
@@ -61,7 +63,8 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
     } on PredictionConnectionFailure catch (failure) {
       if (mounted) {
         setState(() {
-          _error = failure.userFacingMessage;
+          _error = predictionConnectionFailureCopy(
+              AppLocalizations.of(context), failure);
           _loading = false;
         });
       }
