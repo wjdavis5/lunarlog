@@ -8,6 +8,7 @@ import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.IntermenstrualBleedingRecord
 import androidx.health.connect.client.records.MenstruationFlowRecord
+import androidx.health.connect.client.records.MenstruationPeriodRecord
 import androidx.health.connect.client.records.Record
 // Aliased because a plain `Metadata` import resolves to the compiler's
 // own kotlin.Metadata annotation in constructor-argument position here.
@@ -84,6 +85,11 @@ class HealthConnectAdapter(context: Context) {
     // createWritePermission(KClass)-returns-Permission API is gone.
     private val writePermissions = setOf(
         HealthPermission.getWritePermission(MenstruationFlowRecord::class),
+        // #202: the interval MenstruationPeriodRecord is governed by the
+        // same WRITE_MENSTRUATION permission as the flow record — declared
+        // explicitly so the prompt covers the type; setOf dedupes the
+        // underlying permission string.
+        HealthPermission.getWritePermission(MenstruationPeriodRecord::class),
         HealthPermission.getWritePermission(IntermenstrualBleedingRecord::class),
     )
 
@@ -276,6 +282,60 @@ class HealthConnectAdapter(context: Context) {
                 val record = IntermenstrualBleedingRecord(
                     time = Instant.ofEpochMilli(instantMs),
                     zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
+                    metadata = HcMetadata.manualEntry(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
+                )
+                insert(client, listOf(record), result)
+            }
+
+            "writeMenstrualPeriod" -> {
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "writeMenstrualPeriod requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val startMs = GuardArgs.number(args, "startMs")
+                val startZoneOffsetMs = GuardArgs.number(args, "startZoneOffsetMs")
+                val endMs = GuardArgs.number(args, "endMs")
+                val endZoneOffsetMs = GuardArgs.number(args, "endZoneOffsetMs")
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (startMs == null || startZoneOffsetMs == null || endMs == null ||
+                    endZoneOffsetMs == null || recordId == null || recordVersionMs == null) {
+                    return result.error(
+                        "bad_args",
+                        "writeMenstrualPeriod requires startMs/startZoneOffsetMs/endMs/endZoneOffsetMs/recordId/recordVersionMs",
+                        null)
+                }
+                // #202: the interval record for one period episode. startTime
+                // at the episode's first-day local midnight; endTime at the
+                // *exclusive* local midnight after its last day — both instants
+                // and their offsets computed on the Dart side from the entry's
+                // own tz (#180's timezone contract, never the device's current
+                // zone; on a DST-transition day endZoneOffset differs from
+                // startZoneOffset, which is exactly why they ride separately).
+                // #186 sync mechanics: the episode's stable clientRecordId plus
+                // an increasing clientRecordVersion make a re-write of an
+                // extending episode an upsert (update), not a duplicate, and a
+                // closed episode's final write carries the complete interval.
+                val record = MenstruationPeriodRecord(
+                    startTime = Instant.ofEpochMilli(startMs),
+                    startZoneOffset = ZoneOffset.ofTotalSeconds((startZoneOffsetMs / 1000).toInt()),
+                    endTime = Instant.ofEpochMilli(endMs),
+                    endZoneOffset = ZoneOffset.ofTotalSeconds((endZoneOffsetMs / 1000).toInt()),
+                    // User-logged cycle data (issue #254). The Metadata
+                    // constructor is internal in connect-client 1.1.0, so the
+                    // public companion factory is used, as for the flow record.
                     metadata = HcMetadata.manualEntry(
                         clientRecordId = recordId,
                         clientRecordVersion = recordVersionMs,

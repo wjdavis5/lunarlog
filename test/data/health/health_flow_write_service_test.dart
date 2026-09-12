@@ -93,6 +93,7 @@ class _FakePlatform implements HealthPlatformStore {
   List<HealthPlatformResult> writeResults = [];
   final List<HealthMenstrualFlowWrite> flowWrites = [];
   final List<HealthIntermenstrualBleedingWrite> markerWrites = [];
+  final List<HealthMenstrualPeriodWrite> periodWrites = [];
   int bindCalls = 0;
   int authCalls = 0;
   int unbindCalls = 0;
@@ -138,6 +139,14 @@ class _FakePlatform implements HealthPlatformStore {
     HealthIntermenstrualBleedingWrite write,
   ) async {
     markerWrites.add(write);
+    return _nextWriteResult();
+  }
+
+  @override
+  Future<HealthPlatformResult> writeMenstrualPeriod(
+    HealthMenstrualPeriodWrite write,
+  ) async {
+    periodWrites.add(write);
     return _nextWriteResult();
   }
 
@@ -670,6 +679,164 @@ void main() {
       // 05-31 is outside the episode → intermenstrual, never menstrual.
       expect(platform.markerWrites, hasLength(1));
       expect(platform.flowWrites, hasLength(2));
+    });
+  });
+
+  group('period-episode interval writes (#202 AC3/AC7)', () {
+    test('a still-open episode is updated (not duplicated) as new days are '
+        'logged, and its final write is the finalized closed record',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      final service = buildService();
+
+      // Pass 1: an in-progress episode 06-01..06-02.
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+      final first = await service.syncNow();
+      expect(first.periodRecordsWritten, 1);
+      final firstWrite = platform.periodWrites.single;
+      expect(firstWrite.start, LocalDate.fromIso('2026-06-01'));
+      expect(firstWrite.end, LocalDate.fromIso('2026-06-02'));
+      expect(firstWrite.recordId, 'period-$_profileId-2026-06-01');
+      final firstVersion = firstWrite.recordVersionMs;
+
+      // Pass 2: the episode extends to 06-03 — the SAME clientRecordId (an
+      // update, never a duplicate), a later end, a higher version.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-03', FlowLevel.light,
+            grant.add(const Duration(hours: 3))),
+      ];
+      final second = await service.syncNow();
+      expect(second.periodRecordsWritten, 1);
+      final secondWrite = platform.periodWrites.last;
+      expect(secondWrite.recordId, 'period-$_profileId-2026-06-01',
+          reason: 'the same episode must reuse the same clientRecordId');
+      expect(secondWrite.end, LocalDate.fromIso('2026-06-03'));
+      expect(secondWrite.recordVersionMs, greaterThan(firstVersion),
+          reason: 'an extending episode carries a higher clientRecordVersion');
+
+      // Pass 3: no new days — the now-closed episode is not re-written, so
+      // its last write (pass 2) is the finalized record.
+      final third = await service.syncNow();
+      expect(third.periodRecordsWritten, 0);
+      expect(platform.periodWrites, hasLength(2));
+    });
+
+    test('a closed episode that receives no new days is not re-written; a '
+        'later new episode gets its own separate record', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      final service = buildService();
+
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+      await service.syncNow();
+      expect(platform.periodWrites.single.recordId,
+          'period-$_profileId-2026-06-01');
+
+      // A distinct episode (gap > 1 day) starts 06-10.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-10', FlowLevel.heavy,
+            grant.add(const Duration(hours: 4))),
+      ];
+      final second = await service.syncNow();
+      expect(second.periodRecordsWritten, 1);
+      expect(platform.periodWrites.last.recordId,
+          'period-$_profileId-2026-06-10',
+          reason: 'a distinct episode must get its own clientRecordId');
+      expect(platform.periodWrites.last.start, LocalDate.fromIso('2026-06-10'));
+    });
+
+    test('an episode entirely before the grant cursor is never written '
+        '(forward-only applies to period records too)', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-05-30', FlowLevel.heavy,
+            grant.subtract(const Duration(hours: 1))),
+        _entry('2026-05-31', FlowLevel.medium,
+            grant.subtract(const Duration(minutes: 30))),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.periodRecordsWritten, 0);
+      expect(platform.periodWrites, isEmpty);
+    });
+
+    test('the interval record derives its instants from the entry\'s own '
+        'zone, carried through the write (#180)', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+
+      await buildService().syncNow();
+
+      final write = platform.periodWrites.single;
+      expect(write.tzName, _tz);
+      expect(write.start, LocalDate.fromIso('2026-06-01'));
+      expect(write.end, LocalDate.fromIso('2026-06-02'));
+      expect(write.recordVersionMs, isPositive);
+    });
+
+    test('a platform that answers unavailable for the period record is '
+        'skipped gracefully, not a pass-blocking failure (HealthKit has no '
+        'period-record type, #193)', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      // Flow writes succeed; the period record is unavailable.
+      platform.writeResults = [
+        const HealthPlatformAllowed(),
+        const HealthPlatformUnavailable(),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.samplesWritten, 1);
+      expect(report.periodRecordsWritten, 0);
+      expect(report.blocked, isNull,
+          reason: 'unavailable period-record support must not block the pass');
+    });
+
+    test('a failing period write blocks the pass like any failing write',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      platform.writeResults = [
+        const HealthPlatformAllowed(), // flow write
+        const HealthPlatformPermissionDenied(), // period write
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+      // The cursor does not advance (blocked), so the next pass retries.
+      expect(await settings.get(_cursorKey),
+          '${grant.millisecondsSinceEpoch}');
     });
   });
 

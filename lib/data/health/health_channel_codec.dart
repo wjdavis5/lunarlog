@@ -15,6 +15,7 @@
 /// | `requestWriteAuthorization` | guard args | result string |
 /// | `writeMenstrualFlow` | guard + day + `flow` + `cycleStart` + `recordId` + `recordVersionMs` | result string |
 /// | `writeIntermenstrualBleeding` | guard + day + `recordId` + `recordVersionMs` | result string |
+/// | `writeMenstrualPeriod` | guard + period + `recordId` + `recordVersionMs` | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
 ///
 /// *Guard args* (every guarded method): `profileId`, `signedInUserId?`,
@@ -30,6 +31,13 @@
 /// `zoneOffsetMs`, `endZoneOffsetMs` — all UTC epoch milliseconds /
 /// offset milliseconds computed here via `day_boundary.dart` (#180's
 /// timezone contract), so the native sides never do zone math.
+///
+/// *Period args* (the `writeMenstrualPeriod` interval record, #202):
+/// `startMs` (local midnight of the episode's first day) +
+/// `startZoneOffsetMs`, and `endMs` (the *exclusive* local midnight after
+/// the episode's last day) + `endZoneOffsetMs` — the two instant/offset
+/// pairs a `MenstruationPeriodRecord` needs, both computed here via
+/// `day_boundary.dart` from the entry's own `tz`.
 ///
 /// *Result strings*: `allowed`; the [HealthSyncCheck] deny names
 /// (`noBinding`, `profileNotBound`, `minorRequiresOwnershipTransfer`,
@@ -64,6 +72,7 @@ abstract final class HealthChannelMethods {
   static const requestWriteAuthorization = 'requestWriteAuthorization';
   static const writeMenstrualFlow = 'writeMenstrualFlow';
   static const writeIntermenstrualBleeding = 'writeIntermenstrualBleeding';
+  static const writeMenstrualPeriod = 'writeMenstrualPeriod';
   static const deleteRecords = 'deleteRecords';
 }
 
@@ -140,5 +149,26 @@ Map<String, Object?> encodeDayArgs(LocalDate date, String tzName) {
         'instantMs': localDayInstant(date, tzName).millisecondsSinceEpoch,
         'zoneOffsetMs': zoneOffsetFor(date, tzName).inMilliseconds,
         'endZoneOffsetMs': endZoneOffsetFor(date, tzName).inMilliseconds,
+  };
+}
+
+/// The period-args half for one `writeMenstrualPeriod` (Issue #202): the
+/// instant/offset pair for the interval record's start (local midnight of
+/// [start]) and its end (the *exclusive* local midnight after [end], plus
+/// that instant's own offset — on a DST-transition day it differs from the
+/// start offset, which is exactly why they are computed together here).
+/// All from the entry's own `tzName` via `day_boundary.dart` (#180's
+/// timezone contract — never the device's current zone); the native side
+/// does no zone math.
+Map<String, Object?> encodePeriodDayArgs(
+  LocalDate start,
+  LocalDate end,
+  String tzName,
+) {
+  return {
+    'startMs': localDayInstant(start, tzName).millisecondsSinceEpoch,
+    'startZoneOffsetMs': zoneOffsetFor(start, tzName).inMilliseconds,
+    'endMs': localDayEndExclusive(end, tzName).millisecondsSinceEpoch,
+    'endZoneOffsetMs': endZoneOffsetFor(end, tzName).inMilliseconds,
   };
 }

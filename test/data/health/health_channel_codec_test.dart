@@ -134,6 +134,59 @@ void main() {
     });
   });
 
+  group('encodePeriodDayArgs (Issue #202 MenstruationPeriodRecord)', () {
+    test('a multi-day episode spans start midnight to the exclusive end '
+        'midnight, each with its own zone offset', () {
+      // 2026-08-30..2026-09-01 in America/New_York (EDT, UTC-4 throughout —
+      // no DST transition inside): start = 08-30 04:00Z; end = exclusive
+      // 09-02 04:00Z; both offsets -4h.
+      final args = encodePeriodDayArgs(
+        LocalDate(2026, 8, 30),
+        LocalDate(2026, 9, 1),
+        'America/New_York',
+      );
+      expect(args['startMs'], DateTime.utc(2026, 8, 30, 4).millisecondsSinceEpoch);
+      expect(args['startZoneOffsetMs'], -4 * 3600 * 1000);
+      expect(args['endMs'], DateTime.utc(2026, 9, 2, 4).millisecondsSinceEpoch);
+      expect(args['endZoneOffsetMs'], -4 * 3600 * 1000);
+    });
+
+    test('an end day across a fall-back DST transition carries a different '
+        'endZoneOffset than the start (#180 contract note)', () {
+      // 2026-11-01 America/New_York: DST ends 02:00 EDT. The episode's end
+      // exclusive is midnight of Nov 2 (EST, -5h) while its start is
+      // midnight of Nov 1 (EDT, -4h) — endZoneOffset must differ.
+      final args = encodePeriodDayArgs(
+        LocalDate(2026, 11, 1),
+        LocalDate(2026, 11, 1),
+        'America/New_York',
+      );
+      expect(args['startZoneOffsetMs'], -4 * 3600 * 1000);
+      expect(args['endZoneOffsetMs'], -5 * 3600 * 1000);
+    });
+
+    test('agrees with day_boundary.dart\'s own functions', () {
+      final start = LocalDate(2026, 8, 30);
+      final end = LocalDate(2026, 9, 1);
+      final args = encodePeriodDayArgs(start, end, 'America/New_York');
+      expect(args['startMs'], localDayInstant(start, 'America/New_York').millisecondsSinceEpoch);
+      expect(args['startZoneOffsetMs'], zoneOffsetFor(start, 'America/New_York').inMilliseconds);
+      expect(args['endMs'], localDayEndExclusive(end, 'America/New_York').millisecondsSinceEpoch);
+      expect(args['endZoneOffsetMs'], endZoneOffsetFor(end, 'America/New_York').inMilliseconds);
+    });
+
+    test('throws TimeZoneResolutionException for an unknown zone', () {
+      expect(
+        () => encodePeriodDayArgs(
+          LocalDate(2026, 1, 1),
+          LocalDate(2026, 1, 2),
+          'Not/AZone',
+        ),
+        throwsA(isA<TimeZoneResolutionException>()),
+      );
+    });
+  });
+
   group('decodeHealthResult', () {
     test('"allowed" decodes to the allowed variant', () {
       expect(
