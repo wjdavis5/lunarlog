@@ -383,11 +383,15 @@ class _OverviewPanelState extends State<OverviewPanel> {
             switch (prediction) {
               ActivePrediction() => _activeCard(context, prediction),
               NotEnoughHistory() => _notEnoughCard(context),
-              // Issue #233: an in-effect continuous birth-control method
-              // replaces the estimate with an explicit suppressed state —
-              // never NotEnoughHistory and never a silent late/paused line.
-              PredictionsSuppressed() =>
-                PredictionsSuppressedCard(method: prediction.method),
+              // Issue #233/#528: an in-effect continuous birth-control
+              // method, or a life-stage mode the averaging model doesn't
+              // apply to, replaces the estimate with an explicit suppressed
+              // state — never NotEnoughHistory and never a silent
+              // late/paused line.
+              PredictionsSuppressed() => PredictionsSuppressedCard(
+                  method: prediction.method,
+                  lifecycleMode: prediction.lifecycleMode,
+                ),
               // Issue #225: per-profile predictions disabled toggle.
               PredictionsDisabled() => PredictionsDisabledCard(
                   onManageSettings: () =>

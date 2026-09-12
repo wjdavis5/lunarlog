@@ -625,6 +625,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String predictionsSuppressedByModeBody(String mode) {
+    return 'Because this profile is set to $mode mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.';
+  }
+
+  @override
   String get predictionsDisabledTitle => 'Predictions turned off';
 
   @override

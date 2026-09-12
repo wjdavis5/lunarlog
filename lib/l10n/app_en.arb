@@ -773,6 +773,13 @@
       "method": {"type": "String"}
     }
   },
+  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.",
+  "@predictionsSuppressedByModeBody": {
+    "description": "Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.",
+    "placeholders": {
+      "mode": {"type": "String"}
+    }
+  },
   "predictionsDisabledTitle": "Predictions turned off",
   "@predictionsDisabledTitle": {
     "description": "Title of the card displayed when predictions are disabled for the profile (issue #225)."
