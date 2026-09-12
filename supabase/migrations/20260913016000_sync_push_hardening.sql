@@ -58,9 +58,18 @@
 --   sync_push still needs it.
 --
 --   Issue #564 (P2, subtransactions and per-row role lookups): (a) a new
---   combined cap of 1000 total rows across all seven payload arrays,
---   raised as a single clear error above that, in addition to (not instead
---   of) each array's existing individual 500-row cap; (b) the
+--   combined cap across all seven payload arrays, raised as a single clear
+--   error above that, in addition to (not instead of) each array's
+--   existing individual 500-row cap. Set to 3500 (= 7 * c_max_rows) - a
+--   no-op today, not a real tightening - because the Dart sync engine
+--   (`_PushCursor` in lib/data/sync/supabase_sync_engine.dart) fills each
+--   of the seven tables independently up to
+--   `SyncBatchLimits.maxRowsPerTable` (500), so a first sync or a
+--   post-Clue-import push can legitimately carry up to 3500 rows in one
+--   call; a lower combined cap would reject that call outright before any
+--   row is processed, and the client retries the identical batch forever.
+--   Lowering this meaningfully needs a client-side batch-size change
+--   first (tracked as a follow-up); (b) the
 --   `profile_guardians` role lookup that six of the seven loops (every one
 --   except `profiles`) previously repeated PER ROW is hoisted to a single
 --   `jsonb_object_agg`-built map computed once, up front, from the union
@@ -101,7 +110,13 @@ declare
   c_max_rows constant integer := 500;
   c_max_observations_per_day constant integer := 200;
   -- Issue #564: total-row cap across all seven payload arrays combined.
-  c_max_total_rows constant integer := 1000;
+  -- 3500 (= 7 * c_max_rows) is a no-op today, not a real tightening yet -
+  -- see this migration's header for why (the Dart sync engine legitimately
+  -- fills all seven tables to 500 rows each on a first sync or a
+  -- post-Clue-import push; a lower cap would reject that call outright and
+  -- the client would retry it forever). A stricter combined cap needs a
+  -- client-side batch-size change first.
+  c_max_total_rows constant integer := 3500;
   c_ulid constant text := '^[0-9A-HJKMNP-TV-Z]{26}$';
   c_profile_keys constant text[] := array[
     'id', 'display_name', 'is_minor', 'sort_order', 'archived_at',
@@ -1789,8 +1804,9 @@ comment on function public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, j
   'greatest() LWW guard. Issue #562: the day_entries UPDATE no longer '
   'assigns profile_id (always a no-op - the immutability check above it '
   'already proved equality), matching the revoked column grant. Issue '
-  '#564: a combined 1000-row cap applies across all seven payload arrays '
-  '(on top of, not instead of, each array''s own 500-row cap), and the '
+  '#564: a combined 3500-row cap (a no-op today - see the migration '
+  'header) applies across all seven payload arrays (on top of, not '
+  'instead of, each array''s own 500-row cap), and the '
   'profile_guardians role lookup for day_entries/observations/'
   'profile_modes/cycle_overrides/care_notes/visit_prep_items is computed '
   'ONCE up front via a jsonb_object_agg map keyed by profile_id, rather '
