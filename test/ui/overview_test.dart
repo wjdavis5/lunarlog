@@ -22,6 +22,7 @@ import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -694,6 +695,104 @@ void main() {
       // Same teardown discipline as disposeOverview: unmount, let the
       // drift stream store's close-timer fire, then close the database —
       // otherwise the pending FakeTimer fails the test's invariants.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets('a continuous birth-control method surfaces the explicit '
+        'suppressed state, never the not-enough card (issue #233)',
+        (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final entries = DriftDayEntriesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final profile = await DriftProfilesRepository(db.storage)
+          .create(displayName: 'Alice', isMinor: false);
+      final profileId = profile.id;
+      // Production-shaped provider: drift's replaying watchProfileMode row
+      // mapped onto the BirthControlState shape (app_dependencies.dart).
+      Stream<BirthControlState?> birthControlStateFor(String profileId) => db
+          .storage
+          .watchProfileMode(profileId)
+          .map((row) => row == null
+              ? null
+              : (
+                  method: row.birthControlMethod,
+                  startedOn: row.birthControlStartedOn,
+                  stoppedOn: row.birthControlStoppedOn,
+                ));
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<DayEntriesRepository>.value(value: entries),
+            Provider<SettingsStore>.value(value: settings),
+            Provider<CyclePredictionService>.value(
+              value: CyclePredictionService(
+                entries,
+                settings: settings,
+                birthControlStateFor: birthControlStateFor,
+              ),
+            ),
+            Provider<CycleExclusionList>.value(
+              value: CycleExclusionList(settings),
+            ),
+            ChangeNotifierProvider<NotificationPermissionState>.value(
+              value: NotificationPermissionState(
+                  NotificationAvailability.available),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: OverviewPanel(
+                profileId: profileId,
+                todayProvider: () => kToday,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // No method row yet -> the ordinary not-enough state.
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
+
+      // Continuous method (implant) in effect -> explicit suppressed card.
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: BirthControlMethod.implant.toDb(),
+        birthControlStartedOn: '2026-01-01',
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('predictions-suppressed')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('predictions-suppressed-body')),
+        findsOneWidget,
+      );
+
+      // Clearing the method returns the not-enough state (no logged cycles).
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: null,
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byKey(const ValueKey('predictions-suppressed')), findsNothing);
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
+
+      // Same teardown discipline as the seeded-provisional test above.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();

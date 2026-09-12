@@ -239,8 +239,22 @@ AppDependencies buildAppDependencies({
       currentUserIdProvider: currentUserIdProvider,
       importer: accountImporter,
     ),
+    // Issue #233: the profile_modes birth-control watcher feeds the
+    // predictor's branch (withdrawal-bleed -> pack schedule, continuous ->
+    // suppressed). Mirrors the reminder coordinator's birthControlStateFor
+    // wiring in lib/app.dart.
     prediction: CyclePredictionService(dayEntries,
-        settings: settings, profiles: profiles),
+        settings: settings,
+        profiles: profiles,
+        birthControlStateFor: (profileId) => storage
+            .watchProfileMode(profileId)
+            .map((row) => row == null
+                ? null
+                : (
+                    method: row.birthControlMethod,
+                    startedOn: row.birthControlStartedOn,
+                    stoppedOn: row.birthControlStoppedOn,
+                  ))),
     cycleHistory: CycleHistoryService(dayEntries, settings: settings),
     cycleExclusions: CycleExclusionList(settings),
     authService: authService,
