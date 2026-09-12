@@ -44,12 +44,15 @@
 library;
 
 import 'dart:async' show Timer, scheduleMicrotask, unawaited;
+import 'dart:convert' show jsonDecode;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
+    show describeUnmappedRaw;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -312,6 +315,14 @@ class _DaySheetState extends State<DaySheet> {
   /// autosaved.
   final Set<String> _sessionSelectedTags = {};
 
+  /// The day's `observations` rows carrying a non-null `raw` escape-hatch
+  /// payload (Issue #199): an unrecognised Clue `type`/`value` shape the
+  /// importer kept as-is. Rendered below as readable text
+  /// ([_unmappedObservationsSection]) so an imported-but-unmapped row is
+  /// never invisible; inert like [_unrecognisedTags] (display only, never
+  /// edited here).
+  List<Observation> _unmappedObservations = [];
+
   @override
   void initState() {
     super.initState();
@@ -332,6 +343,7 @@ class _DaySheetState extends State<DaySheet> {
     if (existing != null) {
       _loadExistingSpotting(existing.id);
       _loadExistingPainIntensity(existing.id);
+      _loadUnmappedObservations(existing.id);
     }
   }
 
@@ -553,6 +565,24 @@ class _DaySheetState extends State<DaySheet> {
           _painIntensity[code] = o.intensity;
         }
       }
+    });
+  }
+
+  /// Issue #199: loads the day's escape-hatch rows — `observations` with a
+  /// non-null `raw` (an imported-but-unrecognised Clue datapoint) — so the
+  /// sheet can render them as readable text instead of leaving them
+  /// invisible. Read-only: nothing here writes, autosaves, or synthesises.
+  Future<void> _loadUnmappedObservations(String dayEntryId) async {
+    final rows = [
+      for (final o in await Provider.of<ObservationsRepository>(
+        context,
+        listen: false,
+      ).listForDayEntry(dayEntryId))
+        if (o.raw != null) o,
+    ];
+    if (!mounted) return;
+    setState(() {
+      _unmappedObservations = rows;
     });
   }
 
@@ -1196,6 +1226,8 @@ class _DaySheetState extends State<DaySheet> {
                 ],
                 if (_unrecognisedTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
+                if (_unmappedObservations.isNotEmpty)
+                  ..._unmappedObservationsSection(theme),
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: TextFormField(
@@ -1330,6 +1362,47 @@ class _DaySheetState extends State<DaySheet> {
       ],
     ),
   ];
+
+  /// Inert, visible chips for [_unmappedObservations] (Issue #199): each
+  /// escape-hatch row renders as one readable line
+  /// ([describeUnmappedRaw]), never raw JSON and never nothing. A stored
+  /// `raw` that is not JSON at all (possible — storage bounds the string
+  /// but does not parse it) degrades to the same fallback text
+  /// `describeUnmappedRaw` uses for an empty map, so rendering never throws
+  /// on the very rows it exists to make visible.
+  List<Widget> _unmappedObservationsSection(ThemeData theme) => [
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 4),
+          child: Text(
+            AppLocalizations.of(context).daySheetUnrecognised,
+            style: theme.textTheme.labelMedium,
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (var i = 0; i < _unmappedObservations.length; i++)
+              Chip(
+                key: ValueKey('unmapped-observation-$i'),
+                label: Text(_describeUnmapped(_unmappedObservations[i].raw)),
+              ),
+          ],
+        ),
+      ];
+
+  String _describeUnmapped(String? raw) {
+    if (raw == null) return 'unrecognised data';
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return describeUnmappedRaw(Map<String, Object?>.from(decoded));
+      }
+      return 'unrecognised data';
+    } on FormatException {
+      return 'unrecognised data';
+    }
+  }
 
   /// Issue #249: the caption an option-set-unverified category
   /// (`kUnverifiedTagCategories`) renders where its chips would go. The
