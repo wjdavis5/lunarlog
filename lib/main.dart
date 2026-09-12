@@ -17,9 +17,11 @@ import 'app_lifecycle.dart';
 import 'config.dart';
 import 'startup/gate/gate.dart';
 import 'domain/sharing/invite_links.dart';
+import 'data/notifications/notification_scheduler.dart';
 import 'data/sync/supabase_sync_transport.dart';
 import 'data/sync/sync_transport.dart';
 import 'domain/auth/auth_service.dart';
+import 'domain/util/timezone.dart';
 import 'observability/sentry_bootstrap.dart';
 import 'startup/startup.dart';
 import 'startup/supabase_bootstrap.dart';
@@ -36,6 +38,12 @@ bool _isInviteLink(Uri? uri) =>
 
 Future<void> _runLunarlog() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Issue #169: resolve current device timezone before UI is mounted so
+  // DayEntry.tz and reminders plan against the actual device timezone.
+  configurePlatformTimeZoneProvider(defaultLocalTimeZoneProvider);
+  try {
+    await resolveCurrentTimeZone();
+  } catch (_) {}
   // Supabase auth (U4): initialized before the first frame so a cold-start
   // recovery link is latched in the service before any widget exists
   // (KTD8). Null when the build has no Supabase configuration (KTD11).

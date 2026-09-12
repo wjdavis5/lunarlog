@@ -293,7 +293,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final previous = await repository.find(widget.profileId, today);
     if (!mounted) return;
     final flow = quickLogFlowLevel(previous?.flow);
-    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
+    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZoneSync)();
     final entry = previous?.copyWith(flow: flow, tz: tz) ??
         DayEntry(
           id: '',

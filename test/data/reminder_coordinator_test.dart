@@ -18,6 +18,8 @@ import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../support/fake_reminder_scheduler.dart';
 import '../support/fake_settings_store.dart';
@@ -88,6 +90,7 @@ void main() {
   // The coordinator registers with WidgetsBinding (lifecycle observer);
   // plain tests need the test binding initialized for that.
   TestWidgetsFlutterBinding.ensureInitialized();
+  tzdata.initializeTimeZones();
 
   test('profiles + predictions flow through to a reschedule call', () async {
     final scheduler = FakeReminderScheduler();
@@ -371,6 +374,39 @@ void main() {
     expect(scheduler.availabilityChecks, 1);
     expect(permissionState.value, NotificationAvailability.available);
     expect(scheduler.rescheduleCalls, isNotEmpty);
+  });
+
+  test(
+      'resume re-resolves changed device timezone, updates tz.local, and replans (issue #169)',
+      () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final ny = tz.getLocation('America/New_York');
+    tz.setLocalLocation(ny);
+    expect(tz.local.name, 'America/New_York');
+
+    var currentTz = 'Europe/Paris';
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      localTimeZoneProvider: () async => currentTz,
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    final initialReschedules = scheduler.rescheduleCalls.length;
+
+    // Simulate traveling to Tokyo and resuming
+    currentTz = 'Asia/Tokyo';
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(tz.local.name, 'Asia/Tokyo');
+    expect(scheduler.rescheduleCalls.length, greaterThan(initialReschedules));
   });
 
   test('resume notices revoked permission and cancels reminders', () async {

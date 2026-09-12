@@ -180,7 +180,7 @@ class _NotificationPreferencesScreenState
         : current.copyWith(endMinutes: minutes);
     await _apply((p) => p.copyWith(
           quietHours: next,
-          timeZone: resolveCurrentTimeZone(),
+          timeZone: resolveCurrentTimeZoneSync(),
         ));
   }
 
