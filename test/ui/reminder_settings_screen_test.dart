@@ -50,6 +50,9 @@ class _FakeModesRepository implements ProfileModesRepository {
   Future<ProfileLifecycleMode?> find(String profileId) async => row;
 
   @override
+  Stream<ProfileLifecycleMode?> watch(String profileId) => Stream.value(row);
+
+  @override
   Future<void> save({
     required String profileId,
     required LifecycleMode mode,

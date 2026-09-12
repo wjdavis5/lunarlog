@@ -208,6 +208,7 @@ AppDependencies buildAppDependencies({
   final dayEntries = DriftDayEntriesRepository(storage);
   final observations = DriftObservationsRepository(storage);
   final settings = DriftSettingsStore(storage);
+  final profileModes = DriftProfileModesRepository(storage);
   final profileGuardians = DriftProfileGuardiansRepository(storage);
   final accountImporter = DriftAccountImporter(storage);
 
@@ -228,7 +229,7 @@ AppDependencies buildAppDependencies({
     observations: observations,
     careContent: DriftCareContentRepository(storage),
     settings: settings,
-    profileModes: DriftProfileModesRepository(storage),
+    profileModes: profileModes,
     profileGuardians: profileGuardians,
     activityFeed: DriftActivityFeedRepository(storage),
     onboardingCycleAnswers: DriftOnboardingCycleAnswersRecorder(storage),
@@ -252,20 +253,15 @@ AppDependencies buildAppDependencies({
     ),
     // Issue #233: the profile_modes birth-control watcher feeds the
     // predictor's branch (withdrawal-bleed -> pack schedule, continuous ->
-    // suppressed). Mirrors the reminder coordinator's birthControlStateFor
-    // wiring in lib/app.dart.
+    // suppressed). Issue #551: goes through ProfileModesRepository.watch
+    // plus the one shared birthControlStateFromProfileMode mapper, rather
+    // than a hand-copy of `lib/app.dart`'s reminder-coordinator wiring
+    // reaching past this repository into LunarLogStorage directly.
     prediction: CyclePredictionService(dayEntries,
         settings: settings,
         profiles: profiles,
-        birthControlStateFor: (profileId) => storage
-            .watchProfileMode(profileId)
-            .map((row) => row == null
-                ? null
-                : (
-                    method: row.birthControlMethod,
-                    startedOn: row.birthControlStartedOn,
-                    stoppedOn: row.birthControlStoppedOn,
-                  ))),
+        birthControlStateFor: (profileId) =>
+            profileModes.watch(profileId).map(birthControlStateFromProfileMode)),
     cycleHistory: CycleHistoryService(dayEntries, settings: settings),
     cycleExclusions: CycleExclusionList(settings),
     authService: authService,

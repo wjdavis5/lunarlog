@@ -57,4 +57,12 @@ abstract interface class ProfileModesRepository {
   /// The profile's mode row, or null when none was ever written (meaning
   /// [LifecycleMode.tracking] with no birth-control answer).
   Future<ProfileLifecycleMode?> find(String profileId);
+
+  /// Reactive variant of [find] (issue #551): emits again on every write —
+  /// an onboarding answer, a profile-settings edit, or a sync pull. The
+  /// one seam `lib/app.dart`'s reminder-coordinator wiring and
+  /// `AppDependencies`' own prediction-service wiring should both watch
+  /// through, rather than each reaching past this repository into
+  /// `LunarLogStorage.watchProfileMode` directly.
+  Stream<ProfileLifecycleMode?> watch(String profileId);
 }
