@@ -5,20 +5,28 @@
 /// authentication returns false — never a bypass.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:local_auth/local_auth.dart';
 
 import 'package:lunarlog/domain/gate/app_gate.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Native factory: the shell imports `gate.dart` and calls this without
 /// branching on platform.
 AppGate defaultAppGate() => LocalAuthAppGate();
 
 class LocalAuthAppGate implements AppGate {
-  LocalAuthAppGate({LocalAuthentication? localAuth})
-      : _localAuth = localAuth ?? LocalAuthentication();
+  LocalAuthAppGate({
+    LocalAuthentication? localAuth,
+    BreadcrumbLog? breadcrumbLog,
+  })  : _localAuth = localAuth ?? LocalAuthentication(),
+        _breadcrumbLog = breadcrumbLog ?? defaultBreadcrumbLog;
 
   final LocalAuthentication _localAuth;
+  final BreadcrumbLog _breadcrumbLog;
 
   @override
   bool get requiresUnlock => true;
@@ -30,7 +38,9 @@ class LocalAuthAppGate implements AppGate {
       try {
         canAuthenticate = await _localAuth.canCheckBiometrics ||
             await _localAuth.isDeviceSupported();
-      } on PlatformException {
+      } on PlatformException catch (error, stackTrace) {
+        _breadcrumbLog.record('gate', error.runtimeType.toString());
+        unawaited(Sentry.captureException(error, stackTrace: stackTrace));
         return false;
       }
       if (!canAuthenticate) {
@@ -45,7 +55,9 @@ class LocalAuthAppGate implements AppGate {
           stickyAuth: true,
         ),
       );
-    } on Exception {
+    } on Exception catch (error, stackTrace) {
+      _breadcrumbLog.record('gate', error.runtimeType.toString());
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
       return false;
     }
   }

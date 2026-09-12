@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
@@ -279,6 +280,7 @@ void main() {
     testWidgets('shows error message on unexpected exception', (tester) async {
       final failingService = FakeSharingService()
         ..scriptedError = Exception('network crashed');
+      final log = BreadcrumbLog();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -286,6 +288,7 @@ void main() {
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
               sharingService: failingService,
+              breadcrumbLog: log,
             ),
           ),
         ),
@@ -295,6 +298,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('An unexpected error occurred.'), findsOneWidget);
+      expect(log.snapshot(), ['sharing: _Exception']);
+      expect(log.snapshot().single, isNot(contains('network crashed')));
     });
   });
 

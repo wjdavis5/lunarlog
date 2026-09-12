@@ -21,6 +21,9 @@ import 'dart:async';
 
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/notifications/push_registration.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:meta/meta.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 class PushRegistrationCoordinator {
   PushRegistrationCoordinator({
@@ -31,13 +34,17 @@ class PushRegistrationCoordinator {
     required Stream<AuthSessionState> authStates,
     required AuthSessionState Function() currentAuthState,
     void Function(String profileId)? onTap,
+    BreadcrumbLog? breadcrumbLog,
   })  : _tokenSource = tokenSource,
         _registry = registry,
         _deviceId = deviceId,
         _platform = platform,
         _authStates = authStates,
         _currentAuthState = currentAuthState,
-        _onTap = onTap;
+        _onTap = onTap,
+        _breadcrumbLog = breadcrumbLog ?? defaultBreadcrumbLog;
+
+  static const int kMaxConsecutiveRegistrationFailures = 3;
 
   final PushTokenSource _tokenSource;
   final PushDeviceRegistry _registry;
@@ -46,6 +53,12 @@ class PushRegistrationCoordinator {
   final Stream<AuthSessionState> _authStates;
   final AuthSessionState Function() _currentAuthState;
   final void Function(String profileId)? _onTap;
+  final BreadcrumbLog _breadcrumbLog;
+
+  int _consecutiveRegistrationFailures = 0;
+
+  @visibleForTesting
+  int get consecutiveRegistrationFailures => _consecutiveRegistrationFailures;
 
   StreamSubscription<AuthSessionState>? _authSub;
   StreamSubscription<String>? _refreshSub;
@@ -63,15 +76,21 @@ class PushRegistrationCoordinator {
     // With no onError here that would escape as an unhandled zone error
     // (no runZonedGuarded wraps this app) instead of the best-effort
     // swallow every other failure path in this class already gets.
-    _refreshSub =
-        _tokenSource.tokenRefreshes().listen(_onTokenRefresh, onError: (_) {});
+    _refreshSub = _tokenSource.tokenRefreshes().listen(
+      _onTokenRefresh,
+      onError: (Object error) {
+        _breadcrumbLog.record('push', error.runtimeType.toString());
+      },
+    );
     _tapSub = _tokenSource.taps().listen(
       _onTap == null
           ? null
           : (profileId) {
               if (profileId != null) _onTap(profileId);
             },
-      onError: (_) {},
+      onError: (Object error) {
+        _breadcrumbLog.record('push', error.runtimeType.toString());
+      },
     );
     if (_signedIn) {
       await _registerCurrentToken();
@@ -95,8 +114,14 @@ class PushRegistrationCoordinator {
       final token = await _tokenSource.currentToken();
       if (token == null || !_signedIn || _disposed) return;
       await _registry.register(_deviceId, token, platform: _platform);
-    } catch (_) {
-      // Best-effort; a later refresh or app restart retries.
+      _consecutiveRegistrationFailures = 0;
+    } catch (error, stackTrace) {
+      _consecutiveRegistrationFailures++;
+      _breadcrumbLog.record('push', error.runtimeType.toString());
+      if (_consecutiveRegistrationFailures >=
+          kMaxConsecutiveRegistrationFailures) {
+        unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      }
     }
   }
 
@@ -108,16 +133,22 @@ class PushRegistrationCoordinator {
   Future<void> _safeRegister(String token) async {
     try {
       await _registry.register(_deviceId, token, platform: _platform);
-    } catch (_) {
-      // Best-effort; a subsequent refresh still attempts registration.
+      _consecutiveRegistrationFailures = 0;
+    } catch (error, stackTrace) {
+      _consecutiveRegistrationFailures++;
+      _breadcrumbLog.record('push', error.runtimeType.toString());
+      if (_consecutiveRegistrationFailures >=
+          kMaxConsecutiveRegistrationFailures) {
+        unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      }
     }
   }
 
   Future<void> _safeRemove() async {
     try {
       await _registry.remove(_deviceId);
-    } catch (_) {
-      // Best-effort.
+    } catch (error) {
+      _breadcrumbLog.record('push', error.runtimeType.toString());
     }
   }
 
@@ -131,8 +162,8 @@ class PushRegistrationCoordinator {
   Future<void> removeAllRegistrations() async {
     try {
       await _registry.removeAllForCurrentUser();
-    } catch (_) {
-      // Best-effort, mirroring _safeRemove above.
+    } catch (error) {
+      _breadcrumbLog.record('push', error.runtimeType.toString());
     }
   }
 
