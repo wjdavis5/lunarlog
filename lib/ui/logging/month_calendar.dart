@@ -61,6 +61,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
@@ -993,6 +994,17 @@ class _MonthCalendarState extends State<MonthCalendar> {
     return StreamBuilder<CyclePrediction?>(
       stream: _predictionStream,
       builder: (context, predictionSnapshot) {
+        // #543: only a real injected stream can error — the pure-function
+        // fallback used when no service is provided (tests) never does.
+        if (_predictionStream != null && predictionSnapshot.hasError) {
+          return Center(
+            child: InlineError(
+              key: const ValueKey('calendar-prediction-error'),
+              message: 'Could not load the cycle estimate.',
+              onRetry: () => setState(_rewatchPrediction),
+            ),
+          );
+        }
         final prediction = _predictionStream == null
             ? computePredictionFromEntries(entries: entries, today: today)
             : predictionSnapshot.data;
@@ -1002,6 +1014,15 @@ class _MonthCalendarState extends State<MonthCalendar> {
         return StreamBuilder<CycleHistoryView?>(
           stream: _historyStream,
           builder: (context, historySnapshot) {
+            if (_historyStream != null && historySnapshot.hasError) {
+              return Center(
+                child: InlineError(
+                  key: const ValueKey('calendar-history-error'),
+                  message: 'Could not load cycle history.',
+                  onRetry: () => setState(_rewatchPrediction),
+                ),
+              );
+            }
             final history = _historyStream == null
                 ? deriveCycleHistoryFromEntries(
                     entries: entries,

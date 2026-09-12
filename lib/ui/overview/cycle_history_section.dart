@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
@@ -96,11 +97,34 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
     }
   }
 
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback below.
+  void _retry() {
+    setState(() {
+      _views = _service.watch(widget.profileId, today: widget.todayProvider);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<CycleHistoryView>(
       stream: _views,
       builder: (context, snapshot) {
+        // #543: error, loading, and "no history yet" used to all render
+        // `SizedBox.shrink()` — a genuine failure was invisible. Loading and
+        // empty still render nothing (this is a secondary section below the
+        // main estimate card, not worth a spinner of its own), but an error
+        // now surfaces with a retry instead of silently vanishing.
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: InlineError(
+              key: const ValueKey('cycle-history-error'),
+              message: 'Could not load cycle history.',
+              onRetry: _retry,
+            ),
+          );
+        }
         final view = snapshot.data;
         if (view == null || view.items.isEmpty) {
           return const SizedBox.shrink();

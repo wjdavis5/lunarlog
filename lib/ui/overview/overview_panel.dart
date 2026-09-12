@@ -61,6 +61,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
+import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
@@ -163,6 +164,15 @@ class OverviewPanel extends StatefulWidget {
 class _OverviewPanelState extends State<OverviewPanel> {
   late CyclePredictionService _service;
   late Stream<CyclePrediction> _predictions;
+
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level `StreamBuilder`.
+  void _retryPredictions() {
+    setState(() {
+      _predictions =
+          _service.watch(widget.profileId, today: widget.todayProvider);
+    });
+  }
   // Captured once (matches _resolverFor/cycle_history_section.dart's
   // pattern) rather than re-reading context.read inside a button callback.
   late final CycleExclusionList _exclusions = context
@@ -373,34 +383,47 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return StreamBuilder<CyclePrediction>(
       stream: _predictions,
       builder: (context, snapshot) {
-        final prediction = snapshot.data;
-        if (prediction == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            switch (prediction) {
-              ActivePrediction() => _activeCard(context, prediction),
-              NotEnoughHistory() => _notEnoughCard(context),
-              // Issue #233: an in-effect continuous birth-control method
-              // replaces the estimate with an explicit suppressed state —
-              // never NotEnoughHistory and never a silent late/paused line.
-              PredictionsSuppressed() =>
-                PredictionsSuppressedCard(method: prediction.method),
-              // Issue #225: per-profile predictions disabled toggle.
-              PredictionsDisabled() => PredictionsDisabledCard(
-                  onManageSettings: () =>
-                      pushNamedScreen<void>(context, kRouteSettingsScreen),
-                ),
-            },
-            _seeHistoryLink(context),
-            if (availability == NotificationAvailability.denied)
-              const _ReminderHint(),
-            ...widget.trailingChildren,
-          ],
+        return AsyncSnapshotView<CyclePrediction>(
+          snapshot: snapshot,
+          errorMessage: 'Could not load your cycle estimate.',
+          onRetry: _retryPredictions,
+          builder: (context, prediction) => _overviewBody(
+            context,
+            prediction,
+            availability,
+          ),
         );
       },
+    );
+  }
+
+  Widget _overviewBody(
+    BuildContext context,
+    CyclePrediction prediction,
+    NotificationAvailability availability,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        switch (prediction) {
+          ActivePrediction() => _activeCard(context, prediction),
+          NotEnoughHistory() => _notEnoughCard(context),
+          // Issue #233: an in-effect continuous birth-control method
+          // replaces the estimate with an explicit suppressed state —
+          // never NotEnoughHistory and never a silent late/paused line.
+          PredictionsSuppressed() =>
+            PredictionsSuppressedCard(method: prediction.method),
+          // Issue #225: per-profile predictions disabled toggle.
+          PredictionsDisabled() => PredictionsDisabledCard(
+              onManageSettings: () =>
+                  pushNamedScreen<void>(context, kRouteSettingsScreen),
+            ),
+        },
+        _seeHistoryLink(context),
+        if (availability == NotificationAvailability.denied)
+          const _ReminderHint(),
+        ...widget.trailingChildren,
+      ],
     );
   }
 
