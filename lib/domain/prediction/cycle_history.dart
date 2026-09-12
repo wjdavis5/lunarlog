@@ -46,6 +46,23 @@ String omittedCyclesSettingKey(String profileId) => 'omittedCycles.$profileId';
 /// quiet (it reappears on that date).
 String lateSnoozeSettingKey(String profileId) => 'lateSnooze.$profileId';
 
+/// Device-local toggle for whether predictions are enabled for [profileId] (issue #225).
+/// When set to `'false'`, predictions are turned off. Defaults to true (predictions on).
+String predictionsEnabledSettingKey(String profileId) =>
+    'predictionsEnabled.$profileId';
+
+/// Device-local flag indicating whether the user dismissed the suggestion
+/// to turn off predictions for [profileId] when confidence is irregular (issue #225).
+String predictionsSuggestionDismissedSettingKey(String profileId) =>
+    'predictionsSuggestionDismissed.$profileId';
+
+/// Parses a stored predictions-enabled boolean string.
+/// Defaults to true if null, empty, or anything other than 'false'.
+bool parsePredictionsEnabled(String? raw) => raw != 'false';
+
+/// Encodes a predictions-enabled boolean for storage.
+String encodePredictionsEnabled(bool enabled) => enabled ? 'true' : 'false';
+
 /// Days a "remind me in three days" choice quiets the late resolver (R6).
 const int kLateSnoozeDays = 3;
 

@@ -670,10 +670,10 @@ abstract class AppLocalizations {
   /// **'Exclude this cycle'**
   String get overviewLongCycleExclude;
 
-  /// Disabled placeholder action for turning predictions off (issue #225).
+  /// Action navigating to Settings to manage or turn off predictions (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Turn off predictions (coming soon)'**
+  /// **'Turn off predictions'**
   String get overviewLongCyclePredictionsOff;
 
   /// Hint line shown when notification permission is denied.
@@ -1161,6 +1161,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.'**
   String predictionsSuppressedBody(String method);
+
+  /// Title of the card displayed when predictions are disabled for the profile (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions turned off'**
+  String get predictionsDisabledTitle;
+
+  /// Body of the card explaining that predictions are disabled while tracking remains active (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
+  String get predictionsDisabledBody;
+
+  /// Button on predictions-disabled card opening Settings (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Manage in Settings'**
+  String get predictionsDisabledAction;
+
+  /// Title of the prediction toggle in Settings when only one profile exists (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Show predictions'**
+  String get settingsPredictionsTitle;
+
+  /// Title of the prediction toggle in Settings for a specific profile (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Show predictions ({profileName})'**
+  String settingsPredictionsProfileTitle(String profileName);
+
+  /// Subtitle describing the predictions toggle in Settings (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Show cycle estimates, fertile window, and prediction reminders'**
+  String get settingsPredictionsSubtitle;
+
+  /// Title of the suggestion banner offered when cycle variation is irregular (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Cycles vary a lot'**
+  String get overviewIrregularSuggestionTitle;
+
+  /// Body of the dismissible suggestion banner for irregular cycles (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.'**
+  String get overviewIrregularSuggestionBody;
+
+  /// Action on the irregular suggestion banner opening Settings (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Manage in Settings'**
+  String get overviewIrregularSuggestionSettings;
+
+  /// Action dismissing the irregular suggestion banner (issue #225).
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get overviewIrregularSuggestionDismiss;
 
   /// Reminder settings header for the cycle reminders group (Issue #178), matching Clue's information architecture.
   ///

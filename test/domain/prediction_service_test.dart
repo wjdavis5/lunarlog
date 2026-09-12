@@ -648,5 +648,54 @@ void main() {
           reason: 'today advancing must recompute even though the entries '
               'fingerprint is unchanged');
     });
+
+    test(
+        'issue #225: emits PredictionsDisabled when predictions are disabled '
+        'in settings, and restores prediction when re-enabled without data loss',
+        () async {
+      final settings = DriftSettingsStore(db.storage);
+      final serviceWithSettings = CyclePredictionService(
+        dayEntries,
+        settings: settings,
+      );
+
+      final profile = await profiles.create(displayName: 'A', isMinor: false);
+
+      // Create 3 valid completed cycles.
+      await recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+      await recordBleed(profile.id, LocalDate(2026, 1, 29), 4);
+      await recordBleed(profile.id, LocalDate(2026, 2, 26), 4);
+      await recordBleed(profile.id, LocalDate(2026, 3, 26), 4);
+
+      final seen = <CyclePrediction>[];
+      final sub = serviceWithSettings
+          .watch(profile.id, today: () => LocalDate(2026, 4, 1))
+          .listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      expect(seen.last, isA<ActivePrediction>());
+      final active = seen.last as ActivePrediction;
+      expect(active.meanCycleLengthDays, 28);
+
+      // Disable predictions in settings.
+      await settings.set(predictionsEnabledSettingKey(profile.id), 'false');
+      await pumpEventQueue();
+
+      expect(seen.last, isA<PredictionsDisabled>());
+      final currentPrediction = await serviceWithSettings.current(
+        profile.id,
+        today: () => LocalDate(2026, 4, 1),
+      );
+      expect(currentPrediction, isA<PredictionsDisabled>());
+
+      // Re-enable predictions in settings.
+      await settings.set(predictionsEnabledSettingKey(profile.id), 'true');
+      await pumpEventQueue();
+
+      expect(seen.last, isA<ActivePrediction>());
+      final restored = seen.last as ActivePrediction;
+      expect(restored.meanCycleLengthDays, 28);
+    });
   });
 }

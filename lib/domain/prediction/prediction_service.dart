@@ -186,7 +186,8 @@ class CyclePredictionService {
       ProfilesRepository? profiles,
       Stream<BirthControlState?> Function(String profileId)?
           birthControlStateFor})
-      : _exclusions = settings == null ? null : CycleExclusionList(settings),
+      : _settings = settings,
+        _exclusions = settings == null ? null : CycleExclusionList(settings),
         // A named parameter cannot be private, so this direct
         // pass-through cannot be an initializing formal (the same reason
         // the coordinator/publisher files carry file-level ignores).
@@ -196,6 +197,7 @@ class CyclePredictionService {
         _birthControlStateFor = birthControlStateFor;
 
   final DayEntriesRepository _dayEntries;
+  final SettingsStore? _settings;
   final CycleExclusionList? _exclusions;
 
   /// Issue #218: the profiles repository supplying each profile's
@@ -218,6 +220,9 @@ class CyclePredictionService {
   /// (issue #197). [today] is evaluated per emission so long-lived
   /// subscriptions stay correct across midnight; it defaults to the local
   /// civil date.
+  ///
+  /// Issue #225: when predictions are disabled for this profile in settings,
+  /// emits [PredictionsDisabled] immediately.
   Stream<CyclePrediction> watch(String profileId,
       {LocalDate Function()? today}) {
     final todayOf = today ?? LocalDate.today;
@@ -231,28 +236,40 @@ class CyclePredictionService {
       _factsFor(profileId),
       _birthControlFor(profileId),
     );
+    final Stream<
+            (List<DayEntry>, Set<LocalDate>, CycleFacts, BirthControlState?)>
+        withExclusions;
     if (exclusions == null) {
-      return core.map(
-        (latest) => _predictionFor(
-          memo: memo,
-          entries: latest.$1,
-          omissions: const {},
-          today: todayOf(),
-          facts: latest.$2,
-          birthControlState: latest.$3,
-        ),
+      withExclusions = core.map(
+        (latest) => (latest.$1, const <LocalDate>{}, latest.$2, latest.$3),
+      );
+    } else {
+      withExclusions = combineLatest2(core, exclusions.watch(profileId)).map(
+        (latest) => (latest.$1.$1, latest.$2, latest.$1.$2, latest.$1.$3),
       );
     }
-    return combineLatest2(core, exclusions.watch(profileId)).map(
-      (latest) => _predictionFor(
+    return combineLatest2(withExclusions, _predictionsEnabledFor(profileId))
+        .map((latest) {
+      final enabled = latest.$2;
+      if (!enabled) return const PredictionsDisabled();
+      final data = latest.$1;
+      return _predictionFor(
         memo: memo,
-        entries: latest.$1.$1,
-        omissions: latest.$2,
+        entries: data.$1,
+        omissions: data.$2,
         today: todayOf(),
-        facts: latest.$1.$2,
-        birthControlState: latest.$1.$3,
-      ),
-    );
+        facts: data.$3,
+        birthControlState: data.$4,
+      );
+    });
+  }
+
+  Stream<bool> _predictionsEnabledFor(String profileId) {
+    final settings = _settings;
+    if (settings == null) return Stream.value(true);
+    return settings
+        .watch(predictionsEnabledSettingKey(profileId))
+        .map(parsePredictionsEnabled);
   }
 
   /// The profile's raw birth-control state (issue #233), or null when no
@@ -385,8 +402,18 @@ class CyclePredictionService {
   /// One-shot computation from current stored entries (and the current
   /// omission list, cycle facts, and birth-control state when their
   /// providers are wired).
+  ///
+  /// Issue #225: returns [PredictionsDisabled] when predictions are turned
+  /// off for this profile.
   Future<CyclePrediction> current(String profileId,
       {LocalDate Function()? today}) async {
+    final settings = _settings;
+    if (settings != null) {
+      final raw = await settings.get(predictionsEnabledSettingKey(profileId));
+      if (!parsePredictionsEnabled(raw)) {
+        return const PredictionsDisabled();
+      }
+    }
     final todayOf = today ?? LocalDate.today;
     final exclusions = _exclusions;
     final omissions = exclusions == null

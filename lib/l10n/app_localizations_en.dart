@@ -345,8 +345,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewLongCycleExclude => 'Exclude this cycle';
 
   @override
-  String get overviewLongCyclePredictionsOff =>
-      'Turn off predictions (coming soon)';
+  String get overviewLongCyclePredictionsOff => 'Turn off predictions';
 
   @override
   String get overviewReminderHint =>
@@ -624,6 +623,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String predictionsSuppressedBody(String method) {
     return 'Because $method typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.';
   }
+
+  @override
+  String get predictionsDisabledTitle => 'Predictions turned off';
+
+  @override
+  String get predictionsDisabledBody =>
+      'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.';
+
+  @override
+  String get predictionsDisabledAction => 'Manage in Settings';
+
+  @override
+  String get settingsPredictionsTitle => 'Show predictions';
+
+  @override
+  String settingsPredictionsProfileTitle(String profileName) {
+    return 'Show predictions ($profileName)';
+  }
+
+  @override
+  String get settingsPredictionsSubtitle =>
+      'Show cycle estimates, fertile window, and prediction reminders';
+
+  @override
+  String get overviewIrregularSuggestionTitle => 'Cycles vary a lot';
+
+  @override
+  String get overviewIrregularSuggestionBody =>
+      'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.';
+
+  @override
+  String get overviewIrregularSuggestionSettings => 'Manage in Settings';
+
+  @override
+  String get overviewIrregularSuggestionDismiss => 'Dismiss';
 
   @override
   String get reminderSectionCycle => 'Your cycle';

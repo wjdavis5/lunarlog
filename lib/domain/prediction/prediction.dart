@@ -416,6 +416,19 @@ class PredictionsSuppressed extends CyclePrediction {
   String toString() => 'PredictionsSuppressed(${method.name})';
 }
 
+/// Period prediction has been turned off for this profile by the user
+/// (issue #225). Logging, history, and statistics remain fully intact,
+/// but estimates, calendar prediction bands, rolled estimates, and
+/// prediction-derived reminders are suppressed.
+class PredictionsDisabled extends CyclePrediction {
+  const PredictionsDisabled();
+
+  String get statusLabel => 'predictions turned off';
+
+  @override
+  String toString() => 'PredictionsDisabled()';
+}
+
 /// A live estimate: last episode start + mean of the most recent usable
 /// (valid per the 15–60 window, not omitted, recency-bounded) cycle
 /// lengths, rounded to a whole day. A skipped open cycle advances the
