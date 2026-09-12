@@ -82,90 +82,16 @@ jobs:
         run: flutter test
 
   migration-gate:
-    # Issue #47. A released client build uploads to TestFlight, but
-    # migrations are pushed by a *separate*, manually-gated workflow. Nothing
-    # enforced the ordering, so the client could ship expecting a schema
-    # production did not have yet -- which is exactly what happened on
-    # 2026-09-05: two TestFlight builds carrying the multi-guardian sharing
-    # feature went out roughly an hour before `profile_guardians` existed in
-    # production.
-    #
-    # This job fails the release when any migration in the repo is not applied
-    # to production. It fails closed on purpose: a blocked release is
-    # recoverable, a client shipped against a missing schema is not.
+    # Issue #47, extracted into a reusable workflow by issue #539 so
+    # play-store-release.yml can share the exact same gate instead of
+    # shipping Android releases with no equivalent protection. See
+    # .github/workflows/migration-gate.yml for the full rationale: it fails
+    # the release when any migration in the repo is not applied to
+    # production, fails closed on purpose (a blocked release is recoverable,
+    # a client shipped against a missing schema is not).
     name: Verify Supabase migrations are applied
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      # The direct host (db.<ref>.supabase.co) publishes AAAA records only, and
-      # GitHub-hosted runners have no IPv6 route -- it fails to resolve there.
-      # Connect through the IPv4 session pooler instead. Override with the
-      # repository variable if the project ever moves region.
-      POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-0-us-west-2.pooler.supabase.com' }}
-      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      PGSSLMODE: require
-      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Check gate credentials
-        run: |
-          set -euo pipefail
-          missing=0
-          if [ -z "${PGPASSWORD:-}" ]; then
-            echo "::error::SUPABASE_DB_PASSWORD is not set. This gate cannot verify that production has the migrations this build expects, so the release is blocked. Add it under Settings -> Secrets and variables -> Actions."
-            missing=1
-          fi
-          if [ -z "${PROJECT_REF:-}" ]; then
-            echo "::error::SUPABASE_PROJECT_REF is not set. Add it under Settings -> Secrets and variables -> Actions."
-            missing=1
-          fi
-          [ "$missing" -eq 0 ] || exit 1
-
-      - name: Install psql
-        run: |
-          set -euo pipefail
-          command -v psql >/dev/null 2>&1 || {
-            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
-          }
-          psql --version
-
-      - name: Compare repo migrations against production
-        run: |
-          set -euo pipefail
-
-          repo=$(find supabase/migrations -maxdepth 1 -name '*.sql' -printf '%f\n' 2>/dev/null \
-                 | sed -E 's/^([0-9]+)_.*/\1/' | sort -u)
-          if [ -z "$repo" ]; then
-            echo "::error::No migrations found in supabase/migrations. Refusing to release without verifying schema state."
-            exit 1
-          fi
-
-          # Separate connection params rather than a URL: the password is not
-          # URL-encoded anywhere, so a '@' or ':' in it cannot corrupt parsing.
-          applied=$(psql -h "$POOLER_HOST" -p 5432 -U "postgres.${PROJECT_REF}" -d postgres \
-                      -t -A -c "select version from supabase_migrations.schema_migrations" \
-                    | tr -d '\r' | sed '/^$/d' | sort -u)
-
-          missing=$(comm -23 <(echo "$repo") <(echo "$applied") || true)
-          extra=$(comm -13 <(echo "$repo") <(echo "$applied") || true)
-
-          echo "Repo migrations:      $(echo "$repo" | wc -l)"
-          echo "Applied in production: $(echo "$applied" | sed '/^$/d' | wc -l)"
-
-          if [ -n "$extra" ]; then
-            # Not fatal: production having extra history does not mean this
-            # client is ahead of its schema. It does mean the repo is not the
-            # sole source of truth, which is worth surfacing.
-            echo "::warning::Production has migration versions absent from this repo (applied outside the repo path): $(echo "$extra" | tr '\n' ' ')"
-          fi
-
-          if [ -n "$missing" ]; then
-            echo "::error::Release blocked -- production is missing $(echo "$missing" | wc -l) migration(s) this build expects: $(echo "$missing" | tr '\n' ' '). Run the 'Supabase migrate' workflow (or apply them manually), then re-run this release. Shipping now would put a client on TestFlight whose features fail against production."
-            exit 1
-          fi
-
-          echo "All $(echo "$repo" | wc -l) repo migrations are applied to production. Safe to release."
+    uses: ./.github/workflows/migration-gate.yml
+    secrets: inherit
 
   release-gate:
     # Fails fast, before any build work, when a dispatcher explicitly
@@ -195,7 +121,12 @@ jobs:
   release:
     name: Build, sign, and upload to TestFlight
     needs: [verify, migration-gate, release-gate]
-    runs-on: self-hosted
+    # This is a manual (workflow_dispatch-only) trigger, so a fork PR can
+    # never reach this job -- kept for consistency with ci.yml's self-hosted
+    # jobs (issue #514), which guard against the pull_request case this
+    # runner also executes.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -247,15 +178,27 @@ jobs:
         run: bash .github/scripts/check-release-gate.sh
 
       - name: Install the App Store Connect API key
+        # Issue #571: this used to write into $HOME/.appstoreconnect,
+        # mutating the developer's own home directory on their personal
+        # Mac -- a later `rm -rf` of that same path in cleanup would
+        # destroy any ASC key the human had installed there for their own
+        # use. Written into $RUNNER_TEMP instead (job-scoped, not shared
+        # with the human's environment); API_PRIVATE_KEYS_DIR is Apple's
+        # own supported redirect for altool/notarytool to look somewhere
+        # other than ~/.appstoreconnect/private_keys (altool has no
+        # `--apiKeyPath` flag to pass this directly), recorded via
+        # $GITHUB_ENV for the "Upload to TestFlight" step below.
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          key_path="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          keys_dir="$RUNNER_TEMP/appstoreconnect/private_keys"
+          mkdir -p "$keys_dir"
+          key_path="$keys_dir/AuthKey_${ASC_KEY_ID}.p8"
           printf '%s' "$ASC_PRIVATE_KEY" > "$key_path"
           chmod 600 "$key_path"
+          echo "API_PRIVATE_KEYS_DIR=$keys_dir" >> "$GITHUB_ENV"
 
       - name: Configure signing keychain
         env:
@@ -296,6 +239,16 @@ jobs:
           security find-identity -v -p codesigning "$keychain"
 
       - name: Install the provisioning profile
+        # Xcode only discovers profiles from $HOME/Library/MobileDevice --
+        # there's no per-job-scoped location it will look in instead, so
+        # this step still has to write there. Issue #571: the previous
+        # version never removed what it copied in, so profiles accumulate
+        # here across every release run on this shared, non-ephemeral Mac
+        # (it also serves AGENTS.md's "iOS Local Device Builds") and a stale
+        # one can make Xcode pick the wrong profile for a local device
+        # build. The exact installed path is recorded via $GITHUB_ENV so
+        # the cleanup step below can `rm -f` precisely that file, never
+        # anything the human installed themselves.
         env:
           PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
         run: |
@@ -313,10 +266,12 @@ jobs:
 
           uuid="$(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" | plutil -extract UUID raw -o - -)"
           name="$(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" | plutil -extract Name raw -o - -)"
-          cp "$RUNNER_TEMP/profile.mobileprovision" "$profiles/$uuid.mobileprovision"
+          installed_path="$profiles/$uuid.mobileprovision"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$installed_path"
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
 
           echo "PROVISIONING_PROFILE_NAME=$name" >> "$GITHUB_ENV"
+          echo "PROVISIONING_PROFILE_PATH=$installed_path" >> "$GITHUB_ENV"
           echo "Installed profile '$name' ($uuid)"
 
       - name: Cache Swift Package Manager dependencies
@@ -334,21 +289,43 @@ jobs:
         run: flutter pub get
 
       - name: Build Flutter assets
+        # Issue #572: every value here -- the version/build outputs and
+        # every secret -- goes through env: and is referenced quoted. A
+        # version string containing a trailing comment (see
+        # extract-marketing-version.sh's hardening) spliced unquoted into
+        # `--build-name=$marketing \` would silently comment out the rest
+        # of this command, including every --dart-define, and the build
+        # would still succeed -- just with no Supabase/Sentry/FCM
+        # configuration at all.
+        env:
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
           flutter build ios --release --no-codesign \
-            --build-name=${{ steps.version.outputs.marketing }} \
-            --build-number=${{ steps.version.outputs.build }} \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
-            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
-            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
-            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
-            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
-            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
-            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+            --build-name="$MARKETING_VERSION" \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
       - name: Install CocoaPods dependencies
         env:
@@ -469,6 +446,10 @@ jobs:
           fi
 
       - name: Upload to TestFlight
+        # Relies on API_PRIVATE_KEYS_DIR, exported to $GITHUB_ENV by
+        # "Install the App Store Connect API key" above, to tell altool
+        # where the .p8 key lives now that it's under $RUNNER_TEMP instead
+        # of the default ~/.appstoreconnect/private_keys (issue #571).
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -491,6 +472,10 @@ jobs:
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
           DELIVER_BUILD_NUMBER: ${{ steps.version.outputs.build }}
           DELIVER_APP_VERSION: ${{ steps.version.outputs.marketing }}
+          # Issue #571: without this, `bundle install` installs into the
+          # runner user's global gem environment on this shared, persistent
+          # Mac instead of a project-local directory.
+          BUNDLE_PATH: vendor/bundle
         run: |
           set -euo pipefail
           # The root Gemfile/Gemfile.lock pin fastlane (issue #208) so the
@@ -500,20 +485,36 @@ jobs:
           bundle exec fastlane ios submit
 
       - name: Clean up signing material and secrets
+        # Issue #571: the ASC key now lives under $RUNNER_TEMP (see "Install
+        # the App Store Connect API key" above), not $HOME, so cleanup no
+        # longer touches -- let alone unconditionally `rm -rf`s -- anything
+        # under the developer's own $HOME/.appstoreconnect. The provisioning
+        # profile installed above is removed by its exact recorded path
+        # instead of being left to accumulate in
+        # $HOME/Library/MobileDevice/Provisioning Profiles across runs on
+        # this non-ephemeral machine.
         if: always()
         run: |
           set -euo pipefail
-          rm -rf ~/.appstoreconnect/private_keys
+          if [ -n "${API_PRIVATE_KEYS_DIR:-}" ] && [ -d "$API_PRIVATE_KEYS_DIR" ]; then
+            rm -rf "$API_PRIVATE_KEYS_DIR"
+            echo "ASC API key removed."
+          fi
+          if [ -n "${PROVISIONING_PROFILE_PATH:-}" ] && [ -f "$PROVISIONING_PROFILE_PATH" ]; then
+            rm -f "$PROVISIONING_PROFILE_PATH"
+            echo "Provisioning profile removed ($PROVISIONING_PROFILE_PATH)."
+          fi
           if [ -n "${SIGNING_KEYCHAIN:-}" ] && [ -f "$SIGNING_KEYCHAIN" ]; then
             security delete-keychain "$SIGNING_KEYCHAIN"
             echo "Signing keychain removed."
           fi
 
-      - name: Upload the IPA as a build artifact
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ios-release-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.build }}
-          path: build/ios/ipa/*.ipa
-          if-no-files-found: warn
-          retention-days: 14
+      # Issue #573: this repo is public, and workflow-run artifacts on a
+      # public repo are downloadable by anyone with no authentication. A
+      # signed .ipa exposes the embedded provisioning profile (team ID, app
+      # ID, entitlements) and the distribution cert's public half, and lets
+      # anyone fetch the exact production build ahead of App Store review.
+      # TestFlight is the system of record for this artifact; unlike
+      # play-store-release.yml there is no non-production track here to
+      # scope a restricted upload to, so the step is dropped rather than
+      # narrowed.
