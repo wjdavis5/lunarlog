@@ -983,6 +983,27 @@ class _MonthCalendarState extends State<MonthCalendar> {
       return const Center(child: CircularProgressIndicator());
     }
     final byIso = {for (final entry in entries) entry.localDate.iso: entry};
+    return _predictionStreamBuilder(
+      context,
+      entries: entries,
+      byIso: byIso,
+      today: today,
+      nextDisabled: nextDisabled,
+    );
+  }
+
+  /// Split out of [build] (issue #556 review: the CRAP gate's per-method
+  /// complexity cap) -- the #543 `hasError` branch this and
+  /// [_historyStreamBuilder] added pushed `build` itself over the
+  /// threshold once counted together with the nested StreamBuilder it
+  /// wraps.
+  Widget _predictionStreamBuilder(
+    BuildContext context, {
+    required List<DayEntry> entries,
+    required Map<String, DayEntry> byIso,
+    required LocalDate today,
+    required bool nextDisabled,
+  }) {
     return StreamBuilder<CyclePrediction?>(
       stream: _predictionStream,
       builder: (context, predictionSnapshot) {
@@ -1003,37 +1024,56 @@ class _MonthCalendarState extends State<MonthCalendar> {
         if (prediction == null) {
           return const Center(child: CircularProgressIndicator());
         }
-        return StreamBuilder<CycleHistoryView?>(
-          stream: _historyStream,
-          builder: (context, historySnapshot) {
-            if (_historyStream != null && historySnapshot.hasError) {
-              return Center(
-                child: InlineError(
-                  key: const ValueKey('calendar-history-error'),
-                  message: 'Could not load cycle history.',
-                  onRetry: () => setState(_rewatchPrediction),
-                ),
-              );
-            }
-            final history = _historyStream == null
-                ? deriveCycleHistoryFromEntries(
-                    entries: entries,
-                    today: today,
-                  )
-                : historySnapshot.data;
-            if (history == null) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            return _calendar(
-              context,
-              byIso: byIso,
-              entries: entries,
-              prediction: prediction,
-              history: history,
-              today: today,
-              nextDisabled: nextDisabled,
-            );
-          },
+        return _historyStreamBuilder(
+          context,
+          entries: entries,
+          byIso: byIso,
+          today: today,
+          nextDisabled: nextDisabled,
+          prediction: prediction,
+        );
+      },
+    );
+  }
+
+  /// See [_predictionStreamBuilder]'s doc comment.
+  Widget _historyStreamBuilder(
+    BuildContext context, {
+    required List<DayEntry> entries,
+    required Map<String, DayEntry> byIso,
+    required LocalDate today,
+    required bool nextDisabled,
+    required CyclePrediction prediction,
+  }) {
+    return StreamBuilder<CycleHistoryView?>(
+      stream: _historyStream,
+      builder: (context, historySnapshot) {
+        if (_historyStream != null && historySnapshot.hasError) {
+          return Center(
+            child: InlineError(
+              key: const ValueKey('calendar-history-error'),
+              message: 'Could not load cycle history.',
+              onRetry: () => setState(_rewatchPrediction),
+            ),
+          );
+        }
+        final history = _historyStream == null
+            ? deriveCycleHistoryFromEntries(
+                entries: entries,
+                today: today,
+              )
+            : historySnapshot.data;
+        if (history == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return _calendar(
+          context,
+          byIso: byIso,
+          entries: entries,
+          prediction: prediction,
+          history: history,
+          today: today,
+          nextDisabled: nextDisabled,
         );
       },
     );

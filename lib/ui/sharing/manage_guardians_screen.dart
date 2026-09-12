@@ -373,31 +373,41 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     // - this is the belt-and-suspenders guard against a race between that
     // rebuild and a very fast second tap).
     if (_revokingUserIds.contains(guardian.userId)) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Remove ${guardian.displayName ?? guardian.role.label}?'),
-        content: Text(
-          guardian.userId == widget.currentUserId
-              ? 'You will leave this profile and no longer receive updates or sync its entries.'
-              : 'This caregiver will lose access to ${widget.profile.displayName}\'s calendar and entries.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-
+    final confirm = await _confirmRevoke(guardian);
     if (confirm != true || !mounted) return;
+    await _performRevoke(guardian);
+  }
 
+  /// Split out of [_revoke] (issue #556 review: the CRAP gate's per-method
+  /// complexity cap) so the confirmation dialog's own branching (which
+  /// caller is leaving vs. removing someone else) isn't counted against
+  /// [_revoke] itself.
+  Future<bool?> _confirmRevoke(ProfileGuardian guardian) => showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Remove ${guardian.displayName ?? guardian.role.label}?'),
+          content: Text(
+            guardian.userId == widget.currentUserId
+                ? 'You will leave this profile and no longer receive updates or sync its entries.'
+                : 'This caregiver will lose access to ${widget.profile.displayName}\'s calendar and entries.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+              child: const Text('Remove'),
+            ),
+          ],
+        ),
+      );
+
+  /// See [_confirmRevoke]'s doc comment: the actual RPC + busy-state +
+  /// error-surfacing, split out of [_revoke] for the same reason.
+  Future<void> _performRevoke(ProfileGuardian guardian) async {
     setState(() => _revokingUserIds.add(guardian.userId));
     try {
       await widget.sharingService.revokeGuardian(
