@@ -16,7 +16,7 @@
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(102);
+select plan(112);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -55,6 +55,26 @@ as $$ select revoked_at is not null from public.prediction_connections where tok
 create function pg_temp.proj_count() returns bigint
 language sql security definer set search_path = ''
 as $$ select count(*) from public.prediction_projections $$;
+
+-- Issue #518 coverage (section 6c below) needs a PER-PROFILE count -
+-- prediction_projections carries no client SELECT grant at all (the only
+-- read path is get_prediction_projection()), so a raw `select count(*)`
+-- as an authenticated test user fails with permission denied.
+create function pg_temp.proj_count_for(p_profile_id text) returns bigint
+language sql security definer set search_path = ''
+as $$ select count(*) from public.prediction_projections where profile_id = p_profile_id $$;
+create function pg_temp.insert_stale_projection(p_profile_id text, p_by uuid) returns void
+language sql security definer set search_path = ''
+as $$
+  insert into public.prediction_projections (profile_id, projection, published_by)
+  values (p_profile_id, '{"generated_at":"2026-09-07"}'::jsonb, p_by)
+$$;
+create function pg_temp.conn_revoked_for(p_profile_id text, p_recipient uuid) returns timestamptz
+language sql security definer set search_path = ''
+as $$
+  select revoked_at from public.prediction_connections
+   where profile_id = p_profile_id and recipient_user_id = p_recipient
+$$;
 
 
 -- ---------------------------------------------------------------------------
@@ -543,22 +563,29 @@ select ok(
   'clearing the minor flag re-opens creation');
 
 -- The flag can change between arming and redemption: accept re-checks.
+-- Issue #518: setting is_minor=true directly would now ALSO trip the
+-- profiles_minor_prediction_revocation_guard trigger and immediately
+-- revoke this connection - which would make accept fail with "revoked"
+-- rather than exercising accept's OWN minor-gate re-check at all. Using
+-- birth_year here instead isolates that re-check: a birth_year-implied
+-- minority does not touch is_minor, so the trigger does not fire, and the
+-- connection survives untouched for the "cleared" case below to redeem.
 select tests.clear_authentication();
-update public.profiles set is_minor = true where id = tests.ulid(901);
+update public.profiles set birth_year = extract(year from now())::int - 15 where id = tests.ulid(901);
 select tests.authenticate_as('stranger');
 select throws_ok(
   format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(291)),
   '55000', 'prediction-only sharing is unavailable for a minor''s profile',
-  'accepting is refused once the profile is marked a minor');
+  'Issue #518: accepting is refused once the profile is a minor by birth_year, without touching is_minor');
 
 select tests.clear_authentication();
-update public.profiles set is_minor = false where id = tests.ulid(901);
+update public.profiles set birth_year = null where id = tests.ulid(901);
 select tests.authenticate_as('stranger');
 insert into r select 'accept_minor_lifted', public.accept_prediction_connection(pg_temp.token(291));
 select is(
   (select v ->> 'profile_id' from r where name = 'accept_minor_lifted'),
   tests.ulid(901),
-  'the same, not-yet-consumed code redeems once the minor flag is cleared');
+  'the same, not-yet-consumed code redeems once the birth_year-implied minority is cleared (connection was never revoked)');
 
 -- Reset: leave P1 with no live connection, as section 7 expects.
 select tests.authenticate_as('mom');
@@ -569,6 +596,106 @@ select is(
         and recipient_user_id = tests.get_supabase_uid('stranger')
         and revoked_at is null)),
   true, 'the section-6b connection is revoked to reset the fixture');
+
+-- ---------------------------------------------------------------------------
+-- 6c. Issue #518: the minor gate is durable (upsert/get re-check it, and
+--     a birth_year-implied age counts even with is_minor unchecked), and
+--     revocation is immediate (a BEFORE UPDATE trigger fires the instant
+--     is_minor flips true, not on the next publish/read). A fresh profile
+--     (P5) isolates this section from P1/P2's own state.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('mom');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(905), 'Riley P5', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_prediction_connection(tests.ulid(905), pg_temp.token(590), 'Partner', 72);
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(590));
+
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-07"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  1::bigint,
+  'fixture: a normal publish stores a projection while the profile is not a minor'
+);
+
+select tests.authenticate_as('nanny');
+select isnt(
+  public.get_prediction_projection(tests.ulid(905)),
+  null,
+  'fixture: the recipient can read the published projection before the profile becomes a minor'
+);
+
+-- The moment is_minor flips true, the trigger revokes the live connection
+-- and clears the stored projection - zero window.
+select tests.authenticate_as('mom');
+update public.profiles set is_minor = true where id = tests.ulid(905);
+select isnt(
+  pg_temp.conn_revoked_for(tests.ulid(905), tests.get_supabase_uid('nanny')),
+  null,
+  'Issue #518: is_minor flipping true immediately revokes the live connection'
+);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  0::bigint,
+  'Issue #518: is_minor flipping true immediately clears the stored projection'
+);
+
+-- The read gate independently refuses even if a stale projection somehow
+-- still exists (defense in depth, not relying solely on the trigger above).
+select pg_temp.insert_stale_projection(tests.ulid(905), tests.get_supabase_uid('mom'));
+select is(
+  public.get_prediction_projection(tests.ulid(905)),
+  null,
+  'Issue #518: get_prediction_projection refuses a minor''s profile even if a stale row exists (guardian read)'
+);
+
+-- The publish gate independently clears a stale row and refuses to store
+-- a new one for a minor's profile.
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-08"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  0::bigint,
+  'Issue #518: upsert_prediction_projection clears any stale row and stores nothing for a minor''s profile'
+);
+
+-- Un-mark the minor flag and re-arm for the birth_year case (a fresh
+-- connection: the previous one was revoked above and cannot be reused).
+update public.profiles set is_minor = false where id = tests.ulid(905);
+select public.create_prediction_connection(tests.ulid(905), pg_temp.token(591), 'Partner2', 72);
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(591));
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-09"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  1::bigint,
+  'fixture: a fresh publish succeeds again once is_minor is cleared'
+);
+
+-- Issue #518: birth_year-derived age <= 18 counts as minor too, even with
+-- is_minor unchecked - matching health_sync_binding.dart's own formula.
+update public.profiles set birth_year = extract(year from now())::int - 15 where id = tests.ulid(905);
+select tests.authenticate_as('nanny');
+select is(
+  public.get_prediction_projection(tests.ulid(905)),
+  null,
+  'Issue #518: a birth_year-implied age <= 18 refuses a read even with is_minor unchecked'
+);
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-10"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  0::bigint,
+  'Issue #518: a birth_year-implied age <= 18 clears any stored projection on publish too'
+);
+select throws_ok(
+  format($$select public.create_prediction_connection(%L, %L, null, 72)$$,
+    tests.ulid(905), pg_temp.token(592)),
+  '55000', 'prediction-only sharing is unavailable for a minor''s profile',
+  'Issue #518: create_prediction_connection also refuses a birth_year-implied minor'
+);
 
 -- ---------------------------------------------------------------------------
 -- 7. Pregnancy mode: refused at create AND at accept (life-stage mode,
