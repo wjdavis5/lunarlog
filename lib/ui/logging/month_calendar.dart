@@ -142,14 +142,6 @@ LocalDate _lastOfMonth(int year, int month) {
       _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
     );
 
-/// The [MediaQuery.textScalerOf] scale at and above which the legend strip
-/// starts collapsed by default (issue #312, large-text-budget item): past
-/// this scale the header/legend/layers stack above the single `Expanded`
-/// [PageView] otherwise squeezes the grid too far. Matched in
-/// [_MonthCalendarState._legendStrip]; the operator's own toggle always
-/// overrides this default once touched.
-const double kLegendCollapseTextScale = 1.6;
-
 /// Confidence-appropriate band weight (KTD4): a hatched band's opacity by
 /// its cycle's tier. `high` reads strongest, `irregular` faintest — and
 /// every cycle past the first has already stepped down one tier, so bands
@@ -583,10 +575,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
   Set<String> _activeLayers = const {};
   bool _layersExpanded = false;
 
-  /// The legend strip's expand/collapse state (issue #312): `null` until
-  /// the operator first touches the toggle, meaning
-  /// [_legendStrip] falls back to [kLegendCollapseTextScale]'s
-  /// scale-based default; once touched, the explicit choice always wins.
+  /// The legend strip's expand/collapse state (issue #312; #556 review:
+  /// no longer scale-dependent): `null` until the operator first touches
+  /// the toggle, meaning [_legendStrip] defaults to expanded; once
+  /// touched, the explicit choice always wins.
   bool? _legendExpanded;
 
   /// Issue #220: whether the current prediction carries a PMS band at all
@@ -1093,7 +1085,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final locale = dates.calendarLocale(context);
     final fullWeekdays = dates.fullWeekdayNames(locale: locale);
 
-    return Column(
+    // #556: LayoutBuilder captures this widget's own total available height
+    // so the ConstrainedBox below can cap the legend/layers section as a
+    // *fraction* of it, rather than a fixed guess -- see that ConstrainedBox's
+    // own comment for why a fixed number is wrong (the layers panel alone
+    // can render 100+ FilterChips).
+    return LayoutBuilder(
+      builder: (context, outerConstraints) => Column(
       children: [
         Row(
           children: [
@@ -1130,9 +1128,43 @@ class _MonthCalendarState extends State<MonthCalendar> {
             ),
           ],
         ),
-        _legendStrip(context, theme, colors),
-        _layersHeader(layerList, theme),
-        if (_layersExpanded) _layersPanel(activeLayers),
+        // #556: the legend and layers header/panel used to sit here as
+        // plain (non-flex) Column children, sized to their own natural
+        // height unconditionally -- fine as long as the legend could
+        // auto-collapse to keep that height in budget. Now that it always
+        // defaults expanded (see _legendStrip's own doc comment), a very
+        // narrow phone at a very large text scale can grow this stack
+        // past the screen's remaining height. And separately, the layers
+        // panel alone can render 100+ FilterChips (kTagTaxonomy) when
+        // expanded, easily taller than any single fixed pixel budget on
+        // a small screen while being a trivial fraction of a tall one.
+        //
+        // ConstrainedBox+SingleChildScrollView (not Flexible/Expanded --
+        // deliberately still a plain, non-flex Column child, computed the
+        // same single-pass way the `Expanded(child: PageView...)` below
+        // always was, so that Expanded keeps getting *all* space this
+        // section doesn't use rather than a fixed flex share reserved
+        // whether or not the header actually needs it) is what fixes
+        // that: the cap is a *fraction of this whole widget's own
+        // available height* (captured by the LayoutBuilder wrapping this
+        // Column), not a fixed guess -- generous enough that this
+        // section's natural size stays under it on any screen where the
+        // grid below still has reasonable room left over, and it only
+        // actually engages scrolling once the section's own content
+        // would otherwise squeeze the grid out entirely.
+        ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: outerConstraints.maxHeight * 0.6),
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                _legendStrip(context, theme, colors),
+                _layersHeader(layerList, theme),
+                if (_layersExpanded) _layersPanel(activeLayers),
+              ],
+            ),
+          ),
+        ),
         Padding(
           key: const ValueKey('calendar-weekday-header'),
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1244,19 +1276,25 @@ class _MonthCalendarState extends State<MonthCalendar> {
           ),
         ),
       ],
+      ),
     );
   }
 
   /// The legend strip under the month header (issue #191; B-2, B-11; issue
   /// #312 review: now also keys the PMS/cramps badges and the
-  /// symptom-layer dot palette, and collapses by default at large text
-  /// scales — [kLegendCollapseTextScale] — so the header stack above the
-  /// single `Expanded` [PageView] keeps its vertical budget). Keys every
-  /// mark the grid can show except the cycle-day numeral (a plain count,
-  /// not a colour/shape channel that needs a key of its own).
+  /// symptom-layer dot palette). Keys every mark the grid can show except
+  /// the cycle-day numeral (a plain count, not a colour/shape channel that
+  /// needs a key of its own).
+  ///
+  /// Issue #556: no longer auto-collapses at large text scale (#312's
+  /// original rationale — keeping the header stack's vertical budget under
+  /// the single `Expanded` `PageView` — made the legend hardest to reach
+  /// for exactly the users who need it most). It now always defaults
+  /// expanded and wraps its entries instead (`_legendEntries`'s `Wrap` and
+  /// `_legendChip`'s `Flexible` labels already handle that); the manual
+  /// toggle is unchanged and still collapses/re-expands on tap.
   Widget _legendStrip(BuildContext context, ThemeData theme, LunarLogColors colors) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final expanded = _legendExpanded ?? textScale < kLegendCollapseTextScale;
+    final expanded = _legendExpanded ?? true;
     final l10n = AppLocalizations.of(context);
     return Column(
       key: const ValueKey('calendar-legend'),
@@ -1271,16 +1309,28 @@ class _MonthCalendarState extends State<MonthCalendar> {
             child: InkWell(
               key: const ValueKey('legend-toggle'),
               onTap: () => setState(() => _legendExpanded = !expanded),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
+              // #556: the previous mainAxisSize.min Row (16dp icon,
+              // bodySmall text, no padding) hit ~20dp tall -- the control
+              // that explains every colour in the grid was the one
+              // failing hardest on tap-target size. SizedBox(height: 48)
+              // + Align keeps the compact visual row but gives it a full
+              // 48dp-tall (and full-width) tap area.
+              child: SizedBox(
+                height: 48,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        expanded ? Icons.expand_less : Icons.expand_more,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(l10n.calendarLegend, style: theme.textTheme.bodySmall),
+                    ],
                   ),
-                  const SizedBox(width: 2),
-                  Text(l10n.calendarLegend, style: theme.textTheme.bodySmall),
-                ],
+                ),
               ),
             ),
           ),
@@ -1382,10 +1432,10 @@ class _MonthCalendarState extends State<MonthCalendar> {
         _legendSwatch(entry),
         const SizedBox(width: 4),
         // #138 (AC4): the label wraps inside the legend's Wrap rather
-        // than overflowing its row — the legend only collapses by default
-        // at kLegendCollapseTextScale and above, so 1.5x keeps it expanded
-        // and its longest entries ("Super heavy flow (5 marks)") no
-        // longer overflow a phone-class width.
+        // than overflowing its row -- the legend defaults expanded at
+        // every text scale (#556), so its longest entries ("Super heavy
+        // flow (5 marks)") rely on this wrap, not a collapse, to never
+        // overflow a phone-class width.
         Flexible(
           child: Text(entry.label, style: theme.textTheme.labelSmall),
         ),
@@ -1453,13 +1503,14 @@ class _MonthCalendarState extends State<MonthCalendar> {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
+          // #556: VisualDensity.compact shrank this to ~40dp; dropping it
+          // returns to IconButton's default (48dp) tap target.
           IconButton(
             key: const ValueKey('symptom-layers-toggle'),
             tooltip: _layersExpanded
                 ? l10n.calendarHideSymptomLayers
                 : l10n.calendarShowSymptomLayers,
             icon: Icon(_layersExpanded ? Icons.expand_less : Icons.expand_more),
-            visualDensity: VisualDensity.compact,
             onPressed: () => setState(() => _layersExpanded = !_layersExpanded),
           ),
           Expanded(
@@ -1483,12 +1534,13 @@ class _MonthCalendarState extends State<MonthCalendar> {
         spacing: 6,
         runSpacing: 0,
         children: [
+          // #556: VisualDensity.compact shrank these to ~40dp; dropping
+          // it returns to FilterChip's default (48dp) tap target.
           for (final tag in kTagTaxonomy)
             FilterChip(
               key: ValueKey('layer-chip-${tag.code}'),
               label: Text(tag.display),
               selected: activeLayers.contains(tag.code),
-              visualDensity: VisualDensity.compact,
               onSelected: (_) => _toggleLayer(tag.code, activeLayers),
             ),
         ],

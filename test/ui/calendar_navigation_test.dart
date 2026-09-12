@@ -200,24 +200,29 @@ void main() {
     });
 
     testWidgets(
-        'collapses by default once the text scale reaches the large-text '
-        'budget threshold, and a small toggle re-expands it (issue #312)',
-        (tester) async {
-      final expandedHarness = await pumpCalendar(tester, textScale: 1.5);
-      expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
-      expect(find.text('Light flow'), findsOneWidget,
-          reason: 'below the 1.6 threshold the legend stays expanded');
-      await disposeCalendar(tester, expandedHarness);
+        'issue #556: stays expanded by default at every text scale -- no '
+        'longer auto-collapses at a large one -- and the manual toggle '
+        'still collapses/re-expands it on tap', (tester) async {
+      for (final textScale in [1.0, 1.5, 1.6, 2.0, 3.0]) {
+        final h = await pumpCalendar(tester, textScale: textScale);
+        expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
+        expect(find.text('Light flow'), findsOneWidget,
+            reason: 'the legend defaults expanded at $textScale x, not '
+                'just below some collapse threshold');
+        await disposeCalendar(tester, h);
+      }
 
-      final collapsedHarness = await pumpCalendar(tester, textScale: 1.6);
+      final h = await pumpCalendar(tester, textScale: 2.0);
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('Light flow'), findsNothing,
-          reason: 'at the 1.6 threshold the legend starts collapsed');
+          reason: 'the operator can still manually collapse it');
 
       await tester.tap(find.byKey(const ValueKey('legend-toggle')));
       await tester.pumpAndSettle();
       expect(find.text('Light flow'), findsOneWidget,
-          reason: 'the toggle re-expands it even at a large text scale');
-      await disposeCalendar(tester, collapsedHarness);
+          reason: 'and re-expand it again, even at a large text scale');
+      await disposeCalendar(tester, h);
     });
   });
 
@@ -574,12 +579,13 @@ void main() {
     });
   });
 
-  group('large text budget (issue #312)', () {
+  group('large text budget (issue #312, #556)', () {
     testWidgets(
         'at textScaleFactor 2.0 on a phone-class viewport the calendar '
-        'renders without an overflow (issue #312 review: an 800x1400 '
+        'renders without an overflow, with the legend expanded (#556: no '
+        'longer auto-collapsed) (issue #312 review: an 800x1400 '
         'desktop-sized canvas made this test vacuous — the legend '
-        'collapse only actually matters on a real phone width)',
+        'width budget only actually matters on a real phone width)',
         (tester) async {
       final h = await pumpCalendar(
         tester,
@@ -589,8 +595,12 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget);
-      expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget,
-          reason: 'the legend is collapsed, not absent, at this scale');
+      expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
+      expect(find.text('Light flow'), findsOneWidget,
+          reason: '#556: expanded by default even at this scale -- the '
+              'header stack wraps/scrolls internally instead of forcing '
+              'the legend to collapse to keep the grid area from '
+              'overflowing');
 
       await disposeCalendar(tester, h);
     });
