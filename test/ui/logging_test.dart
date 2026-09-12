@@ -780,7 +780,7 @@ void main() {
       await disposeLogging(tester, h);
     });
 
-    testWidgets('tag chips render exactly the curated 86 in 28 categories; '
+    testWidgets('tag chips render exactly the curated taxonomy; '
         'unverified categories ship the pin-first caption; toggling two tags '
         'persists both codes', (tester) async {
       final h = await pumpLogging(tester);
@@ -791,7 +791,7 @@ void main() {
       // Issue #247: the curated tag chips plus the standalone spotting
       // toggle, which is also a FilterChip (see `_editableBody`).
       // Issue #220: plus the standalone first-class PMS toggle.
-      expect(find.byType(FilterChip), findsNWidgets(86 + 2));
+      expect(find.byType(FilterChip), findsNWidgets(kTagTaxonomy.length + 2));
       const headers = [
         'Pain',
         'Energy',
@@ -850,6 +850,43 @@ void main() {
 
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(saved!.tags, unorderedEquals(['cramps', 'headache']));
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('issue #253: discharge is single-select — picking a second '
+        'discharge option deselects the first, while sex_life stays '
+        'multi-select', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // The sensitive/fertility categories sit at the bottom of the sheet's
+      // scroll view, so scroll each chip into view before tapping.
+      // Two discharge options; selecting the second replaces the first.
+      await tester.ensureVisible(find.text('Creamy'));
+      await tester.tap(find.text('Creamy'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Egg white'));
+      await tester.tap(find.text('Egg white'));
+      await pumpAutosave(tester);
+
+      final savedTags = (await h.entries.find(h.profile.id, kToday))!.tags;
+      expect(savedTags, ['egg_white']);
+      expect(savedTags, isNot(contains('creamy')));
+
+      // sex_life stays multi-select: two options coexist on the same day.
+      await tester.ensureVisible(find.text('Masturbation'));
+      await tester.tap(find.text('Masturbation'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('High sex drive'));
+      await tester.tap(find.text('High sex drive'));
+      await pumpAutosave(tester);
+      final again = await h.entries.find(h.profile.id, kToday);
+      expect(
+        again!.tags,
+        unorderedEquals(['egg_white', 'masturbation', 'high_sex_drive']),
+      );
       await disposeLogging(tester, h);
     });
 
@@ -2710,10 +2747,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      // All 86 curated chips render — nothing is removed by the mode —
-      // plus the standalone spotting toggle (Issue #247) and the
-      // standalone PMS toggle (Issue #220), also FilterChips.
-      expect(find.byType(FilterChip), findsNWidgets(86 + 2));
+      // All curated chips render — nothing is removed by the mode — plus
+      // the standalone spotting toggle (Issue #247) and the standalone PMS
+      // toggle (Issue #220), also FilterChips.
+      expect(find.byType(FilterChip), findsNWidgets(kTagTaxonomy.length + 2));
       for (final tag in kTagTaxonomy) {
         expect(
           find.text(tag.display),

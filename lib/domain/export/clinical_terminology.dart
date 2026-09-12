@@ -175,10 +175,10 @@ const List<String> kUnverifiedLoincCodes = [
   '3151-8',
 ];
 
-/// The clinical coding for every code in [tags.kTagTaxonomy] (all 86 —
+/// The clinical coding for every code in [tags.kTagTaxonomy] (all 108 —
 /// #152's A3-45 pass over the original 17, plus issue #249's 28, issue
-/// #251's 22, and issue #252's 19 new codes as explicit local decisions;
-/// see docs/clinical/terminology.md).
+/// #251's 22, issue #252's 19, and issue #253's 22 new codes as explicit
+/// local decisions; see docs/clinical/terminology.md).
 ///
 /// Rows are one of two kinds:
 /// - A verified SNOMED CT finding ([kSystemSnomed]): the concept id and
@@ -745,6 +745,144 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
     system: kSystemLunarlogLocal,
     code: 'fever',
     display: 'Fever',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+
+  // Issue #253's sensitive and fertility categories. Same rule as #249's,
+  // #251's and #252's blocks above: every new code is an explicit local
+  // decision, no SNOMED CT concept fetch-verified in this pass, so each
+  // carries the lunarlog local coding only — `dualCodingFor` degrades each
+  // to it exactly as designed.
+  'no_sex_today': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'no_sex_today',
+    display: 'No sex today',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'low_sex_drive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'low_sex_drive',
+    display: 'Low sex drive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'high_sex_drive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'high_sex_drive',
+    display: 'High sex drive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'masturbation': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'masturbation',
+    display: 'Masturbation',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'withdrawal': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'withdrawal',
+    display: 'Withdrawal',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'protected_sex': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'protected_sex',
+    display: 'Protected sex',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'unprotected_sex': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'unprotected_sex',
+    display: 'Unprotected sex',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'sex_toys': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'sex_toys',
+    display: 'Sex toys',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'orgasm': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'orgasm',
+    display: 'Orgasm',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'no_orgasm': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'no_orgasm',
+    display: 'No orgasm',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'fantasies': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'fantasies',
+    display: 'Fantasies',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'painful_intercourse': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'painful_intercourse',
+    display: 'Painful intercourse',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'none': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'none',
+    display: 'No discharge',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'sticky': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'sticky',
+    display: 'Sticky',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'creamy': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'creamy',
+    display: 'Creamy',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'egg_white': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'egg_white',
+    display: 'Egg white',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'atypical': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'atypical',
+    display: 'Atypical',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'ovulation_negative': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'ovulation_negative',
+    display: 'Ovulation · negative',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'ovulation_positive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'ovulation_positive',
+    display: 'Ovulation · positive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'ovulation_peak': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'ovulation_peak',
+    display: 'Ovulation · peak',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'pregnancy_negative': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pregnancy_negative',
+    display: 'Pregnancy · negative',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'pregnancy_positive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pregnancy_positive',
+    display: 'Pregnancy · positive',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
 };
