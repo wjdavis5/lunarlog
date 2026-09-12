@@ -85,9 +85,25 @@ class ReminderConfigService {
     ]);
   }
 
+  /// Cancels every subscription currently in [_changeSubscriptions].
+  ///
+  /// Snapshots-and-clears the list *synchronously* before awaiting any
+  /// cancellation: this callback fires both automatically (the broadcast
+  /// controller's own `onCancel`, when the last listener unsubscribes) and
+  /// manually from [dispose]'s fallback, and those two calls can overlap —
+  /// [dispose] calls this while a listener (the reminder coordinator) is
+  /// still in the middle of tearing itself down, so its own unsubscription
+  /// can trigger the automatic invocation before the manual one has
+  /// finished. Without the synchronous clear, both invocations would read
+  /// the same not-yet-cleared list and call `cancel()` a second time on
+  /// subscriptions already mid-cancellation — on the Drift-backed watch
+  /// streams behind [SettingsStore.watch], a redundant `cancel()` never
+  /// settles, so this stream's teardown would never complete.
   Future<void> _onCancel() async {
-    await Future.wait([for (final sub in _changeSubscriptions) sub.cancel()]);
+    if (_changeSubscriptions.isEmpty) return;
+    final subscriptions = List.of(_changeSubscriptions);
     _changeSubscriptions.clear();
+    await Future.wait([for (final sub in subscriptions) sub.cancel()]);
   }
 
   /// Tears down [changes]'s subscriptions and closes its controller. Called
@@ -95,11 +111,23 @@ class ReminderConfigService {
   /// subscribes to [changes] is disposed first, so this stream typically
   /// has no listener left by the time this runs, meaning [_onCancel] has
   /// already fired; this is the fallback for the case where it hasn't
-  /// (e.g. no coordinator was ever built) and for closing the controller
-  /// itself, which [_onCancel] alone never does.
+  /// (e.g. no coordinator was ever built).
+  ///
+  /// [_changesController]'s own `close()` is deliberately not awaited: a
+  /// broadcast controller with no remaining listeners has nothing left for
+  /// `close()` to deliver, and the returned future's completion is bound to
+  /// the zone the controller was created in (`initState`'s) — awaiting it
+  /// from a caller that has since hopped zones (a widget test's `runAsync`,
+  /// escaping the fake-time zone to let the drift cancellations above
+  /// settle) can leave that future's completion queued in the original
+  /// zone's microtask queue indefinitely. Firing `close()` and moving on is
+  /// enough: every subscription is already cancelled by [_onCancel] above,
+  /// and nothing downstream depends on the controller having *finished*
+  /// closing, only on it no longer being reused (`_changesController` is
+  /// nulled immediately below).
   Future<void> dispose() async {
     await _onCancel();
-    await _changesController?.close();
+    unawaited(_changesController?.close());
     _changesController = null;
   }
 

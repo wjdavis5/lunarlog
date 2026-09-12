@@ -171,6 +171,34 @@ void main() {
       await sub.cancel();
     });
 
+    test(
+        'dispose() racing a listener\'s own cancel() does not double-cancel '
+        'or hang: the automatic onCancel (from the listener unsubscribing) '
+        'can fire while dispose()\'s manual _onCancel is still in flight',
+        () async {
+      final sub = service.changes.listen((_) {});
+      await pumpEventQueue();
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isTrue);
+
+      // Kick both off without awaiting between them: dispose()'s own
+      // _onCancel call and the broadcast controller's automatic onCancel
+      // (triggered by sub.cancel() below) now race to snapshot
+      // `_changeSubscriptions` first. Without the synchronous
+      // snapshot-and-clear, both would see the same not-yet-cleared list
+      // and cancel every subscription twice.
+      final disposeFuture = service.dispose();
+      final cancelFuture = sub.cancel();
+      await Future.wait([disposeFuture, cancelFuture])
+          .timeout(const Duration(seconds: 5));
+
+      expect(store.hasListeners(SettingsKeys.reminderConfigs), isFalse);
+      expect(store.hasListeners(SettingsKeys.reminderLateSnoozes), isFalse);
+      expect(
+          store.hasListeners(SettingsKeys.reminderStatisticBaselines), isFalse);
+      expect(store.hasListeners(SettingsKeys.reminderStatisticChangeSignals),
+          isFalse);
+    });
+
     test('listening again after a full cancel resubscribes (broadcast '
         'controller is reused across listen/cancel cycles until dispose)',
         () async {
