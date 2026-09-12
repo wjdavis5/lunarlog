@@ -97,6 +97,22 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
         _profileScreen(controller);
   }
 
+  bool _canShowRestoreError(
+    SyncStatusController? sync,
+    ProfileController controller,
+    AuthController? auth,
+  ) {
+    if (_restoreBypassed || sync == null) return false;
+    final isBound =
+        sync.snapshot.boundUserId != null || auth?.currentUser != null;
+    if (!isBound || !controller.needsFirstRun || sync.phase == SyncPhase.idle) {
+      _restoreRetryPending = false;
+      _restoreBypassed = false;
+      return false;
+    }
+    return sync.phase == SyncPhase.error || _restoreRetryPending;
+  }
+
   /// Finding #3 in #37 (Issue #39): when an account is bound and the local
   /// database has no profiles ([ProfileController.needsFirstRun]), a failed
   /// restore ([SyncPhase.error]) presents a dedicated retry screen rather than
@@ -108,35 +124,15 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     ProfileController controller,
     AuthController? auth,
   ) {
-    if (_restoreBypassed) return null;
-    if (sync == null) return null;
-    final isBound = sync.snapshot.boundUserId != null ||
-        (auth != null && auth.currentUser != null);
-    if (!isBound || !controller.needsFirstRun) {
-      _restoreRetryPending = false;
-      _restoreBypassed = false;
-      return null;
-    }
-    if (sync.phase == SyncPhase.idle) {
-      _restoreRetryPending = false;
-      _restoreBypassed = false;
-      return null;
-    }
-    if (sync.phase == SyncPhase.error || _restoreRetryPending) {
-      return RestoreErrorScreen(
-        onRetry: () {
-          setState(() => _restoreRetryPending = true);
-          sync.requestSync();
-        },
-        onContinueWithoutSyncing: () {
-          setState(() => _restoreBypassed = true);
-        },
-        onSignOut: auth == null
-            ? null
-            : () => auth.signOut(scope: AuthSignOutScope.local),
-      );
-    }
-    return null;
+    if (!_canShowRestoreError(sync, controller, auth)) return null;
+    return RestoreErrorScreen(
+      onRetry: () {
+        setState(() => _restoreRetryPending = true);
+        sync!.requestSync();
+      },
+      onContinueWithoutSyncing: () => setState(() => _restoreBypassed = true),
+      onSignOut: () => auth?.signOut(scope: AuthSignOutScope.local),
+    );
   }
 
   /// AE8: the recovery latch is honored only once the device gate is open
