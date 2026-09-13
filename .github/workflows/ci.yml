@@ -171,9 +171,16 @@ jobs:
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
 
   check:
-    name: Analyze, test, build web
+    # The former "Analyze, test, build web" job, minus the test suite: that
+    # now runs as the sharded `test` matrix below with the gate in
+    # `quality-gate`, so the three independent halves (codegen/analyze/web
+    # build here, tests there, gates after) run on separate runners at the
+    # same time instead of serially in one 14-minute job — and the suite
+    # runs once with coverage rather than once plain and once again for
+    # coverage.
+    name: Verify (codegen, analyze, web build)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -185,6 +192,19 @@ jobs:
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Cache build_runner outputs
+        # build_runner's incremental state lives in .dart_tool/build (git-
+        # ignored, so the freshness check below never sees it). Keyed on the
+        # dependency lockfile + build config, then on the source tree, with
+        # a prefix fallback so an unrelated source change still warm-starts
+        # from the last run instead of rebuilding every generator from cold.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .dart_tool/build
+          key: build-runner-${{ runner.os }}-${{ hashFiles('pubspec.lock', 'build.yaml') }}-${{ hashFiles('lib/**/*.dart') }}
+          restore-keys: |
+            build-runner-${{ runner.os }}-${{ hashFiles('pubspec.lock', 'build.yaml') }}-
 
       - name: Codegen freshness (build_runner + drift schema dump)
         # Issue #200: lib/data/db/db.g.dart and drift_schemas/*.json are
@@ -228,16 +248,6 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Test
-        run: flutter test
-
-      - name: Quality gates (coverage floor + CRAP)
-        # Re-runs with --coverage (the plain Test step above stays a fast
-        # flutter-test-only signal per R11): 90% total line coverage floor
-        # and the per-method CRAP gate, both from one filtered lcov.info.
-        # See tool/quality_gate.dart and AGENTS.md "Quality gates".
-        run: dart run tool/quality_gate.dart
-
       - name: Build web (release)
         # The defines resolve to empty strings on forks and PRs without
         # secrets; the app treats empty as "unconfigured", so the build
@@ -275,6 +285,87 @@ jobs:
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+
+  test:
+    # The unit/widget suite, sharded across runners. Each shard runs a
+    # disjoint third of the test files with --coverage and uploads its
+    # lcov.info; `quality-gate` below merges the three and evaluates the
+    # floor + CRAP gates over the union. This is the single run of the
+    # suite in CI: the old separate plain `flutter test` step duplicated
+    # the coverage run for no extra signal. TOTAL_SHARDS must match the
+    # matrix length and the download pattern in quality-gate.
+    name: Test (shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    env:
+      TOTAL_SHARDS: '3'
+      SHARD_INDEX: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Test (with coverage)
+        run: flutter test --coverage --total-shards "$TOTAL_SHARDS" --shard-index "$SHARD_INDEX"
+
+      - name: Upload shard coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lcov-shard-${{ matrix.shard }}
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 1
+
+  quality-gate:
+    # 90% total line coverage floor and the per-method CRAP gate, evaluated
+    # over the merged coverage of every `test` shard (tool/quality/
+    # lcov_merge.dart sums per-line hits across shards). See
+    # tool/quality_gate.dart and AGENTS.md "Quality gates". Runs the gates
+    # only — the tests themselves already ran in the shards.
+    name: Quality gate (coverage floor + CRAP)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Download shard coverage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: lcov-shard-*
+          path: coverage/shards
+
+      - name: Merge shard coverage and evaluate the gates
+        run: |
+          set -euo pipefail
+          shards=(coverage/shards/lcov-shard-*/lcov.info)
+          if [ "${#shards[@]}" -ne 3 ]; then
+            echo "::error::Expected 3 shard coverage files, found ${#shards[@]}: ${shards[*]}"
+            exit 1
+          fi
+          args=()
+          for f in "${shards[@]}"; do args+=(--lcov "$f"); done
+          dart run tool/quality_gate.dart "${args[@]}"
 
   edge-functions:
     # Runs the Deno test suite for supabase/functions (Issue #6, issue #103

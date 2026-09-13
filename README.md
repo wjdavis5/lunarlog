@@ -70,7 +70,9 @@ dart run tool/mutation_gate.dart    # mutation score for changed files (local on
 dart run tool/mutation_gate.dart --full   # every non-excluded lib/ file; no time budget
 ```
 
-`quality_gate.dart` runs `flutter test --coverage`, filters `coverage/lcov.info`
+`quality_gate.dart` runs `flutter test --coverage` (or, with one or more
+`--lcov <file>` arguments, skips the run and merges those files — how CI
+evaluates the gates over its three parallel test shards), filters `coverage/lcov.info`
 through the reviewed exclusion list (`tool/quality/exclusions.dart` —
 generated code plus platform adapters that can't run under `flutter test`,
 e.g. `PluginGoogleSignInClient`), then checks total line coverage (floor
