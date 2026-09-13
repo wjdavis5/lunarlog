@@ -145,6 +145,12 @@ const String kRouteHelpLibraryScreen = 'HelpLibraryScreen';
 /// `lib/ui/help/help_card_view.dart` (Issue #139) — contextual help card sheet.
 const String kRouteHelpCardSheet = 'HelpCardSheet';
 
+/// `lib/ui/content/cycle_literacy_library_screen.dart` (Issue #239) — offline cycle literacy library.
+const String kRouteCycleLiteracyLibraryScreen = 'CycleLiteracyLibraryScreen';
+
+/// `lib/ui/content/cycle_literacy_article_sheet.dart` (Issue #239) — cycle literacy article sheet.
+const String kRouteCycleLiteracyArticleSheet = 'CycleLiteracyArticleSheet';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -180,5 +186,7 @@ const Set<String> kSentryRouteNames = {
   kRouteReminderSettingsScreen,
   kRouteHelpLibraryScreen,
   kRouteHelpCardSheet,
+  kRouteCycleLiteracyLibraryScreen,
+  kRouteCycleLiteracyArticleSheet,
 };
 
