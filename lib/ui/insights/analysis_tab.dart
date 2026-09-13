@@ -272,15 +272,6 @@ class _AnalysisTabState extends State<AnalysisTab> {
         // Issue #225: per-profile toggle turning off predictions.
         PredictionsDisabled() => const PredictionsDisabledCard(),
       },
-      if (prediction is ActivePrediction) ...[
-        const SizedBox(height: 12),
-        PhaseInsightsCard(
-          prediction: prediction,
-          today: widget.todayProvider(),
-        ),
-      ],
-      const SizedBox(height: 16),
-      SymptomTrendsSection(report: report),
       const SizedBox(height: 16),
       CycleHistorySection(
         profileId: widget.profileId,
@@ -289,6 +280,15 @@ class _AnalysisTabState extends State<AnalysisTab> {
         showStatistics: false,
         showDisclaimer: false,
       ),
+      if (prediction is ActivePrediction) ...[
+        const SizedBox(height: 16),
+        PhaseInsightsCard(
+          prediction: prediction,
+          today: widget.todayProvider(),
+        ),
+      ],
+      const SizedBox(height: 16),
+      SymptomTrendsSection(report: report),
     ];
   }
 

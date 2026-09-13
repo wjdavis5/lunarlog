@@ -107,7 +107,7 @@ class PhaseInsightsCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.info_outline,
-                        size: 16, color: colorScheme.outline),
+                        size: 16, color: colorScheme.onSurfaceVariant),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -143,7 +143,7 @@ class PhaseInsightsCard extends StatelessWidget {
               'Source: ${info.source} · Rev: ${info.reviewDate}',
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 10,
-                color: colorScheme.outline,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ],

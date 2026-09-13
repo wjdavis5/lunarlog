@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/content/cycle_literacy_library.dart';
+import '../../observability/route_names.dart';
 
 class CycleLiteracyArticleSheet extends StatelessWidget {
   const CycleLiteracyArticleSheet({
@@ -16,6 +17,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
   static Future<void> show(BuildContext context, CycleLiteracyArticle article) {
     return showModalBottomSheet(
       context: context,
+      routeSettings: const RouteSettings(name: kRouteCycleLiteracyArticleSheet),
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
@@ -60,7 +62,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
                 Text(
                   '${article.readingTimeMinutes} min read',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.outline,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -138,7 +140,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
             Text(
               'Last clinical review: ${article.reviewDate}',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.outline,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 16),
@@ -153,7 +155,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
               child: Text(
                 CycleLiteracyArticle.kMedicalDisclaimer,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.outline,
+                  color: colorScheme.onSurfaceVariant,
                   fontSize: 11,
                 ),
               ),

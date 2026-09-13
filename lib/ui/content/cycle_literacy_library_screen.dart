@@ -4,12 +4,14 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/content/cycle_literacy_library.dart';
+import '../../observability/route_names.dart';
 import 'cycle_literacy_article_sheet.dart';
 
 class CycleLiteracyLibraryScreen extends StatelessWidget {
   const CycleLiteracyLibraryScreen({super.key});
 
-  static MaterialPageRoute<void> route() => MaterialPageRoute(
+  static MaterialPageRoute<void> route() => MaterialPageRoute<void>(
+        settings: const RouteSettings(name: kRouteCycleLiteracyLibraryScreen),
         builder: (_) => const CycleLiteracyLibraryScreen(),
       );
 
@@ -54,7 +56,7 @@ class CycleLiteracyLibraryScreen extends StatelessWidget {
             child: Text(
               CycleLiteracyArticle.kMedicalDisclaimer,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.outline,
+                color: colorScheme.onSurfaceVariant,
                 fontSize: 11,
               ),
             ),

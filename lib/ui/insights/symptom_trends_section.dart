@@ -83,7 +83,7 @@ class SymptomTrendsSection extends StatelessWidget {
                     'Patterns reflect descriptive logs only and are not clinical diagnostics.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontSize: 10,
-                      color: colorScheme.outline,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -208,7 +208,7 @@ class _CrampPredictionCard extends StatelessWidget {
               'Observed in ${prediction.observedCycleCount} of '
               '${prediction.totalCyclesAnalyzed} recorded cycles.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.outline,
+                color: colorScheme.onSurfaceVariant,
                 fontSize: 11,
               ),
             ),
@@ -217,7 +217,7 @@ class _CrampPredictionCard extends StatelessWidget {
               prediction.disclaimer,
               key: const ValueKey('cramp-prediction-disclaimer'),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.outline,
+                color: colorScheme.onSurfaceVariant,
                 fontSize: 10,
               ),
             ),
@@ -280,7 +280,7 @@ class _SymptomPatternRow extends StatelessWidget {
         Text(
           'Logged ${pattern.totalOccurrences} times across ${pattern.cycleCount} cycles',
           style: theme.textTheme.bodySmall?.copyWith(
-            color: colorScheme.outline,
+            color: colorScheme.onSurfaceVariant,
             fontSize: 11,
           ),
         ),
