@@ -620,4 +620,6 @@ jobs:
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          [ -n "${SIM_UDID:-}" ] && xcrun simctl shutdown "$SIM_UDID" || true
+          if [ -n "${SIM_UDID:-}" ]; then
+            xcrun simctl shutdown "$SIM_UDID" || true
+          fi
