@@ -131,23 +131,20 @@ jobs:
         run: ./actionlint .github/workflows/*.yml
 
   release-guards-macos:
-    # The guard scripts actually execute on ios-release.yml's self-hosted
-    # williams-mini runner, which ships a frozen Bash 3.2 (no bash-4+
-    # syntax) -- a real bash-4-only construct (${var,,}) slipped into
-    # check-release-gate.sh during this same branch's development and would
-    # have crashed the TestFlight pipeline silently, since the ubuntu-only
-    # release-guards job above cannot see a macOS-only shell incompatibility.
-    # Same three test scripts, no actionlint (that check is OS-independent).
+    # The guard scripts actually execute on ios-release.yml's macos-latest
+    # runner, which ships a frozen Bash 3.2 (no bash-4+ syntax) -- a real
+    # bash-4-only construct (${var,,}) slipped into check-release-gate.sh
+    # during this same branch's development and would have crashed the
+    # TestFlight pipeline silently, since the ubuntu-only release-guards job
+    # above cannot see a macOS-only shell incompatibility. Same three test
+    # scripts, no actionlint (that check is OS-independent). This is the one
+    # macOS/bash-3.2 arm of the matrix (issue #569).
     #
-    # Deliberately kept on the self-hosted runner (issue #569: it is the one
-    # macOS/bash-3.2 arm of the matrix; release-guards above went back to
-    # ubuntu-latest so the two jobs are no longer the same runner/bash
-    # version running the same scripts twice).
+    # GitHub-hosted (same image family as the release job): the lab's
+    # self-hosted Mac mini no longer serves CI, so there is no shared,
+    # non-ephemeral runner to serialise behind or to guard from fork PRs.
     name: Release guard scripts on macOS (bash 3.2 compatibility)
-    # Fork PRs never reach a self-hosted job (issue #514): this is the same
-    # runner ios-release.yml signs releases on.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -479,11 +476,18 @@ jobs:
 
   ios:
     name: Build iOS (unsigned)
-    # Fork PRs never reach a self-hosted job (issue #514): this is the same
-    # runner ios-release.yml signs releases on.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS]
+    # GitHub-hosted, like ios-release.yml's signing job: free on a public
+    # repo, a fresh VM per run, and no longer serialised on the lab's single
+    # Mac mini behind every other session's iOS jobs. Fork PRs can run this
+    # (it needs no secrets that matter -- see the build step's comment).
+    runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      # `pod install` (run by `flutter build ios`) needs a UTF-8 locale or
+      # CocoaPods aborts on non-ASCII pod metadata; same setting as
+      # ios-release.yml's CocoaPods step.
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -537,28 +541,20 @@ jobs:
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
   ios-simulator:
-    # Runs on Williams-Mini (the lab's Mac mini, see AGENTS.md "iOS Local
-    # Device Builds"), a self-hosted runner -- the only machine in the lab
-    # with Xcode/a real iOS Simulator. This is a physical, non-ephemeral
-    # machine (not a fresh VM per job): each step must clean up after
-    # itself (shutting the simulator down in an `if: always()` step) rather
-    # than relying on the runner being thrown away afterward. Only one job
-    # runs on it at a time (a single self-hosted runner instance processes
-    # jobs serially), so simulator state cannot race between concurrent CI
-    # runs.
+    # GitHub-hosted macOS image (Xcode + iOS Simulator runtimes preinstalled),
+    # a fresh VM per run. It used to run on the lab's Mac mini as the only
+    # machine with a simulator; that made it (and Build iOS above) the
+    # long pole of every CI run -- serialised on one runner behind other
+    # sessions' jobs -- and a fork-PR security concern on public repo. The
+    # simulator is still shut down in an `if: always()` step out of habit;
+    # nothing depends on it now.
     #
-    # Security note: this repo is public. A workflow step here executes
-    # directly on lab hardware, so this job (and this runner) must only
-    # ever run trusted code. Issue #514: the repo Settings -> Actions ->
-    # General "Fork pull request workflows from outside collaborators"
-    # setting alone only gates *first-time* contributors on a public repo,
-    # so this job's own `if:` below is the actual enforcement -- a fork PR
-    # is never scheduled on this (or any other) self-hosted runner,
-    # regardless of the repo setting.
+    # The device is chosen at run time from what the image ships (a bare
+    # `iPhone <N>`, else any available iPhone) rather than hard-coded, so an
+    # image upgrade that renames the simulators cannot break this job.
     name: iOS Simulator tests
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS]
-    timeout-minutes: 20
+    runs-on: macos-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -577,10 +573,29 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Boot simulator
+      - name: Pick and boot a simulator
+        id: sim
         run: |
-          xcrun simctl boot "iPhone 17" || true
-          xcrun simctl bootstatus "iPhone 17" -b
+          set -euo pipefail
+          devices="$(xcrun simctl list devices available -j)"
+          pick() {
+            jq -r --arg re "$1" '
+              [ .devices | to_entries[] | select(.key | test("iOS"))
+                | .value[] | select(.isAvailable) | select(.name | test($re)) ]
+              | sort_by(.name) | last | .udid // empty' <<<"$devices"
+          }
+          udid="$(pick '^iPhone [0-9]+$')"
+          [ -n "$udid" ] || udid="$(pick '^iPhone')"
+          if [ -z "$udid" ]; then
+            echo "::error::No available iPhone simulator on this image:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          name="$(jq -r --arg u "$udid" '.devices[][] | select(.udid==$u) | .name' <<<"$devices")"
+          echo "Using simulator: $name ($udid)"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       - name: Run integration tests on the simulator
         # Scoped to the tests confirmed safe against a real device (issue
@@ -594,10 +609,15 @@ jobs:
         # covered by test/ui/gate_test.dart's host-mode GateController
         # tests, which exercise the same scenarios without a full
         # on-device widget tree.
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          flutter test integration_test/gate_test.dart -d "iPhone 17" \
+          flutter test integration_test/gate_test.dart -d "$SIM_UDID" \
             --name "cold start requires the gate|retry loop: repeated declines stay locked|issue #65: the credential prompt|simulated launch payload routes through the gate"
 
       - name: Shut down simulator
         if: always()
-        run: xcrun simctl shutdown "iPhone 17" || true
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          [ -n "${SIM_UDID:-}" ] && xcrun simctl shutdown "$SIM_UDID" || true
