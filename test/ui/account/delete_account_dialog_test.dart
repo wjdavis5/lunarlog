@@ -10,6 +10,8 @@
 /// this issue and not duplicated here.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -165,7 +167,7 @@ class DialogHarness {
 
   void dispose() {
     controller.dispose();
-    auth.dispose();
+    unawaited(auth.dispose());
   }
 }
 
@@ -241,8 +243,9 @@ void main() {
       await h.pump(tester);
       await h.open(tester);
 
-      final blastRadiusText =
-          tester.widget<Text>(key('account-delete-blast-radius')).data;
+      final blastRadiusText = tester
+          .widget<Text>(key('account-delete-blast-radius'))
+          .data;
       expect(blastRadiusText, contains('Maya'));
       expect(blastRadiusText, contains('1 other guardian'));
 

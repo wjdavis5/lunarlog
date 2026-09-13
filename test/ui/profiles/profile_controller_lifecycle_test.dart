@@ -177,9 +177,9 @@ class _BlockingSettingsStore implements SettingsStore {
   bool get watchLive =>
       _watchStreams.any((stream) => stream.subscribed && !stream.cancelled);
 
-  void closeAll() {
+  Future<void> closeAll() async {
     for (final stream in _watchStreams) {
-      stream.close();
+      await stream.close();
     }
   }
 }
@@ -220,9 +220,9 @@ class _ManualProfilesRepository implements ProfilesRepository {
     return stream.map<List<Profile>>((_) => const <Profile>[]);
   }
 
-  void closeAll() {
+  Future<void> closeAll() async {
     for (final stream in _watchStreams) {
-      stream.close();
+      await stream.close();
     }
   }
 

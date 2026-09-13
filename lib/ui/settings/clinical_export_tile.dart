@@ -135,9 +135,10 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
   Future<bool> _anyProfileHasEntries(List<Profile> liveProfiles) async {
     final entriesRepo = context.read<DayEntriesRepository?>();
     if (entriesRepo == null) return false;
+    // Issue #549: a non-emptiness existence check, not a full read of every
+    // profile's history — this reruns on every `profiles` stream tick.
     for (final profile in liveProfiles) {
-      final entries = await entriesRepo.listForProfile(profile.id);
-      if (entries.isNotEmpty) return true;
+      if (await entriesRepo.hasAnyEntries(profile.id)) return true;
     }
     return false;
   }

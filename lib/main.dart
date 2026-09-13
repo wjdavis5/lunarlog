@@ -94,8 +94,12 @@ Future<void> _runLunarlog() async {
     // first — a device reset (KTD16) closes and recreates this file, which
     // needs the same iOS hardening reapplied. A no-op on Android/web.
     dbOpener: () async {
-      final db = await (await buildDbFactory()).open();
-      await protectDatabaseFile();
+      final factory = await buildDbFactory();
+      final db = await factory.open();
+      // Issue #561: protect whichever file `factory` actually opened, not
+      // whatever `localDatabaseFile()` would recompute — those differ when
+      // relocation fell back to the legacy file.
+      await protectDatabaseFile(factory.databasePath);
       return db;
     },
     // KTD7/KTD9: reminders are a native-only surface. The composition

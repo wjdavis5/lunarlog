@@ -46,10 +46,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     required this.confidenceLearning,
     required this.confidenceIrregular,
     required this.confidenceProvisional,
-    required this.roleOwner,
-    required this.roleCoParent,
-    required this.roleCaregiver,
-    required this.roleViewer,
   });
 
   /// Builds the full role set from a generated [ColorScheme]. The flow ramp
@@ -158,10 +154,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       // hues (green/amber/red-orange) and the violet/blue role badges
       // stay distinguishable by saturation context.
       confidenceProvisional: badge(215, 0.45),
-      roleOwner: badge(primaryHue, 0.50),
-      roleCoParent: badge(258, 0.40), // violet
-      roleCaregiver: badge(199, 0.45), // blue
-      roleViewer: badge(0, 0), // neutral grey -- read-only, deliberately flat
     );
   }
 
@@ -204,12 +196,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   /// seeded from onboarding answers rather than logged history.
   final Color confidenceProvisional;
 
-  /// Family-role badge colours.
-  final Color roleOwner;
-  final Color roleCoParent;
-  final Color roleCaregiver;
-  final Color roleViewer;
-
   /// Resolves a `copyWith` parameter: an unpassed (`null`) argument keeps
   /// [fallback]. Pulling the `??` out of [copyWith] and into this helper
   /// keeps that method's own body free of `??`/`&&`/`||` decision points --
@@ -240,10 +226,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     Color? confidenceLearning,
     Color? confidenceIrregular,
     Color? confidenceProvisional,
-    Color? roleOwner,
-    Color? roleCoParent,
-    Color? roleCaregiver,
-    Color? roleViewer,
   }) {
     return LunarLogColors(
       flowSpotting: _or(flowSpotting, this.flowSpotting),
@@ -264,10 +246,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       confidenceIrregular: _or(confidenceIrregular, this.confidenceIrregular),
       confidenceProvisional:
           _or(confidenceProvisional, this.confidenceProvisional),
-      roleOwner: _or(roleOwner, this.roleOwner),
-      roleCoParent: _or(roleCoParent, this.roleCoParent),
-      roleCaregiver: _or(roleCaregiver, this.roleCaregiver),
-      roleViewer: _or(roleViewer, this.roleViewer),
     );
   }
 
@@ -298,10 +276,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
           Color.lerp(confidenceIrregular, other.confidenceIrregular, t)!,
       confidenceProvisional:
           Color.lerp(confidenceProvisional, other.confidenceProvisional, t)!,
-      roleOwner: Color.lerp(roleOwner, other.roleOwner, t)!,
-      roleCoParent: Color.lerp(roleCoParent, other.roleCoParent, t)!,
-      roleCaregiver: Color.lerp(roleCaregiver, other.roleCaregiver, t)!,
-      roleViewer: Color.lerp(roleViewer, other.roleViewer, t)!,
     );
   }
 
@@ -331,12 +305,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       other.confidenceIrregular == confidenceIrregular &&
       other.confidenceProvisional == confidenceProvisional;
 
-  bool _sameRoleColors(LunarLogColors other) =>
-      other.roleOwner == roleOwner &&
-      other.roleCoParent == roleCoParent &&
-      other.roleCaregiver == roleCaregiver &&
-      other.roleViewer == roleViewer;
-
   // Value equality (issue #176 review): without this, two independently
   // built `LunarLogColors` instances (e.g. `AppTheme.lightTheme` read
   // twice, pre-memoization) never compare equal, which made every
@@ -349,8 +317,7 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       other is LunarLogColors &&
           _sameFlowColors(other) &&
           _sameAccentColors(other) &&
-          _sameConfidenceColors(other) &&
-          _sameRoleColors(other);
+          _sameConfidenceColors(other);
 
   @override
   int get hashCode => Object.hashAll([
@@ -371,10 +338,6 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
         confidenceLearning,
         confidenceIrregular,
         confidenceProvisional,
-        roleOwner,
-        roleCoParent,
-        roleCaregiver,
-        roleViewer,
       ]);
 }
 

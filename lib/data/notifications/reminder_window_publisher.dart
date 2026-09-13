@@ -17,12 +17,10 @@ library;
 
 import 'dart:async';
 
+import 'package:lunarlog/data/publish_retry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
-
-typedef ActiveProfilesStream = Stream<List<Profile>>;
-typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 
 class ReminderWindowPublisher {
   ReminderWindowPublisher({
@@ -57,6 +55,11 @@ class ReminderWindowPublisher {
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
   final Map<String, Timer> _debounceTimers = {};
   final Map<String, ActivePrediction> _pending = {};
+  // Issue #547: consecutive-failure count per profile, feeding
+  // decidePublishRetry's exponential backoff — reset on any genuine
+  // prediction change ([_onPrediction]) so a fresh update never inherits a
+  // stale profile's long backoff.
+  final Map<String, int> _retryAttempts = {};
   bool _disposed = false;
 
   void start() {
@@ -89,9 +92,11 @@ class ReminderWindowPublisher {
       // NotEnoughHistory: nothing to publish for this profile right now.
       _debounceTimers.remove(profileId)?.cancel();
       _pending.remove(profileId);
+      _retryAttempts.remove(profileId);
       return;
     }
     _pending[profileId] = prediction;
+    _retryAttempts.remove(profileId);
     _debounceTimers[profileId]?.cancel();
     _debounceTimers[profileId] = Timer(debounce, () => unawaited(_flush(profileId)));
   }
@@ -122,22 +127,38 @@ class ReminderWindowPublisher {
         estimatedNextStartIso: prediction.originalEstimatedNextStart.iso,
         episodeOpen: prediction.duringEpisode,
       );
-    } catch (_) {
+      _retryAttempts.remove(profileId);
+    } catch (error, stackTrace) {
       // Best-effort background upkeep (R13): a failed publish must never
       // surface to the UI or cancel the subscription.
       //
-      // #12 (review fix): but it also must not go unaddressed until
-      // something else happens to change - re-arm this same prediction on
-      // a bounded retryDelay rather than only waiting for a genuinely new
-      // prediction (_onPrediction) or an app restart. If a fresh prediction
-      // arrives first, _onPrediction overwrites _pending and resets the
-      // timer to the normal (short) debounce anyway, so this retry never
-      // fights a real update.
+      // Issue #547 (supersedes the #12 review fix's fixed 5-minute
+      // retry): retry only a transient failure, with exponential backoff
+      // and an attempt cap — a permanent rejection used to re-arm this
+      // same fixed retry forever, a select + upsert every 5 minutes
+      // indefinitely on cellular for a rejection that will never succeed.
+      // decidePublishRetry captures a non-retryable/exhausted failure to
+      // Sentry exactly once (never a bare swallow). If a fresh prediction
+      // arrives first, _onPrediction overwrites _pending, resets the
+      // attempt count, and resets the timer to the normal (short)
+      // debounce anyway, so this retry never fights a real update.
       if (_disposed) return;
+      final attempt = (_retryAttempts[profileId] ?? 0) + 1;
+      final decision = decidePublishRetry(
+        error,
+        stackTrace,
+        attempt: attempt,
+        backoff: (a) => exponentialPublishBackoff(a, initial: retryDelay),
+      );
+      if (!decision.shouldRetry) {
+        _retryAttempts.remove(profileId);
+        return;
+      }
+      _retryAttempts[profileId] = attempt;
       _pending[profileId] = prediction;
       _debounceTimers[profileId]?.cancel();
       _debounceTimers[profileId] =
-          Timer(retryDelay, () => unawaited(_flush(profileId)));
+          Timer(decision.delay!, () => unawaited(_flush(profileId)));
     }
   }
 
@@ -154,5 +175,6 @@ class ReminderWindowPublisher {
     }
     _predictionSubs.clear();
     _pending.clear();
+    _retryAttempts.clear();
   }
 }

@@ -10,7 +10,6 @@ import 'dart:async';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-typedef TimezoneProvider = FutureOr<String> Function();
 typedef PlatformTimeZoneProvider = Future<String?> Function();
 
 PlatformTimeZoneProvider? _globalPlatformTimeZoneProvider;

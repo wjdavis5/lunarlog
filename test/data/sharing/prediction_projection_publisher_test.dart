@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show SocketException;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
@@ -64,6 +65,15 @@ class _FakeService implements PredictionConnectionService {
   final List<PredictionProjection> published = [];
   Object? publishError;
 
+  /// How many calls [publishError] should still fail before succeeding:
+  /// -1 (default) means "fail every call for as long as [publishError] is
+  /// set" (the original, still-used-by-most-tests shape); a non-negative
+  /// value counts down so a test can exercise exactly N failed attempts
+  /// followed by success — needed for issue #547's capped retry, where a
+  /// zero-delay backoff resolves every retry within one `pumpEventQueue`
+  /// call, well before a test could otherwise intervene to clear the error.
+  int remainingFailures = -1;
+
   @override
   Future<Set<String>> outgoingConnectedProfileIds() async =>
       connectedProfileIds;
@@ -73,7 +83,10 @@ class _FakeService implements PredictionConnectionService {
     required String profileId,
     required PredictionProjection projection,
   }) async {
-    if (publishError != null) throw publishError!;
+    if (publishError != null && remainingFailures != 0) {
+      if (remainingFailures > 0) remainingFailures--;
+      throw publishError!;
+    }
     publishedFor.add(profileId);
     published.add(projection);
   }
@@ -202,8 +215,9 @@ void main() {
     expect(service.published.single.periodDays, isNotEmpty);
   });
 
-  test('a failed publish retries on the retry delay, not only on the next '
-      'change', () async {
+  test(
+      'a transient (SocketException) failed publish retries on the retry '
+      'delay, not only on the next change (issue #547)', () async {
     final profiles = StreamController<List<Profile>>(sync: true);
     final predictions = <String, StreamController<CyclePrediction>>{};
     final service = _FakeService(connectedProfileIds: {'p1'});
@@ -228,7 +242,49 @@ void main() {
       }
     });
 
-    service.publishError = Exception('network down');
+    // Fails exactly once, then succeeds — with a zero-delay backoff every
+    // retry resolves within one pumpEventQueue call, so this is the
+    // observable outcome rather than an intermediate "still empty" state.
+    service.publishError = const SocketException('network down');
+    service.remainingFailures = 1;
+    profiles.add([_profile('p1')]);
+    predictions['p1']!.add(_active(today));
+    await pumpEventQueue();
+
+    expect(service.publishedFor, ['p1'], reason: 'the bounded retry fired');
+  });
+
+  test(
+      'a non-retryable failure (issue #547) never retries — the recipient '
+      'never gets an update until a genuine prediction change re-arms it',
+      () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final service = _FakeService(connectedProfileIds: {'p1'});
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = LocalPredictionProjectionPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      service: service,
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+      retryDelay: Duration.zero,
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    // A permanent rejection (e.g. revoked access surfacing as a 4xx, or a
+    // client bug) — never a SocketException/TimeoutException/PostgREST 5xx.
+    service.publishError = StateError('permanently rejected');
     profiles.add([_profile('p1')]);
     predictions['p1']!.add(_active(today));
     await pumpEventQueue();
@@ -236,7 +292,8 @@ void main() {
 
     service.publishError = null;
     await pumpEventQueue();
-    expect(service.publishedFor, ['p1'], reason: 'the bounded retry fired');
+    expect(service.publishedFor, isEmpty,
+        reason: 'a non-retryable failure must not re-arm a retry timer');
   });
 
   group('republishConnected (issue #373, the resume hook)', () {

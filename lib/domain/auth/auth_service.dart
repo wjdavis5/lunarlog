@@ -116,122 +116,40 @@ final class SignUpAwaitingConfirmation extends SignUpResult {
   String toString() => 'SignUpAwaitingConfirmation';
 }
 
-/// Outcome of [AuthService.signInWithAppleNative].
-sealed class AppleSignInResult {
-  const AppleSignInResult();
+/// Outcome of a native sign-in/registration ceremony — issue #575:
+/// [AuthService.signInWithAppleNative], [AuthService.signInWithGoogleNative],
+/// [AuthService.signInWithPasskey], and [AuthService.registerPasskey] each
+/// had their own structurally-identical sealed hierarchy (a session
+/// wrapping an [AuthUser], plus a fieldless "the operator dismissed the
+/// dialog/ceremony" case) — collapsed into this one shared type.
+sealed class NativeSignInResult {
+  const NativeSignInResult();
 }
 
-final class AppleSignInSession extends AppleSignInResult {
-  const AppleSignInSession(this.user);
+final class NativeSignInSession extends NativeSignInResult {
+  const NativeSignInSession(this.user);
 
   final AuthUser user;
 
   @override
-  String toString() => 'AppleSignInSession($user)';
+  String toString() => 'NativeSignInSession($user)';
 }
 
-/// The operator dismissed the Apple dialog: not a failure (KTD9).
+/// The operator dismissed the native dialog/picker/ceremony: not a failure
+/// (KTD9; #2 KTD8/AE2; #30 R6 — the three prior per-provider doc comments
+/// this now replaces).
 @immutable
-final class AppleSignInCancelled extends AppleSignInResult {
-  const AppleSignInCancelled();
+final class NativeSignInCancelled extends NativeSignInResult {
+  const NativeSignInCancelled();
 
   @override
-  bool operator ==(Object other) => other is AppleSignInCancelled;
+  bool operator ==(Object other) => other is NativeSignInCancelled;
 
   @override
-  int get hashCode => (AppleSignInCancelled).hashCode;
+  int get hashCode => (NativeSignInCancelled).hashCode;
 
   @override
-  String toString() => 'AppleSignInCancelled';
-}
-
-/// Outcome of [AuthService.signInWithGoogleNative] (#2 U2; KTD1).
-sealed class GoogleSignInResult {
-  const GoogleSignInResult();
-}
-
-final class GoogleSignInSession extends GoogleSignInResult {
-  const GoogleSignInSession(this.user);
-
-  final AuthUser user;
-
-  @override
-  String toString() => 'GoogleSignInSession($user)';
-}
-
-/// The operator dismissed the Google picker: not a failure (#2 KTD8, AE2).
-@immutable
-final class GoogleSignInCancelled extends GoogleSignInResult {
-  const GoogleSignInCancelled();
-
-  @override
-  bool operator ==(Object other) => other is GoogleSignInCancelled;
-
-  @override
-  int get hashCode => (GoogleSignInCancelled).hashCode;
-
-  @override
-  String toString() => 'GoogleSignInCancelled';
-}
-
-/// Outcome of [AuthService.signInWithPasskey] (#30 U2; KTD4).
-sealed class PasskeySignInResult {
-  const PasskeySignInResult();
-}
-
-final class PasskeySignInSession extends PasskeySignInResult {
-  const PasskeySignInSession(this.user);
-
-  final AuthUser user;
-
-  @override
-  String toString() => 'PasskeySignInSession($user)';
-}
-
-/// The operator dismissed the platform passkey ceremony: not a failure,
-/// mirroring [GoogleSignInCancelled] (#30 R6).
-@immutable
-final class PasskeySignInCancelled extends PasskeySignInResult {
-  const PasskeySignInCancelled();
-
-  @override
-  bool operator ==(Object other) => other is PasskeySignInCancelled;
-
-  @override
-  int get hashCode => (PasskeySignInCancelled).hashCode;
-
-  @override
-  String toString() => 'PasskeySignInCancelled';
-}
-
-/// Outcome of [AuthService.registerPasskey] (#30 U2; KTD4).
-sealed class PasskeyRegistrationResult {
-  const PasskeyRegistrationResult();
-}
-
-final class PasskeyRegistrationSuccess extends PasskeyRegistrationResult {
-  const PasskeyRegistrationSuccess(this.user);
-
-  final AuthUser user;
-
-  @override
-  String toString() => 'PasskeyRegistrationSuccess($user)';
-}
-
-/// The operator dismissed the enrolment ceremony: not a failure, mirroring
-/// [PasskeySignInCancelled] (#30 R6).
-@immutable
-final class PasskeyRegistrationCancelled extends PasskeyRegistrationResult {
-  const PasskeyRegistrationCancelled();
-
-  @override
-  bool operator ==(Object other) => other is PasskeyRegistrationCancelled;
-
-  @override
-  int get hashCode => (PasskeyRegistrationCancelled).hashCode;
-
-  @override
-  String toString() => 'PasskeyRegistrationCancelled';
+  String toString() => 'NativeSignInCancelled';
 }
 
 /// Typed failure thrown by every [AuthService] operation and surfaced for
@@ -420,17 +338,17 @@ abstract interface class AuthService {
   Future<void> updatePassword(String newPassword);
 
   /// Native Apple Sign-In (iOS only, KTD9). Throws [UnsupportedError] on
-  /// every other platform; returns [AppleSignInCancelled] when the dialog
+  /// every other platform; returns [NativeSignInCancelled] when the dialog
   /// is dismissed; throws [AuthFailure] otherwise.
-  Future<AppleSignInResult> signInWithAppleNative();
+  Future<NativeSignInResult> signInWithAppleNative();
 
   /// Native Google Sign-In through the platform picker (iOS and Android,
   /// #2 KTD1). Throws [UnsupportedError] on every other platform and when
   /// the build carries no Google client ids; returns
-  /// [GoogleSignInCancelled] when the picker is dismissed; throws
+  /// [NativeSignInCancelled] when the picker is dismissed; throws
   /// [AuthFailure] otherwise ([AuthProviderUnavailableFailure] for any
   /// provider-side failure, #2 KTD8).
-  Future<GoogleSignInResult> signInWithGoogleNative();
+  Future<NativeSignInResult> signInWithGoogleNative();
 
   /// Sends a sign-in email carrying a link (to open on this device, R5)
   /// and a code (#2 KTD3). With [createAccount] false an unknown email
@@ -474,24 +392,24 @@ abstract interface class AuthService {
 
   /// Passkey sign-in (#30 U2; KTD1, KTD2, KTD4). Throws [UnsupportedError]
   /// where the build has no passkey configuration (`AppConfig.hasPasskeys`
-  /// false); returns [PasskeySignInCancelled] when the operator dismisses
+  /// false); returns [NativeSignInCancelled] when the operator dismisses
   /// the platform ceremony; throws [AuthFailure] otherwise
   /// ([AuthProviderUnavailableFailure] when no working platform ceremony is
   /// available, R7). No Supabase or Flutter type crosses this boundary: the
   /// server owns the relying-party id and the client never handles it.
-  Future<PasskeySignInResult> signInWithPasskey();
+  Future<NativeSignInResult> signInWithPasskey();
 
   /// Adds a passkey as a sign-in method for the *current* account
   /// (#30 U2; KTD1, KTD2, KTD4). Requires [state] to be
   /// [AuthSessionState.signedIn] — otherwise throws [AuthUnknownFailure]
   /// before touching the platform, as [linkGoogle] does. Throws
   /// [UnsupportedError] where the build has no passkey configuration;
-  /// returns [PasskeyRegistrationCancelled] when the operator dismisses the
+  /// returns [NativeSignInCancelled] when the operator dismisses the
   /// enrolment ceremony; throws [AuthFailure] otherwise
   /// ([AuthProviderUnavailableFailure] for any platform-side failure, R7).
   /// The device-credential check before registration is the caller's
   /// concern, exactly as for [linkGoogle].
-  Future<PasskeyRegistrationResult> registerPasskey();
+  Future<NativeSignInResult> registerPasskey();
 
   /// Removes [provider] as a sign-in method from the current account
   /// (#31 U1; KTD1, KTD3). Requires [state] to be

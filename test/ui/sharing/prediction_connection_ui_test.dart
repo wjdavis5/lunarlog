@@ -14,6 +14,8 @@
 /// drains before the binding's no-pending-work check.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -606,14 +608,14 @@ void main() {
                 return Center(
                   child: FilledButton(
                     onPressed: () {
-                      showModalBottomSheet<void>(
+                      unawaited(showModalBottomSheet<void>(
                         context: context,
                         builder: (_) => AcceptPredictionConnectionSheet(
                           rawToken: 'code',
                           service: service,
                           onAccepted: (result) => popped = result,
                         ),
-                      );
+                      ));
                     },
                     child: const Text('open'),
                   ),
@@ -652,13 +654,13 @@ void main() {
                 return Center(
                   child: FilledButton(
                     onPressed: () {
-                      showModalBottomSheet<void>(
+                      unawaited(showModalBottomSheet<void>(
                         context: context,
                         builder: (_) => AcceptPredictionConnectionSheet(
                           rawToken: 'code',
                           service: service,
                         ),
-                      );
+                      ));
                     },
                     child: const Text('open'),
                   ),
@@ -699,13 +701,13 @@ void main() {
                 return Center(
                   child: FilledButton(
                     onPressed: () {
-                      showModalBottomSheet<void>(
+                      unawaited(showModalBottomSheet<void>(
                         context: context,
                         builder: (_) => AcceptPredictionConnectionSheet(
                           rawToken: 'code',
                           service: service,
                         ),
-                      );
+                      ));
                     },
                     child: const Text('open'),
                   ),

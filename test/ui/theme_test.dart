@@ -99,10 +99,6 @@ void main() {
           'confidenceHigh': c.confidenceHigh,
           'confidenceLearning': c.confidenceLearning,
           'confidenceIrregular': c.confidenceIrregular,
-          'roleOwner': c.roleOwner,
-          'roleCoParent': c.roleCoParent,
-          'roleCaregiver': c.roleCaregiver,
-          'roleViewer': c.roleViewer,
         };
         for (final role in roles.entries) {
           expect(role.value, isNotNull, reason: '$name.${role.key} is null');
@@ -482,10 +478,6 @@ void main() {
       expect(result.confidenceHigh, base.confidenceHigh);
       expect(result.confidenceLearning, base.confidenceLearning);
       expect(result.confidenceIrregular, base.confidenceIrregular);
-      expect(result.roleOwner, base.roleOwner);
-      expect(result.roleCoParent, base.roleCoParent);
-      expect(result.roleCaregiver, base.roleCaregiver);
-      expect(result.roleViewer, base.roleViewer);
     });
 
     test('copyWith with no arguments returns an equal instance', () {

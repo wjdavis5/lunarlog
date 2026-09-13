@@ -938,33 +938,71 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     return true;
   }
 
+  /// Issue #551: the shared skeleton behind every per-id-LWW remote apply
+  /// ([_applyCareNote], [_applyVisitPrepItem], and — not yet migrated,
+  /// kept mechanical and reviewable — [_applyCycleOverride] and friends):
+  /// read the local row, bail if [onlyExisting] and there is none, defer
+  /// to [remoteWinsById] against [localUpdatedAt]/[remoteUpdatedAt],
+  /// require the referenced profile to exist locally (else a
+  /// [RetryableSyncApplyError] naming [entityLabel] and [remoteId]), then
+  /// [insert] or [update]. Each caller still owns its own tombstone/payload
+  /// shaping (e.g. redacting a tombstone's body) inside those callbacks —
+  /// this only centralises the guard/bail/retryable clauses that were
+  /// hand-written identically at every one of these call sites.
+  Future<bool> _applyKeyedRow<TRemote, TLocal>({
+    required TRemote remote,
+    required Future<TLocal?> Function() readLocal,
+    required bool onlyExisting,
+    required DateTime Function(TRemote) remoteUpdatedAt,
+    required DateTime Function(TLocal) localUpdatedAt,
+    required String Function(TRemote) parentProfileId,
+    required String entityLabel,
+    required String remoteId,
+    required Future<void> Function(TRemote remote) insert,
+    required Future<void> Function(TRemote remote, TLocal local) update,
+  }) async {
+    final local = await readLocal();
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: localUpdatedAt(local),
+            remoteUpdatedAt: remoteUpdatedAt(remote))) {
+      return false;
+    }
+    if (await _profileOrNull(parentProfileId(remote)) == null) {
+      throw RetryableSyncApplyError(
+          '$entityLabel $remoteId references a profile not held locally');
+    }
+    if (local == null) {
+      await insert(remote);
+      return true;
+    }
+    await update(remote, local);
+    return true;
+  }
+
   /// Issue #128: applies a server copy of a care note keyed by id — the
   /// same per-id LWW rule [_applyCycleOverride] uses, with no resolver. A
   /// tombstone clears `body` (mirroring the server's
   /// `care_notes_tombstone_payload_check`).
   Future<bool> _applyCareNote(RemoteCareNoteRow remote,
-      {required bool onlyExisting}) async {
-    final local = await _careNoteOrNull(remote.id);
-    if (local == null && onlyExisting) return false;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: local.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
-      return false;
-    }
-    if (await _profileOrNull(remote.profileId) == null) {
-      throw RetryableSyncApplyError(
-          'care note ${remote.id} references a profile not held locally');
-    }
+      {required bool onlyExisting}) {
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
-    if (local == null) {
-      await _insertCareNote(remote, tombstone, updatedAt, deletedAt);
-      return true;
-    }
-    await _updateCareNote(remote, local, tombstone, updatedAt, deletedAt);
-    return true;
+    return _applyKeyedRow<RemoteCareNoteRow, CareNoteData>(
+      remote: remote,
+      readLocal: () => _careNoteOrNull(remote.id),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      parentProfileId: (r) => r.profileId,
+      entityLabel: 'care note',
+      remoteId: remote.id,
+      insert: (r) => _insertCareNote(r, tombstone, updatedAt, deletedAt),
+      update: (r, local) =>
+          _updateCareNote(r, local, tombstone, updatedAt, deletedAt),
+    );
   }
 
   /// The insert half of [_applyCareNote], split out so neither method
@@ -1045,29 +1083,28 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// `body` and resets the check state (mirroring the server's
   /// `visit_prep_items_tombstone_payload_check`).
   Future<bool> _applyVisitPrepItem(RemoteVisitPrepItemRow remote,
-      {required bool onlyExisting}) async {
-    final local = await _visitPrepItemOrNull(remote.id);
-    if (local == null && onlyExisting) return false;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: local.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
-      return false;
-    }
-    if (await _profileOrNull(remote.profileId) == null) {
-      throw RetryableSyncApplyError(
-          'visit prep item ${remote.id} references a profile not held locally');
-    }
+      {required bool onlyExisting}) {
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
-    final payload = _visitPrepItemPayload(remote, tombstone, local);
-    if (local == null) {
-      await _insertVisitPrepItem(remote, payload, updatedAt, deletedAt);
-      return true;
-    }
-    await _updateVisitPrepItem(remote, local, payload, updatedAt, deletedAt);
-    return true;
+    return _applyKeyedRow<RemoteVisitPrepItemRow, VisitPrepItemData>(
+      remote: remote,
+      readLocal: () => _visitPrepItemOrNull(remote.id),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      parentProfileId: (r) => r.profileId,
+      entityLabel: 'visit prep item',
+      remoteId: remote.id,
+      // _visitPrepItemPayload needs `local` (the checked-state transition
+      // rule), so it is computed inside each callback rather than once up
+      // front — the insert path passes null, matching the "no local row"
+      // case _visitPrepItemPayload already handles.
+      insert: (r) => _insertVisitPrepItem(
+          r, _visitPrepItemPayload(r, tombstone, null), updatedAt, deletedAt),
+      update: (r, local) => _updateVisitPrepItem(r, local,
+          _visitPrepItemPayload(r, tombstone, local), updatedAt, deletedAt),
+    );
   }
 
   /// The insert half of [_applyVisitPrepItem], split out so neither method

@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MockSyncEngine implements SyncEngine {
@@ -430,6 +431,21 @@ void main() {
         service.claimProfile(rawToken: 'any'),
         throwsA(isA<TransferOtherFailure>()),
       );
+    });
+
+    test('issue #552: an unrecognised error records a diagnostic breadcrumb '
+        'since TransferOtherFailure itself no longer carries one', () async {
+      defaultBreadcrumbLog.clear();
+      final service =
+          await serviceForError(message: 'boom', code: 'XX000', statusCode: 500);
+
+      await expectLater(
+        service.claimProfile(rawToken: 'any'),
+        throwsA(isA<TransferOtherFailure>()),
+      );
+
+      expect(defaultBreadcrumbLog.snapshot(), isNotEmpty);
+      expect(defaultBreadcrumbLog.snapshot().single, contains('ownershipTransfer'));
     });
   });
 }

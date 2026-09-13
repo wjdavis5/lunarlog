@@ -176,8 +176,9 @@ void main() {
       expect(jsonDecode(requests[5].body), {'processed_rows': 2001});
 
       expect(requests[6].method, 'PATCH');
-      expect(jsonDecode(requests[6].body)['status'], 'completed');
-      expect(jsonDecode(requests[6].body)['error_kind'], isNull);
+      final finalPatch = jsonDecode(requests[6].body) as Map<String, dynamic>;
+      expect(finalPatch['status'], 'completed');
+      expect(finalPatch['error_kind'], isNull);
 
       expect(progress, [
         [kBulkImportMaxRowsPerChunk, 2001],
@@ -282,7 +283,8 @@ void main() {
         ),
         throwsA(const BulkImportError.other()),
       );
-      expect(jsonDecode(requests.last.body)['error_kind'], 'other');
+      expect((jsonDecode(requests.last.body) as Map<String, dynamic>)['error_kind'],
+          'other');
     });
 
     test('a failure marking the job failed does not mask the real error',
@@ -348,15 +350,18 @@ void main() {
         throwsA(const BulkImportError.network()),
       );
 
+      bool isPatchWithStatus(http.Request r, String status) =>
+          r.method == 'PATCH' &&
+          (jsonDecode(r.body) as Map<String, dynamic>)['status'] == status;
+
       expect(
-        requests.any((r) =>
-            r.method == 'PATCH' && jsonDecode(r.body)['status'] == 'failed'),
+        requests.any((r) => isPatchWithStatus(r, 'failed')),
         isFalse,
         reason: 'the job must never be marked failed when only the '
             'completed PATCH fails',
       );
-      final attemptedCompletedPatch = requests.lastWhere((r) =>
-          r.method == 'PATCH' && jsonDecode(r.body)['status'] == 'completed');
+      final attemptedCompletedPatch =
+          requests.lastWhere((r) => isPatchWithStatus(r, 'completed'));
       expect(attemptedCompletedPatch.method, 'PATCH');
     });
   });

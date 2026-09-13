@@ -30,12 +30,11 @@ class ErroringDayEntriesRepository implements DayEntriesRepository {
     required DayEntry entry,
     List<Observation> observationsToUpsert = const [],
     List<String> observationIdsToDelete = const [],
-  }) =>
-      _inner.saveDayEntryWithObservations(
-        entry: entry,
-        observationsToUpsert: observationsToUpsert,
-        observationIdsToDelete: observationIdsToDelete,
-      );
+  }) => _inner.saveDayEntryWithObservations(
+    entry: entry,
+    observationsToUpsert: observationsToUpsert,
+    observationIdsToDelete: observationIdsToDelete,
+  );
 
   @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) =>
@@ -51,9 +50,7 @@ class ErroringDayEntriesRepository implements DayEntriesRepository {
     LocalDate? from,
     LocalDate? to,
   }) {
-    return _inner
-        .watchForProfile(profileId, from: from, to: to)
-        .map((entries) {
+    return _inner.watchForProfile(profileId, from: from, to: to).map((entries) {
       if (broken) throw StateError('simulated watchForProfile failure');
       return entries;
     });
@@ -62,6 +59,10 @@ class ErroringDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<void> delete(String profileId, LocalDate localDate) =>
       _inner.delete(profileId, localDate);
+
+  @override
+  Future<bool> hasAnyEntries(String profileId) =>
+      _inner.hasAnyEntries(profileId);
 }
 
 /// The same decorator for [ActivityFeedRepository] (issue #543's

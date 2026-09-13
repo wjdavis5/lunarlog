@@ -33,6 +33,12 @@ class DriftActivityFeedRepository implements ActivityFeedRepository {
   /// this device synced appears here without any restart (issue #124 AC3).
   @override
   Stream<ActivityFeedSnapshot> watch(String profileId) {
+    // Issue #548: this controller is deliberately never `.close()`d — it is
+    // handed to the caller as `.stream` below, and `onCancel` already tears
+    // down every underlying subscription once the last listener leaves;
+    // there is no owner left to call `.close()` on it afterward, the same
+    // shape every other on-demand "watch" factory in this codebase uses.
+    // ignore: close_sinks
     late StreamController<ActivityFeedSnapshot> controller;
     final subscriptions = <StreamSubscription<Object?>>[];
     var entries = const <domain.DayEntry>[];

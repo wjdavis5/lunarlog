@@ -76,11 +76,6 @@ abstract final class HealthChannelMethods {
   static const deleteRecords = 'deleteRecords';
 }
 
-/// The [HealthSyncCheck] name as it appears on the wire — the enum's own
-/// name, used verbatim by the native guard mirrors, so a mismatch shows
-/// up as an unknown result string rather than a silent misread.
-String healthSyncCheckToWire(HealthSyncCheck check) => check.name;
-
 /// Parses a result string into the typed [HealthPlatformResult]. Total:
 /// never throws; an unrecognized string becomes
 /// `HealthPlatformResult.failed` (a protocol error — e.g. a newer native

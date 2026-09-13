@@ -26,6 +26,7 @@ import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/export/csv_export_writer.dart';
@@ -404,20 +405,17 @@ class _LunarLogAppState extends State<LunarLogApp>
       activeProfiles: _profiles.watch(),
       predictionFor: _prediction.watch,
       localSettings: configService,
-      // Issue #183: the raw profile_modes birth-control row feeds the
-      // adherence kinds. The watcher rides the drift row stream, so a
-      // recorded-method change (onboarding answer, profile-settings edit,
-      // sync pull) replans and re-routes the reminder onto the new
-      // method's cadence.
-      birthControlStateFor: (profileId) => widget.db.storage
-          .watchProfileMode(profileId)
-          .map((row) => row == null
-              ? null
-              : (
-                    method: row.birthControlMethod,
-                    startedOn: row.birthControlStartedOn,
-                    stoppedOn: row.birthControlStoppedOn,
-                  )),
+      // Issue #183: the profile_modes birth-control row feeds the
+      // adherence kinds. The watcher rides ProfileModesRepository.watch
+      // (issue #551 — no longer `widget.db.storage.watchProfileMode`
+      // directly), so a recorded-method change (onboarding answer,
+      // profile-settings edit, sync pull) replans and re-routes the
+      // reminder onto the new method's cadence. Mirrors AppDependencies'
+      // own prediction-service wiring via the same
+      // birthControlStateFromProfileMode mapper.
+      birthControlStateFor: (profileId) => _profileModes
+          .watch(profileId)
+          .map(birthControlStateFromProfileMode),
     );
     _coordinator = coordinator;
     _scheduleReminderStart(coordinator);
@@ -844,7 +842,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _inviteSub?.cancel();
+    unawaited(_inviteSub?.cancel());
     _inviteSub = null;
     _authController?.dispose();
     _authController = null;
@@ -864,12 +862,21 @@ class _LunarLogAppState extends State<LunarLogApp>
         _healthSyncTombstoneCoordinator?.dispose() ?? Future<void>.value();
     _healthFlowCoordinator = null;
     _healthSyncTombstoneCoordinator = null;
+    // Issue #541: the reminder coordinator above is disposed first (so its
+    // `changes` subscription is already gone), then the service's own
+    // remaining watch subscriptions and its broadcast controller are torn
+    // down — otherwise a device reset (KTD16) would leave them attached to
+    // a since-closed, deleted database.
+    final reminderConfigTeardown =
+        _reminderConfigService?.dispose() ?? Future<void>.value();
+    _reminderConfigService = null;
     final teardown = Future.wait([
       coordinatorTeardown,
       publisherTeardown,
       projectionPublisherTeardown,
       healthFlowTeardown,
       healthSyncTeardown,
+      reminderConfigTeardown,
     ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {
@@ -999,11 +1006,15 @@ class _LunarLogAppState extends State<LunarLogApp>
             updateShouldNotify: (_, _) => false,
           ),
         ChangeNotifierProvider(
-          create: (context) => ProfileController(
-            profilesRepository: context.read<ProfilesRepository>(),
-            settingsStore: context.read<SettingsStore>(),
-            profileModesRepository: context.read<ProfileModesRepository>(),
-          )..load(),
+          create: (context) {
+            final controller = ProfileController(
+              profilesRepository: context.read<ProfilesRepository>(),
+              settingsStore: context.read<SettingsStore>(),
+              profileModesRepository: context.read<ProfileModesRepository>(),
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
       ],
       child: MaterialApp(
