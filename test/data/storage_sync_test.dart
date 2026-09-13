@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart'
+    show RemoteDeletedProfileRow, RemoteProfileGuardianRow;
 import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry;
 
 class FixedClock {
@@ -885,6 +887,84 @@ void main() {
     });
   });
 
+  group('applyPushResult (issue #523: atomic accepted + resolved apply)', () {
+    test('a failure applying a resolved row rolls back every markPushed '
+        'write from the same call — nothing is half-committed', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          note: 'local');
+      expect(e.dirty, isTrue);
+      expect(e.localRev, 1);
+
+      // A resolved row for the SAME local id (so `onlyExisting` does not
+      // skip it) whose profile is not held locally — `_applyDayEntry`
+      // throws `RetryableSyncApplyError` from `_ensureDayEntryProfileExists`
+      // partway through the resolved half of the call, *after* the accepted
+      // half's `markPushed` write for `e` has already run inside the same
+      // transaction.
+      final badResolved = remoteEntry(
+        e.id,
+        profileId: 'profile-not-held-locally',
+        localDate: e.localDate,
+        updatedAt: e.updatedAt.add(const Duration(seconds: 1)),
+      );
+
+      await expectLater(
+        storage.applyPushResult(
+          accepted: [
+            (table: SyncTable.dayEntries, id: e.id, localRevAtPush: e.localRev),
+          ],
+          resolved: [badResolved],
+        ),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+
+      final reread = await entryById(p.id, e.id);
+      expect(reread.dirty, isTrue,
+          reason: 'the markPushed write inside the same transaction as the '
+              'failing resolved apply must have rolled back too — this is '
+              'exactly the divergence issue #523 describes: a declined row '
+              'left dirty = false holding the losing value forever');
+      expect(reread.localRev, e.localRev);
+      expect(reread.note, 'local',
+          reason: 'the resolved apply itself must never have landed either');
+    });
+
+    test('a clean call clears dirty on every accepted row and applies every '
+        'resolved row, in one pass', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          note: 'local');
+      final resolvedAt = e.updatedAt.add(const Duration(seconds: 1));
+
+      await storage.applyPushResult(
+        accepted: [
+          (table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev),
+        ],
+        resolved: [
+          remoteEntry(e.id,
+              profileId: p.id,
+              updatedAt: resolvedAt,
+              note: 'server wins'),
+        ],
+      );
+
+      final rereadProfile = await profileById(p.id);
+      expect(rereadProfile.dirty, isFalse);
+      final rereadEntry = await entryById(p.id, e.id);
+      expect(rereadEntry.dirty, isFalse);
+      expect(rereadEntry.note, 'server wins');
+    });
+  });
+
   group('applyRemotePage', () {
     test('commits rows and the table cursor together; a throwing row '
         'leaves both untouched', () async {
@@ -942,6 +1022,30 @@ void main() {
       expect((await storage.readSyncState()).cursorProfiles, 7);
     });
 
+    test('issue #525: profileGuardians now persists its own cursor, '
+        'independent of every other table', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.applyRemotePage(
+        table: SyncTable.profileGuardians,
+        rows: [
+          RemoteProfileGuardianRow(
+            id: 'g-1',
+            profileId: p.id,
+            userId: 'user-a',
+            role: 'viewer',
+            status: 'accepted',
+            createdAt: t0,
+            updatedAt: t0,
+          ),
+        ],
+        newCursor: 17,
+      );
+      final state = await storage.readSyncState();
+      expect(state.cursorProfileGuardians, 17);
+      expect(state.cursorProfiles, 0,
+          reason: 'profileGuardians\' cursor must not bleed into another '
+              'table\'s');
+    });
   });
 
   group('clock offset', () {
@@ -1123,6 +1227,300 @@ void main() {
       expect(after.deviceId, '');
       expect(after.cursorProfiles, 0);
       expect(after.boundUserId, isNull);
+    });
+  });
+
+  group('revocation wipe (issue #532)', () {
+    RemoteProfileGuardianRow remoteGuardian(
+      String id, {
+      required String profileId,
+      required String userId,
+      String role = 'caregiver',
+      required String status,
+      required DateTime updatedAt,
+      DateTime? createdAt,
+    }) =>
+        RemoteProfileGuardianRow(
+          id: id,
+          profileId: profileId,
+          userId: userId,
+          role: role,
+          status: status,
+          displayName: null,
+          invitedBy: null,
+          createdAt: createdAt ?? updatedAt,
+          updatedAt: updatedAt,
+        );
+
+    /// Every table in `tables.dart` carrying a `profile_id` column,
+    /// discovered from the live schema rather than hand-copied — so a new
+    /// profile-scoped table added later shows up here automatically.
+    Set<String> profileScopedTableNames() => {
+          for (final table in db.allTables)
+            if (table.$columns.any((c) => c.name == 'profile_id'))
+              table.actualTableName,
+        };
+
+    /// The set [profileScopedTableNames] must equal today. Deliberately
+    /// hand-maintained (not derived) so adding a new profile_id-bearing
+    /// table without updating this set — and without extending the
+    /// revocation-wipe assertions below to cover it — fails loudly here,
+    /// rather than silently keeping a removed guardian's access to that
+    /// table's content alive on their device (exactly the bug class issue
+    /// #532 was).
+    const kKnownProfileScopedTables = {
+      'day_entries',
+      'profile_guardians',
+      'observations',
+      'profile_modes',
+      'cycle_overrides',
+      'care_notes',
+      'visit_prep_items',
+    };
+
+    test('tables.dart\'s profile_id-bearing tables match the set this '
+        'file\'s wipe coverage below is written against', () {
+      expect(profileScopedTableNames(), kKnownProfileScopedTables,
+          reason:
+              'a table with a new profile_id column was added to tables.dart '
+              '— add it to kKnownProfileScopedTables above AND to the '
+              'coverage assertions in the test below (and, if it holds '
+              'sync content rather than membership metadata, to '
+              '_tombstoneRevokedSharedProfile\'s wipe itself), or a removed '
+              'guardian keeps that table\'s content on their device forever');
+    });
+
+    test('every profile-scoped content table (all but the membership row '
+        'itself) has no live row left after a revocation apply', () async {
+      const uid = 'user-a';
+      await storage.writeSyncState(
+          kDefaultSyncState.copyWith(boundUserId: const Value(uid)));
+
+      final p = await storage.upsertProfile(displayName: 'Shared', isMinor: false);
+      final entry = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          note: 'symptom log');
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+        code: 'migraine',
+        intensity: 3,
+      );
+      await storage.upsertProfileMode(
+        profileId: p.id,
+        mode: 'perimenopause',
+        birthControlMethod: 'iud_hormonal',
+      );
+      await storage.upsertCycleOverride(
+        profileId: p.id,
+        cycleStartDate: '2026-01-01',
+        excludedFromAverage: true,
+        manualStart: true,
+        noteId: 'note-1',
+      );
+      await storage.upsertCareNote(profileId: p.id, body: 'call the doctor');
+      await storage.addVisitPrepItem(profileId: p.id, body: 'ask about X');
+
+      // Sanity: every table actually holds live content before revocation.
+      expect((await storage.getDayEntries(profileId: p.id)), isNotEmpty);
+      expect((await storage.getObservationsForProfile(p.id)), isNotEmpty);
+      expect((await storage.getProfileMode(p.id))?.mode, 'perimenopause');
+      expect((await storage.getCycleOverridesForProfile(p.id)), isNotEmpty);
+      expect((await storage.getCareNotesForProfile(p.id)), isNotEmpty);
+      expect((await storage.getVisitPrepItemsForProfile(p.id)), isNotEmpty);
+
+      final revokedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        remoteGuardian('g-1',
+            profileId: p.id, userId: uid, status: 'revoked', updatedAt: revokedAt),
+      ]);
+
+      expect(await storage.getProfile(p.id), isNull,
+          reason: 'the profile itself must be tombstoned');
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      expect(await storage.getObservationsForProfile(p.id), isEmpty,
+          reason: 'issue #532: observations were missing from the wipe');
+      expect(await storage.getCycleOverridesForProfile(p.id), isEmpty,
+          reason: 'issue #532: cycle_overrides were missing from the wipe');
+      expect(await storage.getCareNotesForProfile(p.id), isEmpty);
+      expect(await storage.getVisitPrepItemsForProfile(p.id), isEmpty);
+
+      // profile_modes has no tombstone (Issue #188): an absent-row-equivalent
+      // reset is the wipe for this table (issue #532).
+      final mode = await storage.getProfileMode(p.id);
+      expect(mode, isNotNull);
+      expect(mode!.mode, 'tracking');
+      expect(mode.birthControlMethod, isNull);
+      expect(mode.dirty, isFalse);
+
+      // Nothing wiped here is left dirty — the wipe must never be pushed
+      // back to the server that already knows about the revocation.
+      expect(await storage.dirtyCount(), 0);
+    });
+  });
+
+  group('deleted_profiles reader (issue #522)', () {
+    test('applying a deleted_profiles row tombstones the profile and '
+        'cascades exactly like a guardian revocation', () async {
+      final p = await storage.upsertProfile(displayName: 'Purged', isMinor: false);
+      final entry = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.medium);
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+      );
+      await storage.upsertCareNote(profileId: p.id, body: 'note');
+
+      final purgedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        RemoteDeletedProfileRow(profileId: p.id, deletedAt: purgedAt),
+      ]);
+
+      expect(await storage.getProfile(p.id), isNull);
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      expect(await storage.getObservationsForProfile(p.id), isEmpty);
+      expect(await storage.getCareNotesForProfile(p.id), isEmpty);
+      expect(await storage.dirtyCount(), 0,
+          reason: 'the wipe must never be pushed back');
+    });
+
+    test('a profile never held locally is a harmless no-op', () async {
+      await storage.applyRemoteRows([
+        RemoteDeletedProfileRow(profileId: 'never-held', deletedAt: t0),
+      ]);
+      expect(await storage.getProfile('never-held'), isNull);
+    });
+
+    test('applying it through applyRemotePage advances no cursor — '
+        'issue #522 pages from version 0 every cycle, like profileGuardians',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.applyRemotePage(
+        table: SyncTable.deletedProfiles,
+        rows: [RemoteDeletedProfileRow(profileId: p.id, deletedAt: t0)],
+        newCursor: 999,
+      );
+      expect((await storage.readSyncState()).cursorProfiles, 0,
+          reason: 'deletedProfiles has no persisted cursor of its own and '
+              'must not repurpose cursorProfiles either');
+      expect(await storage.getProfile(p.id), isNull);
+    });
+  });
+
+  group('bumpLocalRevForRetry (issue #568)', () {
+    test('bumps local_rev and re-marks dirty on every pushable table, '
+        'content untouched, and is a harmless no-op on the two pull-only '
+        'tables', () async {
+      final p = await storage.upsertProfile(displayName: 'A', isMinor: false);
+      await storage.markPushed(
+          table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.profiles, id: p.id);
+      var profile = await storage.getProfile(p.id);
+      expect(profile!.localRev, p.localRev + 1);
+      expect(profile.dirty, isTrue);
+      expect(profile.displayName, 'A', reason: 'content is untouched');
+
+      final e = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      await storage.markPushed(
+          table: SyncTable.dayEntries, id: e.id, localRevAtPush: e.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.dayEntries, id: e.id);
+      var entry = await entryById(p.id, e.id);
+      expect(entry.localRev, e.localRev + 1);
+      expect(entry.dirty, isTrue);
+      expect(entry.flow, FlowLevel.light);
+
+      final o = await storage.upsertObservation(
+          dayEntryId: e.id,
+          profileId: p.id,
+          localDate: e.localDate,
+          tz: 'UTC',
+          category: 'pain');
+      await storage.markPushed(
+          table: SyncTable.observations, id: o.id, localRevAtPush: o.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.observations, id: o.id);
+      var observation =
+          (await storage.getObservationsForDayEntry(e.id)).single;
+      expect(observation.localRev, o.localRev + 1);
+      expect(observation.dirty, isTrue);
+      expect(observation.category, 'pain');
+
+      await storage.upsertProfileMode(profileId: p.id, mode: 'tracking');
+      final mode0 = (await storage.getProfileMode(p.id))!;
+      await storage.markPushed(
+          table: SyncTable.profileModes,
+          id: p.id,
+          localRevAtPush: mode0.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.profileModes, id: p.id);
+      var mode = (await storage.getProfileMode(p.id))!;
+      expect(mode.localRev, mode0.localRev + 1);
+      expect(mode.dirty, isTrue);
+      expect(mode.mode, 'tracking');
+
+      final co = await storage.upsertCycleOverride(
+          profileId: p.id, cycleStartDate: '2026-01-01');
+      await storage.markPushed(
+          table: SyncTable.cycleOverrides, id: co.id, localRevAtPush: co.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.cycleOverrides, id: co.id);
+      var override =
+          (await storage.getCycleOverridesForProfile(p.id)).single;
+      expect(override.localRev, co.localRev + 1);
+      expect(override.dirty, isTrue);
+      expect(override.cycleStartDate, '2026-01-01');
+
+      final cn = await storage.upsertCareNote(profileId: p.id, body: 'note');
+      await storage.markPushed(
+          table: SyncTable.careNotes, id: cn.id, localRevAtPush: cn.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.careNotes, id: cn.id);
+      var note = (await storage.getCareNotesForProfile(p.id)).single;
+      expect(note.localRev, cn.localRev + 1);
+      expect(note.dirty, isTrue);
+      expect(note.body, 'note');
+
+      final vp = await storage.addVisitPrepItem(profileId: p.id, body: 'ask');
+      await storage.markPushed(
+          table: SyncTable.visitPrepItems, id: vp.id, localRevAtPush: vp.localRev);
+      await storage.bumpLocalRevForRetry(table: SyncTable.visitPrepItems, id: vp.id);
+      var item = (await storage.getVisitPrepItemsForProfile(p.id)).single;
+      expect(item.localRev, vp.localRev + 1);
+      expect(item.dirty, isTrue);
+      expect(item.body, 'ask');
+
+      // Pull-only tables: nothing to bump, must not throw.
+      await storage.bumpLocalRevForRetry(
+          table: SyncTable.profileGuardians, id: 'irrelevant');
+      await storage.bumpLocalRevForRetry(
+          table: SyncTable.deletedProfiles, id: 'irrelevant');
+    });
+
+    test('markPushed on the two pull-only tables is a harmless no-op', () async {
+      expect(
+          await storage.markPushed(
+              table: SyncTable.profileGuardians,
+              id: 'irrelevant',
+              localRevAtPush: 0),
+          isFalse);
+      expect(
+          await storage.markPushed(
+              table: SyncTable.deletedProfiles,
+              id: 'irrelevant',
+              localRevAtPush: 0),
+          isFalse);
     });
   });
 }

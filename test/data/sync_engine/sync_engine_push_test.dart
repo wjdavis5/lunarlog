@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/supabase_sync_engine.dart'
+    show kClockOffsetSmoothingAlpha;
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -548,6 +550,60 @@ void main() {
       expect(e.updatedAt, t0.add(const Duration(minutes: 5, seconds: 1)));
     });
 
+    test('issue #566: the offset is measured from sentAt (captured before '
+        'the request), not from the clock after the round trip and after '
+        'applyPushResult\'s writes', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: t0.add(const Duration(minutes: 5)));
+      // Simulate a slow round trip: the clock advances *during* the
+      // request, well after sentAt would already have been captured.
+      rig.transport.onPush = (_) async {
+        rig.clock.now = rig.clock.now.add(const Duration(seconds: 30));
+      };
+
+      await rig.start();
+
+      // Before the fix, offset = serverNow - clock() (read AFTER the RTT)
+      // would have measured only 4m30s. With sentAt captured before the
+      // call, the true 5-minute offset is measured regardless of how long
+      // the round trip took.
+      expect(rig.storage.clockOffset, const Duration(minutes: 5));
+    });
+
+    test('issue #566: the offset is smoothed across cycles (a simple EMA), '
+        'not replaced wholesale by each new sample', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: t0.add(const Duration(minutes: 5)));
+      await rig.start();
+      expect(rig.storage.clockOffset, const Duration(minutes: 5),
+          reason: 'the very first sample is taken as-is - nothing to '
+              'smooth against yet');
+
+      // A second, very different (noisy) sample: smoothing means the
+      // result moves toward it, not straight to it.
+      await rig.storage.upsertProfile(displayName: 'B', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: rig.clock.now.add(const Duration(minutes: 15)));
+      await rig.sync();
+
+      final firstSampleMs = const Duration(minutes: 5).inMilliseconds;
+      final secondSampleMs = const Duration(minutes: 15).inMilliseconds;
+      final expectedSmoothedMs = (firstSampleMs +
+              kClockOffsetSmoothingAlpha * (secondSampleMs - firstSampleMs))
+          .round();
+      expect(rig.storage.clockOffset,
+          Duration(milliseconds: expectedSmoothedMs));
+      expect((await rig.state()).serverClockOffsetMs, expectedSmoothedMs);
+    });
+
     test('a rejected row stays dirty, is not retried until edited again, and '
         'is counted in the snapshot', () async {
       final rig = Rig();
@@ -587,6 +643,47 @@ void main() {
       expect(rig.transport.pushes, hasLength(2));
       expect(ids(rig.transport.pushes[1].dayEntries), [e.id]);
       expect((await rig.entry(p.id, e.id)).dirty, isFalse);
+      expect(rig.engine.snapshot.rejectedCount, 0);
+    });
+
+    test('issue #568: retryRejected() bumps local_rev on every rejected row '
+        'so the next cycle pushes it again, without waiting for an '
+        'unrelated edit', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p = await rig.storage.upsertProfile(
+          displayName: 'A', isMinor: false);
+      final e = await rig.storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      rig.transport.scriptPushResult(rejectedIds: [e.id]);
+
+      await rig.start();
+      expect(rig.transport.pushes, hasLength(1));
+      final rejectedRev = (await rig.entry(p.id, e.id)).localRev;
+      expect(rig.engine.snapshot.rejectedCount, 1);
+
+      // Without retryRejected, a plain requestSync never re-pushes it.
+      await rig.sync();
+      expect(rig.transport.pushes, hasLength(1));
+
+      await rig.engine.retryRejected();
+      await rig.engine.flush();
+
+      expect(rig.transport.pushes, hasLength(2),
+          reason: 'retryRejected must have made the row pushable again');
+      expect(ids(rig.transport.pushes[1].dayEntries), [e.id]);
+      final retried = await rig.entry(p.id, e.id);
+      expect(retried.localRev, greaterThan(rejectedRev),
+          reason: 'retryRejected bumps local_rev, never touching content');
+      expect(retried.flow, FlowLevel.light,
+          reason: 'the row\'s content is untouched by the retry');
+      expect((await rig.entry(p.id, e.id)).dirty, isFalse,
+          reason: 'the retried push was accepted this time (no scripted '
+              'rejection left)');
       expect(rig.engine.snapshot.rejectedCount, 0);
     });
 
