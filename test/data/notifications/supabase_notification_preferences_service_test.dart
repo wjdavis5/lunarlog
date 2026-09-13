@@ -7,7 +7,11 @@ import 'package:http/testing.dart';
 import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/notification_preferences_failure_copy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+final _l10n = AppLocalizationsEn();
 
 const _uid = '01JABCDEF01234567890123456';
 const _profileId = '01JPROFILE00000000000000000';
@@ -193,8 +197,10 @@ void main() {
 
       await expectLater(
         service.save(_profileId, CaregiverAlertPreferences.off),
-        throwsA(isA<NotificationPreferencesUnauthorizedFailure>()
-            .having((f) => f.userFacingMessage, 'userFacingMessage', isNot(contains('permission denied for table')))),
+        throwsA(isA<NotificationPreferencesUnauthorizedFailure>().having(
+            (f) => notificationPreferencesFailureCopy(_l10n, f),
+            'copy',
+            isNot(contains('permission denied for table')))),
       );
     });
 
@@ -256,7 +262,8 @@ void main() {
       } on NotificationPreferencesFailure catch (failure) {
         expect(failure, isA<NotificationPreferencesOtherFailure>());
         expect(failure.toString(), isNot(contains('super secret detail')));
-        expect(failure.userFacingMessage, isNot(contains('super secret detail')));
+        expect(notificationPreferencesFailureCopy(_l10n, failure),
+            isNot(contains('super secret detail')));
       }
     });
 

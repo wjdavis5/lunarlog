@@ -766,4 +766,298 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get reminderBirthControlNeedsStartDate =>
       'Waits for a start date on the recorded method — re-record the method in profile settings to set one';
+
+  @override
+  String get commonNetworkError =>
+      'Network error. Please check your connection.';
+
+  @override
+  String get commonServerUnreachable =>
+      'Could not reach the server. Check your connection and try again.';
+
+  @override
+  String get commonUnauthorized =>
+      'You do not have permission for this action.';
+
+  @override
+  String get commonSomethingWentWrong =>
+      'Something went wrong. Please try again.';
+
+  @override
+  String get sharingFailureNotFound => 'Invitation not found or invalid link.';
+
+  @override
+  String get sharingFailureExpired => 'This invitation has expired.';
+
+  @override
+  String get sharingFailureAlreadyAccepted =>
+      'This invitation was already accepted.';
+
+  @override
+  String get sharingFailureAlreadyGuardian =>
+      'You are already an active guardian for this child.';
+
+  @override
+  String get sharingFailureInvalidToken => 'Invalid invitation link.';
+
+  @override
+  String get sharingFailureOther =>
+      'Failed to accept invitation. Please try again.';
+
+  @override
+  String get inviteCancellationRevoked => 'Invitation cancelled';
+
+  @override
+  String get inviteCancellationAlreadyAccepted =>
+      'That invitation was already accepted';
+
+  @override
+  String get inviteCancellationAlreadyRevoked =>
+      'That invitation was already cancelled';
+
+  @override
+  String get inviteCancellationExpired => 'That invitation had already expired';
+
+  @override
+  String get transferFailureNotFound => 'Transfer not found or invalid link.';
+
+  @override
+  String get transferFailureExpired => 'This transfer link has expired.';
+
+  @override
+  String get transferFailureCancelled => 'This transfer was cancelled.';
+
+  @override
+  String get transferFailureAlreadyAccepted =>
+      'This transfer was already accepted.';
+
+  @override
+  String get transferFailureSelfTransfer =>
+      'You can\'t claim a transfer you created yourself.';
+
+  @override
+  String get transferFailureStaleOwner =>
+      'Your role on this profile has changed, so this transfer is no longer valid.';
+
+  @override
+  String get transferFailureAlreadyArmed =>
+      'A transfer is already pending for this profile. Cancel it before starting a new one.';
+
+  @override
+  String get transferFailureInvalidToken => 'Invalid transfer link.';
+
+  @override
+  String get predictionConnectionFailureNotFound => 'That code is not valid.';
+
+  @override
+  String get predictionConnectionFailureExpired => 'That code has expired.';
+
+  @override
+  String get predictionConnectionFailureAlreadyAccepted =>
+      'That code was already used.';
+
+  @override
+  String get predictionConnectionFailureAlreadyGuardian =>
+      'You already have full guardian access to this profile.';
+
+  @override
+  String get predictionConnectionFailureInvalidToken =>
+      'Invalid connection code.';
+
+  @override
+  String get predictionConnectionFailurePregnancyMode =>
+      'Prediction sharing is unavailable while this profile is in Pregnancy mode.';
+
+  @override
+  String get predictionConnectionFailureAlreadyConnected =>
+      'This profile already has a prediction connection. Revoke it before sharing with someone else.';
+
+  @override
+  String get predictionConnectionFailureOneDirectional =>
+      'You cannot share and view predictions with the same person at the same time.';
+
+  @override
+  String get predictionConnectionFailureMinorProfile =>
+      'Prediction sharing is not available for a minor\'s profile.';
+
+  @override
+  String get feedbackFailureRateLimited =>
+      'You\'ve sent a few reports already — please try again in a bit.';
+
+  @override
+  String get feedbackFailureInvalidInput => 'Check your message and try again.';
+
+  @override
+  String get feedbackFailureAttachmentTooLarge =>
+      'That image is too large. Choose one under 5 MB.';
+
+  @override
+  String get feedbackFailureAttachmentRejected =>
+      'That file type is not supported. Choose a PNG, JPEG, or WebP image.';
+
+  @override
+  String get feedbackFailureNotFound => 'That ticket could not be found.';
+
+  @override
+  String feedbackFailureAttachmentUploadFailed(String attachmentReason) {
+    return 'Your message was sent — no need to resend it. The attachment did not upload ($attachmentReason) You can find your ticket in Support history.';
+  }
+
+  @override
+  String get notificationPreferencesFailureInvalidTimeZone =>
+      'Your device\'s time zone isn\'t recognised by the server yet — quiet hours will use UTC until it is';
+
+  @override
+  String get notificationPreferencesFailureOther =>
+      'Failed to save notification preferences. Please try again.';
+
+  @override
+  String get guardianRoleLabelPrimaryGuardian => 'Primary Guardian';
+
+  @override
+  String get guardianRoleLabelCoParent => 'Co-Parent';
+
+  @override
+  String get guardianRoleLabelCaregiver => 'Caregiver';
+
+  @override
+  String get guardianRoleLabelViewer => 'Viewer';
+
+  @override
+  String get guardianRoleReadOnlyReasonViewer =>
+      'You have view-only access to this profile.';
+
+  @override
+  String get activityActorYou => 'you';
+
+  @override
+  String get activityActorGuardianFallback => 'a guardian';
+
+  @override
+  String profilePickerSharedRoleSubtitle(String role) {
+    return 'Shared with me · $role';
+  }
+
+  @override
+  String get authFailureWrongPassword =>
+      'That email and password combination was not accepted.';
+
+  @override
+  String authFailureWeakPassword(int minLength) {
+    return 'Choose a stronger password of at least $minLength characters.';
+  }
+
+  @override
+  String get authFailureProviderUnavailable =>
+      'That sign-in method isn\'t available on this device. Use email instead.';
+
+  @override
+  String get authFailureRateLimited =>
+      'Too many attempts. Wait a little while, then try again.';
+
+  @override
+  String get authFailureMisconfigured =>
+      'That sign-in method is not set up for this app right now. Try another way to sign in.';
+
+  @override
+  String get authFailureExpiredLink =>
+      'That sign-in link is no longer valid. Request a new one.';
+
+  @override
+  String get authFailureInvalidCode =>
+      'That code was not accepted. Check it or request a new email.';
+
+  @override
+  String get authFailureIdentityTaken =>
+      'That sign-in method already belongs to another account.';
+
+  @override
+  String get authFailureSignUpClosed =>
+      'New accounts for this app are set up by the account owner.';
+
+  @override
+  String get authFailureLastSignInMethod =>
+      'That is the only way left to sign in to this account. Add another method first.';
+
+  @override
+  String get careNotesRemoveNoteTooltip => 'Remove note';
+
+  @override
+  String get careNotesRemoveItemTooltip => 'Remove item';
+
+  @override
+  String get careNotesButtonTooltip => 'Care notes & visit prep';
+
+  @override
+  String get activityFeedTooltip => 'Activity';
+
+  @override
+  String get manageGuardiansCancelInviteTooltip => 'Cancel invitation';
+
+  @override
+  String get manageGuardiansAboutRolesTooltip => 'About roles';
+
+  @override
+  String get manageGuardiansTransferOwnershipTooltip => 'Transfer ownership';
+
+  @override
+  String get manageGuardiansNotificationsTooltip => 'Notifications';
+
+  @override
+  String get manageGuardiansEndSharingTooltip => 'End prediction sharing';
+
+  @override
+  String get manageGuardiansChangeRoleTooltip => 'Change role';
+
+  @override
+  String get manageGuardiansLeaveProfileTooltip => 'Leave profile';
+
+  @override
+  String get manageGuardiansRemoveCaregiverTooltip => 'Remove caregiver';
+
+  @override
+  String get feedbackRemoveAttachmentTooltip => 'Remove attachment';
+
+  @override
+  String get predictionCalendarRefreshTooltip => 'Refresh';
+
+  @override
+  String get settingsTooltip => 'Settings';
+
+  @override
+  String get profilePickerAddProfileTooltip => 'Add profile';
+
+  @override
+  String get profilePickerUnarchiveTooltip => 'Unarchive';
+
+  @override
+  String get profilePickerActionsTooltip => 'Profile actions';
+
+  @override
+  String get profilePickerSharedWithMeTooltip => 'Shared with me';
+
+  @override
+  String get profileDetailSwitchProfileTooltip => 'Switch profile';
+
+  @override
+  String daysCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'days',
+      one: 'day',
+    );
+    return '$count $_temp0';
+  }
+
+  @override
+  String daysValue(num count, String value) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$value days',
+      one: '$value day',
+    );
+    return '$_temp0';
+  }
 }

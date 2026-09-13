@@ -55,6 +55,8 @@ import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
@@ -2534,7 +2536,10 @@ void main() {
         expect(find.byType(FilterChip), findsNothing);
         expect(find.byKey(const ValueKey('note-field')), findsNothing);
         expect(find.byKey(const ValueKey('autosave-status')), findsNothing);
-        expect(find.text(GuardianRole.viewer.readOnlyReason!), findsOneWidget);
+        expect(
+          find.text(guardianRoleReadOnlyReason(AppLocalizationsEn(), GuardianRole.viewer)!),
+          findsOneWidget,
+        );
         await disposeLogging(tester, h);
       },
     );
@@ -2628,7 +2633,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(DaySheet), findsOneWidget);
-        expect(find.text(GuardianRole.viewer.readOnlyReason!), findsOneWidget);
+        expect(
+          find.text(guardianRoleReadOnlyReason(AppLocalizationsEn(), GuardianRole.viewer)!),
+          findsOneWidget,
+        );
         await disposeLogging(tester, h);
       },
     );
@@ -2722,16 +2730,17 @@ void main() {
     );
 
     test('the read-only copy for the viewer case is asserted from '
-        'GuardianRole, not from a literal in the widget', () {
+        'guardianRoleReadOnlyReason, not from a literal in the widget', () {
+      final l10n = AppLocalizationsEn();
       expect(
-        GuardianRole.viewer.readOnlyReason,
+        guardianRoleReadOnlyReason(l10n, GuardianRole.viewer),
         'You have view-only access to this profile.',
       );
       for (final role in GuardianRole.values.where(
         (r) => r != GuardianRole.viewer,
       )) {
         expect(
-          role.readOnlyReason,
+          guardianRoleReadOnlyReason(l10n, role),
           isNull,
           reason: '$role can log, so it has no read-only reason to show',
         );

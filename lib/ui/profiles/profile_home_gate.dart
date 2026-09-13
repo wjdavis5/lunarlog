@@ -33,13 +33,13 @@ import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/account_mismatch_screen.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/password_recovery_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/restore_error_screen.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
-import 'package:lunarlog/ui/account/sign_in_screen.dart'
-    show authFailureCopy;
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
 import 'package:lunarlog/ui/components/app_shell.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/first_run_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_picker_screen.dart';
@@ -231,7 +231,7 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
       auth!.consumeLinkFailure();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         key: const ValueKey('auth-link-failure'),
-        content: Text(authFailureCopy(failure)),
+        content: Text(authFailureCopy(AppLocalizations.of(context), failure)),
       ));
     });
   }

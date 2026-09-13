@@ -48,6 +48,7 @@ import 'dart:async' show Timer, scheduleMicrotask, unawaited;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
@@ -1369,10 +1370,15 @@ class _DaySheetState extends State<DaySheet> {
   /// `currentUserId` data already passed in for the attribution badge, per
   /// [acceptedGuardianFor]'s null-vs-empty discipline - an unmatched or
   /// unknown caller has no reason to show here.
-  String? get _readOnlyReason => acceptedGuardianFor(
-    widget.guardians,
-    widget.currentUserId,
-  )?.role.readOnlyReason;
+  String? get _readOnlyReason {
+    final role = acceptedGuardianFor(
+      widget.guardians,
+      widget.currentUserId,
+    )?.role;
+    return role == null
+        ? null
+        : guardianRoleReadOnlyReason(AppLocalizations.of(context), role);
+  }
 
   Widget _readOnlyBody() {
     final theme = Theme.of(context);

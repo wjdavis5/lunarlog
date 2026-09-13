@@ -241,11 +241,10 @@ void main() {
       FeedbackFailure.other(),
     ];
 
-    test('every case has a non-empty userFacingMessage', () {
-      for (final failure in failures) {
-        expect(failure.userFacingMessage, isNotEmpty);
-      }
-    });
+    // Issue #545: FeedbackFailure.userFacingMessage moved to
+    // feedbackFailureCopy (lib/ui/l10n/feedback_failure_copy.dart) — the
+    // domain type is fieldless data now. Copy coverage moved to
+    // test/ui/l10n/feedback_failure_copy_test.dart.
 
     test('no case echoes a provider string; toString carries only the case name', () {
       for (final failure in failures) {
