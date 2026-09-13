@@ -2219,5 +2219,162 @@ void main() {
       await db.close();
       expect(file.existsSync(), isTrue, reason: 'fresh database file created');
     });
+
+    group('Issue #203: WAL mode, tombstone sweep, and periodic VACUUM', () {
+      test('a fresh database opens in WAL mode and NORMAL synchronous mode', () async {
+        final dir = await freshTempDir('wal_mode');
+        final file = File('${dir.path}${Platform.pathSeparator}test.db');
+        final db = LunarLogDatabase(NativeDatabase(file));
+        addTearDown(() => db.close());
+
+        // Force open and execute beforeOpen
+        await db.customSelect('SELECT 1').get();
+
+        // Check journal_mode
+        final journalRow = await db.customSelect('PRAGMA journal_mode').getSingle();
+        final journalMode = journalRow.data.values.first.toString().toLowerCase();
+        expect(journalMode, 'wal');
+        expect(await db.getJournalMode(), 'wal');
+
+        // Check synchronous
+        final syncRow = await db.customSelect('PRAGMA synchronous').getSingle();
+        final syncValue = syncRow.data.values.first;
+        expect(syncValue, isIn([1, '1', 'NORMAL']));
+        expect(await db.getSynchronousMode(), 'NORMAL');
+      });
+
+      test('tombstone sweep deletes only clean tombstones older than retention horizon', () async {
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        addTearDown(() => db.close());
+
+        final profile = await db.storage.upsertProfile(displayName: 'Test', isMinor: false);
+        final profileId = profile.id;
+
+        final now = DateTime.utc(2026, 9, 12, 12, 0);
+        final oldInstant = now.subtract(const Duration(days: 3)); // 72 hours ago (> 48h horizon)
+        final recentInstant = now.subtract(const Duration(hours: 12)); // 12 hours ago (< 48h horizon)
+
+        // Seed 1: Old and clean tombstone (should be swept)
+        final cleanOld = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(cleanOld.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(oldInstant),
+            updatedAt: Value(oldInstant),
+            dirty: const Value(false),
+          ),
+        );
+
+        // Seed 2: Old but dirty tombstone (pending upload - must NOT be swept)
+        final dirtyOld = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-02',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(dirtyOld.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(oldInstant),
+            updatedAt: Value(oldInstant),
+            dirty: const Value(true),
+          ),
+        );
+
+        // Seed 3: Recent and clean tombstone (within horizon - must NOT be swept)
+        final cleanRecent = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-03',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(cleanRecent.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(recentInstant),
+            updatedAt: Value(recentInstant),
+            dirty: const Value(false),
+          ),
+        );
+
+        // Seed 4: Live clean entry (must NOT be swept)
+        final liveEntry = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-04',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(liveEntry.id))).write(
+          const DayEntriesCompanion(dirty: Value(false)),
+        );
+
+        // Perform sweep
+        final swept = await db.sweepTombstones(
+          retentionHorizon: const Duration(hours: 48),
+          olderThan: now.subtract(const Duration(hours: 48)),
+        );
+
+        expect(swept, 1, reason: 'Only the old-and-clean tombstone is swept');
+
+        final remaining = await db.select(db.dayEntries).get();
+        final remainingIds = remaining.map((r) => r.id).toSet();
+
+        expect(remainingIds.contains(cleanOld.id), isFalse, reason: 'clean old tombstone was deleted');
+        expect(remainingIds.contains(dirtyOld.id), isTrue, reason: 'dirty old tombstone was kept for sync');
+        expect(remainingIds.contains(cleanRecent.id), isTrue, reason: 'recent tombstone was kept');
+        expect(remainingIds.contains(liveEntry.id), isTrue, reason: 'live entry was kept');
+      });
+
+      test('wipeAllData runs VACUUM outside transaction', () async {
+        final dir = await freshTempDir('wipe_vacuum');
+        final file = File('${dir.path}${Platform.pathSeparator}wipe.db');
+        final db = LunarLogDatabase(NativeDatabase(file));
+        addTearDown(() => db.close());
+
+        final profile = await db.storage.upsertProfile(displayName: 'ToWipe', isMinor: false);
+        await db.storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+        );
+
+        await db.wipeAllData();
+        final profiles = await db.storage.getProfiles(includeTombstones: true);
+        expect(profiles, isEmpty);
+      });
+
+      test('runMaintenance executes tombstone sweep followed by VACUUM', () async {
+        final dir = await freshTempDir('maintenance');
+        final file = File('${dir.path}${Platform.pathSeparator}maint.db');
+        final db = LunarLogDatabase(NativeDatabase(file));
+        addTearDown(() => db.close());
+
+        final profile = await db.storage.upsertProfile(displayName: 'MaintProfile', isMinor: false);
+        final entry = await db.storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+        );
+
+        final oldCutoff = DateTime.utc(2026, 1, 1);
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(entry.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(oldCutoff),
+            updatedAt: Value(oldCutoff),
+            dirty: const Value(false),
+          ),
+        );
+
+        final swept = await db.runMaintenance(olderThan: DateTime.utc(2026, 6, 1));
+        expect(swept, 1);
+
+        final remaining = await (db.select(db.dayEntries)).get();
+        expect(remaining, isEmpty);
+      });
+    });
   });
 }

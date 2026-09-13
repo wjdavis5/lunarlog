@@ -160,6 +160,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         beforeOpen: (details) async {
           // Enforce referential integrity for per-profile isolation (R3).
           await customStatement('PRAGMA foreign_keys = ON');
+          // Issue #203: WAL journal mode and NORMAL synchronous mode for
+          // write concurrency and performance.
+          await customStatement('PRAGMA journal_mode = WAL');
+          await customStatement('PRAGMA synchronous = NORMAL');
         },
       );
 
@@ -511,5 +515,54 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await delete(syncState).go();
       await delete(healthSyncState).go();
     });
+    // Issue #203: reclaim unused pages after wiping all data.
+    await vacuum();
+  }
+
+  /// Reclaims unused disk space and defragments the database file (Issue #203).
+  /// Must be run outside of a transaction.
+  Future<void> vacuum() async {
+    await customStatement('VACUUM');
+  }
+
+  /// Sweeps tombstoned rows older than [retentionHorizon] (or [olderThan] if
+  /// provided) whose `dirty` flag is false (Issue #203).
+  Future<int> sweepTombstones({
+    Duration retentionHorizon = kTombstoneRetentionHorizon,
+    DateTime? olderThan,
+  }) =>
+      storage.sweepTombstones(
+        retentionHorizon: retentionHorizon,
+        olderThan: olderThan,
+      );
+
+  /// Runs periodic maintenance: sweeps tombstoned rows and reclaims disk space
+  /// with a VACUUM (Issue #203).
+  Future<int> runMaintenance({
+    Duration retentionHorizon = kTombstoneRetentionHorizon,
+    DateTime? olderThan,
+  }) =>
+      storage.runMaintenance(
+        retentionHorizon: retentionHorizon,
+        olderThan: olderThan,
+      );
+
+  /// Returns the active SQLite journal mode (`wal`, `memory`, `delete`, etc.).
+  Future<String> getJournalMode() async {
+    final row = await customSelect('PRAGMA journal_mode').getSingle();
+    return row.data.values.first.toString().toLowerCase();
+  }
+
+  /// Returns the active SQLite synchronous mode name (`NORMAL`, `FULL`, `OFF`, `EXTRA`).
+  Future<String> getSynchronousMode() async {
+    final row = await customSelect('PRAGMA synchronous').getSingle();
+    final val = row.data.values.first;
+    return switch (val) {
+      0 || '0' || 'OFF' => 'OFF',
+      1 || '1' || 'NORMAL' => 'NORMAL',
+      2 || '2' || 'FULL' => 'FULL',
+      3 || '3' || 'EXTRA' => 'EXTRA',
+      _ => val.toString(),
+    };
   }
 }
