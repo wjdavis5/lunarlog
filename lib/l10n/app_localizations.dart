@@ -997,7 +997,7 @@ abstract class AppLocalizations {
   /// Validation error for an out-of-range typical cycle length.
   ///
   /// In en, this message translates to:
-  /// **'Enter a number between 10 and 90'**
+  /// **'Enter a number between 15 and 60'**
   String get firstRunCycleLengthRangeError;
 
   /// Validation error for an out-of-range typical period length.
@@ -1161,6 +1161,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.'**
   String predictionsSuppressedBody(String method);
+
+  /// Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.'**
+  String predictionsSuppressedByModeBody(String mode);
 
   /// Title of the card displayed when predictions are disabled for the profile (issue #225).
   ///

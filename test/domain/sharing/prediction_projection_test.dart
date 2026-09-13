@@ -138,7 +138,17 @@ void main() {
     final projection = buildPredictionProjection(_prediction(today));
     final json = projection.toJson();
 
-    expect(json.keys.toSet(), PredictionProjection.allowedKeys.toSet());
+    // Issue #529: a built projection always carries a confidence tier
+    // (ActivePrediction.tier is non-nullable), so this model's own
+    // toJson() also carries confidenceTierKey — the server allowlist
+    // itself is untouched (asserted separately below); the wire payload
+    // actually sent to upsert_prediction_projection strips this key (see
+    // supabase_prediction_connection_service_test.dart).
+    expect(
+      json.keys.toSet(),
+      {...PredictionProjection.allowedKeys, PredictionProjection.confidenceTierKey},
+    );
+    expect(json[PredictionProjection.confidenceTierKey], 'high');
     expect(json['generated_at'], today.iso);
     expect(json['period_days'], isA<List<Object?>>());
     expect((json['period_days'] as List).first, isA<String>());
@@ -147,6 +157,41 @@ void main() {
           .hasMatch((json['period_days'] as List).first as String),
       isTrue,
     );
+  });
+
+  test('confidenceTier round-trips through toJson/fromJson', () {
+    final projection = buildPredictionProjection(_prediction(today));
+    expect(projection.confidenceTier, CycleConfidence.high);
+
+    final restored = PredictionProjection.fromJson(
+        projection.toJson().cast<String, dynamic>());
+    expect(restored.confidenceTier, CycleConfidence.high);
+    expect(restored, projection);
+  });
+
+  test('an absent confidence_tier key deserializes to null (backwards '
+      'compatibility with a payload published before issue #529)', () {
+    final projection = PredictionProjection.fromJson({
+      'generated_at': '2026-09-07',
+      'period_days': ['2026-09-10'],
+      'fertile_days': const [],
+      'ovulation_days': const [],
+      'pms_days': const [],
+    });
+    expect(projection.confidenceTier, isNull);
+  });
+
+  test('a malformed confidence_tier value deserializes to null rather than '
+      'throwing or guessing a tier', () {
+    final projection = PredictionProjection.fromJson({
+      'generated_at': '2026-09-07',
+      'period_days': const [],
+      'fertile_days': const [],
+      'ovulation_days': const [],
+      'pms_days': const [],
+      'confidence_tier': 'not-a-real-tier',
+    });
+    expect(projection.confidenceTier, isNull);
   });
 
   test('fromJson round-trips a toJson payload', () {

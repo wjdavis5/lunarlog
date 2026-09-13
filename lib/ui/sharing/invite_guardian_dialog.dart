@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/sharing/sharing_service.dart';
@@ -56,6 +57,17 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
           _loading = false;
         });
       }
+    } on SharingFailure catch (failure) {
+      // Issue #535 (d): distinct failure types (unauthorized vs. network,
+      // etc.) get their own accurate copy via userFacingMessage, rather
+      // than collapsing every SharingFailure into the generic connection
+      // message below — matching AcceptInviteSheet's own catch clause.
+      if (mounted) {
+        setState(() {
+          _error = failure.userFacingMessage;
+          _loading = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -72,6 +84,15 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Invite link copied to clipboard')),
     );
+  }
+
+  // Issue #535 (c): share_plus 13.x deprecated the old static
+  // `Share.share(String)` in favor of `SharePlus.instance.share(ShareParams
+  // (...))` (see TransferOwnershipScreen._shareLink, the sibling pattern
+  // this mirrors). Plain text share of the bare link, same as Copy Link.
+  void _shareLink() {
+    if (_generatedInvite == null) return;
+    SharePlus.instance.share(ShareParams(text: _generatedInvite!.inviteUri.toString()));
   }
 
   @override
@@ -114,6 +135,11 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
             onPressed: _copyLink,
             icon: const Icon(Icons.copy, size: 16),
             label: const Text('Copy Link'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _shareLink,
+            icon: const Icon(Icons.share, size: 16),
+            label: const Text('Share'),
           ),
         ],
       );

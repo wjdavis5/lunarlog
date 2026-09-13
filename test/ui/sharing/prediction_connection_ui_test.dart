@@ -26,10 +26,14 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show CycleConfidence;
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/ui/overview/estimate_copy.dart'
+    show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
@@ -39,12 +43,16 @@ import 'package:provider/provider.dart';
 
 import '../../support/fake_auth_service.dart';
 
-PredictionProjection _projection(LocalDate asOf) => PredictionProjection(
+PredictionProjection _projection(
+  LocalDate asOf, {
+  CycleConfidence? confidenceTier,
+}) => PredictionProjection(
   generatedAt: asOf,
   periodDays: [asOf.addDays(3), asOf.addDays(4)],
   fertileDays: [asOf.addDays(15)],
   ovulationDays: [asOf.addDays(17)],
   pmsDays: [asOf.addDays(-4)],
+  confidenceTier: confidenceTier,
 );
 
 class _FakePredictionConnectionService implements PredictionConnectionService {
@@ -229,6 +237,82 @@ void main() {
         ),
         findsNothing,
       );
+    });
+
+    testWidgets('issue #529: both non-medical disclaimers render above '
+        'the fold, ahead of the calendar grid, with no confidence line '
+        'when the projection carries no tier', (tester) async {
+      final asOf = LocalDate.today();
+      final service = _FakePredictionConnectionService(
+        projection: _projection(asOf),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PredictionConnectionCalendarScreen(
+            profileId: 'p1',
+            profileName: 'Riley',
+            service: service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('prediction-disclaimer-banner')),
+        findsOneWidget,
+      );
+      expect(find.text(kEstimateDisclaimer), findsOneWidget);
+      expect(find.text(kFertileWindowDisclaimer), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('prediction-confidence-tier')),
+        findsNothing,
+        reason: 'no tier on the projection means no guessed tier line',
+      );
+
+      // Above the fold: the banner sits above (smaller dy than) the
+      // month grid, i.e. it is not a footer requiring a scroll past the
+      // calendar to reach.
+      final bannerY = tester
+          .getTopLeft(find.byKey(const ValueKey('prediction-disclaimer-banner')))
+          .dy;
+      final gridY = tester
+          .getTopLeft(
+            find.byWidgetPredicate(
+              (w) =>
+                  w.key is ValueKey<String> &&
+                  (w.key as ValueKey<String>).value
+                      .startsWith('prediction-grid-'),
+            ),
+          )
+          .dy;
+      expect(bannerY, lessThan(gridY));
+    });
+
+    testWidgets('issue #529: the confidence tier renders next to the '
+        'disclaimers, using the same tier vocabulary as the owner-facing '
+        'screens, when the projection carries one', (tester) async {
+      final asOf = LocalDate.today();
+      final service = _FakePredictionConnectionService(
+        projection: _projection(asOf, confidenceTier: CycleConfidence.learning),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PredictionConnectionCalendarScreen(
+            profileId: 'p1',
+            profileName: 'Riley',
+            service: service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('prediction-confidence-tier')),
+        findsOneWidget,
+      );
+      expect(find.textContaining(CycleConfidence.learning.label), findsOneWidget);
     });
 
     testWidgets('a null projection renders the connection-ended state '

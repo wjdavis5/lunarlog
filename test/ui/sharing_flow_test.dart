@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
@@ -186,6 +187,56 @@ class FakeOwnershipTransferService implements OwnershipTransferService {
   }
 }
 
+/// Issue #535 (d): a minimal [SharingService] whose [createInvite] throws a
+/// scripted, reassignable [SharingFailure] - proves InviteGuardianDialog's
+/// own catch clause maps each failure type to its distinct
+/// [SharingFailure.userFacingMessage] rather than collapsing everything
+/// into one generic string.
+class _ThrowingSharingService implements SharingService {
+  _ThrowingSharingService(this.failure);
+
+  SharingFailure failure;
+
+  @override
+  Future<GeneratedInvite> createInvite({
+    required String profileId,
+    required GuardianRole role,
+    String? recipientLabel,
+    Duration ttl = const Duration(hours: 48),
+  }) async =>
+      throw failure;
+
+  @override
+  Future<AcceptedInviteResult> acceptInvite({
+    required String rawToken,
+    String? displayName,
+  }) =>
+      throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<void> revokeGuardian({
+    required String profileId,
+    required String targetUserId,
+  }) =>
+      throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<List<PendingInvite>> listPendingInvites(String profileId) =>
+      throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<InviteCancellation> cancelInvite(String invitationId) =>
+      throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<void> updateGuardianRole({
+    required String profileId,
+    required String targetUserId,
+    required GuardianRole newRole,
+  }) =>
+      throw UnimplementedError('not exercised by these tests');
+}
+
 void main() {
   late LunarLogDatabase db;
   late LunarLogStorage storage;
@@ -226,6 +277,87 @@ void main() {
       expect(find.text('Invitation Created'), findsOneWidget);
       expect(find.text('Copy Link'), findsOneWidget);
       expect(sharingService.lastCreatedRole, 'co_parent');
+    });
+
+    // Issue #535 (c): share_plus is already a dependency; a Share button
+    // sits beside Copy Link so the invite link isn't limited to a manual
+    // copy-paste.
+    testWidgets('shows a Share action beside Copy Link once a link exists',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InviteGuardianDialog(
+              profileId: testProfile.id,
+              profileName: testProfile.displayName,
+              sharingService: sharingService,
+            ),
+          ),
+        ),
+      );
+
+      // Not offered before a link exists.
+      expect(find.text('Share'), findsNothing);
+
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Copy Link'), findsOneWidget);
+      expect(find.text('Share'), findsOneWidget);
+      expect(find.byIcon(Icons.share), findsOneWidget);
+    });
+
+    // Issue #535 (d): distinct SharingFailure types get their own accurate
+    // copy via userFacingMessage, rather than every failure - including
+    // unauthorized - collapsing into the generic "check your connection"
+    // message (AcceptInviteSheet's catch clause already gets this right;
+    // this mirrors it).
+    testWidgets(
+        'unauthorized and network SharingFailures produce distinct '
+        'userFacingMessage copy, not the generic collapse', (tester) async {
+      // createInvite has no scriptedError hook on FakeSharingService, so a
+      // dedicated throwing fake proves the dialog's own catch-clause
+      // behavior independent of what the fake happens to script.
+      final failing = _ThrowingSharingService(const SharingFailure.unauthorized());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InviteGuardianDialog(
+              profileId: testProfile.id,
+              profileName: testProfile.displayName,
+              sharingService: failing,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('You do not have permission for this action.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Failed to generate invite. Please check your connection and try again.'),
+        findsNothing,
+      );
+
+      // A network failure gets its own distinct copy too, not the same
+      // unauthorized text and not the generic collapse either.
+      failing.failure = const SharingFailure.network();
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Network error. Please check your connection.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('You do not have permission for this action.'),
+        findsNothing,
+      );
     });
   });
 
@@ -300,6 +432,38 @@ void main() {
       expect(find.text('An unexpected error occurred.'), findsOneWidget);
       expect(log.snapshot(), ['sharing: _Exception']);
       expect(log.snapshot().single, isNot(contains('network crashed')));
+    });
+
+    // Issue #535 (a): no server RPC returns a profile's name or role before
+    // acceptance (accept_guardian_invitation is the only call, and it
+    // commits the acceptance as part of returning them - see
+    // SupabaseSharingService.acceptInvite and this issue's investigation
+    // notes). The pre-accept copy must therefore never assume a minor's
+    // profile - the previous hardcoded "child" wording was wrong whenever
+    // two adults share one adult's profile.
+    testWidgets(
+        'never renders the hardcoded child wording, and shows neutral '
+        'profile copy instead of assuming a minor', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AcceptInviteSheet(
+              rawToken: 'test-raw-token',
+              sharingService: sharingService,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('child'), findsNothing);
+      expect(
+        find.text(
+          "You've been invited to a shared profile in LunarLog. "
+          'Accepting will sync its cycle calendar and health logs to '
+          'this device.',
+        ),
+        findsOneWidget,
+      );
     });
   });
 
@@ -1484,6 +1648,71 @@ void main() {
       expect(find.text('Join Shared Profile'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    // Issue #535 (b): a latched invite code was previously consumed once,
+    // silently, on sign-in - a signed-out recipient who doesn't sign in
+    // right away got no feedback at all that an invite was waiting.
+    group('pending-invite sign-in banner (Issue #535 b)', () {
+      testWidgets(
+          'renders while the invite is latched and the recipient is signed '
+          'out, and disappears once signed in', (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+
+        await pumpAppWithInvite(tester, auth, initialInviteCode: 'cold-token');
+
+        expect(
+          find.byKey(const Key('pending-invite-sign-in-banner')),
+          findsOneWidget,
+        );
+        expect(find.text('Sign in to accept your invite'), findsOneWidget);
+
+        auth.emit(AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-dad'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('pending-invite-sign-in-banner')),
+          findsNothing,
+        );
+        expect(find.text('Join Shared Profile'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets('is absent when there is no pending invite',
+          (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+
+        await pumpAppWithInvite(tester, auth);
+
+        expect(
+          find.byKey(const Key('pending-invite-sign-in-banner')),
+          findsNothing,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets("tapping the banner's action routes to sign-in",
+          (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+
+        await pumpAppWithInvite(tester, auth, initialInviteCode: 'cold-token');
+
+        await tester.tap(find.text('Sign In'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SignInScreen), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
     });
 
     testWidgets('links without a code are ignored', (tester) async {

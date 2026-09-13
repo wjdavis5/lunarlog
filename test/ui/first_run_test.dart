@@ -258,11 +258,11 @@ void main() {
       final h = await pumpedToCycle(tester);
 
       await tester.enterText(
-          find.byKey(const ValueKey('cycle-typical-cycle')), '5');
+          find.byKey(const ValueKey('cycle-typical-cycle')), '10');
       await tester.ensureVisible(find.byKey(const ValueKey('cycle-create')));
       await tester.tap(find.byKey(const ValueKey('cycle-create')));
       await tester.pumpAndSettle();
-      expect(find.text('Enter a number between 10 and 90'), findsOneWidget);
+      expect(find.text('Enter a number between 15 and 60'), findsOneWidget);
       expect(
           (await DriftProfilesRepository(h.db.storage).list()), isEmpty,
           reason: 'nothing is created while validation fails');
@@ -284,6 +284,45 @@ void main() {
       await tester.pumpAndSettle();
       expect((await DriftProfilesRepository(h.db.storage).list()).single
           .displayName, 'Nova');
+      await h.dispose();
+    });
+
+    testWidgets('cycle-length bounds are 15-60 (issue #530): 10 and 90 are '
+        'rejected, 15 and 60 are accepted', (tester) async {
+      final h = await pumpedToCycle(tester);
+
+      // 90 (the old upper bound) is now rejected too, alongside 10.
+      await tester.enterText(
+          find.byKey(const ValueKey('cycle-typical-cycle')), '90');
+      await tester.ensureVisible(find.byKey(const ValueKey('cycle-create')));
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a number between 15 and 60'), findsOneWidget);
+
+      // The lower boundary, 15, is accepted.
+      await tester.enterText(
+          find.byKey(const ValueKey('cycle-typical-cycle')), '15');
+      await tester.ensureVisible(find.byKey(const ValueKey('cycle-create')));
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a number between 15 and 60'), findsNothing);
+      expect((await DriftProfilesRepository(h.db.storage).list()).single
+          .typicalCycleLengthDays, 15);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'the upper boundary, 60, is accepted (issue #530)', (tester) async {
+      final h = await pumpedToCycle(tester);
+
+      await tester.enterText(
+          find.byKey(const ValueKey('cycle-typical-cycle')), '60');
+      await tester.ensureVisible(find.byKey(const ValueKey('cycle-create')));
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a number between 15 and 60'), findsNothing);
+      expect((await DriftProfilesRepository(h.db.storage).list()).single
+          .typicalCycleLengthDays, 60);
       await h.dispose();
     });
 
@@ -336,6 +375,12 @@ void main() {
 
       final profiles = await DriftProfilesRepository(h.db.storage).list();
       expect(profiles.single.displayName, 'Nova');
+      // Issue #530: the three cycle facts must land on the profile row
+      // itself (not just the single frame right after creation), so a
+      // future app run can re-derive `CycleFacts` from durable storage.
+      expect(profiles.single.lastPeriodStart, LocalDate(2026, 8, 20));
+      expect(profiles.single.typicalCycleLengthDays, 28);
+      expect(profiles.single.typicalPeriodLengthDays, 5);
       final modeRow = await h.db.storage.getProfileMode(profiles.single.id);
       expect(modeRow, isNotNull,
           reason: 'a non-default goal creates the lazy row');

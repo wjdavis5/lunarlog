@@ -534,7 +534,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunCycleLengthRangeError =>
-      'Enter a number between 10 and 90';
+      'Enter a number between 15 and 60';
 
   @override
   String get firstRunPeriodLengthRangeError =>
@@ -622,6 +622,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String predictionsSuppressedBody(String method) {
     return 'Because $method typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.';
+  }
+
+  @override
+  String predictionsSuppressedByModeBody(String mode) {
+    return 'Because this profile is set to $mode mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.';
   }
 
   @override
