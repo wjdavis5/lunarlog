@@ -5,6 +5,8 @@
 /// an existing account, which would cause divergent profiles and data fragmentation.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
@@ -29,12 +31,15 @@ class RestoreErrorScreen extends StatelessWidget {
       onSignOut!();
       return;
     }
-    context.read<AuthController?>()?.signOut(scope: AuthSignOutScope.local);
+    unawaited(
+      context.read<AuthController?>()?.signOut(scope: AuthSignOutScope.local),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasSignOut = onSignOut != null || Provider.of<AuthController?>(context) != null;
+    final hasSignOut =
+        onSignOut != null || Provider.of<AuthController?>(context) != null;
     return Scaffold(
       key: const ValueKey('restore-error'),
       body: SafeArea(

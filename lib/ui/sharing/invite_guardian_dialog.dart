@@ -1,6 +1,8 @@
 /// Dialog for generating a caregiver or viewer invitation link (U8; R6, R7, R8).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -94,8 +96,10 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
 
   void _copyLink() {
     if (_generatedInvite == null) return;
-    Clipboard.setData(
-      ClipboardData(text: _generatedInvite!.inviteUri.toString()),
+    unawaited(
+      Clipboard.setData(
+        ClipboardData(text: _generatedInvite!.inviteUri.toString()),
+      ),
     );
     setState(() => _justCopied = true);
   }
@@ -106,8 +110,10 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
   // this mirrors). Plain text share of the bare link, same as Copy Link.
   void _shareLink() {
     if (_generatedInvite == null) return;
-    SharePlus.instance.share(
-      ShareParams(text: _generatedInvite!.inviteUri.toString()),
+    unawaited(
+      SharePlus.instance.share(
+        ShareParams(text: _generatedInvite!.inviteUri.toString()),
+      ),
     );
   }
 

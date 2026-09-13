@@ -315,12 +315,12 @@ void main() {
       '(#30 U4)', () async {
     final c = controller();
     service.passkeySignInResult =
-        const PasskeySignInSession(AuthUser(id: 'user-passkey'));
+        const NativeSignInSession(AuthUser(id: 'user-passkey'));
 
     final result = await c.signInWithPasskey();
     await Future<void>.delayed(Duration.zero);
 
-    expect(result, isA<PasskeySignInSession>());
+    expect(result, isA<NativeSignInSession>());
     expect(service.passkeySignInCalls, 1);
     expect(c.state, AuthSessionState.signedIn);
   });
@@ -333,11 +333,11 @@ void main() {
     var notifications = 0;
     c.addListener(() => notifications++);
 
-    service.passkeyRegistrationResult = const PasskeyRegistrationSuccess(
+    service.passkeyRegistrationResult = const NativeSignInSession(
         AuthUser(id: 'u1', email: 'a@b.c', providers: ['email']));
     final result = await c.registerPasskey();
 
-    expect(result, isA<PasskeyRegistrationSuccess>());
+    expect(result, isA<NativeSignInSession>());
     expect(service.registerPasskeyCalls, 1);
     expect(c.currentUser?.email, 'a@b.c');
     expect(c.currentUser?.providers, ['email'],
@@ -355,7 +355,7 @@ void main() {
 
     final result = await c.registerPasskey();
 
-    expect(result, const PasskeyRegistrationCancelled());
+    expect(result, const NativeSignInCancelled());
     expect(notifications, 0);
   });
 

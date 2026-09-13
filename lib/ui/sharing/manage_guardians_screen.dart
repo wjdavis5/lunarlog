@@ -34,6 +34,7 @@ import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
 import '../routes.dart';
 import 'activity_feed_screen.dart';
+import 'guardian_watch_mixin.dart';
 import 'invite_guardian_dialog.dart';
 import 'notification_preferences_screen.dart';
 import 'share_predictions_dialog.dart';
@@ -141,7 +142,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   void initState() {
     super.initState();
     _loadPendingInvites();
-    _loadPredictionConnection();
+    unawaited(_loadPredictionConnection());
   }
 
   @override
@@ -299,9 +300,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// "synced, and the caller isn't a manager" (see [_callerRoleOf] and the
   /// FAB gate below, which only hide controls once rows have actually
   /// arrived).
-  Stream<List<ProfileGuardian>?> get _guardianRows => widget.guardiansRepository
-      .watchForProfile(widget.profile.id)
-      .map((rows) => rows.isEmpty ? null : rows);
+  Stream<List<ProfileGuardian>?> get _guardianRows =>
+      watchGuardiansForProfileSafely(
+        widget.guardiansRepository,
+        widget.profile.id,
+      ).map((rows) => rows.isEmpty ? null : rows);
 
   List<ProfileGuardian> _acceptedOf(List<ProfileGuardian>? rows) =>
       (rows ?? const [])
@@ -453,27 +456,29 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   void _openInviteDialog() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      routeSettings: const RouteSettings(name: kRouteInviteGuardianSheet),
-      // #558: once a single-use invite link is generated, the server never
-      // stores its raw token again -- a stray tap outside the dialog must
-      // not be able to destroy access to it.
-      isDismissible: false,
-      enableDrag: false,
-      builder: (ctx) => InviteGuardianDialog(
-        profileId: widget.profile.id,
-        profileName: widget.profile.displayName,
-        sharingService: widget.sharingService,
-      ),
-      // A newly created invitation should appear in the pending list as
-      // soon as the dialog closes, whether the operator created one or
-      // just dismissed the dialog - re-listing is cheap and harmless
-      // either way.
-    ).then((_) {
-      if (mounted) _loadPendingInvites();
-    });
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        routeSettings: const RouteSettings(name: kRouteInviteGuardianSheet),
+        // #558: once a single-use invite link is generated, the server never
+        // stores its raw token again -- a stray tap outside the dialog must
+        // not be able to destroy access to it.
+        isDismissible: false,
+        enableDrag: false,
+        builder: (ctx) => InviteGuardianDialog(
+          profileId: widget.profile.id,
+          profileName: widget.profile.displayName,
+          sharingService: widget.sharingService,
+        ),
+        // A newly created invitation should appear in the pending list as
+        // soon as the dialog closes, whether the operator created one or
+        // just dismissed the dialog - re-listing is cheap and harmless
+        // either way.
+      ).then((_) {
+        if (mounted) _loadPendingInvites();
+      }),
+    );
   }
 
   /// R3 invitation-cancellation ladder, mirroring [_canRevoke]'s guardian

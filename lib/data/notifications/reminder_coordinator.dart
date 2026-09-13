@@ -48,9 +48,6 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/util/timezone.dart' show isValidIanaTimeZone;
 import 'package:timezone/timezone.dart' as tz;
 
-typedef ActiveProfilesStream = Stream<List<Profile>>;
-typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
-
 /// The per-profile birth-control state stream (Issue #183): the raw
 /// `profile_modes` birth-control columns for [profileId], or null when no
 /// row exists. The production source is the drift row watcher

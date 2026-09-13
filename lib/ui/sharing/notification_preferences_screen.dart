@@ -145,7 +145,7 @@ class _NotificationPreferencesScreenState
     CaregiverAlertPreferences Function(CaregiverAlertPreferences) update,
   ) {
     if (value == null) return;
-    _apply(update);
+    unawaited(_apply(update));
   }
 
   Future<void> _pickDigestTime() async {
@@ -328,7 +328,8 @@ class _NotificationPreferencesScreenState
                     value: prefs.missedEntryThreshold,
                     onChanged: (value) {
                       if (value != null) {
-                        _apply((p) => p.copyWith(missedEntryThreshold: value));
+                        unawaited(
+                            _apply((p) => p.copyWith(missedEntryThreshold: value)));
                       }
                     },
                     items: const [

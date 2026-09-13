@@ -10,6 +10,8 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  language:
+    strict-casts: true
   exclude:
     - build/**
     - android/**
@@ -30,6 +32,17 @@ linter:
   rules:
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    #
+    # Issue #548: the project leans hard on *manual* subscription/timer
+    # discipline (many files hold StreamSubscriptions/Timers, and many
+    # deliberate `unawaited(...)` calls) — these make that discipline
+    # enforced by the analyzer rather than merely conventional.
+    cancel_subscriptions: true
+    close_sinks: true
+    unawaited_futures: true
+    discarded_futures: true
+    avoid_dynamic_calls: true
+    prefer_final_locals: true
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

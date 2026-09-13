@@ -3,6 +3,8 @@
 /// moved to U7's fail-closed screen (test/ui/gate_test.dart).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -1070,7 +1072,8 @@ void main() {
       final controller = ProfileController(
         profilesRepository: _EmptyProfilesRepository(),
         settingsStore: settings,
-      )..load();
+      );
+      unawaited(controller.load());
       addTearDown(controller.dispose);
       addTearDown(settings.close);
 
@@ -1118,7 +1121,8 @@ void main() {
       final controller = ProfileController(
         profilesRepository: _EmptyProfilesRepository(),
         settingsStore: settings,
-      )..load();
+      );
+      unawaited(controller.load());
       addTearDown(controller.dispose);
       addTearDown(settings.close);
 

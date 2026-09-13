@@ -21,37 +21,45 @@ const String kLiveDayEntryIndexSql =
     'CREATE UNIQUE INDEX IF NOT EXISTS uq_day_entries_profile_date_live '
     'ON day_entries (profile_id, local_date) WHERE deleted_at IS NULL';
 
-/// Schema v8 (issue #197, performance): plain (non-unique, non-partial)
-/// index covering the calendar's windowed `(profile_id, local_date)` range
-/// scan (`LunarLogStorage._dayEntryQuery`'s `fromLocalDate`/`toLocalDate`) —
-/// distinct from [kLiveDayEntryIndexSql], which only ever helps a
-/// `deleted_at IS NULL` (live-row) predicate, not this range's tombstoned
-/// rows too.
+/// Introduced in schema v8 (issue #197, performance) — [schemaVersion] has
+/// moved on since; see [LunarLogDatabase]'s schema-history doc comment for
+/// the current version and everything added after this one. Plain
+/// (non-unique, non-partial) index covering the calendar's windowed
+/// `(profile_id, local_date)` range scan (`LunarLogStorage._dayEntryQuery`'s
+/// `fromLocalDate`/`toLocalDate`) — distinct from [kLiveDayEntryIndexSql],
+/// which only ever helps a `deleted_at IS NULL` (live-row) predicate, not
+/// this range's tombstoned rows too.
 const String kDayEntriesProfileDateIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_day_entries_profile_date '
     'ON day_entries (profile_id, local_date)';
 
-/// Schema v8 (issue #197): partial index over the sync engine's dirty-row
-/// scan (`LunarLogStorage.readDirtyDayEntries`) — `dirty = 1` matches
-/// drift's boolean-column encoding (`BoolColumn` stores `0`/`1`), so this
-/// mirrors the same partial-index technique [kLiveDayEntryIndexSql] uses,
-/// just keyed on `dirty` instead of `deleted_at`.
+/// Introduced in schema v8 (issue #197) — see [kDayEntriesProfileDateIndexSql]'s
+/// doc comment on why "v8" here means introduced-at, not current. Partial
+/// index over the sync engine's dirty-row scan
+/// (`LunarLogStorage.readDirtyDayEntries`) — `dirty = 1` matches drift's
+/// boolean-column encoding (`BoolColumn` stores `0`/`1`), so this mirrors
+/// the same partial-index technique [kLiveDayEntryIndexSql] uses, just
+/// keyed on `dirty` instead of `deleted_at`.
 const String kDayEntriesDirtyIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_day_entries_dirty '
     'ON day_entries (dirty) WHERE dirty = 1';
 
-/// Schema v8 (issue #197): index over `updated_at`, serving
-/// [LunarLogStorage.getDayEntries]'s `updatedAfter` (incremental sync)
-/// predicate. Review follow-up: this does **not** serve
-/// [LunarLogStorage.readDirtyDayEntries]'s keyset ordering — that query
-/// orders by `id` (ULIDs, already insertion order), never by `updated_at`,
-/// so an index on `updated_at` has nothing to offer it.
+/// Introduced in schema v8 (issue #197) — see [kDayEntriesProfileDateIndexSql]'s
+/// doc comment on why "v8" here means introduced-at, not current. Index
+/// over `updated_at`, serving [LunarLogStorage.getDayEntries]'s
+/// `updatedAfter` (incremental sync) predicate. Review follow-up: this
+/// does **not** serve [LunarLogStorage.readDirtyDayEntries]'s keyset
+/// ordering — that query orders by `id` (ULIDs, already insertion order),
+/// never by `updated_at`, so an index on `updated_at` has nothing to offer
+/// it.
 const String kDayEntriesUpdatedAtIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_day_entries_updated_at '
     'ON day_entries (updated_at)';
 
-/// Schema v8 (issue #197): index over `profile_guardians.profile_id` —
-/// every guardian read (`getGuardiansForProfile`, and
+/// Introduced in schema v8 (issue #197) — see [kDayEntriesProfileDateIndexSql]'s
+/// doc comment on why "v8" here means introduced-at, not current. Index
+/// over `profile_guardians.profile_id` — every guardian read
+/// (`getGuardiansForProfile`, and
 /// `ProfileGuardiansRepository.watchForProfile`) filters by it and had no
 /// index to do so with before this version.
 const String kProfileGuardiansProfileIndexSql =

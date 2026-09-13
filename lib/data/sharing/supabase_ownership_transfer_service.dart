@@ -14,6 +14,7 @@ import '../../config.dart';
 import '../../domain/sharing/invite_links.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sync/sync_engine.dart';
+import '../../observability/breadcrumbs.dart';
 
 class SupabaseOwnershipTransferService implements OwnershipTransferService {
   SupabaseOwnershipTransferService({
@@ -51,7 +52,9 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
       });
 
       if (res is! Map) {
-        throw const TransferFailure.other('unexpected RPC response shape');
+        defaultBreadcrumbLog.record('ownershipTransfer',
+            'createTransfer: unexpected RPC response shape');
+        throw const TransferFailure.other();
       }
 
       final id = res['id'] as String;
@@ -130,7 +133,9 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
 
       final role = ParentPostTransferRole.fromDb(row['parent_post_transfer_role'] as String);
       if (role == null) {
-        throw const TransferFailure.other('unexpected parent_post_transfer_role value');
+        defaultBreadcrumbLog.record('ownershipTransfer',
+            'getActiveTransfer: unexpected parent_post_transfer_role value');
+        throw const TransferFailure.other();
       }
 
       return ActiveTransfer(
@@ -161,7 +166,9 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
       });
 
       if (res is! Map) {
-        throw const TransferFailure.other('unexpected RPC response shape');
+        defaultBreadcrumbLog.record('ownershipTransfer',
+            'claimProfile: unexpected RPC response shape');
+        throw const TransferFailure.other();
       }
 
       final profileId = res['profile_id'] as String;
@@ -200,7 +207,9 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     if (error is PostgrestException) {
       return _mapPostgrestError(error);
     }
-    return TransferFailure.other(error.toString());
+    defaultBreadcrumbLog.record(
+        'ownershipTransfer', 'unmapped error: ${error.runtimeType}');
+    return const TransferFailure.other();
   }
 
   TransferFailure _mapPostgrestError(PostgrestException error) {
@@ -218,7 +227,9 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     if (status != null && status >= 500) {
       return const TransferFailure.network();
     }
-    return TransferFailure.other(error.message);
+    defaultBreadcrumbLog
+        .record('ownershipTransfer', 'unmapped postgrest error: ${error.code}');
+    return const TransferFailure.other();
   }
 
   // Ordered substring -> failure lookup, checked before the falls-through
@@ -248,10 +259,12 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     return _mapBusinessMessage(msg);
   }
 
-  TransferFailure _mapInvalidParameter(String code, String msg) =>
-      msg.contains('token')
-          ? const TransferFailure.invalidToken()
-          : TransferFailure.other(_diagnostic(code, msg));
+  TransferFailure _mapInvalidParameter(String code, String msg) {
+    if (msg.contains('token')) return const TransferFailure.invalidToken();
+    defaultBreadcrumbLog.record(
+        'ownershipTransfer', 'unmapped invalid parameter: $code');
+    return const TransferFailure.other();
+  }
 
   TransferFailure? _mapBusinessMessage(String msg) {
     for (final entry in _messageFailures.entries) {
@@ -263,8 +276,6 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     }
     return null;
   }
-
-  String _diagnostic(String code, String msg) => 'postgrest $code: $msg';
 
   bool _isUnauthorized(String code, String msg) =>
       code == 'PGRST301' ||

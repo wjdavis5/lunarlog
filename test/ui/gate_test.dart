@@ -247,7 +247,7 @@ Future<void> transitionTo(WidgetTester tester, AppLifecycleState target) async {
   ];
   final start = tester.binding.lifecycleState ?? AppLifecycleState.resumed;
   var from = path.indexOf(start);
-  var to = path.indexOf(target);
+  final to = path.indexOf(target);
   assert(from >= 0 && to >= 0, 'unsupported transition $start -> $target');
   while (from != to) {
     from += to > from ? 1 : -1;
@@ -913,6 +913,38 @@ void main() {
       expect(timers.anyActive, isFalse,
           reason: 'no timer armed on a disposed controller for dispose() to '
               'have missed');
+    });
+
+    test(
+        'a system-UI window opened after dispose arms no timer and never '
+        'notifies (issue #574)', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      gate.grantNext = true;
+      await controller.unlock();
+
+      var notified = false;
+      controller.addListener(() => notified = true);
+      controller.dispose();
+
+      // _openSystemUiWindow, the entry point duringSystemUi calls, had no
+      // _disposed guard — unlike every sibling that touches this same
+      // state — so a biometric sheet started after disposal would arm a
+      // timer nothing cancels and, via that timer, later call
+      // notifyListeners() on a disposed ChangeNotifier.
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      picker.complete();
+      await ceremony;
+
+      expect(timers.anyActive, isFalse,
+          reason: 'no timer should ever be armed once disposed');
+      expect(notified, isFalse);
     });
 
     testWidgets('the cover is reconciled when a window closes, never '

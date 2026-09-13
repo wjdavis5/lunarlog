@@ -53,42 +53,33 @@ class _PredictionConnectionsScreenState
     });
   }
 
-  /// Split into prompt / redeem / failure-copy helpers to keep each under
-  /// the CRAP gate's complexity budget.
   Future<void> _enterCode() async {
     final code = await _promptForCode();
-    if (code == null || code.isEmpty || !mounted) return;
+    if (code == null) return;
     await _redeemCode(code);
   }
 
-  Future<String?> _promptForCode() => showDialog<String>(
-    context: context,
-    builder: (ctx) {
-      final controller = TextEditingController();
-      return AlertDialog(
-        title: const Text('Enter connection code'),
-        content: TextField(
-          key: const ValueKey('prediction-code-field'),
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Paste the code you received',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child: const Text('Connect'),
-          ),
-        ],
-      );
-    },
-  );
+  /// Issue #574: was a `TextEditingController()` constructed directly
+  /// inside `showDialog`'s `builder`, which Flutter may invoke more than
+  /// once (a theme/MediaQuery change, a route rebuild) — each invocation
+  /// minted a new, never-disposed controller, and a rotation mid-dialog
+  /// detached the TextField from whichever controller the Connect button
+  /// still read. `_EnterCodeDialog` owns one controller for the dialog's
+  /// whole lifetime and disposes it. Returns null on a cancelled/empty
+  /// dialog, or if the screen was unmounted while it was open.
+  Future<String?> _promptForCode() async {
+    final code = await showDialog<String>(
+      context: context,
+      builder: (ctx) => const _EnterCodeDialog(),
+    );
+    if (code == null || code.isEmpty || !mounted) return null;
+    return code;
+  }
 
+  /// Redeems [code] against the server, then either shows the failure or
+  /// navigates to the newly connected profile's calendar. Split out of
+  /// [_enterCode] (a pure extraction, no behavior change) to keep both
+  /// methods under the CRAP-10 complexity gate.
   Future<void> _redeemCode(String code) async {
     PredictionConnectionFailure? typedFailure;
     bool unexpectedFailure = false;
@@ -102,11 +93,7 @@ class _PredictionConnectionsScreenState
     }
     if (!mounted) return;
     if (result == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_redeemFailureMessage(typedFailure, unexpectedFailure)),
-        ),
-      );
+      _showRedeemFailure(typedFailure, unexpectedFailure);
       return;
     }
     _load();
@@ -126,19 +113,18 @@ class _PredictionConnectionsScreenState
     );
   }
 
-  String _redeemFailureMessage(
+  void _showRedeemFailure(
     PredictionConnectionFailure? typedFailure,
     bool unexpectedFailure,
   ) {
-    if (typedFailure != null) {
-      return predictionConnectionFailureCopy(
-        AppLocalizations.of(context),
-        typedFailure,
-      );
-    }
-    return unexpectedFailure
+    final l10n = AppLocalizations.of(context);
+    final error = typedFailure != null
+        ? predictionConnectionFailureCopy(l10n, typedFailure)
+        : unexpectedFailure
         ? 'An unexpected error occurred.'
-        : 'Connection failed.';
+        : null;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(error ?? 'Connection failed.')));
   }
 
   @override
@@ -234,6 +220,53 @@ class _PredictionConnectionsScreenState
           );
         },
       ),
+    );
+  }
+}
+
+/// The "Enter connection code" dialog body (issue #574): a small
+/// [StatefulWidget] so its [TextEditingController] survives a rebuild
+/// (theme/MediaQuery change, route rebuild) of the dialog rather than
+/// being reminted by `showDialog`'s `builder` on every such rebuild, and
+/// is disposed exactly once when the dialog itself is.
+class _EnterCodeDialog extends StatefulWidget {
+  const _EnterCodeDialog();
+
+  @override
+  State<_EnterCodeDialog> createState() => _EnterCodeDialogState();
+}
+
+class _EnterCodeDialogState extends State<_EnterCodeDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Enter connection code'),
+      content: TextField(
+        key: const ValueKey('prediction-code-field'),
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'Paste the code you received',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Connect'),
+        ),
+      ],
     );
   }
 }

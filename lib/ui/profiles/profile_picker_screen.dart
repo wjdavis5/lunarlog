@@ -13,6 +13,8 @@
 /// no error and no spinner.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
@@ -270,8 +272,10 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       // refresh outside badges so the change surfaces without a restart.
       // The shared push site carries the #151 prediction-connection wiring
       // too — this must stay a single push of the screen.
-      openManageGuardians(context, profile)
-          ?.then((_) => _overview?.refreshBadges());
+      unawaited(
+        openManageGuardians(context, profile)
+            ?.then((_) => _overview?.refreshBadges()),
+      );
     } else if (action == 'rename') {
       final result = await showProfileEditDialog(context, existing: profile);
       if (result == null) return;

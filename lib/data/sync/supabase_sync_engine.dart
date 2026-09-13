@@ -46,6 +46,7 @@ import 'dart:math';
 
 import 'package:drift/drift.dart' show TableUpdate, TableUpdateQuery, Value;
 import 'package:flutter/widgets.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 import '../../domain/auth/auth_service.dart';
 import '../../domain/sync/sync_engine.dart';
@@ -790,8 +791,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (_disposed) return;
     try {
       await _updateState((s) => s.copyWith(lastError: Value(kind.name)));
-    } catch (_) {
-      // The status is still surfaced in memory.
+    } catch (e, s) {
+      // The status is still surfaced in memory. Issue #547: recorded, not
+      // silenced — a persistently failing state write is worth seeing.
+      unawaited(Sentry.captureException(e, stackTrace: s));
     }
     if (kind == SyncErrorKind.network) {
       _consecutiveNetworkFailures++;
@@ -815,7 +818,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   Future<int> _safeDirtyCount() async {
     try {
       return await _storage.dirtyCount();
-    } catch (_) {
+    } catch (e, s) {
+      // Issue #547: recorded, not silenced — the stale in-memory count is
+      // still a reasonable fallback, but a persistently failing count
+      // query is worth seeing.
+      unawaited(Sentry.captureException(e, stackTrace: s));
       return _snapshot.dirtyCount;
     }
   }

@@ -51,6 +51,9 @@ class _FakeDayEntriesRepository implements DayEntriesRepository {
   Future<List<DayEntry>> listForProfile(String profileId) async => const [];
 
   @override
+  Future<bool> hasAnyEntries(String profileId) async => false;
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -77,6 +80,11 @@ class FakeSettingsStore implements SettingsStore {
 
   @override
   Stream<String?> watch(String key) {
+    // Issue #548: a per-test fake with no close() call — the test process
+    // is short-lived, so there is no real leak to guard against (mirrors
+    // `test/support/fake_settings_store.dart`'s own pre-existing shape,
+    // which this file predates).
+    // ignore: close_sinks
     final c = _controllers.putIfAbsent(
       key,
       () => StreamController<String?>.broadcast(),

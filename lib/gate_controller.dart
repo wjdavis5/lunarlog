@@ -258,7 +258,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// Subscribes the inactivity toggle to the persisted setting (read after
   /// the database opens, so it is not available at construction).
   void attachSettings(SettingsStore store) {
-    _relockSub?.cancel();
+    unawaited(_relockSub?.cancel());
     _relockSub = store.watch(SettingsKeys.relockEnabled).listen((value) {
       _relockEnabled = value != 'false'; // absent ⇒ default ON (fail closed)
       if (_relockEnabled) {
@@ -305,6 +305,14 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   int _openSystemUiWindow() {
+    // Issue #574: every sibling that touches system-UI-window state
+    // (`_closeSystemUiWindow`, `_systemUiDeadlineExpired`,
+    // `_reconcileWindowClose`) guards on `_disposed`; this one didn't. A
+    // biometric sheet started after disposal (see `dispose()`'s own doc
+    // comment for the exact hazard) would otherwise arm a timer nothing
+    // cancels and, via that timer, later call `notifyListeners()` on a
+    // disposed `ChangeNotifier`.
+    if (_disposed) return _systemUiEpoch ?? 0;
     if (_systemUiWindows > 0) {
       _systemUiWindows++;
       return _systemUiEpoch!;

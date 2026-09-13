@@ -61,6 +61,10 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<void> delete(String profileId, LocalDate localDate) =>
       throw UnimplementedError();
+
+  @override
+  Future<bool> hasAnyEntries(String profileId) async =>
+      currentEntries.isNotEmpty;
 }
 
 /// Three completed, regular cycles (four episode starts) — enough for an

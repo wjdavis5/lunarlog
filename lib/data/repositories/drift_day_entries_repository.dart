@@ -88,6 +88,10 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
         dayEntryToDomain(row)];
 
   @override
+  Future<bool> hasAnyEntries(String profileId) =>
+      _storage.hasAnyEntries(profileId);
+
+  @override
   Stream<List<domain.DayEntry>> watchForProfile(
     String profileId, {
     domain.LocalDate? from,

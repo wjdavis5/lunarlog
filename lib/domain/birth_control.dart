@@ -47,6 +47,7 @@
 library;
 
 import 'models/local_date.dart';
+import 'repositories/profile_modes_repository.dart' show ProfileLifecycleMode;
 
 /// The `observations.category` prefix shared by the six per-day intake
 /// categories (the "birth_control category family", issue #260 AC1).
@@ -259,6 +260,20 @@ const Map<String, BirthControlMethod> _legacyStoredValues = {
 /// structural record, so any producer (the drift row watcher, a test) can
 /// build one without a factory.
 typedef BirthControlState = ({String? method, String? startedOn, String? stoppedOn});
+
+/// Derives a [BirthControlState] from a [ProfileModesRepository] row
+/// (issue #551): the one mapping both `lib/app.dart`'s reminder-coordinator
+/// wiring and `AppDependencies`' own prediction-service wiring used to
+/// hand-copy character-for-character from a raw `ProfileModesRepository
+/// .watch` stream. Null in, null out — no row means no recorded method.
+BirthControlState? birthControlStateFromProfileMode(ProfileLifecycleMode? row) =>
+    row == null
+        ? null
+        : (
+            method: row.birthControlMethod,
+            startedOn: row.birthControlStartedOn,
+            stoppedOn: row.birthControlStoppedOn,
+          );
 
 /// The birth-control method in effect on [date] — the consumption seam
 /// #233 (birth-control-aware predictions), #183 (method reminders), and

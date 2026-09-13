@@ -6,6 +6,8 @@
 /// logging, history, and statistics remain intact.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
@@ -149,10 +151,10 @@ class _ProfilePredictionTileState extends State<_ProfilePredictionTile> {
           subtitle: Text(l10n.settingsPredictionsSubtitle),
           value: enabled,
           onChanged: (value) {
-            widget.settings.set(
+            unawaited(widget.settings.set(
               predictionsEnabledSettingKey(widget.profile.id),
               encodePredictionsEnabled(value),
-            );
+            ));
           },
         );
 

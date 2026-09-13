@@ -42,7 +42,7 @@ Stream<(A, B, C)> combineLatest3<A, B, C>(
 
   void maybeClose() {
     if (doneA && doneB && doneC && !controller.isClosed) {
-      controller.close();
+      unawaited(controller.close());
     }
   }
 
@@ -114,7 +114,7 @@ Stream<(A, B)> combineLatest2<A, B>(Stream<A> left, Stream<B> right) {
 
   void maybeClose() {
     if (doneLeft && doneRight && !controller.isClosed) {
-      controller.close();
+      unawaited(controller.close());
     }
   }
 
