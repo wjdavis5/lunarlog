@@ -559,6 +559,9 @@ class FakeLinkSource implements AuthLinkSource {
   FakeLinkSource({this.initial});
 
   Uri? initial;
+  // Issue #548: a per-test fake with no close() call — the test process is
+  // short-lived, so there is no real leak to guard against.
+  // ignore: close_sinks
   final StreamController<Uri> controller = StreamController<Uri>.broadcast();
   int initialLinkCalls = 0;
 
@@ -1192,7 +1195,7 @@ void main() {
       service.states.listen(seen.add);
       final result = await service.signInWithAppleNative();
       await settle();
-      expect(result, const AppleSignInCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(seen, isEmpty);
       expect(service.state, AuthSessionState.signedOut);
       expect(gateway.idTokenCalls, isEmpty);
@@ -1211,8 +1214,8 @@ void main() {
       );
       final result = await service.signInWithAppleNative();
       await settle();
-      expect(result, isA<AppleSignInSession>());
-      expect((result as AppleSignInSession).user.id, 'apple');
+      expect(result, isA<NativeSignInSession>());
+      expect((result as NativeSignInSession).user.id, 'apple');
       expect(receivedNonce,
           sha256.convert(utf8.encode('raw-nonce-123')).toString());
       final call = gateway.idTokenCalls.single;
@@ -1236,8 +1239,8 @@ void main() {
       gateway.nextUpdateUserError = Exception('name write failed');
       final result = await service.signInWithAppleNative();
       await settle();
-      expect(result, isA<AppleSignInSession>());
-      expect((result as AppleSignInSession).user.id, 'apple');
+      expect(result, isA<NativeSignInSession>());
+      expect((result as NativeSignInSession).user.id, 'apple');
       expect(gateway.updateUserCalls, hasLength(1),
           reason: 'the name write was attempted');
       expect(service.state, AuthSessionState.signedIn);
@@ -1322,8 +1325,8 @@ void main() {
 
       final first = await service.signInWithGoogleNative();
       await settle();
-      expect(first, isA<GoogleSignInSession>());
-      expect((first as GoogleSignInSession).user.id, 'google');
+      expect(first, isA<NativeSignInSession>());
+      expect((first as NativeSignInSession).user.id, 'google');
       expect(service.state, AuthSessionState.signedIn);
       expect(client.initializeCalls, hasLength(1));
       expect(client.initializeCalls.single.hashedNonce, hashed('raw-nonce-1'));
@@ -1334,7 +1337,7 @@ void main() {
       expect(hashed(call.nonce!), client.initializeCalls.single.hashedNonce);
 
       final second = await service.signInWithGoogleNative();
-      expect(second, isA<GoogleSignInSession>());
+      expect(second, isA<NativeSignInSession>());
       expect(client.initializeCalls, hasLength(1),
           reason: 'initialize runs once per process');
       expect(client.authenticateCalls, 2);
@@ -1357,7 +1360,7 @@ void main() {
       service.states.listen(seen.add);
       final result = await service.signInWithGoogleNative();
       await settle();
-      expect(result, const GoogleSignInCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(seen, isEmpty);
       expect(service.state, AuthSessionState.signedOut);
       expect(service.pendingLinkFailure, isNull);
@@ -2271,7 +2274,7 @@ void main() {
 
       final result = await service.signInWithPasskey();
 
-      expect(result, isA<PasskeySignInSession>());
+      expect(result, isA<NativeSignInSession>());
       expect(gateway.startPasskeyAuthenticationCalls, 1);
       expect(ceremony.getCalls.single, gateway.passkeyAuthenticationOptions);
       expect(gateway.verifyPasskeyAuthenticationCalls.single.challengeId,
@@ -2287,7 +2290,7 @@ void main() {
 
       final result = await service.signInWithPasskey();
 
-      expect(result, const PasskeySignInCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(gateway.verifyPasskeyAuthenticationCalls, isEmpty);
       expect(service.state, AuthSessionState.signedOut);
     });
@@ -2354,8 +2357,8 @@ void main() {
 
       final result = await service.registerPasskey();
 
-      expect(result, isA<PasskeyRegistrationSuccess>());
-      final success = result as PasskeyRegistrationSuccess;
+      expect(result, isA<NativeSignInSession>());
+      final success = result as NativeSignInSession;
       expect(success.user, service.currentUser);
       expect(gateway.verifyPasskeyRegistrationCalls.single.challengeId,
           'reg-challenge-1');
@@ -2370,7 +2373,7 @@ void main() {
 
       final result = await service.registerPasskey();
 
-      expect(result, const PasskeyRegistrationCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(gateway.verifyPasskeyRegistrationCalls, isEmpty);
     });
 
@@ -2382,7 +2385,7 @@ void main() {
           passkeysAvailable: true,
           passkeyClient: FakePasskeyCeremonyClient());
 
-      final result = await service.registerPasskey() as PasskeyRegistrationSuccess;
+      final result = await service.registerPasskey() as NativeSignInSession;
 
       expect(result.user.providers, ['email']);
     });

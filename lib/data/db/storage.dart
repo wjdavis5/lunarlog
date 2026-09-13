@@ -83,6 +83,7 @@ export '../sync/remote_rows.dart'
         RemoteCareNoteRow,
         RemoteCycleOverrideRow,
         RemoteDayEntryRow,
+        RemoteDeletedProfileRow,
         RemoteObservationRow,
         RemoteProfileModeRow,
         RemoteProfileRow,

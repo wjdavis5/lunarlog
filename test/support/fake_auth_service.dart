@@ -43,20 +43,20 @@ class FakeAuthService implements AuthService {
   SignUpResult? signUpResult;
 
   /// What [signInWithAppleNative] returns.
-  AppleSignInResult appleResult = const AppleSignInCancelled();
+  NativeSignInResult appleResult = const NativeSignInCancelled();
 
   /// What [signInWithGoogleNative] returns (#2 U2).
-  GoogleSignInResult googleResult =
-      const GoogleSignInSession(AuthUser(id: 'user-google'));
+  NativeSignInResult googleResult =
+      const NativeSignInSession(AuthUser(id: 'user-google'));
 
   /// What [signInWithPasskey] returns (#30 U2).
-  PasskeySignInResult passkeySignInResult = const PasskeySignInCancelled();
+  NativeSignInResult passkeySignInResult = const NativeSignInCancelled();
 
   /// What [registerPasskey] returns (#30 U2). Never touches [providers] —
   /// passkeys are not identity providers and do not appear in
   /// [AuthUser.providers] (R10).
-  PasskeyRegistrationResult passkeyRegistrationResult =
-      const PasskeyRegistrationCancelled();
+  NativeSignInResult passkeyRegistrationResult =
+      const NativeSignInCancelled();
 
   /// Throw [UnsupportedError] from [signInWithPasskey] / [registerPasskey]
   /// (build has no passkey configuration).
@@ -222,49 +222,49 @@ class FakeAuthService implements AuthService {
   }
 
   @override
-  Future<AppleSignInResult> signInWithAppleNative() async {
+  Future<NativeSignInResult> signInWithAppleNative() async {
     if (appleUnsupported) {
       throw UnsupportedError('Apple Sign-In is available on iOS only');
     }
     appleCalls++;
     await _maybeThrow();
     final result = appleResult;
-    if (result is AppleSignInSession) {
+    if (result is NativeSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
   }
 
   @override
-  Future<GoogleSignInResult> signInWithGoogleNative() async {
+  Future<NativeSignInResult> signInWithGoogleNative() async {
     if (googleUnsupported) {
       throw UnsupportedError('Google Sign-In is not available in this build');
     }
     googleCalls++;
     await _maybeThrow();
     final result = googleResult;
-    if (result is GoogleSignInSession) {
+    if (result is NativeSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
   }
 
   @override
-  Future<PasskeySignInResult> signInWithPasskey() async {
+  Future<NativeSignInResult> signInWithPasskey() async {
     if (passkeyUnsupported) {
       throw UnsupportedError('Passkeys are not available in this build');
     }
     passkeySignInCalls++;
     await _maybeThrow();
     final result = passkeySignInResult;
-    if (result is PasskeySignInSession) {
+    if (result is NativeSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
   }
 
   @override
-  Future<PasskeyRegistrationResult> registerPasskey() async {
+  Future<NativeSignInResult> registerPasskey() async {
     if (passkeyUnsupported) {
       throw UnsupportedError('Passkeys are not available in this build');
     }

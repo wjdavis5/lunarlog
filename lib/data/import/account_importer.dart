@@ -25,16 +25,9 @@ import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
-
-/// Resolves the guardian rows for one profile id (Issue #153's
-/// `GuardiansForProfile` shape, redeclared here rather than imported —
-/// `lib/ui/settings/health_sync_screen.dart` lives in `lib/ui`, and
-/// `lib/data` must never depend on it, R14/R16). Production wiring passes
-/// `ProfileGuardiansRepository.getForProfile`; tests pass a fake, no
-/// database required.
-typedef GuardiansForProfileFn = Future<List<ProfileGuardian>> Function(
-    String profileId);
 
 /// Applies one already-built [ImportPlan] (Issue #140). See this file's
 /// own doc comment for the transactional guarantee.
@@ -239,7 +232,7 @@ class DriftAccountImportCoordinator
   /// Null means "no guardian info available" — every matched profile
   /// fails open (writable) unless archived, the same fail-open precedent
   /// [writeBlockReasonFor] itself documents.
-  final GuardiansForProfileFn? guardiansForProfile;
+  final GuardiansForProfile? guardiansForProfile;
 
   final String? currentUserId;
 

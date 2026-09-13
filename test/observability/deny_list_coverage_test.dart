@@ -143,6 +143,8 @@ const Map<String, String> _waivedKeys = {
   // waiver here would be redundant (and the redundant-waiver test below
   // would catch it if it crept back in).
   'cursor_visit_prep_items': 'device-local sync cursor, not content',
+  'cursor_profile_guardians':
+      'device-local sync cursor, not content (issue #525)',
   'last_full_pull_at': 'device-local sync bookkeeping timestamp, not content',
   'last_sync_at': 'device-local sync bookkeeping timestamp, not content',
   'server_clock_offset_ms': 'device-local clock-skew bookkeeping, not content',

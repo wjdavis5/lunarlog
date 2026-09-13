@@ -87,6 +87,10 @@ class RecordingDayEntriesRepository implements DayEntriesRepository {
       _inner.listForProfile(profileId);
 
   @override
+  Future<bool> hasAnyEntries(String profileId) =>
+      _inner.hasAnyEntries(profileId);
+
+  @override
   Stream<List<DayEntry>> watchForProfile(
     String profileId, {
     LocalDate? from,

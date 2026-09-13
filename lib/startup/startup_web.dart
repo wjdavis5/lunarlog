@@ -18,5 +18,6 @@ Future<void> deleteLocalDatabase() async {}
 /// concern — there is no iOS/Android backup or file-protection class on
 /// web). Kept so the conditional export exposes one `protectDatabaseFile()`
 /// on every platform; a deliberate no-op here, same treatment as
-/// [deleteLocalDatabase].
-Future<void> protectDatabaseFile() async {}
+/// [deleteLocalDatabase]. Takes `databasePath` (issue #561: the caller's
+/// actually-opened file) only to match the native signature — unused here.
+Future<void> protectDatabaseFile(String databasePath) async {}

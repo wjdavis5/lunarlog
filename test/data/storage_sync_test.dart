@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart'
+    show RemoteDeletedProfileRow, RemoteProfileGuardianRow;
 import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry;
 
 class FixedClock {
@@ -74,8 +76,9 @@ void main() {
 
   Future<DayEntry> entryById(String profileId, String id) async =>
       (await storage.getDayEntries(
-              profileId: profileId, includeTombstones: true))
-          .firstWhere((e) => e.id == id);
+        profileId: profileId,
+        includeTombstones: true,
+      )).firstWhere((e) => e.id == id);
 
   Future<List<DayEntry>> liveFor(String profileId, String date) async =>
       (await storage.getDayEntries(profileId: profileId))
@@ -91,18 +94,17 @@ void main() {
     required DateTime updatedAt,
     DateTime? createdAt,
     DateTime? deletedAt,
-  }) =>
-      RemoteProfileRow(
-        id: id,
-        displayName: displayName,
-        isMinor: isMinor,
-        mode: mode,
-        sortOrder: sortOrder,
-        archivedAt: null,
-        createdAt: createdAt ?? updatedAt,
-        updatedAt: updatedAt,
-        deletedAt: deletedAt,
-      );
+  }) => RemoteProfileRow(
+    id: id,
+    displayName: displayName,
+    isMinor: isMinor,
+    mode: mode,
+    sortOrder: sortOrder,
+    archivedAt: null,
+    createdAt: createdAt ?? updatedAt,
+    updatedAt: updatedAt,
+    deletedAt: deletedAt,
+  );
 
   RemoteDayEntryRow remoteEntry(
     String id, {
@@ -115,19 +117,18 @@ void main() {
     bool pms = false,
     required DateTime updatedAt,
     DateTime? deletedAt,
-  }) =>
-      RemoteDayEntryRow(
-        id: id,
-        profileId: profileId,
-        localDate: localDate,
-        tz: tz,
-        flow: flow,
-        tags: tags,
-        note: note,
-        pms: pms,
-        updatedAt: updatedAt,
-        deletedAt: deletedAt,
-      );
+  }) => RemoteDayEntryRow(
+    id: id,
+    profileId: profileId,
+    localDate: localDate,
+    tz: tz,
+    flow: flow,
+    tags: tags,
+    note: note,
+    pms: pms,
+    updatedAt: updatedAt,
+    deletedAt: deletedAt,
+  );
 
   group('local writes and dirty reads', () {
     test('upsertProfile / upsertDayEntry / softDelete* set dirty and bump '
@@ -137,36 +138,49 @@ void main() {
       expect(p.localRev, 1);
 
       final p2 = await storage.upsertProfile(
-          id: p.id, displayName: 'A2', isMinor: false);
+        id: p.id,
+        displayName: 'A2',
+        isMinor: false,
+      );
       expect(p2.localRev, 2);
       expect(p2.dirty, isTrue);
 
       final e = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.light);
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
       expect(e.dirty, isTrue);
       expect(e.localRev, 1);
 
       final e2 = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.heavy);
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+      );
       expect(e2.id, e.id);
       expect(e2.localRev, 2);
 
       // Push both, then soft delete: dirty again with a further bump.
       await storage.markPushed(
-          table: SyncTable.profiles, id: p.id, localRevAtPush: 2);
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: 2,
+      );
       await storage.markPushed(
-          table: SyncTable.dayEntries, id: e.id, localRevAtPush: 2);
+        table: SyncTable.dayEntries,
+        id: e.id,
+        localRevAtPush: 2,
+      );
       expect(await storage.readDirtyProfiles(), isEmpty);
       expect(await storage.readDirtyDayEntries(), isEmpty);
 
       await storage.softDeleteDayEntry(
-          profileId: p.id, localDate: '2026-01-15');
+        profileId: p.id,
+        localDate: '2026-01-15',
+      );
       await storage.softDeleteProfile(p.id);
 
       final dirtyProfiles = await storage.readDirtyProfiles();
@@ -183,33 +197,49 @@ void main() {
     test('Issue #177: readDirtyProfiles/readDirtyDayEntries page by '
         '`limit`/`afterId` in id order, so a caller can stream a large '
         'dirty set instead of reading it all at once', () async {
-      final p = await storage.upsertProfile(displayName: 'Owner', isMinor: false);
+      final p = await storage.upsertProfile(
+        displayName: 'Owner',
+        isMinor: false,
+      );
       final ids = <String>[];
       for (var i = 0; i < 10; i++) {
         final e = await storage.upsertDayEntry(
-            profileId: p.id,
-            localDate: '2026-02-${(i + 1).toString().padLeft(2, '0')}',
-            tz: 'UTC',
-            flow: FlowLevel.light);
+          profileId: p.id,
+          localDate: '2026-02-${(i + 1).toString().padLeft(2, '0')}',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+        );
         ids.add(e.id);
       }
-      expect(ids, ids.toList()..sort(),
-          reason: 'ULIDs generated in order sort in that same order');
+      expect(
+        ids,
+        ids.toList()..sort(),
+        reason: 'ULIDs generated in order sort in that same order',
+      );
 
       final page1 = await storage.readDirtyDayEntries(limit: 4);
       expect(page1.map((e) => e.id).toList(), ids.sublist(0, 4));
 
       final page2 = await storage.readDirtyDayEntries(
-          limit: 4, afterId: page1.last.id);
+        limit: 4,
+        afterId: page1.last.id,
+      );
       expect(page2.map((e) => e.id).toList(), ids.sublist(4, 8));
 
       final page3 = await storage.readDirtyDayEntries(
-          limit: 4, afterId: page2.last.id);
-      expect(page3.map((e) => e.id).toList(), ids.sublist(8, 10),
-          reason: 'the final page is shorter than the limit');
+        limit: 4,
+        afterId: page2.last.id,
+      );
+      expect(
+        page3.map((e) => e.id).toList(),
+        ids.sublist(8, 10),
+        reason: 'the final page is shorter than the limit',
+      );
 
       final page4 = await storage.readDirtyDayEntries(
-          limit: 4, afterId: page3.last.id);
+        limit: 4,
+        afterId: page3.last.id,
+      );
       expect(page4, isEmpty, reason: 'nothing left after the last row');
 
       // readDirtyProfiles takes the same two parameters (only one profile
@@ -242,26 +272,43 @@ void main() {
         NativeDatabase.memory().interceptWith(interceptor),
       );
       addTearDown(() => interceptedDb.close());
-      final interceptedStorage = LunarLogStorage(interceptedDb, clock: clock.call);
+      final interceptedStorage = LunarLogStorage(
+        interceptedDb,
+        clock: clock.call,
+      );
       await interceptedStorage.readDirtyDayEntries();
 
       final capturedSql = interceptor.capturedSql;
-      expect(capturedSql, isNotNull,
-          reason: 'readDirtyDayEntries must issue a SELECT against '
-              'day_entries mentioning dirty for the interceptor to capture');
-      expect(interceptor.capturedArgs, isEmpty,
-          reason: 'readDirtyDayEntries() with no limit/afterId should bind '
-              'no parameters at all now that the dirty predicate is a '
-              'literal too, or this EXPLAIN QUERY PLAN would need to bind '
-              'them itself');
-      final dirtyPlan =
-          await interceptedDb.customSelect('EXPLAIN QUERY PLAN $capturedSql').get();
-      final dirtyDetail =
-          dirtyPlan.map((row) => row.data['detail'] as String).join(' | ');
-      expect(dirtyDetail, contains('ix_day_entries_dirty'),
-          reason: 'readDirtyDayEntries\' generated query ($capturedSql) '
-              'must use ix_day_entries_dirty, not a full table scan: '
-              '$dirtyDetail');
+      expect(
+        capturedSql,
+        isNotNull,
+        reason:
+            'readDirtyDayEntries must issue a SELECT against '
+            'day_entries mentioning dirty for the interceptor to capture',
+      );
+      expect(
+        interceptor.capturedArgs,
+        isEmpty,
+        reason:
+            'readDirtyDayEntries() with no limit/afterId should bind '
+            'no parameters at all now that the dirty predicate is a '
+            'literal too, or this EXPLAIN QUERY PLAN would need to bind '
+            'them itself',
+      );
+      final dirtyPlan = await interceptedDb
+          .customSelect('EXPLAIN QUERY PLAN $capturedSql')
+          .get();
+      final dirtyDetail = dirtyPlan
+          .map((row) => row.data['detail'] as String)
+          .join(' | ');
+      expect(
+        dirtyDetail,
+        contains('ix_day_entries_dirty'),
+        reason:
+            'readDirtyDayEntries\' generated query ($capturedSql) '
+            'must use ix_day_entries_dirty, not a full table scan: '
+            '$dirtyDetail',
+      );
 
       final updatedAtPlan = await db
           .customSelect(
@@ -272,10 +319,14 @@ void main() {
       final updatedAtDetail = updatedAtPlan
           .map((row) => row.data['detail'] as String)
           .join(' | ');
-      expect(updatedAtDetail, contains('ix_day_entries_updated_at'),
-          reason: 'an updated_at range scan must use '
-              'ix_day_entries_updated_at, not a full table scan: '
-              '$updatedAtDetail');
+      expect(
+        updatedAtDetail,
+        contains('ix_day_entries_updated_at'),
+        reason:
+            'an updated_at range scan must use '
+            'ix_day_entries_updated_at, not a full table scan: '
+            '$updatedAtDetail',
+      );
 
       final rangePlan = await db
           .customSelect(
@@ -284,33 +335,45 @@ void main() {
             "AND local_date <= '2026-06-30'",
           )
           .get();
-      final rangeDetail =
-          rangePlan.map((row) => row.data['detail'] as String).join(' | ');
-      expect(rangeDetail, contains('ix_day_entries_profile_date'),
-          reason: 'the calendar\'s windowed (profile_id, local_date) range '
-              'scan must use ix_day_entries_profile_date, not a full table '
-              'scan: $rangeDetail');
+      final rangeDetail = rangePlan
+          .map((row) => row.data['detail'] as String)
+          .join(' | ');
+      expect(
+        rangeDetail,
+        contains('ix_day_entries_profile_date'),
+        reason:
+            'the calendar\'s windowed (profile_id, local_date) range '
+            'scan must use ix_day_entries_profile_date, not a full table '
+            'scan: $rangeDetail',
+      );
     });
 
     test('tombstones carry no payload; a later upsert for the same date '
         'creates a new live row with its own payload', () async {
       final p = await storage.upsertProfile(displayName: 'Luna', isMinor: true);
       final e = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.heavy,
-          tags: const ['cramps'],
-          note: 'private');
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+        tags: const ['cramps'],
+        note: 'private',
+      );
       await storage.softDeleteDayEntry(
-          profileId: p.id, localDate: '2026-01-15');
+        profileId: p.id,
+        localDate: '2026-01-15',
+      );
       final tomb = await entryById(p.id, e.id);
       expect(tomb.deletedAt, isNotNull);
       expect(tomb.note, isNull);
       expect(tomb.tags, isEmpty);
-      expect(tomb.flow, FlowLevel.none,
-          reason: 'issue #224: flow joins note/tags as cleared payload - a '
-              'tombstone must not keep the pre-deletion flow value');
+      expect(
+        tomb.flow,
+        FlowLevel.none,
+        reason:
+            'issue #224: flow joins note/tags as cleared payload - a '
+            'tombstone must not keep the pre-deletion flow value',
+      );
 
       await storage.softDeleteProfile(p.id);
       final pt = await profileById(p.id);
@@ -319,19 +382,23 @@ void main() {
 
       clock.now = t0.add(const Duration(hours: 1));
       final fresh = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.light,
-          tags: const ['headache'],
-          note: 'new');
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        tags: const ['headache'],
+        note: 'new',
+      );
       expect(fresh.id, isNot(e.id));
       expect(fresh.note, 'new');
       expect(fresh.tags, ['headache']);
       expect(fresh.deletedAt, isNull);
       expect(await liveFor(p.id, '2026-01-15'), hasLength(1));
-      expect((await entryById(p.id, e.id)).note, isNull,
-          reason: 'the old tombstone stays payload-free');
+      expect(
+        (await entryById(p.id, e.id)).note,
+        isNull,
+        reason: 'the old tombstone stays payload-free',
+      );
     });
 
     test('AE11: markPushed clears dirty only when local_rev is unchanged; '
@@ -339,144 +406,202 @@ void main() {
         'after the stored updated_at', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final e = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.light);
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
       final revAtPush = e.localRev;
 
       // Push in flight; the clock has not advanced, so the edit is stamped
       // strictly after the stored value (never equal — the server would
       // decline an equal timestamp and revert the edit).
       final edited = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.heavy);
-      expect(edited.updatedAt, e.updatedAt.add(const Duration(milliseconds: 1)));
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+      );
+      expect(
+        edited.updatedAt,
+        e.updatedAt.add(const Duration(milliseconds: 1)),
+      );
       expect(edited.localRev, revAtPush + 1);
 
       final cleared = await storage.markPushed(
-          table: SyncTable.dayEntries, id: e.id, localRevAtPush: revAtPush);
+        table: SyncTable.dayEntries,
+        id: e.id,
+        localRevAtPush: revAtPush,
+      );
       expect(cleared, isFalse);
-      expect((await entryById(p.id, e.id)).dirty, isTrue,
-          reason: 'the concurrent edit must be pushed again');
+      expect(
+        (await entryById(p.id, e.id)).dirty,
+        isTrue,
+        reason: 'the concurrent edit must be pushed again',
+      );
 
       final clearedNow = await storage.markPushed(
-          table: SyncTable.dayEntries,
-          id: e.id,
-          localRevAtPush: edited.localRev);
+        table: SyncTable.dayEntries,
+        id: e.id,
+        localRevAtPush: edited.localRev,
+      );
       expect(clearedNow, isTrue);
       expect((await entryById(p.id, e.id)).dirty, isFalse);
 
       // Profiles behave the same way.
       expect(
-          await storage.markPushed(
-              table: SyncTable.profiles, id: p.id, localRevAtPush: 999),
-          isFalse);
+        await storage.markPushed(
+          table: SyncTable.profiles,
+          id: p.id,
+          localRevAtPush: 999,
+        ),
+        isFalse,
+      );
       expect(
-          await storage.markPushed(
-              table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev),
-          isTrue);
+        await storage.markPushed(
+          table: SyncTable.profiles,
+          id: p.id,
+          localRevAtPush: p.localRev,
+        ),
+        isTrue,
+      );
       expect((await profileById(p.id)).dirty, isFalse);
     });
   });
 
   group('applyRemote*', () {
-    test('day entry: newer remote overwrites, clears dirty, keeps local_rev; '
-        'older remote is ignored; equal remote (live or tombstone) applies',
-        () async {
-      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
-      final e = await storage.upsertDayEntry(
+    test(
+      'day entry: newer remote overwrites, clears dirty, keeps local_rev; '
+      'older remote is ignored; equal remote (live or tombstone) applies',
+      () async {
+        final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final e = await storage.upsertDayEntry(
           profileId: p.id,
           localDate: '2026-01-15',
           tz: 'UTC',
           flow: FlowLevel.light,
-          note: 'local');
-      final rev = e.localRev;
+          note: 'local',
+        );
+        final rev = e.localRev;
 
-      // Newer.
-      final newer = e.updatedAt.add(const Duration(minutes: 1));
-      expect(
-          await storage.applyRemoteDayEntry(remoteEntry(e.id,
-              profileId: p.id, updatedAt: newer, note: 'newer')),
-          isTrue);
-      var row = await entryById(p.id, e.id);
-      expect(row.note, 'newer');
-      expect(row.tags, ['remote']);
-      expect(row.updatedAt, newer);
-      expect(row.dirty, isFalse);
-      expect(row.localRev, rev);
+        // Newer.
+        final newer = e.updatedAt.add(const Duration(minutes: 1));
+        expect(
+          await storage.applyRemoteDayEntry(
+            remoteEntry(e.id, profileId: p.id, updatedAt: newer, note: 'newer'),
+          ),
+          isTrue,
+        );
+        var row = await entryById(p.id, e.id);
+        expect(row.note, 'newer');
+        expect(row.tags, ['remote']);
+        expect(row.updatedAt, newer);
+        expect(row.dirty, isFalse);
+        expect(row.localRev, rev);
 
-      // Older: untouched.
-      final older = e.updatedAt.subtract(const Duration(minutes: 1));
-      expect(
-          await storage.applyRemoteDayEntry(remoteEntry(e.id,
-              profileId: p.id, updatedAt: older, note: 'older')),
-          isFalse);
-      row = await entryById(p.id, e.id);
-      expect(row.note, 'newer');
-      expect(row.updatedAt, newer);
+        // Older: untouched.
+        final older = e.updatedAt.subtract(const Duration(minutes: 1));
+        expect(
+          await storage.applyRemoteDayEntry(
+            remoteEntry(e.id, profileId: p.id, updatedAt: older, note: 'older'),
+          ),
+          isFalse,
+        );
+        row = await entryById(p.id, e.id);
+        expect(row.note, 'newer');
+        expect(row.updatedAt, newer);
 
-      // Equal, live: remote wins the tie.
-      expect(
-          await storage.applyRemoteDayEntry(remoteEntry(e.id,
-              profileId: p.id, updatedAt: newer, note: 'tie')),
-          isTrue);
-      expect((await entryById(p.id, e.id)).note, 'tie');
+        // Equal, live: remote wins the tie.
+        expect(
+          await storage.applyRemoteDayEntry(
+            remoteEntry(e.id, profileId: p.id, updatedAt: newer, note: 'tie'),
+          ),
+          isTrue,
+        );
+        expect((await entryById(p.id, e.id)).note, 'tie');
 
-      // Equal, tombstone: applies, payload cleared.
-      expect(
-          await storage.applyRemoteDayEntry(remoteEntry(e.id,
+        // Equal, tombstone: applies, payload cleared.
+        expect(
+          await storage.applyRemoteDayEntry(
+            remoteEntry(
+              e.id,
               profileId: p.id,
               updatedAt: newer,
               deletedAt: newer,
-              note: 'should be dropped')),
-          isTrue);
-      row = await entryById(p.id, e.id);
-      expect(row.deletedAt, newer);
-      expect(row.note, isNull);
-      expect(row.tags, isEmpty);
-      expect(row.dirty, isFalse);
-      expect(await liveFor(p.id, '2026-01-15'), isEmpty);
-    });
+              note: 'should be dropped',
+            ),
+          ),
+          isTrue,
+        );
+        row = await entryById(p.id, e.id);
+        expect(row.deletedAt, newer);
+        expect(row.note, isNull);
+        expect(row.tags, isEmpty);
+        expect(row.dirty, isFalse);
+        expect(await liveFor(p.id, '2026-01-15'), isEmpty);
+      },
+    );
 
     test('profile: newer remote overwrites; tombstone clears display_name; '
         'older remote is ignored; unknown id is inserted clean', () async {
-      final p = await storage.upsertProfile(displayName: 'Local', isMinor: true);
+      final p = await storage.upsertProfile(
+        displayName: 'Local',
+        isMinor: true,
+      );
       final newer = p.updatedAt.add(const Duration(seconds: 1));
       expect(
-          await storage.applyRemoteProfile(remoteProfile(p.id,
-              displayName: 'Remote', isMinor: false, mode: 'teen',
-              updatedAt: newer)),
-          isTrue);
+        await storage.applyRemoteProfile(
+          remoteProfile(
+            p.id,
+            displayName: 'Remote',
+            isMinor: false,
+            mode: 'teen',
+            updatedAt: newer,
+          ),
+        ),
+        isTrue,
+      );
       var row = await profileById(p.id);
       expect(row.displayName, 'Remote');
       expect(row.isMinor, isFalse);
-      expect(row.mode, 'teen',
-          reason: '#131: a remotely switched mode applies locally');
+      expect(
+        row.mode,
+        'teen',
+        reason: '#131: a remotely switched mode applies locally',
+      );
       expect(row.dirty, isFalse);
       expect(row.localRev, p.localRev);
 
       expect(
-          await storage.applyRemoteProfile(remoteProfile(p.id,
-              displayName: 'Stale', updatedAt: p.updatedAt)),
-          isFalse);
+        await storage.applyRemoteProfile(
+          remoteProfile(p.id, displayName: 'Stale', updatedAt: p.updatedAt),
+        ),
+        isFalse,
+      );
       expect((await profileById(p.id)).displayName, 'Remote');
 
       expect(
-          await storage.applyRemoteProfile(remoteProfile(p.id,
-              displayName: 'Gone', updatedAt: newer, deletedAt: newer)),
-          isTrue);
+        await storage.applyRemoteProfile(
+          remoteProfile(
+            p.id,
+            displayName: 'Gone',
+            updatedAt: newer,
+            deletedAt: newer,
+          ),
+        ),
+        isTrue,
+      );
       row = await profileById(p.id);
       expect(row.deletedAt, newer);
       expect(row.displayName, '');
 
       const other = '01J0000000000000000000000Z';
       expect(
-          await storage.applyRemoteProfile(
-              remoteProfile(other, displayName: 'New', updatedAt: t0)),
-          isTrue);
+        await storage.applyRemoteProfile(
+          remoteProfile(other, displayName: 'New', updatedAt: t0),
+        ),
+        isTrue,
+      );
       row = await profileById(other);
       expect(row.displayName, 'New');
       expect(row.dirty, isFalse);
@@ -488,24 +613,37 @@ void main() {
       clock.now = DateTime.parse('2026-01-15T08:00:00.123000Z');
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final e = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.light,
-          note: 'local');
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        note: 'local',
+      );
       // Postgres renders the instant as `.123+00:00`; Dart stored `.123000Z`.
       const remoteIso = '2026-01-15T08:00:00.123+00:00';
       final remoteStamp = DateTime.parse(remoteIso);
-      expect(remoteIso, isNot('2026-01-15T08:00:00.123000Z'),
-          reason: 'the renderings differ; the instant does not');
-      expect(remoteStamp.microsecondsSinceEpoch,
-          e.updatedAt.microsecondsSinceEpoch);
+      expect(
+        remoteIso,
+        isNot('2026-01-15T08:00:00.123000Z'),
+        reason: 'the renderings differ; the instant does not',
+      );
+      expect(
+        remoteStamp.microsecondsSinceEpoch,
+        e.updatedAt.microsecondsSinceEpoch,
+      );
       // Equal instant: remote wins the tie, proving the comparison is on the
       // parsed instant and not on the string.
       expect(
-          await storage.applyRemoteDayEntry(remoteEntry(e.id,
-              profileId: p.id, updatedAt: remoteStamp, note: 'remote')),
-          isTrue);
+        await storage.applyRemoteDayEntry(
+          remoteEntry(
+            e.id,
+            profileId: p.id,
+            updatedAt: remoteStamp,
+            note: 'remote',
+          ),
+        ),
+        isTrue,
+      );
       expect((await entryById(p.id, e.id)).note, 'remote');
     });
 
@@ -514,21 +652,29 @@ void main() {
         'the winner timestamp; a local loser is marked dirty', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final local = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-09-01',
-          tz: 'UTC',
-          flow: FlowLevel.light,
-          note: 'local');
+        profileId: p.id,
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        note: 'local',
+      );
       await storage.markPushed(
-          table: SyncTable.dayEntries,
-          id: local.id,
-          localRevAtPush: local.localRev);
+        table: SyncTable.dayEntries,
+        id: local.id,
+        localRevAtPush: local.localRev,
+      );
 
       // Remote is newer: remote wins, local loser tombstoned + dirty.
       const remoteId = '01J0000000000000000000000R';
       final newer = local.updatedAt.add(const Duration(minutes: 5));
-      await storage.applyRemoteDayEntry(remoteEntry(remoteId,
-          profileId: p.id, localDate: '2026-09-01', updatedAt: newer));
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          remoteId,
+          profileId: p.id,
+          localDate: '2026-09-01',
+          updatedAt: newer,
+        ),
+      );
 
       final live = await liveFor(p.id, '2026-09-01');
       expect(live.single.id, remoteId);
@@ -537,9 +683,13 @@ void main() {
       expect(loser.deletedAt, newer);
       expect(loser.updatedAt, newer);
       expect(loser.note, isNull);
-      expect(loser.flow, FlowLevel.none,
-          reason: 'issue #224: the same-date resolver clears flow on the '
-              'local-loser branch too, not only note/tags');
+      expect(
+        loser.flow,
+        FlowLevel.none,
+        reason:
+            'issue #224: the same-date resolver clears flow on the '
+            'local-loser branch too, not only note/tags',
+      );
       expect(loser.dirty, isTrue, reason: 'a local loser must be pushed');
       expect(loser.localRev, local.localRev + 1);
 
@@ -549,34 +699,47 @@ void main() {
       // it when the local winner is pushed).
       clock.now = newer.add(const Duration(minutes: 10));
       final revived = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-09-01',
-          tz: 'UTC',
-          flow: FlowLevel.heavy,
-          note: 'local edit');
+        profileId: p.id,
+        localDate: '2026-09-01',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+        note: 'local edit',
+      );
       expect(revived.id, remoteId, reason: 'edits keep the live ULID');
       const lateRemote = '01J0000000000000000000000S';
-      await storage.applyRemoteDayEntry(remoteEntry(lateRemote,
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          lateRemote,
           profileId: p.id,
           localDate: '2026-09-01',
-          updatedAt: newer.add(const Duration(minutes: 1))));
+          updatedAt: newer.add(const Duration(minutes: 1)),
+        ),
+      );
       final liveAfter = await liveFor(p.id, '2026-09-01');
       expect(liveAfter.single.id, remoteId);
       final remoteLoser = await entryById(p.id, lateRemote);
       expect(remoteLoser.deletedAt, revived.updatedAt);
       expect(remoteLoser.updatedAt, revived.updatedAt);
       expect(remoteLoser.dirty, isFalse);
-      expect(remoteLoser.flow, FlowLevel.none,
-          reason: 'issue #224: the same-date resolver clears flow on the '
-              'remote-loser branch too — remoteEntry() defaulted this row '
-              'to FlowLevel.medium, which must not survive as a tombstone');
+      expect(
+        remoteLoser.flow,
+        FlowLevel.none,
+        reason:
+            'issue #224: the same-date resolver clears flow on the '
+            'remote-loser branch too — remoteEntry() defaulted this row '
+            'to FlowLevel.medium, which must not survive as a tombstone',
+      );
 
       // Equal timestamps: smaller ULID wins.
       const smallest = '01J00000000000000000000000';
-      await storage.applyRemoteDayEntry(remoteEntry(smallest,
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          smallest,
           profileId: p.id,
           localDate: '2026-09-01',
-          updatedAt: revived.updatedAt));
+          updatedAt: revived.updatedAt,
+        ),
+      );
       expect((await liveFor(p.id, '2026-09-01')).single.id, smallest);
       final tied = await entryById(p.id, remoteId);
       expect(tied.deletedAt, revived.updatedAt);
@@ -586,8 +749,13 @@ void main() {
     test('applyRemoteDayEntry for an unknown profile is a typed retryable '
         'error, not a crash', () async {
       await expectLater(
-        storage.applyRemoteDayEntry(remoteEntry('01J0000000000000000000000X',
-            profileId: '01J0000000000000000000000P', updatedAt: t0)),
+        storage.applyRemoteDayEntry(
+          remoteEntry(
+            '01J0000000000000000000000X',
+            profileId: '01J0000000000000000000000P',
+            updatedAt: t0,
+          ),
+        ),
         throwsA(isA<RetryableSyncApplyError>()),
       );
       expect(await storage.isEmpty(), isTrue);
@@ -595,47 +763,63 @@ void main() {
   });
 
   group('first-class PMS marker (Issue #220)', () {
-    test('a remote PMS day applies with its marker; a remote tombstone '
-        'clears it; a local push carries the marker in the encoded payload',
-        () async {
-      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
-      final at = DateTime.utc(2026, 2, 1, 9);
+    test(
+      'a remote PMS day applies with its marker; a remote tombstone '
+      'clears it; a local push carries the marker in the encoded payload',
+      () async {
+        final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final at = DateTime.utc(2026, 2, 1, 9);
 
-      // Remote apply: the marker lands.
-      expect(
-          await storage.applyRemoteDayEntry(remoteEntry('01JREMOTEPMS0000000000000X',
-              profileId: p.id, updatedAt: at, pms: true)),
-          isTrue);
-      var row = await entryById(p.id, '01JREMOTEPMS0000000000000X');
-      expect(row.pms, isTrue);
+        // Remote apply: the marker lands.
+        expect(
+          await storage.applyRemoteDayEntry(
+            remoteEntry(
+              '01JREMOTEPMS0000000000000X',
+              profileId: p.id,
+              updatedAt: at,
+              pms: true,
+            ),
+          ),
+          isTrue,
+        );
+        var row = await entryById(p.id, '01JREMOTEPMS0000000000000X');
+        expect(row.pms, isTrue);
 
-      // Remote tombstone: the marker clears with the payload.
-      expect(
-          await storage.applyRemoteDayEntry(remoteEntry('01JREMOTEPMS0000000000000X',
+        // Remote tombstone: the marker clears with the payload.
+        expect(
+          await storage.applyRemoteDayEntry(
+            remoteEntry(
+              '01JREMOTEPMS0000000000000X',
               profileId: p.id,
               updatedAt: at.add(const Duration(minutes: 1)),
               pms: true,
-              deletedAt: at.add(const Duration(minutes: 1)))),
-          isTrue);
-      row = await entryById(p.id, '01JREMOTEPMS0000000000000X');
-      expect(row.deletedAt, isNotNull);
-      expect(row.pms, isFalse);
+              deletedAt: at.add(const Duration(minutes: 1)),
+            ),
+          ),
+          isTrue,
+        );
+        row = await entryById(p.id, '01JREMOTEPMS0000000000000X');
+        expect(row.deletedAt, isNotNull);
+        expect(row.pms, isFalse);
 
-      // Local write: the marker is stored, marked dirty, and the dirty
-      // payload the engine pushes encodes pms.
-      final local = await storage.upsertDayEntry(
+        // Local write: the marker is stored, marked dirty, and the dirty
+        // payload the engine pushes encodes pms.
+        final local = await storage.upsertDayEntry(
           profileId: p.id,
           localDate: '2026-02-02',
           tz: 'UTC',
           flow: FlowLevel.none,
-          pms: true);
-      expect(local.pms, isTrue);
-      expect(local.dirty, isTrue);
-      final dirty = await storage.readDirtyDayEntries();
-      final json = encodeDayEntry(
-          dirty.firstWhere((e) => e.localDate == '2026-02-02'));
-      expect(json['pms'], true);
-    });
+          pms: true,
+        );
+        expect(local.pms, isTrue);
+        expect(local.dirty, isTrue);
+        final dirty = await storage.readDirtyDayEntries();
+        final json = encodeDayEntry(
+          dirty.firstWhere((e) => e.localDate == '2026-02-02'),
+        );
+        expect(json['pms'], true);
+      },
+    );
   });
 
   group('same-date tag merge (Issue #3 gap-closure plan, Unit U5)', () {
@@ -644,23 +828,29 @@ void main() {
         'localRev (R7/R11)', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final local = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-09-10',
-          tz: 'UTC',
-          flow: FlowLevel.medium,
-          tags: const ['cramps']);
+        profileId: p.id,
+        localDate: '2026-09-10',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        tags: const ['cramps'],
+      );
       await storage.markPushed(
-          table: SyncTable.dayEntries,
-          id: local.id,
-          localRevAtPush: local.localRev);
+        table: SyncTable.dayEntries,
+        id: local.id,
+        localRevAtPush: local.localRev,
+      );
 
       const remoteId = '01J0000000000000000000001M';
       final older = local.updatedAt.subtract(const Duration(minutes: 5));
-      await storage.applyRemoteDayEntry(remoteEntry(remoteId,
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          remoteId,
           profileId: p.id,
           localDate: '2026-09-10',
           tags: const ['heavy_flow'],
-          updatedAt: older));
+          updatedAt: older,
+        ),
+      );
 
       final winner = await entryById(p.id, local.id);
       expect(winner.tags, unorderedEquals(['cramps', 'heavy_flow']));
@@ -669,12 +859,20 @@ void main() {
       expect(winner.deletedAt, isNull);
 
       final loser = await entryById(p.id, remoteId);
-      expect(loser.deletedAt, isNotNull, reason: 'the remote loser is a tombstone');
+      expect(
+        loser.deletedAt,
+        isNotNull,
+        reason: 'the remote loser is a tombstone',
+      );
       expect(loser.tags, isEmpty, reason: 'R12: tombstones are payload-free');
       expect(loser.note, isNull);
-      expect(loser.flow, FlowLevel.none,
-          reason: 'issue #224: flow is part of the R12 payload-free '
-              'guarantee too');
+      expect(
+        loser.flow,
+        FlowLevel.none,
+        reason:
+            'issue #224: flow is part of the R12 payload-free '
+            'guarantee too',
+      );
     });
 
     test('a remote row that wins the same-date rule writes the union onto '
@@ -682,30 +880,39 @@ void main() {
         'tags and null note (R7, R12)', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final local = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-09-11',
-          tz: 'UTC',
-          flow: FlowLevel.medium,
-          tags: const ['cramps'],
-          note: 'local note');
+        profileId: p.id,
+        localDate: '2026-09-11',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        tags: const ['cramps'],
+        note: 'local note',
+      );
       await storage.markPushed(
-          table: SyncTable.dayEntries,
-          id: local.id,
-          localRevAtPush: local.localRev);
+        table: SyncTable.dayEntries,
+        id: local.id,
+        localRevAtPush: local.localRev,
+      );
 
       const remoteId = '01J0000000000000000000001N';
       final newer = local.updatedAt.add(const Duration(minutes: 5));
-      await storage.applyRemoteDayEntry(remoteEntry(remoteId,
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          remoteId,
           profileId: p.id,
           localDate: '2026-09-11',
           tags: const ['heavy_flow'],
           note: 'remote note',
-          updatedAt: newer));
+          updatedAt: newer,
+        ),
+      );
 
       final winner = await entryById(p.id, remoteId);
       expect(winner.tags, unorderedEquals(['cramps', 'heavy_flow']));
-      expect(winner.note, 'remote note',
-          reason: 'R8: note stays last-writer-wins, unaffected by the tag merge');
+      expect(
+        winner.note,
+        'remote note',
+        reason: 'R8: note stays last-writer-wins, unaffected by the tag merge',
+      );
       expect(winner.deletedAt, isNull);
       expect(winner.dirty, isTrue, reason: 'the merge must be pushed');
       expect(winner.localRev, 1);
@@ -714,9 +921,13 @@ void main() {
       expect(loser.deletedAt, newer);
       expect(loser.tags, isEmpty);
       expect(loser.note, isNull);
-      expect(loser.flow, FlowLevel.none,
-          reason: 'issue #224: flow is part of the R12 payload-free '
-              'guarantee too');
+      expect(
+        loser.flow,
+        FlowLevel.none,
+        reason:
+            'issue #224: flow is part of the R12 payload-free '
+            'guarantee too',
+      );
       expect(loser.dirty, isTrue, reason: 'a local loser must be pushed');
     });
 
@@ -724,51 +935,66 @@ void main() {
         'attempts a merge - tombstones never compete', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final local = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-09-12',
-          tz: 'UTC',
-          flow: FlowLevel.medium,
-          tags: const ['cramps']);
+        profileId: p.id,
+        localDate: '2026-09-12',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        tags: const ['cramps'],
+      );
 
       const remoteId = '01J0000000000000000000001O';
       final t = local.updatedAt.add(const Duration(minutes: 5));
-      await storage.applyRemoteDayEntry(remoteEntry(remoteId,
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          remoteId,
           profileId: p.id,
           localDate: '2026-09-12',
           updatedAt: t,
-          deletedAt: t));
+          deletedAt: t,
+        ),
+      );
 
       final unaffected = await entryById(p.id, local.id);
       expect(unaffected.deletedAt, isNull);
-      expect(unaffected.tags, ['cramps'],
-          reason: 'a tombstone never merges tags into a live row');
+      expect(unaffected.tags, [
+        'cramps',
+      ], reason: 'a tombstone never merges tags into a live row');
       final tomb = await entryById(p.id, remoteId);
       expect(tomb.deletedAt, t);
       expect(tomb.tags, isEmpty);
-      expect(tomb.flow, FlowLevel.none,
-          reason: 'issue #224: a row that arrives already tombstoned is '
-              'defensively cleared to FlowLevel.none too, even though this '
-              'fixture still sends the remoteEntry() default '
-              'FlowLevel.medium - the client does not merely trust the '
-              'server to have cleared it');
+      expect(
+        tomb.flow,
+        FlowLevel.none,
+        reason:
+            'issue #224: a row that arrives already tombstoned is '
+            'defensively cleared to FlowLevel.none too, even though this '
+            'fixture still sends the remoteEntry() default '
+            'FlowLevel.medium - the client does not merely trust the '
+            'server to have cleared it',
+      );
     });
 
     test('a same-id remote row that drops a tag still drops it locally - no '
         'union on the same-id path (R10)', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final local = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-09-13',
-          tz: 'UTC',
-          flow: FlowLevel.medium,
-          tags: const ['a', 'b']);
+        profileId: p.id,
+        localDate: '2026-09-13',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        tags: const ['a', 'b'],
+      );
 
       final newer = local.updatedAt.add(const Duration(minutes: 5));
-      await storage.applyRemoteDayEntry(remoteEntry(local.id,
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          local.id,
           profileId: p.id,
           localDate: '2026-09-13',
           tags: const ['a'],
-          updatedAt: newer));
+          updatedAt: newer,
+        ),
+      );
 
       final row = await entryById(p.id, local.id);
       expect(row.tags, ['a'], reason: 'the removed tag must stay removed');
@@ -782,23 +1008,65 @@ void main() {
       final tC = t0.add(const Duration(minutes: 2));
 
       // Ascending arrival order.
-      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000201A',
-          profileId: p.id, localDate: '2026-09-14', tags: const ['a'], updatedAt: tA));
-      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000201B',
-          profileId: p.id, localDate: '2026-09-14', tags: const ['b'], updatedAt: tB));
-      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000201C',
-          profileId: p.id, localDate: '2026-09-14', tags: const ['c'], updatedAt: tC));
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          '01J000000000000000000201A',
+          profileId: p.id,
+          localDate: '2026-09-14',
+          tags: const ['a'],
+          updatedAt: tA,
+        ),
+      );
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          '01J000000000000000000201B',
+          profileId: p.id,
+          localDate: '2026-09-14',
+          tags: const ['b'],
+          updatedAt: tB,
+        ),
+      );
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          '01J000000000000000000201C',
+          profileId: p.id,
+          localDate: '2026-09-14',
+          tags: const ['c'],
+          updatedAt: tC,
+        ),
+      );
       final ascendingLive = await liveFor(p.id, '2026-09-14');
       expect(ascendingLive.single.tags, unorderedEquals(['a', 'b', 'c']));
 
       // Descending arrival order, a different date so this run is
       // independent of the one above.
-      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000202C',
-          profileId: p.id, localDate: '2026-09-15', tags: const ['c'], updatedAt: tC));
-      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000202B',
-          profileId: p.id, localDate: '2026-09-15', tags: const ['b'], updatedAt: tB));
-      await storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000202A',
-          profileId: p.id, localDate: '2026-09-15', tags: const ['a'], updatedAt: tA));
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          '01J000000000000000000202C',
+          profileId: p.id,
+          localDate: '2026-09-15',
+          tags: const ['c'],
+          updatedAt: tC,
+        ),
+      );
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          '01J000000000000000000202B',
+          profileId: p.id,
+          localDate: '2026-09-15',
+          tags: const ['b'],
+          updatedAt: tB,
+        ),
+      );
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          '01J000000000000000000202A',
+          profileId: p.id,
+          localDate: '2026-09-15',
+          tags: const ['a'],
+          updatedAt: tA,
+        ),
+      );
       final descendingLive = await liveFor(p.id, '2026-09-15');
       expect(descendingLive.single.tags, unorderedEquals(['a', 'b', 'c']));
     });
@@ -806,10 +1074,14 @@ void main() {
     test('a merge on a profile absent locally still raises before any merge '
         'work runs - ordering unchanged', () async {
       await expectLater(
-        storage.applyRemoteDayEntry(remoteEntry('01J000000000000000000203A',
+        storage.applyRemoteDayEntry(
+          remoteEntry(
+            '01J000000000000000000203A',
             profileId: '01J000000000000000000203P',
             tags: const ['a'],
-            updatedAt: t0)),
+            updatedAt: t0,
+          ),
+        ),
         throwsA(isA<RetryableSyncApplyError>()),
       );
       expect(await storage.isEmpty(), isTrue);
@@ -821,67 +1093,178 @@ void main() {
         'dirty = false', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final e = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.light,
-          note: 'local');
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        note: 'local',
+      );
       final resolvedAt = e.updatedAt.add(const Duration(seconds: 1));
       await storage.applyResolved([
-        remoteEntry('01J0000000000000000000000U',
-            profileId: p.id, localDate: '2026-02-01', updatedAt: t0),
+        remoteEntry(
+          '01J0000000000000000000000U',
+          profileId: p.id,
+          localDate: '2026-02-01',
+          updatedAt: t0,
+        ),
         remoteProfile('01J0000000000000000000000V', updatedAt: t0),
-        remoteEntry(e.id,
-            profileId: p.id,
-            updatedAt: resolvedAt,
-            deletedAt: resolvedAt,
-            note: 'dropped'),
+        remoteEntry(
+          e.id,
+          profileId: p.id,
+          updatedAt: resolvedAt,
+          deletedAt: resolvedAt,
+          note: 'dropped',
+        ),
       ]);
       final all = await storage.getDayEntries(
-          profileId: p.id, includeTombstones: true);
-      expect(all.map((r) => r.id), [e.id],
-          reason: 'unknown ids must not be inserted');
+        profileId: p.id,
+        includeTombstones: true,
+      );
+      expect(all.map((r) => r.id), [
+        e.id,
+      ], reason: 'unknown ids must not be inserted');
       expect(all.single.deletedAt, resolvedAt);
       expect(all.single.note, isNull);
       expect(all.single.dirty, isFalse);
       expect(
-          (await storage.getProfiles(includeTombstones: true)).map((r) => r.id),
-          [p.id]);
+        (await storage.getProfiles(includeTombstones: true)).map((r) => r.id),
+        [p.id],
+      );
     });
 
     test('a later live remote edit to a resolved loser revives it and '
         're-runs the same-date rule', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final a = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-03-03',
-          tz: 'UTC',
-          flow: FlowLevel.light);
+        profileId: p.id,
+        localDate: '2026-03-03',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
       // Resolution tombstones `a` in favour of remote `b`.
       const b = '01J0000000000000000000000B';
       final tRes = a.updatedAt.add(const Duration(minutes: 1));
       await storage.applyRemotePage(
-          table: SyncTable.dayEntries,
-          rows: [
-            remoteEntry(b, profileId: p.id, localDate: '2026-03-03', updatedAt: tRes),
-          ],
-          newCursor: 10);
+        table: SyncTable.dayEntries,
+        rows: [
+          remoteEntry(
+            b,
+            profileId: p.id,
+            localDate: '2026-03-03',
+            updatedAt: tRes,
+          ),
+        ],
+        newCursor: 10,
+      );
       expect((await liveFor(p.id, '2026-03-03')).single.id, b);
       expect((await entryById(p.id, a.id)).deletedAt, tRes);
 
       // A newer live edit to `a` arrives: revived, and it now beats `b`.
       final tRevive = tRes.add(const Duration(minutes: 1));
-      await storage.applyRemoteDayEntry(remoteEntry(a.id,
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          a.id,
           profileId: p.id,
           localDate: '2026-03-03',
           updatedAt: tRevive,
-          note: 'revived'));
+          note: 'revived',
+        ),
+      );
       final live = await liveFor(p.id, '2026-03-03');
       expect(live.single.id, a.id);
       expect(live.single.note, 'revived');
       final bRow = await entryById(p.id, b);
       expect(bRow.deletedAt, tRevive);
       expect(bRow.dirty, isTrue, reason: 'b was a local live row that lost');
+    });
+  });
+
+  group('applyPushResult (issue #523: atomic accepted + resolved apply)', () {
+    test('a failure applying a resolved row rolls back every markPushed '
+        'write from the same call — nothing is half-committed', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        note: 'local',
+      );
+      expect(e.dirty, isTrue);
+      expect(e.localRev, 1);
+
+      // A resolved row for the SAME local id (so `onlyExisting` does not
+      // skip it) whose profile is not held locally — `_applyDayEntry`
+      // throws `RetryableSyncApplyError` from `_ensureDayEntryProfileExists`
+      // partway through the resolved half of the call, *after* the accepted
+      // half's `markPushed` write for `e` has already run inside the same
+      // transaction.
+      final badResolved = remoteEntry(
+        e.id,
+        profileId: 'profile-not-held-locally',
+        localDate: e.localDate,
+        updatedAt: e.updatedAt.add(const Duration(seconds: 1)),
+      );
+
+      await expectLater(
+        storage.applyPushResult(
+          accepted: [
+            (table: SyncTable.dayEntries, id: e.id, localRevAtPush: e.localRev),
+          ],
+          resolved: [badResolved],
+        ),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+
+      final reread = await entryById(p.id, e.id);
+      expect(
+        reread.dirty,
+        isTrue,
+        reason:
+            'the markPushed write inside the same transaction as the '
+            'failing resolved apply must have rolled back too — this is '
+            'exactly the divergence issue #523 describes: a declined row '
+            'left dirty = false holding the losing value forever',
+      );
+      expect(reread.localRev, e.localRev);
+      expect(
+        reread.note,
+        'local',
+        reason: 'the resolved apply itself must never have landed either',
+      );
+    });
+
+    test('a clean call clears dirty on every accepted row and applies every '
+        'resolved row, in one pass', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        note: 'local',
+      );
+      final resolvedAt = e.updatedAt.add(const Duration(seconds: 1));
+
+      await storage.applyPushResult(
+        accepted: [
+          (table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev),
+        ],
+        resolved: [
+          remoteEntry(
+            e.id,
+            profileId: p.id,
+            updatedAt: resolvedAt,
+            note: 'server wins',
+          ),
+        ],
+      );
+
+      final rereadProfile = await profileById(p.id);
+      expect(rereadProfile.dirty, isFalse);
+      final rereadEntry = await entryById(p.id, e.id);
+      expect(rereadEntry.dirty, isFalse);
+      expect(rereadEntry.note, 'server wins');
     });
   });
 
@@ -892,12 +1275,23 @@ void main() {
       const r1 = '01J0000000000000000000000C';
       const r2 = '01J0000000000000000000000D';
       await storage.applyRemotePage(
-          table: SyncTable.dayEntries,
-          rows: [
-            remoteEntry(r1, profileId: p.id, localDate: '2026-04-01', updatedAt: t0),
-            remoteEntry(r2, profileId: p.id, localDate: '2026-04-02', updatedAt: t0),
-          ],
-          newCursor: 42);
+        table: SyncTable.dayEntries,
+        rows: [
+          remoteEntry(
+            r1,
+            profileId: p.id,
+            localDate: '2026-04-01',
+            updatedAt: t0,
+          ),
+          remoteEntry(
+            r2,
+            profileId: p.id,
+            localDate: '2026-04-02',
+            updatedAt: t0,
+          ),
+        ],
+        newCursor: 42,
+      );
       var state = await storage.readSyncState();
       expect(state.cursorDayEntries, 42);
       expect(state.cursorProfiles, 0);
@@ -907,26 +1301,38 @@ void main() {
       const r3 = '01J0000000000000000000000E';
       await expectLater(
         storage.applyRemotePage(
-            table: SyncTable.dayEntries,
-            rows: [
-              remoteEntry(r3, profileId: p.id, localDate: '2026-04-03', updatedAt: t0),
-              remoteEntry('01J0000000000000000000000F',
-                  profileId: '01J0000000000000000000000Q', updatedAt: t0),
-            ],
-            newCursor: 99),
+          table: SyncTable.dayEntries,
+          rows: [
+            remoteEntry(
+              r3,
+              profileId: p.id,
+              localDate: '2026-04-03',
+              updatedAt: t0,
+            ),
+            remoteEntry(
+              '01J0000000000000000000000F',
+              profileId: '01J0000000000000000000000Q',
+              updatedAt: t0,
+            ),
+          ],
+          newCursor: 99,
+        ),
         throwsA(isA<RetryableSyncApplyError>()),
       );
       state = await storage.readSyncState();
       expect(state.cursorDayEntries, 42, reason: 'cursor must not advance');
-      expect((await storage.getDayEntries(profileId: p.id)).map((e) => e.id),
-          isNot(contains(r3)),
-          reason: 'the good row of a failed page rolls back too');
+      expect(
+        (await storage.getDayEntries(profileId: p.id)).map((e) => e.id),
+        isNot(contains(r3)),
+        reason: 'the good row of a failed page rolls back too',
+      );
 
       // Profiles page advances only the profiles cursor.
       await storage.applyRemotePage(
-          table: SyncTable.profiles,
-          rows: [remoteProfile('01J0000000000000000000000G', updatedAt: t0)],
-          newCursor: 7);
+        table: SyncTable.profiles,
+        rows: [remoteProfile('01J0000000000000000000000G', updatedAt: t0)],
+        newCursor: 7,
+      );
       state = await storage.readSyncState();
       expect(state.cursorProfiles, 7);
       expect(state.cursorDayEntries, 42);
@@ -934,56 +1340,96 @@ void main() {
       // A row of the wrong table is rejected up front.
       await expectLater(
         storage.applyRemotePage(
-            table: SyncTable.profiles,
-            rows: [remoteEntry(r1, profileId: p.id, updatedAt: t0)],
-            newCursor: 8),
+          table: SyncTable.profiles,
+          rows: [remoteEntry(r1, profileId: p.id, updatedAt: t0)],
+          newCursor: 8,
+        ),
         throwsArgumentError,
       );
       expect((await storage.readSyncState()).cursorProfiles, 7);
     });
 
+    test('issue #525: profileGuardians now persists its own cursor, '
+        'independent of every other table', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      await storage.applyRemotePage(
+        table: SyncTable.profileGuardians,
+        rows: [
+          RemoteProfileGuardianRow(
+            id: 'g-1',
+            profileId: p.id,
+            userId: 'user-a',
+            role: 'viewer',
+            status: 'accepted',
+            createdAt: t0,
+            updatedAt: t0,
+          ),
+        ],
+        newCursor: 17,
+      );
+      final state = await storage.readSyncState();
+      expect(state.cursorProfileGuardians, 17);
+      expect(
+        state.cursorProfiles,
+        0,
+        reason:
+            'profileGuardians\' cursor must not bleed into another '
+            'table\'s',
+      );
+    });
   });
 
   group('clock offset', () {
-    test('a +5 minute offset stamps local writes ahead of the test clock and '
-        'a later write behind the stored value still lands strictly after',
-        () async {
-      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
-      final e = await storage.upsertDayEntry(
+    test(
+      'a +5 minute offset stamps local writes ahead of the test clock and '
+      'a later write behind the stored value still lands strictly after',
+      () async {
+        final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final e = await storage.upsertDayEntry(
           profileId: p.id,
           localDate: '2026-01-15',
           tz: 'UTC',
-          flow: FlowLevel.light);
-      expect(e.updatedAt, t0);
+          flow: FlowLevel.light,
+        );
+        expect(e.updatedAt, t0);
 
-      storage.setClockOffset(const Duration(minutes: 5));
-      clock.now = t0.add(const Duration(seconds: 1));
-      final shifted = await storage.upsertDayEntry(
+        storage.setClockOffset(const Duration(minutes: 5));
+        clock.now = t0.add(const Duration(seconds: 1));
+        final shifted = await storage.upsertDayEntry(
           profileId: p.id,
           localDate: '2026-01-15',
           tz: 'UTC',
-          flow: FlowLevel.heavy);
-      expect(shifted.updatedAt,
-          t0.add(const Duration(minutes: 5, seconds: 1)));
+          flow: FlowLevel.heavy,
+        );
+        expect(
+          shifted.updatedAt,
+          t0.add(const Duration(minutes: 5, seconds: 1)),
+        );
 
-      // Offset dropped: the raw clock is now behind the stored value.
-      storage.setClockOffset(Duration.zero);
-      clock.now = t0.add(const Duration(seconds: 2));
-      final bumped = await storage.upsertDayEntry(
+        // Offset dropped: the raw clock is now behind the stored value.
+        storage.setClockOffset(Duration.zero);
+        clock.now = t0.add(const Duration(seconds: 2));
+        final bumped = await storage.upsertDayEntry(
           profileId: p.id,
           localDate: '2026-01-15',
           tz: 'UTC',
-          flow: FlowLevel.none);
-      expect(bumped.updatedAt,
-          shifted.updatedAt.add(const Duration(milliseconds: 1)));
+          flow: FlowLevel.none,
+        );
+        expect(
+          bumped.updatedAt,
+          shifted.updatedAt.add(const Duration(milliseconds: 1)),
+        );
 
-      // Profiles and deletes use the same clock.
-      storage.setClockOffset(const Duration(minutes: 5));
-      await storage.softDeleteProfile(p.id);
-      expect((await profileById(p.id)).updatedAt,
-          t0.add(const Duration(minutes: 5, seconds: 2)));
-      expect(storage.clockOffset, const Duration(minutes: 5));
-    });
+        // Profiles and deletes use the same clock.
+        storage.setClockOffset(const Duration(minutes: 5));
+        await storage.softDeleteProfile(p.id);
+        expect(
+          (await profileById(p.id)).updatedAt,
+          t0.add(const Duration(minutes: 5, seconds: 2)),
+        );
+        expect(storage.clockOffset, const Duration(minutes: 5));
+      },
+    );
   });
 
   group('local edit after a remote apply', () {
@@ -993,18 +1439,25 @@ void main() {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       final remoteAt = t0.add(const Duration(minutes: 10));
       const rid = 'remote-entry-1';
-      await storage.applyRemoteDayEntry(remoteEntry(rid,
-          profileId: p.id, localDate: '2026-01-20', updatedAt: remoteAt));
+      await storage.applyRemoteDayEntry(
+        remoteEntry(
+          rid,
+          profileId: p.id,
+          localDate: '2026-01-20',
+          updatedAt: remoteAt,
+        ),
+      );
       var row = await entryById(p.id, rid);
       expect(row.updatedAt, remoteAt);
       expect(row.dirty, isFalse);
 
       clock.now = remoteAt.subtract(const Duration(seconds: 1));
       final edited = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-20',
-          tz: 'UTC',
-          flow: FlowLevel.heavy);
+        profileId: p.id,
+        localDate: '2026-01-20',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+      );
       expect(edited.id, rid);
       expect(edited.updatedAt, remoteAt.add(const Duration(milliseconds: 1)));
       expect(edited.dirty, isTrue);
@@ -1016,52 +1469,76 @@ void main() {
       expect(row.updatedAt, remoteAt.add(const Duration(milliseconds: 1)));
       expect(row.dirty, isTrue);
       expect(
-          await storage.applyRemoteDayEntry(remoteEntry(rid,
-              profileId: p.id, localDate: '2026-01-20', updatedAt: remoteAt)),
-          isFalse);
+        await storage.applyRemoteDayEntry(
+          remoteEntry(
+            rid,
+            profileId: p.id,
+            localDate: '2026-01-20',
+            updatedAt: remoteAt,
+          ),
+        ),
+        isFalse,
+      );
       expect((await entryById(p.id, rid)).flow, FlowLevel.heavy);
     });
   });
 
   group('bulk state', () {
     test('markAllDirty flags live and tombstoned rows; isEmpty only when both '
-        'tables have no rows at all; dirtyCount includes tombstones',
-        () async {
+        'tables have no rows at all; dirtyCount includes tombstones', () async {
       expect(await storage.isEmpty(), isTrue);
       expect(await storage.dirtyCount(), 0);
 
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       expect(await storage.isEmpty(), isFalse);
       final e1 = await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.light);
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
       await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-16',
-          tz: 'UTC',
-          flow: FlowLevel.light);
+        profileId: p.id,
+        localDate: '2026-01-16',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
       await storage.softDeleteDayEntry(
-          profileId: p.id, localDate: '2026-01-16');
+        profileId: p.id,
+        localDate: '2026-01-16',
+      );
       expect(await storage.dirtyCount(), 3);
 
       await storage.markPushed(
-          table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev);
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: p.localRev,
+      );
       await storage.markPushed(
-          table: SyncTable.dayEntries, id: e1.id, localRevAtPush: e1.localRev);
-      expect(await storage.dirtyCount(), 1, reason: 'the tombstone stays dirty');
+        table: SyncTable.dayEntries,
+        id: e1.id,
+        localRevAtPush: e1.localRev,
+      );
+      expect(
+        await storage.dirtyCount(),
+        1,
+        reason: 'the tombstone stays dirty',
+      );
 
       await storage.markAllDirty();
       expect(await storage.dirtyCount(), 3);
       final rows = await storage.getDayEntries(
-          profileId: p.id, includeTombstones: true);
+        profileId: p.id,
+        includeTombstones: true,
+      );
       expect(rows.every((r) => r.dirty), isTrue);
       expect((await profileById(p.id)).dirty, isTrue);
 
       // A tombstone-only database is not empty.
       await storage.softDeleteDayEntry(
-          profileId: p.id, localDate: '2026-01-15');
+        profileId: p.id,
+        localDate: '2026-01-15',
+      );
       await storage.softDeleteProfile(p.id);
       expect(await storage.isEmpty(), isFalse);
       expect(await storage.dirtyCount(), 3);
@@ -1080,14 +1557,16 @@ void main() {
       expect(defaults.lastError, isNull);
       expect(defaults.serverClockOffsetMs, isNull);
 
-      await storage.writeSyncState(defaults.copyWith(
-        boundUserId: const Value('user-1'),
-        deviceId: 'device-1',
-        cursorProfiles: 3,
-        cursorDayEntries: 4,
-        lastSyncAt: Value(t0),
-        serverClockOffsetMs: const Value(1500),
-      ));
+      await storage.writeSyncState(
+        defaults.copyWith(
+          boundUserId: const Value('user-1'),
+          deviceId: 'device-1',
+          cursorProfiles: 3,
+          cursorDayEntries: 4,
+          lastSyncAt: Value(t0),
+          serverClockOffsetMs: const Value(1500),
+        ),
+      );
       final stored = await storage.readSyncState();
       expect(stored.boundUserId, 'user-1');
       expect(stored.deviceId, 'device-1');
@@ -1098,23 +1577,27 @@ void main() {
 
       // Overwrite keeps the singleton a singleton.
       await storage.writeSyncState(stored.copyWith(cursorProfiles: 5));
-      final count = await db.customSelect('SELECT COUNT(*) AS n FROM sync_state').getSingle();
+      final count = await db
+          .customSelect('SELECT COUNT(*) AS n FROM sync_state')
+          .getSingle();
       expect(count.data['n'], 1);
       expect((await storage.readSyncState()).cursorProfiles, 5);
 
       // The id CHECK forbids a second row.
       await expectLater(
         db.customStatement(
-            "INSERT INTO sync_state (id, device_id) VALUES (2, 'x')"),
+          "INSERT INTO sync_state (id, device_id) VALUES (2, 'x')",
+        ),
         throwsA(anything),
       );
 
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
       await storage.upsertDayEntry(
-          profileId: p.id,
-          localDate: '2026-01-15',
-          tz: 'UTC',
-          flow: FlowLevel.light);
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
       await storage.setSetting(key: 'k', value: 'v');
       await db.wipeAllData();
       expect(await storage.isEmpty(), isTrue);
@@ -1124,5 +1607,378 @@ void main() {
       expect(after.cursorProfiles, 0);
       expect(after.boundUserId, isNull);
     });
+  });
+
+  group('revocation wipe (issue #532)', () {
+    RemoteProfileGuardianRow remoteGuardian(
+      String id, {
+      required String profileId,
+      required String userId,
+      String role = 'caregiver',
+      required String status,
+      required DateTime updatedAt,
+      DateTime? createdAt,
+    }) => RemoteProfileGuardianRow(
+      id: id,
+      profileId: profileId,
+      userId: userId,
+      role: role,
+      status: status,
+      displayName: null,
+      invitedBy: null,
+      createdAt: createdAt ?? updatedAt,
+      updatedAt: updatedAt,
+    );
+
+    /// Every table in `tables.dart` carrying a `profile_id` column,
+    /// discovered from the live schema rather than hand-copied — so a new
+    /// profile-scoped table added later shows up here automatically.
+    Set<String> profileScopedTableNames() => {
+      for (final table in db.allTables)
+        if (table.$columns.any((c) => c.name == 'profile_id'))
+          table.actualTableName,
+    };
+
+    /// The set [profileScopedTableNames] must equal today. Deliberately
+    /// hand-maintained (not derived) so adding a new profile_id-bearing
+    /// table without updating this set — and without extending the
+    /// revocation-wipe assertions below to cover it — fails loudly here,
+    /// rather than silently keeping a removed guardian's access to that
+    /// table's content alive on their device (exactly the bug class issue
+    /// #532 was).
+    const kKnownProfileScopedTables = {
+      'day_entries',
+      'profile_guardians',
+      'observations',
+      'profile_modes',
+      'cycle_overrides',
+      'care_notes',
+      'visit_prep_items',
+    };
+
+    test('tables.dart\'s profile_id-bearing tables match the set this '
+        'file\'s wipe coverage below is written against', () {
+      expect(
+        profileScopedTableNames(),
+        kKnownProfileScopedTables,
+        reason:
+            'a table with a new profile_id column was added to tables.dart '
+            '— add it to kKnownProfileScopedTables above AND to the '
+            'coverage assertions in the test below (and, if it holds '
+            'sync content rather than membership metadata, to '
+            '_tombstoneRevokedSharedProfile\'s wipe itself), or a removed '
+            'guardian keeps that table\'s content on their device forever',
+      );
+    });
+
+    test('every profile-scoped content table (all but the membership row '
+        'itself) has no live row left after a revocation apply', () async {
+      const uid = 'user-a';
+      await storage.writeSyncState(
+        kDefaultSyncState.copyWith(boundUserId: const Value(uid)),
+      );
+
+      final p = await storage.upsertProfile(
+        displayName: 'Shared',
+        isMinor: false,
+      );
+      final entry = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        note: 'symptom log',
+      );
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+        code: 'migraine',
+        intensity: 3,
+      );
+      await storage.upsertProfileMode(
+        profileId: p.id,
+        mode: 'perimenopause',
+        birthControlMethod: 'iud_hormonal',
+      );
+      await storage.upsertCycleOverride(
+        profileId: p.id,
+        cycleStartDate: '2026-01-01',
+        excludedFromAverage: true,
+        manualStart: true,
+        noteId: 'note-1',
+      );
+      await storage.upsertCareNote(profileId: p.id, body: 'call the doctor');
+      await storage.addVisitPrepItem(profileId: p.id, body: 'ask about X');
+
+      // Sanity: every table actually holds live content before revocation.
+      expect((await storage.getDayEntries(profileId: p.id)), isNotEmpty);
+      expect((await storage.getObservationsForProfile(p.id)), isNotEmpty);
+      expect((await storage.getProfileMode(p.id))?.mode, 'perimenopause');
+      expect((await storage.getCycleOverridesForProfile(p.id)), isNotEmpty);
+      expect((await storage.getCareNotesForProfile(p.id)), isNotEmpty);
+      expect((await storage.getVisitPrepItemsForProfile(p.id)), isNotEmpty);
+
+      final revokedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        remoteGuardian(
+          'g-1',
+          profileId: p.id,
+          userId: uid,
+          status: 'revoked',
+          updatedAt: revokedAt,
+        ),
+      ]);
+
+      expect(
+        await storage.getProfile(p.id),
+        isNull,
+        reason: 'the profile itself must be tombstoned',
+      );
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      expect(
+        await storage.getObservationsForProfile(p.id),
+        isEmpty,
+        reason: 'issue #532: observations were missing from the wipe',
+      );
+      expect(
+        await storage.getCycleOverridesForProfile(p.id),
+        isEmpty,
+        reason: 'issue #532: cycle_overrides were missing from the wipe',
+      );
+      expect(await storage.getCareNotesForProfile(p.id), isEmpty);
+      expect(await storage.getVisitPrepItemsForProfile(p.id), isEmpty);
+
+      // profile_modes has no tombstone (Issue #188): an absent-row-equivalent
+      // reset is the wipe for this table (issue #532).
+      final mode = await storage.getProfileMode(p.id);
+      expect(mode, isNotNull);
+      expect(mode!.mode, 'tracking');
+      expect(mode.birthControlMethod, isNull);
+      expect(mode.dirty, isFalse);
+
+      // Nothing wiped here is left dirty — the wipe must never be pushed
+      // back to the server that already knows about the revocation.
+      expect(await storage.dirtyCount(), 0);
+    });
+  });
+
+  group('deleted_profiles reader (issue #522)', () {
+    test('applying a deleted_profiles row tombstones the profile and '
+        'cascades exactly like a guardian revocation', () async {
+      final p = await storage.upsertProfile(
+        displayName: 'Purged',
+        isMinor: false,
+      );
+      final entry = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+      );
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+      );
+      await storage.upsertCareNote(profileId: p.id, body: 'note');
+
+      final purgedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        RemoteDeletedProfileRow(profileId: p.id, deletedAt: purgedAt),
+      ]);
+
+      expect(await storage.getProfile(p.id), isNull);
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      expect(await storage.getObservationsForProfile(p.id), isEmpty);
+      expect(await storage.getCareNotesForProfile(p.id), isEmpty);
+      expect(
+        await storage.dirtyCount(),
+        0,
+        reason: 'the wipe must never be pushed back',
+      );
+    });
+
+    test('a profile never held locally is a harmless no-op', () async {
+      await storage.applyRemoteRows([
+        RemoteDeletedProfileRow(profileId: 'never-held', deletedAt: t0),
+      ]);
+      expect(await storage.getProfile('never-held'), isNull);
+    });
+
+    test(
+      'applying it through applyRemotePage advances no cursor — '
+      'issue #522 pages from version 0 every cycle, like profileGuardians',
+      () async {
+        final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+        await storage.applyRemotePage(
+          table: SyncTable.deletedProfiles,
+          rows: [RemoteDeletedProfileRow(profileId: p.id, deletedAt: t0)],
+          newCursor: 999,
+        );
+        expect(
+          (await storage.readSyncState()).cursorProfiles,
+          0,
+          reason:
+              'deletedProfiles has no persisted cursor of its own and '
+              'must not repurpose cursorProfiles either',
+        );
+        expect(await storage.getProfile(p.id), isNull);
+      },
+    );
+  });
+
+  group('bumpLocalRevForRetry (issue #568)', () {
+    test('bumps local_rev and re-marks dirty on every pushable table, '
+        'content untouched, and is a harmless no-op on the two pull-only '
+        'tables', () async {
+      final p = await storage.upsertProfile(displayName: 'A', isMinor: false);
+      await storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: p.localRev,
+      );
+      await storage.bumpLocalRevForRetry(table: SyncTable.profiles, id: p.id);
+      final profile = await storage.getProfile(p.id);
+      expect(profile!.localRev, p.localRev + 1);
+      expect(profile.dirty, isTrue);
+      expect(profile.displayName, 'A', reason: 'content is untouched');
+
+      final e = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+      await storage.markPushed(
+        table: SyncTable.dayEntries,
+        id: e.id,
+        localRevAtPush: e.localRev,
+      );
+      await storage.bumpLocalRevForRetry(table: SyncTable.dayEntries, id: e.id);
+      final entry = await entryById(p.id, e.id);
+      expect(entry.localRev, e.localRev + 1);
+      expect(entry.dirty, isTrue);
+      expect(entry.flow, FlowLevel.light);
+
+      final o = await storage.upsertObservation(
+        dayEntryId: e.id,
+        profileId: p.id,
+        localDate: e.localDate,
+        tz: 'UTC',
+        category: 'pain',
+      );
+      await storage.markPushed(
+        table: SyncTable.observations,
+        id: o.id,
+        localRevAtPush: o.localRev,
+      );
+      await storage.bumpLocalRevForRetry(
+        table: SyncTable.observations,
+        id: o.id,
+      );
+      final observation = (await storage.getObservationsForDayEntry(e.id))
+          .single;
+      expect(observation.localRev, o.localRev + 1);
+      expect(observation.dirty, isTrue);
+      expect(observation.category, 'pain');
+
+      await storage.upsertProfileMode(profileId: p.id, mode: 'tracking');
+      final mode0 = (await storage.getProfileMode(p.id))!;
+      await storage.markPushed(
+        table: SyncTable.profileModes,
+        id: p.id,
+        localRevAtPush: mode0.localRev,
+      );
+      await storage.bumpLocalRevForRetry(
+        table: SyncTable.profileModes,
+        id: p.id,
+      );
+      final mode = (await storage.getProfileMode(p.id))!;
+      expect(mode.localRev, mode0.localRev + 1);
+      expect(mode.dirty, isTrue);
+      expect(mode.mode, 'tracking');
+
+      final co = await storage.upsertCycleOverride(
+        profileId: p.id,
+        cycleStartDate: '2026-01-01',
+      );
+      await storage.markPushed(
+        table: SyncTable.cycleOverrides,
+        id: co.id,
+        localRevAtPush: co.localRev,
+      );
+      await storage.bumpLocalRevForRetry(
+        table: SyncTable.cycleOverrides,
+        id: co.id,
+      );
+      final override = (await storage.getCycleOverridesForProfile(p.id)).single;
+      expect(override.localRev, co.localRev + 1);
+      expect(override.dirty, isTrue);
+      expect(override.cycleStartDate, '2026-01-01');
+
+      final cn = await storage.upsertCareNote(profileId: p.id, body: 'note');
+      await storage.markPushed(
+        table: SyncTable.careNotes,
+        id: cn.id,
+        localRevAtPush: cn.localRev,
+      );
+      await storage.bumpLocalRevForRetry(table: SyncTable.careNotes, id: cn.id);
+      final note = (await storage.getCareNotesForProfile(p.id)).single;
+      expect(note.localRev, cn.localRev + 1);
+      expect(note.dirty, isTrue);
+      expect(note.body, 'note');
+
+      final vp = await storage.addVisitPrepItem(profileId: p.id, body: 'ask');
+      await storage.markPushed(
+        table: SyncTable.visitPrepItems,
+        id: vp.id,
+        localRevAtPush: vp.localRev,
+      );
+      await storage.bumpLocalRevForRetry(
+        table: SyncTable.visitPrepItems,
+        id: vp.id,
+      );
+      final item = (await storage.getVisitPrepItemsForProfile(p.id)).single;
+      expect(item.localRev, vp.localRev + 1);
+      expect(item.dirty, isTrue);
+      expect(item.body, 'ask');
+
+      // Pull-only tables: nothing to bump, must not throw.
+      await storage.bumpLocalRevForRetry(
+        table: SyncTable.profileGuardians,
+        id: 'irrelevant',
+      );
+      await storage.bumpLocalRevForRetry(
+        table: SyncTable.deletedProfiles,
+        id: 'irrelevant',
+      );
+    });
+
+    test(
+      'markPushed on the two pull-only tables is a harmless no-op',
+      () async {
+        expect(
+          await storage.markPushed(
+            table: SyncTable.profileGuardians,
+            id: 'irrelevant',
+            localRevAtPush: 0,
+          ),
+          isFalse,
+        );
+        expect(
+          await storage.markPushed(
+            table: SyncTable.deletedProfiles,
+            id: 'irrelevant',
+            localRevAtPush: 0,
+          ),
+          isFalse,
+        );
+      },
+    );
   });
 }

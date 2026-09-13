@@ -57,6 +57,9 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
       throw UnimplementedError();
 
   @override
+  Future<bool> hasAnyEntries(String profileId) => throw UnimplementedError();
+
+  @override
   Future<void> delete(String profileId, LocalDate localDate) =>
       throw UnimplementedError();
 }

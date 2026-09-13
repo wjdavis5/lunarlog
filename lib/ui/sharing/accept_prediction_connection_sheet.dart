@@ -15,7 +15,6 @@ import '../components/inline_error.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 
-
 class AcceptPredictionConnectionSheet extends StatefulWidget {
   const AcceptPredictionConnectionSheet({
     super.key,

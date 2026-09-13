@@ -18,16 +18,13 @@ import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_deletion_service.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
-import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 
 // The service takes its collaborators as constructor parameters that are not
 // initializing formals, the write service's declared pattern.
 // ignore_for_file: prefer_initializing_formals
-
-/// Resolves the guardian rows for one profile (the write service's typedef).
-typedef GuardiansForProfile = Future<List<ProfileGuardian>> Function(
-    String profileId);
 
 class LocalHealthSyncDeletionService implements HealthSyncDeletionService {
   LocalHealthSyncDeletionService({

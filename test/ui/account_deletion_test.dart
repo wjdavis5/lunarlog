@@ -79,6 +79,11 @@ class FakeObservationsRepository implements ObservationsRepository {
       const [];
 
   @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+          String dayEntryId) async =>
+      const [];
+
+  @override
   Future<Observation> save(Observation observation) async => observation;
 
   @override
@@ -288,10 +293,10 @@ class DeletionHarness {
     await tester.pump();
   }
 
-  void dispose() {
+  Future<void> dispose() async {
     controller.dispose();
     gateController.dispose();
-    auth.dispose();
+    await auth.dispose();
     _sectionVisible.dispose();
   }
 }

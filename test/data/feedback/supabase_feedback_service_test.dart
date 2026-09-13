@@ -130,8 +130,9 @@ void main() {
         if (req.url.path == '/rest/v1/feedback_tickets' && req.method == 'PATCH') {
           final body = jsonDecode(req.body) as Map<String, dynamic>;
           expect(body['attachment_paths'], hasLength(1));
+          final attachmentPaths = body['attachment_paths'] as List;
           return http.Response(
-            jsonEncode(ticketRow(id: 't2', attachmentPaths: [body['attachment_paths'][0] as String])),
+            jsonEncode(ticketRow(id: 't2', attachmentPaths: [attachmentPaths[0] as String])),
             200,
           );
         }

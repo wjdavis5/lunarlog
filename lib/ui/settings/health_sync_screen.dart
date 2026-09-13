@@ -31,20 +31,21 @@ import '../../config.dart';
 import '../../domain/health/health_sync_binding.dart';
 import '../../domain/health/health_sync_policy.dart';
 import '../../domain/models/profile.dart';
-import '../../domain/models/profile_guardian.dart';
+import '../../domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
 import '../../domain/repositories/profiles_repository.dart';
 import '../../observability/route_names.dart';
 
-/// Resolves the guardian rows for one profile, mapped to the domain model.
-/// Production wiring passes `ProfileGuardiansRepository.getForProfile`
-/// directly (a plain method tear-off satisfies this exactly); this is a
-/// bare function type rather than the concrete repository so the widget
-/// can be tested with a simple fake, no database required (R14/R16 —
-/// storage types never cross into `lib/ui/`; this goes one step further
-/// and drops the repository *class* dependency too, since nothing here
-/// needs anything else it exposes).
-typedef GuardiansForProfile = Future<List<ProfileGuardian>> Function(
-    String profileId);
+// [GuardiansForProfile] (issue #575: declared once, next to
+// ProfileGuardiansRepository, rather than redeclared in every one of its
+// four call sites) resolves the guardian rows for one profile, mapped to
+// the domain model. Production wiring passes
+// `ProfileGuardiansRepository.getForProfile` directly (a plain method
+// tear-off satisfies this exactly); this is a bare function type rather
+// than the concrete repository so the widget can be tested with a simple
+// fake, no database required (R14/R16 — storage types never cross into
+// `lib/ui/`; this goes one step further and drops the repository *class*
+// dependency too, since nothing here needs anything else it exposes).
 
 class HealthSyncScreen extends StatefulWidget {
   const HealthSyncScreen({

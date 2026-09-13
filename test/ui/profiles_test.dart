@@ -3,6 +3,8 @@
 /// moved to U7's fail-closed screen (test/ui/gate_test.dart).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -471,12 +473,12 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
       expect(find.text('Name cannot be empty'), findsOneWidget);
-      expect(find.byType(AlertDialog), findsOneWidget,
-          reason: 'dialog stays open on invalid input');
+      expect(find.byType(BottomSheet), findsOneWidget,
+          reason: 'sheet stays open on invalid input');
 
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       expect(find.text('Same'), findsNWidgets(1),
           reason: 'nothing was created from the invalid name');
 
@@ -519,7 +521,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       final names = (await db.storage.getProfiles())
           .map((p) => p.displayName)
           .toList();
@@ -572,7 +574,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       expect(find.text('Alice'), findsOneWidget,
           reason: 'cancelling the dialog never calls renameProfile');
       expect(find.text('Alicia'), findsNothing);
@@ -642,8 +644,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Enter a valid year'), findsOneWidget);
-      expect(find.byType(AlertDialog), findsOneWidget,
-          reason: 'dialog stays open on invalid input');
+      expect(find.byType(BottomSheet), findsOneWidget,
+          reason: 'sheet stays open on invalid input');
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
       final profiles = await DriftProfilesRepository(db.storage).list();
@@ -667,8 +669,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Enter a year between 1900 and 2200'), findsOneWidget);
-      expect(find.byType(AlertDialog), findsOneWidget,
-          reason: 'dialog stays open on invalid input');
+      expect(find.byType(BottomSheet), findsOneWidget,
+          reason: 'sheet stays open on invalid input');
       await disposeApp(tester, db);
     });
 
@@ -691,7 +693,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       final profiles = await DriftProfilesRepository(db.storage).list();
       final luna = profiles.singleWhere((p) => p.displayName == 'Luna');
       expect(luna.birthYear, 2200);
@@ -1070,7 +1072,8 @@ void main() {
       final controller = ProfileController(
         profilesRepository: _EmptyProfilesRepository(),
         settingsStore: settings,
-      )..load();
+      );
+      unawaited(controller.load());
       addTearDown(controller.dispose);
       addTearDown(settings.close);
 
@@ -1118,7 +1121,8 @@ void main() {
       final controller = ProfileController(
         profilesRepository: _EmptyProfilesRepository(),
         settingsStore: settings,
-      )..load();
+      );
+      unawaited(controller.load());
       addTearDown(controller.dispose);
       addTearDown(settings.close);
 

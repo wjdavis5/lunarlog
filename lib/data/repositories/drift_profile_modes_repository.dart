@@ -92,12 +92,19 @@ class DriftProfileModesRepository implements ProfileModesRepository {
   @override
   Future<ProfileLifecycleMode?> find(String profileId) async {
     final row = await _storage.getProfileMode(profileId);
-    if (row == null) return null;
-    return (
-      mode: LifecycleMode.fromDb(row.mode),
-      birthControlMethod: row.birthControlMethod,
-      birthControlStartedOn: row.birthControlStartedOn,
-      birthControlStoppedOn: row.birthControlStoppedOn,
-    );
+    return _toDomain(row);
   }
+
+  @override
+  Stream<ProfileLifecycleMode?> watch(String profileId) =>
+      _storage.watchProfileMode(profileId).map(_toDomain);
+
+  ProfileLifecycleMode? _toDomain(ProfileModeData? row) => row == null
+      ? null
+      : (
+          mode: LifecycleMode.fromDb(row.mode),
+          birthControlMethod: row.birthControlMethod,
+          birthControlStartedOn: row.birthControlStartedOn,
+          birthControlStoppedOn: row.birthControlStoppedOn,
+        );
 }

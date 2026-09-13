@@ -62,6 +62,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../domain/episodes/episodes.dart';
+import '../../domain/insights/cycle_insights_calculator.dart';
+import '../../domain/models/day_entry.dart';
+import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
 import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
@@ -76,12 +80,17 @@ import '../components/empty_state.dart';
 import '../components/predictions_disabled_card.dart';
 import '../components/predictions_suppressed_card.dart';
 import '../help/help_card_view.dart';
+
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/tiers.dart';
+
 import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
+import '../sharing/guardian_watch_mixin.dart';
+import 'phase_insights_card.dart';
+import 'symptom_trends_section.dart';
 
 class AnalysisTab extends StatefulWidget {
   const AnalysisTab({
@@ -91,9 +100,11 @@ class AnalysisTab extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.guardiansRepository,
+    this.dayEntriesRepository,
   });
 
   final String profileId;
+  final DayEntriesRepository? dayEntriesRepository;
 
   /// The profile's care mode (issue #131): selects the headline-stat
   /// vocabulary below, same as [OverviewPanel].
@@ -118,9 +129,10 @@ class AnalysisTab extends StatefulWidget {
   State<AnalysisTab> createState() => _AnalysisTabState();
 }
 
-class _AnalysisTabState extends State<AnalysisTab> {
-  late final CyclePredictionService _service =
-      context.read<CyclePredictionService>();
+class _AnalysisTabState extends State<AnalysisTab>
+    with GuardianWatchMixin<AnalysisTab> {
+  late final CyclePredictionService _service = context
+      .read<CyclePredictionService>();
   late Stream<CyclePrediction> _predictions = _service.watch(
     widget.profileId,
     today: widget.todayProvider,
@@ -130,15 +142,18 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// callback on the top-level `StreamBuilder`.
   void _retryPredictions() {
     setState(() {
-      _predictions =
-          _service.watch(widget.profileId, today: widget.todayProvider);
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
     });
   }
 
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+  StreamSubscription<List<DayEntry>>? _entriesSub;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
+  List<DayEntry> _entries = const [];
 
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
@@ -152,6 +167,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
       _auth = auth;
     }
     _watchGuardians();
+    _watchEntries();
   }
 
   // The listener is only ever registered while [_auth] is non-null and is
@@ -163,20 +179,25 @@ class _AnalysisTabState extends State<AnalysisTab> {
     setState(() => _currentUserId = _auth?.currentUserId);
   }
 
-  /// Same shape as [OverviewPanel._watchGuardians]: resubscribes on every
-  /// call (profile switch included) and resets to an empty list first so
-  /// a still-arriving subscription for the old profile can never be
-  /// mistaken for the new one's guardians.
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
+    watchGuardiansForProfile(
+      widget.guardiansRepository,
+      widget.profileId,
+      (guardians) => setState(() => _guardians = guardians),
+    );
+  }
+
+  void _watchEntries() {
+    unawaited(_entriesSub?.cancel());
+    _entries = const [];
+    final repository =
+        widget.dayEntriesRepository ?? context.read<DayEntriesRepository?>();
     if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
+    _entriesSub = repository.watchForProfile(widget.profileId).listen((
+      entries,
     ) {
       if (!mounted) return;
-      setState(() => _guardians = guardians);
+      setState(() => _entries = entries);
     });
   }
 
@@ -189,13 +210,28 @@ class _AnalysisTabState extends State<AnalysisTab> {
         today: widget.todayProvider,
       );
       _watchGuardians();
+      _watchEntries();
+      return;
+    }
+    // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
+    // changed underneath it — re-run just the watch that reads the changed
+    // collaborator.
+    if (oldWidget.guardiansRepository != widget.guardiansRepository) {
+      _watchGuardians();
+    }
+    if (oldWidget.todayProvider != widget.todayProvider) {
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
     }
   }
 
   @override
   void dispose() {
-    _guardiansSub?.cancel();
-    _guardiansSub = null;
+    disposeGuardianWatch();
+    unawaited(_entriesSub?.cancel());
+    _entriesSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -227,9 +263,16 @@ class _AnalysisTabState extends State<AnalysisTab> {
     );
   }
 
-  /// Section list — the seam #135 (statistics/trends) mounts an additional
-  /// entry into once that issue lands. #135 mounts here.
+  /// Section list — mounts headline statistics, phase insights (#236),
+  /// symptom trends & cramp forecasts (#135/#229), and the cycle history list.
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
+    final episodes = deriveEpisodes(bleedDatesOf(_entries));
+    final report = CycleInsightsCalculator.compute(
+      entries: _entries,
+      episodes: episodes,
+      prediction: prediction is ActivePrediction ? prediction : null,
+    );
+
     return [
       Text(
         'Analysis',
@@ -245,9 +288,9 @@ class _AnalysisTabState extends State<AnalysisTab> {
         // prediction with an explicit named state — the stats card has no
         // mean/spread to show, so this renders the shared suppressed card.
         PredictionsSuppressed() => PredictionsSuppressedCard(
-            method: prediction.method,
-            lifecycleMode: prediction.lifecycleMode,
-          ),
+          method: prediction.method,
+          lifecycleMode: prediction.lifecycleMode,
+        ),
         // Issue #225: per-profile toggle turning off predictions.
         PredictionsDisabled() => const PredictionsDisabledCard(),
       },
@@ -259,6 +302,15 @@ class _AnalysisTabState extends State<AnalysisTab> {
         showStatistics: false,
         showDisclaimer: false,
       ),
+      if (prediction is ActivePrediction) ...[
+        const SizedBox(height: 16),
+        PhaseInsightsCard(
+          prediction: prediction,
+          today: widget.todayProvider(),
+        ),
+      ],
+      const SizedBox(height: 16),
+      SymptomTrendsSection(report: report),
     ];
   }
 
@@ -301,7 +353,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// how [OverviewPanel]'s separate tier caption is the only thing
   /// `irregular` mode silences, never the estimate date next to it.
   List<Widget> _headlineStats(
-      ThemeData theme, AppLocalizations l10n, ActivePrediction prediction) {
+    ThemeData theme,
+    AppLocalizations l10n,
+    ActivePrediction prediction,
+  ) {
     return [
       _statRow(
         theme,
@@ -371,7 +426,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// renders, and [CareModeCopy.showsTierCaption] only adds the tier-name
   /// prefix — this estimate is never hidden behind a caption gate of its
   /// own, only the whole-row [CareModeCopy.showsFertileWindow] gate above.
-  String _fertileWindowText(AppLocalizations l10n, FertileWindowEstimate fertile) {
+  String _fertileWindowText(
+    AppLocalizations l10n,
+    FertileWindowEstimate fertile,
+  ) {
     final range =
         '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
     if (!_copy.showsTierCaption) return range;

@@ -13,6 +13,8 @@ import 'package:flutter/foundation.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 class SharingOverviewController extends ChangeNotifier {
   SharingOverviewController({
@@ -57,7 +59,13 @@ class SharingOverviewController extends ChangeNotifier {
           _infos[id] = SharingProfileInfo.fromGuardians(rows, currentUserId);
           notifyListeners();
         },
-        onError: (_) {},
+        // Issue #540: was a silent `(_) {}` swallow — now recorded like
+        // every other guardian-watch consumer rather than disappearing.
+        onError: (Object error, StackTrace stackTrace) {
+          defaultBreadcrumbLog.record('guardianWatch',
+              'watchForProfile failed: ${error.runtimeType}');
+          unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+        },
       );
     }
   }

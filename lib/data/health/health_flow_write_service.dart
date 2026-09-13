@@ -61,21 +61,14 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
-import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
 import 'health_flow_mapping.dart';
-
-/// Resolves the guardian rows for one profile, mapped to the domain model
-/// (`ownerUserIdFor` turns them into the guard's owner fact). Production
-/// wiring passes `ProfileGuardiansRepository.getForProfile` as a tear-off;
-/// a bare function type keeps this file free of the concrete repository
-/// and its storage dependency.
-typedef GuardiansForProfile = Future<List<ProfileGuardian>> Function(
-    String profileId);
 
 /// One eligible day's resolved write, before it is sent to the port.
 class _PendingWrite {

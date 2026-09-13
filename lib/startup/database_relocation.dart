@@ -73,8 +73,10 @@
 /// `lunarlog.db.migrating`.
 library;
 
+import 'dart:async' show unawaited;
 import 'dart:io';
 
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 /// Sibling suffixes sqlite may leave beside a database file.
@@ -161,7 +163,11 @@ int? _tryCount(sqlite3.Database db, String table) {
   try {
     final rows = db.select('SELECT COUNT(*) AS c FROM "$table"');
     return rows.first['c'] as int;
-  } catch (_) {
+  } catch (e, s) {
+    // Issue #547: recorded, not silenced — this is expected for a table
+    // this build doesn't recognise on a legacy install, but still worth
+    // seeing if it starts firing for a table that should always exist.
+    unawaited(Sentry.captureException(e, stackTrace: s));
     return null;
   }
 }
@@ -178,7 +184,8 @@ List<String> _tableNames(sqlite3.Database db) {
       "AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
     );
     return [for (final row in rows) row['name'] as String];
-  } catch (_) {
+  } catch (e, s) {
+    unawaited(Sentry.captureException(e, stackTrace: s));
     return const [];
   }
 }
@@ -227,7 +234,8 @@ bool _verifyStagedDatabase({
       }
     }
     return true;
-  } catch (_) {
+  } catch (e, s) {
+    unawaited(Sentry.captureException(e, stackTrace: s));
     return false;
   } finally {
     legacyDb?.close();
@@ -246,7 +254,8 @@ bool _passesQuickCheck(File dbFile) {
     db = sqlite3.sqlite3.open(dbFile.path);
     final quickCheck = db.select('PRAGMA quick_check');
     return quickCheck.isNotEmpty && quickCheck.first.values.first == 'ok';
-  } catch (_) {
+  } catch (e, s) {
+    unawaited(Sentry.captureException(e, stackTrace: s));
     return false;
   } finally {
     db?.close();
@@ -353,8 +362,11 @@ Future<File> _handleAlreadyMigrated({
 }) async {
   try {
     await deleteDatabaseFiles(legacyFile);
-  } catch (_) {
-    // Best effort only — see the promotion path's own comment.
+  } catch (e, s) {
+    // Best effort only — see the promotion path's own comment. Issue
+    // #547: recorded so a systematic failure to ever clean up the legacy
+    // copy is visible, even though it never blocks the relocation itself.
+    unawaited(Sentry.captureException(e, stackTrace: s));
   }
   return targetFile;
 }
@@ -374,8 +386,9 @@ Future<File?> _tryAdoptUnsentinelledTarget({
     await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
     try {
       await deleteDatabaseFiles(legacyFile);
-    } catch (_) {
-      // Best effort only — see above.
+    } catch (e, s) {
+      // Best effort only — see above. Issue #547: recorded, not silenced.
+      unawaited(Sentry.captureException(e, stackTrace: s));
     }
     return targetFile;
   }
@@ -434,7 +447,12 @@ Future<File> _migrateFromLegacy({
     // above have succeeded. Once this write succeeds, the relocation
     // itself is complete and durable.
     await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
-  } catch (_) {
+  } catch (e, s) {
+    // Issue #547: the fallback to legacyFile is deliberate (see the
+    // library doc comment's "Crash safety" section) — this capture is
+    // what makes a systematic relocation failure visible instead of the
+    // app just silently starting from the pre-migration file forever.
+    unawaited(Sentry.captureException(e, stackTrace: s));
     await _rollbackFailedMigration(stagedBySuffix, targetFile, sentinel);
     return legacyFile;
   }
@@ -540,8 +558,9 @@ Future<void> _rollbackFailedMigration(
 Future<File> _finishMigration(File legacyFile, File targetFile) async {
   try {
     await deleteDatabaseFiles(legacyFile);
-  } catch (_) {
-    // Best effort only — see above.
+  } catch (e, s) {
+    // Best effort only — see above. Issue #547: recorded, not silenced.
+    unawaited(Sentry.captureException(e, stackTrace: s));
   }
   return targetFile;
 }

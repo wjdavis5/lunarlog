@@ -83,6 +83,7 @@ import '../episodes/episodes.dart';
 import '../models/day_entry.dart';
 import '../models/lifecycle_mode.dart';
 import '../models/local_date.dart';
+import '../models/profile.dart';
 import 'pms.dart';
 
 /// A cycle length outside [kMinCycleDays, kMaxCycleDays] is excluded from
@@ -362,6 +363,18 @@ class PredictedCycle {
 sealed class CyclePrediction {
   const CyclePrediction();
 }
+
+/// The set of active profiles to watch, as a live stream (issue #575:
+/// declared once here rather than byte-identically in
+/// `reminder_coordinator.dart`, `reminder_window_publisher.dart`, and
+/// `prediction_projection_publisher.dart` — every background per-profile
+/// watcher fans a prediction stream out over this same shape).
+typedef ActiveProfilesStream = Stream<List<Profile>>;
+
+/// A live [CyclePrediction] stream for one profile, keyed by [profileId]
+/// (issue #575: see [ActiveProfilesStream]'s doc comment for why this is
+/// declared once here).
+typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 
 /// Too little valid history to estimate anything. Carries only counts of
 /// recorded history — no means, no partial dates.

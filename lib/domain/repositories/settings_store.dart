@@ -114,4 +114,17 @@ abstract final class SettingsKeys {
   /// Device-local, same posture as [reminderConfigs].
   static const String reminderStatisticChangeSignals =
       'reminder_statistic_change_signals';
+
+  /// Issue #568 (b): set to `'true'` once
+  /// `migrateOmittedCyclesToCycleOverrides` (`lib/domain/prediction/
+  /// cycle_history.dart`) has copied every profile's device-local omission
+  /// list (the pre-#568 `omittedCycles.<profileId>` keys) into
+  /// `cycle_overrides` rows, so the one-time migration never re-scans
+  /// every profile's old list on a later launch. The migration itself is
+  /// also idempotent per-date (`CycleOverridesRepository.setExcludedFromAverage`
+  /// is a no-op for an already-excluded date), so this flag is purely a
+  /// fast-path — a device that somehow ran the migration twice would still
+  /// converge on the same result.
+  static const String cycleOverridesMigratedFromOmissionList =
+      'cycle_overrides_migrated_from_omission_list';
 }

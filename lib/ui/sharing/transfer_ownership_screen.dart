@@ -15,6 +15,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
+import '../components/destructive_button.dart';
 import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
 import '../l10n/dates.dart' as dates;
@@ -102,21 +103,20 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Transfer ownership?'),
-        content: Text(
-          '${widget.profile.displayName} will become the owner of this '
-          "profile. You'll keep access as ${role.label}, and they can "
-          'remove that access at any time.',
+        content: SingleChildScrollView(
+          child: Text(
+            '${widget.profile.displayName} will become the owner of this '
+            "profile. You'll keep access as ${role.label}, and they can "
+            'remove that access at any time.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
             child: const Text('Transfer'),
           ),
         ],
@@ -281,7 +281,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
   void _copyLink() {
     final transfer = _transfer;
     if (transfer == null) return;
-    Clipboard.setData(ClipboardData(text: transfer.claimUri.toString()));
+    unawaited(Clipboard.setData(ClipboardData(text: transfer.claimUri.toString())));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Transfer link copied to clipboard')),
     );
@@ -295,7 +295,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     // text share (the link is a custom `lunarlog://` scheme, not a
     // browsable http(s) URL, so `ShareParams.text` is the right field
     // rather than `ShareParams.uri`).
-    SharePlus.instance.share(ShareParams(text: transfer.claimUri.toString()));
+    unawaited(SharePlus.instance.share(ShareParams(text: transfer.claimUri.toString())));
   }
 
   @override

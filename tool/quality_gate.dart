@@ -23,10 +23,16 @@ import 'quality/coverage_filter.dart';
 import 'quality/coverage_gate.dart';
 import 'quality/crap_gate.dart';
 
-Future<ProcessResult> _runFlutterTestWithCoverage() {
+/// Issue #574: `Process.run` buffers all child output until the process
+/// exits, so this ~13-minute run printed nothing the whole time —
+/// indistinguishable from a hang locally. `Process.start` with the child's
+/// stdout/stderr piped straight through lets output appear live, the same
+/// as running `flutter test --coverage` directly.
+Future<int> _runFlutterTestWithCoverage() async {
   final isCi = Platform.environment['CI'] == 'true';
+  final Process process;
   if (Platform.isWindows && !isCi) {
-    return Process.run(
+    process = await Process.start(
       'pwsh',
       [
         '-NoProfile',
@@ -39,25 +45,31 @@ Future<ProcessResult> _runFlutterTestWithCoverage() {
       ],
       runInShell: true,
     );
+  } else {
+    process = await Process.start(
+      Platform.isWindows ? 'flutter.bat' : 'flutter',
+      ['test', '--coverage'],
+      runInShell: true,
+    );
   }
-  return Process.run(
-    Platform.isWindows ? 'flutter.bat' : 'flutter',
-    ['test', '--coverage'],
-    runInShell: true,
-  );
+  final stdoutDone = stdout.addStream(process.stdout);
+  final stderrDone = stderr.addStream(process.stderr);
+  final exitCode = await process.exitCode;
+  // Drain both streams fully before returning, so no trailing output is
+  // lost/interleaved with what main() prints next.
+  await Future.wait([stdoutDone, stderrDone]);
+  return exitCode;
 }
 
 Future<void> main(List<String> args) async {
   // ignore: avoid_print
   print('[quality_gate] running flutter test --coverage ...');
-  final testResult = await _runFlutterTestWithCoverage();
-  stdout.write(testResult.stdout);
-  stderr.write(testResult.stderr);
-  if (testResult.exitCode != 0) {
+  final testExitCode = await _runFlutterTestWithCoverage();
+  if (testExitCode != 0) {
     // A gate run never masks a genuine test failure.
     // ignore: avoid_print
     print('[quality_gate] flutter test failed — quality gates did not run.');
-    exit(testResult.exitCode);
+    exit(testExitCode);
   }
 
   final lcovFile = File('coverage/lcov.info');

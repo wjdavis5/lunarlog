@@ -19,25 +19,25 @@ enum ParentPostTransferRole {
   /// The exact string the server's `profile_guardians.role` check constraint
   /// accepts.
   String toDb() => switch (this) {
-        ParentPostTransferRole.coManager => 'co_parent',
-        ParentPostTransferRole.viewer => 'viewer',
-      };
+    ParentPostTransferRole.coManager => 'co_parent',
+    ParentPostTransferRole.viewer => 'viewer',
+  };
 
   /// Human-readable label for the role picker shown when arming a transfer.
   String get label => switch (this) {
-        ParentPostTransferRole.coManager => 'Co-manager',
-        ParentPostTransferRole.viewer => 'Viewer',
-      };
+    ParentPostTransferRole.coManager => 'Co-manager',
+    ParentPostTransferRole.viewer => 'Viewer',
+  };
 
   /// Inverse of [toDb]. Returns `null` for anything else rather than
   /// throwing, matching `ProfileRelationship.fromDb`'s tolerant-unknown-value
   /// convention (used by [SupabaseOwnershipTransferService.getActiveTransfer]
   /// when decoding a row read directly off `ownership_transfers`).
   static ParentPostTransferRole? fromDb(String value) => switch (value) {
-        'co_parent' => ParentPostTransferRole.coManager,
-        'viewer' => ParentPostTransferRole.viewer,
-        _ => null,
-      };
+    'co_parent' => ParentPostTransferRole.coManager,
+    'viewer' => ParentPostTransferRole.viewer,
+    _ => null,
+  };
 }
 
 /// Representation of a freshly armed ownership transfer.
@@ -93,14 +93,14 @@ class GeneratedTransfer {
 
   @override
   int get hashCode => Object.hash(
-        transferId,
-        profileId,
-        parentPostTransferRole,
-        rawToken,
-        tokenHash,
-        claimUri,
-        expiresAt,
-      );
+    transferId,
+    profileId,
+    parentPostTransferRole,
+    rawToken,
+    tokenHash,
+    claimUri,
+    expiresAt,
+  );
 }
 
 /// Result returned upon claiming a transfer (R11): the presenting user
@@ -176,12 +176,12 @@ class ActiveTransfer {
 
   @override
   int get hashCode => Object.hash(
-        transferId,
-        profileId,
-        parentPostTransferRole,
-        expiresAt,
-        recipientLabel,
-      );
+    transferId,
+    profileId,
+    parentPostTransferRole,
+    expiresAt,
+    recipientLabel,
+  );
 }
 
 /// Typed failures for ownership transfer operations (R20: an expired,
@@ -195,13 +195,14 @@ sealed class TransferFailure implements Exception {
   const factory TransferFailure.notFound() = TransferNotFoundFailure;
   const factory TransferFailure.expired() = TransferExpiredFailure;
   const factory TransferFailure.cancelled() = TransferCancelledFailure;
-  const factory TransferFailure.alreadyAccepted() = TransferAlreadyAcceptedFailure;
+  const factory TransferFailure.alreadyAccepted() =
+      TransferAlreadyAcceptedFailure;
   const factory TransferFailure.selfTransfer() = TransferSelfTransferFailure;
   const factory TransferFailure.staleOwner() = TransferStaleOwnerFailure;
   const factory TransferFailure.alreadyArmed() = TransferAlreadyArmedFailure;
   const factory TransferFailure.unauthorized() = TransferUnauthorizedFailure;
   const factory TransferFailure.invalidToken() = TransferInvalidTokenFailure;
-  const factory TransferFailure.other(String message) = TransferOtherFailure;
+  const factory TransferFailure.other() = TransferOtherFailure;
 
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
@@ -276,16 +277,22 @@ final class TransferInvalidTokenFailure extends TransferFailure {
   String toString() => 'TransferFailure.invalidToken';
 }
 
-/// Catch-all failure, carrying a diagnostic [message] that is never shown to
-/// the operator (Issue #545: `lib/ui/l10n/transfer_failure_copy.dart` never
-/// echoes a raw error either) but is useful in logs and `toString`.
+/// Catch-all failure. Fieldless like the other nine variants (issue #552):
+/// [TransferFailure]'s inherited `operator==` compares only `runtimeType`,
+/// so a variant carrying a payload the operator never sees would make two
+/// unrelated diagnoses compare equal — every distinct diagnostic instead
+/// goes to a breadcrumb at its own throw site in
+/// `supabase_ownership_transfer_service.dart` (`_mapError`, `_mapPostgrestError`,
+/// `_mapInvalidParameter`, and the two `unexpected ... shape` sites), never
+/// shown to the operator. User-facing copy for this failure lives in
+/// `lib/ui/l10n/transfer_failure_copy.dart` (Issue #545) — the domain layer
+/// itself never hardcodes English (mirrors the no-raw-error rule the old
+/// `userFacingMessage` getter followed).
 final class TransferOtherFailure extends TransferFailure {
-  const TransferOtherFailure(this.message);
-
-  final String message;
+  const TransferOtherFailure();
 
   @override
-  String toString() => 'TransferFailure.other: $message';
+  String toString() => 'TransferFailure.other';
 }
 
 /// Contract for arming, cancelling, and claiming an ownership transfer.
