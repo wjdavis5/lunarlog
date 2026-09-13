@@ -2,9 +2,12 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
 
 import '../../domain/sharing/sharing_service.dart';
+import '../components/inline_error.dart';
 
 class AcceptInviteSheet extends StatefulWidget {
   const AcceptInviteSheet({
@@ -56,7 +59,7 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = failure.userFacingMessage;
+          _error = sharingFailureCopy(AppLocalizations.of(context), failure);
         });
       }
     } catch (error) {
@@ -95,9 +98,19 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
               ],
             ),
             const SizedBox(height: 12),
+            // Issue #535 (a): the server has no pre-accept preview RPC —
+            // `accept_guardian_invitation` is the only call available, and
+            // it commits the acceptance as part of returning the profile
+            // name and role (see SupabaseSharingService.acceptInvite). This
+            // sheet cannot know who or what it's joining until after that
+            // commit, so the copy stays neutral rather than assuming a
+            // minor's profile (the previous wording hardcoded "child",
+            // which is wrong whenever two adults share one adult's
+            // profile).
             Text(
-              'You have been invited to care for a child profile in LunarLog. '
-              'Accepting will sync their cycle calendar and health logs to this device.',
+              "You've been invited to a shared profile in LunarLog. "
+              'Accepting will sync its cycle calendar and health logs to '
+              'this device.',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -109,13 +122,13 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
                 hintText: 'Shows when you log entries',
               ),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ],
+            if (_error != null)
+              // No onRetry: the Join button right below is the retry
+              // affordance. No leading SizedBox either -- InlineError
+              // already carries its own vertical padding, and this
+              // sheet's tight modal height has no room for both plus a
+              // TextButton row.
+              InlineError(message: _error!),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

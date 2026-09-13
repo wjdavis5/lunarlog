@@ -21,6 +21,13 @@ void main() {
       expect(formatWeekdayDayDateYear(DateTime(2026, 9, 8)), 'Tue 8 Sep 2026');
     });
 
+    test(
+        'formatShortDate is locale-aware numeric, replacing the '
+        'hand-rolled YYYY-MM-DD several screens used to assemble '
+        '(issue #554)', () {
+      expect(formatShortDate(DateTime(2026, 9, 5)), '9/5/2026');
+    });
+
     test('relativeDayLabel: today/yesterday/tomorrow, full form otherwise',
         () {
       final today = DateTime(2026, 9, 8);

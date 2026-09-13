@@ -531,6 +531,41 @@ class _LunarLogAppState extends State<LunarLogApp>
 
   bool _isSignedIn() => _authController?.signedIn ?? false;
 
+  /// Issue #535 (b): a latched cold-start/live invite code (see
+  /// [_maybePresentInvite]) is otherwise consumed exactly once, silently,
+  /// by [_onAuthChanged] — a signed-out recipient who doesn't sign in right
+  /// away gets no feedback at all that an invite is waiting. True for as
+  /// long as the code stays latched and the recipient remains signed out;
+  /// [_onAuthChanged] clears it (by presenting the sheet) the moment a
+  /// session appears, so this also gates the banner's disappearance.
+  bool get _showPendingInviteSignInBanner =>
+      _pendingInviteCode != null && !_isSignedIn();
+
+  /// Wraps [child] with the persistent "Sign in to accept your invite"
+  /// banner (Issue #535 (b)) whenever [_showPendingInviteSignInBanner]
+  /// holds. Placed in `MaterialApp.builder` (see [build]) — above the
+  /// Navigator, alongside [WebGuardrails] — so it renders over whatever the
+  /// signed-out flow already shows, rather than only inside one screen.
+  Widget _wrapWithPendingInviteBanner(Widget child) {
+    if (!_showPendingInviteSignInBanner) return child;
+    return Column(
+      children: [
+        _PendingInviteSignInBanner(onSignIn: _goToSignInForPendingInvite),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  /// The banner's tap action: pushes the same named [kRouteSignInScreen]
+  /// destination the Account section's "Sign in" tile already uses. Reached
+  /// through [_navigatorKey] (like [_showInviteSheet] and friends) because
+  /// this banner sits above the Navigator, so its own context has none.
+  void _goToSignInForPendingInvite() {
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+    unawaited(pushNamedScreen<void>(ctx, kRouteSignInScreen));
+  }
+
   /// Schedules the cold-start invite presentation, if `main.dart` (or a
   /// test) passed an initial invite code. Extracted out of [initState]
   /// (issue #168 CRAP gate) so this branching doesn't count against that
@@ -1000,7 +1035,7 @@ class _LunarLogAppState extends State<LunarLogApp>
           showBanner: widget.showWebBanner,
           onWipe: resetDevice ?? widget.db.wipeAllData,
           navigatorKey: _navigatorKey,
-          child: child ?? const SizedBox.shrink(),
+          child: _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
         ),
         // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is
         // always built with WidgetsApp.defaultRouteName, `/`, which
@@ -1019,6 +1054,52 @@ class _LunarLogAppState extends State<LunarLogApp>
                 builder: (_) => const ProfileHomeGate(),
               )
             : null,
+      ),
+    );
+  }
+}
+
+/// Issue #535 (b): persistent, non-dismissible banner surfacing a latched
+/// invite code while the recipient is signed out — mirrors [WebDevBanner]'s
+/// shape (a colored [Material] strip above the app content) but stays
+/// mounted for as long as the invite is waiting rather than for the whole
+/// build, and clears itself the moment [_LunarLogAppState._onAuthChanged]
+/// consumes the code on sign-in.
+class _PendingInviteSignInBanner extends StatelessWidget {
+  const _PendingInviteSignInBanner({required this.onSignIn});
+
+  final VoidCallback onSignIn;
+
+  @visibleForTesting
+  static const Key bannerKey = Key('pending-invite-sign-in-banner');
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      key: bannerKey,
+      color: theme.colorScheme.primaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Sign in to accept your invite',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: onSignIn,
+                child: const Text('Sign In'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

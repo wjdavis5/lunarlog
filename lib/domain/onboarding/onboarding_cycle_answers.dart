@@ -19,12 +19,14 @@ library;
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 
-/// Inclusive sanity bounds for the two numeric onboarding questions.
-/// Advisory-only today (the answers are seam-carried until #218), but
-/// they keep garbage out of any future consumer, and the UI mirrors
-/// them in its validators and error copy.
-const int kMinTypicalCycleLengthDays = 10;
-const int kMaxTypicalCycleLengthDays = 90;
+/// Inclusive sanity bounds for the two numeric onboarding questions. The
+/// cycle-length bounds match [kMinCycleDays]/[kMaxCycleDays]
+/// (`lib/domain/prediction/prediction.dart`) exactly — that is the same
+/// window `CycleFacts.canSeed` requires, so a cycle length the form
+/// accepts is never silently unable to seed a provisional estimate
+/// (issue #530). The UI mirrors these in its validators and error copy.
+const int kMinTypicalCycleLengthDays = 15;
+const int kMaxTypicalCycleLengthDays = 60;
 const int kMinTypicalPeriodLengthDays = 1;
 const int kMaxTypicalPeriodLengthDays = 14;
 

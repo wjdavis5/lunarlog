@@ -16,6 +16,15 @@ abstract interface class AppGate {
   /// web, where no lock UI is shown in v1.
   bool get requiresUnlock;
 
+  /// Whether the device has any credential enrolled at all (biometric or
+  /// passcode) — the same availability check [requestAccess] itself
+  /// consults before presenting a prompt. The gate controller (issue #534)
+  /// calls this *before* [requestAccess] so it can tell "the operator
+  /// declined/failed the prompt" apart from "there was never a prompt to
+  /// decline because nothing is enrolled", without opening a system-UI
+  /// window for a prompt that will never appear.
+  Future<bool> canAuthenticate();
+
   /// Presents the device-credential prompt (biometric + passcode fallback).
   /// Returns true only when the operator presented a valid credential;
   /// false for every decline, cancellation, or unavailable authenticator —

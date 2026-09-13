@@ -64,6 +64,16 @@
 /// [NotEnoughHistory] or a silent late/paused state. See [computePrediction]
 /// and [_packDrivenPrediction]. This file also owns the prediction
 /// classification of the #260 method enum ([birthControlPredictionKind]).
+///
+/// Issue #528 gives [PredictionsSuppressed] a second reason: a profile's
+/// [LifecycleMode] (`pregnancy`/`postpartum`/`perimenopause`) is not
+/// something this file's pure functions ever see — the resolution lives in
+/// the *service* (`prediction_service.dart`'s `_resolve`, mirroring how
+/// #218's provisional-seeding fallback is a service-level decision too),
+/// which short-circuits before [computePredictionFromEntries] runs at all.
+/// This file only owns the resulting state's shape: exactly one of
+/// [PredictionsSuppressed.method] / [PredictionsSuppressed.lifecycleMode] is
+/// set, never both, never neither.
 library;
 
 import 'dart:math' show sqrt;
@@ -71,6 +81,7 @@ import 'dart:math' show sqrt;
 import '../birth_control.dart';
 import '../episodes/episodes.dart';
 import '../models/day_entry.dart';
+import '../models/lifecycle_mode.dart';
 import '../models/local_date.dart';
 import '../models/profile.dart';
 import 'pms.dart';
@@ -408,25 +419,56 @@ class ActiveBirthControl {
       'ActiveBirthControl(${method.name}, started: ${startedOn?.iso})';
 }
 
-/// Period prediction is deliberately turned off for a profile whose
-/// birth-control method in effect on the date of interest is a continuous
-/// one (IUD, implant, shot, continuous-regimen pill — issue #233): these
-/// methods typically stop or irregularly affect periods, so any
-/// follicular-style estimate (or a pack-driven withdrawal-bleed estimate)
-/// would be misleading. This is a distinct, named state — explicitly NOT
-/// [NotEnoughHistory] (which would read as "log more cycles" even though
-/// logging more won't help) and NOT a silent late/paused state — carrying
-/// the method so the UI can explain why.
+/// Period prediction is deliberately turned off for a profile, for one of
+/// two reasons — this is a distinct, named state in both cases, explicitly
+/// NOT [NotEnoughHistory] (which would read as "log more cycles" even
+/// though logging more won't help) and NOT a silent late/paused state:
+///
+/// 1. [method] (issue #233): the birth-control method in effect on the
+///    date of interest is a continuous one (IUD, implant, shot,
+///    continuous-regimen pill) — these typically stop or irregularly
+///    affect periods, so any follicular-style estimate (or a pack-driven
+///    withdrawal-bleed estimate) would be misleading.
+/// 2. [lifecycleMode] (issue #528): the profile's life-stage mode is
+///    `pregnancy`, `postpartum`, or `perimenopause` — none of these are
+///    the regular ovulatory cycle this file's averaging model assumes, so
+///    a "days late" estimate is not just wrong but actively distressing
+///    (a miscarriage reads as a "late" period in red).
+///
+/// Exactly one of [method] / [lifecycleMode] is set, never both, never
+/// neither — [PredictionsSuppressed.new]'s assert enforces this at
+/// construction so a caller can never accidentally build the ambiguous
+/// "both reasons" or "no reason" state.
 class PredictionsSuppressed extends CyclePrediction {
-  const PredictionsSuppressed({required this.method});
+  const PredictionsSuppressed({this.method, this.lifecycleMode})
+      : assert(
+          (method == null) != (lifecycleMode == null),
+          'PredictionsSuppressed needs exactly one reason: a birth-control '
+          'method or a lifecycle mode',
+        );
 
-  final BirthControlMethod method;
+  /// The continuous birth-control method in effect (issue #233), or null
+  /// when this suppression is due to [lifecycleMode] instead.
+  final BirthControlMethod? method;
 
-  String get statusLabel =>
-      'predictions suppressed because of ${method.name}';
+  /// The life-stage mode in effect (issue #528), or null when this
+  /// suppression is due to [method] instead.
+  final LifecycleMode? lifecycleMode;
+
+  String get statusLabel {
+    final mode = lifecycleMode;
+    return mode != null
+        ? 'predictions suppressed because of ${mode.name} mode'
+        : 'predictions suppressed because of ${method!.name}';
+  }
 
   @override
-  String toString() => 'PredictionsSuppressed(${method.name})';
+  String toString() {
+    final mode = lifecycleMode;
+    return mode != null
+        ? 'PredictionsSuppressed(lifecycleMode: ${mode.name})'
+        : 'PredictionsSuppressed(${method!.name})';
+  }
 }
 
 /// Period prediction has been turned off for this profile by the user

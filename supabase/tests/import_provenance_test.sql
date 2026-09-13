@@ -150,7 +150,7 @@ select is((select category from public.observations where profile_id = tests.uli
 -- else in this file needs to look it back up.
 -- ---------------------------------------------------------------------------
 insert into public.day_entries (id, user_id, profile_id, local_date, tz, flow, updated_at)
-values (tests.ulid(920), tests.get_supabase_uid('imp_mom'), tests.ulid(900), '2026-09-20', 'UTC', 'none', '2026-09-20T00:00:00Z');
+values (tests.ulid(920), tests.get_supabase_uid('imp_mom'), tests.ulid(900), '2026-09-09', 'UTC', 'none', '2026-09-09T00:00:00Z');
 
 insert into public.import_jobs (id, profile_id, source, status, total_rows, created_by)
 values ('99999999-9999-9999-9999-999999999999'::uuid, tests.ulid(900), 'clue_import', 'pending', 1,
@@ -159,9 +159,9 @@ values ('99999999-9999-9999-9999-999999999999'::uuid, tests.ulid(900), 'clue_imp
 insert into r select 'obs_import_id_insert', public.sync_push('[]'::jsonb, '[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(921), 'day_entry_id', tests.ulid(920), 'profile_id', tests.ulid(900),
-    'local_date', '2026-09-20', 'tz', 'UTC', 'category', 'pain', 'source', 'clue_import',
+    'local_date', '2026-09-09', 'tz', 'UTC', 'category', 'pain', 'source', 'clue_import',
     'source_id', 'clue-921', 'import_id', '99999999-9999-9999-9999-999999999999',
-    'updated_at', '2026-09-20T10:00:00Z')));
+    'updated_at', '2026-09-09T10:00:00Z')));
 select is(pg_temp.resp('obs_import_id_insert') -> 'rejected', '[]'::jsonb,
   'an observation push carrying import_id is accepted');
 select is((select import_id::text from public.observations where id = tests.ulid(921)),
@@ -170,8 +170,8 @@ select is((select import_id::text from public.observations where id = tests.ulid
 insert into r select 'obs_import_id_old_client', public.sync_push('[]'::jsonb, '[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(921), 'day_entry_id', tests.ulid(920), 'profile_id', tests.ulid(900),
-    'local_date', '2026-09-20', 'tz', 'UTC', 'category', 'sleep',
-    'updated_at', '2026-09-20T11:00:00Z')));
+    'local_date', '2026-09-09', 'tz', 'UTC', 'category', 'sleep',
+    'updated_at', '2026-09-09T11:00:00Z')));
 select is((select category from public.observations where id = tests.ulid(921)), 'sleep',
   'the old-client push still applies the field it did send');
 select is((select import_id::text from public.observations where id = tests.ulid(921)),
@@ -187,8 +187,8 @@ select is((select source from public.observations where id = tests.ulid(921)), '
 insert into r select 'obs_tombstone_provenance', public.sync_push('[]'::jsonb, '[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(921), 'day_entry_id', tests.ulid(920), 'profile_id', tests.ulid(900),
-    'local_date', '2026-09-20', 'tz', 'UTC',
-    'updated_at', '2026-09-20T12:00:00Z', 'deleted_at', '2026-09-20T12:00:00Z')));
+    'local_date', '2026-09-09', 'tz', 'UTC',
+    'updated_at', '2026-09-09T12:00:00Z', 'deleted_at', '2026-09-09T12:00:00Z')));
 select isnt((select deleted_at from public.observations where id = tests.ulid(921)), null,
   'the observation is tombstoned');
 select is((select category from public.observations where id = tests.ulid(921)), null,

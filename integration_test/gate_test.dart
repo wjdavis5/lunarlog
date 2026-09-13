@@ -32,6 +32,11 @@ class FakeGate implements AppGate {
   @override
   bool get requiresUnlock => true;
 
+  /// Issue #534: always true here — a credential is enrolled in every
+  /// scenario this suite exercises.
+  @override
+  Future<bool> canAuthenticate() async => true;
+
   @override
   Future<bool> requestAccess() async {
     requests++;

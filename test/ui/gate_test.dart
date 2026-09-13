@@ -43,10 +43,20 @@ import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
 
 class FakeGate implements AppGate {
-  FakeGate({this.grantNext = true, this.requiresUnlock = true});
+  FakeGate({
+    this.grantNext = true,
+    this.requiresUnlock = true,
+    this.canAuthenticateNext = true,
+  });
 
   bool grantNext;
+
+  /// Issue #534: defaults to true (a credential is enrolled) so every
+  /// existing scenario in this suite is unaffected; set false to exercise
+  /// [GateDenialReason.noCredentialEnrolled].
+  bool canAuthenticateNext;
   int requests = 0;
+  int canAuthenticateRequests = 0;
 
   /// When set, the next prompt stays up until this completes (its value is
   /// the answer), so a test can act while the credential prompt is showing
@@ -70,6 +80,12 @@ class FakeGate implements AppGate {
 
   @override
   bool requiresUnlock;
+
+  @override
+  Future<bool> canAuthenticate() async {
+    canAuthenticateRequests++;
+    return canAuthenticateNext;
+  }
 
   @override
   Future<bool> requestAccess() async {
@@ -366,6 +382,11 @@ void main() {
       gate.holdNext = held;
 
       final unlocking = controller.unlock();
+      // #534: `unlock()` now awaits `canAuthenticate()` before opening the
+      // system-UI window, so the window's deadline timer is armed one
+      // microtask later than it used to be — let that resolve before
+      // reaching for it.
+      await Future<void>.value();
       timers.activeWithDelay(const Duration(seconds: 90)).single.fire();
       held.complete(true);
       await unlocking;
@@ -434,6 +455,135 @@ void main() {
       expect(controller.locked, isFalse,
           reason: 'the operator is back, so nothing is replayed and a '
               're-auth never changes the lock state itself');
+    });
+  });
+
+  group('split denial reasons: declined vs no credential enrolled (#534)',
+      () {
+    test('no credential enrolled: denialReason is noCredentialEnrolled and '
+        'no prompt is ever presented', () async {
+      final gate = FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+
+      await controller.unlock();
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.noCredentialEnrolled);
+      expect(controller.lastAttemptDenied, isTrue,
+          reason: 'back-compat shorthand still reports a denial');
+      expect(gate.requests, 0,
+          reason: 'requestAccess (the prompt) must never be called when '
+              'canAuthenticate already says no');
+      expect(gate.canAuthenticateRequests, 1);
+    });
+
+    test('declined by the operator: denialReason is deniedByUser and the '
+        'prompt was presented', () async {
+      final gate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+
+      await controller.unlock();
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.deniedByUser);
+      expect(controller.lastAttemptDenied, isTrue);
+      expect(gate.requests, 1,
+          reason: 'canAuthenticate said yes, so the real prompt ran');
+    });
+
+    test('a granted credential resets denialReason to none', () async {
+      final gate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: true);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+
+      await controller.unlock();
+
+      expect(controller.locked, isFalse);
+      expect(controller.denialReason, GateDenialReason.none);
+      expect(controller.lastAttemptDenied, isFalse);
+    });
+
+    test('the two reasons are distinguishable from one another', () async {
+      final noCredentialGate =
+          FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final noCredentialController = GateController(gate: noCredentialGate);
+      addTearDown(noCredentialController.dispose);
+      await noCredentialController.unlock();
+
+      final deniedGate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: false);
+      final deniedController = GateController(gate: deniedGate);
+      addTearDown(deniedController.dispose);
+      await deniedController.unlock();
+
+      expect(noCredentialController.denialReason,
+          isNot(deniedController.denialReason));
+    });
+
+    test('resuming while locked with no credential enrolled re-checks '
+        'automatically and unlocks once one is added', () async {
+      final gate = FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      await controller.unlock();
+      expect(controller.denialReason, GateDenialReason.noCredentialEnrolled);
+
+      // The operator went to device settings and added a passcode.
+      gate.canAuthenticateNext = true;
+      gate.grantNext = true;
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      // The re-check's canAuthenticate()/requestAccess() are asynchronous
+      // (unawaited from didChangeAppLifecycleState); let them resolve.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.locked, isFalse,
+          reason: 'resume re-verified availability and unlocked without a '
+              'manual retry tap');
+      expect(controller.denialReason, GateDenialReason.none);
+    });
+
+    test('resuming while locked with no credential enrolled re-checks but '
+        'stays locked if still none is enrolled', () async {
+      final gate = FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      await controller.unlock();
+      final requestsBefore = gate.canAuthenticateRequests;
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.noCredentialEnrolled);
+      expect(gate.canAuthenticateRequests, greaterThan(requestsBefore),
+          reason: 'resume must re-run the availability check, not just '
+              'redisplay the old result');
+    });
+
+    test('resuming while locked after a plain decline does not auto-retry',
+        () async {
+      final gate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      await controller.unlock();
+      expect(gate.requests, 1);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.deniedByUser,
+          reason: 'a decline is not the no-credential case; resume must '
+              'not auto-replay a prompt the operator just dismissed');
+      expect(gate.requests, 1,
+          reason: 'no automatic re-prompt for an ordinary decline');
     });
   });
 

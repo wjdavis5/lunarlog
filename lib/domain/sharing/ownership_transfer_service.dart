@@ -19,25 +19,25 @@ enum ParentPostTransferRole {
   /// The exact string the server's `profile_guardians.role` check constraint
   /// accepts.
   String toDb() => switch (this) {
-        ParentPostTransferRole.coManager => 'co_parent',
-        ParentPostTransferRole.viewer => 'viewer',
-      };
+    ParentPostTransferRole.coManager => 'co_parent',
+    ParentPostTransferRole.viewer => 'viewer',
+  };
 
   /// Human-readable label for the role picker shown when arming a transfer.
   String get label => switch (this) {
-        ParentPostTransferRole.coManager => 'Co-manager',
-        ParentPostTransferRole.viewer => 'Viewer',
-      };
+    ParentPostTransferRole.coManager => 'Co-manager',
+    ParentPostTransferRole.viewer => 'Viewer',
+  };
 
   /// Inverse of [toDb]. Returns `null` for anything else rather than
   /// throwing, matching `ProfileRelationship.fromDb`'s tolerant-unknown-value
   /// convention (used by [SupabaseOwnershipTransferService.getActiveTransfer]
   /// when decoding a row read directly off `ownership_transfers`).
   static ParentPostTransferRole? fromDb(String value) => switch (value) {
-        'co_parent' => ParentPostTransferRole.coManager,
-        'viewer' => ParentPostTransferRole.viewer,
-        _ => null,
-      };
+    'co_parent' => ParentPostTransferRole.coManager,
+    'viewer' => ParentPostTransferRole.viewer,
+    _ => null,
+  };
 }
 
 /// Representation of a freshly armed ownership transfer.
@@ -93,14 +93,14 @@ class GeneratedTransfer {
 
   @override
   int get hashCode => Object.hash(
-        transferId,
-        profileId,
-        parentPostTransferRole,
-        rawToken,
-        tokenHash,
-        claimUri,
-        expiresAt,
-      );
+    transferId,
+    profileId,
+    parentPostTransferRole,
+    rawToken,
+    tokenHash,
+    claimUri,
+    expiresAt,
+  );
 }
 
 /// Result returned upon claiming a transfer (R11): the presenting user
@@ -176,12 +176,12 @@ class ActiveTransfer {
 
   @override
   int get hashCode => Object.hash(
-        transferId,
-        profileId,
-        parentPostTransferRole,
-        expiresAt,
-        recipientLabel,
-      );
+    transferId,
+    profileId,
+    parentPostTransferRole,
+    expiresAt,
+    recipientLabel,
+  );
 }
 
 /// Typed failures for ownership transfer operations (R20: an expired,
@@ -195,15 +195,14 @@ sealed class TransferFailure implements Exception {
   const factory TransferFailure.notFound() = TransferNotFoundFailure;
   const factory TransferFailure.expired() = TransferExpiredFailure;
   const factory TransferFailure.cancelled() = TransferCancelledFailure;
-  const factory TransferFailure.alreadyAccepted() = TransferAlreadyAcceptedFailure;
+  const factory TransferFailure.alreadyAccepted() =
+      TransferAlreadyAcceptedFailure;
   const factory TransferFailure.selfTransfer() = TransferSelfTransferFailure;
   const factory TransferFailure.staleOwner() = TransferStaleOwnerFailure;
   const factory TransferFailure.alreadyArmed() = TransferAlreadyArmedFailure;
   const factory TransferFailure.unauthorized() = TransferUnauthorizedFailure;
   const factory TransferFailure.invalidToken() = TransferInvalidTokenFailure;
   const factory TransferFailure.other() = TransferOtherFailure;
-
-  String get userFacingMessage;
 
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
@@ -215,15 +214,11 @@ sealed class TransferFailure implements Exception {
 final class TransferNetworkFailure extends TransferFailure {
   const TransferNetworkFailure();
   @override
-  String get userFacingMessage => 'Network error. Please check your connection.';
-  @override
   String toString() => 'TransferFailure.network';
 }
 
 final class TransferNotFoundFailure extends TransferFailure {
   const TransferNotFoundFailure();
-  @override
-  String get userFacingMessage => 'Transfer not found or invalid link.';
   @override
   String toString() => 'TransferFailure.notFound';
 }
@@ -231,15 +226,11 @@ final class TransferNotFoundFailure extends TransferFailure {
 final class TransferExpiredFailure extends TransferFailure {
   const TransferExpiredFailure();
   @override
-  String get userFacingMessage => 'This transfer link has expired.';
-  @override
   String toString() => 'TransferFailure.expired';
 }
 
 final class TransferCancelledFailure extends TransferFailure {
   const TransferCancelledFailure();
-  @override
-  String get userFacingMessage => 'This transfer was cancelled.';
   @override
   String toString() => 'TransferFailure.cancelled';
 }
@@ -247,24 +238,17 @@ final class TransferCancelledFailure extends TransferFailure {
 final class TransferAlreadyAcceptedFailure extends TransferFailure {
   const TransferAlreadyAcceptedFailure();
   @override
-  String get userFacingMessage => 'This transfer was already accepted.';
-  @override
   String toString() => 'TransferFailure.alreadyAccepted';
 }
 
 final class TransferSelfTransferFailure extends TransferFailure {
   const TransferSelfTransferFailure();
   @override
-  String get userFacingMessage => "You can't claim a transfer you created yourself.";
-  @override
   String toString() => 'TransferFailure.selfTransfer';
 }
 
 final class TransferStaleOwnerFailure extends TransferFailure {
   const TransferStaleOwnerFailure();
-  @override
-  String get userFacingMessage =>
-      'Your role on this profile has changed, so this transfer is no longer valid.';
   @override
   String toString() => 'TransferFailure.staleOwner';
 }
@@ -278,24 +262,17 @@ final class TransferStaleOwnerFailure extends TransferFailure {
 final class TransferAlreadyArmedFailure extends TransferFailure {
   const TransferAlreadyArmedFailure();
   @override
-  String get userFacingMessage =>
-      'A transfer is already pending for this profile. Cancel it before starting a new one.';
-  @override
   String toString() => 'TransferFailure.alreadyArmed';
 }
 
 final class TransferUnauthorizedFailure extends TransferFailure {
   const TransferUnauthorizedFailure();
   @override
-  String get userFacingMessage => 'You do not have permission for this action.';
-  @override
   String toString() => 'TransferFailure.unauthorized';
 }
 
 final class TransferInvalidTokenFailure extends TransferFailure {
   const TransferInvalidTokenFailure();
-  @override
-  String get userFacingMessage => 'Invalid transfer link.';
   @override
   String toString() => 'TransferFailure.invalidToken';
 }
@@ -307,12 +284,13 @@ final class TransferInvalidTokenFailure extends TransferFailure {
 /// goes to a breadcrumb at its own throw site in
 /// `supabase_ownership_transfer_service.dart` (`_mapError`, `_mapPostgrestError`,
 /// `_mapInvalidParameter`, and the two `unexpected ... shape` sites), never
-/// shown to the operator (mirrors [userFacingMessage]'s no-raw-error rule).
+/// shown to the operator. User-facing copy for this failure lives in
+/// `lib/ui/l10n/transfer_failure_copy.dart` (Issue #545) — the domain layer
+/// itself never hardcodes English (mirrors the no-raw-error rule the old
+/// `userFacingMessage` getter followed).
 final class TransferOtherFailure extends TransferFailure {
   const TransferOtherFailure();
 
-  @override
-  String get userFacingMessage => 'Something went wrong. Please try again.';
   @override
   String toString() => 'TransferFailure.other';
 }

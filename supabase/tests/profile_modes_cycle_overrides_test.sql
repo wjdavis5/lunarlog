@@ -8,7 +8,7 @@
 -- payload clearing on cycle_overrides, and delete_account_data()'s new
 -- counts. Fixture style: observations_test.sql / guardian_sync_push_test.sql.
 begin;
-select plan(85);
+select plan(86);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -546,11 +546,30 @@ select tests.authenticate_as('mom');
 insert into r select 'mom_delete', public.delete_account_data();
 select is((select (v ->> 'profile_modes')::integer from r where name = 'mom_delete'), 1,
   'delete_account_data: the owner''s profile_modes row is counted');
-select is((select (v ->> 'cycle_overrides')::integer from r where name = 'mom_delete'), 1,
-  'delete_account_data: the owner''s cycle_overrides row is counted');
+-- Issue #522: delete_account_data() now tombstones (rather than hard-
+-- deletes) an owned profile's cycle_overrides, counting only rows NEWLY
+-- tombstoned by THIS call. Profile 801's only cycle_overrides row (804)
+-- was already tombstoned earlier in this file (the "LWW decline +
+-- tombstone payload clearing" section above) - it needs no further write
+-- to reach the already-achieved end state, so this call's own count is 0.
+select is((select (v ->> 'cycle_overrides')::integer from r where name = 'mom_delete'), 0,
+  'delete_account_data: zero cycle_overrides are newly tombstoned (804 was already tombstoned)');
 select is((select count(*) from public.profile_modes where profile_id = tests.ulid(801)),
-  0::bigint, 'delete_account_data: the owner''s profile_modes row is gone');
+  0::bigint, 'delete_account_data: the owner''s profile_modes row is gone (no tombstone column - see 20260913013000''s header)');
+-- cycle_overrides survives, tombstoned, matching Issue #522's semantics -
+-- 804 was already tombstoned before this call and remains so. Checked as
+-- service_role: mom's own delete_account_data() call just removed her
+-- profile_guardians row, so RLS now hides profile 801 from her entirely -
+-- a row RLS merely hides would be indistinguishable from one actually
+-- gone if checked as her (the same reasoning
+-- delete_profile_data_test.sql's own post-purge reads already document).
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
 select is((select count(*) from public.cycle_overrides where profile_id = tests.ulid(801)),
-  0::bigint, 'delete_account_data: the owner''s cycle_overrides row is gone');
+  1::bigint, 'delete_account_data: the owner''s cycle_overrides row survives, tombstoned (Issue #522)');
+select is((select count(*) from public.cycle_overrides
+    where profile_id = tests.ulid(801) and deleted_at is null),
+  0::bigint, 'delete_account_data: none of the owner''s cycle_overrides rows are LIVE');
+select tests.clear_authentication();
 
 select * from finish();

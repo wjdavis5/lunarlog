@@ -62,6 +62,15 @@ String formatMonthDay(DateTime date, {String locale = kFallbackLocale}) {
   return DateFormat('MMMM d', locale).format(date);
 }
 
+/// Locale-aware short numeric date, e.g. "9/5/2026" for `en` (issue #554):
+/// for the handful of screens that used to assemble a hand-rolled, always
+/// `YYYY-MM-DD` string via manual zero-padding instead of a locale-aware
+/// format.
+String formatShortDate(DateTime date, {String locale = kFallbackLocale}) {
+  _ensureDateSymbols();
+  return DateFormat.yMd(locale).format(date);
+}
+
 /// Short weekday-day-month form, e.g. "Tue 8 Sep": compact rows and the
 /// relative label below.
 String formatShortDayDate(DateTime date, {String locale = kFallbackLocale}) {

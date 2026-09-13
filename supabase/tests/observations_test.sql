@@ -4,7 +4,7 @@
 -- resolution, the per-day cap), the tags->observations backfill's
 -- idempotency, and delete_account_data()'s new observations count.
 begin;
-select plan(64);
+select plan(67);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -550,6 +550,61 @@ select is(
   (select source_id from public.observations where id = tests.ulid(891)),
   'src_470',
   'cascade: observation source_id is preserved across tombstoning');
+
+-- ---------------------------------------------------------------------------
+-- Issue #524: the cascade must not rewind an observation's LWW clock
+-- backward when the day entry's OWN tombstone timestamp is OLDER than the
+-- observation's last edit (e.g. a device offline since before the
+-- observation was last touched tombstones the whole day). Without the
+-- greatest() guard, the observation's stored updated_at would be lowered
+-- to the day entry's older timestamp, letting a later push of the
+-- observation's TRUE (newer) live value win acceptance and resurrect it
+-- under a still-tombstoned day entry.
+-- ---------------------------------------------------------------------------
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(893), tests.ulid(801), '2026-09-11', 'UTC', 'medium', '2026-09-11T08:00:00Z');
+
+insert into public.observations (
+  id, day_entry_id, profile_id, local_date, tz, category, code, intensity, source, source_id, updated_at
+) values (
+  tests.ulid(894), tests.ulid(893), tests.ulid(801), '2026-09-11', 'UTC', 'pain', 'cramps', 3, 'manual', 'src_524', '2026-09-11T15:00:00Z'
+);
+
+-- Tombstone the day entry at a timestamp OLDER than the observation's own
+-- last edit (08:00 start-of-day vs. a 15:00 edit, same calendar day).
+insert into r select 'mom_soft_delete_day_524', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(893), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-11', 'tz', 'UTC', 'flow', 'none',
+    'deleted_at', '2026-09-11T09:00:00Z', 'updated_at', '2026-09-11T09:00:00Z')));
+
+select is(
+  (select updated_at from public.observations where id = tests.ulid(894)),
+  '2026-09-11T15:00:00Z'::timestamptz,
+  'Issue #524: cascade does not rewind the observation''s updated_at backward past its own last edit');
+
+select is(
+  (select deleted_at from public.observations where id = tests.ulid(894)),
+  '2026-09-11T15:00:00Z'::timestamptz,
+  'Issue #524: cascade tombstones the observation no earlier than its own last edit, not at the day entry''s older tombstone timestamp');
+
+-- Prove the fix actually matters: a push of the observation's "true" live
+-- value at a timestamp between the day entry's (older) tombstone time and
+-- the observation's pre-cascade updated_at must NOT land the row live
+-- again - whether it is declined (not newer than the guarded stored clock)
+-- or rejected outright (a separate #524 guard against a live observation
+-- under a tombstoned day entry), the observation's tombstone must survive
+-- unchanged either way.
+insert into r select 'resurrection_attempt', public.sync_push('[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(894), 'day_entry_id', tests.ulid(893), 'profile_id', tests.ulid(801),
+    'local_date', '2026-09-11', 'tz', 'UTC', 'category', 'pain', 'code', 'cramps',
+    'intensity', 3, 'updated_at', '2026-09-11T12:00:00Z')));
+
+select is(
+  (select deleted_at from public.observations where id = tests.ulid(894)),
+  '2026-09-11T15:00:00Z'::timestamptz,
+  'Issue #524: a stale resurrection push is never allowed to land the observation live again');
 
 select * from finish();
 rollback;

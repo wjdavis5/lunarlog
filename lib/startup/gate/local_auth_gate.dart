@@ -32,20 +32,27 @@ class LocalAuthAppGate implements AppGate {
   bool get requiresUnlock => true;
 
   @override
+  Future<bool> canAuthenticate() async {
+    try {
+      return await _localAuth.canCheckBiometrics ||
+          await _localAuth.isDeviceSupported();
+    } on PlatformException catch (error, stackTrace) {
+      _breadcrumbLog.record('gate', error.runtimeType.toString());
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      return false;
+    }
+  }
+
+  @override
   Future<bool> requestAccess() async {
     try {
-      final bool canAuthenticate;
-      try {
-        canAuthenticate = await _localAuth.canCheckBiometrics ||
-            await _localAuth.isDeviceSupported();
-      } on PlatformException catch (error, stackTrace) {
-        _breadcrumbLog.record('gate', error.runtimeType.toString());
-        unawaited(Sentry.captureException(error, stackTrace: stackTrace));
-        return false;
-      }
-      if (!canAuthenticate) {
-        // No device credential at all: fail closed (the lock screen tells
-        // the operator to set a screen lock).
+      if (!await canAuthenticate()) {
+        // No device credential at all: fail closed. `GateController`
+        // (issue #534) already checks `canAuthenticate()` itself before
+        // calling this, so this is a defense-in-depth guard for any other
+        // caller — the lock screen tells the operator to set a screen lock
+        // and links to device settings rather than showing a dead-end
+        // "Unlock" button.
         return false;
       }
       return await _localAuth.authenticate(

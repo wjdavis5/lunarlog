@@ -876,10 +876,16 @@ select is(
 );
 
 select tests.authenticate_as('kid');
+-- A push guaranteed to win any LWW race against this profile's current
+-- stored updated_at, so this test also proves the worst case (this push
+-- WOULD otherwise fully apply): even so, transferred_to_user_id is never
+-- written. now() (rather than a fixed future literal) keeps this ahead of
+-- every earlier fixture in this file while staying under Issue #566's
+-- five-minutes-ahead-of-the-server clamp.
 insert into r select 'aot296_push', public.sync_push(
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(401), 'display_name', 'Riley', 'is_minor', true,
-    'updated_at', '2030-01-01T00:00:00Z',
+    'updated_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
     'transferred_to_user_id', tests.get_supabase_uid('eve'))),
   '[]'::jsonb);
 select is(pg_temp.resp('aot296_push') -> 'rejected', '[]'::jsonb,

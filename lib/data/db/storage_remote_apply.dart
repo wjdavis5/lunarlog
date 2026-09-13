@@ -108,6 +108,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         await _applyCareNote(row, onlyExisting: false);
       case RemoteVisitPrepItemRow():
         await _applyVisitPrepItem(row, onlyExisting: false);
+      case RemoteDeletedProfileRow():
+        await _applyDeletedProfile(row);
     }
   }
 
@@ -129,7 +131,12 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           SyncStateCompanion(cursorCareNotes: Value(newCursor)),
         SyncTable.visitPrepItems =>
           SyncStateCompanion(cursorVisitPrepItems: Value(newCursor)),
+        // Issue #525: profileGuardians now has a persisted cursor too.
         SyncTable.profileGuardians =>
+          SyncStateCompanion(cursorProfileGuardians: Value(newCursor)),
+        // Issue #522: no persisted cursor — see SyncTable.deletedProfiles's
+        // doc comment.
+        SyncTable.deletedProfiles =>
           const SyncStateCompanion(),
       },
     );
@@ -145,31 +152,41 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// applies.
   Future<void> applyRemoteRows(List<RemoteRow> rows) async {
     await db.transaction(() async {
-      for (final row in rows.whereType<RemoteProfileRow>()) {
-        await _applyProfile(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteProfileGuardianRow>()) {
-        await _applyProfileGuardian(row);
-      }
-      for (final row in rows.whereType<RemoteDayEntryRow>()) {
-        await _applyDayEntry(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteObservationRow>()) {
-        await _applyObservation(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteProfileModeRow>()) {
-        await _applyProfileMode(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteCycleOverrideRow>()) {
-        await _applyCycleOverride(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteCareNoteRow>()) {
-        await _applyCareNote(row, onlyExisting: false);
-      }
-      for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
-        await _applyVisitPrepItem(row, onlyExisting: false);
-      }
+      await _applyEach<RemoteProfileRow>(
+          rows, (row) => _applyProfile(row, onlyExisting: false));
+      await _applyEach<RemoteProfileGuardianRow>(rows, _applyProfileGuardian);
+      await _applyEach<RemoteDayEntryRow>(
+          rows, (row) => _applyDayEntry(row, onlyExisting: false));
+      await _applyEach<RemoteObservationRow>(
+          rows, (row) => _applyObservation(row, onlyExisting: false));
+      await _applyEach<RemoteProfileModeRow>(
+          rows, (row) => _applyProfileMode(row, onlyExisting: false));
+      await _applyEach<RemoteCycleOverrideRow>(
+          rows, (row) => _applyCycleOverride(row, onlyExisting: false));
+      await _applyEach<RemoteCareNoteRow>(
+          rows, (row) => _applyCareNote(row, onlyExisting: false));
+      await _applyEach<RemoteVisitPrepItemRow>(
+          rows, (row) => _applyVisitPrepItem(row, onlyExisting: false));
+      // Issue #522: last, so a deletion signal for a profile that also had
+      // ordinary content rows in this same heterogeneous batch wins over
+      // them — the wipe is the final word, never undone by a row applied
+      // earlier in this loop.
+      await _applyEach<RemoteDeletedProfileRow>(rows, _applyDeletedProfile);
     });
+  }
+
+  /// [applyRemoteRows]'s per-type dispatch, split out (issue #525 review)
+  /// so that method reads as a flat sequence of statements with no
+  /// decision points of its own, instead of nine `for` loops whose branch
+  /// count kept pushing its CRAP score over the gate as tables were added.
+  /// This one loop is exercised once per type instead.
+  Future<void> _applyEach<T extends RemoteRow>(
+    List<RemoteRow> rows,
+    Future<void> Function(T row) apply,
+  ) async {
+    for (final row in rows.whereType<T>()) {
+      await apply(row);
+    }
   }
 
   /// Applies the server's `resolved` copies returned by a push (rows the
@@ -201,6 +218,50 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       }
       for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
         await _applyVisitPrepItem(row, onlyExisting: true);
+      }
+    });
+  }
+
+  /// Issue #523: the atomic entry point for one push batch's storage-side
+  /// outcome — clearing `dirty` on every [accepted] row ([markPushed]) and
+  /// applying the server's [resolved] copies ([applyResolved]), all in ONE
+  /// `db.transaction()`.
+  ///
+  /// Before this method existed, `SupabaseSyncApply.applyPushResult` ran
+  /// these as separate transactions (each `markPushed` call is its own
+  /// atomic write; `applyResolved` opens its own transaction afterwards). A
+  /// crash — or a failing write — between the last `markPushed` and
+  /// `applyResolved` left a *declined* row `dirty = false` holding the
+  /// client's LOSING value: a declined row is never `UPDATE`d server-side,
+  /// so its `server_version` never advances past the client's persisted
+  /// cursor, and the incremental pull never corrects it either. The
+  /// divergence was silent and permanent until the next 24h full reconcile
+  /// happened to re-page that row.
+  ///
+  /// `db.transaction()` nests safely (drift runs a nested call in the
+  /// existing transaction zone rather than opening a second one — see
+  /// `ConnectionUser.transaction` in the `drift` package), so this method
+  /// simply calls the two already-transactional pieces from within one
+  /// outer transaction: either the whole batch's outcome lands, or a
+  /// failure partway through (a resolved row whose referenced parent is not
+  /// held locally, say) rolls back every `markPushed` write alongside it,
+  /// and the next cycle's dirty scan sees the row still dirty and pushes it
+  /// again — never a mix of "pushed" and "wrong content".
+  Future<void> applyPushResult({
+    required List<({SyncTable table, String id, int localRevAtPush})>
+        accepted,
+    required List<RemoteRow> resolved,
+  }) async {
+    await db.transaction(() async {
+      for (final item in accepted) {
+        await markPushed(
+          table: item.table,
+          id: item.id,
+          localRevAtPush: item.localRevAtPush,
+        );
+      }
+      if (resolved.isNotEmpty) {
+        await applyResolved(resolved);
       }
     });
   }
@@ -340,6 +401,28 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// after revocation would keep a removed guardian's access alive on the
   /// device.
   ///
+  /// Issue #532: three more per-profile tables carry the same category of
+  /// health content and were missing from this wipe entirely — because the
+  /// wipe is an `UPDATE`, not a `DELETE`, sqlite's FK cascade never fires
+  /// for them (the per-day-entry observation cascade in
+  /// `softDeleteDayEntry` only runs for a *local* delete, and this
+  /// revocation path bypasses it with these raw bulk updates):
+  /// * `observations` — payload cleared exactly like [_softDeleteObservation]
+  ///   (`category`/`observedAt`/`code`/`valueNum`/`valueText`/`unit`/
+  ///   `intensity`/`raw` cleared, `excluded` reset to false; `sourceId`/
+  ///   `importId` survive, mirroring that method's own provenance
+  ///   exception).
+  /// * `cycle_overrides` — payload cleared exactly like
+  ///   [softDeleteCycleOverride] (`excludedFromAverage`/`manualStart` reset
+  ///   to false, `noteId` cleared; `cycleStartDate` (identity) kept).
+  /// * `profile_modes` — this table has NO tombstone (Issue #188's settled
+  ///   shape: an absent row already means `tracking`), so there is no
+  ///   `deletedAt` to set; the row is instead reset to that same absent-row
+  ///   default (`mode = tracking`, every optional column cleared) so a
+  ///   removed guardian's device stops showing the birth-control method or
+  ///   life-stage mode the moment access is revoked, exactly like every
+  ///   other table here stops showing its content.
+  ///
   /// `updated_at` is deliberately left untouched (finding #9): neither
   /// `revoke_guardian` nor `accept_guardian_invitation` bumps the server's
   /// `profiles.updated_at`, so stamping the tombstone with `revokedAt` would
@@ -348,6 +431,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// and the profile could never come back. Leaving `updated_at` where it
   /// was means a later server row (even one carrying its original,
   /// never-touched timestamp) ties or wins normally and un-tombstones it.
+  /// `profile_modes` has no per-id `updated_at` conflict of its own to
+  /// protect here (a later remote row still overwrites this reset row
+  /// outright under [_applyProfileMode]'s per-id LWW rule), so it is left
+  /// alone for the same reason the others are.
   Future<void> _tombstoneRevokedSharedProfile(
       String profileId, DateTime revokedAt) async {
     final stamp = revokedAt.toUtc();
@@ -360,6 +447,43 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           tags: const Value(<String>[]),
           deletedAt: Value(stamp),
           dirty: const Value(false),
+        ));
+    await (db.update(db.observations)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(ObservationsCompanion(
+          category: const Value(null),
+          observedAt: const Value(null),
+          code: const Value(null),
+          valueNum: const Value(null),
+          valueText: const Value(null),
+          unit: const Value(null),
+          intensity: const Value(null),
+          excluded: const Value(false),
+          raw: const Value(null),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    await (db.update(db.cycleOverrides)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(CycleOverridesCompanion(
+          excludedFromAverage: const Value(false),
+          manualStart: const Value(false),
+          noteId: const Value(null),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    await (db.update(db.profileModes)
+          ..where((t) => t.profileId.equals(profileId)))
+        .write(const ProfileModesCompanion(
+          mode: Value('tracking'),
+          modeStartedOn: Value(null),
+          birthControlMethod: Value(null),
+          birthControlStartedOn: Value(null),
+          birthControlStoppedOn: Value(null),
+          healthSyncConsent: Value(false),
+          dirty: Value(false),
         ));
     await (db.update(db.careNotes)
           ..where((t) =>
@@ -388,6 +512,24 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           dirty: const Value(false),
         ));
   }
+
+  /// Issue #522: applies a `deleted_profiles` row — the narrow tombstone a
+  /// server-side hard purge (`delete_profile_data()`/`delete_account_data()`)
+  /// writes for a profile it physically `DELETE`s, since the ordinary
+  /// incremental pull and 24h reconcile only ever transport rows that still
+  /// exist. Cascades exactly like a guardian revocation ([_applyProfileGuardian]'s
+  /// [_tombstoneRevokedSharedProfile] call, issue #532): every profile-scoped
+  /// content table is wiped the same way and the local profile is
+  /// tombstoned, all in the caller's transaction. Idempotent: a profile
+  /// already tombstoned, or never held locally at all, still runs the wipe
+  /// harmlessly (every `UPDATE` matches zero rows).
+  ///
+  /// Unlike [_tombstoneRevokedSharedProfile]'s revocation case, there is no
+  /// "leave `updated_at` alone so a later re-share can win normally" concern
+  /// here — a hard-purged profile's server row is gone permanently, so
+  /// nothing will ever compete with this tombstone under KTD5's per-id rule.
+  Future<void> _applyDeletedProfile(RemoteDeletedProfileRow remote) =>
+      _tombstoneRevokedSharedProfile(remote.profileId, remote.deletedAt);
 
   Future<bool> _applyDayEntry(RemoteDayEntryRow remote,
       {required bool onlyExisting}) async {

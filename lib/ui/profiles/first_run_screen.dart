@@ -37,15 +37,18 @@ import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart' show CycleFacts;
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
-import 'package:lunarlog/observability/route_names.dart' show kRouteImportScreen;
+import 'package:lunarlog/observability/route_names.dart'
+    show kRouteImportScreen;
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -61,18 +64,24 @@ const String kFirstRunBrandName = 'LunarLog';
 
 /// The date-picker callable, injectable so widget tests can answer the
 /// last-period question without driving the Material dialog.
-typedef FirstRunDatePicker =
-    Future<DateTime?> Function(BuildContext context, DateTime initialDate,
-        DateTime firstDate, DateTime lastDate);
+typedef FirstRunDatePicker = Future<DateTime?> Function(
+  BuildContext context,
+  DateTime initialDate,
+  DateTime firstDate,
+  DateTime lastDate,
+);
 
-Future<DateTime?> _showMaterialDatePicker(BuildContext context,
-        DateTime initialDate, DateTime firstDate, DateTime lastDate) =>
-    showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
-    );
+Future<DateTime?> _showMaterialDatePicker(
+  BuildContext context,
+  DateTime initialDate,
+  DateTime firstDate,
+  DateTime lastDate,
+) => showDatePicker(
+  context: context,
+  initialDate: initialDate,
+  firstDate: firstDate,
+  lastDate: lastDate,
+);
 
 /// How far back the last-period-start picker reaches: a generous year —
 /// the question asks about the *last* period, so anything older is a
@@ -142,6 +151,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   bool _awaitingRestore = false;
   bool _sawRestoring = false;
 
+  /// #544: guards [_create] against a double-tap on slow network (which
+  /// would otherwise create two profiles) and surfaces a thrown failure
+  /// instead of leaving the button looking like it did nothing.
+  bool _creating = false;
+  String? _createError;
+
   @override
   void initState() {
     super.initState();
@@ -180,8 +195,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     if (!mounted) return;
     if (acknowledged) return;
     setState(() => _webAckPending = true);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _showWebAcknowledgmentDialog(store));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _showWebAcknowledgmentDialog(store),
+    );
   }
 
   /// The blocking dialog itself, split out of [_checkWebAcknowledgment] so
@@ -278,19 +294,16 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// `error`, `awaitingUploadConsent` and `accountMismatch` end the wait
   /// immediately — the home gate renders its own screen for each of these
   /// above this one, so there is nothing left here to guard.
-  bool _restoreDoneForPhase(SyncSnapshot snapshot) =>
-      switch (snapshot.phase) {
-        SyncPhase.restoring => _markSawRestoringAndReturnFalse(),
-        SyncPhase.error ||
-        SyncPhase.awaitingUploadConsent ||
-        SyncPhase.accountMismatch =>
-          true,
-        SyncPhase.idle ||
-        SyncPhase.paused ||
-        SyncPhase.pushing ||
-        SyncPhase.pulling =>
-          _sawRestoring || snapshot.boundUserId != null,
-      };
+  bool _restoreDoneForPhase(SyncSnapshot snapshot) => switch (snapshot.phase) {
+    SyncPhase.restoring => _markSawRestoringAndReturnFalse(),
+    SyncPhase.error ||
+    SyncPhase.awaitingUploadConsent ||
+    SyncPhase.accountMismatch => true,
+    SyncPhase.idle ||
+    SyncPhase.paused ||
+    SyncPhase.pushing ||
+    SyncPhase.pulling => _sawRestoring || snapshot.boundUserId != null,
+  };
 
   /// The `restoring` arm's side effect, pulled out since switch-expression
   /// arms must be single expressions.
@@ -326,8 +339,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     setState(() => _lastPeriodStart = LocalDate.fromDateTime(picked));
   }
 
-  DateTime _nowAsDateTime() =>
-      _localDateToDateTime(widget.todayProvider());
+  DateTime _nowAsDateTime() => _localDateToDateTime(widget.todayProvider());
 
   DateTime _localDateToDateTime(LocalDate date) =>
       DateTime(date.year, date.month, date.day);
@@ -338,20 +350,44 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// exists, so nothing may touch [context] after it).
   Future<void> _create() async {
     if (!_cycleFormKey.currentState!.validate()) return;
+    // #544: without this guard, a double-tap on slow network fires two
+    // overlapping calls and creates two profiles on first run.
+    if (_creating) return;
     final controller = context.read<ProfileController>();
     final l10n = AppLocalizations.of(context);
     final recorder = _resolveRecorder();
-    if (!_ageAckPreviouslyRecorded && _ageAcknowledged) {
-      final store = context.read<SettingsStore>();
-      await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
-      _ageAckPreviouslyRecorded = true;
+    setState(() {
+      _creating = true;
+      _createError = null;
+    });
+    try {
+      if (!_ageAckPreviouslyRecorded && _ageAcknowledged) {
+        final store = context.read<SettingsStore>();
+        await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+        _ageAckPreviouslyRecorded = true;
+      }
+      final profile = await controller.createProfile(
+        displayName: _nameController.text,
+        isMinor: _isMinor,
+        mode: _mode,
+        // Issue #530: the three cycle answers feed provisional seeding —
+        // captured here, not just in the recorder.
+        facts: CycleFacts(
+          lastPeriodStart: _lastPeriodStart,
+          typicalCycleLengthDays: _optionalInt(_typicalCycleController.text),
+          typicalPeriodLengthDays: _optionalInt(_typicalPeriodController.text),
+        ),
+      );
+      await recorder?.record(profile.id, _collectedAnswers(l10n));
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _createError = 'Could not create the profile. Please try again.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
     }
-    final profile = await controller.createProfile(
-      displayName: _nameController.text,
-      isMinor: _isMinor,
-      mode: _mode,
-    );
-    await recorder?.record(profile.id, _collectedAnswers(l10n));
   }
 
   /// The recorder seam, or null on a tree with none wired (the local-only
@@ -362,12 +398,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   OnboardingCycleAnswers _collectedAnswers(AppLocalizations l10n) =>
       OnboardingCycleAnswers(
         lastPeriodStart: _lastPeriodStart,
-        typicalCycleLengthDays:
-            _optionalInt(_typicalCycleController.text),
-        typicalPeriodLengthDays:
-            _optionalInt(_typicalPeriodController.text),
-        birthControlMethod:
-            birthControlStoredValue(_birthControl),
+        typicalCycleLengthDays: _optionalInt(_typicalCycleController.text),
+        typicalPeriodLengthDays: _optionalInt(_typicalPeriodController.text),
+        birthControlMethod: birthControlStoredValue(_birthControl),
         lifecycleMode: _lifecycleMode,
       );
 
@@ -440,9 +473,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   FilledButton(
                     key: const ValueKey('first-run-next'),
                     onPressed: _advanceIntro,
-                    child: Text(_introIndex < 2
-                        ? l10n.firstRunNext
-                        : l10n.firstRunUnderstand),
+                    child: Text(
+                      _introIndex < 2
+                          ? l10n.firstRunNext
+                          : l10n.firstRunUnderstand,
+                    ),
                   ),
                 ],
               ),
@@ -476,59 +511,56 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   }
 
   Widget _valueCard(AppLocalizations l10n) => Column(
-        key: const ValueKey('first-run-card-value'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(Icons.nights_stay, size: 48),
-          const SizedBox(height: 8),
-          Text(
-            kFirstRunBrandName,
-            textAlign: TextAlign.center,
-            style: LLType.titleMedium.toTextStyle(),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            l10n.firstRunValueHeadline,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(l10n.firstRunValueBody),
-        ],
-      );
+    key: const ValueKey('first-run-card-value'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Icon(Icons.nights_stay, size: 48),
+      const SizedBox(height: 8),
+      Text(
+        kFirstRunBrandName,
+        textAlign: TextAlign.center,
+        style: LLType.titleMedium.toTextStyle(),
+      ),
+      const SizedBox(height: 16),
+      Text(
+        l10n.firstRunValueHeadline,
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 8),
+      Text(l10n.firstRunValueBody),
+    ],
+  );
 
   Widget _guardiansCard(AppLocalizations l10n) => Column(
-        key: const ValueKey('first-run-card-guardians'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.firstRunGuardiansTitle,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(l10n.firstRunGuardiansBody),
-          const SizedBox(height: 16),
-          Text(
-            l10n.firstRunMinorExplainerTitle,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(l10n.firstRunMinorExplainerBody),
-        ],
-      );
+    key: const ValueKey('first-run-card-guardians'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        l10n.firstRunGuardiansTitle,
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 8),
+      Text(l10n.firstRunGuardiansBody),
+      const SizedBox(height: 16),
+      Text(
+        l10n.firstRunMinorExplainerTitle,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 8),
+      Text(l10n.firstRunMinorExplainerBody),
+    ],
+  );
 
   Widget _noticeCard(AppLocalizations l10n) => Column(
-        key: const ValueKey('first-run-card-notice'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.firstRunNoticeBody,
-            style: LLType.titleMedium.toTextStyle(),
-          ),
-        ],
-      );
+    key: const ValueKey('first-run-card-notice'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(l10n.firstRunNoticeBody, style: LLType.titleMedium.toTextStyle()),
+    ],
+  );
 
   /// The existing name form, with its submit moved to "Continue" and a
   /// one-line truthful hint under the minor checkbox (#216's
@@ -547,7 +579,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: SyncStatusTile(
-                      webSyncOff: widget.isWebBuild && sync == null),
+                    webSyncOff: widget.isWebBuild && sync == null,
+                  ),
                 ),
               TextFormField(
                 controller: _nameController,
@@ -559,8 +592,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               ),
               CheckboxListTile(
                 value: _isMinor,
-                onChanged: (value) =>
-                    setState(() => _isMinor = value ?? false),
+                onChanged: (value) => setState(() => _isMinor = value ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
                 title: Text(l10n.firstRunMinorLabel),
@@ -570,10 +602,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 child: Text(
                   l10n.firstRunMinorHint,
                   key: const ValueKey('first-run-minor-hint'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               if (!_ageAckPreviouslyRecorded) ...[
@@ -596,43 +627,54 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                         : l10n.firstRunAgeAcknowledgementHint,
                     key: const ValueKey('first-run-age-ack-hint'),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: _ageAckError
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: _ageAckError
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(l10n.firstRunCareModeLabel,
-                    key: const ValueKey('care-mode-label'),
-                    style: Theme.of(context).textTheme.bodySmall),
-              ),
-              DropdownButton<ProfileMode>(
-                key: const ValueKey('care-mode-dropdown'),
-                value: _mode,
-                isExpanded: true,
-                onChanged: (value) =>
-                    setState(() => _mode = value ?? ProfileMode.standard),
-                items: [
-                  for (final mode in ProfileMode.values)
-                    DropdownMenuItem<ProfileMode>(
-                      value: mode,
-                      child: Text(mode.label),
+              // #557: MergeSemantics folds the label into the dropdown's
+              // own announcement, so a screen reader hears the question
+              // ("Care mode") instead of just the bare selected value.
+              MergeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        l10n.firstRunCareModeLabel,
+                        key: const ValueKey('care-mode-label'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ),
-                ],
+                    DropdownButton<ProfileMode>(
+                      key: const ValueKey('care-mode-dropdown'),
+                      value: _mode,
+                      isExpanded: true,
+                      onChanged: (value) =>
+                          setState(() => _mode = value ?? ProfileMode.standard),
+                      items: [
+                        for (final mode in ProfileMode.values)
+                          DropdownMenuItem<ProfileMode>(
+                            value: mode,
+                            child: Text(mode.label),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   _mode.hint,
                   key: const ValueKey('care-mode-hint'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               const SizedBox(height: LLSpace.space4),
@@ -707,45 +749,80 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            _labelAbove(l10n.firstRunCycleBirthControlLabel,
-                const ValueKey('cycle-birth-control-label')),
-            DropdownButton<BirthControlChoice>(
-              key: const ValueKey('cycle-birth-control'),
-              value: _birthControl,
-              isExpanded: true,
-              onChanged: (value) => setState(() =>
-                  _birthControl = value ?? BirthControlChoice.notAnswered),
-              items: [
-                for (final choice in BirthControlChoice.values)
-                  DropdownMenuItem<BirthControlChoice>(
-                    value: choice,
-                    child: Text(birthControlChoiceLabel(choice, l10n)),
+            MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _labelAbove(
+                    l10n.firstRunCycleBirthControlLabel,
+                    const ValueKey('cycle-birth-control-label'),
                   ),
-              ],
+                  DropdownButton<BirthControlChoice>(
+                    key: const ValueKey('cycle-birth-control'),
+                    value: _birthControl,
+                    isExpanded: true,
+                    onChanged: (value) => setState(
+                      () => _birthControl =
+                          value ?? BirthControlChoice.notAnswered,
+                    ),
+                    items: [
+                      for (final choice in BirthControlChoice.values)
+                        DropdownMenuItem<BirthControlChoice>(
+                          value: choice,
+                          child: Text(birthControlChoiceLabel(choice, l10n)),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
-            _labelAbove(l10n.firstRunCycleGoalLabel,
-                const ValueKey('cycle-goal-label')),
-            DropdownButton<LifecycleMode>(
-              key: const ValueKey('cycle-goal'),
-              value: _lifecycleMode,
-              isExpanded: true,
-              onChanged: (value) => setState(
-                  () => _lifecycleMode = value ?? LifecycleMode.tracking),
-              items: [
-                for (final mode in LifecycleMode.values)
-                  DropdownMenuItem<LifecycleMode>(
-                    value: mode,
-                    child: Text(mode.label),
+            MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _labelAbove(
+                    l10n.firstRunCycleGoalLabel,
+                    const ValueKey('cycle-goal-label'),
                   ),
-              ],
+                  DropdownButton<LifecycleMode>(
+                    key: const ValueKey('cycle-goal'),
+                    value: _lifecycleMode,
+                    isExpanded: true,
+                    onChanged: (value) => setState(
+                      () => _lifecycleMode = value ?? LifecycleMode.tracking,
+                    ),
+                    items: [
+                      for (final mode in LifecycleMode.values)
+                        DropdownMenuItem<LifecycleMode>(
+                          value: mode,
+                          child: Text(mode.label),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             FilledButton(
               key: const ValueKey('cycle-create'),
-              onPressed: _create,
-              child: Text(l10n.firstRunCreateButton),
+              onPressed: _creating ? null : _create,
+              child: _creating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(l10n.firstRunCreateButton),
             ),
+            if (_createError != null) ...[
+              const SizedBox(height: 8),
+              InlineError(
+                key: const ValueKey('cycle-create-error'),
+                message: _createError!,
+                onRetry: _creating ? null : _create,
+              ),
+            ],
           ],
         ),
       ),
@@ -753,56 +830,56 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   }
 
   Widget _lastPeriodField(AppLocalizations l10n) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _labelAbove(l10n.firstRunCycleLastPeriodLabel,
-              const ValueKey('cycle-last-period-label')),
-          if (_lastPeriodStart == null)
-            OutlinedButton.icon(
-              key: const ValueKey('cycle-last-period-choose'),
-              onPressed: _pickLastPeriodDate,
-              icon: const Icon(Icons.calendar_today),
-              label: Text(l10n.firstRunCycleChooseDate),
-            )
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    formatMonthDayYear(
-                        _localDateToDateTime(_lastPeriodStart!)),
-                    key: const ValueKey('cycle-last-period-value'),
-                  ),
-                ),
-                TextButton(
-                  onPressed: _pickLastPeriodDate,
-                  child: Text(l10n.firstRunCycleChangeDate),
-                ),
-                TextButton(
-                  key: const ValueKey('cycle-last-period-clear'),
-                  onPressed: () =>
-                      setState(() => _lastPeriodStart = null),
-                  child: Text(l10n.firstRunCycleClearDate),
-                ),
-              ],
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _labelAbove(
+        l10n.firstRunCycleLastPeriodLabel,
+        const ValueKey('cycle-last-period-label'),
+      ),
+      if (_lastPeriodStart == null)
+        OutlinedButton.icon(
+          key: const ValueKey('cycle-last-period-choose'),
+          onPressed: _pickLastPeriodDate,
+          icon: const Icon(Icons.calendar_today),
+          label: Text(l10n.firstRunCycleChooseDate),
+        )
+      else
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                formatMonthDayYear(_localDateToDateTime(_lastPeriodStart!)),
+                key: const ValueKey('cycle-last-period-value'),
+              ),
             ),
-        ],
-      );
+            TextButton(
+              onPressed: _pickLastPeriodDate,
+              child: Text(l10n.firstRunCycleChangeDate),
+            ),
+            TextButton(
+              key: const ValueKey('cycle-last-period-clear'),
+              onPressed: () => setState(() => _lastPeriodStart = null),
+              child: Text(l10n.firstRunCycleClearDate),
+            ),
+          ],
+        ),
+    ],
+  );
 
   Widget _labelAbove(String label, Key key) => Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          label,
-          key: key,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
+    alignment: Alignment.centerLeft,
+    child: Text(label, key: key, style: Theme.of(context).textTheme.bodySmall),
+  );
 
   /// Optional-day-count validation: blank passes (the question is
   /// skippable); anything else must parse as a whole number inside
   /// [min]–[max] inclusive, else [errorMessage].
   String? _validateDayRange(
-      String? value, String errorMessage, int min, int max) {
+    String? value,
+    String errorMessage,
+    int min,
+    int max,
+  ) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return null;
     final parsed = int.tryParse(trimmed);

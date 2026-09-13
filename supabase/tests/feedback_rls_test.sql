@@ -1,7 +1,7 @@
 -- RLS, constraint, and trigger tests for feedback_tickets / feedback_replies
 -- (Issue #6, Unit U1).
 begin;
-select plan(24);
+select plan(34);
 
 -- ---------------------------------------------------------------------------
 -- Setup users
@@ -305,6 +305,108 @@ select is(
     where not exists (select 1 from public.feedback_tickets ft where ft.id = fr.ticket_id)),
   0::bigint,
   'Deleting a ticket cascades its replies (no orphaned reply rows remain)'
+);
+
+-- ---------------------------------------------------------------------------
+-- 13. Issue #567: feedback_tickets_rate_limit() (R17) - a 6th ticket
+--     within the trailing hour is refused; a different caller's own
+--     count is unaffected. A fresh user (fb_c) is used here, not fb_a -
+--     fb_a has already created several tickets earlier in this file, and
+--     the rate limit counts a user's tickets globally, not per-section.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('fb_c');
+select tests.authenticate_as('fb_c');
+insert into public.feedback_tickets (user_id, reply_email, category, message)
+values
+  (tests.get_supabase_uid('fb_c'), 'c@example.com', 'bug', 'rate limit ticket 1'),
+  (tests.get_supabase_uid('fb_c'), 'c@example.com', 'bug', 'rate limit ticket 2'),
+  (tests.get_supabase_uid('fb_c'), 'c@example.com', 'bug', 'rate limit ticket 3'),
+  (tests.get_supabase_uid('fb_c'), 'c@example.com', 'bug', 'rate limit ticket 4'),
+  (tests.get_supabase_uid('fb_c'), 'c@example.com', 'bug', 'rate limit ticket 5');
+select is(
+  (select count(*) from public.feedback_tickets where user_id = tests.get_supabase_uid('fb_c')),
+  5::bigint,
+  'Issue #567: five tickets within the trailing hour all land'
+);
+
+-- Captured here, as fb_c, before the role switches below - feedback_tickets'
+-- own SELECT policy scopes to the caller's own rows, so a later
+-- `where message = ...` lookup as a DIFFERENT user (fb_b) would silently
+-- resolve to no row at all rather than an RLS error.
+create temp table fb_c_ticket_1 as
+  select id from public.feedback_tickets where message = 'rate limit ticket 1';
+select throws_ok(
+  $$insert into public.feedback_tickets (user_id, reply_email, category, message)
+    values (auth.uid(), 'c@example.com', 'bug', 'rate limit ticket 6')$$,
+  '55000', 'feedback rate limit exceeded',
+  'Issue #567: a 6th ticket within the trailing hour is refused (R17)'
+);
+select is(
+  (select count(*) from public.feedback_tickets where user_id = tests.get_supabase_uid('fb_c')),
+  5::bigint,
+  'Issue #567: the refused 6th ticket did not land'
+);
+
+-- A different caller's own count is independent - not blocked by fb_c's
+-- five tickets.
+select tests.authenticate_as('fb_b');
+select lives_ok(
+  $$insert into public.feedback_tickets (user_id, reply_email, category, message)
+    values (auth.uid(), 'b@example.com', 'bug', 'fb_b is unaffected by fb_c''s rate limit')$$,
+  'Issue #567: a different caller''s ticket is unaffected by another user''s rate limit'
+);
+
+-- ---------------------------------------------------------------------------
+-- 14. Issue #567: owns_feedback_ticket(p_ticket_id, p_user_id) - the RLS
+--     helper feedback_replies_select/feedback_replies_insert both key on.
+-- ---------------------------------------------------------------------------
+select ok(
+  (select public.owns_feedback_ticket(
+    (select id from fb_c_ticket_1),
+    tests.get_supabase_uid('fb_c')
+  )),
+  'Issue #567: owns_feedback_ticket is true for the ticket''s own owner'
+);
+select ok(
+  not (select public.owns_feedback_ticket(
+    (select id from fb_c_ticket_1),
+    tests.get_supabase_uid('fb_b')
+  )),
+  'Issue #567: owns_feedback_ticket is false for a non-owner'
+);
+select ok(
+  not (select public.owns_feedback_ticket(
+    '00000000-0000-0000-0000-000000000000'::uuid,
+    tests.get_supabase_uid('fb_c')
+  )),
+  'Issue #567: owns_feedback_ticket is false for a nonexistent ticket id'
+);
+
+-- Behavioural proof, not just the unit check above: B cannot read or reply
+-- to C's ticket (the RLS policies owns_feedback_ticket backs), and C can
+-- read/reply to their own.
+select tests.authenticate_as('fb_b');
+select is(
+  (select count(*) from public.feedback_replies fr
+    join public.feedback_tickets ft on ft.id = fr.ticket_id
+   where ft.message = 'rate limit ticket 1'),
+  0::bigint,
+  'Issue #567: B sees zero replies on C''s ticket (owns_feedback_ticket denies read)'
+);
+select throws_ok(
+  format($$insert into public.feedback_replies (ticket_id, author_type, message)
+           values (%L, 'user', 'B tries to reply to C''s ticket')$$,
+    (select id from fb_c_ticket_1)),
+  '42501', null,
+  'Issue #567: B cannot reply to C''s ticket (owns_feedback_ticket denies the insert policy)'
+);
+
+select tests.authenticate_as('fb_c');
+select lives_ok(
+  format($$insert into public.feedback_replies (ticket_id, author_type, message)
+           values (%L, 'user', 'C replies to their own ticket')$$,
+    (select id from fb_c_ticket_1)),
+  'Issue #567: C can reply to their own ticket (owns_feedback_ticket allows it)'
 );
 
 select * from finish();

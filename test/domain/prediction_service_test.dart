@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/ui/profiles/profile_controller.dart';
 
 /// A [DayEntriesRepository] whose `watchForProfile` stream is entirely
 /// caller-driven (issue #197): lets a test emit several ticks in a row —
@@ -479,6 +480,54 @@ void main() {
             reason: '2026-04-20 + 35');
       });
     });
+
+  group('onboarding facts reach createProfile (issue #530)', () {
+    late CyclePredictionService seeded;
+    late ProfileController controller;
+
+    setUp(() {
+      seeded = CyclePredictionService(dayEntries, profiles: profiles);
+      controller = ProfileController(
+        profilesRepository: profiles,
+        settingsStore: DriftSettingsStore(db.storage),
+      );
+    });
+
+    test(
+        'a profile created through the onboarding flow\'s createProfile '
+        'call, seeded with plausible last-period-start/cycle-length/'
+        'period-length answers, yields a provisional-tier estimate with '
+        'no logged day entries yet', () async {
+      // Mirrors first_run_screen.dart's `_create()`: the cycle-questions
+      // answers ride `createProfile`'s `facts:` argument rather than
+      // being thrown away (the bug this issue fixes).
+      final profile = await controller.createProfile(
+        displayName: 'Nova',
+        isMinor: false,
+        facts: CycleFacts(
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        ),
+      );
+
+      // The facts must be durably on the profile row itself (not just
+      // held in memory), so a later app run re-derives them the same
+      // way `CyclePredictionService._factsOfProfile` does.
+      final stored = await profiles.findById(profile.id);
+      expect(stored!.lastPeriodStart, LocalDate(2026, 4, 20));
+      expect(stored.typicalCycleLengthDays, 28);
+      expect(stored.typicalPeriodLengthDays, 5);
+
+      final p = await seeded.current(profile.id, today: () => today);
+      expect(p, isA<ActivePrediction>());
+      final active = p as ActivePrediction;
+      expect(active.tier, CycleConfidence.provisional);
+      expect(active.estimatedNextStart, LocalDate(2026, 5, 18));
+      expect(active.meanCycleLengthDays, 28.0);
+      expect(active.meanPeriodLengthDays, 5.0);
+    });
+  });
 
   group('memoised recomputation (issue #197)', () {
     test('two emissions carrying the same entries stamp compute the '

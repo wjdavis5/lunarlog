@@ -35,27 +35,10 @@ enum GuardianRole {
         _ => null,
       };
 
-  String get label => switch (this) {
-        primaryGuardian => 'Primary Guardian',
-        coParent => 'Co-Parent',
-        caregiver => 'Caregiver',
-        viewer => 'Viewer',
-      };
-
   bool get canLog => this != viewer;
   bool get canEditProfile => this == primaryGuardian || this == coParent;
   bool get canManageGuardians => this == primaryGuardian || this == coParent;
   bool get canDeleteProfile => this == primaryGuardian;
-
-  /// Copy explaining why a role's day sheet is read-only (Issue #3
-  /// gap-closure plan, Unit U6; R13). Null for every role that [canLog] -
-  /// only a role that cannot log has a reason to surface, and it must read
-  /// distinctly from the archived-profile reason so a viewer session is
-  /// never mistaken for an archived one.
-  String? get readOnlyReason => switch (this) {
-        viewer => 'You have view-only access to this profile.',
-        _ => null,
-      };
 }
 
 enum GuardianStatus {

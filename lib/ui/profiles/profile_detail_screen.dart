@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
@@ -131,7 +132,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             )
           else
             IconButton(
-              tooltip: 'Switch profile',
+              tooltip: AppLocalizations.of(context).profileDetailSwitchProfileTooltip,
               icon: const Icon(Icons.swap_horiz),
               onPressed: context.read<ProfileController>().openPicker,
             ),

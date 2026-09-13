@@ -885,8 +885,9 @@ const String kImportMergePolicySentence =
 /// (Issue #140 design constraints), or the importing session holds a
 /// `viewer`-role guardian membership on it (`GuardianRole.canLog`) —
 /// importing into a shared profile pushes rows to every other guardian's
-/// device, so the same write gate the day sheet already enforces
-/// (`GuardianRole.readOnlyReason`) applies here. Null means writable.
+/// device, so the same write gate the day sheet already enforces (Issue
+/// #545: `guardianRoleReadOnlyReason` in `lib/ui/l10n/guardian_role_copy.dart`)
+/// applies here. Null means writable.
 ///
 /// [guardians] and [currentUserId] fail open exactly like
 /// [acceptedGuardianFor] itself: no guardian rows synced yet, or no

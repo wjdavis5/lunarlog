@@ -16,11 +16,12 @@
 /// `signInWithPassword` returns. Only a signed-out → signed-in transition
 /// counts; a screen opened while already signed in does not auto-complete.
 ///
-/// [authFailureCopy] is the single, exhaustive copy table for every
+/// Failure copy routes through [authFailureCopy] (Issue #545: moved to
+/// `lib/ui/l10n/auth_failure_copy.dart` and consolidated with every other
+/// …FailureCopy mapper), the single, exhaustive copy table for every
 /// [AuthFailure], including the provider, identity, closed-sign-up,
 /// rate-limited, and misconfigured kinds (#2 U2; KTD4, R14; #32 AC2, AC4)
-/// and the last-remaining-method kind a removal can hit
-/// (#31 KTD5, R9).
+/// and the last-remaining-method kind a removal can hit (#31 KTD5, R9).
 ///
 /// Provider buttons (#2 U4; KTD6, KTD8): the providers render above the
 /// email form — Apple (the package's HIG widget, iOS only) first, then
@@ -40,77 +41,10 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/google_sign_in_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart'
     show SignInWithAppleButton, SignInWithAppleButtonStyle;
-
-/// Client-side minimum for a new password (the project's hosted rule).
-const int kMinPasswordLength = 12;
-
-/// Fallback copy shared by [AuthUnknownFailure] and the (unreachable)
-/// default arm of [_rareAuthFailureCopy] (#31: kept as a named constant so
-/// the two spellings can never drift).
-const String _kUnknownFailureCopy = 'Something went wrong. Please try again.';
-
-/// Generic, email-free copy per failure kind. Split into this dispatcher
-/// plus [_rareAuthFailureCopy] — same exhaustive switch over the sealed
-/// [AuthFailure] hierarchy, just spread across two methods so neither
-/// trips the CRAP gate's per-method complexity threshold (#31; no
-/// behavior change). This function's switch is still the one the compiler
-/// checks for exhaustiveness: a new [AuthFailure] kind fails to compile
-/// here (either as its own arm or added to the combined arm below) before
-/// [_rareAuthFailureCopy] is ever reached.
-String authFailureCopy(AuthFailure failure) => switch (failure) {
-      AuthWrongPasswordFailure() =>
-        'That email and password combination was not accepted.',
-      AuthWeakPasswordFailure() =>
-        'Choose a stronger password of at least $kMinPasswordLength characters.',
-      AuthNetworkFailure() =>
-        'Could not reach the server. Check your connection and try again.',
-      AuthUnknownFailure() => _kUnknownFailureCopy,
-      // Generic on purpose (#30 U4; R5): this same fieldless kind now also
-      // covers a passkey ceremony that could not run, so the copy must
-      // never name Google, Apple, or "passkey" specifically.
-      AuthProviderUnavailableFailure() =>
-        "That sign-in method isn't available on this device. Use email "
-            'instead.',
-      // Issue #32 AC2: throttled, not rejected — the copy names waiting,
-      // never a bad code.
-      AuthRateLimitedFailure() =>
-        'Too many attempts. Wait a little while, then try again.',
-      // Issue #32 AC4: the dashboard is not set up for this operation —
-      // a project-setup problem, not a bug in-app.
-      AuthMisconfiguredFailure() =>
-        'That sign-in method is not set up for this app right now. Try '
-            'another way to sign in.',
-      AuthExpiredLinkFailure() ||
-      AuthInvalidCodeFailure() ||
-      AuthIdentityTakenFailure() ||
-      AuthSignUpClosedFailure() ||
-      AuthLastSignInMethodFailure() =>
-        _rareAuthFailureCopy(failure),
-    };
-
-/// The less-common failure kinds (#2/#31), split out of [authFailureCopy]
-/// purely to keep its cyclomatic complexity under the CRAP gate's
-/// threshold. Only ever called with the five kinds [authFailureCopy]
-/// delegates; the wildcard arm is unreachable in practice and returns the
-/// same generic copy [AuthUnknownFailure] uses rather than throwing, so a
-/// future refactor mistake fails safe instead of crashing the UI.
-String _rareAuthFailureCopy(AuthFailure failure) => switch (failure) {
-      AuthExpiredLinkFailure() =>
-        'That sign-in link is no longer valid. Request a new one.',
-      AuthInvalidCodeFailure() =>
-        'That code was not accepted. Check it or request a new email.',
-      AuthIdentityTakenFailure() =>
-        'That sign-in method already belongs to another account.',
-      AuthSignUpClosedFailure() =>
-        'New accounts for this app are set up by the account owner.',
-      AuthLastSignInMethodFailure() =>
-        'That is the only way left to sign in to this account. Add '
-            'another method first.',
-      _ => _kUnknownFailureCopy,
-    };
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({
@@ -214,11 +148,15 @@ class _SignInScreenState extends State<SignInScreen> {
     try {
       await action();
     } on AuthFailure catch (failure) {
-      if (mounted) setState(() => _error = authFailureCopy(failure));
+      if (mounted) {
+        setState(() =>
+            _error = authFailureCopy(AppLocalizations.of(context), failure));
+      }
     } catch (error) {
       debugPrint('lunarlog auth: action failed (${error.runtimeType})');
       if (mounted) {
-        setState(() => _error = authFailureCopy(const AuthFailure.unknown()));
+        setState(() => _error = authFailureCopy(
+            AppLocalizations.of(context), const AuthFailure.unknown()));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

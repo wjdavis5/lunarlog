@@ -40,6 +40,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
@@ -49,6 +50,7 @@ import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../support/erroring_day_entries_repository.dart';
 import '../support/fake_auth_service.dart';
 
 /// Fixed "today" so every derived number is deterministic.
@@ -1703,6 +1705,68 @@ void main() {
         reason: 'trailingChildren is appended inside the panel\'s own '
             'ListView -- one scroll region, not a second scrollable',
       );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+  });
+
+  group('issue #543: prediction stream error', () {
+    testWidgets(
+        'a thrown error on the prediction stream shows InlineError with '
+        'retry instead of a permanent spinner', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final innerEntries = DriftDayEntriesRepository(db.storage);
+      final entries = ErroringDayEntriesRepository(innerEntries);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      await seedEpisodes(innerEntries, profile.id, kActiveStarts);
+
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<DayEntriesRepository>.value(value: entries),
+          Provider<SettingsStore>.value(value: settings),
+          Provider<CyclePredictionService>.value(
+            value: CyclePredictionService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+          ChangeNotifierProvider<NotificationPermissionState>.value(
+            value:
+                NotificationPermissionState(NotificationAvailability.available),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: OverviewPanel(profileId: profile.id, todayProvider: () => kToday),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
+          reason: 'sanity: healthy before the break');
+
+      entries.broken = true;
+      // Forces the watched stream to re-emit (and now throw).
+      await entries.save((await entries.find(profile.id, kActiveStarts.last))!);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineError), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      entries.broken = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
+          reason: 'retry re-subscribes and recovers once the failure clears');
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

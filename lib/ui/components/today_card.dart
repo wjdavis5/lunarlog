@@ -174,9 +174,9 @@ class _TodayCardState extends State<TodayCard> {
           // future-day explainer uses, reusing its ARB key rather than
           // adding a near-duplicate string.
           Semantics(
-            label: AppLocalizations.of(
-              context,
-            ).futureExplainerConfidence(widget.tier.label.toLowerCase()),
+            label: AppLocalizations.of(context).futureExplainerConfidence(
+              tierLabel(AppLocalizations.of(context), widget.tier).toLowerCase(),
+            ),
             excludeSemantics: true,
             child: _ConfidenceChip(tier: widget.tier),
           ),

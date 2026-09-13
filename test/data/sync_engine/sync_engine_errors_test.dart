@@ -26,6 +26,8 @@ void main() {
       await rig.start();
       expect(rig.engine.snapshot.phase, SyncPhase.error);
       expect(rig.engine.snapshot.lastError, SyncErrorKind.auth);
+      expect(rig.engine.snapshot.sessionExpired, isTrue,
+          reason: 'issue #568: sessionExpired is the UI\'s banner signal');
       expect(rig.transport.pullCount, 0);
       expect((await rig.state()).lastError, 'auth');
 
@@ -66,6 +68,9 @@ void main() {
       await rig.start();
       expect(rig.engine.snapshot.phase, SyncPhase.error);
       expect(rig.engine.snapshot.lastError, SyncErrorKind.network);
+      expect(rig.engine.snapshot.sessionExpired, isFalse,
+          reason: 'issue #568: only an auth error means the session is gone '
+              '— a network error resolves on its own via backoff');
       expect((await rig.state()).lastError, 'network');
       var backoffs = rig.timers.oneShots.where((t) => t.active).toList();
       expect(backoffs, hasLength(1));

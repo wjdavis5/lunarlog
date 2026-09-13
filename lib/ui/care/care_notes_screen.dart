@@ -28,22 +28,23 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:provider/provider.dart';
 
-/// Formats an instant as a bare civil date (`2026-08-31`) for the
-/// attribution line. Time-of-day is not shown: "who and roughly when" is
-/// the whole contract, and a date keeps the copy stable across zones.
-String careAttributionDate(DateTime instant) {
-  final local = instant.toLocal();
-  final month = local.month.toString().padLeft(2, '0');
-  final day = local.day.toString().padLeft(2, '0');
-  return '${local.year}-$month-$day';
-}
+/// Formats an instant as a bare, locale-aware civil date (issue #554 --
+/// was a hand-rolled, always `YYYY-MM-DD` string) for the attribution
+/// line. Time-of-day is not shown: "who and roughly when" is the whole
+/// contract, and a date keeps the copy stable across zones.
+String careAttributionDate(BuildContext context, DateTime instant) => dates
+    .formatShortDate(instant.toLocal(), locale: dates.calendarLocale(context));
 
 class CareNotesScreen extends StatefulWidget {
   const CareNotesScreen({
@@ -84,7 +85,9 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     _notesStream = widget.repository.watchCareNotes(widget.profile.id);
     _prepStream = widget.repository.watchPrepItems(widget.profile.id);
     _guardiansStream = watchGuardiansForProfileSafely(
-        widget.guardiansRepository, widget.profile.id);
+      widget.guardiansRepository,
+      widget.profile.id,
+    );
     final auth = context.read<AuthController?>();
     if (auth != null) {
       _currentUserId = auth.currentUserId;
@@ -118,13 +121,20 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
           final guardians = guardiansSnapshot.data ?? const [];
           final viewerReadOnly =
               acceptedGuardianFor(guardians, _currentUserId)?.role.canLog ==
-                  false;
+              false;
           final effectiveReadOnly = widget.readOnly || viewerReadOnly;
+          final viewerGuardianRole = acceptedGuardianFor(
+            guardians,
+            _currentUserId,
+          )?.role;
           final readOnlyReason = widget.readOnly
               ? 'This profile is archived.'
-              : acceptedGuardianFor(guardians, _currentUserId)
-                  ?.role
-                  .readOnlyReason;
+              : viewerGuardianRole == null
+              ? null
+              : guardianRoleReadOnlyReason(
+                  AppLocalizations.of(context),
+                  viewerGuardianRole,
+                );
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -140,11 +150,13 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
+                  // #555: null onRetry -- this banner is shared across six
+                  // different mutations (add/delete note, add/toggle/delete
+                  // prep item, clear checked), so there is no single action
+                  // to retry; each row's own control is the retry surface.
+                  child: InlineError(
                     key: const ValueKey('care-error'),
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.error),
+                    message: _error!,
                   ),
                 ),
               _CareNotesSection(
@@ -247,7 +259,38 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     }
   }
 
+  /// #553: a care note is a shared, multi-guardian record — any accepted
+  /// guardian can see (and, before this fix, one mistap could destroy)
+  /// text another guardian wrote. A confirmation matches the destructive-
+  /// action pattern used elsewhere (e.g. `profile_dialogs.dart`'s archive
+  /// confirm, `manage_guardians_screen.dart`'s remove/cancel confirms).
   Future<void> _deleteNote(CareNote note) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this care note?'),
+        content: const Text(
+          'Every guardian with access to this profile can see this note. '
+          'Deleting it removes it for everyone and cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('care-note-delete-confirm'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
     setState(() => _error = null);
     try {
       await widget.repository.deleteCareNote(note.id);
@@ -275,6 +318,7 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
 /// the guardian's display name when known, the role label, "Caregiver" as
 /// the fallback) — never a raw uuid (the activity-feed precedent).
 String careActorCopy(
+  AppLocalizations l10n,
   String? userId,
   List<ProfileGuardian> guardians,
   String? currentUserId,
@@ -284,7 +328,9 @@ String careActorCopy(
     final guardian = _guardianFor(userId, guardians);
     if (guardian != null) {
       final name = guardian.displayName;
-      return (name == null || name.isEmpty) ? guardian.role.label : name;
+      return (name == null || name.isEmpty)
+          ? guardianRoleLabel(l10n, guardian.role)
+          : name;
     }
   }
   return 'Caregiver';
@@ -293,8 +339,7 @@ String careActorCopy(
 /// The guardian row for [userId], or null when no row matches. Split out
 /// of [careActorCopy] so neither method carries the lookup and the naming
 /// branches together under the CRAP gate.
-ProfileGuardian? _guardianFor(
-    String userId, List<ProfileGuardian> guardians) {
+ProfileGuardian? _guardianFor(String userId, List<ProfileGuardian> guardians) {
   for (final guardian in guardians) {
     if (guardian.userId == userId) return guardian;
   }
@@ -400,8 +445,8 @@ class _CareNoteRow extends StatelessWidget {
     // Server-authoritative attribution, when the row has synced at least
     // once (the badge hides itself for a never-synced local row — the
     // CaregiverAttributionBadge precedent: nothing known, nothing shown).
-    final hasAttribution = note.loggedByUserId != null ||
-        note.lastModifiedByUserId != null;
+    final hasAttribution =
+        note.loggedByUserId != null || note.lastModifiedByUserId != null;
     return Card(
       key: ValueKey('care-note-${note.id}'),
       child: ListTile(
@@ -418,7 +463,7 @@ class _CareNoteRow extends StatelessWidget {
                 guardians: guardians,
               ),
             Text(
-              careAttributionDate(note.updatedAt),
+              careAttributionDate(context, note.updatedAt),
               key: ValueKey('care-note-by-${note.id}'),
             ),
           ],
@@ -426,7 +471,8 @@ class _CareNoteRow extends StatelessWidget {
         trailing: canWrite
             ? IconButton(
                 key: ValueKey('care-note-delete-${note.id}'),
-                tooltip: 'Remove note',
+                tooltip: AppLocalizations.of(context)
+                    .careNotesRemoveNoteTooltip,
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () => onDelete(note),
               )
@@ -548,14 +594,21 @@ class _VisitPrepRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final checkedBy = item.isChecked
-        ? careActorCopy(item.checkedByUserId, guardians, currentUserId)
+        ? careActorCopy(
+            AppLocalizations.of(context),
+            item.checkedByUserId,
+            guardians,
+            currentUserId,
+          )
         : null;
     return Card(
       key: ValueKey('visit-prep-${item.id}'),
       child: CheckboxListTile(
         key: ValueKey('visit-prep-check-${item.id}'),
         value: item.isChecked,
-        onChanged: canWrite ? (checked) => onToggle(item, checked ?? false) : null,
+        onChanged: canWrite
+            ? (checked) => onToggle(item, checked ?? false)
+            : null,
         title: Text(item.body),
         subtitle: checkedBy == null
             ? null
@@ -566,7 +619,8 @@ class _VisitPrepRow extends StatelessWidget {
         secondary: canWrite
             ? IconButton(
                 key: ValueKey('visit-prep-delete-${item.id}'),
-                tooltip: 'Remove item',
+                tooltip: AppLocalizations.of(context)
+                    .careNotesRemoveItemTooltip,
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () => onDelete(item),
               )
@@ -597,7 +651,7 @@ class CareNotesButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       key: const ValueKey('care-notes-button'),
-      tooltip: 'Care notes & visit prep',
+      tooltip: AppLocalizations.of(context).careNotesButtonTooltip,
       icon: const Icon(Icons.medical_information_outlined),
       onPressed: () => Navigator.of(context).push(
         buildNamedRoute<void>(

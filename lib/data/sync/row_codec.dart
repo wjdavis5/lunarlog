@@ -112,7 +112,8 @@ final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 
 /// Remote table name for [table] (`profiles` / `day_entries` /
 /// `profile_guardians` / `observations` / `profile_modes` /
-/// `cycle_overrides` / `care_notes` / `visit_prep_items`).
+/// `cycle_overrides` / `care_notes` / `visit_prep_items` /
+/// `deleted_profiles`).
 String syncTableName(SyncTable table) => switch (table) {
       SyncTable.profiles => 'profiles',
       SyncTable.dayEntries => 'day_entries',
@@ -122,20 +123,20 @@ String syncTableName(SyncTable table) => switch (table) {
       SyncTable.cycleOverrides => 'cycle_overrides',
       SyncTable.careNotes => 'care_notes',
       SyncTable.visitPrepItems => 'visit_prep_items',
+      SyncTable.deletedProfiles => 'deleted_profiles',
     };
 
+/// [syncTableName]'s inverse, precomputed once from it rather than
+/// hand-duplicating the name/table pairing a second time (issue #525
+/// review: a second 9-arm switch here pushed [syncTableFromName]'s CRAP
+/// score over the gate as tables were added, on top of being one more
+/// place a new [SyncTable] value could be forgotten).
+final Map<String, SyncTable> _syncTableByName = {
+  for (final table in SyncTable.values) syncTableName(table): table,
+};
+
 /// Inverse of [syncTableName]; null for anything else.
-SyncTable? syncTableFromName(String name) => switch (name) {
-      'profiles' => SyncTable.profiles,
-      'day_entries' => SyncTable.dayEntries,
-      'profile_guardians' => SyncTable.profileGuardians,
-      'observations' => SyncTable.observations,
-      'profile_modes' => SyncTable.profileModes,
-      'cycle_overrides' => SyncTable.cycleOverrides,
-      'care_notes' => SyncTable.careNotes,
-      'visit_prep_items' => SyncTable.visitPrepItems,
-      _ => null,
-    };
+SyncTable? syncTableFromName(String name) => _syncTableByName[name];
 
 // ---------------------------------------------------------------------------
 // timestamps
@@ -618,6 +619,20 @@ RemoteVisitPrepItemRow decodeVisitPrepItem(JsonRow json) {
   );
 }
 
+/// Decodes a `deleted_profiles` row (issue #522): `deleted_at` is required
+/// here, unlike every other decoder's `timestampOrNull` — this table's own
+/// existence is the tombstone, so a row missing it is a codec failure, not
+/// an absent-optional-field default.
+RemoteDeletedProfileRow decodeDeletedProfile(JsonRow json) {
+  const table = SyncTable.deletedProfiles;
+  final r = _Reader(json, table);
+  return RemoteDeletedProfileRow(
+    profileId: r.ulid('profile_id'),
+    deletedAt: r.timestamp('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
 /// Decodes a pull-page row of [table].
 RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
       SyncTable.profiles => decodeProfile(json),
@@ -628,6 +643,7 @@ RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
       SyncTable.cycleOverrides => decodeCycleOverride(json),
       SyncTable.careNotes => decodeCareNote(json),
       SyncTable.visitPrepItems => decodeVisitPrepItem(json),
+      SyncTable.deletedProfiles => decodeDeletedProfile(json),
     };
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`
