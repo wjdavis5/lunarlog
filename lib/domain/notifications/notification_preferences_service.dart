@@ -22,8 +22,6 @@ sealed class NotificationPreferencesFailure implements Exception {
   const factory NotificationPreferencesFailure.other() =
       NotificationPreferencesOtherFailure;
 
-  String get userFacingMessage;
-
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -35,17 +33,12 @@ final class NotificationPreferencesUnauthorizedFailure
     extends NotificationPreferencesFailure {
   const NotificationPreferencesUnauthorizedFailure();
   @override
-  String get userFacingMessage =>
-      'You do not have permission for this action.';
-  @override
   String toString() => 'NotificationPreferencesFailure.unauthorized';
 }
 
 final class NotificationPreferencesNetworkFailure
     extends NotificationPreferencesFailure {
   const NotificationPreferencesNetworkFailure();
-  @override
-  String get userFacingMessage => 'Network error. Please check your connection.';
   @override
   String toString() => 'NotificationPreferencesFailure.network';
 }
@@ -54,18 +47,12 @@ final class NotificationPreferencesInvalidTimeZoneFailure
     extends NotificationPreferencesFailure {
   const NotificationPreferencesInvalidTimeZoneFailure();
   @override
-  String get userFacingMessage =>
-      "Your device's time zone isn't recognised by the server yet — quiet hours will use UTC until it is";
-  @override
   String toString() => 'NotificationPreferencesFailure.invalidTimeZone';
 }
 
 final class NotificationPreferencesOtherFailure
     extends NotificationPreferencesFailure {
   const NotificationPreferencesOtherFailure();
-  @override
-  String get userFacingMessage =>
-      'Failed to save notification preferences. Please try again.';
   @override
   String toString() => 'NotificationPreferencesFailure.other';
 }

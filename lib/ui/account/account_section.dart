@@ -81,13 +81,14 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/delete_account_dialog.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
-import 'package:lunarlog/ui/account/sign_in_screen.dart' show authFailureCopy;
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -540,12 +541,15 @@ class _AccountSectionState extends State<AccountSection> {
       // `Provider.of` in [build], so no local state update is needed here.
       await link();
     } on AuthFailure catch (failure) {
-      if (mounted) setState(() => _linkError = authFailureCopy(failure));
+      if (mounted) {
+        setState(() => _linkError =
+            authFailureCopy(AppLocalizations.of(context), failure));
+      }
     } catch (error) {
       debugPrint('lunarlog account: link failed (${error.runtimeType})');
       if (mounted) {
-        setState(
-            () => _linkError = authFailureCopy(const AuthFailure.unknown()));
+        setState(() => _linkError = authFailureCopy(
+            AppLocalizations.of(context), const AuthFailure.unknown()));
       }
     } finally {
       if (mounted) setState(() => _busyProvider = null);
@@ -604,12 +608,15 @@ class _AccountSectionState extends State<AccountSection> {
       // finding 2), so no local state update is needed here.
       await auth.unlinkProvider(provider);
     } on AuthFailure catch (failure) {
-      if (mounted) setState(() => _linkError = authFailureCopy(failure));
+      if (mounted) {
+        setState(() => _linkError =
+            authFailureCopy(AppLocalizations.of(context), failure));
+      }
     } catch (error) {
       debugPrint('lunarlog account: unlink failed (${error.runtimeType})');
       if (mounted) {
-        setState(
-            () => _linkError = authFailureCopy(const AuthFailure.unknown()));
+        setState(() => _linkError = authFailureCopy(
+            AppLocalizations.of(context), const AuthFailure.unknown()));
       }
     } finally {
       if (mounted) setState(() => _busyProvider = null);
@@ -741,7 +748,8 @@ class _AccountSectionState extends State<AccountSection> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
-            '${authFailureCopy(failure)} Other devices were not signed out.'),
+            '${authFailureCopy(AppLocalizations.of(context), failure)} '
+            'Other devices were not signed out.'),
       ));
       await _reset(context);
       return;

@@ -44,6 +44,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
@@ -311,7 +312,7 @@ class _AppShellState extends State<AppShell> {
           if (hasSync) SyncStatusGlyph(onPressed: _openMoreTab),
           IconButton(
             key: const ValueKey('app-shell-settings-action'),
-            tooltip: 'Settings',
+            tooltip: AppLocalizations.of(context).settingsTooltip,
             icon: const Icon(Icons.settings),
             onPressed: _openMoreTab,
           ),

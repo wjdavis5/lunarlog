@@ -10,7 +10,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 
 const Set<String> kAllowedAttachmentMimeTypes = {'image/png', 'image/jpeg', 'image/webp'};
@@ -168,17 +170,17 @@ class _AttachmentFieldState extends State<AttachmentField> {
             trailing: IconButton(
               key: const ValueKey('feedback-attachment-remove'),
               icon: const Icon(Icons.close),
-              tooltip: 'Remove attachment',
+              tooltip: AppLocalizations.of(context).feedbackRemoveAttachmentTooltip,
               onPressed: _remove,
             ),
           ),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              _error!,
+            child: InlineError(
               key: const ValueKey('feedback-attachment-error'),
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              message: _error!,
+              onRetry: _addScreenshot,
             ),
           ),
       ],

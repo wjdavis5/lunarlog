@@ -279,8 +279,10 @@ class FeedbackReply {
   int get hashCode => Object.hash(id, ticketId, author, message, createdAt);
 }
 
-/// Typed failures for feedback operations. [userFacingMessage] never echoes
-/// a raw provider error (R11); [toString] carries only the case name.
+/// Typed failures for feedback operations (R11: fieldless data only, with
+/// user-facing copy rendered by `lib/ui/l10n/feedback_failure_copy.dart`
+/// rather than a raw provider error); [toString] carries only the case
+/// name.
 @immutable
 sealed class FeedbackFailure implements Exception {
   const FeedbackFailure();
@@ -294,8 +296,6 @@ sealed class FeedbackFailure implements Exception {
   const factory FeedbackFailure.notFound() = FeedbackNotFoundFailure;
   const factory FeedbackFailure.other() = FeedbackOtherFailure;
 
-  String get userFacingMessage;
-
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -306,16 +306,11 @@ sealed class FeedbackFailure implements Exception {
 final class FeedbackNetworkFailure extends FeedbackFailure {
   const FeedbackNetworkFailure();
   @override
-  String get userFacingMessage =>
-      'Could not reach the server. Check your connection and try again.';
-  @override
   String toString() => 'FeedbackFailure.network';
 }
 
 final class FeedbackUnauthorizedFailure extends FeedbackFailure {
   const FeedbackUnauthorizedFailure();
-  @override
-  String get userFacingMessage => 'You do not have permission for this action.';
   @override
   String toString() => 'FeedbackFailure.unauthorized';
 }
@@ -323,16 +318,11 @@ final class FeedbackUnauthorizedFailure extends FeedbackFailure {
 final class FeedbackRateLimitedFailure extends FeedbackFailure {
   const FeedbackRateLimitedFailure();
   @override
-  String get userFacingMessage =>
-      "You've sent a few reports already — please try again in a bit.";
-  @override
   String toString() => 'FeedbackFailure.rateLimited';
 }
 
 final class FeedbackInvalidInputFailure extends FeedbackFailure {
   const FeedbackInvalidInputFailure();
-  @override
-  String get userFacingMessage => 'Check your message and try again.';
   @override
   String toString() => 'FeedbackFailure.invalidInput';
 }
@@ -340,16 +330,11 @@ final class FeedbackInvalidInputFailure extends FeedbackFailure {
 final class FeedbackAttachmentTooLargeFailure extends FeedbackFailure {
   const FeedbackAttachmentTooLargeFailure();
   @override
-  String get userFacingMessage => 'That image is too large. Choose one under 5 MB.';
-  @override
   String toString() => 'FeedbackFailure.attachmentTooLarge';
 }
 
 final class FeedbackAttachmentRejectedFailure extends FeedbackFailure {
   const FeedbackAttachmentRejectedFailure();
-  @override
-  String get userFacingMessage =>
-      'That file type is not supported. Choose a PNG, JPEG, or WebP image.';
   @override
   String toString() => 'FeedbackFailure.attachmentRejected';
 }
@@ -357,15 +342,11 @@ final class FeedbackAttachmentRejectedFailure extends FeedbackFailure {
 final class FeedbackNotFoundFailure extends FeedbackFailure {
   const FeedbackNotFoundFailure();
   @override
-  String get userFacingMessage => 'That ticket could not be found.';
-  @override
   String toString() => 'FeedbackFailure.notFound';
 }
 
 final class FeedbackOtherFailure extends FeedbackFailure {
   const FeedbackOtherFailure();
-  @override
-  String get userFacingMessage => 'Something went wrong. Please try again.';
   @override
   String toString() => 'FeedbackFailure.other';
 }
@@ -390,11 +371,6 @@ final class FeedbackAttachmentUploadFailedFailure extends FeedbackFailure {
   /// The mapped (never-raw; R11) failure the attachment upload raised.
   final FeedbackFailure attachmentFailure;
 
-  @override
-  String get userFacingMessage =>
-      'Your message was sent — no need to resend it. The attachment did '
-      'not upload (${attachmentFailure.userFacingMessage}) You can find '
-      'your ticket in Support history.';
   @override
   String toString() => 'FeedbackFailure.attachmentUploadFailed';
 }

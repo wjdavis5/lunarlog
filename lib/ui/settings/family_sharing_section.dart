@@ -17,7 +17,9 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
 import 'package:lunarlog/ui/sharing/sharing_overview_controller.dart';
@@ -119,7 +121,7 @@ class _FamilySharingSectionState extends State<FamilySharingSection> {
       info: info,
       sharingService: sharing,
       refreshToken: overview.badgeEpoch,
-      subtitle: SharingProfileInfo.roleSubtitle(info),
+      subtitle: sharingProfileRoleSubtitle(AppLocalizations.of(context), info),
       onTap: () => openManageGuardians(context, profile)
           ?.then((_) => overview.refreshBadges()),
       trailing: const Icon(Icons.chevron_right),

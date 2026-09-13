@@ -1,13 +1,15 @@
 /// Caregiver alert preferences screen (Issue #5, U8; R1, R3, R4, R17).
 /// Reached from Manage guardians' Notifications tile. Every control writes
 /// through [NotificationPreferencesService.save] optimistically; a failure
-/// surfaces its `userFacingMessage` in a snackbar, matching
+/// surfaces [notificationPreferencesFailureCopy] in a snackbar, matching
 /// `lib/ui/sharing/invite_guardian_dialog.dart`'s behavior.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/notification_preferences_failure_copy.dart';
 
 import '../../domain/models/profile.dart';
 import '../../domain/notifications/notification_preferences.dart';
@@ -81,9 +83,10 @@ class _NotificationPreferencesScreenState
         setState(() => _timeZoneError = error);
         return;
       }
+      final l10n = AppLocalizations.of(context);
       final message = error is NotificationPreferencesFailure
-          ? error.userFacingMessage
-          : 'Failed to save notification preferences. Please try again.';
+          ? notificationPreferencesFailureCopy(l10n, error)
+          : l10n.notificationPreferencesFailureOther;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     }
@@ -184,12 +187,13 @@ class _NotificationPreferencesScreenState
         ));
   }
 
+  /// #554: was a hand-rolled, always-12h ("2:30 PM") formatter that ignored
+  /// `MediaQuery.alwaysUse24HourFormat` -- the opposite hard-coded
+  /// convention from `reminder_settings_screen.dart`'s old always-24h one.
+  /// `TimeOfDay.format(context)` follows the device's actual setting.
   String _formatMinutes(int minutes) {
     final time = TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
-    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-    final minute = time.minute.toString().padLeft(2, '0');
-    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
-    return '$hour:$minute $period';
+    return time.format(context);
   }
 
   /// One per-kind cadence selector (Issue #125). [onSelect] is dropped to
@@ -383,7 +387,8 @@ class _NotificationPreferencesScreenState
                       children: [
                         InlineError(
                           key: const ValueKey('timezone-inline-error'),
-                          message: _timeZoneError!.userFacingMessage,
+                          message: notificationPreferencesFailureCopy(
+                              AppLocalizations.of(context), _timeZoneError!),
                           onRetry: _retrySave,
                         ),
                         TextButton(
