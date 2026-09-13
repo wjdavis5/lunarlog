@@ -224,4 +224,24 @@ abstract interface class SyncTransport {
     required int afterVersion,
     required int limit,
   });
+
+  /// Issue #521: the commit-safe pull-cursor watermark — the lowest
+  /// `server_version` any in-flight transaction could still hold, from the
+  /// server's `sync_watermark()` RPC. The engine clamps an incremental
+  /// pull's new cursor to at most this value, so it never advances past a
+  /// `server_version` that a slower, still-committing writer might yet fill
+  /// in behind it (KTD2's cursor is a value from a global sequence assigned
+  /// *before* commit, not in commit order — see `supabase_sync_engine.dart`'s
+  /// pull-cursor doc comment).
+  ///
+  /// Returns `null` — never throws — when the RPC is unavailable: a server
+  /// predating the migration that adds it (a PostgREST "function not
+  /// found" error), or any other transport failure while fetching it. This
+  /// is a graceful, non-fatal fallback by design (issue #521's PR is safe
+  /// to merge independently of the server-side migration): the caller
+  /// falls back to a fixed lookback below the page's own maximum version
+  /// instead, which stays safe because every remote apply is
+  /// LWW-idempotent (re-applying an already-applied row is a no-op or a
+  /// correct overwrite, never wrong).
+  Future<int?> fetchWatermark();
 }

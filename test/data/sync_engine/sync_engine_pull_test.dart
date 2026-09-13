@@ -7,6 +7,7 @@ import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/supabase_sync_engine.dart' show kCursorLookback;
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 
@@ -106,6 +107,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.deletedProfiles => const [],
           };
 
       await rig.start();
@@ -143,6 +145,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.deletedProfiles => const [],
           };
 
       await rig.start();
@@ -155,9 +158,9 @@ void main() {
       expect(state.lastFullPullAt!.toUtc(), t0);
     });
 
-    test('full reconcile runs on bind, after a push that returned resolved '
-        'rows, and when the last full pull is older than 24h; not otherwise',
-        () async {
+    test('full reconcile runs on bind and when the last full pull is older '
+        'than 24h; not otherwise, and NOT just because a push saw resolved '
+        'rows (issue #525)', () async {
       // (a) Bind on an empty database: reconcile stamps last_full_pull_at.
       final bindRig = Rig();
       addTearDown(bindRig.dispose);
@@ -176,10 +179,13 @@ void main() {
       ));
       await rig.start();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0]);
+          [100, 0, 100, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522)
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
 
-      // (c) A push with resolved rows makes a reconcile due.
+      // (c) Issue #525: a push whose answer carries resolved rows is no
+      // longer, on its own, a reconcile trigger — applyPushResult already
+      // applies each one correctly. The next cycle stays incremental-only
+      // and lastFullPullAt is untouched.
       rig.clock.now = t0.add(const Duration(hours: 1));
       final p = await rig.storage.upsertProfile(
           displayName: 'A', isMinor: false);
@@ -192,21 +198,26 @@ void main() {
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-      expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
+          [100, 0, 100, 0, 0, 0, 0, 0, 0], // 9th 0 is deletedProfiles (#522)
+          reason: 'resolved rows in a push answer must not force a '
+              'full reconcile (issue #525)');
+      expect((await rig.state()).lastFullPullAt?.toUtc(), t0,
+          reason: 'lastFullPullAt is untouched — no reconcile ran');
 
-      // (d) Not otherwise: the next cycle is incremental only.
+      // (d) Still not otherwise: the following cycle is incremental only too.
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0]);
+          [100, 0, 100, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522)
 
       // (e) Older than 24h: due again.
       rig.clock.now = rig.clock.now.add(const Duration(hours: 25));
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+          // 9 incremental + 9 reconcile afterVersion values (deletedProfiles,
+          // issue #522, adds the 9th `0` to each half).
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
     });
 
@@ -370,9 +381,10 @@ void main() {
       await rig.sync();
 
       // Incremental pull checks profiles, profileGuardians, dayEntries,
-      // observations (Issue #240), the two Issue #188 tables, and the two
-      // Issue #128 tables — 8 pull calls — and NO reconcile pull is made.
-      expect(rig.transport.pullCount, pullsBeforeCycle4 + 8,
+      // observations (Issue #240), the two Issue #188 tables, the two
+      // Issue #128 tables, and deletedProfiles (Issue #522) — 9 pull calls
+      // — and NO reconcile pull is made.
+      expect(rig.transport.pullCount, pullsBeforeCycle4 + 9,
           reason: 'cycle 4 ran incremental pulls only, no full reconcile');
     });
 
@@ -398,6 +410,7 @@ void main() {
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
             SyncTable.profileGuardians => [stuck],
+            SyncTable.deletedProfiles => const [],
           };
 
       // Re-primes cursorProfiles to a nonzero value before each cycle, so a
@@ -536,6 +549,131 @@ void main() {
       expect(entries, hasLength(1));
       expect(entries.single.deletedAt, isNull);
       expect(entries.single.note, 'from remote');
+    });
+
+    test('issue #525: profileGuardians pages from its own persisted cursor, '
+        'not from 0, on the second cycle onward', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final pA = ulidN(1);
+      rig.transport.scriptPage(SyncTable.profiles, [
+        remoteProfile(pA, updatedAt: t0, serverVersion: 1),
+      ]);
+      rig.transport.scriptPage(SyncTable.profileGuardians, [
+        remoteGuardian('g-1',
+            profileId: pA, userId: uidA, status: 'accepted', updatedAt: t0,
+            serverVersion: 50),
+      ]);
+      await rig.start();
+      expect((await rig.state()).cursorProfileGuardians, 50);
+
+      // A second cycle: the guardian pull must start from the persisted
+      // cursor (50), not re-scan the whole table from 0 — the exact perf
+      // regression issue #525 closes.
+      rig.transport.pulls.clear();
+      rig.transport.scriptPage(SyncTable.profiles, const []);
+      rig.transport.scriptPage(SyncTable.profileGuardians, const []);
+      await rig.sync();
+
+      final guardianCalls = rig.transport.pulls
+          .where((c) => c.table == SyncTable.profileGuardians)
+          .toList();
+      expect(guardianCalls, hasLength(1));
+      expect(guardianCalls.single.afterVersion, 50,
+          reason: 'must resume from the persisted cursor, not re-scan '
+              'from version 0 every cycle');
+    });
+
+    group('issue #521: cursor watermark clamp and lookback fallback', () {
+      test('a watermark below a page\'s max version holds the cursor there '
+          'instead of skipping past it; a later cycle with an advanced '
+          'watermark completes the pull', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.bind(uidA);
+        final pA = ulidN(1);
+        final pB = ulidN(2);
+        // One page carries both rows (nextval order, not commit order): a
+        // naive `cursor = max(page)` would advance straight to 100 and
+        // never look below it again.
+        rig.transport.scriptPage(SyncTable.profiles, [
+          remoteProfile(pA, updatedAt: t0, serverVersion: 55),
+          remoteProfile(pB, updatedAt: t0, serverVersion: 100),
+        ]);
+        // A commit-safe watermark of 60 means: only server_version <= 60 is
+        // guaranteed to have nothing still in flight below it.
+        rig.transport.watermark = 60;
+
+        await rig.start();
+
+        expect((await rig.state()).cursorProfiles, 60,
+            reason:
+                'the cursor must not advance past the watermark even though '
+                'the page\'s own maximum version was 100');
+        // Both rows still apply this cycle — the clamp only bounds the
+        // cursor, never what a delivered page applies.
+        expect(await rig.storage.getProfile(pA), isNotNull);
+        expect(await rig.storage.getProfile(pB), isNotNull);
+
+        // A later cycle: the watermark has caught up, and the transport
+        // (a real one would no longer return an already-delivered row
+        // below the new `afterVersion`) serves nothing new — the persisted
+        // cursor itself is what advances now that it is safe to.
+        rig.transport.watermark = 150;
+        rig.transport.scriptPage(SyncTable.profiles, const []);
+        await rig.sync();
+        expect((await rig.state()).cursorProfiles, 60,
+            reason: 'nothing left below the new watermark to advance past — '
+                'an empty page cannot itself move the cursor');
+      });
+
+      test('no watermark (the RPC is unavailable) falls back to a fixed '
+          'lookback below the page\'s max version, floored at the previous '
+          'cursor', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.bind(uidA);
+        rig.transport.watermark = null; // simulates a server predating #521
+        final pA = ulidN(1);
+        rig.transport.scriptPage(
+          SyncTable.profiles,
+          [remoteProfile(pA, updatedAt: t0, serverVersion: 1000)],
+        );
+
+        await rig.start();
+
+        expect((await rig.state()).cursorProfiles, 1000 - kCursorLookback,
+            reason: 'falls back to maxVersion - kCursorLookback when the '
+                'watermark RPC is unavailable');
+      });
+
+      test('the lookback fallback never regresses the cursor below where '
+          'it already was', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.storage.writeSyncState(kDefaultSyncState.copyWith(
+          boundUserId: const Value(uidA),
+          deviceId: 'device-1',
+          cursorProfiles: 40,
+          lastFullPullAt: Value(t0),
+        ));
+        rig.transport.watermark = null;
+        final pA = ulidN(1);
+        // maxVersion(page, floor: 40) - kCursorLookback(50) would be
+        // negative — must floor at the previous cursor (40), not go
+        // backward.
+        rig.transport.scriptPage(
+          SyncTable.profiles,
+          [remoteProfile(pA, updatedAt: t0, serverVersion: 55)],
+        );
+
+        await rig.start();
+
+        expect((await rig.state()).cursorProfiles, 40,
+            reason: 'the lookback clamp must never move the cursor '
+                'backward past its previous value');
+      });
     });
   });
 }
