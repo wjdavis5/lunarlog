@@ -262,3 +262,15 @@ device's first profile has no day entries yet. Builds the Bundle via
 `lib/domain/export/fhir_bundle.dart`'s `buildFhirDocumentBundle` and hands
 it to `lib/data/export/fhir_bundle_writer.dart`'s `FhirBundleWriter` for
 delivery — see `docs/clinical/fhir-export.md`.
+
+## Dialog, sheet, and screen rules (issue #250)
+
+To keep UI components predictable, touch-friendly, and accessible across dynamic type scales (up to 2.5×):
+
+- **Dialog (`AlertDialog`)**: Reserved for a single, reversible or confirmative binary decision without text inputs (e.g. discard changes, confirm delete, confirm archive, erase web dev database). Dialog content must always be wrapped in a `SingleChildScrollView` so tall text or large accessibility scales do not trigger RenderFlex overflows.
+- **Modal bottom sheet (`showModalBottomSheet`)**: Reserved for short, context-anchored forms and pickers (e.g. editing a profile name/metadata, inviting a guardian, the day logging sheet). Must be invoked with `isScrollControlled: true` and structured with `SafeArea`, a `Flexible(child: SingleChildScrollView(child: Form(...)))` body, and pinned actions inside an `OverflowBar` (with `alignment: MainAxisAlignment.end` and `spacing`/`overflowSpacing`). This prevents the actions from scrolling off-screen and ensures buttons wrap gracefully without horizontal RenderFlex overflow under 2.5× text scale.
+- **Full screen (`Scaffold`)**: Required for multi-input flows, long-form reading (e.g. `PrivacyPolicyScreen`), independent navigation hierarchies, and full-screen error states that stop the app cold (e.g. `RestoreErrorScreen`). Any full-screen error state must provide actionable escape paths (such as "Continue without syncing" and "Sign out" on restore error) to prevent stranding the operator, and must announce its message to assistive technology via `Semantics(liveRegion: true)`.
+
+### Destructive action styling (`DestructiveButton`)
+
+Irreversible actions — deleting a day entry, archiving a profile, revoking guardian access, unlinking an auth provider, erasing local data — must use `DestructiveButton` or `DestructiveButton.icon` (`lib/ui/components/destructive_button.dart`). These resolve their visual presentation dynamically from `colorScheme.error` and `colorScheme.onError` with high-contrast accessibility compliance. Never hardcode `Colors.red` or `Colors.redAccent`.
