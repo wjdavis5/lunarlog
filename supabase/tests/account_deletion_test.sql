@@ -898,6 +898,16 @@ select tests.authenticate_as('user_r');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(70), 'R''s profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
 
+select tests.authenticate_as('user_s');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(71), 'S''s profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(72), 'S''s second profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+
+-- No-grant tables (ownership_transfers, prediction_connections): fixture as service_role.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
 insert into public.ownership_transfers
   (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
 values
@@ -908,26 +918,22 @@ insert into public.prediction_connections
 values
   (tests.ulid(70), tests.get_supabase_uid('user_r'), repeat('bb', 32), now() + interval '24 hours');
 
-select tests.authenticate_as('user_s');
-insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
-values (tests.ulid(71), 'S''s profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
-
 insert into public.ownership_transfers
   (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
 values
   (tests.ulid(71), tests.get_supabase_uid('user_s'), repeat('ee', 32), 'viewer', now() + interval '24 hours');
 
--- S invites R, R accepts (recipient_user_id = R)
+-- S invites R on profile 71, R accepts (recipient_user_id = R)
 insert into public.prediction_connections
   (profile_id, owner_user_id, recipient_user_id, token_hash, expires_at, accepted_at)
 values
   (tests.ulid(71), tests.get_supabase_uid('user_s'), tests.get_supabase_uid('user_r'), repeat('cc', 32), now() + interval '24 hours', now());
 
--- S creates an unaccepted connection
+-- S creates an unaccepted connection on profile 72 (honors prediction_connections_one_live_uq)
 insert into public.prediction_connections
   (profile_id, owner_user_id, token_hash, expires_at)
 values
-  (tests.ulid(71), tests.get_supabase_uid('user_s'), repeat('dd', 32), now() + interval '24 hours');
+  (tests.ulid(72), tests.get_supabase_uid('user_s'), repeat('dd', 32), now() + interval '24 hours');
 
 -- R deletes account data
 select tests.authenticate_as('user_r');
