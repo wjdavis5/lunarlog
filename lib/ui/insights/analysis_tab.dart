@@ -89,6 +89,7 @@ import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import '../sharing/guardian_watch_mixin.dart';
+import '../theme/tokens.dart';
 import 'phase_insights_card.dart';
 import 'symptom_trends_section.dart';
 
@@ -255,7 +256,7 @@ class _AnalysisTabState extends State<AnalysisTab>
           errorMessage: 'Could not load your cycle analysis.',
           onRetry: _retryPredictions,
           builder: (context, prediction) => ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(LLSpace.space4),
             children: _sections(context, prediction),
           ),
         );
@@ -279,7 +280,7 @@ class _AnalysisTabState extends State<AnalysisTab>
         key: const ValueKey('analysis-heading'),
         style: Theme.of(context).textTheme.headlineSmall,
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: LLSpace.space3),
       switch (prediction) {
         ActivePrediction() => _statsCard(context, prediction),
         NotEnoughHistory() => _notEnoughCard(context),
@@ -294,7 +295,7 @@ class _AnalysisTabState extends State<AnalysisTab>
         // Issue #225: per-profile toggle turning off predictions.
         PredictionsDisabled() => const PredictionsDisabledCard(),
       },
-      const SizedBox(height: 16),
+      const SizedBox(height: LLSpace.space4),
       CycleHistorySection(
         profileId: widget.profileId,
         todayProvider: widget.todayProvider,
@@ -320,7 +321,7 @@ class _AnalysisTabState extends State<AnalysisTab>
     return Card(
       key: const ValueKey('analysis-stats'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -329,10 +330,10 @@ class _AnalysisTabState extends State<AnalysisTab>
               key: const ValueKey('analysis-stats-title'),
               style: theme.textTheme.titleMedium,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             ..._headlineStats(theme, l10n, prediction),
             ..._fertileWindowSection(theme, l10n, prediction),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             Text(
               kEstimateDisclaimer,
               key: const ValueKey('analysis-disclaimer'),
@@ -413,7 +414,7 @@ class _AnalysisTabState extends State<AnalysisTab>
         _copy.fertileWindowLabel,
         _fertileWindowText(l10n, fertile),
       ),
-      const SizedBox(height: 4),
+      const SizedBox(height: LLSpace.space1),
       Text(
         kFertileWindowDisclaimer,
         key: const ValueKey('analysis-fertile-disclaimer'),
@@ -449,13 +450,13 @@ class _AnalysisTabState extends State<AnalysisTab>
   // than overflowing the card horizontally.
   Widget _statRow(ThemeData theme, String key, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: LLSpace.space1),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: theme.textTheme.bodyMedium),
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           Expanded(
             child: Text(
               value,
@@ -477,7 +478,7 @@ class _AnalysisTabState extends State<AnalysisTab>
     return Card(
       key: const ValueKey('analysis-not-enough'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -487,7 +488,7 @@ class _AnalysisTabState extends State<AnalysisTab>
               titleStyle: theme.textTheme.headlineSmall,
               crossAxisAlignment: CrossAxisAlignment.start,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Text(
               kEstimateDisclaimer,
               key: const ValueKey('analysis-not-enough-disclaimer'),
