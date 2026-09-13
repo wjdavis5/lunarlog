@@ -33,10 +33,11 @@ void main() {
       hold.complete();
       await rig.engine.flush();
 
-      expect(rig.transport.pullCount, 16,
-          reason: 'two cycles of eight pulls (Issue #240 adds observations, '
+      expect(rig.transport.pullCount, 18,
+          reason: 'two cycles of nine pulls (Issue #240 adds observations, '
               'Issue #188 adds profile_modes/cycle_overrides, Issue #128 '
-              'adds care_notes/visit_prep_items): '
+              'adds care_notes/visit_prep_items, Issue #522 adds '
+              'deleted_profiles): '
               'the running one plus one queued');
       expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });

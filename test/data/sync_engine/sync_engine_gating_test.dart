@@ -64,7 +64,7 @@ void main() {
       expect(rig.transport.pullCount, 0);
       rig.gate.unlock();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, 8);
+      expect(rig.transport.pullCount, 9); // issue #522 adds deleted_profiles
       expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });
 
@@ -99,7 +99,7 @@ void main() {
       final pulls = rig.transport.pullCount;
       rig.timers.periodics.single.fire();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, pulls + 8);
+      expect(rig.transport.pullCount, pulls + 9); // issue #522 adds deleted_profiles
     });
   });
 }

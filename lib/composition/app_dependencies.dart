@@ -8,6 +8,8 @@
 /// individual domain contracts from the provider tree.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
@@ -41,6 +43,7 @@ import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/notifications/supabase_reminder_window_remote.dart';
 import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
+import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
@@ -211,6 +214,32 @@ AppDependencies buildAppDependencies({
   final settings = DriftSettingsStore(storage);
   final profileGuardians = DriftProfileGuardiansRepository(storage);
   final accountImporter = DriftAccountImporter(storage);
+  // Issue #568 (b): the synced source of truth cycle-history omissions read
+  // and write through now, instead of the device-local settings list.
+  final cycleOverrides = DriftCycleOverridesRepository(storage);
+  // One-time carry-over of any pre-existing device-local omissions into
+  // cycle_overrides rows (see migrateOmittedCyclesToCycleOverrides's own
+  // doc comment for its idempotency). Fired and forgotten:
+  // buildAppDependencies itself is synchronous and nothing downstream needs
+  // this to have finished — the migration's own settings flag makes every
+  // later launch's call an immediate no-op regardless of how this one
+  // resolves. Errors are swallowed rather than left unhandled: the database
+  // can legitimately close (a short-lived test harness, a fast app
+  // shutdown) before this finishes, and a background best-effort migration
+  // must never surface as an unhandled Future error or crash-report noise
+  // for something the next launch's call will simply retry.
+  unawaited(
+    profiles
+        .list()
+        .then(
+          (allProfiles) => migrateOmittedCyclesToCycleOverrides(
+            settings: settings,
+            overrides: cycleOverrides,
+            profileIds: [for (final profile in allProfiles) profile.id],
+          ),
+        )
+        .catchError((_) {}),
+  );
 
   // Issue #418, AC5: client-derived services gate on `client != null &&
   // authService != null` — the old `_startSyncEngine` required auth (and
@@ -260,23 +289,32 @@ AppDependencies buildAppDependencies({
     // life-stage suppression branch (pregnancy/postpartum/perimenopause ->
     // suppressed), via a second `.map` over the identical watcher rather
     // than a second subscription.
-    prediction: CyclePredictionService(dayEntries,
-        settings: settings,
-        profiles: profiles,
-        birthControlStateFor: (profileId) => storage
-            .watchProfileMode(profileId)
-            .map((row) => row == null
+    prediction: CyclePredictionService(
+      dayEntries,
+      settings: settings,
+      cycleOverrides: cycleOverrides,
+      profiles: profiles,
+      birthControlStateFor: (profileId) => storage
+          .watchProfileMode(profileId)
+          .map(
+            (row) => row == null
                 ? null
                 : (
                     method: row.birthControlMethod,
                     startedOn: row.birthControlStartedOn,
                     stoppedOn: row.birthControlStoppedOn,
-                  )),
-        lifecycleModeFor: (profileId) => storage
-            .watchProfileMode(profileId)
-            .map((row) => LifecycleMode.fromDb(row?.mode))),
-    cycleHistory: CycleHistoryService(dayEntries, settings: settings),
-    cycleExclusions: CycleExclusionList(settings),
+                  ),
+          ),
+      lifecycleModeFor: (profileId) => storage
+          .watchProfileMode(profileId)
+          .map((row) => LifecycleMode.fromDb(row?.mode)),
+    ),
+    cycleHistory: CycleHistoryService(
+      dayEntries,
+      settings: settings,
+      cycleOverrides: cycleOverrides,
+    ),
+    cycleExclusions: CycleExclusionList(settings, overrides: cycleOverrides),
     authService: authService,
     syncEngine: syncEngine,
     sharingService: _resolve(
@@ -298,7 +336,9 @@ AppDependencies buildAppDependencies({
       ownershipTransferService,
       cloudEnabled && syncEngine != null,
       () => SupabaseOwnershipTransferService(
-          client: client!, syncEngine: syncEngine!),
+        client: client!,
+        syncEngine: syncEngine!,
+      ),
     ),
     predictionConnectionService: _resolve(
       predictionConnectionService,
@@ -363,15 +403,14 @@ ReminderActionExecutor buildReminderActionExecutor({
   required bool Function()? isUnlocked,
   required void Function(void Function() callback)? addUnlockListener,
   required void Function(void Function() callback)? removeUnlockListener,
-}) =>
-    ReminderActionExecutor(
-      dayEntries: dayEntries,
-      observations: observations,
-      configService: configService,
-      isUnlocked: isUnlocked,
-      addUnlockListener: addUnlockListener,
-      removeUnlockListener: removeUnlockListener,
-    );
+}) => ReminderActionExecutor(
+  dayEntries: dayEntries,
+  observations: observations,
+  configService: configService,
+  isUnlocked: isUnlocked,
+  addUnlockListener: addUnlockListener,
+  removeUnlockListener: removeUnlockListener,
+);
 
 /// Constructs the reminder coordinator. The caller owns the deferred
 /// `start()` (post-frame, inside the gate's system-UI window).
@@ -382,18 +421,17 @@ ReminderCoordinator buildReminderCoordinator({
   required Stream<CyclePrediction> Function(String profileId) predictionFor,
   required ReminderConfigService localSettings,
   required Stream<BirthControlState?> Function(String profileId)?
-      birthControlStateFor,
+  birthControlStateFor,
   LocalTimeZoneProvider? localTimeZoneProvider,
-}) =>
-    ReminderCoordinator(
-      scheduler: scheduler,
-      permissionState: permissionState,
-      activeProfiles: activeProfiles,
-      predictionFor: predictionFor,
-      localSettings: localSettings,
-      birthControlStateFor: birthControlStateFor,
-      localTimeZoneProvider: localTimeZoneProvider,
-    );
+}) => ReminderCoordinator(
+  scheduler: scheduler,
+  permissionState: permissionState,
+  activeProfiles: activeProfiles,
+  predictionFor: predictionFor,
+  localSettings: localSettings,
+  birthControlStateFor: birthControlStateFor,
+  localTimeZoneProvider: localTimeZoneProvider,
+);
 
 /// Constructs the reminder-window publisher, or null when either
 /// collaborator is absent (the R17 zero-conditional gating posture).
@@ -442,7 +480,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
   required DayEntriesRepository dayEntries,
   required ObservationsRepository observations,
   required Future<List<ProfileGuardian>> Function(String profileId)
-      guardiansForProfile,
+  guardiansForProfile,
   required String? Function() signedInUserId,
   required bool minorBindingAllowed,
 }) {
@@ -483,7 +521,7 @@ HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
   required ProfilesRepository profiles,
   required DayEntriesRepository dayEntries,
   required Future<List<ProfileGuardian>> Function(String profileId)
-      guardiansForProfile,
+  guardiansForProfile,
   required String? Function() signedInUserId,
 }) {
   if (!AppConfig.hasHealthSync) return null;
@@ -515,13 +553,12 @@ RealtimeSyncCoordinator buildRealtimeSyncCoordinator({
   required SyncEngine syncEngine,
   required LunarLogStorage storage,
   required AuthService auth,
-}) =>
-    RealtimeSyncCoordinator(
-      client: client,
-      syncEngine: syncEngine,
-      storage: storage,
-      auth: auth,
-    );
+}) => RealtimeSyncCoordinator(
+  client: client,
+  syncEngine: syncEngine,
+  storage: storage,
+  auth: auth,
+);
 
 /// Constructs the push-registration coordinator (AC2). The caller resolves
 /// [deviceId] (via [buildCompositionSettingsStore] +
@@ -533,13 +570,12 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required Stream<AuthSessionState> authStates,
   required AuthSessionState Function() currentAuthState,
   required void Function(String profileId)? onTap,
-}) =>
-    PushRegistrationCoordinator(
-      tokenSource: FirebasePushTokenSource(),
-      registry: SupabasePushDeviceRegistry(client: client),
-      deviceId: deviceId,
-      platform: platform,
-      authStates: authStates,
-      currentAuthState: currentAuthState,
-      onTap: onTap,
-    );
+}) => PushRegistrationCoordinator(
+  tokenSource: FirebasePushTokenSource(),
+  registry: SupabasePushDeviceRegistry(client: client),
+  deviceId: deviceId,
+  platform: platform,
+  authStates: authStates,
+  currentAuthState: currentAuthState,
+  onTap: onTap,
+);
