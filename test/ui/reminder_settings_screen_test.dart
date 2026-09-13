@@ -685,4 +685,52 @@ void main() {
 
     expect(_timeLabel(tester, ReminderKind.upcoming), '9:00 AM');
   });
+
+  testWidgets('issue #554: the time row honours the device clock convention '
+      'instead of always rendering 24h', (tester) async {
+    final store = FakeSettingsStore();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<ProfilesRepository>.value(
+            value: _FakeProfilesRepository([_profile('p1', 'Alice')]),
+          ),
+          Provider<ProfileModesRepository>.value(
+            value: _FakeModesRepository(null),
+          ),
+          Provider<SettingsStore>.value(value: store),
+          ChangeNotifierProvider(
+            create: (_) {
+              final controller = ProfileController(
+                profilesRepository: _FakeProfilesRepository([
+                  _profile('p1', 'Alice'),
+                ]),
+                settingsStore: store,
+              );
+              unawaited(controller.load());
+              return controller;
+            },
+          ),
+          Provider<ReminderConfigService>.value(
+            value: ReminderConfigService(store),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          // Explicitly 12h this time (the opposite of `_pump`'s forced
+          // 24h) -- proves the rendered text now actually depends on the
+          // ambient MediaQuery instead of being a hand-rolled constant.
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+            child: child!,
+          ),
+          home: const ReminderSettingsScreen(timePicker: _stubPicker),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_timeLabel(tester, ReminderKind.upcoming), '9:00 AM');
+  });
 }

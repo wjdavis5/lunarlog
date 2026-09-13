@@ -10,11 +10,10 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
+import '../components/inline_error.dart';
 
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
-
-import '../components/inline_error.dart';
 
 class AcceptPredictionConnectionSheet extends StatefulWidget {
   const AcceptPredictionConnectionSheet({
