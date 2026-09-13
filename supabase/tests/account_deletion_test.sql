@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(73);
+select plan(79);
 
 create temp table snap (name text primary key, v jsonb);
 -- Issue #167: section 12 below is the first place in this file that reads a
@@ -253,7 +253,8 @@ select is(
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,
     'notification_outbox', 0, 'profile_reminder_windows', 0,
-    'missed_entry_alert_state', 0, 'feedback_tickets', 0, 'import_jobs', 0
+    'missed_entry_alert_state', 0, 'feedback_tickets', 0, 'import_jobs', 0,
+    'ownership_transfers', 0, 'prediction_connections', 0
   ),
   'calling delete_account_data twice reports zero counts the second time'
 );
@@ -883,6 +884,93 @@ select is(
   (select count(*) from public.import_jobs where created_by = tests.get_supabase_uid('user_q')),
   1::bigint,
   'Issue #167: a different user''s own import job survives untouched'
+);
+
+-- ---------------------------------------------------------------------------
+-- 14. Issue #499: ownership_transfers and prediction_connections explicit
+--     deletions inside delete_account_data().
+-- ---------------------------------------------------------------------------
+
+select tests.create_supabase_user('user_r');
+select tests.create_supabase_user('user_s');
+
+select tests.authenticate_as('user_r');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(70), 'R''s profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+
+select tests.authenticate_as('user_s');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(71), 'S''s profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(72), 'S''s second profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+
+-- No-grant tables (ownership_transfers, prediction_connections): fixture as service_role.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
+insert into public.ownership_transfers
+  (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
+values
+  (tests.ulid(70), tests.get_supabase_uid('user_r'), repeat('aa', 32), 'viewer', now() + interval '24 hours');
+
+insert into public.prediction_connections
+  (profile_id, owner_user_id, token_hash, expires_at)
+values
+  (tests.ulid(70), tests.get_supabase_uid('user_r'), repeat('bb', 32), now() + interval '24 hours');
+
+insert into public.ownership_transfers
+  (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
+values
+  (tests.ulid(71), tests.get_supabase_uid('user_s'), repeat('ee', 32), 'viewer', now() + interval '24 hours');
+
+-- S invites R on profile 71, R accepts (recipient_user_id = R)
+insert into public.prediction_connections
+  (profile_id, owner_user_id, recipient_user_id, token_hash, expires_at, accepted_at)
+values
+  (tests.ulid(71), tests.get_supabase_uid('user_s'), tests.get_supabase_uid('user_r'), repeat('cc', 32), now() + interval '24 hours', now());
+
+-- S creates an unaccepted connection on profile 72 (honors prediction_connections_one_live_uq)
+insert into public.prediction_connections
+  (profile_id, owner_user_id, token_hash, expires_at)
+values
+  (tests.ulid(72), tests.get_supabase_uid('user_s'), repeat('dd', 32), now() + interval '24 hours');
+
+-- R deletes account data
+select tests.authenticate_as('user_r');
+select pg_temp.snapshot('r_result', public.delete_account_data());
+
+select is(
+  pg_temp.snap('r_result') -> 'ownership_transfers', '1'::jsonb,
+  'Issue #499: result includes ownership_transfers count of 1'
+);
+select is(
+  pg_temp.snap('r_result') -> 'prediction_connections', '2'::jsonb,
+  'Issue #499: result includes prediction_connections count of 2 (1 owned, 1 received)'
+);
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
+select is(
+  (select count(*) from public.ownership_transfers where initiated_by = tests.get_supabase_uid('user_r')),
+  0::bigint,
+  'Issue #499: after delete_account_data, zero ownership_transfers remain initiated by R'
+);
+select is(
+  (select count(*) from public.prediction_connections
+    where owner_user_id = tests.get_supabase_uid('user_r') or recipient_user_id = tests.get_supabase_uid('user_r')),
+  0::bigint,
+  'Issue #499: after delete_account_data, zero prediction_connections remain where R is owner or recipient'
+);
+select is(
+  (select count(*) from public.ownership_transfers where initiated_by = tests.get_supabase_uid('user_s')),
+  1::bigint,
+  'Issue #499: user S''s ownership transfer survives'
+);
+select is(
+  (select count(*) from public.prediction_connections where owner_user_id = tests.get_supabase_uid('user_s')),
+  1::bigint,
+  'Issue #499: user S''s unrelated prediction connection survives'
 );
 
 select tests.clear_authentication();
