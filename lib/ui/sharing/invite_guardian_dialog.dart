@@ -59,7 +59,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
       final invite = await widget.sharingService.createInvite(
         profileId: widget.profileId,
         role: _selectedRole,
-        recipientLabel: _labelController.text.trim().isEmpty ? null : _labelController.text.trim(),
+        recipientLabel: _labelController.text.trim().isEmpty
+            ? null
+            : _labelController.text.trim(),
       );
       if (mounted) {
         setState(() {
@@ -90,7 +92,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
 
   void _copyLink() {
     if (_generatedInvite == null) return;
-    Clipboard.setData(ClipboardData(text: _generatedInvite!.inviteUri.toString()));
+    Clipboard.setData(
+      ClipboardData(text: _generatedInvite!.inviteUri.toString()),
+    );
     setState(() => _justCopied = true);
   }
 
@@ -100,16 +104,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
   // this mirrors). Plain text share of the bare link, same as Copy Link.
   void _shareLink() {
     if (_generatedInvite == null) return;
-    SharePlus.instance.share(ShareParams(text: _generatedInvite!.inviteUri.toString()));
-  }
-
-  // Issue #535 (c): share_plus 13.x deprecated the old static
-  // `Share.share(String)` in favor of `SharePlus.instance.share(ShareParams
-  // (...))` (see TransferOwnershipScreen._shareLink, the sibling pattern
-  // this mirrors). Plain text share of the bare link, same as Copy Link.
-  void _shareLink() {
-    if (_generatedInvite == null) return;
-    SharePlus.instance.share(ShareParams(text: _generatedInvite!.inviteUri.toString()));
+    SharePlus.instance.share(
+      ShareParams(text: _generatedInvite!.inviteUri.toString()),
+    );
   }
 
   @override
@@ -123,7 +120,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Share this single-use link with the caregiver for ${widget.profileName}:'),
+            Text(
+              'Share this single-use link with the caregiver for ${widget.profileName}:',
+            ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(8),
@@ -133,13 +132,17 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
               ),
               child: SelectableText(
                 _generatedInvite!.inviteUri.toString(),
-                style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                ),
               ),
             ),
             const SizedBox(height: 12),
             Text(
               'Expires in 48 hours. Can be redeemed once.',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             if (_justCopied) ...[
               const SizedBox(height: 8),
@@ -149,12 +152,18 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                   key: const ValueKey('invite-copied-confirmation'),
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.check_circle,
-                        size: 16, color: theme.colorScheme.primary),
+                    Icon(
+                      Icons.check_circle,
+                      size: 16,
+                      color: theme.colorScheme.primary,
+                    ),
                     const SizedBox(width: 4),
-                    Text('Copied to clipboard',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.primary)),
+                    Text(
+                      'Copied to clipboard',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -218,8 +227,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                     items: const [
                       DropdownMenuItem(
                         value: GuardianRole.coParent,
-                        child:
-                            Text('Co-Parent (Can log, edit profile & invite)'),
+                        child: Text(
+                          'Co-Parent (Can log, edit profile & invite)',
+                        ),
                       ),
                       DropdownMenuItem(
                         value: GuardianRole.caregiver,
