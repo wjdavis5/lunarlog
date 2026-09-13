@@ -20,6 +20,7 @@ import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.da
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -33,6 +34,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
@@ -41,6 +43,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
+import '../support/erroring_day_entries_repository.dart';
 import '../support/fake_auth_service.dart';
 
 final LocalDate kToday = LocalDate(2026, 8, 30);
@@ -662,6 +665,55 @@ void main() {
     );
     expect(find.byKey(const ValueKey('activity-feed-button')), findsNothing);
     await disposeActivity(tester, h2);
+  });
+
+  group('issue #543: feed stream error', () {
+    testWidgets(
+        'a thrown error on the feed stream shows InlineError with retry '
+        'instead of a permanent spinner', (tester) async {
+      late ErroringActivityFeedRepository erroring;
+      late DriftDayEntriesRepository entries;
+      final h = await pumpActivity(
+        tester,
+        seed: seedShared,
+        screen: (profile, repository, db) {
+          entries = DriftDayEntriesRepository(db.storage);
+          erroring = ErroringActivityFeedRepository(repository);
+          return ActivityFeedScreen(
+            profile: profile,
+            repository: erroring,
+            todayProvider: () => kToday,
+            nowProvider: () => kNow,
+          );
+        },
+      );
+      expect(find.text('Alice Activity'), findsOneWidget,
+          reason: 'sanity: healthy before the break');
+
+      erroring.broken = true;
+      await entries.save(DayEntry(
+        id: '',
+        profileId: h.profile.id,
+        localDate: kToday,
+        tz: 'America/Chicago',
+        flow: FlowLevel.medium,
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineError), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      erroring.broken = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InlineError), findsNothing,
+          reason: 'retry re-subscribes and recovers once the failure clears');
+      expect(find.text('Alice Activity'), findsOneWidget);
+
+      await disposeActivity(tester, h);
+    });
   });
 }
 

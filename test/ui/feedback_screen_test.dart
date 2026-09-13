@@ -7,6 +7,7 @@ import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -201,8 +202,8 @@ void main() {
     await tapSubmit(tester);
     await tester.pumpAndSettle();
 
-    final errorText = tester.widget<Text>(find.byKey(const ValueKey('feedback-error')));
-    expect(errorText.data, const FeedbackFailure.network().userFacingMessage);
+    final error = tester.widget<InlineError>(find.byKey(const ValueKey('feedback-error')));
+    expect(error.message, const FeedbackFailure.network().userFacingMessage);
     expect(find.text('still typed here'), findsOneWidget);
 
     final submitButton = tester.widget<FilledButton>(find.byKey(const ValueKey('feedback-submit')));
@@ -220,8 +221,8 @@ void main() {
     await tapSubmit(tester);
     await tester.pumpAndSettle();
 
-    final errorText = tester.widget<Text>(find.byKey(const ValueKey('feedback-error')));
-    expect(errorText.data, const FeedbackFailure.rateLimited().userFacingMessage);
+    final error = tester.widget<InlineError>(find.byKey(const ValueKey('feedback-error')));
+    expect(error.message, const FeedbackFailure.rateLimited().userFacingMessage);
     expect(
       const FeedbackFailure.rateLimited().userFacingMessage,
       isNot(const FeedbackFailure.network().userFacingMessage),

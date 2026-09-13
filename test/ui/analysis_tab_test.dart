@@ -29,9 +29,11 @@ import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:provider/provider.dart';
 
+import '../support/erroring_day_entries_repository.dart';
 import '../support/fake_auth_service.dart';
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
@@ -568,6 +570,64 @@ void main() {
       expect(textAt(tester, 'analysis-fertile-window'), isNotNull);
 
       await h.dispose();
+    });
+  });
+
+  group('issue #543: prediction stream error', () {
+    testWidgets(
+        'a thrown error on the prediction stream shows InlineError with '
+        'retry instead of a permanent spinner', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final innerEntries = DriftDayEntriesRepository(db.storage);
+      final entries = ErroringDayEntriesRepository(innerEntries);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      await seedEpisodes(innerEntries, profile.id, kSteadyStarts);
+
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<CyclePredictionService>.value(
+            value: CyclePredictionService(entries, settings: settings),
+          ),
+          Provider<CycleHistoryService>.value(
+            value: CycleHistoryService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: AnalysisTab(
+              profileId: profile.id,
+              todayProvider: () => kSteadyStarts.last.addDays(30),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('analysis-heading')), findsOneWidget,
+          reason: 'sanity: healthy before the break');
+
+      entries.broken = true;
+      await entries.save((await entries.find(profile.id, kSteadyStarts.last))!);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineError), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      entries.broken = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('analysis-heading')), findsOneWidget,
+          reason: 'retry re-subscribes and recovers once the failure clears');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
     });
   });
 }

@@ -16,6 +16,7 @@ import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
@@ -28,10 +29,16 @@ class AccountMismatchScreen extends StatefulWidget {
 
 class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
   bool _busy = false;
+  String? _error;
+  VoidCallback? _retry;
 
   Future<void> _switchAccount() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _error = null;
+      _retry = null;
+    });
     final auth = context.read<AuthController>();
     try {
       // #1 (review fix): remove this device's push registration while the
@@ -42,6 +49,13 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
     } on AuthFailure catch (failure) {
       // The local session is gone regardless (service contract).
       debugPrint('lunarlog auth: switch-account sign-out reported $failure');
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Could not switch accounts. Please try again.';
+          _retry = _switchAccount;
+        });
+      }
     } finally {
       // The local session ends here regardless of the service's answer
       // (see the comment above), so this is a real session-ending path —
@@ -83,8 +97,23 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    setState(() => _busy = true);
-    await reset();
+    setState(() {
+      _busy = true;
+      _error = null;
+      _retry = null;
+    });
+    try {
+      await reset();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = "Could not remove this device's data. Please try again.";
+          _retry = _removeData;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -129,6 +158,14 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
             onPressed: _busy ? null : _removeData,
             child: const Text("Remove this device's data"),
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            InlineError(
+              key: const ValueKey('mismatch-error'),
+              message: _error!,
+              onRetry: _busy ? null : _retry,
+            ),
+          ],
         ],
       ),
     );

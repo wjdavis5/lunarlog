@@ -184,12 +184,13 @@ class _NotificationPreferencesScreenState
         ));
   }
 
+  /// #554: was a hand-rolled, always-12h ("2:30 PM") formatter that ignored
+  /// `MediaQuery.alwaysUse24HourFormat` -- the opposite hard-coded
+  /// convention from `reminder_settings_screen.dart`'s old always-24h one.
+  /// `TimeOfDay.format(context)` follows the device's actual setting.
   String _formatMinutes(int minutes) {
     final time = TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
-    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-    final minute = time.minute.toString().padLeft(2, '0');
-    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
-    return '$hour:$minute $period';
+    return time.format(context);
   }
 
   /// One per-kind cadence selector (Issue #125). [onSelect] is dropped to

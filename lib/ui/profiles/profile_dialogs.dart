@@ -209,27 +209,37 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         title: const Text('This profile is for a minor'),
                       ),
                       const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Care mode',
-                          key: const ValueKey('care-mode-label'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      DropdownButton<ProfileMode>(
-                        key: const ValueKey('care-mode-dropdown'),
-                        value: _mode,
-                        isExpanded: true,
-                        onChanged: (value) =>
-                            setState(() => _mode = value ?? ProfileMode.standard),
-                        items: [
-                          for (final mode in ProfileMode.values)
-                            DropdownMenuItem<ProfileMode>(
-                              value: mode,
-                              child: Text(mode.label),
+                      // #557: MergeSemantics folds the label into the dropdown's
+                      // own announcement, so a screen reader hears "Care mode,
+                      // <value>" instead of just the bare value.
+                      MergeSemantics(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Care mode',
+                                key: const ValueKey('care-mode-label'),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ),
-                        ],
+                            DropdownButton<ProfileMode>(
+                              key: const ValueKey('care-mode-dropdown'),
+                              value: _mode,
+                              isExpanded: true,
+                              onChanged: (value) => setState(
+                                  () => _mode = value ?? ProfileMode.standard),
+                              items: [
+                                for (final mode in ProfileMode.values)
+                                  DropdownMenuItem<ProfileMode>(
+                                    value: mode,
+                                    child: Text(mode.label),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(top: 4, bottom: 8),
@@ -249,74 +259,97 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         validator: validateBirthYear,
                       ),
                       const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Relationship',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      DropdownButton<ProfileRelationship?>(
-                        value: _relationship,
-                        isExpanded: true,
-                        onChanged: (value) => setState(() => _relationship = value),
-                        items: [
-                          const DropdownMenuItem<ProfileRelationship?>(
-                            child: Text('None'),
-                          ),
-                          for (final relationship in ProfileRelationship.values)
-                            DropdownMenuItem<ProfileRelationship?>(
-                              value: relationship,
-                              child: Text(relationship.label),
+                      MergeSemantics(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Relationship',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ),
-                        ],
+                            DropdownButton<ProfileRelationship?>(
+                              value: _relationship,
+                              isExpanded: true,
+                              onChanged: (value) =>
+                                  setState(() => _relationship = value),
+                              items: [
+                                const DropdownMenuItem<ProfileRelationship?>(
+                                  child: Text('None'),
+                                ),
+                                for (final relationship in ProfileRelationship.values)
+                                  DropdownMenuItem<ProfileRelationship?>(
+                                    value: relationship,
+                                    child: Text(relationship.label),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          AppLocalizations.of(context).lifeStageModeLabel,
-                          key: const ValueKey('edit-lifecycle-label'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      DropdownButton<LifecycleMode>(
-                        key: const ValueKey('edit-lifecycle-dropdown'),
-                        value: _lifecycleMode,
-                        isExpanded: true,
-                        onChanged: (value) => setState(
-                            () => _lifecycleMode = value ?? LifecycleMode.tracking),
-                        items: [
-                          for (final mode in LifecycleMode.values)
-                            DropdownMenuItem<LifecycleMode>(
-                              value: mode,
-                              child: Text(mode.label),
+                      MergeSemantics(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                AppLocalizations.of(context).lifeStageModeLabel,
+                                key: const ValueKey('edit-lifecycle-label'),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ),
-                        ],
+                            DropdownButton<LifecycleMode>(
+                              key: const ValueKey('edit-lifecycle-dropdown'),
+                              value: _lifecycleMode,
+                              isExpanded: true,
+                              onChanged: (value) => setState(() =>
+                                  _lifecycleMode = value ?? LifecycleMode.tracking),
+                              items: [
+                                for (final mode in LifecycleMode.values)
+                                  DropdownMenuItem<LifecycleMode>(
+                                    value: mode,
+                                    child: Text(mode.label),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          AppLocalizations.of(context).firstRunCycleBirthControlLabel,
-                          key: const ValueKey('edit-birth-control-label'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      DropdownButton<BirthControlChoice>(
-                        key: const ValueKey('edit-birth-control-dropdown'),
-                        value: _birthControl,
-                        isExpanded: true,
-                        onChanged: (value) => setState(() =>
-                            _birthControl = value ?? BirthControlChoice.notAnswered),
-                        items: [
-                          for (final choice in BirthControlChoice.values)
-                            DropdownMenuItem<BirthControlChoice>(
-                              value: choice,
-                              child: Text(birthControlChoiceLabel(
-                                  choice, AppLocalizations.of(context))),
+                      MergeSemantics(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                AppLocalizations.of(context)
+                                    .firstRunCycleBirthControlLabel,
+                                key: const ValueKey('edit-birth-control-label'),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ),
-                        ],
+                            DropdownButton<BirthControlChoice>(
+                              key: const ValueKey('edit-birth-control-dropdown'),
+                              value: _birthControl,
+                              isExpanded: true,
+                              onChanged: (value) => setState(() => _birthControl =
+                                  value ?? BirthControlChoice.notAnswered),
+                              items: [
+                                for (final choice in BirthControlChoice.values)
+                                  DropdownMenuItem<BirthControlChoice>(
+                                    value: choice,
+                                    child: Text(birthControlChoiceLabel(
+                                        choice, AppLocalizations.of(context))),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),

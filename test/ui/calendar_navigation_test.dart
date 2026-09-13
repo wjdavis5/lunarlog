@@ -21,6 +21,8 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -28,6 +30,8 @@ import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
+
+import '../support/erroring_day_entries_repository.dart';
 
 /// Fixed "today" (same date `test/ui/logging_test.dart` uses) so month
 /// defaults and the forward navigation limit are deterministic.
@@ -196,24 +200,29 @@ void main() {
     });
 
     testWidgets(
-        'collapses by default once the text scale reaches the large-text '
-        'budget threshold, and a small toggle re-expands it (issue #312)',
-        (tester) async {
-      final expandedHarness = await pumpCalendar(tester, textScale: 1.5);
-      expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
-      expect(find.text('Light flow'), findsOneWidget,
-          reason: 'below the 1.6 threshold the legend stays expanded');
-      await disposeCalendar(tester, expandedHarness);
+        'issue #556: stays expanded by default at every text scale -- no '
+        'longer auto-collapses at a large one -- and the manual toggle '
+        'still collapses/re-expands it on tap', (tester) async {
+      for (final textScale in [1.0, 1.5, 1.6, 2.0, 3.0]) {
+        final h = await pumpCalendar(tester, textScale: textScale);
+        expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
+        expect(find.text('Light flow'), findsOneWidget,
+            reason: 'the legend defaults expanded at $textScale x, not '
+                'just below some collapse threshold');
+        await disposeCalendar(tester, h);
+      }
 
-      final collapsedHarness = await pumpCalendar(tester, textScale: 1.6);
+      final h = await pumpCalendar(tester, textScale: 2.0);
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('Light flow'), findsNothing,
-          reason: 'at the 1.6 threshold the legend starts collapsed');
+          reason: 'the operator can still manually collapse it');
 
       await tester.tap(find.byKey(const ValueKey('legend-toggle')));
       await tester.pumpAndSettle();
       expect(find.text('Light flow'), findsOneWidget,
-          reason: 'the toggle re-expands it even at a large text scale');
-      await disposeCalendar(tester, collapsedHarness);
+          reason: 'and re-expand it again, even at a large text scale');
+      await disposeCalendar(tester, h);
     });
   });
 
@@ -570,12 +579,13 @@ void main() {
     });
   });
 
-  group('large text budget (issue #312)', () {
+  group('large text budget (issue #312, #556)', () {
     testWidgets(
         'at textScaleFactor 2.0 on a phone-class viewport the calendar '
-        'renders without an overflow (issue #312 review: an 800x1400 '
+        'renders without an overflow, with the legend expanded (#556: no '
+        'longer auto-collapsed) (issue #312 review: an 800x1400 '
         'desktop-sized canvas made this test vacuous — the legend '
-        'collapse only actually matters on a real phone width)',
+        'width budget only actually matters on a real phone width)',
         (tester) async {
       final h = await pumpCalendar(
         tester,
@@ -585,8 +595,12 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget);
-      expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget,
-          reason: 'the legend is collapsed, not absent, at this scale');
+      expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
+      expect(find.text('Light flow'), findsOneWidget,
+          reason: '#556: expanded by default even at this scale -- the '
+              'header stack wraps/scrolls internally instead of forcing '
+              'the legend to collapse to keep the grid area from '
+              'overflowing');
 
       await disposeCalendar(tester, h);
     });
@@ -853,6 +867,77 @@ void main() {
               'not be replaced by a spinner mid-animation');
 
       await disposeCalendar(tester, h);
+    });
+  });
+
+  group('issue #543: prediction/history stream error', () {
+    testWidgets(
+        'a thrown error on the injected prediction stream shows InlineError '
+        'with retry instead of a permanent spinner', (tester) async {
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      final entries = DriftDayEntriesRepository(db.storage);
+      final erroringEntries = ErroringDayEntriesRepository(entries);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<DayEntriesRepository>.value(value: entries),
+            Provider<CyclePredictionService>.value(
+              value: CyclePredictionService(erroringEntries),
+            ),
+            Provider<CycleHistoryService>.value(
+              value: CycleHistoryService(erroringEntries),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.lightTheme,
+            home: Scaffold(
+              body: MonthCalendar(
+                  profileId: profile.id, todayProvider: () => kToday),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget,
+          reason: 'sanity: healthy before the break');
+
+      erroringEntries.broken = true;
+      await entries.save(DayEntry(
+        id: '',
+        profileId: profile.id,
+        localDate: kToday,
+        tz: 'America/Chicago',
+        flow: FlowLevel.medium,
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('calendar-prediction-error')),
+          findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      erroringEntries.broken = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('calendar-prediction-error')),
+          findsNothing,
+          reason: 'retry re-subscribes and recovers once the failure clears');
+      expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
     });
   });
 }
