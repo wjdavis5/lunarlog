@@ -1981,4 +1981,52 @@ void main() {
       },
     );
   });
+
+  group('rebaseFutureStampedRows (issue #641 LLA-042)', () {
+    test('rebases a dirty future-stamped row to the server clock and bumps rev',
+        () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'Alice', isMinor: false);
+      // Move the local clock far into the future, then log an entry: its
+      // updated_at is stamped in the future and the server would reject it.
+      clock.now = t0.add(const Duration(days: 365));
+      final entry = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-01-16',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      expect(entry.dirty, isTrue);
+      expect(entry.updatedAt.isAfter(t0.add(const Duration(days: 364))), isTrue,
+          reason: 'precondition: the entry is future-stamped');
+
+      // The client has just learned the real server clock (≈ t0) from a push
+      // that rejected this row.
+      final rebased = await storage.rebaseFutureStampedRows(serverNow: t0);
+      expect(rebased, 1, reason: 'exactly the future-stamped entry is rebased');
+
+      final after = await entryById(profile.id, entry.id);
+      expect(after.updatedAt, t0,
+          reason: 'updated_at is rebased onto the learned server clock');
+      expect(after.localRev, greaterThan(entry.localRev),
+          reason: 'local_rev bumps so the row is pushable (and its rejection clears)');
+    });
+
+    test('leaves non-future dirty rows untouched and returns a count of zero',
+        () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'Bob', isMinor: false);
+      final normal = await storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-01-16',
+          tz: 'UTC',
+          flow: FlowLevel.medium);
+      expect(await storage.rebaseFutureStampedRows(serverNow: t0), 0,
+          reason: 'nothing future-stamped is rebased');
+      final after = await entryById(profile.id, normal.id);
+      expect(after.updatedAt, normal.updatedAt,
+          reason: 'a healthy dirty row keeps its timestamp');
+      expect(after.localRev, normal.localRev,
+          reason: 'a healthy dirty row keeps its rev');
+    });
+  });
 }

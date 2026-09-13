@@ -1550,6 +1550,83 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     });
   }
 
+  /// Issue #641 LLA-042: a dirty row whose `updated_at` is in the future (a
+  /// client clock far ahead) is rejected by the server (`updated_at > now() +
+  /// 5 minutes`), and because [_afterStored] refuses to move a timestamp
+  /// backward, it stays permanently unsyncable until wall-clock time catches
+  /// up — even after the client learns its clock is fast and corrects it
+  /// (editing the row still picks the stored future time + 1ms). Rebase every
+  /// dirty row whose `updated_at` exceeds [serverNow] + 5 minutes (the
+  /// server's own rejection ceiling) to [serverNow] and bump `local_rev`, so
+  /// the row becomes pushable again (the bump also clears any in-memory
+  /// rejection keyed on the old rev) and, once accepted, wins LWW against
+  /// anything genuinely older. Returns how many rows were rebased. Idempotent
+  /// and cheap when nothing is future-stamped — the predicate matches only
+  /// rows the server would reject.
+  Future<int> rebaseFutureStampedRows({required DateTime serverNow}) async {
+    final threshold = serverNow.toUtc().add(const Duration(minutes: 5));
+    var rebased = 0;
+    await db.transaction(() async {
+      rebased += await (db.update(db.profiles)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ProfilesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.profiles.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.dayEntries)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(DayEntriesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.dayEntries.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.observations)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ObservationsCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.observations.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.profileModes)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ProfileModesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.profileModes.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.cycleOverrides)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(CycleOverridesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.cycleOverrides.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.careNotes)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(CareNotesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.careNotes.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.visitPrepItems)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(VisitPrepItemsCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.visitPrepItems.localRev + const Constant(1),
+          ));
+    });
+    return rebased;
+  }
+
   /// Replaces the `sync_state` singleton (the id is forced to 1).
   Future<void> writeSyncState(SyncStateRow state) async {
     await db
