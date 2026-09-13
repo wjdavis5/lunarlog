@@ -2,10 +2,11 @@
 ///
 /// Every domain row carries the hand-modeled sync metadata settled in the
 /// data model: client-generated ULID id, `updated_at` (UTC, never regresses
-/// on-device), and `deleted_at` (tombstone soft-delete; rows are never
-/// removed). Schema v2 (KTD4) adds device-local sync bookkeeping to the two
-/// synced tables — `dirty` (needs pushing) and `local_rev` (bumped on every
-/// local write, never synced) — plus the `sync_state` singleton.
+/// on-device), and `deleted_at` (tombstone soft-delete; rows are retained
+/// for sync until swept by the bounded tombstone sweep — Issue #203). Schema
+/// v2 (KTD4) adds device-local sync bookkeeping to the two synced tables —
+/// `dirty` (needs pushing) and `local_rev` (bumped on every local write,
+/// never synced) — plus the `sync_state` singleton.
 /// `app_settings` is device-local key-value state and intentionally
 /// carries only `updated_at` (flagged as an open design question).
 library;

@@ -1503,4 +1503,106 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         .insertOnConflictUpdate(anchor.toCompanion(false));
   }
 
+  /// Sweeps tombstoned rows older than [retentionHorizon] (or [olderThan] if
+  /// specified) whose `dirty` flag is false (Issue #203).
+  ///
+  /// Deletes are performed in referential integrity order (child tables before
+  /// parents). Only clean (already synced or never dirty) tombstones are removed;
+  /// rows pending upload are never swept.
+  /// Returns the total number of swept rows.
+  Future<int> sweepTombstones({
+    Duration retentionHorizon = kTombstoneRetentionHorizon,
+    DateTime? olderThan,
+  }) async {
+    final cutoff = olderThan ?? _now().subtract(retentionHorizon);
+    return await db.transaction(() async {
+      var swept = 0;
+
+      // 1. Observations (references day_entries and profiles)
+      swept += await (db.delete(db.observations)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 2. Visit prep items (references profiles)
+      swept += await (db.delete(db.visitPrepItems)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 3. Care notes (references profiles)
+      swept += await (db.delete(db.careNotes)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 4. Cycle overrides (references profiles)
+      swept += await (db.delete(db.cycleOverrides)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 5. Day entries (references profiles, referenced by observations)
+      // Only delete day entries that are no longer referenced by any remaining observations.
+      final referencedDayEntryIds = db.selectOnly(db.observations)
+        ..addColumns([db.observations.dayEntryId])
+        ..where(db.observations.dayEntryId.isNotNull());
+
+      swept += await (db.delete(db.dayEntries)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff) &
+                t.id.isNotInQuery(referencedDayEntryIds)))
+          .go();
+
+      // 6. Profiles (root table)
+      // Only delete profiles if no child records remain referencing them.
+      final refObs = db.selectOnly(db.observations)..addColumns([db.observations.profileId]);
+      final refDays = db.selectOnly(db.dayEntries)..addColumns([db.dayEntries.profileId]);
+      final refGuardians = db.selectOnly(db.profileGuardians)..addColumns([db.profileGuardians.profileId]);
+      final refModes = db.selectOnly(db.profileModes)..addColumns([db.profileModes.profileId]);
+      final refOverrides = db.selectOnly(db.cycleOverrides)..addColumns([db.cycleOverrides.profileId]);
+      final refNotes = db.selectOnly(db.careNotes)..addColumns([db.careNotes.profileId]);
+      final refPrep = db.selectOnly(db.visitPrepItems)..addColumns([db.visitPrepItems.profileId]);
+
+      swept += await (db.delete(db.profiles)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff) &
+                t.id.isNotInQuery(refObs) &
+                t.id.isNotInQuery(refDays) &
+                t.id.isNotInQuery(refGuardians) &
+                t.id.isNotInQuery(refModes) &
+                t.id.isNotInQuery(refOverrides) &
+                t.id.isNotInQuery(refNotes) &
+                t.id.isNotInQuery(refPrep)))
+          .go();
+
+      return swept;
+    });
+  }
+
+  /// Runs periodic maintenance: sweeps tombstones and reclaims unused storage
+  /// space via VACUUM (Issue #203).
+  Future<int> runMaintenance({
+    Duration retentionHorizon = kTombstoneRetentionHorizon,
+    DateTime? olderThan,
+  }) async {
+    final swept = await sweepTombstones(
+      retentionHorizon: retentionHorizon,
+      olderThan: olderThan,
+    );
+    await db.vacuum();
+    return swept;
+  }
 }

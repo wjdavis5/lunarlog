@@ -20,7 +20,8 @@
 ///   applies write `dirty = false` and leave `local_rev` alone.
 /// * Deletes are tombstones: `deleted_at` is set, `updated_at` bumped, the
 ///   payload cleared (`flow = none`, `note = null`, `tags = []`,
-///   `display_name = ''`); rows are never removed.
+///   `display_name = ''`); rows remain on disk until swept by the periodic
+///   tombstone sweep (Issue #203).
 /// * At most one *live* day entry per (profile, date): local writes update
 ///   the live row in place, remote applies run the same-date rule and
 ///   tombstone the loser with the winner's timestamp.
@@ -94,6 +95,12 @@ export '../sync/remote_rows.dart'
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
 part 'storage_remote_apply.dart';
+
+/// Retention horizon for local tombstones (Issue #203):
+/// The sync engine's full-reconcile interval (`kSyncFullPullInterval`, 24h) plus
+/// a 24h safety margin, ensuring tombstones are never swept before every device
+/// has had a chance to reconcile.
+const Duration kTombstoneRetentionHorizon = Duration(hours: 48);
 
 class LunarLogStorage with LunarLogStorageQueries, LunarLogStorageLocalWrites, LunarLogStorageRemoteApply {
   LunarLogStorage(this.db, {DateTime Function()? clock, UlidGenerator? ulid})
