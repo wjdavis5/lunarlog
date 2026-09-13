@@ -103,6 +103,15 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
     SharePlus.instance.share(ShareParams(text: _generatedInvite!.inviteUri.toString()));
   }
 
+  // Issue #535 (c): share_plus 13.x deprecated the old static
+  // `Share.share(String)` in favor of `SharePlus.instance.share(ShareParams
+  // (...))` (see TransferOwnershipScreen._shareLink, the sibling pattern
+  // this mirrors). Plain text share of the bare link, same as Copy Link.
+  void _shareLink() {
+    if (_generatedInvite == null) return;
+    SharePlus.instance.share(ShareParams(text: _generatedInvite!.inviteUri.toString()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
