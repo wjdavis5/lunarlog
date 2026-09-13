@@ -508,6 +508,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
+      - name: Cache Xcode build products
+        # Xcode's incremental build state for the release device build, plus
+        # Flutter's own kernel/snapshot outputs (.dart_tool/flutter_build).
+        # Hosted Macs start cold every run, so without this the whole app
+        # (plus every pod and Swift package) recompiles from scratch — most
+        # of this job's ~9 minutes. Keyed on the dependency locks, then the
+        # Dart sources; the prefix fallbacks let an unrelated change reuse
+        # everything that did not change (Xcode rebuilds what did).
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            build/ios
+            .dart_tool/flutter_build
+          key: ${{ runner.os }}-xcode-device-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart', 'ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-device-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-
+            ${{ runner.os }}-xcode-device-v2-
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -569,6 +588,22 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
+
+      - name: Cache Xcode build products
+        # The simulator debug build of the whole app (Xcode products and
+        # Flutter's kernel/snapshot outputs in .dart_tool/flutter_build) is
+        # most of this job's ~12 minutes on a cold hosted Mac. Separate key family from the
+        # device build (different SDK/arch products); same fallback shape.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            build/ios
+            .dart_tool/flutter_build
+          key: ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart', 'ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-
+            ${{ runner.os }}-xcode-simulator-v2-
 
       - name: Get dependencies
         run: flutter pub get
