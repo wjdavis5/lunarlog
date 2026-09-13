@@ -508,6 +508,37 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
+      - name: Cache CocoaPods
+        # `pod install` runs inside `flutter build ios`; on a fresh hosted
+        # Mac it re-downloads every pod. Keyed on Podfile.lock so a pod
+        # bump misses cleanly; the prefix fallback still warm-starts the
+        # CocoaPods download cache.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Cache Xcode build products
+        # Xcode's incremental build state for the release device build.
+        # Hosted Macs start cold every run, so without this the whole app
+        # (plus every pod and Swift package) recompiles from scratch — most
+        # of this job's ~9 minutes. Keyed on the dependency locks, then the
+        # Dart sources; the prefix fallbacks let an unrelated change reuse
+        # everything that did not change (Xcode rebuilds what did).
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            build/ios
+          key: ${{ runner.os }}-xcode-device-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart', 'ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-device-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-
+            ${{ runner.os }}-xcode-device-
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -569,6 +600,32 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
+
+      - name: Cache CocoaPods
+        # Same rationale as Build iOS (unsigned): pods are re-downloaded on
+        # every fresh hosted Mac otherwise. Shares that job's cache key.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Cache Xcode build products
+        # The simulator debug build of the whole app is most of this job's
+        # ~12 minutes on a cold hosted Mac. Separate key family from the
+        # device build (different SDK/arch products); same fallback shape.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            build/ios
+          key: ${{ runner.os }}-xcode-simulator-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart', 'ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-simulator-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-
+            ${{ runner.os }}-xcode-simulator-
 
       - name: Get dependencies
         run: flutter pub get
