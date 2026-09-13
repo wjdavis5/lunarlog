@@ -161,6 +161,67 @@ class CycleSubphaseInfo {
 }
 
 /// Derives the active [CycleSubphaseInfo] for [today] given [prediction].
+int _calculateOvulationDay(ActivePrediction prediction, int bleedLength, int meanLength) {
+  final estimatedOvulation =
+      prediction.estimatedNextStart.addDays(-kDefaultLutealPhaseDays);
+  final rawOvulationCycleDay =
+      estimatedOvulation.difference(prediction.lastEpisodeStart) + 1;
+  final minOvulationDay = bleedLength + 2;
+  final maxOvulationDay = (meanLength - 2) >= minOvulationDay
+      ? meanLength - 2
+      : minOvulationDay;
+  return rawOvulationCycleDay.clamp(minOvulationDay, maxOvulationDay);
+}
+
+class _SubphaseBoundary {
+  const _SubphaseBoundary(this.subphase, this.startCd, this.endCd);
+  final CycleSubphase subphase;
+  final int startCd;
+  final int endCd;
+}
+
+_SubphaseBoundary _determineSubphase({
+  required bool duringEpisode,
+  required int cycleDay,
+  required int earlyFollicularEnd,
+  required int lateFollicularStart,
+  required int lateFollicularEnd,
+  required int ovulationStart,
+  required int ovulationEnd,
+  required int earlyLutealStart,
+  required int earlyLutealEnd,
+  required int midLutealStart,
+  required int midLutealEnd,
+  required int lateLutealStart,
+  required int lateLutealEnd,
+}) {
+  if (duringEpisode || cycleDay <= earlyFollicularEnd) {
+    return _SubphaseBoundary(CycleSubphase.earlyFollicular, 1, earlyFollicularEnd);
+  }
+  if (cycleDay <= lateFollicularEnd) {
+    return _SubphaseBoundary(CycleSubphase.lateFollicular, lateFollicularStart, lateFollicularEnd);
+  }
+  if (cycleDay <= ovulationEnd) {
+    return _SubphaseBoundary(CycleSubphase.ovulation, ovulationStart, ovulationEnd);
+  }
+  if (cycleDay <= earlyLutealEnd) {
+    return _SubphaseBoundary(CycleSubphase.earlyLuteal, earlyLutealStart, earlyLutealEnd);
+  }
+  if (cycleDay <= midLutealEnd) {
+    return _SubphaseBoundary(CycleSubphase.midLuteal, midLutealStart, midLutealEnd);
+  }
+  final endCd = cycleDay > lateLutealEnd ? cycleDay : lateLutealEnd;
+  return _SubphaseBoundary(CycleSubphase.lateLuteal, lateLutealStart, endCd);
+}
+
+String? _buildHedgedNotice({required bool isHedged, required bool isLate}) {
+  if (!isHedged) return null;
+  return isLate
+      ? 'Cycle is running longer than average. Subphase estimates remain in late luteal awaiting your next period.'
+      : 'Subphase timing is estimated from your cycle average. Exact hormonal transitions vary from cycle to cycle.';
+}
+
+/// Derives the active [CycleSubphaseInfo] for [today] given [prediction].
 CycleSubphaseInfo deriveSubphase({
   required ActivePrediction prediction,
   required LocalDate today,
@@ -171,35 +232,25 @@ CycleSubphaseInfo deriveSubphase({
       ? prediction.meanPeriodLengthDays.round().clamp(1, 10)
       : kDefaultPeriodLengthDays;
 
-  // Ovulation day estimate (anchored on next period start minus luteal phase).
-  final estimatedOvulation =
-      prediction.estimatedNextStart.addDays(-kDefaultLutealPhaseDays);
-  final rawOvulationCycleDay =
-      estimatedOvulation.difference(prediction.lastEpisodeStart) + 1;
-  final minOvulationDay = bleedLength + 2;
-  final maxOvulationDay = (meanLength - 2) >= minOvulationDay
-      ? meanLength - 2
-      : minOvulationDay;
-  final ovulationDay = rawOvulationCycleDay.clamp(minOvulationDay, maxOvulationDay);
+  final ovulationDay = _calculateOvulationDay(prediction, bleedLength, meanLength);
 
-  // Subphase boundaries (cycle-day ranges):
-  // 1. Early Follicular: Day 1 to bleed length (or while duringEpisode is true).
+  // 1. Early Follicular
   final earlyFollicularEnd = prediction.duringEpisode
       ? (cycleDay > bleedLength ? cycleDay : bleedLength)
       : bleedLength;
 
-  // 2. Late Follicular: day after bleed to day before ovulation window.
+  // 2. Late Follicular
   final lateFollicularStart = earlyFollicularEnd + 1;
   final ovulationStart = ovulationDay - 1;
   final lateFollicularEnd = (ovulationStart - 1) >= lateFollicularStart
       ? ovulationStart - 1
       : lateFollicularStart;
 
-  // 3. Ovulation: 3 days (ovulationDay - 1 to ovulationDay + 1).
+  // 3. Ovulation
   final effectiveOvulationStart = lateFollicularEnd + 1;
   final ovulationEnd = ovulationDay + 1;
 
-  // 4, 5, 6. Luteal subphases: proportionally divide the post-ovulation span.
+  // 4, 5, 6. Luteal subphases
   final lutealStart = ovulationEnd + 1;
   final lutealEnd = meanLength >= (lutealStart + 2) ? meanLength : (lutealStart + 2);
   final lutealDays = lutealEnd - lutealStart + 1;
@@ -216,60 +267,39 @@ CycleSubphaseInfo deriveSubphase({
   final lateLutealStart = midLutealEnd + 1;
   final lateLutealEnd = lutealEnd;
 
-  // Determine which subphase the current cycleDay falls into.
-  final CycleSubphase subphase;
-  final int subphaseStartCd;
-  final int subphaseEndCd;
-
-  if (prediction.duringEpisode || cycleDay <= earlyFollicularEnd) {
-    subphase = CycleSubphase.earlyFollicular;
-    subphaseStartCd = 1;
-    subphaseEndCd = earlyFollicularEnd;
-  } else if (cycleDay <= lateFollicularEnd) {
-    subphase = CycleSubphase.lateFollicular;
-    subphaseStartCd = lateFollicularStart;
-    subphaseEndCd = lateFollicularEnd;
-  } else if (cycleDay <= ovulationEnd) {
-    subphase = CycleSubphase.ovulation;
-    subphaseStartCd = effectiveOvulationStart;
-    subphaseEndCd = ovulationEnd;
-  } else if (cycleDay <= earlyLutealEnd) {
-    subphase = CycleSubphase.earlyLuteal;
-    subphaseStartCd = earlyLutealStart;
-    subphaseEndCd = earlyLutealEnd;
-  } else if (cycleDay <= midLutealEnd) {
-    subphase = CycleSubphase.midLuteal;
-    subphaseStartCd = midLutealStart;
-    subphaseEndCd = midLutealEnd;
-  } else {
-    subphase = CycleSubphase.lateLuteal;
-    subphaseStartCd = lateLutealStart;
-    // If overdue, expand end cycle day to current cycle day so it's honest.
-    subphaseEndCd = cycleDay > lateLutealEnd ? cycleDay : lateLutealEnd;
-  }
+  final boundary = _determineSubphase(
+    duringEpisode: prediction.duringEpisode,
+    cycleDay: cycleDay,
+    earlyFollicularEnd: earlyFollicularEnd,
+    lateFollicularStart: lateFollicularStart,
+    lateFollicularEnd: lateFollicularEnd,
+    ovulationStart: effectiveOvulationStart,
+    ovulationEnd: ovulationEnd,
+    earlyLutealStart: earlyLutealStart,
+    earlyLutealEnd: earlyLutealEnd,
+    midLutealStart: midLutealStart,
+    midLutealEnd: midLutealEnd,
+    lateLutealStart: lateLutealStart,
+    lateLutealEnd: lateLutealEnd,
+  );
 
   final subphaseStartDate =
-      prediction.lastEpisodeStart.addDays(subphaseStartCd - 1);
+      prediction.lastEpisodeStart.addDays(boundary.startCd - 1);
   final subphaseEndDate =
-      prediction.lastEpisodeStart.addDays(subphaseEndCd - 1);
+      prediction.lastEpisodeStart.addDays(boundary.endCd - 1);
 
   final isHedged = prediction.tier != CycleConfidence.high || prediction.isLate;
-  final hedgedNotice = isHedged
-      ? (prediction.isLate
-          ? 'Cycle is running longer than average. Subphase estimates remain in late luteal awaiting your next period.'
-          : 'Subphase timing is estimated from your cycle average. Exact hormonal transitions vary from cycle to cycle.')
-      : null;
 
   return CycleSubphaseInfo(
-    subphase: subphase,
+    subphase: boundary.subphase,
     cycleDay: cycleDay,
-    startCycleDay: subphaseStartCd,
-    endCycleDay: subphaseEndCd,
+    startCycleDay: boundary.startCd,
+    endCycleDay: boundary.endCd,
     startDate: subphaseStartDate,
     endDate: subphaseEndDate,
     isHedged: isHedged,
-    hedgedNotice: hedgedNotice,
-    biologicalExplainer: subphase.hormonalSummary,
+    hedgedNotice: _buildHedgedNotice(isHedged: isHedged, isLate: prediction.isLate),
+    biologicalExplainer: boundary.subphase.hormonalSummary,
     source: CycleSubphaseInfo.kSourceCitation,
     reviewDate: CycleSubphaseInfo.kReviewDate,
   );

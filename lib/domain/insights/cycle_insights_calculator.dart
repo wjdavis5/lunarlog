@@ -22,14 +22,66 @@ class CycleInsightsCalculator {
     required List<Episode> episodes,
     ActivePrediction? prediction,
   }) {
-    if (episodes.length < 2) {
+    final validCycles = _extractValidCycles(episodes, entries);
+    if (validCycles.isEmpty) {
       return CycleInsightsReport.empty;
     }
 
-    // Sort episodes chronologically.
+    final totalCycleCount = validCycles.length;
+    final tagCycleOccurrences = <String, Map<int, Set<int>>>{};
+    final tagDayCounts = <String, Map<int, int>>{};
+    final flowDistribution = <int, Map<FlowLevel, int>>{};
+
+    for (final cycle in validCycles) {
+      _recordCycleEntries(
+        cycle: cycle,
+        tagCycleOccurrences: tagCycleOccurrences,
+        tagDayCounts: tagDayCounts,
+        flowDistribution: flowDistribution,
+      );
+    }
+
+    final allPatterns = <SymptomPattern>[];
+    for (final tag in tagCycleOccurrences.keys) {
+      allPatterns.add(_buildPattern(
+        tag: tag,
+        cyclesWithTag: tagCycleOccurrences[tag]!,
+        dayMap: tagDayCounts[tag] ?? const {},
+        totalCycleCount: totalCycleCount,
+      ));
+    }
+
+    allPatterns.sort((a, b) {
+      if (a.meetsThreshold != b.meetsThreshold) {
+        return a.meetsThreshold ? -1 : 1;
+      }
+      return b.totalOccurrences.compareTo(a.totalOccurrences);
+    });
+
+    final flowPattern = _buildFlowPattern(flowDistribution);
+    final crampPrediction = _predictCramps(
+      tagCycleOccurrences: tagCycleOccurrences,
+      tagDayCounts: tagDayCounts,
+      totalCycleCount: totalCycleCount,
+      prediction: prediction,
+    );
+
+    return CycleInsightsReport(
+      symptomPatterns: allPatterns.where((p) => p.meetsThreshold).toList(),
+      flowPattern: flowPattern,
+      crampPrediction: crampPrediction,
+      analyzedCycleCount: totalCycleCount,
+      hasEnoughData: totalCycleCount >= kMinObservationCycles,
+    );
+  }
+
+  static List<_CycleData> _extractValidCycles(
+    List<Episode> episodes,
+    List<DayEntry> entries,
+  ) {
+    if (episodes.length < 2) return const [];
     final sortedEpisodes = List<Episode>.from(episodes)..sort();
 
-    // Map non-tombstoned entries by localDate for O(1) lookup.
     final liveEntriesByDate = <LocalDate, DayEntry>{};
     for (final entry in entries) {
       if (entry.deletedAt == null) {
@@ -37,7 +89,6 @@ class CycleInsightsCalculator {
       }
     }
 
-    // Extract completed valid cycles (15–60 days).
     final validCycles = <_CycleData>[];
     for (var i = 0; i < sortedEpisodes.length - 1; i++) {
       final cycleStart = sortedEpisodes[i].start;
@@ -64,148 +115,118 @@ class CycleInsightsCalculator {
         ));
       }
     }
+    return validCycles;
+  }
 
-    if (validCycles.isEmpty) {
-      return CycleInsightsReport.empty;
-    }
+  static void _recordCycleEntries({
+    required _CycleData cycle,
+    required Map<String, Map<int, Set<int>>> tagCycleOccurrences,
+    required Map<String, Map<int, int>> tagDayCounts,
+    required Map<int, Map<FlowLevel, int>> flowDistribution,
+  }) {
+    for (final entry in cycle.entries) {
+      final cycleDay = entry.localDate.difference(cycle.start) + 1;
 
-    final totalCycleCount = validCycles.length;
+      for (final rawTag in entry.tags) {
+        final tag = rawTag.trim().toLowerCase();
+        if (tag.isEmpty) continue;
 
-    // 1. Tag occurrences & cycle-day distributions
-    // tag -> (cycleIndex -> Set<cycleDay>)
-    final tagCycleOccurrences = <String, Map<int, Set<int>>>{};
-    final tagDayCounts = <String, Map<int, int>>{};
+        tagCycleOccurrences
+            .putIfAbsent(tag, () => {})
+            .putIfAbsent(cycle.index, () => {})
+            .add(cycleDay);
 
-    // Flow distribution: cycleDay -> (FlowLevel -> count)
-    final flowDistribution = <int, Map<FlowLevel, int>>{};
+        final dayMap = tagDayCounts.putIfAbsent(tag, () => {});
+        dayMap[cycleDay] = (dayMap[cycleDay] ?? 0) + 1;
+      }
 
-    for (var cIdx = 0; cIdx < validCycles.length; cIdx++) {
-      final cycle = validCycles[cIdx];
-      for (final entry in cycle.entries) {
-        final cycleDay = entry.localDate.difference(cycle.start) + 1;
-
-        // Collect tags
-        for (final rawTag in entry.tags) {
-          final tag = rawTag.trim().toLowerCase();
-          if (tag.isEmpty) continue;
-
-          tagCycleOccurrences
-              .putIfAbsent(tag, () => {})
-              .putIfAbsent(cIdx, () => {})
-              .add(cycleDay);
-
-          final dayMap = tagDayCounts.putIfAbsent(tag, () => {});
-          dayMap[cycleDay] = (dayMap[cycleDay] ?? 0) + 1;
-        }
-
-        // Collect flow
-        if (isBleed(entry.flow)) {
-          final flowMap = flowDistribution.putIfAbsent(cycleDay, () => {});
-          flowMap[entry.flow] = (flowMap[entry.flow] ?? 0) + 1;
-        }
+      if (isBleed(entry.flow)) {
+        final flowMap = flowDistribution.putIfAbsent(cycleDay, () => {});
+        flowMap[entry.flow] = (flowMap[entry.flow] ?? 0) + 1;
       }
     }
+  }
 
-    // 2. Build SymptomPattern models
-    final allPatterns = <SymptomPattern>[];
+  static List<int> _calculatePeakDays(Map<int, int> dayMap) {
+    if (dayMap.isEmpty) return const [];
 
-    for (final tag in tagCycleOccurrences.keys) {
-      final cyclesWithTag = tagCycleOccurrences[tag]!;
-      final cycleCount = cyclesWithTag.length;
-      final dayMap = tagDayCounts[tag] ?? {};
+    final sortedDays = dayMap.keys.toList()
+      ..sort((a, b) => dayMap[b]!.compareTo(dayMap[a]!));
 
-      var totalOccurrences = 0;
-      for (final count in dayMap.values) {
-        totalOccurrences += count;
+    final maxCount = dayMap[sortedDays.first]!;
+    if (maxCount < 2) return const [];
+
+    final minThreshold = (maxCount * 0.7).floor();
+    final effectiveMin = minThreshold > 2 ? minThreshold : 2;
+
+    final peakDays = <int>[];
+    for (final d in sortedDays) {
+      if (dayMap[d]! >= effectiveMin) {
+        peakDays.add(d);
+        if (peakDays.length >= 3) break;
       }
+    }
+    peakDays.sort();
+    return peakDays;
+  }
 
-      // Identify peak cycle days (days with count >= 2 and within top frequency)
-      final sortedDays = dayMap.keys.toList()
-        ..sort((a, b) => (dayMap[b] ?? 0).compareTo(dayMap[a] ?? 0));
+  static SymptomPattern _buildPattern({
+    required String tag,
+    required Map<int, Set<int>> cyclesWithTag,
+    required Map<int, int> dayMap,
+    required int totalCycleCount,
+  }) {
+    var totalOccurrences = 0;
+    for (final count in dayMap.values) {
+      totalOccurrences += count;
+    }
 
-      final peakDays = <int>[];
-      if (sortedDays.isNotEmpty) {
-        final maxCount = dayMap[sortedDays.first] ?? 0;
-        if (maxCount >= 2) {
-          for (final d in sortedDays) {
-            final count = dayMap[d] ?? 0;
-            // Include days within 70% of peak count, up to 3 days
-            if (count >= 2 && count >= (maxCount * 0.7).floor()) {
-              peakDays.add(d);
-              if (peakDays.length >= 3) break;
-            }
-          }
-        }
-      }
-      peakDays.sort();
-
-      // Trend analysis: compare recent cycles vs prior cycles
-      final trend = _calculateTrend(
+    return SymptomPattern(
+      tag: tag,
+      totalOccurrences: totalOccurrences,
+      cycleCount: cyclesWithTag.length,
+      frequencyByCycleDay: dayMap,
+      peakCycleDays: _calculatePeakDays(dayMap),
+      trend: _calculateTrend(
         cyclesWithTag: cyclesWithTag,
         totalCycles: totalCycleCount,
-      );
+      ),
+      meetsThreshold: cyclesWithTag.length >= kMinObservationCycles,
+    );
+  }
 
-      allPatterns.add(SymptomPattern(
-        tag: tag,
-        totalOccurrences: totalOccurrences,
-        cycleCount: cycleCount,
-        frequencyByCycleDay: dayMap,
-        peakCycleDays: peakDays,
-        trend: trend,
-        meetsThreshold: cycleCount >= kMinObservationCycles,
-      ));
-    }
+  static FlowPattern? _buildFlowPattern(
+    Map<int, Map<FlowLevel, int>> flowDistribution,
+  ) {
+    if (flowDistribution.isEmpty) return null;
 
-    // Sort patterns: threshold-meeting first, then by total occurrences descending
-    allPatterns.sort((a, b) {
-      if (a.meetsThreshold != b.meetsThreshold) {
-        return a.meetsThreshold ? -1 : 1;
-      }
-      return b.totalOccurrences.compareTo(a.totalOccurrences);
-    });
+    FlowLevel typicalPeakFlow = FlowLevel.medium;
+    var maxPeakCount = 0;
+    var typicalPeakDay = 1;
 
-    // 3. Build FlowPattern model
-    FlowPattern? flowPattern;
-    if (flowDistribution.isNotEmpty) {
-      FlowLevel typicalPeakFlow = FlowLevel.medium;
-      var maxPeakCount = 0;
-      var typicalPeakDay = 1;
+    for (final dayEntry in flowDistribution.entries) {
+      final day = dayEntry.key;
+      final levelMap = dayEntry.value;
 
-      for (final dayEntry in flowDistribution.entries) {
-        final day = dayEntry.key;
-        final levelMap = dayEntry.value;
-
-        for (final flowLevel in [FlowLevel.heavy, FlowLevel.superHeavy, FlowLevel.medium, FlowLevel.light]) {
-          final count = levelMap[flowLevel] ?? 0;
-          if (count > maxPeakCount) {
-            maxPeakCount = count;
-            typicalPeakFlow = flowLevel;
-            typicalPeakDay = day;
-          }
+      for (final flowLevel in [
+        FlowLevel.heavy,
+        FlowLevel.superHeavy,
+        FlowLevel.medium,
+        FlowLevel.light
+      ]) {
+        final count = levelMap[flowLevel] ?? 0;
+        if (count > maxPeakCount) {
+          maxPeakCount = count;
+          typicalPeakFlow = flowLevel;
+          typicalPeakDay = day;
         }
       }
-
-      flowPattern = FlowPattern(
-        flowByCycleDay: flowDistribution,
-        typicalPeakFlow: typicalPeakFlow,
-        typicalPeakDay: typicalPeakDay,
-      );
     }
 
-    // 4. Predict Cramps (Issue #229)
-    final crampPrediction = _predictCramps(
-      tagCycleOccurrences: tagCycleOccurrences,
-      tagDayCounts: tagDayCounts,
-      totalCycleCount: totalCycleCount,
-      prediction: prediction,
-    );
-
-    return CycleInsightsReport(
-      symptomPatterns: allPatterns.where((p) => p.meetsThreshold).toList(),
-      flowPattern: flowPattern,
-      crampPrediction: crampPrediction,
-      analyzedCycleCount: totalCycleCount,
-      hasEnoughData: totalCycleCount >= kMinObservationCycles,
+    return FlowPattern(
+      flowByCycleDay: flowDistribution,
+      typicalPeakFlow: typicalPeakFlow,
+      typicalPeakDay: typicalPeakDay,
     );
   }
 
@@ -239,6 +260,29 @@ class CycleInsightsCalculator {
     return TrendDirection.stable;
   }
 
+  static List<int>? _extractCrampDays(
+    Map<int, int> dayCounts,
+    int observedCrampCycles,
+  ) {
+    final eligibleDays = <int>[];
+    for (final entry in dayCounts.entries) {
+      final ratio = entry.value / observedCrampCycles;
+      if (ratio >= kCrampDayThresholdRatio) {
+        eligibleDays.add(entry.key);
+      }
+    }
+
+    eligibleDays.sort();
+    if (eligibleDays.isNotEmpty) return eligibleDays;
+
+    final sorted = dayCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (sorted.isNotEmpty && sorted.first.value >= 3) {
+      return [sorted.first.key];
+    }
+    return null;
+  }
+
   /// Predicts upcoming cramp days based on historical clustering.
   static CrampPrediction? _predictCramps({
     required Map<String, Map<int, Set<int>>> tagCycleOccurrences,
@@ -251,34 +295,12 @@ class CycleInsightsCalculator {
       return null;
     }
 
-    final dayCounts = tagDayCounts['cramps'] ?? {};
-    final observedCrampCycles = crampCycles.length;
+    final eligibleDays = _extractCrampDays(
+      tagDayCounts['cramps'] ?? {},
+      crampCycles.length,
+    );
+    if (eligibleDays == null) return null;
 
-    // Find cycle days where cramps appeared in >= 40% of cycles with cramps
-    final eligibleDays = <int>[];
-    for (final entry in dayCounts.entries) {
-      final day = entry.key;
-      final occurrences = entry.value;
-
-      final ratio = occurrences / observedCrampCycles;
-      if (ratio >= kCrampDayThresholdRatio) {
-        eligibleDays.add(day);
-      }
-    }
-
-    eligibleDays.sort();
-    if (eligibleDays.isEmpty) {
-      // Fall back to the single highest day if it has >= 3 occurrences
-      final sorted = dayCounts.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      if (sorted.isNotEmpty && sorted.first.value >= 3) {
-        eligibleDays.add(sorted.first.key);
-      } else {
-        return null;
-      }
-    }
-
-    // Translate to predicted calendar dates
     final predictedDates = <LocalDate>[];
     if (prediction != null) {
       for (final cd in eligibleDays) {
@@ -289,7 +311,7 @@ class CycleInsightsCalculator {
     return CrampPrediction(
       predictedCycleDays: eligibleDays,
       predictedDates: predictedDates,
-      observedCycleCount: observedCrampCycles,
+      observedCycleCount: crampCycles.length,
       totalCyclesAnalyzed: totalCycleCount,
       disclaimer: CrampPrediction.kStandardDisclaimer,
     );
