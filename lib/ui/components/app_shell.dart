@@ -60,6 +60,7 @@ import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
 import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 import 'app_shell_scope.dart';
@@ -346,7 +347,7 @@ class _ProfileSwitcher extends StatelessWidget {
       message: 'Switch profile',
       child: InkWell(
         key: const ValueKey('app-shell-profile-switcher'),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LLRadius.rMd),
         onTap: () {
           LLHaptics.selection();
           onTap();
@@ -357,7 +358,10 @@ class _ProfileSwitcher extends StatelessWidget {
             minHeight: kMinInteractiveDimension,
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(
+              horizontal: LLSpace.space2,
+              vertical: LLSpace.space1,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -370,7 +374,7 @@ class _ProfileSwitcher extends StatelessWidget {
                 if (repository != null)
                   _SharedMark(
                       repository: repository, profileId: profile.id),
-                const SizedBox(width: 4),
+                const SizedBox(width: LLSpace.space1),
                 const Icon(Icons.expand_more, size: 20),
               ],
             ),
@@ -405,7 +409,7 @@ class _SharedMark extends StatelessWidget {
         return Tooltip(
           message: 'Shared · ${accepted.length} guardians',
           child: const Padding(
-            padding: EdgeInsets.only(left: 4),
+            padding: EdgeInsets.only(left: LLSpace.space1),
             child: Icon(
               Icons.people_outline,
               key: ValueKey('profile-shared-indicator'),

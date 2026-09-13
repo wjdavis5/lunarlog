@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 
 import '../theme/lunarlog_colors.dart';
+import '../theme/tokens.dart';
 
 /// Fraction of a full lap around the wheel that [days] occupies within a
 /// [cycleLengthDays]-day cycle. [cycleLengthDays] is floored at 1 day so a
@@ -153,7 +154,7 @@ class CycleWheel extends StatelessWidget {
           ),
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: LLSpace.space5),
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
@@ -192,7 +193,7 @@ class _CycleWheelPainter extends CustomPainter {
   final Color predictedBorderColor;
   final Color todayMarkerColor;
 
-  static const double _strokeWidth = 16;
+  static const double _strokeWidth = LLSpace.space4;
   static const double _startAngle = -math.pi / 2;
 
   double _sweepFor(int days) =>

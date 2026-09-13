@@ -20,6 +20,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 /// Shared profile-name validation: non-blank, and no longer than the
@@ -187,7 +188,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
               existing == null ? 'Add profile' : 'Rename profile',
               style: theme.textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             Flexible(
               child: SingleChildScrollView(
                 child: Form(
@@ -210,7 +211,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         contentPadding: EdgeInsets.zero,
                         title: const Text('This profile is for a minor'),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: LLSpace.space3),
                       // #557: MergeSemantics folds the label into the dropdown's
                       // own announcement, so a screen reader hears "Care mode,
                       // <value>" instead of just the bare value.
@@ -260,7 +261,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         ),
                         validator: validateBirthYear,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: LLSpace.space3),
                       MergeSemantics(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,7 +292,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: LLSpace.space3),
                       MergeSemantics(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,7 +322,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: LLSpace.space3),
                       MergeSemantics(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,11 +359,11 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             OverflowBar(
               alignment: MainAxisAlignment.end,
-              spacing: 8,
-              overflowSpacing: 8,
+              spacing: LLSpace.space2,
+              overflowSpacing: LLSpace.space2,
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
