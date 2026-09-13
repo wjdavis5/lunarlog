@@ -26,6 +26,8 @@
 /// [_onSignedIn] path is unchanged and there is no build-time exit.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
@@ -170,9 +172,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       _awaitingRestore = true;
     }
     if (widget.isWebBuild) {
-      _checkWebAcknowledgment();
+      unawaited(_checkWebAcknowledgment());
     }
-    _checkAgeAcknowledgment();
+    unawaited(_checkAgeAcknowledgment());
   }
 
   Future<void> _checkAgeAcknowledgment() async {
@@ -229,7 +231,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     if (_introIndex < 2) {
       setState(() => _introIndex++);
     } else {
-      _acknowledgeNotice();
+      unawaited(_acknowledgeNotice());
     }
   }
 

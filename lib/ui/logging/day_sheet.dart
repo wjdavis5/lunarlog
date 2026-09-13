@@ -68,10 +68,12 @@ import 'package:lunarlog/ui/account/sync_status_tile.dart'
 import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 /// Debounce between the last change (chip, flow, or note keystroke) and the
 /// autosave write (#198 B-13). Short enough to feel commit-immediate, long
@@ -332,8 +334,8 @@ class _DaySheetState extends State<DaySheet> {
     // for the seeded value itself.
     _noteController.addListener(_markDirty);
     if (existing != null) {
-      _loadExistingSpotting(existing.id);
-      _loadExistingPainIntensity(existing.id);
+      unawaited(_loadExistingSpotting(existing.id));
+      unawaited(_loadExistingPainIntensity(existing.id));
     }
   }
 
@@ -344,8 +346,10 @@ class _DaySheetState extends State<DaySheet> {
     // all (e.g. the future-date guard in tests) resolves null rather than
     // throwing — [_syncSpottingObservation] then simply skips, since no
     // write can happen in those states anyway.
-    _observationsRepository ??=
-        Provider.of<ObservationsRepository?>(context, listen: false);
+    _observationsRepository ??= Provider.of<ObservationsRepository?>(
+      context,
+      listen: false,
+    );
   }
 
   @override
@@ -353,29 +357,68 @@ class _DaySheetState extends State<DaySheet> {
     _saveDebounce?.cancel();
     _savedIndicatorTimer?.cancel();
     if (_dirty && !_discardUnsaved) {
-      // Belt-and-braces flush (#198): normal dismissal flushes via the
-      // PopScope callback while still mounted; this covers a teardown that
-      // bypassed a pop. The entry is composed before the controller dies;
-      // the write itself is fire-and-forget — there is no sheet left to
-      // render a failure into, and the PopScope guard has already handled
-      // the interactive failure case above it. The spotting sync (#247)
-      // rides along so the persisted entry and its observation row can
-      // never disagree about whether the day had spotting.
-      final pending = _pendingEntry;
-      final repository = widget.repository;
-      final observations = _observationsRepository;
-      if (pending != null) {
-        scheduleMicrotask(() async {
-          try {
-            final (toUpsert, toDelete) =
-                await _computeObservationMutations(pending, observations);
-            await repository.saveDayEntryWithObservations(
-              entry: pending,
-              observationsToUpsert: toUpsert,
-              observationIdsToDelete: toDelete,
-            );
-          } catch (_) {}
-        });
+      if (_saving) {
+        // Issue #546: a `_performAutosave` write is already in flight (its
+        // own `await` still pending when dismissal raced the debounce).
+        // Firing a second, concurrent write here for the same entry would
+        // race it — two writes to the same row with no ordering guarantee
+        // between them. Queue instead, the same signal
+        // `_performAutosave`'s own re-entrancy guard sets
+        // (`if (_saving) { _saveQueued = true; return; }`): its
+        // continuation runs once the in-flight write completes regardless
+        // of `mounted` (`widget`/`_observationsRepository` stay valid to
+        // read), and now correctly fires — `_onAutosaveSuccess` resets
+        // `_saving` even once the sheet has gone, which it did not before
+        // this issue's fix, so this queued flag used to never get acted on
+        // and the edit was silently dropped.
+        _saveQueued = true;
+      } else {
+        // Belt-and-braces flush (#198): normal dismissal flushes via the
+        // PopScope callback while still mounted; this covers a teardown
+        // that bypassed a pop. The entry is composed before the controller
+        // dies; the write itself is fire-and-forget — there is no sheet
+        // left to render a failure into, and the PopScope guard has
+        // already handled the interactive failure case above it. The
+        // spotting sync (#247) rides along so the persisted entry and its
+        // observation row can never disagree about whether the day had
+        // spotting.
+        final pending = _pendingEntry;
+        final repository = widget.repository;
+        final observations = _observationsRepository;
+        if (pending != null) {
+          // Set the field directly, not via `_setAutosaveState` — calling
+          // `setState` synchronously from inside `dispose()` itself
+          // crashes (the `Element` is already `defunct` by the time a
+          // State's own `dispose()` body runs, regardless of what
+          // `mounted` reports); the deferred `finally` below runs later,
+          // once `mounted` is genuinely false, so `_setAutosaveState`
+          // there correctly skips `setState`.
+          _saving = true;
+          scheduleMicrotask(() async {
+            try {
+              final (toUpsert, toDelete) = await _computeObservationMutations(
+                pending,
+                observations,
+              );
+              await repository.saveDayEntryWithObservations(
+                entry: pending,
+                observationsToUpsert: toUpsert,
+                observationIdsToDelete: toDelete,
+              );
+            } catch (error, stackTrace) {
+              // Issue #546: this used to be a bare `catch (_) {}` — the
+              // operator's edit could be silently lost (DB locked during a
+              // sync apply, disk full, closing the DB during a reset)
+              // with nothing, UI or telemetry, ever saying so. There is
+              // no sheet left to show a retry banner in, so this is
+              // observability only, not recovery — captured the same way
+              // every other data-layer failure in this codebase is.
+              unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+            } finally {
+              _setAutosaveState(saving: false);
+            }
+          });
+        }
       }
     }
     _noteController.dispose();
@@ -445,14 +488,19 @@ class _DaySheetState extends State<DaySheet> {
     }
   }
 
-  /// Flips the autosave UI state; a no-op once the sheet has gone (a
-  /// dismissal-time flush outlives the widget that started it).
+  /// Updates the autosave state. Issue #546: `_saving`/`_saveFailed`
+  /// always update, even once the sheet has gone (a dismissal-time flush
+  /// outlives the widget that started it) — `_performAutosave`'s
+  /// re-entrancy guard (`if (_saving) { _saveQueued = true; return; }`)
+  /// and [dispose]'s own flush both read `_saving` to decide whether a
+  /// write is already in flight, and that must stay accurate whether or
+  /// not the sheet is still mounted. Only the `setState` rebuild — which
+  /// would throw once the widget is gone — is skipped while unmounted.
   void _setAutosaveState({required bool saving, bool failed = false}) {
+    _saving = saving;
+    _saveFailed = failed;
     if (!mounted) return;
-    setState(() {
-      _saving = saving;
-      _saveFailed = failed;
-    });
+    setState(() {});
   }
 
   /// Persists [pending] and its child observations atomically (Issue #471);
@@ -470,8 +518,10 @@ class _DaySheetState extends State<DaySheet> {
       // does not recognise (`_unrecognisedTags`). That code is preserved,
       // not silently re-validated and rejected, on every autosave.
       validateTagCodes(_sessionSelectedTags);
-      final (toUpsert, toDelete) =
-          await _computeObservationMutations(pending, observations);
+      final (toUpsert, toDelete) = await _computeObservationMutations(
+        pending,
+        observations,
+      );
       final saved = await widget.repository.saveDayEntryWithObservations(
         entry: pending,
         observationsToUpsert: toUpsert,
@@ -479,7 +529,19 @@ class _DaySheetState extends State<DaySheet> {
       );
       _persistedEntryId = saved.id;
       return true;
-    } catch (_) {
+    } on ArgumentError catch (error, stackTrace) {
+      // Issue #546: a genuine bug — a chip grid let an unrecognised code
+      // through `_sessionSelectedTags` — never the same "disk full/DB
+      // locked" transient failure the generic catch below covers. Split
+      // out so it is never lost in that same bucket, and captured with
+      // its real type rather than rendering the same generic "save
+      // failed" banner with no way to tell the two apart.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      _dirty = true;
+      _setAutosaveState(saving: false, failed: true);
+      return false;
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
       _dirty = true;
       _setAutosaveState(saving: false, failed: true);
       return false;
@@ -491,10 +553,28 @@ class _DaySheetState extends State<DaySheet> {
   /// is dismissed, not now, because an open modal sheet's barrier hides a
   /// SnackBar), and show the transient "Saved" micro-confirmation.
   void _onAutosaveSuccess() {
-    _pendingEntry = null;
+    // Issue #546: only clear `_pendingEntry` when nothing has changed since
+    // the write that just succeeded started (`!_dirty`) — an edit made
+    // while that write was in flight (`_markDirty` re-set `_dirty` and
+    // `_pendingEntry` after this call's own `_performAutosave` had already
+    // snapshotted the old value into `pending`) must survive so
+    // `_performAutosave`'s queued continuation (`if (_saveQueued) {
+    // _saveQueued = false; if (_dirty) unawaited(_performAutosave()); }`,
+    // or `dispose`'s own `_saveQueued = true` when a write was already in
+    // flight) has something real to write. Unconditionally nulling it here
+    // silently dropped that edit: the continuation's `_performAutosave`
+    // would immediately return on `pending == null`.
+    if (!_dirty) _pendingEntry = null;
+    // Issue #546: through `_setAutosaveState` so `_saving` resets even
+    // once the sheet has gone — this used to be a bare `setState(() =>
+    // _saving = false)` guarded by the same `if (!mounted) return` below,
+    // so a dismissal-time success left `_saving` permanently stuck `true`:
+    // `_performAutosave`'s own re-entrancy guard (`if (_saving) {
+    // _saveQueued = true; return; }`) would then queue a later edit
+    // forever without ever actually writing it.
+    _setAutosaveState(saving: false);
     if (!mounted) return;
     _offlineAckMessenger ??= _offlineConfirmationMessenger(context);
-    setState(() => _saving = false);
     _savedIndicatorTimer?.cancel();
     setState(() => _showSaved = true);
     _savedIndicatorTimer = Timer(kDaySheetSavedIndicatorDuration, () {
@@ -505,24 +585,19 @@ class _DaySheetState extends State<DaySheet> {
   /// Issue #247: the day sheet doesn't otherwise load `observations` rows
   /// — this is the one exception, populating the "Spotting" toggle's
   /// initial state from any already-persisted spotting observation for
-  /// [dayEntryId]. Review fix (blocking): goes through
-  /// [ObservationsRepository.listForProfile] rather than
-  /// [ObservationsRepository.listForDayEntry] specifically because only
-  /// `listForProfile` synthesises the alias observation for a legacy
-  /// `flow = 'spotting'` row that hasn't synced the server-side backfill
-  /// yet (see that method's doc comment) — `listForDayEntry` alone would
-  /// leave this toggle off for such a day, and the next autosave would
-  /// then silently drop the spotting fact (raising the stored flow to
-  /// `notBleeding` with no accompanying observation, live or synthesised).
+  /// [dayEntryId]. Issue #549: goes through
+  /// [ObservationsRepository.listForDayEntryWithLegacyAlias] — scoped to
+  /// this one day entry via [ObservationsRepository.listForDayEntry] plus a
+  /// single-row day-entry lookup — rather than [ObservationsRepository]
+  /// .listForProfile, which decoded every observation and every day entry
+  /// the profile has ever logged just to answer this one-day question.
   Future<void> _loadExistingSpotting(String dayEntryId) async {
     final observations = await Provider.of<ObservationsRepository>(
       context,
       listen: false,
-    ).listForProfile(widget.profileId);
+    ).listForDayEntryWithLegacyAlias(dayEntryId);
     if (!mounted) return;
-    if (observations.any(
-      (o) => o.dayEntryId == dayEntryId && o.category == 'spotting',
-    )) {
+    if (observations.any((o) => o.category == 'spotting')) {
       setState(() {
         _spotting = true;
         _hadSpottingOnLoad = true;
@@ -539,11 +614,10 @@ class _DaySheetState extends State<DaySheet> {
   /// grade wins — the severity reading a caregiver alert would act on.
   Future<void> _loadExistingPainIntensity(String dayEntryId) async {
     final painRows = [
-      for (final o
-          in await Provider.of<ObservationsRepository>(
-            context,
-            listen: false,
-          ).listForDayEntry(dayEntryId))
+      for (final o in await Provider.of<ObservationsRepository>(
+        context,
+        listen: false,
+      ).listForDayEntry(dayEntryId))
         if (o.category == 'pain' && o.code != null && o.intensity != null) o,
     ];
     if (!mounted || painRows.isEmpty) return;
@@ -591,7 +665,8 @@ class _DaySheetState extends State<DaySheet> {
     required List<String> toDelete,
   }) {
     final existingSpotting = [
-      for (final o in existingObs) if (o.category == 'spotting') o,
+      for (final o in existingObs)
+        if (o.category == 'spotting') o,
     ];
     if (!_spotting) {
       for (final o in existingSpotting) {
@@ -622,12 +697,14 @@ class _DaySheetState extends State<DaySheet> {
   }) {
     if (_painIntensity.isEmpty) return;
     final existingPain = [
-      for (final o in existingObs) if (o.category == 'pain') o,
+      for (final o in existingObs)
+        if (o.category == 'pain') o,
     ];
     for (final entry in _painIntensity.entries) {
       final intensity = entry.value;
       final matchingPainRows = [
-        for (final o in existingPain) if (o.code == entry.key) o,
+        for (final o in existingPain)
+          if (o.code == entry.key) o,
       ];
       if (intensity == null) {
         for (final o in matchingPainRows) {
@@ -671,7 +748,8 @@ class _DaySheetState extends State<DaySheet> {
     ObservationsRepository? observations,
   ) async {
     if (observations == null) return (const <Observation>[], const <String>[]);
-    final targetId = _persistedEntryId ??
+    final targetId =
+        _persistedEntryId ??
         (pending.id.isNotEmpty ? pending.id : (widget.existing?.id ?? ''));
     List<Observation> existingObs = const [];
     if (targetId.isNotEmpty) {
@@ -713,22 +791,27 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   Future<void> _delete() async {
+    // Issue #574: resolved once, not on every Text/label below.
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(AppLocalizations.of(context).daySheetDeleteTitle),
-        content: Text(
-          AppLocalizations.of(context)
-              .daySheetDeleteBody(daySheetDateLabel(widget.date, widget.today)),
+        title: Text(l10n.daySheetDeleteTitle),
+        content: SingleChildScrollView(
+          child: Text(
+            l10n.daySheetDeleteBody(
+              daySheetDateLabel(widget.date, widget.today),
+            ),
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(AppLocalizations.of(context).daySheetCancel),
+            child: Text(l10n.daySheetCancel),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(AppLocalizations.of(context).daySheetDelete),
+            child: Text(l10n.daySheetDelete),
           ),
         ],
       ),
@@ -770,7 +853,9 @@ class _DaySheetState extends State<DaySheet> {
   /// to close without an explicit discard ([_confirmDiscardWhileFailed]).
   void _onSheetPop(bool didPop, Object? result) {
     if (!didPop) {
-      if (_saveFailed && !_discardUnsaved) _confirmDiscardWhileFailed();
+      if (_saveFailed && !_discardUnsaved) {
+        unawaited(_confirmDiscardWhileFailed());
+      }
       return;
     }
     final flushPending = _dirty && !_discardUnsaved;
@@ -796,22 +881,26 @@ class _DaySheetState extends State<DaySheet> {
   Future<void> _confirmDiscardWhileFailed() async {
     if (_discardDialogOpen) return;
     _discardDialogOpen = true;
+    // Issue #574: resolved once, not on every Text/label below.
+    final l10n = AppLocalizations.of(context);
     final discard = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(AppLocalizations.of(context).daySheetDiscardTitle),
-        content: const Text(
-          "The last change couldn't be saved. Discarding removes it from "
-          'this device.',
+        title: Text(l10n.daySheetDiscardTitle),
+        content: const SingleChildScrollView(
+          child: Text(
+            "The last change couldn't be saved. Discarding removes it from "
+            'this device.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(AppLocalizations.of(context).daySheetKeepEditing),
+            child: Text(l10n.daySheetKeepEditing),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(AppLocalizations.of(context).daySheetDiscard),
+            child: Text(l10n.daySheetDiscard),
           ),
         ],
       ),
@@ -1042,7 +1131,11 @@ class _DaySheetState extends State<DaySheet> {
   /// #240's schema) — the field the server's high-severity caregiver alert
   /// reads (`intensity >= 4`, issue #256). Clear leaves the row ungraded:
   /// "no severity recorded", never "low".
-  Widget _painIntensityRow(AppLocalizations l10n, ThemeData theme, TagCode tag) {
+  Widget _painIntensityRow(
+    AppLocalizations l10n,
+    ThemeData theme,
+    TagCode tag,
+  ) {
     final group = l10n.daySheetIntensityGroup;
     final current = _painIntensity[tag.code];
     return Padding(
@@ -1071,10 +1164,9 @@ class _DaySheetState extends State<DaySheet> {
                     group: group,
                     label: '${tag.display} $level',
                     selected: current == level,
-                    onTap:
-                        _busy || current == level
-                            ? null
-                            : () => _setPainIntensity(tag.code, level),
+                    onTap: _busy || current == level
+                        ? null
+                        : () => _setPainIntensity(tag.code, level),
                     child: ChoiceChip(
                       key: ValueKey('pain-intensity-${tag.code}-$level'),
                       label: Text('$level'),
@@ -1301,7 +1393,10 @@ class _DaySheetState extends State<DaySheet> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: LLSpace.space2),
-          Text(AppLocalizations.of(context).daySheetSaving, style: theme.textTheme.bodySmall),
+          Text(
+            AppLocalizations.of(context).daySheetSaving,
+            style: theme.textTheme.bodySmall,
+          ),
         ],
       );
     } else if (_showSaved) {
@@ -1311,7 +1406,10 @@ class _DaySheetState extends State<DaySheet> {
         children: [
           Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
           const SizedBox(width: LLSpace.space1),
-          Text(AppLocalizations.of(context).daySheetSaved, style: theme.textTheme.bodySmall),
+          Text(
+            AppLocalizations.of(context).daySheetSaved,
+            style: theme.textTheme.bodySmall,
+          ),
         ],
       );
     } else {
@@ -1396,7 +1494,10 @@ class _DaySheetState extends State<DaySheet> {
               Text(reason, style: theme.textTheme.bodyMedium),
               const SizedBox(height: LLSpace.space1),
             ],
-            Text(AppLocalizations.of(context).daySheetNoEntry, style: theme.textTheme.bodyMedium),
+            Text(
+              AppLocalizations.of(context).daySheetNoEntry,
+              style: theme.textTheme.bodyMedium,
+            ),
           ],
         ),
       );
@@ -1437,8 +1538,14 @@ class _DaySheetState extends State<DaySheet> {
           ],
         ),
         const SizedBox(height: LLSpace.space3),
-        Text(AppLocalizations.of(context).daySheetFlowLabel, style: theme.textTheme.labelMedium),
-        Text(localizedFlowLabel(existing.flow, l10n), style: theme.textTheme.titleSmall),
+        Text(
+          AppLocalizations.of(context).daySheetFlowLabel,
+          style: theme.textTheme.labelMedium,
+        ),
+        Text(
+          localizedFlowLabel(existing.flow, l10n),
+          style: theme.textTheme.titleSmall,
+        ),
         // Issue #220: the read-only view names the PMS marker too, so a
         // viewer (or a reviewing guardian) sees the phase even though the
         // toggle itself is disabled here.
@@ -1449,7 +1556,10 @@ class _DaySheetState extends State<DaySheet> {
         ],
         if (existing.tags.isNotEmpty) ...[
           const SizedBox(height: LLSpace.space3),
-          Text(AppLocalizations.of(context).daySheetTagsLabel, style: theme.textTheme.labelMedium),
+          Text(
+            AppLocalizations.of(context).daySheetTagsLabel,
+            style: theme.textTheme.labelMedium,
+          ),
           Wrap(
             spacing: LLSpace.space2,
             runSpacing: LLSpace.space1,
@@ -1460,7 +1570,10 @@ class _DaySheetState extends State<DaySheet> {
           ),
         ],
         const SizedBox(height: LLSpace.space3),
-        Text(AppLocalizations.of(context).daySheetNoteLabel, style: theme.textTheme.labelMedium),
+        Text(
+          AppLocalizations.of(context).daySheetNoteLabel,
+          style: theme.textTheme.labelMedium,
+        ),
         Text(
           (existing.note == null || existing.note!.isEmpty)
               ? AppLocalizations.of(context).daySheetNoNote

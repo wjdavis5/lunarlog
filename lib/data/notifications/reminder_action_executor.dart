@@ -131,9 +131,9 @@ class ReminderActionExecutor {
     final previous = _draining ?? Future<void>.value();
     final run = previous.then((_) => _execute(pending));
     _draining = run;
-    run.whenComplete(() {
+    unawaited(run.whenComplete(() {
       if (identical(_draining, run)) _draining = null;
-    });
+    }));
   }
 
   Future<void> _execute(_PendingAction pending) async {

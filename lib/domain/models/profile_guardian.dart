@@ -17,12 +17,22 @@ enum GuardianRole {
         viewer => 'viewer',
       };
 
-  static GuardianRole fromDb(String value) => switch (value) {
+  /// Issue #540: an unrecognised [value] returns null rather than throwing
+  /// — matches [ProfileRelationship.fromDb]'s posture, not the old
+  /// `throw ArgumentError`. A fifth server-side role value used to raise
+  /// inside [profileGuardianToDomain] and surface as an unhandled stream
+  /// error on every `watchForProfile`/`watchGuardiansForProfile` consumer
+  /// at once — the read-only gate (`day_sheet.dart`'s `_readOnlyReason`)
+  /// is the dangerous one, since a guardian list that never arrives makes
+  /// the sheet fall back to *writable*. [profileGuardianToDomain] maps a
+  /// null here to [viewer] (least privilege) rather than leaving the
+  /// caller to decide — see that function's doc comment.
+  static GuardianRole? fromDb(String value) => switch (value) {
         'primary_guardian' => primaryGuardian,
         'co_parent' => coParent,
         'caregiver' => caregiver,
         'viewer' => viewer,
-        _ => throw ArgumentError.value(value, 'value', 'unknown guardian role'),
+        _ => null,
       };
 
   bool get canLog => this != viewer;
@@ -38,11 +48,16 @@ enum GuardianStatus {
 
   String toDb() => name;
 
-  static GuardianStatus fromDb(String value) => switch (value) {
+  /// Issue #540: an unrecognised [value] returns null rather than throwing
+  /// — see [GuardianRole.fromDb]'s doc comment for the full rationale.
+  /// [profileGuardianToDomain] maps a null here to [revoked] (least
+  /// privilege — an unrecognised status must never be treated as
+  /// [accepted]).
+  static GuardianStatus? fromDb(String value) => switch (value) {
         'pending' => pending,
         'accepted' => accepted,
         'revoked' => revoked,
-        _ => throw ArgumentError.value(value, 'value', 'unknown guardian status'),
+        _ => null,
       };
 }
 

@@ -36,6 +36,7 @@ import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:provider/provider.dart';
 
 /// Formats an instant as a bare, locale-aware civil date (issue #554 --
@@ -83,7 +84,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     super.initState();
     _notesStream = widget.repository.watchCareNotes(widget.profile.id);
     _prepStream = widget.repository.watchPrepItems(widget.profile.id);
-    _guardiansStream = widget.guardiansRepository.watchForProfile(
+    _guardiansStream = watchGuardiansForProfileSafely(
+      widget.guardiansRepository,
       widget.profile.id,
     );
     final auth = context.read<AuthController?>();

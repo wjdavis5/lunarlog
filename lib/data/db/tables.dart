@@ -638,6 +638,18 @@ class SyncState extends Table {
   IntColumn get cursorVisitPrepItems =>
       integer().named('cursor_visit_prep_items').withDefault(const Constant(0))();
 
+  /// Issue #525: the `profile_guardians` pull cursor, same shape as
+  /// [cursorDayEntries]. Before this column existed, `profileGuardians`
+  /// paged from version 0 every cycle (see the sync engine's
+  /// `_startingCursor`, pre-#525) — every 15-minute tick forced a full
+  /// sequential scan of the global `profile_guardians` table plus one
+  /// `is_profile_guardian()` RLS check per scanned row. `deletedProfiles`
+  /// (issue #522) deliberately still has no cursor column of its own (same
+  /// known-perf tradeoff, out of this issue's scope — see
+  /// `SyncTable.deletedProfiles`'s doc comment).
+  IntColumn get cursorProfileGuardians =>
+      integer().named('cursor_profile_guardians').withDefault(const Constant(0))();
+
   DateTimeColumn get lastFullPullAt =>
       dateTime().named('last_full_pull_at').nullable()();
 

@@ -182,11 +182,11 @@ mixin SupabaseAuthProviders on SupabaseAuthSessionState {
   Future<void> updatePassword(String newPassword) =>
       _guard(() => _gateway.updateUser(UserAttributes(password: newPassword)));
 
-  Future<AppleSignInResult> signInWithAppleNative() async {
+  Future<NativeSignInResult> signInWithAppleNative() async {
     _requireApple();
     final rawNonce = _generateNonce();
     final credential = await _requestAppleCredentialFor(rawNonce);
-    if (credential == null) return const AppleSignInCancelled();
+    if (credential == null) return const NativeSignInCancelled();
     final idToken = credential.identityToken;
     if (idToken == null) throw const AuthFailure.unknown();
     final session = await _exchangeIdTokenForSession(
@@ -208,7 +208,7 @@ mixin SupabaseAuthProviders on SupabaseAuthSessionState {
         debugPrint('lunarlog auth: name update failed (${error.runtimeType})');
       }
     }
-    return AppleSignInSession(_toUser(session.user)!);
+    return NativeSignInSession(_toUser(session.user)!);
   }
 
   void _requireApple() {
@@ -234,11 +234,11 @@ mixin SupabaseAuthProviders on SupabaseAuthSessionState {
     }
   }
 
-  Future<GoogleSignInResult> signInWithGoogleNative() async {
+  Future<NativeSignInResult> signInWithGoogleNative() async {
     _requireGoogle();
     final nonce = _googleNonce ??= _mintGoogleNonce();
     final credential = await _requestGoogleCredential(nonce);
-    if (credential == null) return const GoogleSignInCancelled();
+    if (credential == null) return const NativeSignInCancelled();
     final idToken = credential.idToken;
     if (idToken == null) throw const AuthFailure.unknown();
     final session = await _exchangeIdTokenForSession(
@@ -247,7 +247,7 @@ mixin SupabaseAuthProviders on SupabaseAuthSessionState {
       accessToken: credential.accessToken,
       nonce: nonce.raw,
     );
-    return GoogleSignInSession(_toUser(session.user)!);
+    return NativeSignInSession(_toUser(session.user)!);
   }
 
   /// Exchanges a provider ID token for a session through [_guard], so every
@@ -359,18 +359,18 @@ mixin SupabaseAuthProviders on SupabaseAuthSessionState {
   /// verify. Every gateway and ceremony error is reduced to a typed
   /// [AuthFailure] through [_guard]; a verify response with no session is
   /// [AuthUnknownFailure], as every sibling sign-in method treats it.
-  Future<PasskeySignInResult> signInWithPasskey() async {
+  Future<NativeSignInResult> signInWithPasskey() async {
     _requirePasskeys();
     final started = await _guard(() => _gateway.startPasskeyAuthentication());
     final assertion = await _guard(() => _passkeyClient.get(started.options));
-    if (assertion == null) return const PasskeySignInCancelled();
+    if (assertion == null) return const NativeSignInCancelled();
     final response = await _guard(() => _gateway.verifyPasskeyAuthentication(
           challengeId: started.challengeId,
           credential: assertion,
         ));
     final user = response.session?.user;
     if (user == null) throw const AuthFailure.unknown();
-    return PasskeySignInSession(_toUser(user)!);
+    return NativeSignInSession(_toUser(user)!);
   }
 
   /// Adds a passkey for the current account (#30 U3; KTD1, KTD2, KTD4). The
@@ -379,19 +379,19 @@ mixin SupabaseAuthProviders on SupabaseAuthSessionState {
   /// [_link], this never touches `AuthUser.providers` — the returned user
   /// is read fresh from [currentUser] after the verify call rather than a
   /// value captured beforehand, so a caller never sees a stale snapshot.
-  Future<PasskeyRegistrationResult> registerPasskey() async {
+  Future<NativeSignInResult> registerPasskey() async {
     _requirePasskeys();
     _requireSignedInUser();
     final started = await _guard(() => _gateway.startPasskeyRegistration());
     final credential = await _guard(() => _passkeyClient.create(started.options));
-    if (credential == null) return const PasskeyRegistrationCancelled();
+    if (credential == null) return const NativeSignInCancelled();
     await _guard(() => _gateway.verifyPasskeyRegistration(
           challengeId: started.challengeId,
           credential: credential,
         ));
     final user = currentUser;
     if (user == null) throw const AuthFailure.unknown();
-    return PasskeyRegistrationSuccess(user);
+    return NativeSignInSession(user);
   }
 
   void _requirePasskeys() {

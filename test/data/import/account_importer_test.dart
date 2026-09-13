@@ -26,6 +26,8 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
 
 List<int> _bytes(Map<String, Object?> document) => utf8.encode(jsonEncode(document));
 
@@ -126,7 +128,7 @@ void main() {
   tearDown(() => db.close());
 
   DriftAccountImportCoordinator coordinator({
-    GuardiansForProfileFn? guardiansForProfile,
+    GuardiansForProfile? guardiansForProfile,
     String? currentUserId,
   }) =>
       DriftAccountImportCoordinator(

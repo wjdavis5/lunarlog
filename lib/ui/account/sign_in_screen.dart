@@ -234,9 +234,9 @@ class _SignInScreenState extends State<SignInScreen> {
         final auth = context.read<AuthController>();
         final result = await _duringProviderUi(auth.signInWithAppleNative);
         switch (result) {
-          case AppleSignInSession():
+          case NativeSignInSession():
             _signedIn();
-          case AppleSignInCancelled():
+          case NativeSignInCancelled():
             // Dismissed: back to the screen, no error (KTD9).
             break;
         }
@@ -248,9 +248,9 @@ class _SignInScreenState extends State<SignInScreen> {
         final auth = context.read<AuthController>();
         final result = await _duringProviderUi(auth.signInWithGoogleNative);
         switch (result) {
-          case GoogleSignInSession():
+          case NativeSignInSession():
             _signedIn();
-          case GoogleSignInCancelled():
+          case NativeSignInCancelled():
             break;
         }
       });
@@ -264,9 +264,9 @@ class _SignInScreenState extends State<SignInScreen> {
         final auth = context.read<AuthController>();
         final result = await _duringProviderUi(auth.signInWithPasskey);
         switch (result) {
-          case PasskeySignInSession():
+          case NativeSignInSession():
             _signedIn();
-          case PasskeySignInCancelled():
+          case NativeSignInCancelled():
             break;
         }
       });

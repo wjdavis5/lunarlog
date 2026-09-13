@@ -53,6 +53,24 @@ class DriftObservationsRepository implements ObservationsRepository {
           observationToDomain(row),
       ];
 
+  /// Issue #549: [listForDayEntry] plus [listForProfile]'s alias synthesis,
+  /// scoped to this one day entry via [LunarLogStorage.getDayEntryById]
+  /// (a single indexed row) instead of [listForProfile]'s full
+  /// `getDayEntries(profileId: ...)` scan.
+  @override
+  Future<List<domain.Observation>> listForDayEntryWithLegacyAlias(
+      String dayEntryId) async {
+    final observations = await listForDayEntry(dayEntryId);
+    if (observations.any((o) => o.category == 'spotting')) return observations;
+    final entry = await _storage.getDayEntryById(dayEntryId);
+    if (entry == null ||
+        entry.deletedAt != null ||
+        entry.flow != db.FlowLevel.spotting) {
+      return observations;
+    }
+    return [...observations, _spottingObservationFor(entry)];
+  }
+
   @override
   Future<domain.Observation> save(domain.Observation observation) async =>
       observationToDomain(await _storage.upsertObservation(

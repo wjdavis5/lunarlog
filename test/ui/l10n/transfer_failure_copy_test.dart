@@ -22,25 +22,27 @@ void main() {
     TransferFailure.alreadyArmed(),
     TransferFailure.unauthorized(),
     TransferFailure.invalidToken(),
-    TransferFailure.other('boom'),
+    TransferFailure.other(),
   ];
 
   test('every subclass has non-empty copy', () {
     for (final failure in allFailures) {
-      expect(transferFailureCopy(_l10n, failure), isNotEmpty,
-          reason: '${failure.runtimeType} has empty copy');
+      expect(
+        transferFailureCopy(_l10n, failure),
+        isNotEmpty,
+        reason: '${failure.runtimeType} has empty copy',
+      );
     }
   });
 
   test('every subclass has distinct copy', () {
-    final messages =
-        allFailures.map((f) => transferFailureCopy(_l10n, f)).toSet();
-    expect(messages.length, allFailures.length,
-        reason: 'two TransferFailure subclasses share copy');
-  });
-
-  test('TransferOtherFailure copy never echoes its diagnostic message', () {
-    expect(transferFailureCopy(_l10n, const TransferFailure.other('boom')),
-        isNot(contains('boom')));
+    final messages = allFailures
+        .map((f) => transferFailureCopy(_l10n, f))
+        .toSet();
+    expect(
+      messages.length,
+      allFailures.length,
+      reason: 'two TransferFailure subclasses share copy',
+    );
   });
 }

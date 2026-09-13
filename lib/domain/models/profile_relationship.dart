@@ -24,11 +24,14 @@ enum ProfileRelationship {
         other => 'other',
       };
 
-  /// Unlike `GuardianRole.fromDb`, an unrecognised [value] returns null
-  /// rather than throwing: relationship is optional, display-only metadata
-  /// (R2), so a value this build doesn't recognise (a future addition, a
-  /// row from a newer client) should degrade to "unset" rather than crash a
-  /// pull.
+  /// An unrecognised [value] returns null rather than throwing:
+  /// relationship is optional, display-only metadata (R2), so a value this
+  /// build doesn't recognise (a future addition, a row from a newer
+  /// client) should degrade to "unset" rather than crash a pull.
+  /// `GuardianRole.fromDb`/`GuardianStatus.fromDb` (issue #540) share this
+  /// null-on-unrecognised shape, but degrade further at
+  /// `profileGuardianToDomain` — a permission field has a least-privilege
+  /// default to fail closed to, where "unset" isn't a meaningful option.
   static ProfileRelationship? fromDb(String value) => switch (value) {
         'self' => self,
         'daughter' => daughter,

@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
@@ -75,17 +76,19 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
       routeSettings: const RouteSettings(name: kRouteAccountMismatchDialog),
       builder: (dialogContext) => AlertDialog(
         title: const Text("Remove this device's data?"),
-        content: const Text(
-          'Erases every profile and entry stored on this device and signs '
-          'out. The data stays in the account it belongs to; it is not '
-          'deleted there.',
+        content: const SingleChildScrollView(
+          child: Text(
+            'Erases every profile and entry stored on this device and signs '
+            'out. The data stays in the account it belongs to; it is not '
+            'deleted there.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          DestructiveButton(
             key: const ValueKey('mismatch-remove-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Remove and sign out'),

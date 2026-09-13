@@ -4,6 +4,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show SocketException;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
@@ -225,7 +226,10 @@ void main() {
     expect(attemptCount, 2);
   });
 
-  test('#12 (review fix): a failed publish retries the same prediction after retryDelay, without waiting for a new prediction change', () async {
+  test(
+      '#12/#547: a transient (SocketException) failed publish retries the '
+      'same prediction after retryDelay, without waiting for a new '
+      'prediction change', () async {
     final profiles = StreamController<List<Profile>>(sync: true);
     final predictions = <String, StreamController<CyclePrediction>>{};
     final calls = <_UpsertCall>[];
@@ -239,7 +243,7 @@ void main() {
           .stream,
       upsert: _remote((profileId, iso, episodeOpen) async {
         attemptCount++;
-        if (attemptCount == 1) throw Exception('network down');
+        if (attemptCount == 1) throw const SocketException('network down');
         calls.add(_UpsertCall(profileId, iso, episodeOpen));
       }),
       isSignedIn: () => true,
@@ -268,6 +272,48 @@ void main() {
     expect(calls, hasLength(1));
     expect(calls.single.profileId, 'p1');
     expect(calls.single.estimatedNextStartIso, today.addDays(1).iso);
+  });
+
+  test(
+      'issue #547: a non-retryable failure never retries — no update reaches '
+      'the server until a genuine prediction change re-arms it', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final calls = <_UpsertCall>[];
+    var attemptCount = 0;
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = ReminderWindowPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      // A permanent rejection — never a
+      // SocketException/TimeoutException/PostgREST 5xx.
+      upsert: _remote((profileId, iso, episodeOpen) async {
+        attemptCount++;
+        throw StateError('permanently rejected');
+      }),
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+      retryDelay: Duration.zero,
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1')]);
+    predictions['p1']!.add(_active(today, estimatedNextStart: today.addDays(1)));
+    await pumpEventQueue();
+
+    expect(attemptCount, 1);
+    expect(calls, isEmpty,
+        reason: 'a non-retryable failure must not re-arm a retry timer');
   });
 
   test('#12 (review fix): a genuinely new prediction after a failure supersedes the pending retry rather than racing it', () async {

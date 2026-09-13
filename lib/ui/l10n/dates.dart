@@ -18,6 +18,8 @@
 /// calendar-layout decision, not a formatting one.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart' as date_symbols;
@@ -35,7 +37,10 @@ bool _dateSymbolsReady = false;
 
 void _ensureDateSymbols() {
   if (_dateSymbolsReady) return;
-  date_symbols.initializeDateFormatting();
+  // Issue #548: returns a Future for API-compatibility reasons only — see
+  // this field's own doc comment for why it completes synchronously in
+  // practice and is deliberately never awaited here.
+  unawaited(date_symbols.initializeDateFormatting());
   _dateSymbolsReady = true;
 }
 

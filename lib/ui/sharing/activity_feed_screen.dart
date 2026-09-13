@@ -15,6 +15,8 @@
 /// anything from it).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
@@ -146,7 +148,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     _seenStamped = true;
     _lastSeenAtOpen ??= data.lastSeen;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.repository.markSeen(widget.profile.id);
+      if (mounted) unawaited(widget.repository.markSeen(widget.profile.id));
     });
   }
 
