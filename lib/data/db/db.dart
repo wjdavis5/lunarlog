@@ -130,8 +130,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   health-store sync anchors — never synced to the server) and
   ///   `exported_to_platform_at` on `observations` (Issue #186, the
   ///   round-trip-write marker).
+  /// * 15 — `cursor_profile_guardians` on `sync_state` (Issue #525): a
+  ///   persisted pull cursor for `profile_guardians`, which previously
+  ///   paged from version 0 every cycle.
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -178,7 +181,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `sync_state.cursor_care_notes`, `sync_state.cursor_visit_prep_items`,
   /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
   /// Issue #220 adds `day_entries.pms`. Issue #186 adds `health_sync_state`,
-  /// `observations.exported_to_platform_at`.
+  /// `observations.exported_to_platform_at`. Issue #525 adds
+  /// `sync_state.cursor_profile_guardians`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -312,6 +316,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV13(m, from);
     // Issue #186's v14 step, same shape again.
     await _upgradeToV14(m, from);
+    // Issue #525's v15 step, same shape again.
+    await _upgradeToV15(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -453,6 +459,26 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       if (from >= 6) {
         await m.addColumn(observations, observations.exportedToPlatformAt);
         await migrationStepHook?.call('observations.exported_to_platform_at');
+      }
+    });
+  }
+
+  /// The v15 upgrade step (Issue #525): `cursor_profile_guardians` on
+  /// `sync_state`. Same `sync_state` gotcha as every other cursor column
+  /// added since v6 (`cursor_observations`, `cursor_profile_modes`,
+  /// `cursor_cycle_overrides`, `cursor_care_notes`,
+  /// `cursor_visit_prep_items`): the `from < 2` block's
+  /// `m.createTable(syncState)` builds the table from the *current*
+  /// `SyncState` class, which already declares this column — so a device
+  /// upgrading straight from v1 has it by the time it reaches here, and
+  /// only a device that already had `sync_state` (from >= 2) needs the
+  /// explicit `addColumn`.
+  Future<void> _upgradeToV15(Migrator m, int from) async {
+    if (from >= 15) return;
+    await transaction(() async {
+      if (from >= 2) {
+        await m.addColumn(syncState, syncState.cursorProfileGuardians);
+        await migrationStepHook?.call('sync_state.cursor_profile_guardians');
       }
     });
   }

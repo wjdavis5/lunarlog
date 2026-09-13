@@ -56,6 +56,7 @@ import '../models/day_entry.dart';
 import '../models/lifecycle_mode.dart';
 import '../models/local_date.dart';
 import '../models/profile.dart';
+import '../repositories/cycle_overrides_repository.dart';
 import '../repositories/day_entries_repository.dart';
 import '../repositories/profiles_repository.dart';
 import '../repositories/settings_store.dart';
@@ -199,14 +200,20 @@ class _PredictionMemo {
 }
 
 class CyclePredictionService {
+  /// [cycleOverrides] (issue #568 (b)) is forwarded to [CycleExclusionList]
+  /// unchanged — see that class's doc comment for why it is optional and
+  /// what a null value keeps.
   CyclePredictionService(this._dayEntries,
       {SettingsStore? settings,
+      CycleOverridesRepository? cycleOverrides,
       ProfilesRepository? profiles,
       Stream<BirthControlState?> Function(String profileId)?
           birthControlStateFor,
       Stream<LifecycleMode> Function(String profileId)? lifecycleModeFor})
       : _settings = settings,
-        _exclusions = settings == null ? null : CycleExclusionList(settings),
+        _exclusions = settings == null
+            ? null
+            : CycleExclusionList(settings, overrides: cycleOverrides),
         // A named parameter cannot be private, so this direct
         // pass-through cannot be an initializing formal (the same reason
         // the coordinator/publisher files carry file-level ignores).

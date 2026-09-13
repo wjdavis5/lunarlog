@@ -7111,6 +7111,17 @@ class $SyncStateTable extends SyncState
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _cursorProfileGuardiansMeta =
+      const VerificationMeta('cursorProfileGuardians');
+  @override
+  late final GeneratedColumn<int> cursorProfileGuardians = GeneratedColumn<int>(
+    'cursor_profile_guardians',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -7167,6 +7178,7 @@ class $SyncStateTable extends SyncState
     cursorCycleOverrides,
     cursorCareNotes,
     cursorVisitPrepItems,
+    cursorProfileGuardians,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -7265,6 +7277,15 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('cursor_profile_guardians')) {
+      context.handle(
+        _cursorProfileGuardiansMeta,
+        cursorProfileGuardians.isAcceptableOrUnknown(
+          data['cursor_profile_guardians']!,
+          _cursorProfileGuardiansMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_full_pull_at')) {
       context.handle(
         _lastFullPullAtMeta,
@@ -7347,6 +7368,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_visit_prep_items'],
       )!,
+      cursorProfileGuardians: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_profile_guardians'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -7407,6 +7432,17 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// Issue #128: the `visit_prep_items` pull cursor, same shape as
   /// [cursorDayEntries].
   final int cursorVisitPrepItems;
+
+  /// Issue #525: the `profile_guardians` pull cursor, same shape as
+  /// [cursorDayEntries]. Before this column existed, `profileGuardians`
+  /// paged from version 0 every cycle (see the sync engine's
+  /// `_startingCursor`, pre-#525) — every 15-minute tick forced a full
+  /// sequential scan of the global `profile_guardians` table plus one
+  /// `is_profile_guardian()` RLS check per scanned row. `deletedProfiles`
+  /// (issue #522) deliberately still has no cursor column of its own (same
+  /// known-perf tradeoff, out of this issue's scope — see
+  /// `SyncTable.deletedProfiles`'s doc comment).
+  final int cursorProfileGuardians;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -7427,6 +7463,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.cursorCycleOverrides,
     required this.cursorCareNotes,
     required this.cursorVisitPrepItems,
+    required this.cursorProfileGuardians,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -7447,6 +7484,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     map['cursor_cycle_overrides'] = Variable<int>(cursorCycleOverrides);
     map['cursor_care_notes'] = Variable<int>(cursorCareNotes);
     map['cursor_visit_prep_items'] = Variable<int>(cursorVisitPrepItems);
+    map['cursor_profile_guardians'] = Variable<int>(cursorProfileGuardians);
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
     }
@@ -7476,6 +7514,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorCycleOverrides: Value(cursorCycleOverrides),
       cursorCareNotes: Value(cursorCareNotes),
       cursorVisitPrepItems: Value(cursorVisitPrepItems),
+      cursorProfileGuardians: Value(cursorProfileGuardians),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -7511,6 +7550,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorVisitPrepItems: serializer.fromJson<int>(
         json['cursorVisitPrepItems'],
       ),
+      cursorProfileGuardians: serializer.fromJson<int>(
+        json['cursorProfileGuardians'],
+      ),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -7533,6 +7575,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       'cursorCycleOverrides': serializer.toJson<int>(cursorCycleOverrides),
       'cursorCareNotes': serializer.toJson<int>(cursorCareNotes),
       'cursorVisitPrepItems': serializer.toJson<int>(cursorVisitPrepItems),
+      'cursorProfileGuardians': serializer.toJson<int>(cursorProfileGuardians),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -7551,6 +7594,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     int? cursorCycleOverrides,
     int? cursorCareNotes,
     int? cursorVisitPrepItems,
+    int? cursorProfileGuardians,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -7566,6 +7610,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorCycleOverrides: cursorCycleOverrides ?? this.cursorCycleOverrides,
     cursorCareNotes: cursorCareNotes ?? this.cursorCareNotes,
     cursorVisitPrepItems: cursorVisitPrepItems ?? this.cursorVisitPrepItems,
+    cursorProfileGuardians:
+        cursorProfileGuardians ?? this.cursorProfileGuardians,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -7603,6 +7649,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorVisitPrepItems: data.cursorVisitPrepItems.present
           ? data.cursorVisitPrepItems.value
           : this.cursorVisitPrepItems,
+      cursorProfileGuardians: data.cursorProfileGuardians.present
+          ? data.cursorProfileGuardians.value
+          : this.cursorProfileGuardians,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -7629,6 +7678,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('cursorCycleOverrides: $cursorCycleOverrides, ')
           ..write('cursorCareNotes: $cursorCareNotes, ')
           ..write('cursorVisitPrepItems: $cursorVisitPrepItems, ')
+          ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -7649,6 +7699,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorCycleOverrides,
     cursorCareNotes,
     cursorVisitPrepItems,
+    cursorProfileGuardians,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -7668,6 +7719,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.cursorCycleOverrides == this.cursorCycleOverrides &&
           other.cursorCareNotes == this.cursorCareNotes &&
           other.cursorVisitPrepItems == this.cursorVisitPrepItems &&
+          other.cursorProfileGuardians == this.cursorProfileGuardians &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -7685,6 +7737,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<int> cursorCycleOverrides;
   final Value<int> cursorCareNotes;
   final Value<int> cursorVisitPrepItems;
+  final Value<int> cursorProfileGuardians;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -7700,6 +7753,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorCycleOverrides = const Value.absent(),
     this.cursorCareNotes = const Value.absent(),
     this.cursorVisitPrepItems = const Value.absent(),
+    this.cursorProfileGuardians = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -7716,6 +7770,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorCycleOverrides = const Value.absent(),
     this.cursorCareNotes = const Value.absent(),
     this.cursorVisitPrepItems = const Value.absent(),
+    this.cursorProfileGuardians = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -7732,6 +7787,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<int>? cursorCycleOverrides,
     Expression<int>? cursorCareNotes,
     Expression<int>? cursorVisitPrepItems,
+    Expression<int>? cursorProfileGuardians,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -7751,6 +7807,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
       if (cursorCareNotes != null) 'cursor_care_notes': cursorCareNotes,
       if (cursorVisitPrepItems != null)
         'cursor_visit_prep_items': cursorVisitPrepItems,
+      if (cursorProfileGuardians != null)
+        'cursor_profile_guardians': cursorProfileGuardians,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -7770,6 +7828,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<int>? cursorCycleOverrides,
     Value<int>? cursorCareNotes,
     Value<int>? cursorVisitPrepItems,
+    Value<int>? cursorProfileGuardians,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -7786,6 +7845,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
       cursorCycleOverrides: cursorCycleOverrides ?? this.cursorCycleOverrides,
       cursorCareNotes: cursorCareNotes ?? this.cursorCareNotes,
       cursorVisitPrepItems: cursorVisitPrepItems ?? this.cursorVisitPrepItems,
+      cursorProfileGuardians:
+          cursorProfileGuardians ?? this.cursorProfileGuardians,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -7828,6 +7889,11 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         cursorVisitPrepItems.value,
       );
     }
+    if (cursorProfileGuardians.present) {
+      map['cursor_profile_guardians'] = Variable<int>(
+        cursorProfileGuardians.value,
+      );
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -7856,6 +7922,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('cursorCycleOverrides: $cursorCycleOverrides, ')
           ..write('cursorCareNotes: $cursorCareNotes, ')
           ..write('cursorVisitPrepItems: $cursorVisitPrepItems, ')
+          ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -13040,6 +13107,7 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorCycleOverrides,
   Value<int> cursorCareNotes,
   Value<int> cursorVisitPrepItems,
+  Value<int> cursorProfileGuardians,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -13056,6 +13124,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorCycleOverrides,
   Value<int> cursorCareNotes,
   Value<int> cursorVisitPrepItems,
+  Value<int> cursorProfileGuardians,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -13118,6 +13187,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorVisitPrepItems => $composableBuilder(
     column: $table.cursorVisitPrepItems,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorProfileGuardians => $composableBuilder(
+    column: $table.cursorProfileGuardians,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13201,6 +13275,11 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorProfileGuardians => $composableBuilder(
+    column: $table.cursorProfileGuardians,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -13277,6 +13356,11 @@ class $$SyncStateTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get cursorProfileGuardians => $composableBuilder(
+    column: $table.cursorProfileGuardians,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => column,
@@ -13337,6 +13421,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorCycleOverrides = const Value.absent(),
                 Value<int> cursorCareNotes = const Value.absent(),
                 Value<int> cursorVisitPrepItems = const Value.absent(),
+                Value<int> cursorProfileGuardians = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -13352,6 +13437,7 @@ class $$SyncStateTableTableManager
                 cursorCycleOverrides: cursorCycleOverrides,
                 cursorCareNotes: cursorCareNotes,
                 cursorVisitPrepItems: cursorVisitPrepItems,
+                cursorProfileGuardians: cursorProfileGuardians,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -13369,6 +13455,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorCycleOverrides = const Value.absent(),
                 Value<int> cursorCareNotes = const Value.absent(),
                 Value<int> cursorVisitPrepItems = const Value.absent(),
+                Value<int> cursorProfileGuardians = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -13384,6 +13471,7 @@ class $$SyncStateTableTableManager
                 cursorCycleOverrides: cursorCycleOverrides,
                 cursorCareNotes: cursorCareNotes,
                 cursorVisitPrepItems: cursorVisitPrepItems,
+                cursorProfileGuardians: cursorProfileGuardians,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,

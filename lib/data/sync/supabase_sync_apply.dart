@@ -59,12 +59,16 @@ class SupabaseSyncApply {
   final LunarLogStorage _storage;
 
   /// Rows the server rejected: id → (`local_rev` at rejection, owning
-  /// profile id — `null` for a profile row itself). A row is excluded from
-  /// pushes while its `local_rev` still equals the rejected one; a later
-  /// local write bumps it and the row is retried. The `profileId` lets
+  /// profile id — `null` for a profile row itself, and the row's own
+  /// table). A row is excluded from pushes while its `local_rev` still
+  /// equals the rejected one; a later local write bumps it and the row is
+  /// retried — either by an unrelated edit, or by [retryRejected] (issue
+  /// #568) doing exactly that on demand. The `profileId` lets
   /// [_unrejectEntriesOf] filter this map in memory when a profile is
-  /// accepted, with no storage read (finding #2).
-  final Map<String, ({int localRev, String? profileId})> _rejected = {};
+  /// accepted, with no storage read (finding #2); `table` lets
+  /// [retryRejected] bump the right table's `local_rev` without a lookup.
+  final Map<String, ({int localRev, String? profileId, SyncTable table})>
+      _rejected = {};
 
   /// How many ids are currently held as rejected.
   int get rejectedCount => _rejected.length;
@@ -91,8 +95,27 @@ class SupabaseSyncApply {
     for (final id in rejectedIds) {
       final item = byId[id];
       if (item != null) {
-        _rejected[id] = (localRev: item.localRev, profileId: item.profileId);
+        _rejected[id] = (
+          localRev: item.localRev,
+          profileId: item.profileId,
+          table: item.table,
+        );
       }
+    }
+  }
+
+  /// Issue #568: makes the rejected state actionable. Bumps `local_rev`
+  /// (via [LunarLogStorage.bumpLocalRevForRetry]) on every currently-held
+  /// rejection so the next push's dirty scan picks each one up again — the
+  /// row's content is untouched, only its push eligibility changes — and
+  /// clears the rejection bookkeeping for all of them: the next push's
+  /// outcome establishes a fresh verdict rather than immediately
+  /// re-excluding a row whose `local_rev` this call itself just bumped.
+  Future<void> retryRejected() async {
+    final rows = _rejected.entries.toList();
+    _rejected.clear();
+    for (final entry in rows) {
+      await _storage.bumpLocalRevForRetry(table: entry.value.table, id: entry.key);
     }
   }
 
@@ -100,29 +123,41 @@ class SupabaseSyncApply {
   /// item is cleared via `markPushed`, newly-accepted profiles un-reject
   /// their entries, and the server's `resolved` copies are applied with
   /// `dirty = false`.
+  ///
+  /// Issue #523: the two storage writes (`markPushed` for every accepted
+  /// item, `applyResolved` for the server's authoritative copies) go
+  /// through [LunarLogStorage.applyPushResult] in ONE `db.transaction()` —
+  /// a crash or failing write partway through used to leave a declined row
+  /// `dirty = false` holding the client's losing value, permanently, since
+  /// a declined row's `server_version` never advances to correct it via a
+  /// later pull. The in-memory [_rejected] bookkeeping below has no
+  /// database effect and needs no transaction of its own; only the two
+  /// storage writes did.
   Future<void> applyPushResult(
       List<SyncPushItem> batch, PushResult result) async {
     final rejected = result.rejectedIds.toSet();
     final acceptedProfileIds = <String>{};
+    final accepted = <({SyncTable table, String id, int localRevAtPush})>[];
     for (final item in batch) {
       if (rejected.contains(item.id)) {
-        _rejected[item.id] =
-            (localRev: item.localRev, profileId: item.profileId);
+        _rejected[item.id] = (
+          localRev: item.localRev,
+          profileId: item.profileId,
+          table: item.table,
+        );
         continue;
       }
       _rejected.remove(item.id);
       if (item.table == SyncTable.profiles) {
         acceptedProfileIds.add(item.id);
       }
-      await _storage.markPushed(
-          table: item.table, id: item.id, localRevAtPush: item.localRev);
+      accepted
+          .add((table: item.table, id: item.id, localRevAtPush: item.localRev));
     }
     if (acceptedProfileIds.isNotEmpty) {
       _unrejectEntriesOf(acceptedProfileIds, rejected);
     }
-    if (result.resolved.isNotEmpty) {
-      await _storage.applyResolved(result.resolved);
-    }
+    await _storage.applyPushResult(accepted: accepted, resolved: result.resolved);
   }
 
   /// A day entry rejected alongside its profile is un-rejected once that
