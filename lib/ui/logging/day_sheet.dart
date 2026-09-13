@@ -70,6 +70,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// Debounce between the last change (chip, flow, or note keystroke) and the
 /// autosave write (#198 B-13). Short enough to feel commit-immediate, long
@@ -834,7 +835,7 @@ class _DaySheetState extends State<DaySheet> {
     Widget body;
     if (widget.date.isAfter(widget.today)) {
       body = Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.symmetric(vertical: LLSpace.space5),
         child: Text(AppLocalizations.of(context).daySheetFutureDate),
       );
     } else if (widget.readOnly) {
@@ -883,8 +884,8 @@ class _DaySheetState extends State<DaySheet> {
   Widget _flowChips(AppLocalizations l10n) {
     final group = l10n.daySheetFlowLabel;
     return Wrap(
-      spacing: 8,
-      runSpacing: 4,
+      spacing: LLSpace.space2,
+      runSpacing: LLSpace.space1,
       children: [
         for (final level in kSelectableFlowLevels)
           groupedChipSemantics(
@@ -1044,14 +1045,14 @@ class _DaySheetState extends State<DaySheet> {
     final group = l10n.daySheetIntensityGroup;
     final current = _painIntensity[tag.code];
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: LLSpace.space1),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 120,
             child: Padding(
-              padding: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.only(top: LLSpace.space3),
               child: Text(
                 tag.display,
                 style: theme.textTheme.bodySmall,
@@ -1110,7 +1111,7 @@ class _DaySheetState extends State<DaySheet> {
   /// (labelMedium), and flagged [Semantics.header] so screen readers offer
   /// heading navigation between the chip groups.
   Widget _sectionHeading(ThemeData theme, String label) => Padding(
-    padding: const EdgeInsets.only(top: 12, bottom: 4),
+    padding: const EdgeInsets.only(top: LLSpace.space3, bottom: LLSpace.space1),
     child: Semantics(
       header: true,
       child: Text(label, style: theme.textTheme.labelMedium),
@@ -1131,7 +1132,7 @@ class _DaySheetState extends State<DaySheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: LLSpace.space2),
                   // A Wrap, not a Row (#198): the human-readable title is
                   // wider than the raw ISO string it replaced, and a long
                   // attribution badge beside it would overflow horizontally
@@ -1178,8 +1179,8 @@ class _DaySheetState extends State<DaySheet> {
                     _unverifiedCategoryNote(theme)
                   else
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
+                      spacing: LLSpace.space2,
+                      runSpacing: LLSpace.space1,
                       children: [
                         for (final tag in kTagTaxonomy)
                           if (tag.category == category)
@@ -1213,7 +1214,7 @@ class _DaySheetState extends State<DaySheet> {
                 if (_unrecognisedTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
                 Padding(
-                  padding: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.only(top: LLSpace.space3),
                   child: TextFormField(
                     key: const ValueKey('note-field'),
                     controller: _noteController,
@@ -1261,7 +1262,7 @@ class _DaySheetState extends State<DaySheet> {
             onRetry: _delete,
           ),
         Padding(
-          padding: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.only(top: LLSpace.space2),
           child: Row(
             children: [
               if (widget.existing != null)
@@ -1298,7 +1299,7 @@ class _DaySheetState extends State<DaySheet> {
             height: 18,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           Text(AppLocalizations.of(context).daySheetSaving, style: theme.textTheme.bodySmall),
         ],
       );
@@ -1308,7 +1309,7 @@ class _DaySheetState extends State<DaySheet> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 4),
+          const SizedBox(width: LLSpace.space1),
           Text(AppLocalizations.of(context).daySheetSaved, style: theme.textTheme.bodySmall),
         ],
       );
@@ -1331,15 +1332,15 @@ class _DaySheetState extends State<DaySheet> {
   /// dropped or invisibly resubmitted as if user-validated.
   List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
     Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      padding: const EdgeInsets.only(top: LLSpace.space3, bottom: LLSpace.space1),
       child: Text(
         AppLocalizations.of(context).daySheetUnrecognised,
         style: theme.textTheme.labelMedium,
       ),
     ),
     Wrap(
-      spacing: 8,
-      runSpacing: 4,
+      spacing: LLSpace.space2,
+      runSpacing: LLSpace.space1,
       children: [
         for (final code in _unrecognisedTags)
           Chip(key: ValueKey('unrecognised-tag-$code'), label: Text(code)),
@@ -1353,7 +1354,7 @@ class _DaySheetState extends State<DaySheet> {
   /// framework exist), but no code ships until a real Clue export pins the
   /// option set — a placeholder chip would be an invented health assertion.
   Widget _unverifiedCategoryNote(ThemeData theme) => Padding(
-    padding: const EdgeInsets.only(top: 2, bottom: 4),
+    padding: const EdgeInsets.only(top: 2, bottom: LLSpace.space1),
     child: Text(
       AppLocalizations.of(context).daySheetUnverifiedPin,
       style: theme.textTheme.bodySmall?.copyWith(
@@ -1381,13 +1382,13 @@ class _DaySheetState extends State<DaySheet> {
     final existing = widget.existing;
     if (existing == null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.symmetric(vertical: LLSpace.space5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (reason != null) ...[
               Text(reason, style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 4),
+              const SizedBox(height: LLSpace.space1),
             ],
             Text(AppLocalizations.of(context).daySheetNoEntry, style: theme.textTheme.bodyMedium),
           ],
@@ -1405,7 +1406,7 @@ class _DaySheetState extends State<DaySheet> {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: LLSpace.space2),
         ],
         Wrap(
           alignment: WrapAlignment.spaceBetween,
@@ -1429,30 +1430,30 @@ class _DaySheetState extends State<DaySheet> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: LLSpace.space3),
         Text(AppLocalizations.of(context).daySheetFlowLabel, style: theme.textTheme.labelMedium),
         Text(localizedFlowLabel(existing.flow, l10n), style: theme.textTheme.titleSmall),
         // Issue #220: the read-only view names the PMS marker too, so a
         // viewer (or a reviewing guardian) sees the phase even though the
         // toggle itself is disabled here.
         if (existing.pms) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: LLSpace.space3),
           Text(l10n.daySheetPmsGroup, style: theme.textTheme.labelMedium),
           Text(l10n.daySheetPmsChip, style: theme.textTheme.titleSmall),
         ],
         if (existing.tags.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: LLSpace.space3),
           Text(AppLocalizations.of(context).daySheetTagsLabel, style: theme.textTheme.labelMedium),
           Wrap(
-            spacing: 8,
-            runSpacing: 4,
+            spacing: LLSpace.space2,
+            runSpacing: LLSpace.space1,
             children: [
               for (final code in existing.tags)
                 Chip(label: Text(tagByCode(code)?.display ?? code)),
             ],
           ),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: LLSpace.space3),
         Text(AppLocalizations.of(context).daySheetNoteLabel, style: theme.textTheme.labelMedium),
         Text(
           (existing.note == null || existing.note!.isEmpty)

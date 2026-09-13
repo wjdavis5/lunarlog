@@ -26,6 +26,7 @@ import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 /// Issue #160: month names are locale-derived (`lib/ui/l10n/dates.dart`),
@@ -117,7 +118,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         // now surfaces with a retry instead of silently vanishing.
         if (snapshot.hasError) {
           return Padding(
-            padding: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.only(top: LLSpace.space3),
             child: InlineError(
               key: const ValueKey('cycle-history-error'),
               message: 'Could not load cycle history.',
@@ -138,9 +139,9 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
     final theme = Theme.of(context);
     return Card(
       key: const ValueKey('history-card'),
-      margin: const EdgeInsets.only(top: 12),
+      margin: const EdgeInsets.only(top: LLSpace.space3),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -156,17 +157,17 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
               ],
             ),
             if (view.confidence != null) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: LLSpace.space1),
               Text(
                 view.confidence!.summary,
                 key: const ValueKey('history-confidence-summary'),
                 style: theme.textTheme.bodySmall,
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             if (widget.showStatistics) ...[
               _statsRow(context, view),
-              const SizedBox(height: 4),
+              const SizedBox(height: LLSpace.space1),
             ],
             if (widget.showDisclaimer)
               Text(
@@ -174,9 +175,9 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
                 key: const ValueKey('history-disclaimer'),
                 style: theme.textTheme.bodySmall,
               ),
-            const Divider(height: 24),
+            const Divider(height: LLSpace.space5),
             for (final item in view.items) _itemRow(context, item),
-            const SizedBox(height: 4),
+            const SizedBox(height: LLSpace.space1),
             Text(
               'Omissions stay on this device — other devices are not affected.',
               key: const ValueKey('history-device-local-note'),
@@ -205,10 +206,10 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         : _colorFor(colors, view.confidence!);
     return Container(
       key: const ValueKey('history-confidence'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: LLSpace.space1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LLRadius.rLg),
       ),
       child: Text(
         view.confidence!.label,
@@ -321,7 +322,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(length),
-        const SizedBox(width: 8),
+        const SizedBox(width: LLSpace.space2),
         TextButton(
           key: ValueKey(
             item.omitted

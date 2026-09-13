@@ -453,13 +453,13 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(LLSpace.space5),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _introBody(l10n),
-              const SizedBox(height: 24),
+              const SizedBox(height: LLSpace.space5),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -514,18 +514,18 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       const Icon(Icons.nights_stay, size: 48),
-      const SizedBox(height: 8),
+      const SizedBox(height: LLSpace.space2),
       Text(
         kFirstRunBrandName,
         textAlign: TextAlign.center,
         style: LLType.titleMedium.toTextStyle(),
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: LLSpace.space4),
       Text(
         l10n.firstRunValueHeadline,
         style: Theme.of(context).textTheme.titleLarge,
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: LLSpace.space2),
       Text(l10n.firstRunValueBody),
     ],
   );
@@ -539,14 +539,14 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         l10n.firstRunGuardiansTitle,
         style: Theme.of(context).textTheme.titleLarge,
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: LLSpace.space2),
       Text(l10n.firstRunGuardiansBody),
-      const SizedBox(height: 16),
+      const SizedBox(height: LLSpace.space4),
       Text(
         l10n.firstRunMinorExplainerTitle,
         style: Theme.of(context).textTheme.titleMedium,
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: LLSpace.space2),
       Text(l10n.firstRunMinorExplainerBody),
     ],
   );
@@ -568,7 +568,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(l10n.firstRunCreateTitle)),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Form(
           key: _formKey,
           child: ListView(
@@ -632,7 +632,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: LLSpace.space3),
               // #557: MergeSemantics folds the label into the dropdown's
               // own announcement, so a screen reader hears the question
               // ("Care mode") instead of just the bare selected value.
@@ -709,12 +709,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       body: Form(
         key: _cycleFormKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(LLSpace.space4),
           children: [
             Text(l10n.firstRunCycleCaption),
-            const SizedBox(height: 16),
+            const SizedBox(height: LLSpace.space4),
             _lastPeriodField(l10n),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             TextFormField(
               key: const ValueKey('cycle-typical-cycle'),
               controller: _typicalCycleController,
@@ -730,7 +730,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 kMaxTypicalCycleLengthDays,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             TextFormField(
               key: const ValueKey('cycle-typical-period'),
               controller: _typicalPeriodController,
@@ -746,7 +746,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 kMaxTypicalPeriodLengthDays,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             MergeSemantics(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -760,7 +760,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                     value: _birthControl,
                     isExpanded: true,
                     onChanged: (value) => setState(
-                      () => _birthControl =
+                       () => _birthControl =
                           value ?? BirthControlChoice.notAnswered,
                     ),
                     items: [
@@ -774,7 +774,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             MergeSemantics(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -801,7 +801,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: LLSpace.space4),
             FilledButton(
               key: const ValueKey('cycle-create'),
               onPressed: _creating ? null : _create,
@@ -814,7 +814,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   : Text(l10n.firstRunCreateButton),
             ),
             if (_createError != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: LLSpace.space2),
               InlineError(
                 key: const ValueKey('cycle-create-error'),
                 message: _createError!,

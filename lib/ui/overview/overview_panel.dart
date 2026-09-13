@@ -74,6 +74,7 @@ import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 // Issue #316 review: re-exported (not just imported) so
@@ -408,7 +409,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     NotificationAvailability availability,
   ) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(LLSpace.space4),
       children: [
         switch (prediction) {
           ActivePrediction() => _activeCard(context, prediction),
@@ -448,7 +449,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final scope = AppShellScope.maybeOf(context);
     if (scope == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: LLSpace.space2),
       child: Align(
         alignment: Alignment.centerLeft,
         child: TextButton(
@@ -481,7 +482,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     if (_copy.silencesLateBanner) {
       return Padding(
         key: const ValueKey('overview-irregular-overdue'),
-        padding: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.only(top: LLSpace.space2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -511,7 +512,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return Card(
       key: const ValueKey('overview-active'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -527,7 +528,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               canLog: !_effectiveReadOnly,
               onLogToday: _logPeriodStartedToday,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             // Issue #213: below `high` confidence (`learning` included —
             // #213 item 5), the estimate above is already a range rather
             // than one exact date; this caption names why (no numbers,
@@ -548,13 +549,13 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 key: const ValueKey('overview-tier-caption'),
                 style: theme.textTheme.bodySmall,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: LLSpace.space1),
             ],
             // Issue #225: auto-suggest turning off predictions when confidence is irregular.
             if (prediction.tier == CycleConfidence.irregular &&
                 !_irregularSuggestionDismissed) ...[
               _irregularSuggestionCard(context, theme),
-              const SizedBox(height: 8),
+              const SizedBox(height: LLSpace.space2),
             ],
             // Issue #220: the predicted PMS phase — only when the profile
             // has the 3+ logged PMS intervals the hard minimum requires
@@ -565,7 +566,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
             // disclaimer line.
             if (prediction.pms != null) ...[
               _pmsSection(context, prediction.pms!, theme),
-              const SizedBox(height: 8),
+              const SizedBox(height: LLSpace.space2),
             ],
             if (prediction.isLate || prediction.unusuallyLongCycle)
               _lateSectionFor(prediction, theme)
@@ -576,7 +577,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 style: theme.textTheme.bodyLarge,
               ),
             if (prediction.unusuallyLongCycle) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: LLSpace.space2),
               _longCycleSection(context, prediction, theme),
             ],
           ],
@@ -670,11 +671,11 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final l10n = AppLocalizations.of(context);
     return Container(
       key: const ValueKey('overview-long-cycle-prompt'),
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: LLSpace.space1),
+      padding: const EdgeInsets.all(LLSpace.space3),
       decoration: BoxDecoration(
         color: theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LLRadius.rMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -686,7 +687,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               color: theme.colorScheme.onSecondaryContainer,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: LLSpace.space1),
           Text(
             l10n.overviewLongCycleBody,
             key: const ValueKey('overview-long-cycle-body'),
@@ -695,10 +696,10 @@ class _OverviewPanelState extends State<OverviewPanel> {
             ),
           ),
           if (!_effectiveReadOnly) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Wrap(
-              spacing: 8,
-              runSpacing: 4,
+              spacing: LLSpace.space2,
+              runSpacing: LLSpace.space1,
               children: [
                 OutlinedButton(
                   key: const ValueKey('long-cycle-exclude'),
@@ -728,9 +729,9 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return Card(
       key: const ValueKey('overview-irregular-prediction-suggestion'),
       color: theme.colorScheme.surfaceContainerHighest,
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.only(top: LLSpace.space2),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(LLSpace.space3),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -741,7 +742,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
                   size: 20,
                   color: theme.colorScheme.primary,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: LLSpace.space2),
                 Expanded(
                   child: Text(
                     l10n.overviewIrregularSuggestionTitle,
@@ -751,13 +752,13 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: LLSpace.space1),
             Text(
               l10n.overviewIrregularSuggestionBody,
               key: const ValueKey('irregular-suggestion-body'),
               style: theme.textTheme.bodySmall,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -766,7 +767,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
                   onPressed: _dismissIrregularSuggestion,
                   child: Text(l10n.overviewIrregularSuggestionDismiss),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: LLSpace.space2),
                 OutlinedButton(
                   key: const ValueKey('irregular-suggestion-settings'),
                   onPressed: () =>
@@ -797,7 +798,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return Card(
       key: const ValueKey('overview-not-enough'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -807,7 +808,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               titleStyle: theme.textTheme.headlineSmall,
               crossAxisAlignment: CrossAxisAlignment.start,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Text(
               kEstimateDisclaimer,
               key: const ValueKey('overview-not-enough-disclaimer'),
@@ -861,7 +862,7 @@ class _ReminderHintState extends State<_ReminderHint> {
     final request = context.read<RequestNotificationPermissionCallback?>();
     return Padding(
       key: const ValueKey('reminder-hint'),
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: LLSpace.space2),
       child: Row(
         children: [
           // Issue #162 (B-24): the hint reads as de-emphasised copy, so it
@@ -873,7 +874,7 @@ class _ReminderHintState extends State<_ReminderHint> {
             size: 18,
             color: theme.colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           Expanded(
             child: Text(
               l10n.overviewReminderHint,

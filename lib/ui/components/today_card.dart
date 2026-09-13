@@ -36,6 +36,7 @@ import 'package:lunarlog/ui/overview/estimate_copy.dart'
 
 import '../theme/haptics.dart';
 import '../theme/lunarlog_colors.dart';
+import '../theme/tokens.dart';
 import 'cycle_wheel.dart';
 import 'inline_error.dart';
 
@@ -132,19 +133,19 @@ class _TodayCardState extends State<TodayCard> {
             periodLengthDays: widget.periodLengthDays,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: LLSpace.space3),
         _estimateRow(theme),
-        const SizedBox(height: 8),
+        const SizedBox(height: LLSpace.space2),
         Text(
           kEstimateDisclaimer,
           key: const ValueKey('overview-disclaimer'),
           style: theme.textTheme.bodySmall,
         ),
         if (widget.canLog) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: LLSpace.space3),
           _logTodayButton(),
           if (_error != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: LLSpace.space1),
             InlineError(
               key: const ValueKey('today-card-error'),
               message: "Couldn't record today's entry — try again.",
@@ -168,7 +169,7 @@ class _TodayCardState extends State<TodayCard> {
           ),
         ),
         if (widget.showConfidenceChip) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           // #138: the chip's bare tier word ("High") reads ambiguously on
           // its own — the wrapper announces the same phrase the calendar's
           // future-day explainer uses, reusing its ARB key rather than
@@ -198,8 +199,8 @@ class _TodayCardState extends State<TodayCard> {
         onPressed: _busy ? null : _handleTap,
         icon: _busy
             ? const SizedBox(
-                width: 16,
-                height: 16,
+                width: LLSpace.space4,
+                height: LLSpace.space4,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.water_drop_outlined, size: 18),
@@ -234,10 +235,10 @@ class _ConfidenceChip extends StatelessWidget {
         : _colorFor(colors);
     return Container(
       key: const ValueKey('today-card-confidence-chip'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: LLSpace.space1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(LLRadius.rFull),
         border: Border.all(color: color),
       ),
       child: Text(

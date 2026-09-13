@@ -68,6 +68,7 @@ import 'package:lunarlog/ui/overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 /// The weekday the month grid's weeks start on, as a `DateTime` weekday
@@ -849,7 +850,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           _pageController
               .animateToPage(
                 page,
-                duration: const Duration(milliseconds: 250),
+                duration: LLMotion.resolve(context, LLMotion.base),
                 curve: Curves.easeInOut,
               )
               .whenComplete(() {
@@ -1470,7 +1471,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _legendSwatch(entry),
-        const SizedBox(width: 4),
+        const SizedBox(width: LLSpace.space1),
         // #138 (AC4): the label wraps inside the legend's Wrap rather
         // than overflowing its row -- the legend defaults expanded at
         // every text scale (#556), so its longest entries ("Super heavy
@@ -1602,7 +1603,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       child: Row(
         children: [
           Icon(Icons.edit_note, size: 16, color: theme.colorScheme.tertiary),
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           Expanded(
             child: Text(
               message,
@@ -2321,9 +2322,9 @@ class _FutureDayExplainer extends StatelessWidget {
               key: const ValueKey('future-explainer-date'),
               style: theme.textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             ..._body(theme, AppLocalizations.of(context)),
-            const SizedBox(height: 16),
+            const SizedBox(height: LLSpace.space4),
             Text(
               kEstimateDisclaimer,
               key: const ValueKey('future-explainer-disclaimer'),
@@ -2385,7 +2386,7 @@ class _FutureDayExplainer extends StatelessWidget {
           key: const ValueKey('future-explainer-numeral'),
           style: body,
         ),
-      const SizedBox(height: 8),
+      const SizedBox(height: LLSpace.space2),
       Text(
         l10n.futureExplainerConfidence(_confidenceLabel(cell).toLowerCase()),
         key: const ValueKey('future-explainer-confidence'),
@@ -2532,7 +2533,7 @@ class _MonthYearPickerSheetState extends State<_MonthYearPickerSheet> {
   Widget _monthButton(int month) {
     final disabled = _monthDisabled(month);
     return Padding(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(LLSpace.space1),
       child: OutlinedButton(
         key: ValueKey('month-picker-$_year-$month'),
         onPressed: disabled
