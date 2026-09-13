@@ -62,6 +62,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../domain/episodes/episodes.dart';
+import '../../domain/insights/cycle_insights_calculator.dart';
+import '../../domain/models/day_entry.dart';
+import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
 import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
@@ -85,6 +89,8 @@ import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import '../sharing/guardian_watch_mixin.dart';
+import 'phase_insights_card.dart';
+import 'symptom_trends_section.dart';
 
 class AnalysisTab extends StatefulWidget {
   const AnalysisTab({
@@ -94,9 +100,11 @@ class AnalysisTab extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.guardiansRepository,
+    this.dayEntriesRepository,
   });
 
   final String profileId;
+  final DayEntriesRepository? dayEntriesRepository;
 
   /// The profile's care mode (issue #131): selects the headline-stat
   /// vocabulary below, same as [OverviewPanel].
@@ -141,9 +149,11 @@ class _AnalysisTabState extends State<AnalysisTab>
     });
   }
 
+  StreamSubscription<List<DayEntry>>? _entriesSub;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
+  List<DayEntry> _entries = const [];
 
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
@@ -157,6 +167,7 @@ class _AnalysisTabState extends State<AnalysisTab>
       _auth = auth;
     }
     _watchGuardians();
+    _watchEntries();
   }
 
   // The listener is only ever registered while [_auth] is non-null and is
@@ -176,6 +187,20 @@ class _AnalysisTabState extends State<AnalysisTab>
     );
   }
 
+  void _watchEntries() {
+    unawaited(_entriesSub?.cancel());
+    _entries = const [];
+    final repository =
+        widget.dayEntriesRepository ?? context.read<DayEntriesRepository?>();
+    if (repository == null) return;
+    _entriesSub = repository.watchForProfile(widget.profileId).listen((
+      entries,
+    ) {
+      if (!mounted) return;
+      setState(() => _entries = entries);
+    });
+  }
+
   @override
   void didUpdateWidget(covariant AnalysisTab oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -185,6 +210,7 @@ class _AnalysisTabState extends State<AnalysisTab>
         today: widget.todayProvider,
       );
       _watchGuardians();
+      _watchEntries();
       return;
     }
     // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
@@ -204,6 +230,8 @@ class _AnalysisTabState extends State<AnalysisTab>
   @override
   void dispose() {
     disposeGuardianWatch();
+    unawaited(_entriesSub?.cancel());
+    _entriesSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -235,9 +263,16 @@ class _AnalysisTabState extends State<AnalysisTab>
     );
   }
 
-  /// Section list — the seam #135 (statistics/trends) mounts an additional
-  /// entry into once that issue lands. #135 mounts here.
+  /// Section list — mounts headline statistics, phase insights (#236),
+  /// symptom trends & cramp forecasts (#135/#229), and the cycle history list.
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
+    final episodes = deriveEpisodes(bleedDatesOf(_entries));
+    final report = CycleInsightsCalculator.compute(
+      entries: _entries,
+      episodes: episodes,
+      prediction: prediction is ActivePrediction ? prediction : null,
+    );
+
     return [
       Text(
         'Analysis',
@@ -267,6 +302,15 @@ class _AnalysisTabState extends State<AnalysisTab>
         showStatistics: false,
         showDisclaimer: false,
       ),
+      if (prediction is ActivePrediction) ...[
+        const SizedBox(height: 16),
+        PhaseInsightsCard(
+          prediction: prediction,
+          today: widget.todayProvider(),
+        ),
+      ],
+      const SizedBox(height: 16),
+      SymptomTrendsSection(report: report),
     ];
   }
 
