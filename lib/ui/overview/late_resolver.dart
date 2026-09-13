@@ -20,6 +20,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
@@ -127,17 +128,19 @@ class _LateResolverState extends State<LateResolver> {
   /// [ActivePrediction.daysLate] has not yet crossed [kLateGraceDays] (an
   /// unusually long mean cycle length pushed the due date out far enough
   /// that sixty open days alone has not yet cleared the grace window).
-  String get _lateLine {
+  String _lateLine(AppLocalizations l10n) {
     final daysLate = widget.prediction.daysLate;
     if (daysLate != null) {
       return '$daysLate day${daysLate == 1 ? '' : 's'} late';
     }
+    // Issue #545: routed through the shared ICU-plural daysCount key
+    // instead of a bare "N days" interpolation (fixes "1 days").
     return 'No period logged for '
-        '${widget.prediction.daysSinceLastEpisodeStart} days';
+        '${l10n.daysCount(widget.prediction.daysSinceLastEpisodeStart)}';
   }
 
   Widget _resolverCard(BuildContext context, ThemeData theme, bool wasSnoozed) {
-    final lateLine = _lateLine;
+    final lateLine = _lateLine(AppLocalizations.of(context));
     return Container(
       key: const ValueKey('late-resolver'),
       margin: const EdgeInsets.only(top: LLSpace.space3),

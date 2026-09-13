@@ -27,12 +27,15 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
@@ -1224,7 +1227,7 @@ void main() {
         find.descendant(
           of: key('account-link-error'),
           matching: find.text(
-            authFailureCopy(const AuthFailure.identityTaken()),
+            authFailureCopy(AppLocalizationsEn(), const AuthFailure.identityTaken()),
           ),
           matchRoot: true,
         ),
@@ -1315,7 +1318,7 @@ void main() {
       expect(
         find.descendant(
           of: key('account-link-error'),
-          matching: find.text(authFailureCopy(const AuthFailure.unknown())),
+          matching: find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.unknown())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -1548,7 +1551,7 @@ void main() {
         find.descendant(
           of: key('account-link-error'),
           matching:
-              find.text(authFailureCopy(const AuthFailure.lastSignInMethod())),
+              find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.lastSignInMethod())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -1572,7 +1575,7 @@ void main() {
       expect(
         find.descendant(
           of: key('account-link-error'),
-          matching: find.text(authFailureCopy(const AuthFailure.network())),
+          matching: find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.network())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -1602,7 +1605,7 @@ void main() {
       expect(
         find.descendant(
           of: key('account-link-error'),
-          matching: find.text(authFailureCopy(const AuthFailure.unknown())),
+          matching: find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.unknown())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -2330,6 +2333,8 @@ Future<StandaloneSection> pumpSection(
   addTearDown(gateController.dispose);
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthController>.value(value: controller),
@@ -2378,6 +2383,8 @@ Future<StandaloneSignIn> pumpStandalone(
   final settings = MemorySettings(seed);
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthController>.value(value: controller),

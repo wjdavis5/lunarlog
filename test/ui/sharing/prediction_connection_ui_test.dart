@@ -38,6 +38,7 @@ import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/sharing/share_predictions_dialog.dart';
 import 'package:provider/provider.dart';
 
@@ -192,6 +193,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -254,6 +257,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -279,15 +284,18 @@ void main() {
       // month grid, i.e. it is not a footer requiring a scroll past the
       // calendar to reach.
       final bannerY = tester
-          .getTopLeft(find.byKey(const ValueKey('prediction-disclaimer-banner')))
+          .getTopLeft(
+            find.byKey(const ValueKey('prediction-disclaimer-banner')),
+          )
           .dy;
       final gridY = tester
           .getTopLeft(
             find.byWidgetPredicate(
               (w) =>
                   w.key is ValueKey<String> &&
-                  (w.key as ValueKey<String>).value
-                      .startsWith('prediction-grid-'),
+                  (w.key as ValueKey<String>).value.startsWith(
+                    'prediction-grid-',
+                  ),
             ),
           )
           .dy;
@@ -304,6 +312,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -317,7 +327,10 @@ void main() {
         find.byKey(const ValueKey('prediction-confidence-tier')),
         findsOneWidget,
       );
-      expect(find.textContaining(CycleConfidence.learning.label), findsOneWidget);
+      expect(
+        find.textContaining(CycleConfidence.learning.label),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a null projection renders the connection-ended state '
@@ -326,6 +339,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -362,6 +377,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -416,6 +433,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionCalendarScreen(
             profileId: 'p1',
             profileName: 'Riley',
@@ -456,7 +475,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionsScreen(service: service),
         ),
       );
@@ -507,6 +527,8 @@ void main() {
       AcceptedPredictionConnection? connectedResult;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: PredictionConnectionsScreen(
             service: service,
             onConnected: (result) => connectedResult = result,
@@ -540,7 +562,11 @@ void main() {
       service.acceptFailure = const PredictionConnectionFailure.pregnancyMode();
 
       await tester.pumpWidget(
-        MaterialApp(home: PredictionConnectionsScreen(service: service)),
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PredictionConnectionsScreen(service: service),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -572,6 +598,8 @@ void main() {
       AcceptedPredictionConnection? popped;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) {
@@ -616,6 +644,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) {
@@ -661,6 +691,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) {
@@ -751,6 +783,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ManageGuardiansScreen(
             profile: profile ?? testProfile,
             guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -875,46 +909,52 @@ void main() {
     });
 
     testWidgets(
-        '#544: the pending poll stops after too many consecutive failures '
-        'instead of hammering the network every interval indefinitely', (
-      tester,
-    ) async {
-      final pendingRow = ActivePredictionConnection(
-        connectionId: 'conn-1',
-        profileId: testProfile.id,
-        pending: true,
-        recipientLabel: 'Partner',
-        createdAt: DateTime.utc(2026, 9, 1),
-        expiresAt: DateTime.utc(2026, 9, 8),
-      );
-      connectionService.getActiveConnectionResult = pendingRow;
-      await pumpScreen(tester);
-      expect(find.text('pending'), findsOneWidget);
-      final callsBeforeFailures = connectionService.getActiveConnectionCalls;
+      '#544: the pending poll stops after too many consecutive failures '
+      'instead of hammering the network every interval indefinitely',
+      (tester) async {
+        final pendingRow = ActivePredictionConnection(
+          connectionId: 'conn-1',
+          profileId: testProfile.id,
+          pending: true,
+          recipientLabel: 'Partner',
+          createdAt: DateTime.utc(2026, 9, 1),
+          expiresAt: DateTime.utc(2026, 9, 8),
+        );
+        connectionService.getActiveConnectionResult = pendingRow;
+        await pumpScreen(tester);
+        expect(find.text('pending'), findsOneWidget);
+        final callsBeforeFailures = connectionService.getActiveConnectionCalls;
 
-      // Every subsequent read fails.
-      connectionService.getActiveConnectionFailure =
-          const PredictionConnectionFailure.network();
+        // Every subsequent read fails.
+        connectionService.getActiveConnectionFailure =
+            const PredictionConnectionFailure.network();
 
-      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
-      await tester.pumpAndSettle();
-      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
-      await tester.pumpAndSettle();
-      await tester.pump(ManageGuardiansScreen.pendingPollInterval);
-      await tester.pumpAndSettle();
-      final callsAtShutoff = connectionService.getActiveConnectionCalls;
-      expect(callsAtShutoff, callsBeforeFailures + 3,
-          reason: 'three consecutive failures reaches the shutoff');
+        await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+        await tester.pumpAndSettle();
+        await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+        await tester.pumpAndSettle();
+        await tester.pump(ManageGuardiansScreen.pendingPollInterval);
+        await tester.pumpAndSettle();
+        final callsAtShutoff = connectionService.getActiveConnectionCalls;
+        expect(
+          callsAtShutoff,
+          callsBeforeFailures + 3,
+          reason: 'three consecutive failures reaches the shutoff',
+        );
 
-      // Further intervals must not call the service again -- the poll
-      // stopped, rather than continuing to hit the network every interval.
-      await tester.pump(ManageGuardiansScreen.pendingPollInterval * 5);
-      await tester.pumpAndSettle();
-      expect(connectionService.getActiveConnectionCalls, callsAtShutoff,
-          reason: 'the timer was cancelled, not merely still failing');
+        // Further intervals must not call the service again -- the poll
+        // stopped, rather than continuing to hit the network every interval.
+        await tester.pump(ManageGuardiansScreen.pendingPollInterval * 5);
+        await tester.pumpAndSettle();
+        expect(
+          connectionService.getActiveConnectionCalls,
+          callsAtShutoff,
+          reason: 'the timer was cancelled, not merely still failing',
+        );
 
-      await unmount(tester);
-    });
+        await unmount(tester);
+      },
+    );
 
     testWidgets(
       'a typed PredictionConnectionFailure loading the active connection '
@@ -1017,39 +1057,45 @@ void main() {
     });
 
     testWidgets(
-        'issue #558: once the single-use code is generated, a stray tap '
-        'outside the dialog cannot dismiss it, and "Copy Link" shows its '
-        'confirmation inside the dialog', (tester) async {
-      connectionService.getActiveConnectionResult = null;
-      await pumpScreen(tester);
+      'issue #558: once the single-use code is generated, a stray tap '
+      'outside the dialog cannot dismiss it, and "Copy Link" shows its '
+      'confirmation inside the dialog',
+      (tester) async {
+        connectionService.getActiveConnectionResult = null;
+        await pumpScreen(tester);
 
-      await tester.tap(find.byKey(const ValueKey('share-predictions')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Create Link'));
-      await tester.pumpAndSettle();
-      expect(find.text('Connection created'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('share-predictions')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Create Link'));
+        await tester.pumpAndSettle();
+        expect(find.text('Connection created'), findsOneWidget);
 
-      await tester.tapAt(const Offset(5, 5));
-      await tester.pumpAndSettle();
-      expect(find.text('Connection created'), findsOneWidget,
-          reason: 'barrierDismissible: false -- the server never stores '
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Connection created'),
+          findsOneWidget,
+          reason:
+              'barrierDismissible: false -- the server never stores '
               'this raw token again, so a stray tap must not destroy '
-              'access to it');
+              'access to it',
+        );
 
-      expect(
-        find.byKey(const ValueKey('share-predictions-copied-confirmation')),
-        findsNothing,
-      );
-      await tester.tap(find.widgetWithText(FilledButton, 'Copy Link'));
-      await tester.pump();
-      expect(find.text('Copied to clipboard'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('share-predictions-copied-confirmation')),
+          findsNothing,
+        );
+        await tester.tap(find.widgetWithText(FilledButton, 'Copy Link'));
+        await tester.pump();
+        expect(find.text('Copied to clipboard'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(TextButton, 'Done'));
-      await tester.pumpAndSettle();
-      expect(find.text('Connection created'), findsNothing);
+        await tester.tap(find.widgetWithText(TextButton, 'Done'));
+        await tester.pumpAndSettle();
+        expect(find.text('Connection created'), findsNothing);
 
-      await unmount(tester);
-    });
+        await unmount(tester);
+      },
+    );
   });
 
   group('kind=prediction deep links through the app shell (issue #151)', () {

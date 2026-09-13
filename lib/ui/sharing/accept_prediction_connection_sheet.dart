@@ -12,6 +12,10 @@ import 'package:flutter/material.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../components/inline_error.dart';
 
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
+
+
 class AcceptPredictionConnectionSheet extends StatefulWidget {
   const AcceptPredictionConnectionSheet({
     super.key,
@@ -55,7 +59,10 @@ class _AcceptPredictionConnectionSheetState
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = failure.userFacingMessage;
+          _error = predictionConnectionFailureCopy(
+            AppLocalizations.of(context),
+            failure,
+          );
         });
       }
     } catch (_) {
@@ -86,14 +93,19 @@ class _AcceptPredictionConnectionSheetState
           children: [
             Row(
               children: [
-                Icon(Icons.calendar_month,
-                    size: 28, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.calendar_month,
+                  size: 28,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 // Expanded: the title wraps instead of overflowing the
                 // sheet's width at large text scales.
                 Expanded(
-                  child: Text('Connect to cycle predictions',
-                      style: theme.textTheme.titleLarge),
+                  child: Text(
+                    'Connect to cycle predictions',
+                    style: theme.textTheme.titleLarge,
+                  ),
                 ),
               ],
             ),
@@ -116,7 +128,9 @@ class _AcceptPredictionConnectionSheetState
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _loading ? null : () => Navigator.of(context).pop(),
+                  onPressed: _loading
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: const Text('Decline'),
                 ),
                 const SizedBox(width: 8),

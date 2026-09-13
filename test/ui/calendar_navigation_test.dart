@@ -43,15 +43,16 @@ class Harness {
   final String profileId;
 }
 
-DayEntry _entryFor(String profileId, LocalDate date, FlowLevel flow) => DayEntry(
-  id: '',
-  profileId: profileId,
-  localDate: date,
-  tz: 'America/Chicago',
-  flow: flow,
-  tags: const [],
-  updatedAt: DateTime.utc(2026, 1, 1),
-);
+DayEntry _entryFor(String profileId, LocalDate date, FlowLevel flow) =>
+    DayEntry(
+      id: '',
+      profileId: profileId,
+      localDate: date,
+      tz: 'America/Chicago',
+      flow: flow,
+      tags: const [],
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
 
 /// Records every `watchForProfile` call's `from`/`to` while delegating
 /// everything else to a real [DriftDayEntriesRepository] (issue #197): lets
@@ -71,12 +72,11 @@ class RecordingDayEntriesRepository implements DayEntriesRepository {
     required DayEntry entry,
     List<Observation> observationsToUpsert = const [],
     List<String> observationIdsToDelete = const [],
-  }) =>
-      _inner.saveDayEntryWithObservations(
-        entry: entry,
-        observationsToUpsert: observationsToUpsert,
-        observationIdsToDelete: observationIdsToDelete,
-      );
+  }) => _inner.saveDayEntryWithObservations(
+    entry: entry,
+    observationsToUpsert: observationsToUpsert,
+    observationIdsToDelete: observationIdsToDelete,
+  );
 
   @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) =>
@@ -116,8 +116,15 @@ Future<Harness> pumpCalendar(
   // Issue #197: lets a test observe the entries repository's
   // `watchForProfile` calls (window bounds, call count) by wrapping the
   // real `DriftDayEntriesRepository` in a `RecordingDayEntriesRepository`.
-  DayEntriesRepository Function(DriftDayEntriesRepository real)?
-      wrapRepository,
+  DayEntriesRepository Function(DriftDayEntriesRepository real)? wrapRepository,
+  // Issue #550: wires real CyclePredictionService/CycleHistoryService
+  // providers (rather than leaving MonthCalendar on its no-service
+  // computePredictionFromEntries/deriveCycleHistoryFromEntries fallback,
+  // which recomputes a fresh, non-identical prediction/history object
+  // every build). Needed only by tests that must observe a *stable*
+  // ActivePrediction across an unrelated rebuild — the #550 memoisation
+  // guard, so far.
+  bool withPredictionServices = false,
 }) async {
   tester.view.physicalSize = physicalSize;
   tester.view.devicePixelRatio = 1.0;
@@ -133,19 +140,31 @@ Future<Harness> pumpCalendar(
 
   await tester.pumpWidget(
     MultiProvider(
-      providers: [Provider<DayEntriesRepository>.value(value: repository)],
+      providers: [
+        Provider<DayEntriesRepository>.value(value: repository),
+        if (withPredictionServices) ...[
+          Provider<CyclePredictionService?>.value(
+            value: CyclePredictionService(repository),
+          ),
+          Provider<CycleHistoryService?>.value(
+            value: CycleHistoryService(repository),
+          ),
+        ],
+      ],
       child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.lightTheme,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
         home: Scaffold(
-          body: MonthCalendar(profileId: profile.id, todayProvider: () => kToday),
+          body: MonthCalendar(
+            profileId: profile.id,
+            todayProvider: () => kToday,
+          ),
         ),
       ),
     ),
@@ -165,8 +184,7 @@ void main() {
   final colors = AppTheme.lightTheme.extension<LunarLogColors>()!;
 
   group('legend strip', () {
-    testWidgets(
-        'keys every mark the grid can show: the four flow levels, a '
+    testWidgets('keys every mark the grid can show: the four flow levels, a '
         'symptom day, today, #133\'s predicted band, the PMS/cramps '
         'badges, and the symptom-layer palette (issue #312)', (tester) async {
       final h = await pumpCalendar(tester);
@@ -183,7 +201,11 @@ void main() {
         'Cramps window',
         'Symptom layer dots',
       ]) {
-        expect(find.text(label), findsOneWidget, reason: 'missing legend entry: $label');
+        expect(
+          find.text(label),
+          findsOneWidget,
+          reason: 'missing legend entry: $label',
+        );
       }
       // Issue #247: spotting is no longer a flow level (it reads back as
       // `notBleeding`, which is never a bleed marker) and the ramp has no
@@ -200,94 +222,111 @@ void main() {
     });
 
     testWidgets(
-        'issue #556: stays expanded by default at every text scale -- no '
-        'longer auto-collapses at a large one -- and the manual toggle '
-        'still collapses/re-expands it on tap', (tester) async {
-      for (final textScale in [1.0, 1.5, 1.6, 2.0, 3.0]) {
-        final h = await pumpCalendar(tester, textScale: textScale);
-        expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
-        expect(find.text('Light flow'), findsOneWidget,
-            reason: 'the legend defaults expanded at $textScale x, not '
-                'just below some collapse threshold');
+      'issue #556: stays expanded by default at every text scale -- no '
+      'longer auto-collapses at a large one -- and the manual toggle '
+      'still collapses/re-expands it on tap',
+      (tester) async {
+        for (final textScale in [1.0, 1.5, 1.6, 2.0, 3.0]) {
+          final h = await pumpCalendar(tester, textScale: textScale);
+          expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
+          expect(
+            find.text('Light flow'),
+            findsOneWidget,
+            reason:
+                'the legend defaults expanded at $textScale x, not '
+                'just below some collapse threshold',
+          );
+          await disposeCalendar(tester, h);
+        }
+
+        final h = await pumpCalendar(tester, textScale: 2.0);
+        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Light flow'),
+          findsNothing,
+          reason: 'the operator can still manually collapse it',
+        );
+
+        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Light flow'),
+          findsOneWidget,
+          reason: 'and re-expand it again, even at a large text scale',
+        );
         await disposeCalendar(tester, h);
-      }
-
-      final h = await pumpCalendar(tester, textScale: 2.0);
-      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
-      await tester.pumpAndSettle();
-      expect(find.text('Light flow'), findsNothing,
-          reason: 'the operator can still manually collapse it');
-
-      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
-      await tester.pumpAndSettle();
-      expect(find.text('Light flow'), findsOneWidget,
-          reason: 'and re-expand it again, even at a large text scale');
-      await disposeCalendar(tester, h);
-    });
+      },
+    );
   });
 
   group('flow-graded cells', () {
     testWidgets(
-        'each bleed level fills with its own flow* ramp token and carries a '
-        'distinct dot-count non-colour channel; superHeavy reuses heavy\'s '
-        'ramp token with an extra mark', (tester) async {
-      final h = await pumpCalendar(
-        tester,
-        seed: (db, profileId) async {
-          final repo = DriftDayEntriesRepository(db.storage);
-          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 2), FlowLevel.light));
-          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 3), FlowLevel.medium));
-          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 4), FlowLevel.heavy));
-          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 5), FlowLevel.superHeavy));
-        },
-      );
-
-      const expected = {
-        'light': (iso: '2026-08-02', marks: 2),
-        'medium': (iso: '2026-08-03', marks: 3),
-        'heavy': (iso: '2026-08-04', marks: 4),
-        'superHeavy': (iso: '2026-08-05', marks: 5),
-      };
-
-      for (final level in FlowLevel.values) {
-        final entry = expected[level.name];
-        // Issue #247: `none`, the deprecated `spotting` alias, and
-        // `notBleeding` are never bleed levels — none of them render a
-        // `bleed-<iso>` marker at all, so they are skipped here rather
-        // than asserted against a date this test never seeded.
-        if (entry == null) continue;
-        final iso = entry.iso;
-
-        final container = tester.widget<Container>(
-          find.byKey(ValueKey('bleed-$iso')),
+      'each bleed level fills with its own flow* ramp token and carries a '
+      'distinct dot-count non-colour channel; superHeavy reuses heavy\'s '
+      'ramp token with an extra mark',
+      (tester) async {
+        final h = await pumpCalendar(
+          tester,
+          seed: (db, profileId) async {
+            final repo = DriftDayEntriesRepository(db.storage);
+            await repo.save(
+              _entryFor(profileId, LocalDate(2026, 8, 2), FlowLevel.light),
+            );
+            await repo.save(
+              _entryFor(profileId, LocalDate(2026, 8, 3), FlowLevel.medium),
+            );
+            await repo.save(
+              _entryFor(profileId, LocalDate(2026, 8, 4), FlowLevel.heavy),
+            );
+            await repo.save(
+              _entryFor(profileId, LocalDate(2026, 8, 5), FlowLevel.superHeavy),
+            );
+          },
         );
-        final decoration = container.decoration! as BoxDecoration;
-        expect(decoration.border, isNull);
-        expect(
-          decoration.color,
-          switch (level) {
+
+        const expected = {
+          'light': (iso: '2026-08-02', marks: 2),
+          'medium': (iso: '2026-08-03', marks: 3),
+          'heavy': (iso: '2026-08-04', marks: 4),
+          'superHeavy': (iso: '2026-08-05', marks: 5),
+        };
+
+        for (final level in FlowLevel.values) {
+          final entry = expected[level.name];
+          // Issue #247: `none`, the deprecated `spotting` alias, and
+          // `notBleeding` are never bleed levels — none of them render a
+          // `bleed-<iso>` marker at all, so they are skipped here rather
+          // than asserted against a date this test never seeded.
+          if (entry == null) continue;
+          final iso = entry.iso;
+
+          final container = tester.widget<Container>(
+            find.byKey(ValueKey('bleed-$iso')),
+          );
+          final decoration = container.decoration! as BoxDecoration;
+          expect(decoration.border, isNull);
+          expect(decoration.color, switch (level) {
             FlowLevel.light => colors.flowLight,
             FlowLevel.medium => colors.flowMedium,
             FlowLevel.heavy || FlowLevel.superHeavy => colors.flowHeavy,
             _ => throw StateError('unreachable'),
-          },
-          reason: '$level should fill with its own flow* ramp token',
-        );
+          }, reason: '$level should fill with its own flow* ramp token');
 
-        final marksRow = tester.widget<Row>(
-          find.byKey(ValueKey('flow-level-${level.name}-$iso')),
-        );
-        expect(
-          marksRow.children.length,
-          entry.marks,
-          reason: '$level should carry ${entry.marks} intensity mark(s)',
-        );
-      }
-      await disposeCalendar(tester, h);
-    });
+          final marksRow = tester.widget<Row>(
+            find.byKey(ValueKey('flow-level-${level.name}-$iso')),
+          );
+          expect(
+            marksRow.children.length,
+            entry.marks,
+            reason: '$level should carry ${entry.marks} intensity mark(s)',
+          );
+        }
+        await disposeCalendar(tester, h);
+      },
+    );
 
-    testWidgets(
-        'the deprecated spotting alias and the explicit notBleeding '
+    testWidgets('the deprecated spotting alias and the explicit notBleeding '
         'assertion both read back as a non-bleed day (Issue #247): neither '
         'renders a bleed marker', (tester) async {
       final h = await pumpCalendar(
@@ -295,8 +334,12 @@ void main() {
         seed: (db, profileId) async {
           final repo = DriftDayEntriesRepository(db.storage);
           // ignore: deprecated_member_use_from_same_package
-          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 6), FlowLevel.spotting));
-          await repo.save(_entryFor(profileId, LocalDate(2026, 8, 7), FlowLevel.notBleeding));
+          await repo.save(
+            _entryFor(profileId, LocalDate(2026, 8, 6), FlowLevel.spotting),
+          );
+          await repo.save(
+            _entryFor(profileId, LocalDate(2026, 8, 7), FlowLevel.notBleeding),
+          );
         },
       );
 
@@ -317,8 +360,7 @@ void main() {
       expect(tones, hasLength(4));
     });
 
-    testWidgets(
-        'a bleed day that is also today draws the same ring the legend '
+    testWidgets('a bleed day that is also today draws the same ring the legend '
         'advertises as Today (issue #312 — previously dropped for any '
         'bleed level)', (tester) async {
       final h = await pumpCalendar(
@@ -335,56 +377,76 @@ void main() {
     });
 
     testWidgets(
-        'a bleed-logged today cell does not overflow a 375pt-class phone '
-        'viewport (issue #312, BLOCKING — today-ring wrapper overflow)',
-        (tester) async {
-      final h = await pumpCalendar(
-        tester,
-        physicalSize: const Size(390, 844),
-        seed: (db, profileId) async {
-          final repo = DriftDayEntriesRepository(db.storage);
-          await repo.save(_entryFor(profileId, kToday, FlowLevel.medium));
-        },
-      );
+      'a bleed-logged today cell does not overflow a 375pt-class phone '
+      'viewport (issue #312, BLOCKING — today-ring wrapper overflow)',
+      (tester) async {
+        final h = await pumpCalendar(
+          tester,
+          physicalSize: const Size(390, 844),
+          seed: (db, profileId) async {
+            final repo = DriftDayEntriesRepository(db.storage);
+            await repo.save(_entryFor(profileId, kToday, FlowLevel.medium));
+          },
+        );
 
-      expect(tester.takeException(), isNull);
-      expect(find.byKey(ValueKey('today-ring-${kToday.iso}')), findsOneWidget);
-      await disposeCalendar(tester, h);
-    });
+        expect(tester.takeException(), isNull);
+        expect(
+          find.byKey(ValueKey('today-ring-${kToday.iso}')),
+          findsOneWidget,
+        );
+        await disposeCalendar(tester, h);
+      },
+    );
   });
 
   group('swipe navigation', () {
     testWidgets(
-        'the chevrons and a drag on the grid both drive the same PageView, '
-        'and navigating away and tapping Today returns to the current month',
-        (tester) async {
-      final h = await pumpCalendar(tester);
+      'the chevrons and a drag on the grid both drive the same PageView, '
+      'and navigating away and tapping Today returns to the current month',
+      (tester) async {
+        final h = await pumpCalendar(tester);
 
-      expect(find.text('August 2026'), findsOneWidget);
+        expect(find.text('August 2026'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Next month'));
-      await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget,
-          reason: 'the chevron still drives the shared PageView');
+        await tester.tap(find.byTooltip('Next month'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('September 2026'),
+          findsOneWidget,
+          reason: 'the chevron still drives the shared PageView',
+        );
 
-      await tester.fling(
-        find.byKey(const ValueKey('calendar-page-view')),
-        const Offset(-700, 0),
-        1000,
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('October 2026'), findsOneWidget,
-          reason: 'a swipe on the grid navigates months too');
-      expect(find.byKey(const ValueKey('calendar-grid-2026-10')), findsOneWidget);
+        await tester.fling(
+          find.byKey(const ValueKey('calendar-page-view')),
+          const Offset(-700, 0),
+          1000,
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text('October 2026'),
+          findsOneWidget,
+          reason: 'a swipe on the grid navigates months too',
+        );
+        expect(
+          find.byKey(const ValueKey('calendar-grid-2026-10')),
+          findsOneWidget,
+        );
 
-      await tester.tap(find.byKey(const ValueKey('today-button')));
-      await tester.pumpAndSettle();
-      expect(find.text('August 2026'), findsOneWidget,
-          reason: 'Today jumps back to the current month');
-      expect(find.byKey(const ValueKey('day-cell-2026-08-30')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('today-button')));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('August 2026'),
+          findsOneWidget,
+          reason: 'Today jumps back to the current month',
+        );
+        expect(
+          find.byKey(const ValueKey('day-cell-2026-08-30')),
+          findsOneWidget,
+        );
 
-      await disposeCalendar(tester, h);
-    });
+        await disposeCalendar(tester, h);
+      },
+    );
 
     testWidgets('a backward swipe on the grid navigates to the previous '
         'month (issue #312)', (tester) async {
@@ -398,14 +460,16 @@ void main() {
         1000,
       );
       await tester.pumpAndSettle();
-      expect(find.text('July 2026'), findsOneWidget,
-          reason: 'a positive-dx (backward) swipe moves to the previous month');
+      expect(
+        find.text('July 2026'),
+        findsOneWidget,
+        reason: 'a positive-dx (backward) swipe moves to the previous month',
+      );
 
       await disposeCalendar(tester, h);
     });
 
-    testWidgets(
-        'a fling past the forward limit stays pinned on the boundary '
+    testWidgets('a fling past the forward limit stays pinned on the boundary '
         'month — the PageView itemCount bounds it at maxPageIndex + 1 '
         '(issue #312)', (tester) async {
       final h = await pumpCalendar(tester);
@@ -419,8 +483,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('month-picker-2027-8')));
       await tester.pumpAndSettle();
-      expect(find.text('August 2027'), findsOneWidget,
-          reason: 'August 2027 is exactly the twelve-month forward limit');
+      expect(
+        find.text('August 2027'),
+        findsOneWidget,
+        reason: 'August 2027 is exactly the twelve-month forward limit',
+      );
 
       await tester.fling(
         find.byKey(const ValueKey('calendar-page-view')),
@@ -428,18 +495,21 @@ void main() {
         1000,
       );
       await tester.pumpAndSettle();
-      expect(find.text('August 2027'), findsOneWidget,
-          reason: 'the fling cannot move past the pinned boundary month');
+      expect(
+        find.text('August 2027'),
+        findsOneWidget,
+        reason: 'the fling cannot move past the pinned boundary month',
+      );
 
       await disposeCalendar(tester, h);
     });
   });
 
   group('month/year picker', () {
-    testWidgets(
-        'tapping the month label opens a picker bounded by the same '
-        "forward limit the chevron's nextDisabled already enforces",
-        (tester) async {
+    testWidgets('tapping the month label opens a picker bounded by the same '
+        "forward limit the chevron's nextDisabled already enforces", (
+      tester,
+    ) async {
       final h = await pumpCalendar(tester);
 
       await tester.tap(find.byKey(const ValueKey('month-year-label')));
@@ -455,13 +525,19 @@ void main() {
       final septemberButton = tester.widget<OutlinedButton>(
         find.byKey(const ValueKey('month-picker-2027-9')),
       );
-      expect(septemberButton.onPressed, isNull,
-          reason: 'September 2027 is past the twelve-month forward limit');
+      expect(
+        septemberButton.onPressed,
+        isNull,
+        reason: 'September 2027 is past the twelve-month forward limit',
+      );
       final augustButton = tester.widget<OutlinedButton>(
         find.byKey(const ValueKey('month-picker-2027-8')),
       );
-      expect(augustButton.onPressed, isNotNull,
-          reason: 'August 2027 is exactly the forward limit and stays reachable');
+      expect(
+        augustButton.onPressed,
+        isNotNull,
+        reason: 'August 2027 is exactly the forward limit and stays reachable',
+      );
 
       await tester.tap(find.byKey(const ValueKey('month-picker-2027-8')));
       await tester.pumpAndSettle();
@@ -474,8 +550,12 @@ void main() {
           matching: find.byType(IconButton),
         ),
       );
-      expect(nextButton.onPressed, isNull,
-          reason: 'navigation stops twelve months forward, same as chevron-only nav');
+      expect(
+        nextButton.onPressed,
+        isNull,
+        reason:
+            'navigation stops twelve months forward, same as chevron-only nav',
+      );
 
       await disposeCalendar(tester, h);
     });
@@ -501,8 +581,7 @@ void main() {
   });
 
   group('weekday header / grid alignment', () {
-    testWidgets(
-        'the weekday header and the day grid share the same horizontal '
+    testWidgets('the weekday header and the day grid share the same horizontal '
         'padding, so the columns line up (issue #191)', (tester) async {
       final h = await pumpCalendar(tester);
 
@@ -512,8 +591,11 @@ void main() {
       final grid = tester.widget<GridView>(
         find.byKey(const ValueKey('calendar-grid-2026-8')),
       );
-      expect(headerPadding.padding, grid.padding,
-          reason: 'header and grid must share the same horizontal padding');
+      expect(
+        headerPadding.padding,
+        grid.padding,
+        reason: 'header and grid must share the same horizontal padding',
+      );
       expect(headerPadding.padding, const EdgeInsets.symmetric(horizontal: 4));
 
       await disposeCalendar(tester, h);
@@ -538,55 +620,63 @@ void main() {
     });
 
     testWidgets(
-        'two rapid chevron taps land on the correct month, and the header '
-        "never rewinds to an earlier month mid-animation (follow-up "
-        'review: an `_animateToken` generation counter now guards '
-        '`_isAnimatingToMonth`\'s reset, since the first of two '
-        'overlapping `animateToPage` calls resolves early — superseded, '
-        'not actually settled — once the second one starts)',
-        (tester) async {
-      final h = await pumpCalendar(tester);
+      'two rapid chevron taps land on the correct month, and the header '
+      "never rewinds to an earlier month mid-animation (follow-up "
+      'review: an `_animateToken` generation counter now guards '
+      '`_isAnimatingToMonth`\'s reset, since the first of two '
+      'overlapping `animateToPage` calls resolves early — superseded, '
+      'not actually settled — once the second one starts)',
+      (tester) async {
+        final h = await pumpCalendar(tester);
 
-      final labelFinder = find.descendant(
-        of: find.byKey(const ValueKey('month-year-label')),
-        matching: find.byType(Text),
-      );
-      String headerText() => tester.widget<Text>(labelFinder).data!;
+        final labelFinder = find.descendant(
+          of: find.byKey(const ValueKey('month-year-label')),
+          matching: find.byType(Text),
+        );
+        String headerText() => tester.widget<Text>(labelFinder).data!;
 
-      const order = ['August 2026', 'September 2026', 'October 2026'];
-      expect(headerText(), 'August 2026');
+        const order = ['August 2026', 'September 2026', 'October 2026'];
+        expect(headerText(), 'August 2026');
 
-      await tester.tap(find.byTooltip('Next month'));
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(find.byTooltip('Next month'));
+        await tester.tap(find.byTooltip('Next month'));
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(find.byTooltip('Next month'));
 
-      var lastIndex = order.indexOf(headerText());
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 25));
-        final idx = order.indexOf(headerText());
-        if (idx == -1) continue;
-        expect(idx, greaterThanOrEqualTo(lastIndex),
-            reason: 'header rewound from ${order[lastIndex]} to '
-                '${order[idx]}');
-        lastIndex = idx;
-      }
-      await tester.pumpAndSettle();
+        var lastIndex = order.indexOf(headerText());
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 25));
+          final idx = order.indexOf(headerText());
+          if (idx == -1) continue;
+          expect(
+            idx,
+            greaterThanOrEqualTo(lastIndex),
+            reason:
+                'header rewound from ${order[lastIndex]} to '
+                '${order[idx]}',
+          );
+          lastIndex = idx;
+        }
+        await tester.pumpAndSettle();
 
-      expect(headerText(), 'October 2026',
-          reason: 'two forward taps from August land on October');
+        expect(
+          headerText(),
+          'October 2026',
+          reason: 'two forward taps from August land on October',
+        );
 
-      await disposeCalendar(tester, h);
-    });
+        await disposeCalendar(tester, h);
+      },
+    );
   });
 
   group('large text budget (issue #312, #556)', () {
-    testWidgets(
-        'at textScaleFactor 2.0 on a phone-class viewport the calendar '
+    testWidgets('at textScaleFactor 2.0 on a phone-class viewport the calendar '
         'renders without an overflow, with the legend expanded (#556: no '
         'longer auto-collapsed) (issue #312 review: an 800x1400 '
         'desktop-sized canvas made this test vacuous — the legend '
-        'width budget only actually matters on a real phone width)',
-        (tester) async {
+        'width budget only actually matters on a real phone width)', (
+      tester,
+    ) async {
       final h = await pumpCalendar(
         tester,
         textScale: 2.0,
@@ -596,11 +686,15 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget);
       expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
-      expect(find.text('Light flow'), findsOneWidget,
-          reason: '#556: expanded by default even at this scale -- the '
-              'header stack wraps/scrolls internally instead of forcing '
-              'the legend to collapse to keep the grid area from '
-              'overflowing');
+      expect(
+        find.text('Light flow'),
+        findsOneWidget,
+        reason:
+            '#556: expanded by default even at this scale -- the '
+            'header stack wraps/scrolls internally instead of forcing '
+            'the legend to collapse to keep the grid area from '
+            'overflowing',
+      );
 
       await disposeCalendar(tester, h);
     });
@@ -616,44 +710,54 @@ void main() {
       expect(kCalendarWindowLookaheadDays, 45);
     });
 
-    test(
-        'the window for any displayed month covers month−1\'s first day '
+    test('the window for any displayed month covers month−1\'s first day '
         'through month+1\'s last day (review follow-up: a neighbour page '
         'rendered mid-drag must never be missing entries) — checked '
         'across every month, including both year boundaries', () {
       LocalDate firstOfMonth(int y, int m) => LocalDate(y, m, 1);
       LocalDate lastOfMonth(int y, int m) {
-        final firstOfNext =
-            m == 12 ? LocalDate(y + 1, 1, 1) : LocalDate(y, m + 1, 1);
+        final firstOfNext = m == 12
+            ? LocalDate(y + 1, 1, 1)
+            : LocalDate(y, m + 1, 1);
         return firstOfNext.addDays(-1);
       }
 
       for (var year = 2024; year <= 2028; year++) {
         for (var month = 1; month <= 12; month++) {
           final (from, to) = calendarEntriesWindowFor(year, month);
-          final (prevYear, prevMonth) =
-              month == 1 ? (year - 1, 12) : (year, month - 1);
-          final (nextYear, nextMonth) =
-              month == 12 ? (year + 1, 1) : (year, month + 1);
+          final (prevYear, prevMonth) = month == 1
+              ? (year - 1, 12)
+              : (year, month - 1);
+          final (nextYear, nextMonth) = month == 12
+              ? (year + 1, 1)
+              : (year, month + 1);
           final prevFirst = firstOfMonth(prevYear, prevMonth);
           final nextLast = lastOfMonth(nextYear, nextMonth);
-          expect(from.isAfter(prevFirst), isFalse,
-              reason: 'window for $year-$month starts $from, which is '
-                  'after $prevMonth\'s first day $prevFirst');
-          expect(to.isBefore(nextLast), isFalse,
-              reason: 'window for $year-$month ends $to, which is before '
-                  '$nextMonth\'s last day $nextLast');
+          expect(
+            from.isAfter(prevFirst),
+            isFalse,
+            reason:
+                'window for $year-$month starts $from, which is '
+                'after $prevMonth\'s first day $prevFirst',
+          );
+          expect(
+            to.isBefore(nextLast),
+            isFalse,
+            reason:
+                'window for $year-$month ends $to, which is before '
+                '$nextMonth\'s last day $nextLast',
+          );
         }
       }
     });
 
-    testWidgets(
-        'subscribes once, to the displayed month\'s window — not full '
+    testWidgets('subscribes once, to the displayed month\'s window — not full '
         'history', (tester) async {
       late RecordingDayEntriesRepository recording;
       final h = await pumpCalendar(
         tester,
-        wrapRepository: (real) => recording = RecordingDayEntriesRepository(real),
+        wrapRepository: (real) =>
+            recording = RecordingDayEntriesRepository(real),
       );
 
       expect(recording.calls, hasLength(1));
@@ -665,48 +769,58 @@ void main() {
     });
 
     testWidgets(
-        'paging one month at a time stays on the same subscription while '
-        'still inside its window, and only resubscribes once the '
-        "displayed month's own range moves past the fetched window's edge",
-        (tester) async {
-      late RecordingDayEntriesRepository recording;
-      final h = await pumpCalendar(
-        tester,
-        wrapRepository: (real) => recording = RecordingDayEntriesRepository(real),
-      );
-      expect(recording.calls, hasLength(1));
+      'paging one month at a time stays on the same subscription while '
+      'still inside its window, and only resubscribes once the '
+      "displayed month's own range moves past the fetched window's edge",
+      (tester) async {
+        late RecordingDayEntriesRepository recording;
+        final h = await pumpCalendar(
+          tester,
+          wrapRepository: (real) =>
+              recording = RecordingDayEntriesRepository(real),
+        );
+        expect(recording.calls, hasLength(1));
 
-      // September 2026 is comfortably inside August's [Jun 17, Oct 15]
-      // window (calendarEntriesWindowFor(2026, 8)) — no resubscribe.
-      await tester.tap(find.byTooltip('Next month'));
-      await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget);
-      expect(recording.calls, hasLength(1),
-          reason: 'September is still fully inside the window fetched for '
-              'August');
+        // September 2026 is comfortably inside August's [Jun 17, Oct 15]
+        // window (calendarEntriesWindowFor(2026, 8)) — no resubscribe.
+        await tester.tap(find.byTooltip('Next month'));
+        await tester.pumpAndSettle();
+        expect(find.text('September 2026'), findsOneWidget);
+        expect(
+          recording.calls,
+          hasLength(1),
+          reason:
+              'September is still fully inside the window fetched for '
+              'August',
+        );
 
-      // October's last day (Oct 31) is past that window's Oct 15 edge —
-      // this move must trigger a fresh, re-centered subscription.
-      await tester.tap(find.byTooltip('Next month'));
-      await tester.pumpAndSettle();
-      expect(find.text('October 2026'), findsOneWidget);
-      expect(recording.calls, hasLength(2),
-          reason: "October's last day falls outside the window fetched "
-              'for August');
-      final (expectedFrom, expectedTo) = calendarEntriesWindowFor(2026, 10);
-      expect(recording.calls.last.from, expectedFrom);
-      expect(recording.calls.last.to, expectedTo);
+        // October's last day (Oct 31) is past that window's Oct 15 edge —
+        // this move must trigger a fresh, re-centered subscription.
+        await tester.tap(find.byTooltip('Next month'));
+        await tester.pumpAndSettle();
+        expect(find.text('October 2026'), findsOneWidget);
+        expect(
+          recording.calls,
+          hasLength(2),
+          reason:
+              "October's last day falls outside the window fetched "
+              'for August',
+        );
+        final (expectedFrom, expectedTo) = calendarEntriesWindowFor(2026, 10);
+        expect(recording.calls.last.from, expectedFrom);
+        expect(recording.calls.last.to, expectedTo);
 
-      await disposeCalendar(tester, h);
-    });
+        await disposeCalendar(tester, h);
+      },
+    );
 
-    testWidgets(
-        'a profile switch forces a fresh subscription even though the '
+    testWidgets('a profile switch forces a fresh subscription even though the '
         'displayed month is unchanged', (tester) async {
       late RecordingDayEntriesRepository recording;
       final h = await pumpCalendar(
         tester,
-        wrapRepository: (real) => recording = RecordingDayEntriesRepository(real),
+        wrapRepository: (real) =>
+            recording = RecordingDayEntriesRepository(real),
       );
       expect(recording.calls, hasLength(1));
 
@@ -730,77 +844,100 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(recording.calls, hasLength(2),
-          reason: 'switching profiles must not reuse the old profile\'s '
-              'window/subscription');
+      expect(
+        recording.calls,
+        hasLength(2),
+        reason:
+            'switching profiles must not reuse the old profile\'s '
+            'window/subscription',
+      );
       expect(recording.calls.last.from, recording.calls.first.from);
-      expect(recording.calls.last.to, recording.calls.first.to,
-          reason: 'the new subscription still starts on the same '
-              "(today's) displayed month");
-
-      await disposeCalendar(tester, h);
-    });
-
-    testWidgets(
-        'crossing the window boundary and back: a jump far forward past '
-        "the window hides an entry logged in the original month, and "
-        'jumping back to Today re-subscribes and shows it again, with no '
-        'exceptions along the way', (tester) async {
-      final h = await pumpCalendar(
-        tester,
-        seed: (db, profileId) async {
-          final repo = DriftDayEntriesRepository(db.storage);
-          await repo.save(
-            _entryFor(profileId, LocalDate(2026, 8, 5), FlowLevel.medium),
-          );
-        },
+      expect(
+        recording.calls.last.to,
+        recording.calls.first.to,
+        reason:
+            'the new subscription still starts on the same '
+            "(today's) displayed month",
       );
 
-      expect(find.byKey(const ValueKey('bleed-2026-08-05')), findsOneWidget);
-      expect(find.byKey(const ValueKey('calendar-month-empty-2026-8')),
-          findsNothing);
-
-      // Jump to March 2027 via the picker — well past the ±45-day window
-      // fetched for August 2026.
-      await tester.tap(find.byKey(const ValueKey('month-year-label')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('month-picker-next-year')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('month-picker-2027-3')));
-      await tester.pumpAndSettle();
-
-      expect(tester.takeException(), isNull);
-      expect(find.text('March 2027'), findsOneWidget);
-      expect(find.byKey(const ValueKey('bleed-2026-08-05')), findsNothing,
-          reason: 'August 2026 is not the displayed page any more');
-      expect(find.byKey(const ValueKey('calendar-month-empty-2027-3')),
-          findsOneWidget,
-          reason: 'the only seeded entry is outside March 2027\'s window');
-
-      // Jump back to Today.
-      await tester.tap(find.byKey(const ValueKey('today-button')));
-      await tester.pumpAndSettle();
-
-      expect(tester.takeException(), isNull);
-      expect(find.text('August 2026'), findsOneWidget);
-      expect(find.byKey(const ValueKey('bleed-2026-08-05')), findsOneWidget,
-          reason: 'paging back into range must re-subscribe and show the '
-              'entry again, not stay stuck on a stale window');
-      expect(find.byKey(const ValueKey('calendar-month-empty-2026-8')),
-          findsNothing);
-
       await disposeCalendar(tester, h);
     });
 
     testWidgets(
-        "the neighbour month's entries are in the window (review "
+      'crossing the window boundary and back: a jump far forward past '
+      "the window hides an entry logged in the original month, and "
+      'jumping back to Today re-subscribes and shows it again, with no '
+      'exceptions along the way',
+      (tester) async {
+        final h = await pumpCalendar(
+          tester,
+          seed: (db, profileId) async {
+            final repo = DriftDayEntriesRepository(db.storage);
+            await repo.save(
+              _entryFor(profileId, LocalDate(2026, 8, 5), FlowLevel.medium),
+            );
+          },
+        );
+
+        expect(find.byKey(const ValueKey('bleed-2026-08-05')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('calendar-month-empty-2026-8')),
+          findsNothing,
+        );
+
+        // Jump to March 2027 via the picker — well past the ±45-day window
+        // fetched for August 2026.
+        await tester.tap(find.byKey(const ValueKey('month-year-label')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('month-picker-next-year')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('month-picker-2027-3')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('March 2027'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('bleed-2026-08-05')),
+          findsNothing,
+          reason: 'August 2026 is not the displayed page any more',
+        );
+        expect(
+          find.byKey(const ValueKey('calendar-month-empty-2027-3')),
+          findsOneWidget,
+          reason: 'the only seeded entry is outside March 2027\'s window',
+        );
+
+        // Jump back to Today.
+        await tester.tap(find.byKey(const ValueKey('today-button')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('August 2026'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('bleed-2026-08-05')),
+          findsOneWidget,
+          reason:
+              'paging back into range must re-subscribe and show the '
+              'entry again, not stay stuck on a stale window',
+        );
+        expect(
+          find.byKey(const ValueKey('calendar-month-empty-2026-8')),
+          findsNothing,
+        );
+
+        await disposeCalendar(tester, h);
+      },
+    );
+
+    testWidgets("the neighbour month's entries are in the window (review "
         'follow-up): entries on month−1\'s first day and month+1\'s last '
         "day are already covered by August's own subscription — paging "
         'to either neighbour shows them with no resubscribe', (tester) async {
       late RecordingDayEntriesRepository recording;
       final h = await pumpCalendar(
         tester,
-        wrapRepository: (real) => recording = RecordingDayEntriesRepository(real),
+        wrapRepository: (real) =>
+            recording = RecordingDayEntriesRepository(real),
         seed: (db, profileId) async {
           final repo = DriftDayEntriesRepository(db.storage);
           // July 1, 2026 is August's month−1's first day; September 30,
@@ -818,29 +955,43 @@ void main() {
       await tester.tap(find.byTooltip('Previous month'));
       await tester.pumpAndSettle();
       expect(find.text('July 2026'), findsOneWidget);
-      expect(find.byKey(const ValueKey('bleed-2026-07-01')), findsOneWidget,
-          reason: "month−1's first day must already be in the window "
-              "fetched for August");
-      expect(recording.calls, hasLength(1),
-          reason: 'no resubscribe should have been needed to show it');
+      expect(
+        find.byKey(const ValueKey('bleed-2026-07-01')),
+        findsOneWidget,
+        reason:
+            "month−1's first day must already be in the window "
+            "fetched for August",
+      );
+      expect(
+        recording.calls,
+        hasLength(1),
+        reason: 'no resubscribe should have been needed to show it',
+      );
 
       await tester.tap(find.byTooltip('Next month'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Next month'));
       await tester.pumpAndSettle();
       expect(find.text('September 2026'), findsOneWidget);
-      expect(find.byKey(const ValueKey('bleed-2026-09-30')), findsOneWidget,
-          reason: "month+1's last day must already be in the window "
-              "fetched for August");
-      expect(recording.calls, hasLength(1),
-          reason: 'no resubscribe should have been needed to show it '
-              'either');
+      expect(
+        find.byKey(const ValueKey('bleed-2026-09-30')),
+        findsOneWidget,
+        reason:
+            "month+1's last day must already be in the window "
+            "fetched for August",
+      );
+      expect(
+        recording.calls,
+        hasLength(1),
+        reason:
+            'no resubscribe should have been needed to show it '
+            'either',
+      );
 
       await disposeCalendar(tester, h);
     });
 
-    testWidgets(
-        'a window crossing renders no full-bleed spinner and keeps the '
+    testWidgets('a window crossing renders no full-bleed spinner and keeps the '
         'PageView mounted, checked on the very frame after the crossing '
         '(review follow-up: pumped without settling, since settling would '
         'let the replacement stream\'s first emission land and mask the '
@@ -859,85 +1010,216 @@ void main() {
       await tester.tap(find.byTooltip('Next month'));
       await tester.pump(); // exactly one frame — deliberately no settle
       expect(find.text('October 2026'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsNothing,
-          reason: 'a window crossing must keep rendering the previous '
-              "window's entries instead of a full-bleed spinner");
-      expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget,
-          reason: 'the PageView must stay mounted through the crossing, '
-              'not be replaced by a spinner mid-animation');
+      expect(
+        find.byType(CircularProgressIndicator),
+        findsNothing,
+        reason:
+            'a window crossing must keep rendering the previous '
+            "window's entries instead of a full-bleed spinner",
+      );
+      expect(
+        find.byKey(const ValueKey('calendar-page-view')),
+        findsOneWidget,
+        reason:
+            'the PageView must stay mounted through the crossing, '
+            'not be replaced by a spinner mid-animation',
+      );
 
       await disposeCalendar(tester, h);
     });
   });
 
+  group('forecast-compute memoisation (issue #550)', () {
+    /// Six 30-day episodes ending 2026-08-05 (the same shape
+    /// `test/ui/overview_test.dart`'s `kActiveStarts` and
+    /// `test/ui/forecast_calendar_test.dart`'s `kSteadyStarts` use): high
+    /// confidence, an active estimate, so `deriveForecast` actually has
+    /// something to compute on every real recompute.
+    final steadyStarts = [
+      LocalDate(2026, 3, 8),
+      LocalDate(2026, 4, 7),
+      LocalDate(2026, 5, 7),
+      LocalDate(2026, 6, 6),
+      LocalDate(2026, 7, 6),
+      LocalDate(2026, 8, 5),
+    ];
+
+    testWidgets(
+      'toggling the legend does not re-run deriveForecast/forecastDayCells '
+      '(the byIso/cycles/forecastByIso/activeLayers compute path is '
+      'memoised, not re-derived on every setState)',
+      (tester) async {
+        final h = await pumpCalendar(
+          tester,
+          withPredictionServices: true,
+          seed: (db, profileId) async {
+            final entries = DriftDayEntriesRepository(db.storage);
+            for (final start in steadyStarts) {
+              for (var i = 0; i < 4; i++) {
+                await entries.save(
+                  _entryFor(profileId, start.addDays(i), FlowLevel.medium),
+                );
+              }
+            }
+          },
+        );
+
+        final computesAfterInitialLoad = debugForecastComputeCount;
+        expect(
+          computesAfterInitialLoad,
+          greaterThan(0),
+          reason:
+              'the initial load must compute the forecast at least '
+              'once, or this test cannot tell memoisation from a compute '
+              'that never ran',
+        );
+
+        // Toggling the legend twice (collapse, then re-expand) is two
+        // ordinary `setState` calls whose inputs — entries, prediction,
+        // history, today, and the layer selection — are all unchanged.
+        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+        await tester.pumpAndSettle();
+
+        expect(
+          debugForecastComputeCount,
+          computesAfterInitialLoad,
+          reason:
+              'toggling the legend re-ran the forecast compute path; '
+              'it should have reused the memoised byIso/cycles/'
+              'forecastByIso/activeLayers fields instead',
+        );
+
+        await disposeCalendar(tester, h);
+      },
+    );
+
+    testWidgets(
+      'a genuine input change (a symptom-layer toggle) still recomputes',
+      (tester) async {
+        final h = await pumpCalendar(
+          tester,
+          withPredictionServices: true,
+          seed: (db, profileId) async {
+            final entries = DriftDayEntriesRepository(db.storage);
+            for (final start in steadyStarts) {
+              for (var i = 0; i < 4; i++) {
+                await entries.save(
+                  _entryFor(profileId, start.addDays(i), FlowLevel.medium),
+                );
+              }
+            }
+          },
+        );
+
+        final computesAfterInitialLoad = debugForecastComputeCount;
+
+        await tester.tap(find.byKey(const ValueKey('symptom-layers-toggle')));
+        await tester.pumpAndSettle();
+        final chip = find.byType(FilterChip).first;
+        await tester.tap(chip);
+        await tester.pumpAndSettle();
+
+        expect(
+          debugForecastComputeCount,
+          greaterThan(computesAfterInitialLoad),
+          reason:
+              'the memoisation guard must not swallow a real layer-'
+              'selection change',
+        );
+
+        await disposeCalendar(tester, h);
+      },
+    );
+  });
+
   group('issue #543: prediction/history stream error', () {
     testWidgets(
-        'a thrown error on the injected prediction stream shows InlineError '
-        'with retry instead of a permanent spinner', (tester) async {
-      tester.view.physicalSize = const Size(800, 1400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      'a thrown error on the injected prediction stream shows InlineError '
+      'with retry instead of a permanent spinner',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      final db = LunarLogDatabase(NativeDatabase.memory());
-      final profiles = DriftProfilesRepository(db.storage);
-      final profile =
-          await profiles.create(displayName: 'Alice', isMinor: false);
-      final entries = DriftDayEntriesRepository(db.storage);
-      final erroringEntries = ErroringDayEntriesRepository(entries);
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        final profiles = DriftProfilesRepository(db.storage);
+        final profile = await profiles.create(
+          displayName: 'Alice',
+          isMinor: false,
+        );
+        final entries = DriftDayEntriesRepository(db.storage);
+        final erroringEntries = ErroringDayEntriesRepository(entries);
 
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            Provider<DayEntriesRepository>.value(value: entries),
-            Provider<CyclePredictionService>.value(
-              value: CyclePredictionService(erroringEntries),
-            ),
-            Provider<CycleHistoryService>.value(
-              value: CycleHistoryService(erroringEntries),
-            ),
-          ],
-          child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            theme: AppTheme.lightTheme,
-            home: Scaffold(
-              body: MonthCalendar(
-                  profileId: profile.id, todayProvider: () => kToday),
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              Provider<DayEntriesRepository>.value(value: entries),
+              Provider<CyclePredictionService>.value(
+                value: CyclePredictionService(erroringEntries),
+              ),
+              Provider<CycleHistoryService>.value(
+                value: CycleHistoryService(erroringEntries),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: AppTheme.lightTheme,
+              home: Scaffold(
+                body: MonthCalendar(
+                  profileId: profile.id,
+                  todayProvider: () => kToday,
+                ),
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget,
-          reason: 'sanity: healthy before the break');
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('calendar-page-view')),
+          findsOneWidget,
+          reason: 'sanity: healthy before the break',
+        );
 
-      erroringEntries.broken = true;
-      await entries.save(DayEntry(
-        id: '',
-        profileId: profile.id,
-        localDate: kToday,
-        tz: 'America/Chicago',
-        flow: FlowLevel.medium,
-        updatedAt: DateTime.utc(2026, 1, 1),
-      ));
-      await tester.pumpAndSettle();
+        erroringEntries.broken = true;
+        await entries.save(
+          DayEntry(
+            id: '',
+            profileId: profile.id,
+            localDate: kToday,
+            tz: 'America/Chicago',
+            flow: FlowLevel.medium,
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('calendar-prediction-error')),
-          findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('calendar-prediction-error')),
+          findsOneWidget,
+        );
+        expect(find.text('Retry'), findsOneWidget);
 
-      erroringEntries.broken = false;
-      await tester.tap(find.text('Retry'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('calendar-prediction-error')),
+        erroringEntries.broken = false;
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('calendar-prediction-error')),
           findsNothing,
-          reason: 'retry re-subscribes and recovers once the failure clears');
-      expect(find.byKey(const ValueKey('calendar-page-view')), findsOneWidget);
+          reason: 'retry re-subscribes and recovers once the failure clears',
+        );
+        expect(
+          find.byKey(const ValueKey('calendar-page-view')),
+          findsOneWidget,
+        );
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      },
+    );
   });
 }

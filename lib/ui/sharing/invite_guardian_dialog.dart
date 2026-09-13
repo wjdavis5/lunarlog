@@ -7,8 +7,10 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/sharing/sharing_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
+import '../l10n/sharing_failure_copy.dart';
 
 class InviteGuardianDialog extends StatefulWidget {
   const InviteGuardianDialog({
@@ -71,12 +73,12 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
       }
     } on SharingFailure catch (failure) {
       // Issue #535 (d): distinct failure types (unauthorized vs. network,
-      // etc.) get their own accurate copy via userFacingMessage, rather
+      // etc.) get their own accurate copy via sharingFailureCopy, rather
       // than collapsing every SharingFailure into the generic connection
       // message below — matching AcceptInviteSheet's own catch clause.
       if (mounted) {
         setState(() {
-          _error = failure.userFacingMessage;
+          _error = sharingFailureCopy(AppLocalizations.of(context), failure);
           _loading = false;
         });
       }

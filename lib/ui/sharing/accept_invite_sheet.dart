@@ -2,7 +2,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
 
 import '../../domain/sharing/sharing_service.dart';
 import '../components/inline_error.dart';
@@ -57,7 +59,7 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = failure.userFacingMessage;
+          _error = sharingFailureCopy(AppLocalizations.of(context), failure);
         });
       }
     } catch (error) {

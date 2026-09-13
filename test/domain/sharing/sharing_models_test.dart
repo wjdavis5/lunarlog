@@ -160,21 +160,10 @@ void main() {
       expect(() => InviteCancellation.fromDb('unknown'), throwsArgumentError);
     });
 
-    test('every outcome has non-empty user-facing copy', () {
-      for (final outcome in InviteCancellation.values) {
-        expect(outcome.userFacingMessage, isNotEmpty);
-      }
-    });
-
-    test('userFacingMessage is pinned per outcome', () {
-      expect(InviteCancellation.revoked.userFacingMessage, 'Invitation cancelled');
-      expect(InviteCancellation.alreadyAccepted.userFacingMessage,
-          'That invitation was already accepted');
-      expect(InviteCancellation.alreadyRevoked.userFacingMessage,
-          'That invitation was already cancelled');
-      expect(InviteCancellation.expired.userFacingMessage,
-          'That invitation had already expired');
-    });
+    // Issue #545: InviteCancellation.userFacingMessage moved to
+    // inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart) — the
+    // domain type is fieldless data now. Copy coverage moved to
+    // test/ui/l10n/sharing_failure_copy_test.dart.
   });
 
   group('SharingFailure types', () {

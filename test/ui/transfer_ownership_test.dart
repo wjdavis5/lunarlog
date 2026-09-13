@@ -8,6 +8,7 @@ import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.da
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/transfer_ownership_screen.dart';
 
@@ -124,6 +125,8 @@ void main() {
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ManageGuardiansScreen(
           profile: testProfile,
           guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -236,6 +239,8 @@ void main() {
     }) async {
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: TransferOwnershipScreen(
             profile: testProfile,
             service: service ?? transferService,
