@@ -14,6 +14,14 @@ import '../db/tables.dart';
 
 /// The synced tables (per-table pull cursors, KTD2, Issue #8, Issue #240,
 /// Issue #188, Issue #128).
+///
+/// [deletedProfiles] (issue #522) is pull-only, like [profileGuardians]: a
+/// row here is never pushed and, like [profileGuardians], pages from
+/// version 0 every cycle rather than through a persisted cursor of its own
+/// (the same known-perf tradeoff #525 tracks for [profileGuardians] — the
+/// table is expected to be small, since it only ever holds a purged
+/// profile's id, so a full scan is cheap; a persisted cursor is future
+/// work, not this issue's scope).
 enum SyncTable {
   profiles,
   dayEntries,
@@ -23,6 +31,7 @@ enum SyncTable {
   cycleOverrides,
   careNotes,
   visitPrepItems,
+  deletedProfiles,
 }
 
 /// A server copy of a synced row.
@@ -469,6 +478,39 @@ final class RemoteVisitPrepItemRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.visitPrepItems;
+}
+
+/// A server copy of a `deleted_profiles` row (issue #522): the narrow
+/// tombstone `delete_profile_data()`/`delete_account_data()` write for a
+/// profile they hard-purge, so a co-guardian's device can tell "the server
+/// deleted this" apart from "nothing changed" — the ordinary incremental
+/// pull and 24h reconcile only ever transport rows that still exist, so a
+/// real `DELETE` on the server is otherwise invisible to every other
+/// client holding a copy. Unlike every other synced row, [deletedAt] is
+/// never null — the row's very existence on this table *is* the tombstone
+/// signal — and [updatedAt] mirrors it (this table has no separate
+/// `updated_at` column; the row is written once and never updated).
+final class RemoteDeletedProfileRow extends RemoteRow {
+  const RemoteDeletedProfileRow({
+    required this.profileId,
+    required this.deletedAt,
+    this.serverVersion = 0,
+  });
+
+  /// The purged profile's id.
+  final String profileId;
+
+  @override
+  String get id => profileId;
+  @override
+  final DateTime deletedAt;
+  @override
+  DateTime get updatedAt => deletedAt;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.deletedProfiles;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today

@@ -88,6 +88,13 @@ class FakeSyncEngine implements SyncEngine {
     }
   }
 
+  int retryRejectedCalls = 0;
+
+  @override
+  Future<void> retryRejected() async {
+    retryRejectedCalls++;
+  }
+
   @override
   Future<void> dispose() async {
     disposeCalls++;

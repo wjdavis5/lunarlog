@@ -377,6 +377,62 @@ void main() {
       expect(row.serverVersion, 11);
     });
 
+    test('deleted profiles use the deleted_profiles table (Issue #522)',
+        () async {
+      client = makeClient((_) async => json([
+            {
+              'profile_id': profileId,
+              'deleted_at': '2026-09-01T10:00:00+00:00',
+              'server_version': 9,
+            }
+          ]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.deletedProfiles,
+        afterVersion: 0,
+        limit: 100,
+      );
+      final request = requests.single;
+      expect(request.url.path, '/rest/v1/deleted_profiles');
+      final row = rows.single as RemoteDeletedProfileRow;
+      expect(row.profileId, profileId);
+      expect(row.deletedAt, DateTime.utc(2026, 9, 1, 10));
+      expect(row.serverVersion, 9);
+    });
+
+    test('deleted_profiles falls back to an empty page — never a cycle '
+        'failure — when the server has not run the migration adding it yet '
+        '(issue #522)', () async {
+      client = makeClient((_) async => json(
+            {
+              'message': 'Could not find the table \'public.deleted_profiles\'',
+              'code': 'PGRST205',
+            },
+            status: 404,
+          ));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.deletedProfiles,
+        afterVersion: 0,
+        limit: 100,
+      );
+      expect(rows, isEmpty);
+    });
+
+    test('a "table not found" response for any OTHER table still throws — '
+        'the leniency above is scoped to deleted_profiles only', () async {
+      client = makeClient((_) async => json(
+            {'message': 'Could not find the table', 'code': 'PGRST205'},
+            status: 404,
+          ));
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.profiles,
+          afterVersion: 0,
+          limit: 100,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
+      );
+    });
+
     test('an empty page decodes to an empty list', () async {
       client = makeClient((_) async => json([]));
       final rows = await SupabaseSyncTransport(client!).pullPage(
@@ -414,6 +470,58 @@ void main() {
         ),
         throwsA(isA<SyncTransportOtherError>()),
       );
+    });
+  });
+
+  group('fetchWatermark (issue #521)', () {
+    test('POSTs to /rpc/sync_watermark and returns the decoded value',
+        () async {
+      client = makeClient((_) async => json(12345));
+      final watermark = await SupabaseSyncTransport(client!).fetchWatermark();
+
+      expect(requests, hasLength(1));
+      expect(requests.single.method, 'POST');
+      expect(requests.single.url.toString(),
+          '$baseUrl/rest/v1/rpc/sync_watermark');
+      expect(watermark, 12345);
+    });
+
+    test('a PGRST202 "function not found" response falls back to null — '
+        'the server has not run the paired migration yet', () async {
+      client = makeClient((_) async => json(
+            {'message': 'Could not find the function', 'code': 'PGRST202'},
+            status: 404,
+          ));
+      final watermark = await SupabaseSyncTransport(client!).fetchWatermark();
+      expect(watermark, isNull);
+    });
+
+    test('any other transport failure also falls back to null — the '
+        'watermark is an optimization, never a correctness requirement',
+        () async {
+      client = makeClient((_) async => http.Response('bad gateway', 502));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+      await client!.dispose();
+
+      client = makeClient((_) async => throw const SocketException('down'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+
+    test('a malformed (non-numeric) response falls back to null', () async {
+      client = makeClient((_) async => json({'not': 'a number'}));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+
+    test('a quoted-string bigint (PR #582\'s public.sync_watermark() '
+        'returns `bigint`, which some renderers quote to avoid precision '
+        'loss) still decodes', () async {
+      client = makeClient((_) async => json('12345'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), 12345);
+    });
+
+    test('a non-numeric string falls back to null', () async {
+      client = makeClient((_) async => json('not-a-number'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
     });
   });
 
