@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 
 /// Hand-written [OwnershipTransferService] fake, scoped to [claimProfile]
@@ -68,6 +69,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ClaimProfileSheet(
               rawToken: 'test-raw-token',
@@ -103,6 +106,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ClaimProfileSheet(
               rawToken: 'test-raw-token',
@@ -126,6 +131,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ClaimProfileSheet(
               rawToken: 'test-raw-token',
@@ -150,6 +157,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ClaimProfileSheet(
               rawToken: 'test-raw-token',
@@ -176,6 +185,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ClaimProfileSheet(
               rawToken: 'test-raw-token',

@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/feedback/support_history_screen.dart';
+import 'package:lunarlog/ui/l10n/feedback_failure_copy.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_feedback_service.dart';
@@ -37,6 +40,8 @@ Future<void> pumpScreen(
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           Provider<FeedbackService>.value(value: service),
@@ -147,7 +152,9 @@ void main() {
     await pumpScreen(tester, service);
 
     expect(find.byKey(const ValueKey('support-history-error')), findsOneWidget);
-    expect(find.text(const FeedbackFailure.network().userFacingMessage), findsOneWidget);
+    expect(
+        find.text(feedbackFailureCopy(AppLocalizationsEn(), const FeedbackFailure.network())),
+        findsOneWidget);
 
     service.failWithOnListTickets = null;
     service.ticketsToReturn = [_ticket()];

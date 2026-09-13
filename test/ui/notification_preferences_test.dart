@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/notification_preferences_failure_copy.dart';
 import 'package:lunarlog/ui/sharing/notification_preferences_screen.dart';
 
 import '../support/fake_notification_preferences_service.dart';
@@ -82,6 +85,8 @@ void main() {
       );
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -103,6 +108,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -128,6 +135,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -166,6 +175,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -192,6 +203,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -242,6 +255,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -290,6 +305,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -324,6 +341,8 @@ void main() {
     final service = _FailingOnceService(FakeNotificationPreferencesService());
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -335,7 +354,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text(const NotificationPreferencesFailure.other().userFacingMessage),
+      find.text(notificationPreferencesFailureCopy(
+          AppLocalizationsEn(), const NotificationPreferencesFailure.other())),
       findsOneWidget,
     );
     // The screen is still interactive: toggling again succeeds (delegate).
@@ -345,6 +365,8 @@ void main() {
 
   testWidgets('the discretion copy is present on screen', (tester) async {
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: FakeNotificationPreferencesService(),
@@ -362,6 +384,8 @@ void main() {
     final service = _TimeZoneFailingService(delegate, failCount: 1);
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -406,6 +430,8 @@ void main() {
     final service = _TimeZoneFailingService(delegate, failCount: 99);
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,

@@ -76,7 +76,9 @@ import '../components/empty_state.dart';
 import '../components/predictions_disabled_card.dart';
 import '../components/predictions_suppressed_card.dart';
 import '../help/help_card_view.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/tiers.dart';
 import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
@@ -262,6 +264,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
 
   Widget _statsCard(BuildContext context, ActivePrediction prediction) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Card(
       key: const ValueKey('analysis-stats'),
       child: Padding(
@@ -275,8 +278,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            ..._headlineStats(theme, prediction),
-            ..._fertileWindowSection(theme, prediction),
+            ..._headlineStats(theme, l10n, prediction),
+            ..._fertileWindowSection(theme, l10n, prediction),
             const SizedBox(height: 12),
             Text(
               kEstimateDisclaimer,
@@ -297,33 +300,34 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// prefix is gated on it; the spread itself always renders, mirroring
   /// how [OverviewPanel]'s separate tier caption is the only thing
   /// `irregular` mode silences, never the estimate date next to it.
-  List<Widget> _headlineStats(ThemeData theme, ActivePrediction prediction) {
+  List<Widget> _headlineStats(
+      ThemeData theme, AppLocalizations l10n, ActivePrediction prediction) {
     return [
       _statRow(
         theme,
         'analysis-mean-cycle-length',
         'Average cycle length',
-        formatDays(prediction.meanCycleLengthDays),
+        formatDays(l10n, prediction.meanCycleLengthDays),
       ),
       _statRow(
         theme,
         'analysis-mean-period-length',
         'Average period length',
-        formatDays(prediction.meanPeriodLengthDays),
+        formatDays(l10n, prediction.meanPeriodLengthDays),
       ),
       _statRow(
         theme,
         'analysis-variability',
         'Variability',
-        _variabilityText(prediction),
+        _variabilityText(l10n, prediction),
       ),
     ];
   }
 
-  String _variabilityText(ActivePrediction prediction) {
+  String _variabilityText(AppLocalizations l10n, ActivePrediction prediction) {
     final spread = '±${prediction.spreadDays.round()} days';
     if (!_copy.showsTierCaption) return spread;
-    return '${prediction.tier.label} ($spread)';
+    return '${tierLabel(l10n, prediction.tier)} ($spread)';
   }
 
   /// Issue #143: the fertile-window row and its contraception-specific
@@ -341,6 +345,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// function's own doc comment).
   List<Widget> _fertileWindowSection(
     ThemeData theme,
+    AppLocalizations l10n,
     ActivePrediction prediction,
   ) {
     if (!_copy.showsFertileWindow) return const [];
@@ -351,7 +356,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
         theme,
         'analysis-fertile-window',
         _copy.fertileWindowLabel,
-        _fertileWindowText(fertile),
+        _fertileWindowText(l10n, fertile),
       ),
       const SizedBox(height: 4),
       Text(
@@ -366,11 +371,11 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// renders, and [CareModeCopy.showsTierCaption] only adds the tier-name
   /// prefix — this estimate is never hidden behind a caption gate of its
   /// own, only the whole-row [CareModeCopy.showsFertileWindow] gate above.
-  String _fertileWindowText(FertileWindowEstimate fertile) {
+  String _fertileWindowText(AppLocalizations l10n, FertileWindowEstimate fertile) {
     final range =
         '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
     if (!_copy.showsTierCaption) return range;
-    return '${fertile.tier.label} ($range)';
+    return '${tierLabel(l10n, fertile.tier)} ($range)';
   }
 
   // Issue #160: locale-derived long date (the `en` fallback renders
