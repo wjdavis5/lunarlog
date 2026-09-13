@@ -53,36 +53,43 @@ class _PredictionConnectionsScreenState
     });
   }
 
+  /// Split into prompt / redeem / failure-copy helpers to keep each under
+  /// the CRAP gate's complexity budget.
   Future<void> _enterCode() async {
-    final code = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final controller = TextEditingController();
-        return AlertDialog(
-          title: const Text('Enter connection code'),
-          content: TextField(
-            key: const ValueKey('prediction-code-field'),
-            controller: controller,
-            autofocus: true,
-            decoration:
-                const InputDecoration(hintText: 'Paste the code you received'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.of(ctx).pop(controller.text.trim()),
-              child: const Text('Connect'),
-            ),
-          ],
-        );
-      },
-    );
+    final code = await _promptForCode();
     if (code == null || code.isEmpty || !mounted) return;
+    await _redeemCode(code);
+  }
 
+  Future<String?> _promptForCode() => showDialog<String>(
+    context: context,
+    builder: (ctx) {
+      final controller = TextEditingController();
+      return AlertDialog(
+        title: const Text('Enter connection code'),
+        content: TextField(
+          key: const ValueKey('prediction-code-field'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Paste the code you received',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Connect'),
+          ),
+        ],
+      );
+    },
+  );
+
+  Future<void> _redeemCode(String code) async {
     PredictionConnectionFailure? typedFailure;
     bool unexpectedFailure = false;
     AcceptedPredictionConnection? result;
@@ -95,14 +102,11 @@ class _PredictionConnectionsScreenState
     }
     if (!mounted) return;
     if (result == null) {
-      final l10n = AppLocalizations.of(context);
-      final error = typedFailure != null
-          ? predictionConnectionFailureCopy(l10n, typedFailure)
-          : unexpectedFailure
-              ? 'An unexpected error occurred.'
-              : null;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error ?? 'Connection failed.')));
+        SnackBar(
+          content: Text(_redeemFailureMessage(typedFailure, unexpectedFailure)),
+        ),
+      );
       return;
     }
     _load();
@@ -120,6 +124,21 @@ class _PredictionConnectionsScreenState
         ),
       ),
     );
+  }
+
+  String _redeemFailureMessage(
+    PredictionConnectionFailure? typedFailure,
+    bool unexpectedFailure,
+  ) {
+    if (typedFailure != null) {
+      return predictionConnectionFailureCopy(
+        AppLocalizations.of(context),
+        typedFailure,
+      );
+    }
+    return unexpectedFailure
+        ? 'An unexpected error occurred.'
+        : 'Connection failed.';
   }
 
   @override
@@ -162,18 +181,24 @@ class _PredictionConnectionsScreenState
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.calendar_month,
-                        size: 48, color: theme.colorScheme.onSurfaceVariant),
+                    Icon(
+                      Icons.calendar_month,
+                      size: 48,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(height: 12),
-                    Text('No shared predictions yet',
-                        style: theme.textTheme.titleMedium),
+                    Text(
+                      'No shared predictions yet',
+                      style: theme.textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       'When someone shares their cycle predictions with you, '
                       'their calendar appears here.',
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -190,8 +215,9 @@ class _PredictionConnectionsScreenState
                 leading: const Icon(Icons.calendar_month),
                 title: const Text('Cycle predictions'),
                 subtitle: Text(
-                    'Shared ${_formatDate(context, connection.acceptedAt)} • '
-                    'phases only'),
+                  'Shared ${_formatDate(context, connection.acceptedAt)} • '
+                  'phases only',
+                ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   buildNamedRoute<void>(
