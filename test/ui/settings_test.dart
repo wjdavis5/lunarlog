@@ -103,7 +103,7 @@ extension on Stream<String?> {
 }
 
 void main() {
-  testWidgets('SettingsScreen displays Privacy policy tile and opens dialog',
+  testWidgets('SettingsScreen displays Privacy policy tile and opens screen',
       (tester) async {
     final settingsStore = FakeSettingsStore();
 
@@ -141,7 +141,7 @@ void main() {
     await tester.tap(privacyTile);
     await tester.pumpAndSettle();
 
-    // Verify dialog opened
+    // Verify PrivacyPolicyScreen opened
     expect(find.text('LunarLog Privacy Policy'), findsOneWidget);
     expect(find.textContaining('Sync & Family Sharing'), findsOneWidget);
     expect(find.textContaining('Protected at Rest'), findsOneWidget);

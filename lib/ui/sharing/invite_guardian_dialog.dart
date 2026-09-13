@@ -122,169 +122,220 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
     final theme = Theme.of(context);
 
     if (_generatedInvite != null) {
-      return AlertDialog(
-        title: const Text('Invitation Created'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Share this single-use link with the caregiver for ${widget.profileName}:',
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SelectableText(
-                _generatedInvite!.inviteUri.toString(),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontFamily: 'monospace',
+      return SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Invitation Created', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 12),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Share this single-use link with the caregiver for ${widget.profileName}:',
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SelectableText(
+                          _generatedInvite!.inviteUri.toString(),
+                          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Expires in 48 hours. Can be redeemed once.',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                      if (_justCopied) ...[
+                        const SizedBox(height: 8),
+                        Semantics(
+                          liveRegion: true,
+                          child: Row(
+                            key: const ValueKey('invite-copied-confirmation'),
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                size: 16,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Copied to clipboard',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
+              const SizedBox(height: 16),
+              OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 8,
+                overflowSpacing: 8,
+                children: [
+                  TextButton(
+                    key: const ValueKey('invite-done'),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Done'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _copyLink,
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: const Text('Copy Link'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _shareLink,
+                    icon: const Icon(Icons.share, size: 16),
+                    label: const Text('Share'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Invite Caregiver to ${widget.profileName}',
+              style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
-            Text(
-              'Expires in 48 hours. Can be redeemed once.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (_justCopied) ...[
-              const SizedBox(height: 8),
-              Semantics(
-                liveRegion: true,
-                child: Row(
-                  key: const ValueKey('invite-copied-confirmation'),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.check_circle,
-                      size: 16,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Copied to clipboard',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary,
+                    if (_error != null) ...[
+                      InlineError(
+                        message: _error!,
+                        onRetry: _loading ? null : _createInvite,
                       ),
+                      const SizedBox(height: 8),
+                    ],
+                    // #557: MergeSemantics folds "Role:" into the dropdown's own
+                    // announcement, so a screen reader hears "Role, <value>"
+                    // instead of just the bare value.
+                    MergeSemantics(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Role:'),
+                          const SizedBox(height: 4),
+                          DropdownButton<GuardianRole>(
+                            value: _selectedRole,
+                            isExpanded: true,
+                            onChanged: _loading
+                                ? null
+                                : (role) {
+                                    if (role != null) {
+                                      setState(() => _selectedRole = role);
+                                    }
+                                  },
+                            items: const [
+                              DropdownMenuItem(
+                                value: GuardianRole.coParent,
+                                child: Text(
+                                  'Co-Parent (Can log, edit profile & invite)',
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: GuardianRole.caregiver,
+                                child: Text('Caregiver (Can log symptoms & periods)'),
+                              ),
+                              DropdownMenuItem(
+                                value: GuardianRole.viewer,
+                                child: Text('Viewer (Read-only access)'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _labelController,
+                      enabled: !_loading,
+                      decoration: const InputDecoration(
+                        labelText: 'Nickname / Label (Optional)',
+                        hintText: 'e.g. Dad, Grandma, School Nurse',
+                      ),
+                    ),
+                    // Issue #139: contextual entry point to the invitations card.
+                    const HelpCardLink(
+                      cardId: 'invitations',
+                      label: 'How do invitations work?',
                     ),
                   ],
                 ),
               ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            key: const ValueKey('invite-done'),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Done'),
-          ),
-          FilledButton.icon(
-            onPressed: _copyLink,
-            icon: const Icon(Icons.copy, size: 16),
-            label: const Text('Copy Link'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _shareLink,
-            icon: const Icon(Icons.share, size: 16),
-            label: const Text('Share'),
-          ),
-        ],
-      );
-    }
-
-    return AlertDialog(
-      title: Text('Invite Caregiver to ${widget.profileName}'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_error != null) ...[
-              InlineError(
-                message: _error!,
-                onRetry: _loading ? null : _createInvite,
-              ),
-              const SizedBox(height: 8),
-            ],
-            // #557: MergeSemantics folds "Role:" into the dropdown's own
-            // announcement, so a screen reader hears "Role, <value>"
-            // instead of just the bare value.
-            MergeSemantics(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Role:'),
-                  const SizedBox(height: 4),
-                  DropdownButton<GuardianRole>(
-                    value: _selectedRole,
-                    isExpanded: true,
-                    onChanged: _loading
-                        ? null
-                        : (role) {
-                            if (role != null) {
-                              setState(() => _selectedRole = role);
-                            }
-                          },
-                    items: const [
-                      DropdownMenuItem(
-                        value: GuardianRole.coParent,
-                        child: Text(
-                          'Co-Parent (Can log, edit profile & invite)',
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: GuardianRole.caregiver,
-                        child: Text('Caregiver (Can log symptoms & periods)'),
-                      ),
-                      DropdownMenuItem(
-                        value: GuardianRole.viewer,
-                        child: Text('Viewer (Read-only access)'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _labelController,
-              enabled: !_loading,
-              decoration: const InputDecoration(
-                labelText: 'Nickname / Label (Optional)',
-                hintText: 'e.g. Dad, Grandma, School Nurse',
-              ),
-            ),
-            // Issue #139: contextual entry point to the invitations card.
-            const HelpCardLink(
-              cardId: 'invitations',
-              label: 'How do invitations work?',
+            const SizedBox(height: 16),
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 8,
+              overflowSpacing: 8,
+              children: [
+                TextButton(
+                  onPressed: _loading ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: _loading ? null : _createInvite,
+                  child: _loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Create Link'),
+                ),
+              ],
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _loading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _loading ? null : _createInvite,
-          child: _loading
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Create Link'),
-        ),
-      ],
     );
   }
 }
+
+/// Sheet alias for [InviteGuardianDialog] following the dialog/sheet rule (Issue #250).
+typedef InviteGuardianSheet = InviteGuardianDialog;

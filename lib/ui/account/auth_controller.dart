@@ -22,6 +22,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 
+export 'package:lunarlog/domain/auth/auth_service.dart' show AuthSignOutScope;
+
 class AuthController extends ChangeNotifier {
   AuthController({required AuthService authService})
       : _service = authService,

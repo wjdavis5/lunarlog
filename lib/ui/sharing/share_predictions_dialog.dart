@@ -104,62 +104,66 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
     if (_invite != null) {
       return AlertDialog(
         title: const Text('Connection created'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Send this single-use link to the person who should see '
-              '${widget.profileName}\'s predictions:',
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Send this single-use link to the person who should see '
+                '${widget.profileName}\'s predictions:',
               ),
-              child: SelectableText(
-                _invite!.inviteUri.toString(),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontFamily: 'monospace',
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  _invite!.inviteUri.toString(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'They will see estimated period, fertile, ovulation, and PMS '
-              'days on a read-only calendar — no notes or logs. The code '
-              'expires in 72 hours and can be redeemed once.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(height: 12),
+              Text(
+                'They will see estimated period, fertile, ovulation, and PMS '
+                'days on a read-only calendar — no notes or logs. The code '
+                'expires in 72 hours and can be redeemed once.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            if (_justCopied) ...[
-              const SizedBox(height: 8),
-              Semantics(
-                liveRegion: true,
-                child: Row(
-                  key: const ValueKey('share-predictions-copied-confirmation'),
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      size: 16,
-                      color: theme.colorScheme.primary,
+              if (_justCopied) ...[
+                const SizedBox(height: 8),
+                Semantics(
+                  liveRegion: true,
+                  child: Row(
+                    key: const ValueKey(
+                      'share-predictions-copied-confirmation',
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Copied to clipboard',
-                      style: theme.textTheme.bodySmall?.copyWith(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        size: 16,
                         color: theme.colorScheme.primary,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        'Copied to clipboard',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
         actions: [
           TextButton(

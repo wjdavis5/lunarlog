@@ -68,6 +68,7 @@ import 'package:lunarlog/ui/account/sync_status_tile.dart'
 import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
@@ -344,8 +345,10 @@ class _DaySheetState extends State<DaySheet> {
     // all (e.g. the future-date guard in tests) resolves null rather than
     // throwing — [_syncSpottingObservation] then simply skips, since no
     // write can happen in those states anyway.
-    _observationsRepository ??=
-        Provider.of<ObservationsRepository?>(context, listen: false);
+    _observationsRepository ??= Provider.of<ObservationsRepository?>(
+      context,
+      listen: false,
+    );
   }
 
   @override
@@ -392,8 +395,10 @@ class _DaySheetState extends State<DaySheet> {
           _saving = true;
           scheduleMicrotask(() async {
             try {
-              final (toUpsert, toDelete) =
-                  await _computeObservationMutations(pending, observations);
+              final (toUpsert, toDelete) = await _computeObservationMutations(
+                pending,
+                observations,
+              );
               await repository.saveDayEntryWithObservations(
                 entry: pending,
                 observationsToUpsert: toUpsert,
@@ -512,8 +517,10 @@ class _DaySheetState extends State<DaySheet> {
       // does not recognise (`_unrecognisedTags`). That code is preserved,
       // not silently re-validated and rejected, on every autosave.
       validateTagCodes(_sessionSelectedTags);
-      final (toUpsert, toDelete) =
-          await _computeObservationMutations(pending, observations);
+      final (toUpsert, toDelete) = await _computeObservationMutations(
+        pending,
+        observations,
+      );
       final saved = await widget.repository.saveDayEntryWithObservations(
         entry: pending,
         observationsToUpsert: toUpsert,
@@ -606,11 +613,10 @@ class _DaySheetState extends State<DaySheet> {
   /// grade wins — the severity reading a caregiver alert would act on.
   Future<void> _loadExistingPainIntensity(String dayEntryId) async {
     final painRows = [
-      for (final o
-          in await Provider.of<ObservationsRepository>(
-            context,
-            listen: false,
-          ).listForDayEntry(dayEntryId))
+      for (final o in await Provider.of<ObservationsRepository>(
+        context,
+        listen: false,
+      ).listForDayEntry(dayEntryId))
         if (o.category == 'pain' && o.code != null && o.intensity != null) o,
     ];
     if (!mounted || painRows.isEmpty) return;
@@ -658,7 +664,8 @@ class _DaySheetState extends State<DaySheet> {
     required List<String> toDelete,
   }) {
     final existingSpotting = [
-      for (final o in existingObs) if (o.category == 'spotting') o,
+      for (final o in existingObs)
+        if (o.category == 'spotting') o,
     ];
     if (!_spotting) {
       for (final o in existingSpotting) {
@@ -689,12 +696,14 @@ class _DaySheetState extends State<DaySheet> {
   }) {
     if (_painIntensity.isEmpty) return;
     final existingPain = [
-      for (final o in existingObs) if (o.category == 'pain') o,
+      for (final o in existingObs)
+        if (o.category == 'pain') o,
     ];
     for (final entry in _painIntensity.entries) {
       final intensity = entry.value;
       final matchingPainRows = [
-        for (final o in existingPain) if (o.code == entry.key) o,
+        for (final o in existingPain)
+          if (o.code == entry.key) o,
       ];
       if (intensity == null) {
         for (final o in matchingPainRows) {
@@ -738,7 +747,8 @@ class _DaySheetState extends State<DaySheet> {
     ObservationsRepository? observations,
   ) async {
     if (observations == null) return (const <Observation>[], const <String>[]);
-    final targetId = _persistedEntryId ??
+    final targetId =
+        _persistedEntryId ??
         (pending.id.isNotEmpty ? pending.id : (widget.existing?.id ?? ''));
     List<Observation> existingObs = const [];
     if (targetId.isNotEmpty) {
@@ -786,15 +796,19 @@ class _DaySheetState extends State<DaySheet> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.daySheetDeleteTitle),
-        content: Text(
-          l10n.daySheetDeleteBody(daySheetDateLabel(widget.date, widget.today)),
+        content: SingleChildScrollView(
+          child: Text(
+            l10n.daySheetDeleteBody(
+              daySheetDateLabel(widget.date, widget.today),
+            ),
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(l10n.daySheetCancel),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(l10n.daySheetDelete),
           ),
@@ -872,16 +886,18 @@ class _DaySheetState extends State<DaySheet> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.daySheetDiscardTitle),
-        content: const Text(
-          "The last change couldn't be saved. Discarding removes it from "
-          'this device.',
+        content: const SingleChildScrollView(
+          child: Text(
+            "The last change couldn't be saved. Discarding removes it from "
+            'this device.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(l10n.daySheetKeepEditing),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(l10n.daySheetDiscard),
           ),
@@ -1114,7 +1130,11 @@ class _DaySheetState extends State<DaySheet> {
   /// #240's schema) — the field the server's high-severity caregiver alert
   /// reads (`intensity >= 4`, issue #256). Clear leaves the row ungraded:
   /// "no severity recorded", never "low".
-  Widget _painIntensityRow(AppLocalizations l10n, ThemeData theme, TagCode tag) {
+  Widget _painIntensityRow(
+    AppLocalizations l10n,
+    ThemeData theme,
+    TagCode tag,
+  ) {
     final group = l10n.daySheetIntensityGroup;
     final current = _painIntensity[tag.code];
     return Padding(
@@ -1143,10 +1163,9 @@ class _DaySheetState extends State<DaySheet> {
                     group: group,
                     label: '${tag.display} $level',
                     selected: current == level,
-                    onTap:
-                        _busy || current == level
-                            ? null
-                            : () => _setPainIntensity(tag.code, level),
+                    onTap: _busy || current == level
+                        ? null
+                        : () => _setPainIntensity(tag.code, level),
                     child: ChoiceChip(
                       key: ValueKey('pain-intensity-${tag.code}-$level'),
                       label: Text('$level'),
@@ -1373,7 +1392,10 @@ class _DaySheetState extends State<DaySheet> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: 8),
-          Text(AppLocalizations.of(context).daySheetSaving, style: theme.textTheme.bodySmall),
+          Text(
+            AppLocalizations.of(context).daySheetSaving,
+            style: theme.textTheme.bodySmall,
+          ),
         ],
       );
     } else if (_showSaved) {
@@ -1383,7 +1405,10 @@ class _DaySheetState extends State<DaySheet> {
         children: [
           Icon(Icons.check, size: 16, color: theme.colorScheme.primary),
           const SizedBox(width: 4),
-          Text(AppLocalizations.of(context).daySheetSaved, style: theme.textTheme.bodySmall),
+          Text(
+            AppLocalizations.of(context).daySheetSaved,
+            style: theme.textTheme.bodySmall,
+          ),
         ],
       );
     } else {
@@ -1468,7 +1493,10 @@ class _DaySheetState extends State<DaySheet> {
               Text(reason, style: theme.textTheme.bodyMedium),
               const SizedBox(height: 4),
             ],
-            Text(AppLocalizations.of(context).daySheetNoEntry, style: theme.textTheme.bodyMedium),
+            Text(
+              AppLocalizations.of(context).daySheetNoEntry,
+              style: theme.textTheme.bodyMedium,
+            ),
           ],
         ),
       );
@@ -1509,8 +1537,14 @@ class _DaySheetState extends State<DaySheet> {
           ],
         ),
         const SizedBox(height: 12),
-        Text(AppLocalizations.of(context).daySheetFlowLabel, style: theme.textTheme.labelMedium),
-        Text(localizedFlowLabel(existing.flow, l10n), style: theme.textTheme.titleSmall),
+        Text(
+          AppLocalizations.of(context).daySheetFlowLabel,
+          style: theme.textTheme.labelMedium,
+        ),
+        Text(
+          localizedFlowLabel(existing.flow, l10n),
+          style: theme.textTheme.titleSmall,
+        ),
         // Issue #220: the read-only view names the PMS marker too, so a
         // viewer (or a reviewing guardian) sees the phase even though the
         // toggle itself is disabled here.
@@ -1521,7 +1555,10 @@ class _DaySheetState extends State<DaySheet> {
         ],
         if (existing.tags.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text(AppLocalizations.of(context).daySheetTagsLabel, style: theme.textTheme.labelMedium),
+          Text(
+            AppLocalizations.of(context).daySheetTagsLabel,
+            style: theme.textTheme.labelMedium,
+          ),
           Wrap(
             spacing: 8,
             runSpacing: 4,
@@ -1532,7 +1569,10 @@ class _DaySheetState extends State<DaySheet> {
           ),
         ],
         const SizedBox(height: 12),
-        Text(AppLocalizations.of(context).daySheetNoteLabel, style: theme.textTheme.labelMedium),
+        Text(
+          AppLocalizations.of(context).daySheetNoteLabel,
+          style: theme.textTheme.labelMedium,
+        ),
         Text(
           (existing.note == null || existing.note!.isEmpty)
               ? AppLocalizations.of(context).daySheetNoNote

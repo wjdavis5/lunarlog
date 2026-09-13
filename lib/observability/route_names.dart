@@ -145,6 +145,12 @@ const String kRouteHelpLibraryScreen = 'HelpLibraryScreen';
 /// `lib/ui/help/help_card_view.dart` (Issue #139) — contextual help card sheet.
 const String kRouteHelpCardSheet = 'HelpCardSheet';
 
+/// `lib/ui/settings/privacy_policy_screen.dart` (Issue #250).
+const String kRoutePrivacyPolicyScreen = 'PrivacyPolicyScreen';
+
+/// `lib/ui/sharing/invite_guardian_dialog.dart` (Issue #250).
+const String kRouteInviteGuardianSheet = 'InviteGuardianSheet';
+
 /// `lib/ui/content/cycle_literacy_library_screen.dart` (Issue #239) — offline cycle literacy library.
 const String kRouteCycleLiteracyLibraryScreen = 'CycleLiteracyLibraryScreen';
 
@@ -157,6 +163,8 @@ const String kRouteCycleLiteracyArticleSheet = 'CycleLiteracyArticleSheet';
 const Set<String> kSentryRouteNames = {
   kRouteProfileHomeGate,
   kRouteSettingsScreen,
+  kRoutePrivacyPolicyScreen,
+  kRouteInviteGuardianSheet,
   kRouteFeedbackScreen,
   kRouteSupportHistoryScreen,
   kRouteImportScreen,

@@ -5,9 +5,9 @@
 /// sign-in state) and, when the build provides an [AuthController], the
 /// Account section (U6) beneath it. Reachable from the profile picker.
 ///
-/// Route naming (U2 Approach 2b): the "Contact support" and "Privacy
-/// policy" `showDialog` calls are deliberately left unnamed — both are
-/// informational-only (no action beyond Close), not distinct destinations.
+/// Route naming: "Contact support" is deliberately left unnamed as an
+/// informational dialog (no action beyond Close). "Privacy policy" is a
+/// full-screen route (`kRoutePrivacyPolicyScreen`).
 library;
 
 import 'dart:async';
@@ -75,7 +75,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // `AuthController` at all means the session state can't be known, so
     // that also falls back rather than risking the form.
     final signedIn = authController?.signedIn ?? false;
-    final hasFeedback = Provider.of<FeedbackService?>(context) != null && signedIn;
+    final hasFeedback =
+        Provider.of<FeedbackService?>(context) != null && signedIn;
     // Issue #153: dormant until a HealthKit/Health Connect adapter exists
     // (AppConfig.hasHealthSync) and never on web — see that flag's doc
     // comment. Since #193 the write flow behind it is real, but only on
@@ -84,9 +85,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // syncs yet. Also needs the repository wiring a fully unconfigured
     // build (e.g. tests with no repositories provided) may not have.
     final profilesRepository = Provider.of<ProfilesRepository?>(context);
-    final guardiansRepository =
-        Provider.of<ProfileGuardiansRepository?>(context);
-    final hasHealthSync = AppConfig.hasHealthSync &&
+    final guardiansRepository = Provider.of<ProfileGuardiansRepository?>(
+      context,
+    );
+    final hasHealthSync =
+        AppConfig.hasHealthSync &&
         !kIsWeb &&
         defaultTargetPlatform == TargetPlatform.iOS &&
         profilesRepository != null &&
@@ -100,10 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // to its Manage Guardians screen. Self-hiding when sharing is
           // unavailable, so unconfigured builds render exactly as before.
           const FamilySharingSection(),
-          if (hasAccount) ...[
-            const AccountSection(),
-            const Divider(),
-          ],
+          if (hasAccount) ...[const AccountSection(), const Divider()],
           if (hasFeedback)
             ListTile(
               key: const ValueKey('send-feedback-tile'),
@@ -133,7 +133,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: const Icon(Icons.notifications_outlined),
               title: const Text('Reminders'),
               subtitle: const Text(
-                  'Choose which reminders fire, when, and for whom'),
+                'Choose which reminders fire, when, and for whom',
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () =>
                   pushNamedScreen<void>(context, kRouteReminderSettingsScreen),
@@ -148,9 +149,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _loaded
                 ? (value) {
                     setState(() => _relock = value);
-                    unawaited(context
-                        .read<SettingsStore>()
-                        .set(SettingsKeys.relockEnabled, value ? 'true' : 'false'));
+                    unawaited(
+                      context.read<SettingsStore>().set(
+                        SettingsKeys.relockEnabled,
+                        value ? 'true' : 'false',
+                      ),
+                    );
                   }
                 : null,
           ),
@@ -171,8 +175,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: Text(l10n.settingsHealthSyncTitle),
               subtitle: Text(l10n.settingsHealthSyncSubtitle),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () =>
-                  _openHealthSync(context, profilesRepository, guardiansRepository),
+              onTap: () => _openHealthSync(
+                context,
+                profilesRepository,
+                guardiansRepository,
+              ),
             ),
             const Divider(),
           ],
@@ -191,8 +198,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.help_outline),
             title: const Text('Help & explanations'),
             subtitle: const Text(
-                'Plain-language answers about estimates, logging, sync, '
-                'and sharing — works offline'),
+              'Plain-language answers about estimates, logging, sync, '
+              'and sharing — works offline',
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
               buildNamedRoute<void>(
@@ -237,46 +245,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// adding `url_launcher` for a single `mailto:` link.
   void _showContactSupport(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    unawaited(showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.settingsContactSupport),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l10n.settingsContactSupportDialogBody),
-            const SizedBox(height: 8),
-            const SelectableText(kSupportEmailAddress),
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(l10n.settingsContactSupport),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.settingsContactSupportDialogBody),
+                const SizedBox(height: 8),
+                const SelectableText(kSupportEmailAddress),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(l10n.settingsClose),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.settingsClose),
-          ),
-        ],
       ),
-    ));
+    );
   }
 
   void _showPrivacyPolicy(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    unawaited(showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.settingsPrivacyDialogTitle),
-        content: SingleChildScrollView(
-          child: Text(l10n.settingsPrivacyDialogBody),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.settingsClose),
-          ),
-        ],
-      ),
-    ));
+    unawaited(pushNamedScreen<void>(context, kRoutePrivacyPolicyScreen));
   }
 }
 
@@ -308,12 +305,16 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
       final newest = newestReplyActivityAt(tickets);
       if (newest == null) return;
       final lastSeenRaw = await settings.get(SettingsKeys.feedbackLastSeenAt);
-      final lastSeen = lastSeenRaw == null ? null : DateTime.tryParse(lastSeenRaw);
+      final lastSeen = lastSeenRaw == null
+          ? null
+          : DateTime.tryParse(lastSeenRaw);
       final unread = lastSeen == null || newest.isAfter(lastSeen);
       if (mounted) setState(() => _unread = unread);
     } catch (error) {
       // Best-effort badge only; a failure here just means no badge shows.
-      debugPrint('lunarlog feedback: unread check failed (${error.runtimeType})');
+      debugPrint(
+        'lunarlog feedback: unread check failed (${error.runtimeType})',
+      );
     }
   }
 
