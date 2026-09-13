@@ -742,6 +742,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       _consecutiveReconcileRetries = 0;
       await _updateState(
           (s) => s.copyWith(lastFullPullAt: Value(_clock().toUtc())));
+      // Issue #203: periodic maintenance (bounded tombstone sweep + VACUUM)
+      // runs after a clean full reconciliation, not unconditionally on every launch.
+      await _storage.sweepTombstones();
+      await _storage.db.vacuum();
     } else {
       _consecutiveReconcileRetries++;
       if (_consecutiveReconcileRetries >= kMaxConsecutiveReconcileRetries) {
