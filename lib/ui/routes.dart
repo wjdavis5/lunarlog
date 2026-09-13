@@ -26,6 +26,7 @@ import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart';
 import 'package:lunarlog/ui/feedback/support_history_screen.dart';
 import 'package:lunarlog/ui/settings/import_screen.dart';
+import 'package:lunarlog/ui/settings/privacy_policy_screen.dart';
 import 'package:lunarlog/ui/settings/reminder_settings_screen.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 
@@ -48,6 +49,7 @@ Route<T> buildNamedRoute<T>({
 /// rather than re-declared at each call site.
 final Map<String, LunarLogWidgetBuilder> kAppRoutes = {
   kRouteSettingsScreen: (_) => const SettingsScreen(),
+  kRoutePrivacyPolicyScreen: (_) => const PrivacyPolicyScreen(),
   kRouteReminderSettingsScreen: (_) => const ReminderSettingsScreen(),
   kRouteFeedbackScreen: (_) => const FeedbackScreen(),
   kRouteSupportHistoryScreen: (_) => const SupportHistoryScreen(),

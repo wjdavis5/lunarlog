@@ -91,6 +91,16 @@ class SyncSnapshot {
   /// Meaningful only while [phase] is [SyncPhase.error].
   final SyncErrorKind lastError;
 
+  /// Issue #568: the sync-status health signal the UI needs to surface a
+  /// banner without re-deriving `phase`/`lastError` semantics itself — true
+  /// exactly when the last cycle failed because the session is gone or
+  /// could not be refreshed (an expired sign-in needs the operator's
+  /// attention; every other error kind resolves on its own via backoff or
+  /// the next successful cycle). A derived value, not a stored field: it
+  /// can never drift out of sync with [phase]/[lastError].
+  bool get sessionExpired =>
+      phase == SyncPhase.error && lastError == SyncErrorKind.auth;
+
   /// The account this database is bound to, if any (`sync_state
   /// .bound_user_id`).
   final String? boundUserId;
@@ -175,6 +185,14 @@ abstract interface class SyncEngine {
   /// upload, binds the device to the session's account and runs a cycle
   /// (R14). A no-op in any other phase.
   Future<void> confirmUpload();
+
+  /// Makes the sync-status rejected state actionable (issue #568): bumps
+  /// `local_rev` on every row currently held out of every push because the
+  /// server declined it, so the next cycle's dirty scan treats each one as
+  /// pushable again (the rejection itself does not decide the outcome — a
+  /// fresh push does). A no-op when nothing is currently rejected. Requests
+  /// a sync afterwards so the retry does not wait for the next trigger.
+  Future<void> retryRejected();
 
   /// Every snapshot change after subscription; see [snapshot] for the
   /// current value so a late subscriber starts from truth.

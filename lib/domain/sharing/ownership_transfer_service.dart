@@ -203,8 +203,6 @@ sealed class TransferFailure implements Exception {
   const factory TransferFailure.invalidToken() = TransferInvalidTokenFailure;
   const factory TransferFailure.other(String message) = TransferOtherFailure;
 
-  String get userFacingMessage;
-
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -215,15 +213,11 @@ sealed class TransferFailure implements Exception {
 final class TransferNetworkFailure extends TransferFailure {
   const TransferNetworkFailure();
   @override
-  String get userFacingMessage => 'Network error. Please check your connection.';
-  @override
   String toString() => 'TransferFailure.network';
 }
 
 final class TransferNotFoundFailure extends TransferFailure {
   const TransferNotFoundFailure();
-  @override
-  String get userFacingMessage => 'Transfer not found or invalid link.';
   @override
   String toString() => 'TransferFailure.notFound';
 }
@@ -231,15 +225,11 @@ final class TransferNotFoundFailure extends TransferFailure {
 final class TransferExpiredFailure extends TransferFailure {
   const TransferExpiredFailure();
   @override
-  String get userFacingMessage => 'This transfer link has expired.';
-  @override
   String toString() => 'TransferFailure.expired';
 }
 
 final class TransferCancelledFailure extends TransferFailure {
   const TransferCancelledFailure();
-  @override
-  String get userFacingMessage => 'This transfer was cancelled.';
   @override
   String toString() => 'TransferFailure.cancelled';
 }
@@ -247,24 +237,17 @@ final class TransferCancelledFailure extends TransferFailure {
 final class TransferAlreadyAcceptedFailure extends TransferFailure {
   const TransferAlreadyAcceptedFailure();
   @override
-  String get userFacingMessage => 'This transfer was already accepted.';
-  @override
   String toString() => 'TransferFailure.alreadyAccepted';
 }
 
 final class TransferSelfTransferFailure extends TransferFailure {
   const TransferSelfTransferFailure();
   @override
-  String get userFacingMessage => "You can't claim a transfer you created yourself.";
-  @override
   String toString() => 'TransferFailure.selfTransfer';
 }
 
 final class TransferStaleOwnerFailure extends TransferFailure {
   const TransferStaleOwnerFailure();
-  @override
-  String get userFacingMessage =>
-      'Your role on this profile has changed, so this transfer is no longer valid.';
   @override
   String toString() => 'TransferFailure.staleOwner';
 }
@@ -278,16 +261,11 @@ final class TransferStaleOwnerFailure extends TransferFailure {
 final class TransferAlreadyArmedFailure extends TransferFailure {
   const TransferAlreadyArmedFailure();
   @override
-  String get userFacingMessage =>
-      'A transfer is already pending for this profile. Cancel it before starting a new one.';
-  @override
   String toString() => 'TransferFailure.alreadyArmed';
 }
 
 final class TransferUnauthorizedFailure extends TransferFailure {
   const TransferUnauthorizedFailure();
-  @override
-  String get userFacingMessage => 'You do not have permission for this action.';
   @override
   String toString() => 'TransferFailure.unauthorized';
 }
@@ -295,21 +273,17 @@ final class TransferUnauthorizedFailure extends TransferFailure {
 final class TransferInvalidTokenFailure extends TransferFailure {
   const TransferInvalidTokenFailure();
   @override
-  String get userFacingMessage => 'Invalid transfer link.';
-  @override
   String toString() => 'TransferFailure.invalidToken';
 }
 
 /// Catch-all failure, carrying a diagnostic [message] that is never shown to
-/// the operator (mirrors [TransferFailure.userFacingMessage]'s no-raw-error
-/// rule) but is useful in logs and `toString`.
+/// the operator (Issue #545: `lib/ui/l10n/transfer_failure_copy.dart` never
+/// echoes a raw error either) but is useful in logs and `toString`.
 final class TransferOtherFailure extends TransferFailure {
   const TransferOtherFailure(this.message);
 
   final String message;
 
-  @override
-  String get userFacingMessage => 'Something went wrong. Please try again.';
   @override
   String toString() => 'TransferFailure.other: $message';
 }

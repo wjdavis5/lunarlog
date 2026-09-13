@@ -246,18 +246,11 @@ void main() {
       TransferFailure.other('boom'),
     ];
 
-    test('every subclass has a non-empty userFacingMessage', () {
-      for (final failure in allFailures) {
-        expect(failure.userFacingMessage, isNotEmpty,
-            reason: '${failure.runtimeType} has an empty userFacingMessage');
-      }
-    });
-
-    test('every subclass has a distinct userFacingMessage', () {
-      final messages = allFailures.map((f) => f.userFacingMessage).toSet();
-      expect(messages.length, allFailures.length,
-          reason: 'two TransferFailure subclasses share a userFacingMessage');
-    });
+    // Issue #545: TransferFailure.userFacingMessage moved to
+    // transferFailureCopy (lib/ui/l10n/transfer_failure_copy.dart) — the
+    // domain type is fieldless data now (aside from TransferOtherFailure's
+    // diagnostic-only `message`). Copy coverage moved to
+    // test/ui/l10n/transfer_failure_copy_test.dart.
 
     test('every subclass has a sensible, distinct toString', () {
       final strings = allFailures.map((f) => f.toString()).toSet();

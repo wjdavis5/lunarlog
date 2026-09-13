@@ -1449,8 +1449,70 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             .write(const VisitPrepItemsCompanion(dirty: Value(false)));
       case SyncTable.profileGuardians:
         changed = 0;
+      case SyncTable.deletedProfiles:
+        // Issue #522: pull-only, like profileGuardians above — never
+        // pushed, so there is nothing for this table to clear.
+        changed = 0;
     }
     return changed > 0;
+  }
+
+  /// Issue #568: bumps `local_rev` on the row [id] of [table] and marks it
+  /// dirty again — the retry affordance for a row the server rejected. A
+  /// pure no-op write as far as content goes: no payload column changes,
+  /// only the row's push eligibility (a rejected row is otherwise held out
+  /// of every push until `local_rev` changes for an unrelated reason — see
+  /// `SupabaseSyncApply.pushable`). [table]s with no push path
+  /// ([SyncTable.profileGuardians], [SyncTable.deletedProfiles]) never
+  /// reach here in practice (nothing ever rejects a row on a pull-only
+  /// table), so they are harmless no-ops, matching [markPushed]'s
+  /// precedent for the same two cases.
+  Future<void> bumpLocalRevForRetry({
+    required SyncTable table,
+    required String id,
+  }) async {
+    switch (table) {
+      case SyncTable.profiles:
+        await (db.update(db.profiles)..where((t) => t.id.equals(id))).write(
+            ProfilesCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.profiles.localRev + const Constant(1)));
+      case SyncTable.dayEntries:
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(id))).write(
+            DayEntriesCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.dayEntries.localRev + const Constant(1)));
+      case SyncTable.observations:
+        await (db.update(db.observations)..where((t) => t.id.equals(id)))
+            .write(ObservationsCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.observations.localRev + const Constant(1)));
+      case SyncTable.profileModes:
+        await (db.update(db.profileModes)
+              ..where((t) => t.profileId.equals(id)))
+            .write(ProfileModesCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.profileModes.localRev + const Constant(1)));
+      case SyncTable.cycleOverrides:
+        // Same id-alone-identifies-the-row precedent as markPushed.
+        await (db.update(db.cycleOverrides)..where((t) => t.id.equals(id)))
+            .write(CycleOverridesCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.cycleOverrides.localRev + const Constant(1)));
+      case SyncTable.careNotes:
+        await (db.update(db.careNotes)..where((t) => t.id.equals(id))).write(
+            CareNotesCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.careNotes.localRev + const Constant(1)));
+      case SyncTable.visitPrepItems:
+        await (db.update(db.visitPrepItems)..where((t) => t.id.equals(id)))
+            .write(VisitPrepItemsCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.visitPrepItems.localRev + const Constant(1)));
+      case SyncTable.profileGuardians:
+      case SyncTable.deletedProfiles:
+        break;
+    }
   }
 
   /// Flags every row, live and tombstoned, in every synced table for push

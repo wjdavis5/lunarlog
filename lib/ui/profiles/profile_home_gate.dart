@@ -33,13 +33,13 @@ import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/account_mismatch_screen.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/password_recovery_screen.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/restore_error_screen.dart';
 import 'package:lunarlog/ui/account/restoring_screen.dart';
-import 'package:lunarlog/ui/account/sign_in_screen.dart'
-    show authFailureCopy;
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
 import 'package:lunarlog/ui/components/app_shell.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/first_run_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_picker_screen.dart';
@@ -74,6 +74,10 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// moving through pushing/pulling. Cleared when the retry reaches idle.
   bool _restoreRetryPending = false;
 
+  /// Finding #3 in #37 / Issue #250: when restore fails persistently, allows
+  /// the operator to continue into first-run profile creation in offline mode.
+  bool _restoreBypassed = false;
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ProfileController>();
@@ -93,35 +97,42 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
         _profileScreen(controller);
   }
 
+  bool _canShowRestoreError(
+    SyncStatusController? sync,
+    ProfileController controller,
+    AuthController? auth,
+  ) {
+    if (_restoreBypassed || sync == null) return false;
+    final isBound =
+        sync.snapshot.boundUserId != null || auth?.currentUser != null;
+    if (!isBound || !controller.needsFirstRun || sync.phase == SyncPhase.idle) {
+      _restoreRetryPending = false;
+      _restoreBypassed = false;
+      return false;
+    }
+    return sync.phase == SyncPhase.error || _restoreRetryPending;
+  }
+
   /// Finding #3 in #37 (Issue #39): when an account is bound and the local
   /// database has no profiles ([ProfileController.needsFirstRun]), a failed
   /// restore ([SyncPhase.error]) presents a dedicated retry screen rather than
   /// falling through to first-run profile creation, preventing divergent data.
+  /// Issue #250: offers "Continue without syncing" and "Sign out" escape
+  /// actions so a persistently failing restore never permanently locks the user out.
   Widget? _restoreErrorScreen(
     SyncStatusController? sync,
     ProfileController controller,
     AuthController? auth,
   ) {
-    if (sync == null) return null;
-    final isBound = sync.snapshot.boundUserId != null ||
-        (auth != null && auth.currentUser != null);
-    if (!isBound || !controller.needsFirstRun) {
-      _restoreRetryPending = false;
-      return null;
-    }
-    if (sync.phase == SyncPhase.idle) {
-      _restoreRetryPending = false;
-      return null;
-    }
-    if (sync.phase == SyncPhase.error || _restoreRetryPending) {
-      return RestoreErrorScreen(
-        onRetry: () {
-          setState(() => _restoreRetryPending = true);
-          sync.requestSync();
-        },
-      );
-    }
-    return null;
+    if (!_canShowRestoreError(sync, controller, auth)) return null;
+    return RestoreErrorScreen(
+      onRetry: () {
+        setState(() => _restoreRetryPending = true);
+        sync!.requestSync();
+      },
+      onContinueWithoutSyncing: () => setState(() => _restoreBypassed = true),
+      onSignOut: () => auth?.signOut(scope: AuthSignOutScope.local),
+    );
   }
 
   /// AE8: the recovery latch is honored only once the device gate is open
@@ -231,7 +242,7 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
       auth!.consumeLinkFailure();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         key: const ValueKey('auth-link-failure'),
-        content: Text(authFailureCopy(failure)),
+        content: Text(authFailureCopy(AppLocalizations.of(context), failure)),
       ));
     });
   }

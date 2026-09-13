@@ -96,6 +96,15 @@ Future<void> _pump(
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        // Issue #554: the screen now renders time via
+        // `TimeOfDay.format(context)` instead of a hand-rolled always-24h
+        // string, so this suite forces 24h explicitly (matching its own
+        // literal '09:00'/'22:00' expectations) rather than depending on
+        // whatever the test-runner locale's default clock convention is.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        ),
         home: ReminderSettingsScreen(timePicker: timePicker ?? _stubPicker),
       ),
     ),
@@ -548,5 +557,50 @@ void main() {
     stored = await service.load('p1');
     expect(stored!.log.cadence, ReminderCadence.weekly);
     expect(stored.log.anchorDate, LocalDate.today());
+  });
+
+  testWidgets(
+      'issue #554: the time row honours the device clock convention '
+      'instead of always rendering 24h', (tester) async {
+    final store = FakeSettingsStore();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<ProfilesRepository>.value(
+            value: _FakeProfilesRepository([_profile('p1', 'Alice')]),
+          ),
+          Provider<ProfileModesRepository>.value(
+            value: _FakeModesRepository(null),
+          ),
+          Provider<SettingsStore>.value(value: store),
+          ChangeNotifierProvider(
+            create: (_) => ProfileController(
+              profilesRepository:
+                  _FakeProfilesRepository([_profile('p1', 'Alice')]),
+              settingsStore: store,
+            )..load(),
+          ),
+          Provider<ReminderConfigService>.value(
+            value: ReminderConfigService(store),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          // Explicitly 12h this time (the opposite of `_pump`'s forced
+          // 24h) -- proves the rendered text now actually depends on the
+          // ambient MediaQuery instead of being a hand-rolled constant.
+          builder: (context, child) => MediaQuery(
+            data:
+                MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+            child: child!,
+          ),
+          home: const ReminderSettingsScreen(timePicker: _stubPicker),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_timeLabel(tester, ReminderKind.upcoming), '9:00 AM');
   });
 }

@@ -15,6 +15,8 @@
 /// leave untouched.
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -26,7 +28,10 @@ import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -55,10 +60,13 @@ final LocalDate kToday = LocalDate(2026, 9, 1);
 /// optionally `AuthController` / `SyncStatusController`, mirroring how
 /// `lib/app.dart` only provides those last two when the build has them).
 class Harness {
-  Harness(this.tester, {this.pickDate}) : db = LunarLogDatabase(NativeDatabase.memory());
+  Harness(this.tester, {this.pickDate, ProfilesRepository? profilesRepository})
+      : db = LunarLogDatabase(NativeDatabase.memory()),
+        _profilesRepositoryOverride = profilesRepository;
 
   final WidgetTester tester;
   final LunarLogDatabase db;
+  final ProfilesRepository? _profilesRepositoryOverride;
 
   /// Injected date-picker callable; defaults to one that never picks.
   final Future<DateTime?> Function(
@@ -66,7 +74,8 @@ class Harness {
 
   late final SettingsStore settings = DriftSettingsStore(db.storage);
   late final ProfileController profiles = ProfileController(
-    profilesRepository: DriftProfilesRepository(db.storage),
+    profilesRepository:
+        _profilesRepositoryOverride ?? DriftProfilesRepository(db.storage),
     settingsStore: settings,
   );
 
@@ -120,6 +129,72 @@ class Harness {
     await tester.pump(const Duration(milliseconds: 100));
     await db.close();
   }
+}
+
+/// A [ProfilesRepository] decorator (issue #544) that lets a test make
+/// [create] throw a set number of times before delegating to the real
+/// repository — for asserting that `FirstRunScreen._create` surfaces the
+/// failure via `InlineError` and re-enables the button instead of leaving
+/// it looking like it did nothing.
+class ThrowingProfilesRepository implements ProfilesRepository {
+  ThrowingProfilesRepository(this._inner, {this.failures = 1});
+
+  final ProfilesRepository _inner;
+
+  /// Remaining calls to [create] that should throw before succeeding.
+  int failures;
+
+  /// How many times [create] was actually invoked (double-tap guard proof).
+  int createCalls = 0;
+
+  @override
+  Future<Profile> create({
+    required String displayName,
+    required bool isMinor,
+    int sortOrder = 0,
+    ProfileMode mode = ProfileMode.standard,
+    int? birthYear,
+    ProfileRelationship? relationship,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
+  }) {
+    createCalls++;
+    if (failures > 0) {
+      failures--;
+      throw StateError('simulated create failure');
+    }
+    return _inner.create(
+      displayName: displayName,
+      isMinor: isMinor,
+      sortOrder: sortOrder,
+      mode: mode,
+      birthYear: birthYear,
+      relationship: relationship,
+      lastPeriodStart: lastPeriodStart,
+      typicalCycleLengthDays: typicalCycleLengthDays,
+      typicalPeriodLengthDays: typicalPeriodLengthDays,
+    );
+  }
+
+  @override
+  Future<Profile> update(Profile profile) => _inner.update(profile);
+
+  @override
+  Future<Profile?> findById(String id) => _inner.findById(id);
+
+  @override
+  Future<List<Profile>> list() => _inner.list();
+
+  @override
+  Stream<List<Profile>> watch() => _inner.watch();
+
+  @override
+  Future<void> setArchived(String id, bool archived) =>
+      _inner.setArchived(id, archived);
+
+  @override
+  Future<void> delete(String id) => _inner.delete(id);
 }
 
 void main() {
@@ -826,5 +901,174 @@ void main() {
       await h.dispose();
     });
   });
+
+  group('issue #557: dropdown label semantics', () {
+    testWidgets(
+        'the care-mode dropdown announces its label, not just the bare '
+        'selected value', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      await h.pump();
+
+      expect(find.byKey(const ValueKey('care-mode-dropdown')), findsOneWidget);
+      final merged =
+          tester.getSemantics(find.byKey(const ValueKey('care-mode-label')));
+      expect(merged.label, contains('Care mode'));
+      expect(merged.label, contains('Standard'),
+          reason: 'MergeSemantics folds the label and the dropdown\'s '
+              'current value into one announcement');
+
+      handle.dispose();
+      await h.dispose();
+    });
+  });
+
+  group('issue #544: create-profile busy state', () {
+    Future<Harness> pumpedToCycle(
+      WidgetTester tester,
+      ProfilesRepository profilesRepository,
+    ) async {
+      final h = Harness(tester, profilesRepository: profilesRepository);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      await h.pump();
+      await tester.enterText(find.byType(TextFormField), 'Nova');
+      await tester.tap(find.byKey(const ValueKey('first-run-continue')));
+      await tester.pumpAndSettle();
+      return h;
+    }
+
+    testWidgets(
+        'a thrown create failure shows InlineError, re-enables the button, '
+        'and a retry succeeds', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final throwing = ThrowingProfilesRepository(
+        DriftProfilesRepository(db.storage),
+      );
+      final h = await pumpedToCycle(tester, throwing);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('cycle-create')));
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('cycle-create-error')), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(key('cycle-create')).onPressed,
+        isNotNull,
+        reason: 'busy must clear even when create throws',
+      );
+      expect(await DriftProfilesRepository(db.storage).list(), isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('cycle-create-error')), findsNothing);
+      expect((await DriftProfilesRepository(db.storage).list()).single
+          .displayName, 'Nova');
+
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a double-tap on slow network creates exactly one profile, not two',
+        (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final real = DriftProfilesRepository(db.storage);
+      final gated = _GatedProfilesRepository(real);
+      final h = await pumpedToCycle(tester, gated);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('cycle-create')));
+      // Two rapid taps before the first create() resolves.
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pump();
+
+      expect(
+        tester.widget<FilledButton>(key('cycle-create')).onPressed,
+        isNull,
+        reason: 'the button disables itself the moment the first tap lands',
+      );
+
+      gated.release();
+      await tester.pumpAndSettle();
+
+      expect(gated.createCalls, 1,
+          reason: 'the _busy guard must block the second tap outright');
+      expect(await real.list(), hasLength(1));
+
+      await h.dispose();
+    });
+  });
+}
+
+Finder key(String value) => find.byKey(ValueKey(value));
+
+/// A [ProfilesRepository] decorator that holds [create] pending until
+/// [release] is called — lets a test land two taps before the first call
+/// resolves, proving the `_busy` guard (not just timing) blocks the second.
+class _GatedProfilesRepository implements ProfilesRepository {
+  _GatedProfilesRepository(this._inner);
+
+  final ProfilesRepository _inner;
+  int createCalls = 0;
+  final List<Completer<void>> _pending = [];
+
+  void release() {
+    for (final c in _pending) {
+      if (!c.isCompleted) c.complete();
+    }
+    _pending.clear();
+  }
+
+  @override
+  Future<Profile> create({
+    required String displayName,
+    required bool isMinor,
+    int sortOrder = 0,
+    ProfileMode mode = ProfileMode.standard,
+    int? birthYear,
+    ProfileRelationship? relationship,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
+    int? typicalPeriodLengthDays,
+  }) async {
+    createCalls++;
+    final completer = Completer<void>();
+    _pending.add(completer);
+    await completer.future;
+    return _inner.create(
+      displayName: displayName,
+      isMinor: isMinor,
+      sortOrder: sortOrder,
+      mode: mode,
+      birthYear: birthYear,
+      relationship: relationship,
+      lastPeriodStart: lastPeriodStart,
+      typicalCycleLengthDays: typicalCycleLengthDays,
+      typicalPeriodLengthDays: typicalPeriodLengthDays,
+    );
+  }
+
+  @override
+  Future<Profile> update(Profile profile) => _inner.update(profile);
+
+  @override
+  Future<Profile?> findById(String id) => _inner.findById(id);
+
+  @override
+  Future<List<Profile>> list() => _inner.list();
+
+  @override
+  Stream<List<Profile>> watch() => _inner.watch();
+
+  @override
+  Future<void> setArchived(String id, bool archived) =>
+      _inner.setArchived(id, archived);
+
+  @override
+  Future<void> delete(String id) => _inner.delete(id);
 }
 

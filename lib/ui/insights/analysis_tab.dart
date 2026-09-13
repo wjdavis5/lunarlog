@@ -62,6 +62,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../domain/episodes/episodes.dart';
+import '../../domain/insights/cycle_insights_calculator.dart';
+import '../../domain/models/day_entry.dart';
+import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
 import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
@@ -71,14 +75,19 @@ import '../../domain/prediction/fertile_window.dart';
 import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
 import '../account/auth_controller.dart';
+import '../components/async_snapshot_view.dart';
 import '../components/empty_state.dart';
 import '../components/predictions_disabled_card.dart';
 import '../components/predictions_suppressed_card.dart';
 import '../help/help_card_view.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/tiers.dart';
 import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
+import 'phase_insights_card.dart';
+import 'symptom_trends_section.dart';
 
 class AnalysisTab extends StatefulWidget {
   const AnalysisTab({
@@ -88,9 +97,11 @@ class AnalysisTab extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.guardiansRepository,
+    this.dayEntriesRepository,
   });
 
   final String profileId;
+  final DayEntriesRepository? dayEntriesRepository;
 
   /// The profile's care mode (issue #131): selects the headline-stat
   /// vocabulary below, same as [OverviewPanel].
@@ -123,10 +134,21 @@ class _AnalysisTabState extends State<AnalysisTab> {
     today: widget.todayProvider,
   );
 
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level `StreamBuilder`.
+  void _retryPredictions() {
+    setState(() {
+      _predictions =
+          _service.watch(widget.profileId, today: widget.todayProvider);
+    });
+  }
+
   StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+  StreamSubscription<List<DayEntry>>? _entriesSub;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
+  List<DayEntry> _entries = const [];
 
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
@@ -140,6 +162,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
       _auth = auth;
     }
     _watchGuardians();
+    _watchEntries();
   }
 
   // The listener is only ever registered while [_auth] is non-null and is
@@ -168,6 +191,19 @@ class _AnalysisTabState extends State<AnalysisTab> {
     });
   }
 
+  void _watchEntries() {
+    _entriesSub?.cancel();
+    _entries = const [];
+    final repository =
+        widget.dayEntriesRepository ?? context.read<DayEntriesRepository?>();
+    if (repository == null) return;
+    _entriesSub =
+        repository.watchForProfile(widget.profileId).listen((entries) {
+      if (!mounted) return;
+      setState(() => _entries = entries);
+    });
+  }
+
   @override
   void didUpdateWidget(covariant AnalysisTab oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -177,6 +213,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
         today: widget.todayProvider,
       );
       _watchGuardians();
+      _watchEntries();
     }
   }
 
@@ -184,6 +221,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
   void dispose() {
     _guardiansSub?.cancel();
     _guardiansSub = null;
+    _entriesSub?.cancel();
+    _entriesSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -202,21 +241,29 @@ class _AnalysisTabState extends State<AnalysisTab> {
     return StreamBuilder<CyclePrediction>(
       stream: _predictions,
       builder: (context, snapshot) {
-        final prediction = snapshot.data;
-        if (prediction == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: _sections(context, prediction),
+        return AsyncSnapshotView<CyclePrediction>(
+          snapshot: snapshot,
+          errorMessage: 'Could not load your cycle analysis.',
+          onRetry: _retryPredictions,
+          builder: (context, prediction) => ListView(
+            padding: const EdgeInsets.all(16),
+            children: _sections(context, prediction),
+          ),
         );
       },
     );
   }
 
-  /// Section list — the seam #135 (statistics/trends) mounts an additional
-  /// entry into once that issue lands. #135 mounts here.
+  /// Section list — mounts headline statistics, phase insights (#236),
+  /// symptom trends & cramp forecasts (#135/#229), and the cycle history list.
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
+    final episodes = deriveEpisodes(bleedDatesOf(_entries));
+    final report = CycleInsightsCalculator.compute(
+      entries: _entries,
+      episodes: episodes,
+      prediction: prediction is ActivePrediction ? prediction : null,
+    );
+
     return [
       Text(
         'Analysis',
@@ -246,11 +293,21 @@ class _AnalysisTabState extends State<AnalysisTab> {
         showStatistics: false,
         showDisclaimer: false,
       ),
+      if (prediction is ActivePrediction) ...[
+        const SizedBox(height: 16),
+        PhaseInsightsCard(
+          prediction: prediction,
+          today: widget.todayProvider(),
+        ),
+      ],
+      const SizedBox(height: 16),
+      SymptomTrendsSection(report: report),
     ];
   }
 
   Widget _statsCard(BuildContext context, ActivePrediction prediction) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Card(
       key: const ValueKey('analysis-stats'),
       child: Padding(
@@ -264,8 +321,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            ..._headlineStats(theme, prediction),
-            ..._fertileWindowSection(theme, prediction),
+            ..._headlineStats(theme, l10n, prediction),
+            ..._fertileWindowSection(theme, l10n, prediction),
             const SizedBox(height: 12),
             Text(
               kEstimateDisclaimer,
@@ -286,33 +343,34 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// prefix is gated on it; the spread itself always renders, mirroring
   /// how [OverviewPanel]'s separate tier caption is the only thing
   /// `irregular` mode silences, never the estimate date next to it.
-  List<Widget> _headlineStats(ThemeData theme, ActivePrediction prediction) {
+  List<Widget> _headlineStats(
+      ThemeData theme, AppLocalizations l10n, ActivePrediction prediction) {
     return [
       _statRow(
         theme,
         'analysis-mean-cycle-length',
         'Average cycle length',
-        formatDays(prediction.meanCycleLengthDays),
+        formatDays(l10n, prediction.meanCycleLengthDays),
       ),
       _statRow(
         theme,
         'analysis-mean-period-length',
         'Average period length',
-        formatDays(prediction.meanPeriodLengthDays),
+        formatDays(l10n, prediction.meanPeriodLengthDays),
       ),
       _statRow(
         theme,
         'analysis-variability',
         'Variability',
-        _variabilityText(prediction),
+        _variabilityText(l10n, prediction),
       ),
     ];
   }
 
-  String _variabilityText(ActivePrediction prediction) {
+  String _variabilityText(AppLocalizations l10n, ActivePrediction prediction) {
     final spread = '±${prediction.spreadDays.round()} days';
     if (!_copy.showsTierCaption) return spread;
-    return '${prediction.tier.label} ($spread)';
+    return '${tierLabel(l10n, prediction.tier)} ($spread)';
   }
 
   /// Issue #143: the fertile-window row and its contraception-specific
@@ -330,6 +388,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// function's own doc comment).
   List<Widget> _fertileWindowSection(
     ThemeData theme,
+    AppLocalizations l10n,
     ActivePrediction prediction,
   ) {
     if (!_copy.showsFertileWindow) return const [];
@@ -340,7 +399,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
         theme,
         'analysis-fertile-window',
         _copy.fertileWindowLabel,
-        _fertileWindowText(fertile),
+        _fertileWindowText(l10n, fertile),
       ),
       const SizedBox(height: 4),
       Text(
@@ -355,11 +414,11 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// renders, and [CareModeCopy.showsTierCaption] only adds the tier-name
   /// prefix — this estimate is never hidden behind a caption gate of its
   /// own, only the whole-row [CareModeCopy.showsFertileWindow] gate above.
-  String _fertileWindowText(FertileWindowEstimate fertile) {
+  String _fertileWindowText(AppLocalizations l10n, FertileWindowEstimate fertile) {
     final range =
         '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
     if (!_copy.showsTierCaption) return range;
-    return '${fertile.tier.label} ($range)';
+    return '${tierLabel(l10n, fertile.tier)} ($range)';
   }
 
   // Issue #160: locale-derived long date (the `en` fallback renders

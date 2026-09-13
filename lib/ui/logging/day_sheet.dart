@@ -48,6 +48,7 @@ import 'dart:async' show Timer, scheduleMicrotask, unawaited;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
@@ -67,6 +68,7 @@ import 'package:lunarlog/ui/account/sync_status_tile.dart'
 import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
@@ -715,16 +717,18 @@ class _DaySheetState extends State<DaySheet> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AppLocalizations.of(context).daySheetDeleteTitle),
-        content: Text(
-          AppLocalizations.of(context)
-              .daySheetDeleteBody(daySheetDateLabel(widget.date, widget.today)),
+        content: SingleChildScrollView(
+          child: Text(
+            AppLocalizations.of(context)
+                .daySheetDeleteBody(daySheetDateLabel(widget.date, widget.today)),
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(AppLocalizations.of(context).daySheetCancel),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(AppLocalizations.of(context).daySheetDelete),
           ),
@@ -798,16 +802,18 @@ class _DaySheetState extends State<DaySheet> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AppLocalizations.of(context).daySheetDiscardTitle),
-        content: const Text(
-          "The last change couldn't be saved. Discarding removes it from "
-          'this device.',
+        content: const SingleChildScrollView(
+          child: Text(
+            "The last change couldn't be saved. Discarding removes it from "
+            'this device.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(AppLocalizations.of(context).daySheetKeepEditing),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(AppLocalizations.of(context).daySheetDiscard),
           ),
@@ -1369,10 +1375,15 @@ class _DaySheetState extends State<DaySheet> {
   /// `currentUserId` data already passed in for the attribution badge, per
   /// [acceptedGuardianFor]'s null-vs-empty discipline - an unmatched or
   /// unknown caller has no reason to show here.
-  String? get _readOnlyReason => acceptedGuardianFor(
-    widget.guardians,
-    widget.currentUserId,
-  )?.role.readOnlyReason;
+  String? get _readOnlyReason {
+    final role = acceptedGuardianFor(
+      widget.guardians,
+      widget.currentUserId,
+    )?.role;
+    return role == null
+        ? null
+        : guardianRoleReadOnlyReason(AppLocalizations.of(context), role);
+  }
 
   Widget _readOnlyBody() {
     final theme = Theme.of(context);

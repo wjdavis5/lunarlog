@@ -5,14 +5,23 @@
 library;
 
 import '../models/local_date.dart';
+import '../repositories/cycle_overrides_repository.dart';
 import '../repositories/day_entries_repository.dart';
 import '../repositories/settings_store.dart';
 import '../util/combine_latest.dart';
 import 'cycle_history.dart';
 
 class CycleHistoryService {
-  CycleHistoryService(this._dayEntries, {SettingsStore? settings})
-    : _exclusions = settings == null ? null : CycleExclusionList(settings);
+  /// [cycleOverrides] (issue #568 (b)) is forwarded to [CycleExclusionList]
+  /// unchanged — see that class's doc comment for why it is optional and
+  /// what a null value keeps.
+  CycleHistoryService(
+    this._dayEntries, {
+    SettingsStore? settings,
+    CycleOverridesRepository? cycleOverrides,
+  }) : _exclusions = settings == null
+           ? null
+           : CycleExclusionList(settings, overrides: cycleOverrides);
 
   final DayEntriesRepository _dayEntries;
   final CycleExclusionList? _exclusions;

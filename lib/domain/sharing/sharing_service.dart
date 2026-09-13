@@ -136,16 +136,6 @@ enum InviteCancellation {
         _ => throw ArgumentError.value(
             value, 'value', 'unknown invite cancellation outcome'),
       };
-
-  /// User-facing copy for the outcome (R5), on the domain type per this
-  /// repo's copy convention rather than hardcoded in the widget - mirrors
-  /// [SharingFailure.userFacingMessage].
-  String get userFacingMessage => switch (this) {
-        revoked => 'Invitation cancelled',
-        alreadyAccepted => 'That invitation was already accepted',
-        alreadyRevoked => 'That invitation was already cancelled',
-        expired => 'That invitation had already expired',
-      };
 }
 
 /// Result returned upon accepting an invitation.
@@ -188,8 +178,6 @@ sealed class SharingFailure implements Exception {
   const factory SharingFailure.invalidToken() = SharingInvalidTokenFailure;
   const factory SharingFailure.other() = SharingOtherFailure;
 
-  String get userFacingMessage;
-
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -200,15 +188,11 @@ sealed class SharingFailure implements Exception {
 final class SharingNetworkFailure extends SharingFailure {
   const SharingNetworkFailure();
   @override
-  String get userFacingMessage => 'Network error. Please check your connection.';
-  @override
   String toString() => 'SharingFailure.network';
 }
 
 final class SharingNotFoundFailure extends SharingFailure {
   const SharingNotFoundFailure();
-  @override
-  String get userFacingMessage => 'Invitation not found or invalid link.';
   @override
   String toString() => 'SharingFailure.notFound';
 }
@@ -216,15 +200,11 @@ final class SharingNotFoundFailure extends SharingFailure {
 final class SharingExpiredFailure extends SharingFailure {
   const SharingExpiredFailure();
   @override
-  String get userFacingMessage => 'This invitation has expired.';
-  @override
   String toString() => 'SharingFailure.expired';
 }
 
 final class SharingAlreadyAcceptedFailure extends SharingFailure {
   const SharingAlreadyAcceptedFailure();
-  @override
-  String get userFacingMessage => 'This invitation was already accepted.';
   @override
   String toString() => 'SharingFailure.alreadyAccepted';
 }
@@ -232,15 +212,11 @@ final class SharingAlreadyAcceptedFailure extends SharingFailure {
 final class SharingAlreadyGuardianFailure extends SharingFailure {
   const SharingAlreadyGuardianFailure();
   @override
-  String get userFacingMessage => 'You are already an active guardian for this child.';
-  @override
   String toString() => 'SharingFailure.alreadyGuardian';
 }
 
 final class SharingUnauthorizedFailure extends SharingFailure {
   const SharingUnauthorizedFailure();
-  @override
-  String get userFacingMessage => 'You do not have permission for this action.';
   @override
   String toString() => 'SharingFailure.unauthorized';
 }
@@ -248,15 +224,11 @@ final class SharingUnauthorizedFailure extends SharingFailure {
 final class SharingInvalidTokenFailure extends SharingFailure {
   const SharingInvalidTokenFailure();
   @override
-  String get userFacingMessage => 'Invalid invitation link.';
-  @override
   String toString() => 'SharingFailure.invalidToken';
 }
 
 final class SharingOtherFailure extends SharingFailure {
   const SharingOtherFailure();
-  @override
-  String get userFacingMessage => 'Failed to accept invitation. Please try again.';
   @override
   String toString() => 'SharingFailure.other';
 }

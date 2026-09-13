@@ -30,6 +30,7 @@ import '../../domain/repositories/profiles_repository.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/sharing_overview.dart';
 import '../../observability/route_names.dart';
+import '../components/inline_error.dart';
 import '../sharing/transfer_ownership_screen.dart';
 import 'auth_controller.dart';
 
@@ -299,10 +300,12 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                   ],
                   if (exportError != null) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      exportError,
+                    // Issue #555: InlineError (live-region semantics), not a
+                    // bare red Text.
+                    InlineError(
                       key: const ValueKey('account-delete-export-error'),
-                      style: TextStyle(color: theme.colorScheme.error),
+                      message: exportError,
+                      onRetry: _exporting ? null : _handleExport,
                     ),
                   ],
                 ],

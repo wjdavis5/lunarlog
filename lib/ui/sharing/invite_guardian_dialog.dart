@@ -7,7 +7,10 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/sharing/sharing_service.dart';
+import '../../l10n/app_localizations.dart';
+import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
+import '../l10n/sharing_failure_copy.dart';
 
 class InviteGuardianDialog extends StatefulWidget {
   const InviteGuardianDialog({
@@ -33,6 +36,15 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
   GeneratedInvite? _generatedInvite;
   String? _error;
 
+  /// #558: the "copied" confirmation used to go through
+  /// `ScaffoldMessenger.of(context).showSnackBar` -- resolved against the
+  /// *underlying screen's* Scaffold (this dialog itself hosts none), which
+  /// paints in an OverlayEntry inserted *before* this dialog's own barrier,
+  /// so the SnackBar rendered behind the scrim, invisible. Rendering the
+  /// confirmation inside the dialog's own content instead needs no such
+  /// z-order reasoning.
+  bool _justCopied = false;
+
   @override
   void dispose() {
     _labelController.dispose();
@@ -49,7 +61,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
       final invite = await widget.sharingService.createInvite(
         profileId: widget.profileId,
         role: _selectedRole,
-        recipientLabel: _labelController.text.trim().isEmpty ? null : _labelController.text.trim(),
+        recipientLabel: _labelController.text.trim().isEmpty
+            ? null
+            : _labelController.text.trim(),
       );
       if (mounted) {
         setState(() {
@@ -59,12 +73,12 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
       }
     } on SharingFailure catch (failure) {
       // Issue #535 (d): distinct failure types (unauthorized vs. network,
-      // etc.) get their own accurate copy via userFacingMessage, rather
+      // etc.) get their own accurate copy via sharingFailureCopy, rather
       // than collapsing every SharingFailure into the generic connection
       // message below — matching AcceptInviteSheet's own catch clause.
       if (mounted) {
         setState(() {
-          _error = failure.userFacingMessage;
+          _error = sharingFailureCopy(AppLocalizations.of(context), failure);
           _loading = false;
         });
       }
@@ -80,10 +94,10 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
 
   void _copyLink() {
     if (_generatedInvite == null) return;
-    Clipboard.setData(ClipboardData(text: _generatedInvite!.inviteUri.toString()));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Invite link copied to clipboard')),
+    Clipboard.setData(
+      ClipboardData(text: _generatedInvite!.inviteUri.toString()),
     );
+    setState(() => _justCopied = true);
   }
 
   // Issue #535 (c): share_plus 13.x deprecated the old static
@@ -92,7 +106,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
   // this mirrors). Plain text share of the bare link, same as Copy Link.
   void _shareLink() {
     if (_generatedInvite == null) return;
-    SharePlus.instance.share(ShareParams(text: _generatedInvite!.inviteUri.toString()));
+    SharePlus.instance.share(
+      ShareParams(text: _generatedInvite!.inviteUri.toString()),
+    );
   }
 
   @override
@@ -100,120 +116,220 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
     final theme = Theme.of(context);
 
     if (_generatedInvite != null) {
-      return AlertDialog(
-        title: const Text('Invitation Created'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Share this single-use link with the caregiver for ${widget.profileName}:'),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
+      return SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Invitation Created', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 12),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Share this single-use link with the caregiver for ${widget.profileName}:',
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SelectableText(
+                          _generatedInvite!.inviteUri.toString(),
+                          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Expires in 48 hours. Can be redeemed once.',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                      if (_justCopied) ...[
+                        const SizedBox(height: 8),
+                        Semantics(
+                          liveRegion: true,
+                          child: Row(
+                            key: const ValueKey('invite-copied-confirmation'),
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                size: 16,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Copied to clipboard',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-              child: SelectableText(
-                _generatedInvite!.inviteUri.toString(),
-                style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+              const SizedBox(height: 16),
+              OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 8,
+                overflowSpacing: 8,
+                children: [
+                  TextButton(
+                    key: const ValueKey('invite-done'),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Done'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _copyLink,
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: const Text('Copy Link'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _shareLink,
+                    icon: const Icon(Icons.share, size: 16),
+                    label: const Text('Share'),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Expires in 48 hours. Can be redeemed once.',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ],
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-          FilledButton.icon(
-            onPressed: _copyLink,
-            icon: const Icon(Icons.copy, size: 16),
-            label: const Text('Copy Link'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _shareLink,
-            icon: const Icon(Icons.share, size: 16),
-            label: const Text('Share'),
-          ),
-        ],
       );
     }
 
-    return AlertDialog(
-      title: Text('Invite Caregiver to ${widget.profileName}'),
-      content: SingleChildScrollView(
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_error != null) ...[
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-              const SizedBox(height: 8),
-            ],
-            const Text('Role:'),
-            const SizedBox(height: 4),
-            DropdownButton<GuardianRole>(
-              value: _selectedRole,
-              isExpanded: true,
-              onChanged: _loading
-                  ? null
-                  : (role) {
-                      if (role != null) setState(() => _selectedRole = role);
-                    },
-              items: const [
-                DropdownMenuItem(
-                  value: GuardianRole.coParent,
-                  child: Text('Co-Parent (Can log, edit profile & invite)'),
-                ),
-                DropdownMenuItem(
-                  value: GuardianRole.caregiver,
-                  child: Text('Caregiver (Can log symptoms & periods)'),
-                ),
-                DropdownMenuItem(
-                  value: GuardianRole.viewer,
-                  child: Text('Viewer (Read-only access)'),
-                ),
-              ],
+            Text(
+              'Invite Caregiver to ${widget.profileName}',
+              style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _labelController,
-              enabled: !_loading,
-              decoration: const InputDecoration(
-                labelText: 'Nickname / Label (Optional)',
-                hintText: 'e.g. Dad, Grandma, School Nurse',
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_error != null) ...[
+                      InlineError(
+                        message: _error!,
+                        onRetry: _loading ? null : _createInvite,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    // #557: MergeSemantics folds "Role:" into the dropdown's own
+                    // announcement, so a screen reader hears "Role, <value>"
+                    // instead of just the bare value.
+                    MergeSemantics(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Role:'),
+                          const SizedBox(height: 4),
+                          DropdownButton<GuardianRole>(
+                            value: _selectedRole,
+                            isExpanded: true,
+                            onChanged: _loading
+                                ? null
+                                : (role) {
+                                    if (role != null) {
+                                      setState(() => _selectedRole = role);
+                                    }
+                                  },
+                            items: const [
+                              DropdownMenuItem(
+                                value: GuardianRole.coParent,
+                                child: Text(
+                                  'Co-Parent (Can log, edit profile & invite)',
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: GuardianRole.caregiver,
+                                child: Text('Caregiver (Can log symptoms & periods)'),
+                              ),
+                              DropdownMenuItem(
+                                value: GuardianRole.viewer,
+                                child: Text('Viewer (Read-only access)'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _labelController,
+                      enabled: !_loading,
+                      decoration: const InputDecoration(
+                        labelText: 'Nickname / Label (Optional)',
+                        hintText: 'e.g. Dad, Grandma, School Nurse',
+                      ),
+                    ),
+                    // Issue #139: contextual entry point to the invitations card.
+                    const HelpCardLink(
+                      cardId: 'invitations',
+                      label: 'How do invitations work?',
+                    ),
+                  ],
+                ),
               ),
             ),
-            // Issue #139: contextual entry point to the invitations card.
-            const HelpCardLink(
-              cardId: 'invitations',
-              label: 'How do invitations work?',
+            const SizedBox(height: 16),
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 8,
+              overflowSpacing: 8,
+              children: [
+                TextButton(
+                  onPressed: _loading ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: _loading ? null : _createInvite,
+                  child: _loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Create Link'),
+                ),
+              ],
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _loading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _loading ? null : _createInvite,
-          child: _loading
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Create Link'),
-        ),
-      ],
     );
   }
 }
+
+/// Sheet alias for [InviteGuardianDialog] following the dialog/sheet rule (Issue #250).
+typedef InviteGuardianSheet = InviteGuardianDialog;

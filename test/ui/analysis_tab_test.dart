@@ -27,11 +27,14 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:provider/provider.dart';
 
+import '../support/erroring_day_entries_repository.dart';
 import '../support/fake_auth_service.dart';
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
@@ -90,17 +93,19 @@ Future<void> seedEpisodes(
 }) async {
   for (final start in starts) {
     for (var i = 0; i < lengthDays; i++) {
-      await entries.save(DayEntry(
-        id: '',
-        profileId: profileId,
-        localDate: start.addDays(i),
-        tz: 'America/Chicago',
-        flow: FlowLevel.medium,
-        tags: const [],
-        note: null,
-        updatedAt: DateTime.utc(2026, 1, 1),
-        deletedAt: null,
-      ));
+      await entries.save(
+        DayEntry(
+          id: '',
+          profileId: profileId,
+          localDate: start.addDays(i),
+          tz: 'America/Chicago',
+          flow: FlowLevel.medium,
+          tags: const [],
+          note: null,
+          updatedAt: DateTime.utc(2026, 1, 1),
+          deletedAt: null,
+        ),
+      );
     }
   }
 }
@@ -151,13 +156,13 @@ class Harness {
         Provider<CycleHistoryService>.value(
           value: CycleHistoryService(entries, settings: settings),
         ),
-        Provider<CycleExclusionList>.value(
-          value: CycleExclusionList(settings),
-        ),
+        Provider<CycleExclusionList>.value(value: CycleExclusionList(settings)),
         if (authController != null)
           ChangeNotifierProvider<AuthController>.value(value: authController),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: AnalysisTab(
             profileId: profileId,
@@ -183,19 +188,23 @@ class Harness {
   }) async {
     final profiles = DriftProfilesRepository(db.storage);
     final entries = DriftDayEntriesRepository(db.storage);
-    final profile =
-        await profiles.create(displayName: 'Alice', isMinor: isMinor);
+    final profile = await profiles.create(
+      displayName: 'Alice',
+      isMinor: isMinor,
+    );
     if (starts.isNotEmpty) {
       await seedEpisodes(entries, profile.id, starts, lengthDays: lengthDays);
     }
-    await tester.pumpWidget(widgetFor(
-      profile.id,
-      mode: mode,
-      readOnly: readOnly,
-      authController: authController,
-      guardiansRepository: guardiansRepository,
-      today: today,
-    ));
+    await tester.pumpWidget(
+      widgetFor(
+        profile.id,
+        mode: mode,
+        readOnly: readOnly,
+        authController: authController,
+        guardiansRepository: guardiansRepository,
+        today: today,
+      ),
+    );
     await tester.pumpAndSettle();
     return profile.id;
   }
@@ -216,8 +225,7 @@ String? textAt(WidgetTester tester, String key) {
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
-  testWidgets(
-      'headline stats render from ActivePrediction fields, and the '
+  testWidgets('headline stats render from ActivePrediction fields, and the '
       'disclaimer is present', (tester) async {
     final h = Harness(tester);
     await h.pump(starts: kSteadyStarts);
@@ -226,37 +234,37 @@ void main() {
     expect(find.byKey(const ValueKey('analysis-stats')), findsOneWidget);
     expect(textAt(tester, 'analysis-mean-cycle-length'), '30 days');
     expect(textAt(tester, 'analysis-mean-period-length'), '4 days');
-    expect(textAt(tester, 'analysis-variability'),
-        'High confidence (±0 days)');
+    expect(textAt(tester, 'analysis-variability'), 'High confidence (±0 days)');
     expect(textAt(tester, 'analysis-disclaimer'), kDisclaimer);
 
     await h.dispose();
   });
 
   testWidgets(
-      'fewer than 3 valid cycles shows an honest not-enough-history state, '
-      'not a misleading chart', (tester) async {
-    final h = Harness(tester);
-    await h.pump(starts: kNotEnoughStarts);
+    'fewer than 3 valid cycles shows an honest not-enough-history state, '
+    'not a misleading chart',
+    (tester) async {
+      final h = Harness(tester);
+      await h.pump(starts: kNotEnoughStarts);
 
-    expect(find.byKey(const ValueKey('analysis-not-enough')), findsOneWidget);
-    final emptyState = tester.widget<EmptyState>(
-      find.descendant(
-        of: find.byKey(const ValueKey('analysis-not-enough')),
-        matching: find.byType(EmptyState),
-      ),
-    );
-    expect(emptyState.crossAxisAlignment, CrossAxisAlignment.start);
-    expect(emptyState.titleStyle, isNotNull);
-    expect(find.text('Not enough history yet'), findsOneWidget);
-    expect(textAt(tester, 'analysis-not-enough-disclaimer'), kDisclaimer);
-    expect(find.byKey(const ValueKey('analysis-stats')), findsNothing);
+      expect(find.byKey(const ValueKey('analysis-not-enough')), findsOneWidget);
+      final emptyState = tester.widget<EmptyState>(
+        find.descendant(
+          of: find.byKey(const ValueKey('analysis-not-enough')),
+          matching: find.byType(EmptyState),
+        ),
+      );
+      expect(emptyState.crossAxisAlignment, CrossAxisAlignment.start);
+      expect(emptyState.titleStyle, isNotNull);
+      expect(find.text('Not enough history yet'), findsOneWidget);
+      expect(textAt(tester, 'analysis-not-enough-disclaimer'), kDisclaimer);
+      expect(find.byKey(const ValueKey('analysis-stats')), findsNothing);
 
-    await h.dispose();
-  });
+      await h.dispose();
+    },
+  );
 
-  testWidgets(
-      'irregular hides the tier caption but still shows the statistics '
+  testWidgets('irregular hides the tier caption but still shows the statistics '
       '(#131: showsTierCaption scopes the caption only, never the '
       'digits)', (tester) async {
     final h = Harness(tester);
@@ -275,22 +283,25 @@ void main() {
   });
 
   testWidgets(
-      'renders exactly one disclaimer and no duplicate history stats row '
-      '— the headline card owns the numbers on this tab (review finding '
-      'on #315)', (tester) async {
-    final h = Harness(tester);
-    await h.pump(starts: kSteadyStarts);
+    'renders exactly one disclaimer and no duplicate history stats row '
+    '— the headline card owns the numbers on this tab (review finding '
+    'on #315)',
+    (tester) async {
+      final h = Harness(tester);
+      await h.pump(starts: kSteadyStarts);
 
-    expect(find.text(kDisclaimer), findsOneWidget);
-    expect(find.byKey(const ValueKey('history-stats')), findsNothing);
-    expect(find.byKey(const ValueKey('history-disclaimer')), findsNothing);
-    expect(find.textContaining('Avg cycle'), findsNothing);
+      expect(find.text(kDisclaimer), findsOneWidget);
+      expect(find.byKey(const ValueKey('history-stats')), findsNothing);
+      expect(find.byKey(const ValueKey('history-disclaimer')), findsNothing);
+      expect(find.textContaining('Avg cycle'), findsNothing);
 
-    await h.dispose();
-  });
+      await h.dispose();
+    },
+  );
 
-  testWidgets('the existing cycle-history section is mounted on this tab',
-      (tester) async {
+  testWidgets('the existing cycle-history section is mounted on this tab', (
+    tester,
+  ) async {
     final h = Harness(tester);
     await h.pump(starts: kSteadyStarts);
 
@@ -301,51 +312,54 @@ void main() {
   });
 
   testWidgets(
-      'issue #314: omitting a cycle through the mounted history section '
-      'updates this tab\'s own headline stats -- both read the same '
-      'CyclePredictionService/CycleExclusionList now that Overview no '
-      'longer has its own copy of either the section or the estimate to '
-      'cross-check against', (tester) async {
-    // Issue #143 review: the fertile-window disclaimer text grew by a
-    // sentence, pushing the history section's omit button below the
-    // default 800x600 test viewport, so `tap` could no longer hit it
-    // on-screen -- a taller viewport (mirroring `forecast_calendar_test
-    // .dart`'s `pumpForecast`) keeps this test independent of exactly how
-    // tall the headline card's content happens to be.
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    'issue #314: omitting a cycle through the mounted history section '
+    'updates this tab\'s own headline stats -- both read the same '
+    'CyclePredictionService/CycleExclusionList now that Overview no '
+    'longer has its own copy of either the section or the estimate to '
+    'cross-check against',
+    (tester) async {
+      // Issue #143 review: the fertile-window disclaimer text grew by a
+      // sentence, pushing the history section's omit button below the
+      // default 800x600 test viewport, so `tap` could no longer hit it
+      // on-screen -- a taller viewport (mirroring `forecast_calendar_test
+      // .dart`'s `pumpForecast`) keeps this test independent of exactly how
+      // tall the headline card's content happens to be.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final h = Harness(tester);
-    await h.pump(starts: kShortOutlierStarts, today: LocalDate(2026, 6, 21));
+      final h = Harness(tester);
+      await h.pump(starts: kShortOutlierStarts, today: LocalDate(2026, 6, 21));
 
-    // Lengths [28, 28, 20, 28] average to 26.0 exactly.
-    expect(textAt(tester, 'analysis-mean-cycle-length'), '26 days');
+      // Lengths [28, 28, 20, 28] average to 26.0 exactly.
+      expect(textAt(tester, 'analysis-mean-cycle-length'), '26 days');
 
-    await tester.tap(find.byKey(const ValueKey('history-omit-2026-04-05')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('history-omit-2026-04-05')));
+      await tester.pumpAndSettle();
 
-    // Omitting the 20-day cycle leaves [28, 28, 28] -- 28.0 exactly. The
-    // headline card and the history section below it derive this from
-    // the same CyclePredictionService/CycleExclusionList pair, so the
-    // omit tap (a history-section affordance) is reflected here with no
-    // separate wiring.
-    expect(textAt(tester, 'analysis-mean-cycle-length'), '28 days');
-    expect(find.text('Excluded from averages'), findsOneWidget);
+      // Omitting the 20-day cycle leaves [28, 28, 28] -- 28.0 exactly. The
+      // headline card and the history section below it derive this from
+      // the same CyclePredictionService/CycleExclusionList pair, so the
+      // omit tap (a history-section affordance) is reflected here with no
+      // separate wiring.
+      expect(textAt(tester, 'analysis-mean-cycle-length'), '28 days');
+      expect(find.text('Excluded from averages'), findsOneWidget);
 
-    await h.dispose();
-  });
+      await h.dispose();
+    },
+  );
 
   group('viewer-role read-only gating (review finding on #315)', () {
-    testWidgets(
-        'a viewer-role guardian sees no omit/include affordance in the '
+    testWidgets('a viewer-role guardian sees no omit/include affordance in the '
         'history section', (tester) async {
       final h = Harness(tester);
       final profiles = DriftProfilesRepository(h.db.storage);
       final entries = DriftDayEntriesRepository(h.db.storage);
-      final profile =
-          await profiles.create(displayName: 'Alice', isMinor: false);
+      final profile = await profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+      );
       await seedEpisodes(entries, profile.id, kSteadyStarts);
       await h.db.storage.applyRemoteRows([
         guardianRow(profile.id, 'g-doc', 'user-doc', 'viewer'),
@@ -354,11 +368,13 @@ void main() {
         ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-doc'));
       final authController = AuthController(authService: auth);
 
-      await h.tester.pumpWidget(h.widgetFor(
-        profile.id,
-        authController: authController,
-        guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
-      ));
+      await h.tester.pumpWidget(
+        h.widgetFor(
+          profile.id,
+          authController: authController,
+          guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
+        ),
+      );
       await h.tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
@@ -368,8 +384,9 @@ void main() {
       await h.dispose();
     });
 
-    testWidgets('readOnly: true does the same, with no guardian row needed',
-        (tester) async {
+    testWidgets('readOnly: true does the same, with no guardian row needed', (
+      tester,
+    ) async {
       final h = Harness(tester);
       await h.pump(starts: kSteadyStarts, readOnly: true);
 
@@ -380,15 +397,16 @@ void main() {
       await h.dispose();
     });
 
-    testWidgets(
-        'an accepted co-parent guardian keeps the omit affordance '
+    testWidgets('an accepted co-parent guardian keeps the omit affordance '
         '(sanity check: the gate is role-specific, not "any guardian '
         'row")', (tester) async {
       final h = Harness(tester);
       final profiles = DriftProfilesRepository(h.db.storage);
       final entries = DriftDayEntriesRepository(h.db.storage);
-      final profile =
-          await profiles.create(displayName: 'Alice', isMinor: false);
+      final profile = await profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+      );
       await seedEpisodes(entries, profile.id, kSteadyStarts);
       await h.db.storage.applyRemoteRows([
         guardianRow(profile.id, 'g-dad', 'user-dad', 'co_parent'),
@@ -397,11 +415,13 @@ void main() {
         ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-dad'));
       final authController = AuthController(authService: auth);
 
-      await h.tester.pumpWidget(h.widgetFor(
-        profile.id,
-        authController: authController,
-        guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
-      ));
+      await h.tester.pumpWidget(
+        h.widgetFor(
+          profile.id,
+          authController: authController,
+          guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
+        ),
+      );
       await h.tester.pumpAndSettle();
 
       expect(find.textContaining('Omit'), findsWidgets);
@@ -411,46 +431,51 @@ void main() {
   });
 
   testWidgets(
-      'didUpdateWidget: switching profileId swaps this tab\'s content with '
-      'no carryover from the previous profile', (tester) async {
-    final h = Harness(tester);
-    final profiles = DriftProfilesRepository(h.db.storage);
-    final entries = DriftDayEntriesRepository(h.db.storage);
-    final alice =
-        await profiles.create(displayName: 'Alice', isMinor: false);
-    final bob = await profiles.create(displayName: 'Bob', isMinor: false);
-    await seedEpisodes(entries, alice.id, kSteadyStarts);
-    await seedEpisodes(entries, bob.id, kNotEnoughStarts);
+    'didUpdateWidget: switching profileId swaps this tab\'s content with '
+    'no carryover from the previous profile',
+    (tester) async {
+      final h = Harness(tester);
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final entries = DriftDayEntriesRepository(h.db.storage);
+      final alice = await profiles.create(displayName: 'Alice', isMinor: false);
+      final bob = await profiles.create(displayName: 'Bob', isMinor: false);
+      await seedEpisodes(entries, alice.id, kSteadyStarts);
+      await seedEpisodes(entries, bob.id, kNotEnoughStarts);
 
-    await tester.pumpWidget(h.widgetFor(alice.id));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('analysis-stats')), findsOneWidget);
-    expect(textAt(tester, 'analysis-mean-cycle-length'), '30 days');
+      await tester.pumpWidget(h.widgetFor(alice.id));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('analysis-stats')), findsOneWidget);
+      expect(textAt(tester, 'analysis-mean-cycle-length'), '30 days');
 
-    // Same widget tree shape (no keys differ), so this rebuilds the same
-    // State and exercises AnalysisTab's didUpdateWidget branch rather than
-    // tearing down and remounting a fresh one.
-    await tester.pumpWidget(h.widgetFor(bob.id));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('analysis-not-enough')), findsOneWidget);
-    expect(find.byKey(const ValueKey('analysis-stats')), findsNothing,
-        reason: 'no cross-profile carryover');
+      // Same widget tree shape (no keys differ), so this rebuilds the same
+      // State and exercises AnalysisTab's didUpdateWidget branch rather than
+      // tearing down and remounting a fresh one.
+      await tester.pumpWidget(h.widgetFor(bob.id));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('analysis-not-enough')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-stats')),
+        findsNothing,
+        reason: 'no cross-profile carryover',
+      );
 
-    await h.dispose();
-  });
+      await h.dispose();
+    },
+  );
 
   group('auth-driven attribution seam (moved from '
       'test/ui/cycle_history_test.dart under issue #314 -- this tab now '
       'has the same auth listener OverviewPanel does, and is the only '
       'screen still mounting CycleHistorySection alongside it)', () {
-    testWidgets(
-        'signing in while this tab is mounted updates the attribution '
+    testWidgets('signing in while this tab is mounted updates the attribution '
         'context without disturbing the history section below', (tester) async {
       final h = Harness(tester);
       final profiles = DriftProfilesRepository(h.db.storage);
       final entries = DriftDayEntriesRepository(h.db.storage);
-      final profile =
-          await profiles.create(displayName: 'Alice', isMinor: false);
+      final profile = await profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+      );
       await seedEpisodes(entries, profile.id, kSteadyStarts);
 
       final auth = FakeAuthService();
@@ -458,10 +483,9 @@ void main() {
       final authController = AuthController(authService: auth);
       addTearDown(authController.dispose);
 
-      await tester.pumpWidget(h.widgetFor(
-        profile.id,
-        authController: authController,
-      ));
+      await tester.pumpWidget(
+        h.widgetFor(profile.id, authController: authController),
+      );
       await tester.pumpAndSettle();
 
       // A sign-in while mounted re-runs this tab's auth listener; the
@@ -477,8 +501,7 @@ void main() {
   });
 
   group('estimated fertile window (issue #143)', () {
-    testWidgets(
-        'renders dates and disclaimer, gated the same way the tier '
+    testWidgets('renders dates and disclaimer, gated the same way the tier '
         'caption is: standard mode shows the tier-name prefix', (tester) async {
       final h = Harness(tester);
       await h.pump(starts: kSteadyStarts);
@@ -502,8 +525,7 @@ void main() {
       await h.dispose();
     });
 
-    testWidgets(
-        'a stale fertile window is never shown as current (issue #143 '
+    testWidgets('a stale fertile window is never shown as current (issue #143 '
         'review): once "today" pushes the estimate itself late enough to '
         'roll (#221), the row keeps walking the forecast forward to the '
         'next cycle whose own window has not yet passed, rather than '
@@ -517,8 +539,10 @@ void main() {
       // (start Nov 3, ovulation Oct 20, window Oct 15-21).
       await h.pump(starts: kSteadyStarts, today: LocalDate(2026, 9, 22));
 
-      expect(find.byKey(const ValueKey('analysis-fertile-window')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-fertile-window')),
+        findsOneWidget,
+      );
       expect(
         textAt(tester, 'analysis-fertile-window'),
         'High confidence (October 15, 2026 – October 21, 2026)',
@@ -531,43 +555,127 @@ void main() {
       final h = Harness(tester);
       await h.pump(starts: kNotEnoughStarts);
 
-      expect(find.byKey(const ValueKey('analysis-fertile-window')),
-          findsNothing);
-      expect(find.byKey(const ValueKey('analysis-fertile-disclaimer')),
-          findsNothing);
+      expect(
+        find.byKey(const ValueKey('analysis-fertile-window')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('analysis-fertile-disclaimer')),
+        findsNothing,
+      );
 
       await h.dispose();
     });
 
     testWidgets(
-        'irregular mode hides the row entirely (#143: same false-precision '
-        'reasoning as showsTierCaption/silencesLateBanner) even though the '
-        'headline cycle-length/period-length statistics still render',
-        (tester) async {
-      final h = Harness(tester);
-      await h.pump(starts: kSteadyStarts, mode: ProfileMode.irregular);
+      'irregular mode hides the row entirely (#143: same false-precision '
+      'reasoning as showsTierCaption/silencesLateBanner) even though the '
+      'headline cycle-length/period-length statistics still render',
+      (tester) async {
+        final h = Harness(tester);
+        await h.pump(starts: kSteadyStarts, mode: ProfileMode.irregular);
 
-      expect(find.byKey(const ValueKey('analysis-fertile-window')),
-          findsNothing);
-      expect(find.byKey(const ValueKey('analysis-fertile-disclaimer')),
-          findsNothing);
-      expect(textAt(tester, 'analysis-mean-cycle-length'), '30 days');
+        expect(
+          find.byKey(const ValueKey('analysis-fertile-window')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('analysis-fertile-disclaimer')),
+          findsNothing,
+        );
+        expect(textAt(tester, 'analysis-mean-cycle-length'), '30 days');
 
-      await h.dispose();
-    });
+        await h.dispose();
+      },
+    );
 
-    testWidgets(
-        'available on a minor profile too — #142 removes any isMinor '
+    testWidgets('available on a minor profile too — #142 removes any isMinor '
         'gating, and AnalysisTab never carries a minor-status check of '
         'its own to begin with', (tester) async {
       final h = Harness(tester);
       await h.pump(starts: kSteadyStarts, isMinor: true);
 
-      expect(find.byKey(const ValueKey('analysis-fertile-window')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-fertile-window')),
+        findsOneWidget,
+      );
       expect(textAt(tester, 'analysis-fertile-window'), isNotNull);
 
       await h.dispose();
     });
+  });
+
+  group('issue #543: prediction stream error', () {
+    testWidgets(
+      'a thrown error on the prediction stream shows InlineError with '
+      'retry instead of a permanent spinner',
+      (tester) async {
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        final profiles = DriftProfilesRepository(db.storage);
+        final settings = DriftSettingsStore(db.storage);
+        final innerEntries = DriftDayEntriesRepository(db.storage);
+        final entries = ErroringDayEntriesRepository(innerEntries);
+        final profile = await profiles.create(
+          displayName: 'Alice',
+          isMinor: false,
+        );
+        await seedEpisodes(innerEntries, profile.id, kSteadyStarts);
+
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              Provider<CyclePredictionService>.value(
+                value: CyclePredictionService(entries, settings: settings),
+              ),
+              Provider<CycleHistoryService>.value(
+                value: CycleHistoryService(entries, settings: settings),
+              ),
+              Provider<CycleExclusionList>.value(
+                value: CycleExclusionList(settings),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: AnalysisTab(
+                  profileId: profile.id,
+                  todayProvider: () => kSteadyStarts.last.addDays(30),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('analysis-heading')),
+          findsOneWidget,
+          reason: 'sanity: healthy before the break',
+        );
+
+        entries.broken = true;
+        await entries.save(
+          (await entries.find(profile.id, kSteadyStarts.last))!,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(InlineError), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+
+        entries.broken = false;
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('analysis-heading')),
+          findsOneWidget,
+          reason: 'retry re-subscribes and recovers once the failure clears',
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      },
+    );
   });
 }

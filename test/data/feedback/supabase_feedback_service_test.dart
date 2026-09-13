@@ -6,8 +6,12 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/feedback_failure_copy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+
+final _l10n = AppLocalizationsEn();
 
 const _uid = '01JABCDEF01234567890123456';
 
@@ -357,9 +361,10 @@ void main() {
         expect(failure.ticket.id, 't6',
             reason: 'the insert already committed; the ticket is not lost');
         expect(failure.ticket.message, 'crashed again');
-        expect(failure.userFacingMessage, contains('Support history'),
+        final copy = feedbackFailureCopy(_l10n, failure);
+        expect(copy, contains('Support history'),
             reason: 'tells the operator the ticket is recoverable, not gone');
-        expect(failure.userFacingMessage, isNot(contains('temporarily unavailable')),
+        expect(copy, isNot(contains('temporarily unavailable')),
             reason: 'R11: never a raw provider message');
       }
       await pumpEventQueue();
@@ -444,7 +449,8 @@ void main() {
         fail('expected a FeedbackFailure');
       } on FeedbackFailure catch (failure) {
         expect(failure.toString(), isNot(contains('super secret detail')));
-        expect(failure.userFacingMessage, isNot(contains('super secret detail')));
+        expect(feedbackFailureCopy(_l10n, failure),
+            isNot(contains('super secret detail')));
       }
     });
   });
