@@ -236,40 +236,10 @@ void main() {
     });
   });
 
-  group('activityActorLabel', () {
-    final guardians = [
-      guardian('u1', displayName: 'Mom'),
-      guardian('u2'), // no display name -> role label
-      guardian('u3', displayName: ''), // empty display name -> role label
-    ];
-
-    test('null id stays null; never an invented actor', () {
-      expect(activityActorLabel(null, 'me', guardians), isNull);
-    });
-
-    test('current user reads as "you"', () {
-      expect(activityActorLabel('me', 'me', guardians), 'you');
-      expect(activityActorLabel('me', 'me', const []), 'you');
-    });
-
-    test('display name, then role label, then "a guardian", never a uuid',
-        () {
-      expect(activityActorLabel('u1', 'me', guardians), 'Mom');
-      expect(activityActorLabel('u2', 'me', guardians), 'Co-Parent');
-      expect(activityActorLabel('u3', 'me', guardians), 'Co-Parent');
-      expect(activityActorLabel('unknown-uuid', 'me', guardians),
-          'a guardian');
-      expect(activityActorLabel('unknown-uuid', 'me', const []),
-          'a guardian');
-    });
-
-    test('a revoked guardian still resolves by name (historical rows)', () {
-      final revoked = [
-        guardian('ex', displayName: 'Ex', status: GuardianStatus.revoked),
-      ];
-      expect(activityActorLabel('ex', 'me', revoked), 'Ex');
-    });
-  });
+  // Issue #545: activityActorLabel moved to lib/ui/l10n/activity_actor_copy.dart
+  // (it rendered "you"/"a guardian"/the role label — user-facing copy that
+  // no longer belongs in this pure-Dart domain module). Pinned now in
+  // test/ui/l10n/activity_actor_copy_test.dart.
 
   group('isActivityNew', () {
     final item = ActivityItem(

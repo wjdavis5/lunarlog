@@ -9,6 +9,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/transfer_failure_copy.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile.dart';
@@ -154,18 +156,20 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       // Without this, the parent would be stuck seeing only f's generic
       // message with no way to act, for up to the orphaned transfer's full
       // TTL. Look it up so they can cancel it and try again.
-      await _loadActiveTransfer(fallbackMessage: f.userFacingMessage);
+      if (!mounted) return;
+      await _loadActiveTransfer(
+          fallbackMessage: transferFailureCopy(AppLocalizations.of(context), f));
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Something went wrong. Please try again.';
+          _error = AppLocalizations.of(context).commonSomethingWentWrong;
           _loading = false;
         });
       }
@@ -186,7 +190,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
@@ -223,14 +227,14 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Something went wrong. Please try again.';
+          _error = AppLocalizations.of(context).commonSomethingWentWrong;
           _loading = false;
         });
       }
@@ -260,14 +264,14 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Something went wrong. Please try again.';
+          _error = AppLocalizations.of(context).commonSomethingWentWrong;
           _loading = false;
         });
       }

@@ -17,6 +17,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
+import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
 
 import '../../domain/repositories/activity_feed_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
@@ -240,8 +243,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('End prediction sharing?'),
         content: const Text(
-            'They will immediately lose the shared predictions calendar. '
-            'You can create a new connection any time.'),
+          'They will immediately lose the shared predictions calendar. '
+          'You can create a new connection any time.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -250,7 +254,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error),
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
             child: const Text('End sharing'),
           ),
         ],
@@ -270,7 +275,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Failed to end sharing. Check connection.')),
+            content: Text('Failed to end sharing. Check connection.'),
+          ),
         );
       }
       return;
@@ -282,8 +288,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
 
   void _loadPendingInvites() {
     setState(() {
-      _pendingInvitesFuture =
-          widget.sharingService.listPendingInvites(widget.profile.id);
+      _pendingInvitesFuture = widget.sharingService.listPendingInvites(
+        widget.profile.id,
+      );
     });
   }
 
@@ -294,10 +301,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// "synced, and the caller isn't a manager" (see [_callerRoleOf] and the
   /// FAB gate below, which only hide controls once rows have actually
   /// arrived).
-  Stream<List<ProfileGuardian>?> get _guardianRows =>
-      widget.guardiansRepository
-          .watchForProfile(widget.profile.id)
-          .map((rows) => rows.isEmpty ? null : rows);
+  Stream<List<ProfileGuardian>?> get _guardianRows => widget.guardiansRepository
+      .watchForProfile(widget.profile.id)
+      .map((rows) => rows.isEmpty ? null : rows);
 
   List<ProfileGuardian> _acceptedOf(List<ProfileGuardian>? rows) =>
       (rows ?? const [])
@@ -332,9 +338,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     final isSelf = guardian.userId == widget.currentUserId;
     if (isSelf) {
       if (callerRole != GuardianRole.primaryGuardian) return true;
-      return activeGuardians.any((g) =>
-          g.role == GuardianRole.primaryGuardian &&
-          g.userId != widget.currentUserId);
+      return activeGuardians.any(
+        (g) =>
+            g.role == GuardianRole.primaryGuardian &&
+            g.userId != widget.currentUserId,
+      );
     }
     if (callerRole == GuardianRole.primaryGuardian) return true;
     if (callerRole == GuardianRole.coParent) {
@@ -355,7 +363,8 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// the raw error code: only a self-leave attempt by a primary guardian
   /// can hit that specific rejection.
   String _revokeErrorMessage(Object error, ProfileGuardian guardian) {
-    final isSelfPrimaryLeave = guardian.userId == widget.currentUserId &&
+    final isSelfPrimaryLeave =
+        guardian.userId == widget.currentUserId &&
         guardian.role == GuardianRole.primaryGuardian;
     if (isSelfPrimaryLeave) {
       return "You're now the only primary guardian, so you can't leave. "
@@ -382,28 +391,36 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// complexity cap) so the confirmation dialog's own branching (which
   /// caller is leaving vs. removing someone else) isn't counted against
   /// [_revoke] itself.
-  Future<bool?> _confirmRevoke(ProfileGuardian guardian) => showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('Remove ${guardian.displayName ?? guardian.role.label}?'),
-          content: Text(
-            guardian.userId == widget.currentUserId
-                ? 'You will leave this profile and no longer receive updates or sync its entries.'
-                : 'This caregiver will lose access to ${widget.profile.displayName}\'s calendar and entries.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
-              child: const Text('Remove'),
-            ),
-          ],
+  Future<bool?> _confirmRevoke(ProfileGuardian guardian) {
+    final roleLabel = guardianRoleLabel(
+      AppLocalizations.of(context),
+      guardian.role,
+    );
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${guardian.displayName ?? roleLabel}?'),
+        content: Text(
+          guardian.userId == widget.currentUserId
+              ? 'You will leave this profile and no longer receive updates or sync its entries.'
+              : 'This caregiver will lose access to ${widget.profile.displayName}\'s calendar and entries.',
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// See [_confirmRevoke]'s doc comment: the actual RPC + busy-state +
   /// error-surfacing, split out of [_revoke] for the same reason.
@@ -415,8 +432,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         targetUserId: guardian.userId,
       );
       if (mounted) {
+        final roleLabel = guardianRoleLabel(
+          AppLocalizations.of(context),
+          guardian.role,
+        );
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Removed ${guardian.displayName ?? guardian.role.label}')),
+          SnackBar(
+            content: Text('Removed ${guardian.displayName ?? roleLabel}'),
+          ),
         );
       }
     } catch (e) {
@@ -483,13 +506,17 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     // #544: blocks a second tap while this invitation's own cancel is in
     // flight.
     if (_cancellingInviteIds.contains(invite.invitationId)) return;
+    final l10n = AppLocalizations.of(context);
+    final inviteRoleLabel = guardianRoleLabel(l10n, invite.role);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-            'Cancel invitation for ${invite.recipientLabel?.isNotEmpty == true ? invite.recipientLabel! : invite.role.label}?'),
+          'Cancel invitation for ${invite.recipientLabel?.isNotEmpty == true ? invite.recipientLabel! : inviteRoleLabel}?',
+        ),
         content: const Text(
-            'The invite link will stop working immediately. You can send a new one any time.'),
+          'The invite link will stop working immediately. You can send a new one any time.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -497,7 +524,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
             child: const Text('Cancel Invitation'),
           ),
         ],
@@ -508,10 +537,17 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
 
     setState(() => _cancellingInviteIds.add(invite.invitationId));
     try {
-      final outcome = await widget.sharingService.cancelInvite(invite.invitationId);
+      final outcome = await widget.sharingService.cancelInvite(
+        invite.invitationId,
+      );
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(outcome.userFacingMessage)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            inviteCancellationCopy(AppLocalizations.of(context), outcome),
+          ),
+        ),
+      );
       // Every outcome is terminal for this row (R5): refresh regardless, so
       // an already-accepted invitation never lingers as a stale pending
       // row - the accepted guardian itself shows up via the live guardian
@@ -520,7 +556,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to cancel invitation. Check connection.')),
+          const SnackBar(
+            content: Text('Failed to cancel invitation. Check connection.'),
+          ),
         );
       }
     } finally {
@@ -530,7 +568,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     }
   }
 
-  Widget _pendingInvitesSection(List<ProfileGuardian>? rows, GuardianRole? callerRole) {
+  Widget _pendingInvitesSection(
+    List<ProfileGuardian>? rows,
+    GuardianRole? callerRole,
+  ) {
     final theme = Theme.of(context);
     // Mirrors the FAB gate's null-vs-empty discipline: rows still null
     // (not yet synced) must not collapse this into "not a manager".
@@ -548,8 +589,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           content = const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Center(
-                child:
-                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           );
         } else if (snapshot.hasError) {
           content = Padding(
@@ -564,10 +609,15 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           final invites = snapshot.data ?? const [];
           content = invites.isEmpty
               ? Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Text(
                     'No pending invitations',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 )
               : Column(
@@ -584,7 +634,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text('Pending invitations', style: theme.textTheme.titleSmall),
+              child: Text(
+                'Pending invitations',
+                style: theme.textTheme.titleSmall,
+              ),
             ),
             content,
           ],
@@ -594,9 +647,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   Widget _pendingInviteTile(PendingInvite invite, GuardianRole? callerRole) {
+    final l10n = AppLocalizations.of(context);
+    final roleLabel = guardianRoleLabel(l10n, invite.role);
     final label = invite.recipientLabel?.isNotEmpty == true
         ? invite.recipientLabel!
-        : invite.role.label;
+        : roleLabel;
     // Issue #362: a recently expired invitation renders as a distinct row
     // state - an `Expired` subtitle (never a negative countdown) with a
     // Resend action that re-opens the existing invite flow, then reloads.
@@ -605,7 +660,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         key: ValueKey('pending-invite-${invite.invitationId}'),
         leading: const Icon(Icons.mail_outline),
         title: Text(label),
-        subtitle: Text('${invite.role.label} • Expired'),
+        subtitle: Text('$roleLabel • Expired'),
         trailing: _canCancelInvite(invite, callerRole)
             ? TextButton(
                 onPressed: _openInviteDialog,
@@ -621,23 +676,23 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       key: ValueKey('pending-invite-${invite.invitationId}'),
       leading: const Icon(Icons.mail_outline),
       title: Text(label),
-      subtitle: Text('${invite.role.label} • ${_expiryLabel(invite.expiresAt)}'),
+      subtitle: Text('$roleLabel • ${_expiryLabel(invite.expiresAt)}'),
       trailing: _canCancelInvite(invite, callerRole)
           ? (cancelling
-              ? const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : IconButton(
-                  key: ValueKey('cancel-invite-${invite.invitationId}'),
-                  icon: const Icon(Icons.cancel_outlined),
-                  tooltip: 'Cancel invitation',
-                  onPressed: () => _cancelInvite(invite),
-                ))
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : IconButton(
+                    key: ValueKey('cancel-invite-${invite.invitationId}'),
+                    icon: const Icon(Icons.cancel_outlined),
+                    tooltip: l10n.manageGuardiansCancelInviteTooltip,
+                    onPressed: () => _cancelInvite(invite),
+                  ))
           : null,
     );
   }
@@ -645,8 +700,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
-    final notificationPreferencesService = widget.notificationPreferencesService;
+    final notificationPreferencesService =
+        widget.notificationPreferencesService;
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.profile.displayName} Caregivers'),
@@ -657,12 +714,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           // Issue #139: contextual entry point to the guardian-roles card.
           IconButton(
             key: const ValueKey('guardians-help-action'),
-            tooltip: 'About roles',
+            tooltip: l10n.manageGuardiansAboutRolesTooltip,
             icon: const Icon(Icons.help_outline),
-            onPressed: () => showHelpCardSheet(
-              context,
-              HelpCards.guardianRoles,
-            ),
+            onPressed: () =>
+                showHelpCardSheet(context, HelpCards.guardianRoles),
           ),
           if (widget.activityRepository != null)
             ActivityFeedButton(
@@ -676,12 +731,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               final callerRole = _callerRoleOf(rows);
               final canTransfer =
                   callerRole == GuardianRole.primaryGuardian &&
-                      widget.ownershipTransferService != null;
+                  widget.ownershipTransferService != null;
               if (!canTransfer) {
                 return const SizedBox.shrink();
               }
               return IconButton(
-                tooltip: 'Transfer ownership',
+                tooltip: l10n.manageGuardiansTransferOwnershipTooltip,
                 icon: const Icon(Icons.compare_arrows),
                 onPressed: () => Navigator.of(context).push(
                   buildNamedRoute<void>(
@@ -698,7 +753,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           if (notificationPreferencesService != null)
             IconButton(
               key: const ValueKey('notifications-action'),
-              tooltip: 'Notifications',
+              tooltip: l10n.manageGuardiansNotificationsTooltip,
               icon: const Icon(Icons.notifications_outlined),
               onPressed: () => Navigator.of(context).push(
                 buildNamedRoute<void>(
@@ -719,8 +774,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       // know the caller isn't a manager.
       // A nested StreamBuilder keeps the same proven-settling structure
       // as the body below.
-      floatingActionButton:
-          StreamBuilder<List<ProfileGuardian>?>(
+      floatingActionButton: StreamBuilder<List<ProfileGuardian>?>(
         stream: _guardianRows,
         builder: (context, snapshot) {
           final rows = snapshot.data;
@@ -772,13 +826,22 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.people_outline, size: 48, color: theme.colorScheme.onSurfaceVariant),
+                        Icon(
+                          Icons.people_outline,
+                          size: 48,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         const SizedBox(height: 12),
-                        Text('No caregivers linked yet', style: theme.textTheme.titleMedium),
+                        Text(
+                          'No caregivers linked yet',
+                          style: theme.textTheme.titleMedium,
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           'Invite a co-parent or caregiver to sync and share tracking.',
-                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -821,7 +884,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// when no PredictionConnectionService is configured (R26's null-gating
   /// discipline); the create affordance shows only for the profile's
   /// accepted primary guardian - the server enforces both again.
-  Widget _predictionSection(List<ProfileGuardian>? rows, GuardianRole? callerRole) {
+  Widget _predictionSection(
+    List<ProfileGuardian>? rows,
+    GuardianRole? callerRole,
+  ) {
     final service = _predictionService;
     if (service == null) {
       return const SizedBox.shrink();
@@ -835,14 +901,19 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text('Predictions-only sharing', style: theme.textTheme.titleSmall),
+          child: Text(
+            'Predictions-only sharing',
+            style: theme.textTheme.titleSmall,
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
           child: Text(
             'Shares estimated period, fertile, ovulation, and PMS days on a '
             'read-only calendar - never notes or logs. One connection.',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
         // Issue #373: PRIVACY.md - minor profiles are never shared. The
@@ -854,16 +925,21 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
             child: Text(
               "Prediction sharing is not available for a minor's profile.",
               key: const ValueKey('share-predictions-minor'),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           )
         else if (!_predictionConnectionLoaded)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Center(
-                child:
-                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           )
         else if (_predictionConnection == null)
           Padding(
@@ -877,8 +953,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                   )
                 : Text(
                     'Only the primary guardian can share predictions.',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
           )
         else
@@ -887,29 +964,34 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     );
   }
 
-  Widget _predictionTile(ActivePredictionConnection connection, bool isPrimary) {
+  Widget _predictionTile(
+    ActivePredictionConnection connection,
+    bool isPrimary,
+  ) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final title = connection.pending
         ? (connection.recipientLabel?.isNotEmpty == true
-            ? connection.recipientLabel!
-            : 'Waiting for code redemption')
+              ? connection.recipientLabel!
+              : 'Waiting for code redemption')
         : (connection.recipientLabel?.isNotEmpty == true
-            ? connection.recipientLabel!
-            : 'Sharing predictions');
+              ? connection.recipientLabel!
+              : 'Sharing predictions');
     return ListTile(
       key: const ValueKey('prediction-connection-tile'),
-      leading: Icon(
-        connection.pending ? Icons.schedule : Icons.calendar_month,
-      ),
+      leading: Icon(connection.pending ? Icons.schedule : Icons.calendar_month),
       title: Wrap(
         crossAxisAlignment: WrapCrossAlignment.center,
         spacing: 6,
         children: [
           Text(title),
           if (connection.pending)
-            Text('pending',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            Text(
+              'pending',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
         ],
       ),
       subtitle: Text(
@@ -921,7 +1003,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           ? IconButton(
               key: const ValueKey('revoke-prediction-connection'),
               icon: const Icon(Icons.link_off),
-              tooltip: 'End prediction sharing',
+              tooltip: l10n.manageGuardiansEndSharingTooltip,
               onPressed: _revokePredictionConnection,
             )
           : null,
@@ -935,12 +1017,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   List<GuardianRole> _allowedNewRoles(
     ProfileGuardian guardian,
     GuardianRole? callerRole,
-  ) =>
-      allowedNewRoles(
-        callerRole: callerRole,
-        target: guardian,
-        currentUserId: widget.currentUserId,
-      );
+  ) => allowedNewRoles(
+    callerRole: callerRole,
+    target: guardian,
+    currentUserId: widget.currentUserId,
+  );
 
   String _roleChangeErrorMessage(Object error) {
     if (error is SharingUnauthorizedFailure) {
@@ -956,15 +1037,18 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     // #544: blocks a second selection while this guardian's own role
     // change is in flight.
     if (_changingRoleUserIds.contains(guardian.userId)) return;
+    final l10n = AppLocalizations.of(context);
+    final currentRoleLabel = guardianRoleLabel(l10n, guardian.role);
+    final newRoleLabel = guardianRoleLabel(l10n, newRole);
     final name = guardian.displayName?.isNotEmpty == true
         ? guardian.displayName!
-        : guardian.role.label;
+        : currentRoleLabel;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Change role to ${newRole.label}?'),
+        title: Text('Change role to $newRoleLabel?'),
         content: Text(
-          '$name currently has ${guardian.role.label} access. '
+          '$name currently has $currentRoleLabel access. '
           '${roleChangeConsequence(guardian.role, newRole)} '
           'No new invitation is needed — the new role applies on their '
           'next sync.',
@@ -993,14 +1077,13 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Role updated to ${newRole.label}')),
+          SnackBar(content: Text('Role updated to $newRoleLabel')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_roleChangeErrorMessage(e))),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_roleChangeErrorMessage(e))));
       }
     } finally {
       if (mounted) {
@@ -1016,6 +1099,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     List<ProfileGuardian> activeGuardians,
   ) {
     final theme = Theme.of(context);
+    final roleLabel = guardianRoleLabel(
+      AppLocalizations.of(context),
+      guardian.role,
+    );
     final isMe =
         widget.currentUserId != null && guardian.userId == widget.currentUserId;
 
@@ -1041,15 +1128,27 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           Text(
             guardian.displayName?.isNotEmpty == true
                 ? guardian.displayName!
-                : guardian.role.label,
-            style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                : roleLabel,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           if (isMe)
-            Text('(you)', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
+            Text(
+              '(you)',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
         ],
       ),
-      subtitle: Text(guardian.role.label),
-      trailing: _guardianTrailing(context, guardian, callerRole, activeGuardians),
+      subtitle: Text(roleLabel),
+      trailing: _guardianTrailing(
+        context,
+        guardian,
+        callerRole,
+        activeGuardians,
+      ),
     );
   }
 
@@ -1065,6 +1164,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     final newRoles = _allowedNewRoles(guardian, callerRole);
     final canRevoke = _canRevoke(guardian, callerRole, activeGuardians);
     if (newRoles.isEmpty && !canRevoke) return null;
+    final l10n = AppLocalizations.of(context);
     final isMe =
         widget.currentUserId != null && guardian.userId == widget.currentUserId;
     // #544: each trigger disables itself while its own mutation for this
@@ -1087,14 +1187,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                 )
               : PopupMenuButton<GuardianRole>(
                   key: ValueKey('change-role-${guardian.userId}'),
-                  tooltip: 'Change role',
+                  tooltip: l10n.manageGuardiansChangeRoleTooltip,
                   icon: const Icon(Icons.manage_accounts_outlined),
                   onSelected: (role) => _changeRole(guardian, role),
                   itemBuilder: (ctx) => [
                     for (final role in newRoles)
                       PopupMenuItem<GuardianRole>(
                         value: role,
-                        child: Text(role.label),
+                        child: Text(guardianRoleLabel(l10n, role)),
                       ),
                   ],
                 ),
@@ -1111,7 +1211,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               : IconButton(
                   key: ValueKey('revoke-${guardian.userId}'),
                   icon: const Icon(Icons.remove_circle_outline),
-                  tooltip: isMe ? 'Leave profile' : 'Remove caregiver',
+                  tooltip: isMe
+                      ? l10n.manageGuardiansLeaveProfileTooltip
+                      : l10n.manageGuardiansRemoveCaregiverTooltip,
                   onPressed: () => _revoke(guardian),
                 ),
       ],

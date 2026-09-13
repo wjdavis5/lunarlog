@@ -106,6 +106,8 @@ Future<Harness> pumpCare(
         ChangeNotifierProvider<AuthController>.value(value: authController),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: CareNotesScreen(
           profile: profile,
           repository: care,
