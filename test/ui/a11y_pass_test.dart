@@ -491,6 +491,48 @@ void main() {
       await db.close();
     });
 
+    testWidgets(
+        'issue #556: the legend toggle, layers toggle, and layer FilterChips '
+        'all meet the 48dp minimum tap target', (tester) async {
+      final db = await pumpCalendar(tester);
+
+      final legendToggle =
+          tester.getSize(find.byKey(const ValueKey('legend-toggle')));
+      expect(legendToggle.height, greaterThanOrEqualTo(48));
+
+      final layersToggle =
+          tester.getSize(find.byKey(const ValueKey('symptom-layers-toggle')));
+      expect(layersToggle.width, greaterThanOrEqualTo(48));
+      expect(layersToggle.height, greaterThanOrEqualTo(48));
+
+      await tester.tap(find.byKey(const ValueKey('symptom-layers-toggle')));
+      await tester.pumpAndSettle();
+      final chip = tester.getSize(
+        find.byKey(const ValueKey('layer-chip-cramps')),
+      );
+      expect(chip.height, greaterThanOrEqualTo(48),
+          reason: 'VisualDensity.compact used to shrink this to ~40dp');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets(
+        'issue #556: the legend stays expanded by default at a large text '
+        'scale instead of auto-collapsing', (tester) async {
+      final db = await pumpCalendar(tester, textScale: 2.0);
+
+      expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
+      expect(find.text('Light flow'), findsOneWidget,
+          reason: 'the legend must not hide itself from the very users a '
+              'large text scale suggests need it most');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
     testWidgets('the bleed circle grows with the text scale instead of '
         'clipping its scaled numeral', (tester) async {
       final db = await pumpCalendar(tester, textScale: 2.0);

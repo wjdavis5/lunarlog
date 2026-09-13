@@ -58,6 +58,11 @@ class AccountHarness {
   final FakeSyncEngine engine = FakeSyncEngine();
   int resets = 0;
 
+  /// #542: when set, [resetDevice] throws instead of wiping data — lets a
+  /// test simulate a reset failure (disk full, relocation failure, …)
+  /// without ever actually resetting anything.
+  bool failNextReset = false;
+
   /// #1 (review fix): call-order log shared with [auth]'s own recorded
   /// calls (via [FakeAuthService.signOutCalls]) so a test can assert
   /// removePushRegistration ran *before* the corresponding signOut call,
@@ -77,6 +82,10 @@ class AccountHarness {
         // Mirrors the root's reset (test/ui/device_reset_test.dart proves
         // the real order): local wipe first, local sign-out last.
         resetDevice: () async {
+          if (failNextReset) {
+            failNextReset = false;
+            throw StateError('reset failed');
+          }
           resets++;
           pushRemovalOrder.add('reset');
           await db.wipeAllData();
@@ -963,6 +972,43 @@ void main() {
       // #216: first-run now opens on the introduction's first card.
       expect(find.text('A private cycle log for your family'), findsOneWidget,
           reason: 'first-run');
+      await h.dispose();
+    });
+
+    testWidgets('#542: a reset failure shows InlineError with retry and '
+        're-enables both buttons instead of stranding the user', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn(id: 'u2');
+      h.engine.emitPhase(SyncPhase.accountMismatch, boundUserId: 'u1');
+      await tester.pumpAndSettle();
+
+      h.failNextReset = true;
+      await tester.tap(key('mismatch-remove-data'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('mismatch-remove-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(h.resets, 0, reason: 'the reset threw before wiping anything');
+      expect(key('mismatch-error'), findsOneWidget);
+      expect(
+        tester.widget<OutlinedButton>(key('mismatch-remove-data')).onPressed,
+        isNotNull,
+        reason: 'busy must be cleared even when the reset throws',
+      );
+      expect(
+        tester.widget<FilledButton>(key('mismatch-switch-account')).onPressed,
+        isNotNull,
+      );
+
+      // Retrying (via InlineError's own Retry action) succeeds once the
+      // underlying failure is gone.
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('mismatch-remove-confirm'));
+      await tester.pumpAndSettle();
+      expect(h.resets, 1);
+      expect(key('mismatch-error'), findsNothing);
       await h.dispose();
     });
 

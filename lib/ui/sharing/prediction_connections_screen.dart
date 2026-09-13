@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../observability/route_names.dart';
 import '../components/inline_error.dart';
+import '../l10n/dates.dart' as dates;
 import '../routes.dart';
 import 'prediction_connection_calendar_screen.dart';
 
@@ -180,7 +181,7 @@ class _PredictionConnectionsScreenState
                 leading: const Icon(Icons.calendar_month),
                 title: const Text('Cycle predictions'),
                 subtitle: Text(
-                    'Shared ${_formatDate(connection.acceptedAt)} • '
+                    'Shared ${_formatDate(context, connection.acceptedAt)} • '
                     'phases only'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
@@ -202,8 +203,7 @@ class _PredictionConnectionsScreenState
   }
 }
 
-String _formatDate(DateTime utc) {
-  final local = utc.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)}';
-}
+/// #554: locale-aware short date -- was a hand-rolled, always `YYYY-MM-DD`
+/// string.
+String _formatDate(BuildContext context, DateTime utc) =>
+    dates.formatShortDate(utc.toLocal(), locale: dates.calendarLocale(context));

@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
+import '../components/inline_error.dart';
 
 class AcceptPredictionConnectionSheet extends StatefulWidget {
   const AcceptPredictionConnectionSheet({
@@ -103,13 +104,13 @@ class _AcceptPredictionConnectionSheetState
               'or logs are ever shared or synced to this device.',
               style: TextStyle(height: 1.35),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ],
+            if (_error != null)
+              // No onRetry: the Connect button right below is the retry
+              // affordance. No leading SizedBox either -- InlineError
+              // already carries its own vertical padding, and this
+              // sheet's tight modal height has no room for both plus a
+              // TextButton row.
+              InlineError(message: _error!),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

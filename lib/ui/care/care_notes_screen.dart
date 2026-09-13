@@ -30,19 +30,19 @@ import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
-/// Formats an instant as a bare civil date (`2026-08-31`) for the
-/// attribution line. Time-of-day is not shown: "who and roughly when" is
-/// the whole contract, and a date keeps the copy stable across zones.
-String careAttributionDate(DateTime instant) {
-  final local = instant.toLocal();
-  final month = local.month.toString().padLeft(2, '0');
-  final day = local.day.toString().padLeft(2, '0');
-  return '${local.year}-$month-$day';
-}
+/// Formats an instant as a bare, locale-aware civil date (issue #554 --
+/// was a hand-rolled, always `YYYY-MM-DD` string) for the attribution
+/// line. Time-of-day is not shown: "who and roughly when" is the whole
+/// contract, and a date keeps the copy stable across zones.
+String careAttributionDate(BuildContext context, DateTime instant) =>
+    dates.formatShortDate(instant.toLocal(),
+        locale: dates.calendarLocale(context));
 
 class CareNotesScreen extends StatefulWidget {
   const CareNotesScreen({
@@ -139,11 +139,13 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
+                  // #555: null onRetry -- this banner is shared across six
+                  // different mutations (add/delete note, add/toggle/delete
+                  // prep item, clear checked), so there is no single action
+                  // to retry; each row's own control is the retry surface.
+                  child: InlineError(
                     key: const ValueKey('care-error'),
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.error),
+                    message: _error!,
                   ),
                 ),
               _CareNotesSection(
@@ -246,7 +248,37 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     }
   }
 
+  /// #553: a care note is a shared, multi-guardian record — any accepted
+  /// guardian can see (and, before this fix, one mistap could destroy)
+  /// text another guardian wrote. A confirmation matches the destructive-
+  /// action pattern used elsewhere (e.g. `profile_dialogs.dart`'s archive
+  /// confirm, `manage_guardians_screen.dart`'s remove/cancel confirms).
   Future<void> _deleteNote(CareNote note) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this care note?'),
+        content: const Text(
+          'Every guardian with access to this profile can see this note. '
+          'Deleting it removes it for everyone and cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('care-note-delete-confirm'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
     setState(() => _error = null);
     try {
       await widget.repository.deleteCareNote(note.id);
@@ -417,7 +449,7 @@ class _CareNoteRow extends StatelessWidget {
                 guardians: guardians,
               ),
             Text(
-              careAttributionDate(note.updatedAt),
+              careAttributionDate(context, note.updatedAt),
               key: ValueKey('care-note-by-${note.id}'),
             ),
           ],

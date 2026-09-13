@@ -26,6 +26,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
@@ -63,7 +64,7 @@ class ActivityFeedScreen extends StatefulWidget {
 }
 
 class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
-  late final Stream<ActivityFeedSnapshot> _feedStream;
+  late Stream<ActivityFeedSnapshot> _feedStream;
   late final DayEntriesRepository _entriesRepository;
   String? _currentUserId;
   AuthController? _auth;
@@ -102,6 +103,12 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     setState(() => _currentUserId = auth.currentUserId);
   }
 
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level `StreamBuilder`.
+  void _retryFeed() {
+    setState(() => _feedStream = widget.repository.watch(widget.profile.id));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,18 +116,21 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       body: StreamBuilder<ActivityFeedSnapshot>(
         stream: _feedStream,
         builder: (context, snapshot) {
-          final data = snapshot.data;
-          if (data == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          _onFirstSnapshot(data);
-          if (!data.isShared) {
-            return _singleGuardianState(context);
-          }
-          if (data.items.isEmpty) {
-            return _noActivityState(context);
-          }
-          return _list(context, data);
+          return AsyncSnapshotView<ActivityFeedSnapshot>(
+            snapshot: snapshot,
+            errorMessage: 'Could not load the activity feed.',
+            onRetry: _retryFeed,
+            builder: (context, data) {
+              _onFirstSnapshot(data);
+              if (!data.isShared) {
+                return _singleGuardianState(context);
+              }
+              if (data.items.isEmpty) {
+                return _noActivityState(context);
+              }
+              return _list(context, data);
+            },
+          );
         },
       ),
     );
