@@ -13,11 +13,13 @@
 /// `setRouteNameAsTransaction` feeds, and it appears on every event, not
 /// just navigation breadcrumbs), culprit, fingerprint, sdk, debug images,
 /// modules, threads (frames only; Dart never fills locals), `contexts.os`,
-/// `contexts.runtime`, `contexts.app.version`, the request URL up to `?` and
-/// its method, exception type names with their stack frames, and breadcrumbs
-/// that pass [scrubBreadcrumb]. `user`, `extra`, `server_name`, every other
-/// context, request headers, bodies, query strings, and message params never
-/// do.
+/// `contexts.runtime`, `contexts.app.version`, the request URL up to `?`
+/// with any UUID-shaped path segment redacted (issue #640/LLA-082 —
+/// [scrubUrl]; keeps a Storage object path from carrying an account or
+/// ticket identifier) and its method, exception type names with their stack
+/// frames, and breadcrumbs that pass [scrubBreadcrumb]. `user`, `extra`,
+/// `server_name`, every other context, request headers, bodies, query
+/// strings, and message params never do.
 library;
 
 import 'package:lunarlog/observability/route_names.dart';
@@ -400,6 +402,33 @@ String stripQueryString(String url) {
   return index < 0 ? url : url.substring(0, index);
 }
 
+/// A UUID (any RFC 4122 version — hex digits in the canonical 8-4-4-4-12
+/// dashed grouping), matched case-insensitively.
+final RegExp _uuidPattern = RegExp(
+  r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+);
+
+/// Replaces every UUID-shaped run in [url] with `<id>` (issue #640/LLA-082).
+///
+/// A general rule rather than a single hard-coded bucket: it catches the
+/// account uuid, ticket uuid, and generated object-name uuid alike in a
+/// Storage path like `.../storage/v1/object/feedback-attachments/UID/
+/// TICKET_ID/OBJECT_UUID.png` (see
+/// `SupabaseFeedbackService._attachAndUpdate`), and any other UUID-shaped
+/// path segment a future endpoint introduces — without needing to know the
+/// bucket name or path shape. Matches wherever a UUID appears in the
+/// string, not just as a whole path segment, since the object name embeds
+/// a file extension right after it (`OBJECT_UUID.png`).
+String _redactUuidSegments(String url) =>
+    url.replaceAll(_uuidPattern, '<id>');
+
+/// The combined URL scrub every recorded URL (request, breadcrumb, span
+/// data) goes through: [stripQueryString] cuts the query string, then
+/// [_redactUuidSegments] normalises any UUID-shaped path segment that
+/// survives — so an account or ticket identifier embedded in a Storage
+/// object path never reaches Sentry, not just a query-string value.
+String scrubUrl(String url) => _redactUuidSegments(stripQueryString(url));
+
 bool _isDataLayerException(SentryException exception) {
   final type = exception.type?.toLowerCase() ?? '';
   if (sentryDataLayerTypeMarkers.any(type.contains)) return true;
@@ -530,7 +559,8 @@ String? _scrubSpanDescription(String? description) {
 }
 
 /// KTD9: rebuilds one span's `data` under an allowlist, using the SDK's
-/// real key names — `url` (truncated at `?`), `http.request.method`,
+/// real key names — `url` (truncated at `?`, then UUID-redacted via
+/// [scrubUrl] — issue #640/LLA-082), `http.request.method`,
 /// `http.response.status_code`, `http.response_content_length`,
 /// `db.system`, `db.operation`. `http.query`/`http.fragment` and every
 /// other key are dropped. Mutates [span.data] in place: `SentrySpan.data`'s
@@ -550,7 +580,7 @@ void _scrubSpanDataInPlace(SentrySpan span) {
   final data = span.data;
   final url = data['url'];
   final allowed = <String, dynamic>{
-    if (url is String) 'url': stripQueryString(url),
+    if (url is String) 'url': scrubUrl(url),
     for (final key in const [
       'http.request.method',
       'http.response.status_code',
@@ -629,7 +659,7 @@ SentryRequest? _scrubRequest(SentryRequest? request) {
   if (request == null) return null;
   final url = request.url;
   return SentryRequest(
-    url: url == null ? null : stripQueryString(url),
+    url: url == null ? null : scrubUrl(url),
     method: request.method,
   );
 }
@@ -717,13 +747,14 @@ bool _breadcrumbDataMustDrop(String? category, Map<String, dynamic>? data) {
   return category != 'navigation' && _dataValuesMentionDenyListedKey(data);
 }
 
-/// Rebuilds an `http` breadcrumb's `data` with the URL cut at `?` and the
-/// query/fragment entries dropped, leaving every other entry as-is.
+/// Rebuilds an `http` breadcrumb's `data` with the URL cut at `?`, any
+/// UUID-shaped path segment redacted ([scrubUrl] — issue #640/LLA-082), and
+/// the query/fragment entries dropped, leaving every other entry as-is.
 Map<String, dynamic> _scrubHttpBreadcrumbData(Map<String, dynamic> data) =>
     <String, dynamic>{
       for (final entry in data.entries)
         if (entry.key == 'url' && entry.value is String)
-          entry.key: stripQueryString(entry.value as String)
+          entry.key: scrubUrl(entry.value as String)
         else if (entry.key != 'http.query' && entry.key != 'http.fragment')
           entry.key: entry.value,
     };
@@ -731,7 +762,8 @@ Map<String, dynamic> _scrubHttpBreadcrumbData(Map<String, dynamic> data) =>
 /// Applies the KTD12 breadcrumb rules. Returns null (drop) when the
 /// breadcrumb's `data` carries a deny-listed key at any depth; otherwise a
 /// new breadcrumb with navigation `data` rebuilt under an allowlist (U1;
-/// KTD1/KTD2 — see [scrubNavigationData]), `http` URLs cut at `?`,
+/// KTD1/KTD2 — see [scrubNavigationData]), `http` URLs scrubbed via
+/// [scrubUrl] (cut at `?`, UUID-shaped path segments redacted),
 /// and `message` scrubbed via [_scrubBreadcrumbMessage] — raw
 /// console/debugPrint text can itself carry health-log content or a DB
 /// error with bound arguments, and this breadcrumb goes to the Sentry SDK
