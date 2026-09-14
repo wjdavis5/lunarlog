@@ -47,15 +47,15 @@ import 'generated_migrations/schema.dart';
 
 /// The current schema version, kept in lockstep with
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
-/// dump. A mismatch here is caught by the `schema version is 8` assertion
+/// dump. A mismatch here is caught by the `schema version is 19` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 18;
+const int _kCurrentSchemaVersion = 19;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -217,6 +217,34 @@ void main() {
         ]),
         reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create all '
             'four issue #197 indexes',
+      );
+    });
+
+    test(
+        'upgrading from v$fromVersion creates the two issue #625 (LLA-101) '
+        'observations indexes — same invisible-to-migrateAndValidate '
+        'situation as uq_day_entries_profile_date_live above', () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      // Every fixture in _kOlderSchemaVersions is < 19 (the version these
+      // two indexes were introduced at), so the `_upgradeToV19` step always
+      // runs here — unlike the four issue #197 indexes above, no
+      // pre-seeding is needed for any fromVersion this loop covers.
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+      final indexNames = (await db
+              .customSelect(
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
+              )
+              .get())
+          .map((row) => row.read<String>('name'))
+          .toSet();
+      expect(
+        indexNames,
+        containsAll(['ix_observations_day_entry_id', 'ix_observations_profile_id']),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create both '
+            'issue #625 observations indexes',
       );
     });
 

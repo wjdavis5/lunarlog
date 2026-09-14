@@ -78,6 +78,30 @@ const String kVisitPrepItemsProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_visit_prep_items_profile_id '
     'ON visit_prep_items (profile_id)';
 
+/// Schema v19 (issue #625, LLA-101): composite index over
+/// `observations(day_entry_id, id)` — [LunarLogStorageQueries.
+/// getObservationsForDayEntry]/[LunarLogStorageQueries.
+/// watchObservationsForDayEntry] (the day-sheet/autosave read path) filter
+/// by `day_entry_id` and order by `id`; before this version `observations`
+/// carried only its primary-key index, so both queries scanned every
+/// observation in the local store. `id` trails `day_entry_id` in the index
+/// so the same index also satisfies the `ORDER BY id` without a separate
+/// sort step.
+const String kObservationsDayEntryIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_observations_day_entry_id '
+    'ON observations (day_entry_id, id)';
+
+/// Schema v19 (issue #625, LLA-101): composite index over
+/// `observations(profile_id, id)` — see [kObservationsDayEntryIndexSql]'s
+/// doc comment; this is the same fix for [LunarLogStorageQueries.
+/// getObservationsForProfile]/[LunarLogStorageQueries.
+/// watchObservationsForProfile] (account export, and any other
+/// whole-profile observation read), which filter by `profile_id` and order
+/// by `id` the same way.
+const String kObservationsProfileIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_observations_profile_id '
+    'ON observations (profile_id, id)';
+
 @DriftDatabase(tables: [
   Profiles,
   DayEntries,
@@ -154,8 +178,14 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   `access_revoked_at` on `profiles` (Issue #635, LLA-041: marks a
   ///   revocation-wiped row so a later re-share always restores it,
   ///   regardless of a stale, unpushed local `updated_at`).
+  /// * 19 — [kObservationsDayEntryIndexSql] and
+  ///   [kObservationsProfileIndexSql] (Issue #625, LLA-101): `observations`
+  ///   carried only its primary-key index before this version, so the
+  ///   day-sheet/autosave read path (`getObservationsForDayEntry`) and the
+  ///   whole-profile read path (`getObservationsForProfile`) each scanned
+  ///   every observation in the local store.
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -168,6 +198,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await customStatement(kProfileGuardiansProfileIndexSql);
           await customStatement(kCareNotesProfileIndexSql);
           await customStatement(kVisitPrepItemsProfileIndexSql);
+          await customStatement(kObservationsDayEntryIndexSql);
+          await customStatement(kObservationsProfileIndexSql);
         },
         onUpgrade: (m, from, to) => onUpgradeSteps(m, from, to),
         beforeOpen: (details) async {
@@ -207,6 +239,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `profiles.bbt_unit`, `profiles.weight_unit`. Issue #259 adds
   /// `profiles.tracking_preferences`. Issue #635 adds
   /// `profile_guardians.server_version`, `profiles.access_revoked_at`.
+  /// Issue #625 adds `observations.day_entry_id_index`,
+  /// `observations.profile_id_index`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -348,6 +382,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV17(m, from);
     // Issue #635's v18 step, same shape again.
     await _upgradeToV18(m, from);
+    // Issue #625's v19 step, same shape again.
+    await _upgradeToV19(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -371,6 +407,13 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await customStatement(kDayEntriesDirtyIndexSql);
     await customStatement(kDayEntriesUpdatedAtIndexSql);
     await customStatement(kProfileGuardiansProfileIndexSql);
+    // Issue #625 extends the same unconditional re-assert to the two v19
+    // observations indexes, for the identical reason: a schema-verification
+    // fixture that starts at v19 or later via `createAll` alone never ran
+    // the real `onCreate` or the `from < 19` step below, so nothing else
+    // would create them there. A no-op for every real device.
+    await customStatement(kObservationsDayEntryIndexSql);
+    await customStatement(kObservationsProfileIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -573,6 +616,22 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       }
       await m.addColumn(profiles, profiles.accessRevokedAt);
       await migrationStepHook?.call('profiles.access_revoked_at');
+    });
+  }
+
+  /// The v19 upgrade step (Issue #625, LLA-101): two plain indexes on
+  /// `observations` — no column changes, same shape as the `from < 8` block
+  /// above (issue #197), which is the last time this codebase added a
+  /// plain index rather than a column or table. Each is a fresh
+  /// `CREATE INDEX IF NOT EXISTS`, so there is no "already got it for free
+  /// from createTable" case to guard against.
+  Future<void> _upgradeToV19(Migrator m, int from) async {
+    if (from >= 19) return;
+    await transaction(() async {
+      await customStatement(kObservationsDayEntryIndexSql);
+      await migrationStepHook?.call('observations.day_entry_id_index');
+      await customStatement(kObservationsProfileIndexSql);
+      await migrationStepHook?.call('observations.profile_id_index');
     });
   }
 
