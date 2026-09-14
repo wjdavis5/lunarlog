@@ -346,6 +346,18 @@ abstract class AppLocalizations {
   /// **'no prediction for this date'**
   String get calendarCellNoPrediction;
 
+  /// InlineError message (announced as a screen-reader live region) when the calendar's prediction stream errors. Issue #602.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the cycle estimate.'**
+  String get cyclePredictionLoadError;
+
+  /// InlineError message (announced as a screen-reader live region) when a cycle-history stream errors. Shared by the calendar's history badge (MonthCalendar) and CycleHistorySection, since both show the same failure for the same underlying stream shape. Issue #602.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load cycle history.'**
+  String get cycleHistoryLoadError;
+
   /// Tooltip on the month/year picker's back-year chevron.
   ///
   /// In en, this message translates to:
@@ -633,6 +645,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'See cycle history'**
   String get overviewSeeHistory;
+
+  /// InlineError message (announced as a screen-reader live region) when OverviewPanel's prediction stream errors. Issue #602.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your cycle estimate.'**
+  String get overviewEstimateLoadError;
 
   /// Snackbar confirming the today card's quick-log action.
   ///
@@ -1779,6 +1797,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Activity'**
   String get activityFeedTooltip;
+
+  /// InlineError message (announced as a screen-reader live region) when ActivityFeedScreen's feed stream errors. Issue #602.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the activity feed.'**
+  String get activityFeedLoadError;
 
   /// Tooltip on a pending invitation's cancel icon button.
   ///

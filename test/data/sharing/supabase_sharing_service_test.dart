@@ -370,7 +370,7 @@ void main() {
       expect(invites.single.recipientLabel, 'Sitter');
       expect(invites.single.createdAt.isUtc, isTrue);
       expect(invites.single.expiresAt.isUtc, isTrue);
-      expect(invites.single.isExpired, isFalse);
+      expect(invites.single.isExpiredAt(DateTime.now().toUtc()), isFalse);
     });
 
     test('filters by the recently-expired cutoff (now - window), not by now, '
@@ -407,7 +407,7 @@ void main() {
       // The expired-within-window row is returned, not filtered out.
       expect(invites, hasLength(1));
       expect(invites.single.invitationId, 'inv-expired');
-      expect(invites.single.isExpired, isTrue);
+      expect(invites.single.isExpiredAt(DateTime.now().toUtc()), isTrue);
 
       // The request admits anything expiring after now - window.
       expect(expiresParam, isNotNull);

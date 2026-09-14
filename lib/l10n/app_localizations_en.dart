@@ -149,6 +149,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarCellNoPrediction => 'no prediction for this date';
 
   @override
+  String get cyclePredictionLoadError => 'Could not load the cycle estimate.';
+
+  @override
+  String get cycleHistoryLoadError => 'Could not load cycle history.';
+
+  @override
   String get monthPickerPreviousYear => 'Previous year';
 
   @override
@@ -322,6 +328,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewSeeHistory => 'See cycle history';
+
+  @override
+  String get overviewEstimateLoadError => 'Could not load your cycle estimate.';
 
   @override
   String get overviewLoggedSnackbar =>
@@ -990,6 +999,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get activityFeedTooltip => 'Activity';
+
+  @override
+  String get activityFeedLoadError => 'Could not load the activity feed.';
 
   @override
   String get manageGuardiansCancelInviteTooltip => 'Cancel invitation';

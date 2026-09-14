@@ -122,7 +122,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         builder: (context, snapshot) {
           return AsyncSnapshotView<ActivityFeedSnapshot>(
             snapshot: snapshot,
-            errorMessage: 'Could not load the activity feed.',
+            errorMessage: AppLocalizations.of(context).activityFeedLoadError,
             onRetry: _retryFeed,
             builder: (context, data) {
               _onFirstSnapshot(data);

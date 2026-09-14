@@ -195,6 +195,14 @@
   "@calendarCellNoPrediction": {
     "description": "Screen-reader fragment for a future day whose forecast cell carries no marker."
   },
+  "cyclePredictionLoadError": "Could not load the cycle estimate.",
+  "@cyclePredictionLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when the calendar's prediction stream errors. Issue #602."
+  },
+  "cycleHistoryLoadError": "Could not load cycle history.",
+  "@cycleHistoryLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when a cycle-history stream errors. Shared by the calendar's history badge (MonthCalendar) and CycleHistorySection, since both show the same failure for the same underlying stream shape. Issue #602."
+  },
   "monthPickerPreviousYear": "Previous year",
   "@monthPickerPreviousYear": {
     "description": "Tooltip on the month/year picker's back-year chevron."
@@ -396,6 +404,10 @@
   "overviewSeeHistory": "See cycle history",
   "@overviewSeeHistory": {
     "description": "Link from the overview panel to the Insights cycle history."
+  },
+  "overviewEstimateLoadError": "Could not load your cycle estimate.",
+  "@overviewEstimateLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when OverviewPanel's prediction stream errors. Issue #602."
   },
   "overviewLoggedSnackbar": "Recorded a medium-flow period start for today.",
   "@overviewLoggedSnackbar": {
@@ -1215,6 +1227,10 @@
   "activityFeedTooltip": "Activity",
   "@activityFeedTooltip": {
     "description": "Tooltip on the activity feed app bar action."
+  },
+  "activityFeedLoadError": "Could not load the activity feed.",
+  "@activityFeedLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when ActivityFeedScreen's feed stream errors. Issue #602."
   },
   "manageGuardiansCancelInviteTooltip": "Cancel invitation",
   "@manageGuardiansCancelInviteTooltip": {

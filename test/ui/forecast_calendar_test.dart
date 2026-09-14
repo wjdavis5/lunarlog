@@ -1226,4 +1226,55 @@ void main() {
       await disposeForecast(tester, h);
     });
   });
+
+  group('clock seam (issue #304)', () {
+    // Proves the injected todayProvider actually drives the rendered
+    // forecast, rather than merely being accepted and ignored (the exact
+    // bug this issue was filed to audit -- see #299, which fixed the same
+    // class of drop for CycleHistorySection).
+    //
+    // kSteadyStarts' open cycle estimates its next start at Sep 4, 2026
+    // (Aug 5 + the 30-day mean). Once "today" sits more than
+    // kLateGraceDays past an estimate, `_rollLateEstimate`
+    // (lib/domain/prediction/prediction.dart) steps it forward a full mean
+    // cycle length at a time until it is current again -- so a "today" far
+    // past Sep 4 moves the rendered predicted band to a different month
+    // entirely. If MonthCalendar silently stopped forwarding
+    // `todayProvider` to `CyclePredictionService.watch` (falling back to
+    // the real wall clock for both pumps below), the predicted band would
+    // land on the same date in both cases -- whatever the real wall clock
+    // computes -- rather than moving the way this test expects.
+    testWidgets(
+        'the same open cycle predicts a different band for two different '
+        'injected "today"s', (tester) async {
+      final near = await pumpForecast(
+        tester,
+        today: kToday, // 2026-08-30: 25 days past the Aug 5 open start.
+        bleedStarts: kSteadyStarts,
+      );
+      await showMonthForward(tester, 2026, 9);
+      expect(
+        find.byKey(const ValueKey('predicted-2026-09-04')),
+        findsOneWidget,
+        reason: 'un-rolled: the mean-cycle estimate lands on Sep 4',
+      );
+      await disposeForecast(tester, near);
+
+      final far = await pumpForecast(
+        tester,
+        today: LocalDate(2026, 11, 20), // 107 days past the same start.
+        bleedStarts: kSteadyStarts,
+      );
+      await showMonthForward(tester, 2026, 12);
+      expect(
+        find.byKey(const ValueKey('predicted-2026-12-03')),
+        findsOneWidget,
+        reason: 'rolled forward three whole 30-day steps (Sep 4 -> Oct 4 '
+            '-> Nov 3 -> Dec 3) to stay within grace of Nov 20 -- this can '
+            'only differ from the pump above if todayProvider actually '
+            'reached CyclePredictionService.watch',
+      );
+      await disposeForecast(tester, far);
+    });
+  });
 }

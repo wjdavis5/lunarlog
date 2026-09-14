@@ -128,7 +128,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
             padding: const EdgeInsets.only(top: LLSpace.space3),
             child: InlineError(
               key: const ValueKey('cycle-history-error'),
-              message: 'Could not load cycle history.',
+              message: AppLocalizations.of(context).cycleHistoryLoadError,
               onRetry: _retry,
             ),
           );
