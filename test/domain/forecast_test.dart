@@ -280,21 +280,50 @@ void main() {
         start: _d(2026, 9, 4),
         tier: CycleConfidence.high,
       );
-      expect(cycles.first.fertileWindow.estimatedOvulation,
+      expect(cycles.first.fertileWindow!.estimatedOvulation,
           expectedFirst.estimatedOvulation);
-      expect(cycles.first.fertileWindow.windowStart, expectedFirst.windowStart);
-      expect(cycles.first.fertileWindow.windowEnd, expectedFirst.windowEnd);
-      expect(cycles.first.fertileWindow.tier, CycleConfidence.high);
+      expect(cycles.first.fertileWindow!.windowStart, expectedFirst.windowStart);
+      expect(cycles.first.fertileWindow!.windowEnd, expectedFirst.windowEnd);
+      expect(cycles.first.fertileWindow!.tier, CycleConfidence.high);
 
       // Cycle 1: start Oct 4, already stepped down to learning — its
       // fertile window must carry that same degraded tier, not cycle 0's.
       expect(cycles[1].start, _d(2026, 10, 4));
       expect(cycles[1].tier, CycleConfidence.learning);
-      expect(cycles[1].fertileWindow.tier, CycleConfidence.learning);
+      expect(cycles[1].fertileWindow!.tier, CycleConfidence.learning);
       expect(
-        cycles[1].fertileWindow.estimatedOvulation,
+        cycles[1].fertileWindow!.estimatedOvulation,
         _d(2026, 10, 4).addDays(-kDefaultLutealPhaseDays),
       );
+    });
+
+    test(
+        'Issue LLA-064: a regimen-schedule (pack-driven) prediction never '
+        'gets a fertile window on any forecast cycle', () {
+      final prediction = ActivePrediction(
+        today: _d(2026, 1, 15),
+        lastEpisodeStart: _d(2026, 1, 1),
+        estimatedNextStart: _d(2026, 1, 29),
+        originalEstimatedNextStart: _d(2026, 1, 29),
+        averagedCycleLengths: const [],
+        meanCycleLengthDays: 28,
+        cycleDay: 15,
+        duringEpisode: false,
+        completedCycleCount: 0,
+        validCycleCount: 0,
+        tier: CycleConfidence.high,
+        basis: PredictionBasis.regimenSchedule,
+      );
+      final cycles = deriveForecast(
+        prediction: prediction,
+        history: deriveCycleHistory(episodes: const [], today: _d(2026, 1, 15)),
+        today: _d(2026, 1, 15),
+        horizonMonths: 2,
+      );
+      expect(cycles, isNotEmpty);
+      for (final cycle in cycles) {
+        expect(cycle.fertileWindow, isNull);
+      }
     });
   });
 
@@ -517,8 +546,8 @@ void main() {
       final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 2);
       expect(cycles[1].start, _d(2026, 10, 4));
       expect(cycles[1].tier, CycleConfidence.learning);
-      expect(cycles[1].fertileWindow.windowStart, _d(2026, 9, 15));
-      expect(cycles[1].fertileWindow.windowEnd, _d(2026, 9, 21));
+      expect(cycles[1].fertileWindow!.windowStart, _d(2026, 9, 15));
+      expect(cycles[1].fertileWindow!.windowEnd, _d(2026, 9, 21));
 
       final cells = forecastDayCells(cycles: cycles, today: _d(2026, 8, 30));
       for (var i = 0; i < 7; i++) {

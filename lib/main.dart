@@ -21,6 +21,7 @@ import 'data/notifications/notification_scheduler.dart';
 import 'data/sync/supabase_sync_transport.dart';
 import 'data/sync/sync_transport.dart';
 import 'domain/auth/auth_service.dart';
+import 'domain/prediction/prediction_service.dart' show dateRolloverTicker;
 import 'domain/util/timezone.dart';
 import 'observability/sentry_bootstrap.dart';
 import 'startup/startup.dart';
@@ -115,5 +116,9 @@ Future<void> _runLunarlog() async {
     initialInviteCode: initialInviteCode,
     initialInviteProfileId: initialInviteProfileId,
     initialInviteKind: initialInviteKind,
+    // Issue LLA-070: the real, periodic civil-date-rollover ticker — see
+    // LunarLogRoot.dateTicker's own doc comment for why this is the only
+    // construction site that passes it.
+    dateTicker: dateRolloverTicker,
   )));
 }

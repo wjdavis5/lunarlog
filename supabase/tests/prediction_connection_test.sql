@@ -16,7 +16,7 @@
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(125);
+select plan(133);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -695,6 +695,81 @@ select throws_ok(
     tests.ulid(905), pg_temp.token(592)),
   '55000', 'prediction-only sharing is unavailable for a minor''s profile',
   'Issue #518: create_prediction_connection also refuses a birth_year-implied minor'
+);
+
+-- ---------------------------------------------------------------------------
+-- 6d. Issue LLA-061: retract_prediction_projection lets a client
+--     explicitly clear a stored snapshot the moment its local prediction
+--     moves to a suppressed state (Pregnancy/Postpartum/Perimenopause, a
+--     continuous birth-control method, or predictions turned off) --
+--     none of which the server can detect on its own, since the
+--     prediction algorithm is never recomputed server-side. A fresh
+--     profile (P6) isolates this section from P1/P2/P5's own state.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('mom');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(906), 'Riley P6', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_prediction_connection(tests.ulid(906), pg_temp.token(593), 'Partner', 72);
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(593));
+
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(906), '{"generated_at":"2026-09-11"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(906)),
+  1::bigint,
+  'fixture: a normal publish stores a projection for the retraction section'
+);
+
+-- An outsider with no guardian relationship on this profile is refused
+-- outright by the guardian-role check (SECURITY DEFINER raises rather
+-- than a plain RLS-filtered delete silently affecting zero rows).
+select tests.authenticate_as('stranger');
+select throws_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  '42501', 'only an accepted guardian of this profile can retract its prediction projection',
+  'Issue LLA-061: a non-guardian cannot retract another profile''s projection'
+);
+select is(
+  pg_temp.proj_count_for(tests.ulid(906)),
+  1::bigint,
+  'Issue LLA-061: the refused retraction leaves the stored projection intact'
+);
+
+-- The recipient itself -- not a guardian -- is refused the same way.
+select tests.authenticate_as('nanny');
+select throws_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  '42501', 'only an accepted guardian of this profile can retract its prediction projection',
+  'Issue LLA-061: the recipient cannot retract the projection it reads'
+);
+
+-- The sharer (an accepted guardian) can retract it.
+select tests.authenticate_as('mom');
+select lives_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  'Issue LLA-061: an accepted guardian can retract the profile''s stored projection'
+);
+select is(
+  pg_temp.proj_count_for(tests.ulid(906)),
+  0::bigint,
+  'Issue LLA-061: retract_prediction_projection deletes the stored row'
+);
+
+-- Idempotent: retracting an already-absent projection is a no-op.
+select lives_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  'Issue LLA-061: retracting an already-absent projection does not raise'
+);
+
+-- The recipient's read confirms the retraction took effect -- the same
+-- enumeration-safe null the minor/no-connection gates already return.
+select tests.authenticate_as('nanny');
+select is(
+  public.get_prediction_projection(tests.ulid(906)),
+  null,
+  'Issue LLA-061: the recipient reads null once the projection is retracted, exactly like an unpublished profile'
 );
 
 -- ---------------------------------------------------------------------------

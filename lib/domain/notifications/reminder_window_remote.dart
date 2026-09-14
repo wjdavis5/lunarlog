@@ -15,4 +15,14 @@ abstract interface class ReminderWindowRemote {
     required String estimatedNextStartIso,
     required bool episodeOpen,
   });
+
+  /// Deletes [profileId]'s published window, if any (issue LLA-061): a
+  /// suppression transition (Pregnancy/Postpartum/Perimenopause, a
+  /// continuous birth-control method, or predictions turned off) has no
+  /// live estimate left to publish, so the *previous* one must stop
+  /// being able to trigger `scan_missed_entry_reminders()` (its inner
+  /// join on `profile_reminder_windows` would otherwise keep reading a
+  /// stale row indefinitely). Idempotent: retracting an already-absent
+  /// window is a no-op, not an error.
+  Future<void> retract({required String profileId});
 }

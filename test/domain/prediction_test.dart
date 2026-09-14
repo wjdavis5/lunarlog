@@ -86,6 +86,10 @@ void main() {
       expect(p.daysUntilNextStart, 21);
       expect(p.duringEpisode, isFalse);
       expect(p.isLate, isFalse);
+      expect(p.basis, PredictionBasis.statistical,
+          reason: 'Issue LLA-064: the ordinary history-averaged estimate '
+              'is an ovulatory-cycle assumption fertile-window consumers '
+              'are entitled to make');
     });
 
     test('cycle day 1 and "period" phase during the latest episode', () {
@@ -110,6 +114,55 @@ void main() {
       ) as ActivePrediction;
       expect(p.daysUntilNextStart, 1);
       expect(p.untilNextPeriodLabel, '≈1 day until next period');
+    });
+  });
+
+  group('future-dated episodes never anchor "today" (issue LLA-071)', () {
+    test(
+        'a future-dated stored episode (a restored export, a multi-timezone '
+        'edit, a clock rollback) is ignored for the current-cycle anchor and '
+        'every history stat — identical output to the same history without '
+        'it', () {
+      final withoutFuture = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 4, 1)]),
+        today: d(2026, 4, 10),
+      ) as ActivePrediction;
+
+      final withFuture = computePrediction(
+        episodes: episodesFromStarts([
+          d(2026, 1, 1),
+          d(2026, 1, 29),
+          d(2026, 2, 28),
+          d(2026, 4, 1),
+          d(2026, 4, 26), // future relative to `today` below
+        ]),
+        today: d(2026, 4, 10),
+      ) as ActivePrediction;
+
+      expect(withFuture.lastEpisodeStart, withoutFuture.lastEpisodeStart);
+      expect(withFuture.cycleDay, withoutFuture.cycleDay);
+      expect(withFuture.cycleDay, greaterThan(0),
+          reason: 'the whole point: a future anchor used to produce a '
+              'zero or negative cycle day');
+      expect(
+          withFuture.completedCycleCount, withoutFuture.completedCycleCount);
+      expect(withFuture.estimatedNextStart, withoutFuture.estimatedNextStart);
+    });
+
+    test(
+        'every logged episode in the future (a wholesale clock rollback or a '
+        'restored future export) reads as NotEnoughHistory, never a negative '
+        'cycle day', () {
+      final result = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 5, 1), d(2026, 5, 29), d(2026, 6, 28), d(2026, 7, 26)]),
+        today: d(2026, 3, 20),
+      );
+      expect(result, isA<NotEnoughHistory>());
+      expect((result as NotEnoughHistory).episodeCount, 0,
+          reason: 'nothing has happened yet as of today, even though rows '
+              'are stored for a later date');
     });
   });
 

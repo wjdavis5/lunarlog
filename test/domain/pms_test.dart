@@ -111,6 +111,45 @@ void main() {
       );
       expect(usable, isEmpty);
     });
+
+    test(
+        'Issue LLA-069: a PMS interval starting ON a period is attributed to '
+        'THAT period (and discarded there as non-premenstrual, onset 0) — '
+        'never skipped forward to whatever period follows next. A second '
+        'episode is required to expose the old bug: with only one episode '
+        '(the test above), there is no "next" period for a wrong comparison '
+        'to wrongly skip forward to, which is why it shipped unnoticed.',
+        () {
+      final episodes = [
+        _episode(_d(2026, 1, 1), 4),
+        _episode(_d(2026, 1, 29), 4),
+      ];
+      final usable = usablePmsIntervals(
+        episodes: episodes,
+        intervalList: [PmsInterval(_d(2026, 1, 1), _d(2026, 1, 2))],
+      );
+      expect(usable, isEmpty,
+          reason: 'coincides with the Jan 1 period itself (onset 0) — not '
+              'wrongly attributed to Jan 29 with a bogus 28-day onset');
+    });
+
+    test(
+        'Issue LLA-069: a genuinely premenstrual interval the day before a '
+        'period still attributes to THAT (not the next) period when a later '
+        'episode also exists', () {
+      final episodes = [
+        _episode(_d(2026, 1, 1), 4),
+        _episode(_d(2026, 1, 29), 4),
+      ];
+      final usable = usablePmsIntervals(
+        episodes: episodes,
+        intervalList: [PmsInterval(_d(2025, 12, 30), _d(2025, 12, 31))],
+      );
+      expect(usable, hasLength(1));
+      expect(usable.single.followingPeriodStart, _d(2026, 1, 1));
+      expect(usable.single.onsetDays, 2);
+      expect(usable.single.lengthDays, 2);
+    });
   });
 
   group('computePmsEstimate', () {
@@ -191,6 +230,42 @@ void main() {
       expect(estimate!.usableIntervalCount, kAverageWindowCycles);
       expect(estimate.meanOnsetDaysBeforeNextPeriod, 2,
           reason: 'the stale 14-day interval sits outside the 6-window');
+    });
+
+    test(
+        'Issue LLA-069: an isolated PMS-marked day that coincides with a '
+        'period start is excluded, not counted as a bogus fourth interval '
+        'attributed to the following period (which would skew the mean)',
+        () {
+      final starts = [
+        _d(2026, 8, 1),
+        _d(2026, 8, 31),
+        _d(2026, 9, 30),
+        _d(2026, 10, 30),
+      ];
+      final pmsDates = {
+        // Legit intervals before Aug 31 / Sep 30 / Oct 30 only — Aug 1 has
+        // no predecessor, matching the "computePredictionFromEntries
+        // integration" fixture's own shape.
+        ...pmsOf(starts.sublist(1)),
+        // Isolated (no adjacent marker): coincides with the Aug 1 period
+        // itself. Before the fix this misattributed to Aug 31 with a
+        // bogus 30-day onset and entered the average as a fourth usable
+        // interval.
+        _d(2026, 8, 1),
+      };
+      final estimate = computePmsEstimate(
+        episodes: episodesOf(starts),
+        pmsDates: pmsDates,
+        nextPredictedStart: _d(2026, 11, 29),
+        tier: CycleConfidence.high,
+      );
+      expect(estimate, isNotNull);
+      expect(estimate!.usableIntervalCount, 3,
+          reason: 'the Aug 1 coincident-day marker must not become a '
+              'bogus fourth interval');
+      expect(estimate.meanOnsetDaysBeforeNextPeriod, 3);
+      expect(estimate.meanLengthDays, 3);
     });
 
     test('carries the period estimate tier through verbatim (no second '

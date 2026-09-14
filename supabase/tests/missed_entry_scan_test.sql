@@ -1,11 +1,12 @@
 -- Coverage for public.scan_missed_entry_reminders(),
--- public.sweep_notification_outbox(), and public.upsert_reminder_window()
--- (Issue #5, Unit U3). Runs on a stack started without pg_cron/pg_net
+-- public.sweep_notification_outbox(), public.upsert_reminder_window(),
+-- and public.retract_reminder_window() (Issue #5, Unit U3; issue LLA-061
+-- for the last one). Runs on a stack started without pg_cron/pg_net
 -- (AGENTS.md's `supabase start -x ...` exclusion list) -- these functions
 -- are exercised directly, proving KTD9's guard: the scan/sweep logic never
 -- depends on the cron schedule actually existing.
 begin;
-select plan(33);
+select plan(39);
 
 create function pg_temp.outbox_count(p_profile text, p_recipient uuid) returns bigint
 language sql security definer set search_path = '' as $$
@@ -566,5 +567,79 @@ select isnt(
   null,
   'sweep_notification_outbox leaves a claim stamped 1 minute ago alone'
 );
+
+-- ---------------------------------------------------------------------------
+-- Group 512 (issue LLA-061): retract_reminder_window lets a client
+-- explicitly clear a published window the moment its local prediction
+-- moves to a suppressed state (Pregnancy/Postpartum/Perimenopause, a
+-- continuous birth-control method, or predictions turned off) -- closing
+-- scan_missed_entry_reminders()'s inner-join gate immediately rather than
+-- leaving a stale window able to keep enqueueing alerts indefinitely.
+-- ---------------------------------------------------------------------------
+select tests.create_supabase_user('mom_s12');
+select tests.create_supabase_user('dad_s12');
+select tests.create_supabase_user('stranger_s12');
+
+select tests.authenticate_as('mom_s12');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(512), 'S12', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select public.create_guardian_invitation(
+  tests.ulid(512), 'co_parent', 'Dad',
+  '7373737373737373737373737373737373737373737373737373737373737373', 48
+);
+select tests.authenticate_as('dad_s12');
+select public.accept_guardian_invitation(
+  '7373737373737373737373737373737373737373737373737373737373737373', 'Dad'
+);
+insert into public.notification_preferences (user_id, profile_id, missed_entry_days)
+values (tests.get_supabase_uid('dad_s12'), tests.ulid(512), 2);
+select public.upsert_reminder_window(tests.ulid(512), (current_date - 1), false);
+
+-- An outsider with no guardian relationship on this profile cannot
+-- retract it -- RLS's USING clause simply filters the row out of the
+-- DELETE (SECURITY INVOKER, mirroring upsert_reminder_window's own
+-- posture), so the call itself does not raise, but nothing is removed.
+select tests.authenticate_as('stranger_s12');
+select lives_ok(
+  format($$select public.retract_reminder_window(%L)$$, tests.ulid(512)),
+  'Issue LLA-061: a non-guardian''s retract call does not raise (RLS filters it out)'
+);
+select tests.authenticate_as('dad_s12');
+select isnt(
+  (select estimated_next_start from public.profile_reminder_windows where profile_id = tests.ulid(512)),
+  null,
+  'Issue LLA-061: the outsider''s retract left the published window intact'
+);
+
+-- The guardian who published it can retract it.
+select lives_ok(
+  format($$select public.retract_reminder_window(%L)$$, tests.ulid(512)),
+  'Issue LLA-061: an accepted guardian can retract the profile''s published window'
+);
+select is(
+  (select count(*) from public.profile_reminder_windows where profile_id = tests.ulid(512)),
+  0::bigint,
+  'Issue LLA-061: retract_reminder_window deletes the row'
+);
+
+-- Idempotent: retracting an already-absent window is a no-op.
+select lives_ok(
+  format($$select public.retract_reminder_window(%L)$$, tests.ulid(512)),
+  'Issue LLA-061: retracting an already-absent window does not raise'
+);
+
+-- The missed-entry gate stays closed: a stale-entries profile with no
+-- published window enqueues nothing -- scan_missed_entry_reminders()'s
+-- inner join on profile_reminder_windows excludes it entirely, the same
+-- "no row at all" posture Group 508 (top of this file) already proves.
+select tests.authenticate_as('mom_s12');
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(5120), tests.ulid(512), (current_date - 5), 'UTC', 'medium', now());
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+select public.scan_missed_entry_reminders();
+select is(pg_temp.outbox_count(tests.ulid(512), tests.get_supabase_uid('dad_s12')), 0::bigint,
+  'Issue LLA-061: after retraction the missed-entry scan enqueues nothing for this profile');
 
 rollback;

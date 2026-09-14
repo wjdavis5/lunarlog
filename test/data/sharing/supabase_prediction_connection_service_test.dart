@@ -306,6 +306,40 @@ void main() {
     });
   });
 
+  group('retractProjection (issue LLA-061)', () {
+    test('calls retract_prediction_projection with the profile id', () async {
+      final client = makeClient((req) async {
+        expect(req.url.path, '/rest/v1/rpc/retract_prediction_projection');
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(body['p_profile_id'], 'p1');
+        return http.Response('null', 204);
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await service.retractProjection(profileId: 'p1');
+    });
+
+    test('maps a server rejection through the same error mapping as every '
+        'other RPC here', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'code': '42501',
+            'message':
+                'only an accepted guardian of this profile can retract its prediction projection',
+          }),
+          400,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await expectLater(
+        service.retractProjection(profileId: 'p1'),
+        throwsA(const PredictionConnectionFailure.unauthorized()),
+      );
+    });
+  });
+
   group('getActiveConnection', () {
     test('selects explicit non-secret columns and maps the pending vs '
         'active shapes', () async {

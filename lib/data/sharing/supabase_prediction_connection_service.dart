@@ -258,6 +258,18 @@ class SupabasePredictionConnectionService
     }
   }
 
+  @override
+  Future<void> retractProjection({required String profileId}) async {
+    try {
+      await client.rpc<dynamic>(
+        'retract_prediction_projection',
+        params: {'p_profile_id': profileId},
+      );
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
   PredictionConnectionFailure _mapError(Object error) {
     if (error is PredictionConnectionFailure) return error;
     if (error is SocketException || error is http.ClientException) {

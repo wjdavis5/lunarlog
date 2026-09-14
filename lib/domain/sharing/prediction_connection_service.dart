@@ -342,4 +342,16 @@ abstract interface class PredictionConnectionService {
     required String profileId,
     required PredictionProjection projection,
   });
+
+  /// Deletes [profileId]'s stored projection, if any (issue LLA-061): a
+  /// suppression transition (Pregnancy/Postpartum/Perimenopause, a
+  /// continuous birth-control method, or predictions turned off) leaves
+  /// no live estimate to publish, but the connection itself is still
+  /// active — unlike revocation or the minor gate, nothing server-side
+  /// automatically clears a stored snapshot in this case, so the
+  /// publisher calls this explicitly the moment it observes the
+  /// transition, rather than leaving a previously published snapshot
+  /// readable indefinitely. Idempotent: retracting an already-empty
+  /// projection is a no-op, not an error.
+  Future<void> retractProjection({required String profileId});
 }

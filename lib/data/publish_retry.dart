@@ -95,3 +95,46 @@ PublishRetryDecision decidePublishRetry(
   unawaited(Sentry.captureException(error, stackTrace: stackTrace));
   return const PublishRetryDecision.stop();
 }
+
+/// The shared tail of a publisher's `_flush`/`_flushRetraction` catch
+/// block (issues #547/LLA-062), extracted so
+/// `LocalPredictionProjectionPublisher` and `ReminderWindowPublisher` stop
+/// duplicating it byte-for-byte (both tripped CI's CRAP gate carrying it
+/// inline). The caller has already done its own disposed/staleness checks
+/// — those are the caller's concerns, not this policy's — and passes in
+/// its own per-profile [retryAttempts]/[timers] maps plus [attempt]-
+/// independent hooks: [onRetry] reinstates whatever caller-specific
+/// pending state the eventual [retry] call will need (run synchronously,
+/// before the timer is armed, so a genuine prediction arriving before the
+/// timer fires still finds the right thing to overwrite), [retry] is what
+/// actually runs when the backoff elapses, and [onGiveUp] does any
+/// caller-specific cleanup beyond clearing [retryAttempts] (which this
+/// function always does on giving up).
+void schedulePublishRetry({
+  required String profileId,
+  required Object error,
+  required StackTrace stackTrace,
+  required Map<String, int> retryAttempts,
+  required Map<String, Timer> timers,
+  required Duration retryDelay,
+  required void Function() onRetry,
+  required Future<void> Function() retry,
+  required void Function() onGiveUp,
+}) {
+  final attempt = (retryAttempts[profileId] ?? 0) + 1;
+  final decision = decidePublishRetry(
+    error,
+    stackTrace,
+    attempt: attempt,
+    backoff: (a) => exponentialPublishBackoff(a, initial: retryDelay),
+  );
+  if (!decision.shouldRetry) {
+    retryAttempts.remove(profileId);
+    onGiveUp();
+    return;
+  }
+  retryAttempts[profileId] = attempt;
+  onRetry();
+  timers[profileId]?.cancel();
+  timers[profileId] = Timer(decision.delay!, () => unawaited(retry()));
+}

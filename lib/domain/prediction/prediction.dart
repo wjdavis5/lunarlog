@@ -484,6 +484,28 @@ class PredictionsDisabled extends CyclePrediction {
   String toString() => 'PredictionsDisabled()';
 }
 
+/// What kind of schedule an [ActivePrediction] was derived from (issue
+/// LLA-064). Every consumer that infers something beyond "when is the next
+/// bleed" — most importantly `fertile_window.dart`'s ovulation
+/// back-calculation, which assumes a follicular cycle driving toward a
+/// real ovulation — must check this first: a [regimenSchedule] estimate
+/// carries no ovulatory information at all, so deriving a fertile window
+/// or ovulation date from it would assert a physiological event a fixed
+/// pill/patch/ring pack schedule says nothing about.
+enum PredictionBasis {
+  /// The ordinary history-based estimate (last episode start + mean of
+  /// recent valid cycle lengths) — an ovulatory cycle assumption fertile-
+  /// window back-calculation is entitled to make.
+  statistical,
+
+  /// [_packDrivenPrediction]'s withdrawal-bleed branch (issue #233): the
+  /// next bleed is predicted from a fixed pack cadence, not averaged
+  /// cycles. Combined hormonal contraception typically suppresses
+  /// ovulation, so this basis carries no fertility signal — consumers
+  /// must not back-calculate a fertile window or ovulation day from it.
+  regimenSchedule,
+}
+
 /// A live estimate: last episode start + mean of the most recent usable
 /// (valid per the 15–60 window, not omitted, recency-bounded) cycle
 /// lengths, rounded to a whole day. A skipped open cycle advances the
@@ -506,6 +528,7 @@ class ActivePrediction extends CyclePrediction {
     this.forecast = const [],
     this.unusuallyLongCycle = false,
     this.pms,
+    this.basis = PredictionBasis.statistical,
   });
 
   final LocalDate today;
@@ -594,6 +617,16 @@ class ActivePrediction extends CyclePrediction {
   /// seeded/provisional path: an onboarding answer never invents PMS
   /// history the operator did not log.
   final PmsEstimate? pms;
+
+  /// What this estimate is derived from (issue LLA-064) —
+  /// [PredictionBasis.statistical] for the ordinary history-averaged
+  /// estimate, [PredictionBasis.regimenSchedule] for
+  /// [_packDrivenPrediction]'s withdrawal-bleed branch. Fertile-window/
+  /// ovulation consumers ([fertile_window.dart], `forecast.dart`,
+  /// `prediction_projection.dart`, `scheduling.dart`) must check this
+  /// before deriving anything from [estimatedNextStart]/[forecast] — see
+  /// [PredictionBasis]'s own doc comment.
+  final PredictionBasis basis;
 
   /// Whole civil days from today to [estimatedNextStart] (negative when
   /// past). Once late, [estimatedNextStart] is the rolled date, so this
@@ -713,7 +746,16 @@ CyclePrediction computePrediction({
       today: today,
     );
   }
-  final sorted = [...episodes]..sort();
+  // Issue LLA-071: a future-dated stored episode (a restored export, a
+  // multi-timezone edit, or a device clock rollback) must never anchor
+  // "today's" cycle or inflate history stats — every stat and the
+  // current-cycle anchor below are always as-of [today]. The future row
+  // itself is never discarded from storage; it simply does not exist yet
+  // from this computation's point of view.
+  final sorted = [
+    for (final episode in [...episodes]..sort())
+      if (!episode.start.isAfter(today)) episode,
+  ];
   if (sorted.isEmpty) {
     return const NotEnoughHistory(
         episodeCount: 0, completedCycleCount: 0, validCycleCount: 0);
@@ -828,7 +870,12 @@ ActivePrediction _packDrivenPrediction({
   required LocalDate startedOn,
   required LocalDate today,
 }) {
-  final sorted = [...episodes]..sort();
+  // Issue LLA-071 (see computePrediction's own comment): a future-dated
+  // stored episode must never become the withdrawal-bleed anchor either.
+  final sorted = [
+    for (final episode in [...episodes]..sort())
+      if (!episode.start.isAfter(today)) episode,
+  ];
   final starts = [for (final episode in sorted) episode.start];
 
   // The most recent withdrawal bleed: the latest episode start on/after the
@@ -877,6 +924,7 @@ ActivePrediction _packDrivenPrediction({
     tier: CycleConfidence.high,
     forecast: forecast,
     unusuallyLongCycle: false,
+    basis: PredictionBasis.regimenSchedule,
   );
 }
 

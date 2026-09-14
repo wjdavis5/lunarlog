@@ -131,6 +131,10 @@ class _StubPredictionService implements PredictionConnectionService {
     required PredictionProjection projection,
   }) =>
       throw UnimplementedError();
+
+  @override
+  Future<void> retractProjection({required String profileId}) =>
+      throw UnimplementedError();
 }
 
 void main() {
