@@ -44,9 +44,13 @@
 ///   independently opens and passes `PRAGMA quick_check` is left
 ///   untouched (and gets the sentinel written retroactively, so the next
 ///   launch short-circuits immediately) — this covers both a fresh
-///   install and a device whose migration already fully completed. Only
-///   a target that isn't even an openable database — genuine residue, not
-///   live data — is cleared.
+///   install and a device whose migration already fully completed. A
+///   target that fails `quick_check` is the only remaining copy of
+///   whatever data it holds (there is no legacy file to fall back to), so
+///   it is never deleted — issue #614 moves it into a quarantine location
+///   beside itself (see [_quarantineDatabaseFiles]) and lets startup
+///   proceed with a fresh database at the original path, instead of the
+///   pre-#614 behavior of destroying it outright.
 /// * Legacy file present and the target carries the sentinel: the target
 ///   is authoritative and is never rewritten; only a best-effort legacy
 ///   cleanup happens (a killed process between the sentinel write and the
@@ -92,6 +96,13 @@ const String kRelocationSentinelName = '.relocation-complete';
 /// comment for why it goes before the suffix, not after.
 const String _kStagingMarker = '.migrating';
 
+/// Marker inserted between a damaged file's own path and its sqlite suffix
+/// once [_quarantineDatabaseFiles] has moved it aside — same
+/// before-the-suffix placement as [_kStagingMarker] and for the same
+/// reason (a bare `.quarantined` marker followed by a timestamp is not a
+/// suffix sqlite would ever try to interpret). Issue #614.
+const String _kQuarantineMarker = '.quarantined';
+
 /// Copies [from] to [to]. The seam [relocateLegacyDatabase] calls instead
 /// of `File.copy` directly, so a test can substitute a copier that fails
 /// partway through the sibling list and assert recovery on the next call.
@@ -99,6 +110,16 @@ typedef DatabaseFileCopier = Future<void> Function(File from, File to);
 
 Future<void> _defaultCopier(File from, File to) async {
   await from.copy(to.path);
+}
+
+/// Renames [from] to [to]. The seam [relocateLegacyDatabase] calls instead
+/// of `File.rename` directly for quarantining a damaged target (issue
+/// #614), so a test can substitute a renamer that fails partway through
+/// the sibling list and assert the rollback in [_quarantineDatabaseFiles].
+typedef DatabaseFileRenamer = Future<void> Function(File from, File to);
+
+Future<void> _defaultRenamer(File from, File to) async {
+  await from.rename(to.path);
 }
 
 File _sentinelFileFor(File targetFile) => File(
@@ -109,6 +130,14 @@ File _sentinelFileFor(File targetFile) => File(
 File _stagingFileFor(File targetFile, String suffix) =>
     File('${targetFile.path}$_kStagingMarker$suffix');
 
+/// The quarantine path for [dbFile]'s `[suffix]` sibling, unique per
+/// [stamp] so a second damaged file at the same path (a fresh database
+/// created after a first quarantine, later found damaged in its own
+/// right) never collides with — or silently overwrites — an earlier
+/// quarantined copy.
+File _quarantineFileFor(File dbFile, String suffix, int stamp) =>
+    File('${dbFile.path}$_kQuarantineMarker-$stamp$suffix');
+
 /// Deletes [dbFile] and every existing [kDatabaseSiblingSuffixes] sibling.
 /// Missing files are skipped.
 Future<void> deleteDatabaseFiles(File dbFile) async {
@@ -117,6 +146,50 @@ Future<void> deleteDatabaseFiles(File dbFile) async {
     if (await sibling.exists()) {
       await sibling.delete();
     }
+  }
+}
+
+/// Moves [dbFile] and every existing [kDatabaseSiblingSuffixes] sibling to
+/// a quarantine path beside itself (same directory/volume as
+/// [_promoteStagedFiles] already relies on for its own renames, so this is
+/// an atomic move, not a copy-then-delete — the original bytes are
+/// preserved exactly, never re-read or rewritten). Issue #614: used
+/// instead of [deleteDatabaseFiles] wherever a damaged file is the only
+/// remaining copy of its data, so startup can proceed with a fresh
+/// database without destroying evidence an operator might need to
+/// recover.
+///
+/// If any individual rename throws, everything already moved by this call
+/// is best-effort renamed back to its original path before the exception
+/// is rethrown — a partial quarantine must never leave the canonical file
+/// missing from both its original and quarantine locations. If even that
+/// rollback rename fails for some file, it simply stays at its quarantine
+/// path: still preserved, just not back where it started.
+Future<void> _quarantineDatabaseFiles(
+  File dbFile, {
+  required DatabaseFileRenamer renamer,
+}) async {
+  final stamp = DateTime.now().toUtc().microsecondsSinceEpoch;
+  final moved = <MapEntry<File, File>>[]; // original -> quarantined
+  try {
+    for (final suffix in kDatabaseSiblingSuffixes) {
+      final original = File('${dbFile.path}$suffix');
+      if (!await original.exists()) continue;
+      final quarantined = _quarantineFileFor(dbFile, suffix, stamp);
+      await renamer(original, quarantined);
+      moved.add(MapEntry(original, quarantined));
+    }
+  } catch (e) {
+    for (final entry in moved.reversed) {
+      try {
+        if (await entry.value.exists() && !await entry.key.exists()) {
+          await renamer(entry.value, entry.key);
+        }
+      } catch (_) {
+        // Best-effort rollback only — see the doc comment above.
+      }
+    }
+    rethrow;
   }
 }
 
@@ -243,15 +316,57 @@ bool _verifyStagedDatabase({
   }
 }
 
+/// The `file:` URI [_passesQuickCheck] opens [dbFile] through — `mode=ro`
+/// plus `immutable=1`, never a plain read-only open. `immutable=1` tells
+/// sqlite the file will not change out from under this connection, which
+/// (per SQLite's own URI docs) makes it skip locking *and* the
+/// hot-journal/WAL-recovery checks it would otherwise perform just to
+/// open the file — the two things that were mutating a damaged file's own
+/// sidecars merely by probing it (see [_passesQuickCheck]'s doc comment).
+/// A **plain** `mode=ro` was tried and rejected: sqlite still runs its
+/// ordinary hot-journal handling in that mode, and a hot journal needs
+/// write access to roll back — a healthy database caught mid-crash-recovery
+/// can fail to even open plain-read-only, which would misclassify it as
+/// damaged and quarantine a perfectly good file.
+Uri _immutableProbeUri(File dbFile) => Uri.file(dbFile.path)
+    .replace(queryParameters: {'mode': 'ro', 'immutable': '1'});
+
 /// Standalone `PRAGMA quick_check` probe with no legacy database to
 /// compare against — used only for the no-legacy branch of
 /// [relocateLegacyDatabase] (round 3's fix for finding #1), where the
 /// question is just "is this target itself an intact, openable database",
 /// not "does it match some other file".
+///
+/// Runs on *every* cold start once the legacy file is gone — the common
+/// steady state, not a rare migration path — so issue #614's review round
+/// specifically ruled out anything that touches the file more than
+/// read-only probing requires. An earlier version of this fix opened
+/// [dbFile] with a plain read-write connection, which is what motivated
+/// [_immutableProbeUri] in the first place: opening a damaged file that
+/// way — even only to run `PRAGMA quick_check`, and even when quick_check
+/// itself throws — lets sqlite3 silently delete or rewrite that file's own
+/// `-wal`/`-shm`/`-journal` sidecars as a side effect of its own
+/// hot-journal/WAL-recovery attempt (verified empirically: a garbage main
+/// file with garbage sidecars lost all three of them the instant
+/// quick_check was attempted). A second version staged a disposable copy
+/// of the whole database before probing it, which avoided that mutation
+/// but copies the entire canonical database on every single cold start —
+/// a real slow-startup and transient-disk-use regression for what is
+/// normally a no-op check. The immutable probe here supersedes both: it
+/// never touches the sidecars *and* never copies anything, verified
+/// against a healthy WAL-mode database with un-checkpointed `-wal`
+/// content (passes, `-wal`/`-shm` untouched), a healthy non-WAL database
+/// (passes), and a garbage main file with garbage sidecars (fails to
+/// open, every sidecar left byte-identical) — see the empirical probe
+/// script referenced in the PR.
 bool _passesQuickCheck(File dbFile) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbFile.path);
+    db = sqlite3.sqlite3.open(
+      _immutableProbeUri(dbFile).toString(),
+      uri: true,
+      mode: sqlite3.OpenMode.readOnly,
+    );
     final quickCheck = db.select('PRAGMA quick_check');
     return quickCheck.isNotEmpty && quickCheck.first.values.first == 'ok';
   } catch (e, s) {
@@ -288,11 +403,17 @@ Future<File> relocateLegacyDatabase({
   required File legacyFile,
   required File targetFile,
   DatabaseFileCopier copier = _defaultCopier,
+  DatabaseFileRenamer quarantineRenamer = _defaultRenamer,
 }) async {
   final sentinel = _sentinelFileFor(targetFile);
 
   if (!await legacyFile.exists()) {
-    return _handleNoLegacy(targetFile: targetFile, sentinel: sentinel);
+    return _handleNoLegacy(
+      targetFile: targetFile,
+      sentinel: sentinel,
+      quarantineRenamer: quarantineRenamer,
+      confirmCopier: copier,
+    );
   }
 
   if (await sentinel.exists()) {
@@ -327,28 +448,243 @@ Future<File> relocateLegacyDatabase({
 /// fresh install (which creates its database directly at the target and
 /// never earns a sentinel) and a device whose migration already fully
 /// completed. See the library doc comment's "round 3" section.
+///
+/// A target that fails the fast [_passesQuickCheck] immutable probe is
+/// *not* immediately quarantined: issue #614 review round 2 — the
+/// immutable probe deliberately never applies `-wal`/hot-`-journal`
+/// recovery (that is what keeps it copy-free and side-effect-free), but
+/// that also means it cannot tell a genuinely corrupt main file from one
+/// merely left inconsistent by a crash mid-checkpoint, whose *authoritative*
+/// data still lives in an intact `-wal`/`-journal` sidecar a normal open
+/// would recover cleanly. [_confirmDamagedTargetIsActuallyRecoverable]
+/// answers that with a one-time staged-copy probe (recovery allowed) —
+/// see its own doc comment — and only an actually-confirmed-damaged
+/// target reaches [_quarantineDamagedTarget]. This all runs the same way
+/// regardless of whether the sentinel happens to be present (a target can
+/// fail `quick_check` after being retroactively marked done by an earlier
+/// call, e.g. bit rot on disk between launches), so there is no separate
+/// "with sentinel" case to handle here.
 Future<File> _handleNoLegacy({
   required File targetFile,
   required File sentinel,
+  required DatabaseFileRenamer quarantineRenamer,
+  required DatabaseFileCopier confirmCopier,
 }) async {
   await _deleteStagingFiles(targetFile);
   if (await targetFile.exists()) {
     if (_passesQuickCheck(targetFile)) {
-      if (!await sentinel.exists()) {
-        // Retroactively mark this target as done so the next launch
-        // short-circuits immediately instead of re-running this check.
-        await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
-      }
+      await _markHealthy(targetFile: targetFile, sentinel: sentinel);
     } else {
-      // Not even an openable database, and there is no legacy copy to
-      // fall back to — genuine residue from a broken previous attempt.
-      // Clear it so ordinary DB-open machinery creates a fresh, empty
-      // database here, same as any other fresh install.
-      await deleteDatabaseFiles(targetFile);
-      if (await sentinel.exists()) await sentinel.delete();
+      await _handleFailedQuickCheck(
+        targetFile: targetFile,
+        sentinel: sentinel,
+        quarantineRenamer: quarantineRenamer,
+        confirmCopier: confirmCopier,
+      );
     }
   }
   return targetFile;
+}
+
+/// Retroactively marks [targetFile] as a completed relocation so the next
+/// launch's [relocateLegacyDatabase] call short-circuits immediately
+/// instead of re-running [_passesQuickCheck] (or the confirmation probe
+/// below it) again. A no-op if the sentinel already exists — this must
+/// never rewrite an existing sentinel's timestamp.
+Future<void> _markHealthy({
+  required File targetFile,
+  required File sentinel,
+}) async {
+  if (!await sentinel.exists()) {
+    await sentinel.writeAsString(DateTime.now().toUtc().toIso8601String());
+  }
+}
+
+/// Routes a target that failed the fast immutable [_passesQuickCheck]
+/// probe to the right outcome (issue #614 review round 2) — see
+/// [_confirmDamagedTargetIsActuallyRecoverable] for what each
+/// [_RecoveryConfirmation] value means and how it is reached.
+Future<void> _handleFailedQuickCheck({
+  required File targetFile,
+  required File sentinel,
+  required DatabaseFileRenamer quarantineRenamer,
+  required DatabaseFileCopier confirmCopier,
+}) async {
+  final confirmation = await _confirmDamagedTargetIsActuallyRecoverable(
+    targetFile: targetFile,
+    copier: confirmCopier,
+  );
+  switch (confirmation) {
+    case _RecoveryConfirmation.healthy:
+      await _markHealthy(targetFile: targetFile, sentinel: sentinel);
+    case _RecoveryConfirmation.damaged:
+      await _quarantineDamagedTarget(
+        targetFile: targetFile,
+        sentinel: sentinel,
+        renamer: quarantineRenamer,
+      );
+    case _RecoveryConfirmation.inconclusive:
+      // Leave targetFile and sentinel exactly as they are — see the doc
+      // comment on _RecoveryConfirmation.inconclusive. The next launch's
+      // call retries from the same state.
+      break;
+  }
+}
+
+/// The three outcomes [_confirmDamagedTargetIsActuallyRecoverable] can
+/// reach for a target that already failed the fast immutable
+/// [_passesQuickCheck] probe.
+enum _RecoveryConfirmation {
+  /// The staged-copy, recovery-enabled probe passed: the target was never
+  /// really damaged, just left in a state the side-effect-free immutable
+  /// probe cannot safely read (a hot `-wal`/`-journal` a normal open would
+  /// replay). Never quarantined; the sentinel is written and a later
+  /// normal open performs the real recovery on the real file.
+  healthy,
+
+  /// Either there was nothing to recover from (no `-wal`/`-journal`
+  /// sidecar at all) or the staged, recovery-enabled copy failed
+  /// `quick_check` too. Genuinely damaged: quarantine it.
+  damaged,
+
+  /// The confirmation attempt itself failed for a reason that says
+  /// nothing about whether the target is actually damaged (disk full, a
+  /// transient permission error, …) — see
+  /// [_confirmDamagedTargetIsActuallyRecoverable]'s doc comment. Neither
+  /// quarantined nor marked healthy; the target and sentinel are left
+  /// exactly as they were for the next launch to re-decide.
+  inconclusive,
+}
+
+/// Issue #614 review round 2: [_passesQuickCheck]'s immutable probe is
+/// deliberately side-effect-free (see its own doc comment), which means it
+/// never lets sqlite replay a `-wal`/hot-`-journal` sidecar — so it cannot
+/// distinguish a genuinely corrupt main file from one merely left
+/// inconsistent by a crash mid-checkpoint, whose authoritative data still
+/// lives intact in that sidecar. The app's database is WAL-mode (drift's
+/// `NativeDatabase`), so this is not a theoretical case: quarantining on
+/// the immutable probe's word alone would, in that specific crash window,
+/// discard a perfectly recoverable database and hand the user an empty
+/// app — the bytes would still be preserved in quarantine, but that is
+/// cold comfort for someone who just lost their history.
+///
+/// This confirmation step only runs once [_passesQuickCheck] has already
+/// failed, and only when a `-wal` or `-journal` sidecar actually exists to
+/// replay (nothing to recover from otherwise — straight to
+/// [_RecoveryConfirmation.damaged]). It stages a **copy** of the main file
+/// plus whichever of `-wal`/`-journal` exist (same before-the-suffix
+/// [_stagingFileFor] names the legacy-migration path already uses, so
+/// sqlite discovers them next to the staged main file exactly as it would
+/// the real ones) and opens that copy with an ordinary, unrestricted
+/// connection — recovery *allowed*, unlike [_passesQuickCheck] — before
+/// running `PRAGMA quick_check` on it. The original [targetFile] and its
+/// sidecars are never opened by this function at all, so this cannot
+/// itself reproduce the mutation-during-probe problem [_passesQuickCheck]
+/// was built to avoid. The staged files are always deleted afterward,
+/// success or failure.
+///
+/// If the staged copy passes, [targetFile] is treated as healthy — this
+/// function only *confirms*, it never itself performs the real recovery
+/// or promotes anything; a later ordinary DB open on [targetFile] does
+/// the actual recovery, on the real file, the same way it always would
+/// have without any of this. If the staged copy also fails
+/// `quick_check`, the target really is damaged.
+///
+/// Any exception while staging the copy (disk full, a transient
+/// permission error, …) is deliberately **not** evidence that the target
+/// is damaged — [_RecoveryConfirmation.inconclusive] — so it is recorded
+/// with only the exception's type (not the full exception or a
+/// stacktrace: this branch is reachable on every ordinary crash-recovery
+/// case, not just genuine faults, so it does not warrant the fuller
+/// capture other failure paths in this file use) and never quarantines or
+/// rethrows.
+Future<_RecoveryConfirmation> _confirmDamagedTargetIsActuallyRecoverable({
+  required File targetFile,
+  required DatabaseFileCopier copier,
+}) async {
+  final hasSidecarToReplay = await File('${targetFile.path}-wal').exists() ||
+      await File('${targetFile.path}-journal').exists();
+  if (!hasSidecarToReplay) return _RecoveryConfirmation.damaged;
+
+  final staged = <String, File>{};
+  try {
+    for (final suffix in const ['', '-wal', '-journal']) {
+      final source = File('${targetFile.path}$suffix');
+      if (!await source.exists()) continue;
+      final stagingFile = _stagingFileFor(targetFile, suffix);
+      await copier(source, stagingFile);
+      staged[suffix] = stagingFile;
+    }
+    final stagedMain = staged[''];
+    if (stagedMain == null) return _RecoveryConfirmation.damaged;
+    return _recoveryEnabledQuickCheckPasses(stagedMain)
+        ? _RecoveryConfirmation.healthy
+        : _RecoveryConfirmation.damaged;
+  } catch (e) {
+    unawaited(Sentry.captureMessage(
+      'database_relocation: recovery-confirmation staging failed '
+      '(${e.runtimeType})',
+    ));
+    return _RecoveryConfirmation.inconclusive;
+  } finally {
+    for (final file in staged.values) {
+      if (await file.exists()) await file.delete();
+    }
+  }
+}
+
+/// An ordinary, unrestricted `PRAGMA quick_check` on [stagedFile] —
+/// deliberately the opposite of [_passesQuickCheck]'s immutable probe:
+/// this one lets sqlite replay a `-wal`/hot-`-journal` sidecar staged
+/// next to it, which is the entire point (see
+/// [_confirmDamagedTargetIsActuallyRecoverable]'s doc comment). Only ever
+/// called on a disposable staged copy, never on a real canonical file.
+bool _recoveryEnabledQuickCheckPasses(File stagedFile) {
+  sqlite3.Database? db;
+  try {
+    db = sqlite3.sqlite3.open(stagedFile.path);
+    final quickCheck = db.select('PRAGMA quick_check');
+    return quickCheck.isNotEmpty && quickCheck.first.values.first == 'ok';
+  } catch (e, s) {
+    unawaited(Sentry.captureException(e, stackTrace: s));
+    return false;
+  } finally {
+    db?.close();
+  }
+}
+
+/// Not even an openable database, and there is no legacy copy to fall
+/// back to — this file is the only remaining copy of whatever data it
+/// holds, so it is moved aside rather than destroyed (issue #614: this
+/// used to be an unconditional [deleteDatabaseFiles] call, which
+/// permanently destroyed the only copy of a damaged-but-possibly-populated
+/// database). Once quarantined, [targetFile] no longer exists at its
+/// original path, so ordinary DB-open machinery creates a fresh, empty
+/// database there, same as any other fresh install; the damaged bytes
+/// live on, untouched, at their quarantine path for an operator to
+/// recover.
+///
+/// A failed quarantine attempt ([_quarantineDatabaseFiles] rethrows after
+/// rolling back anything it managed to move) is recorded via Sentry —
+/// paths only, never the file's contents or any query result — and
+/// deliberately does **not** fall back to deleting [targetFile]: the
+/// damaged file is left exactly where it was, so the next startup sees
+/// the same "target exists, fails quick_check" state and tries again
+/// rather than silently losing the data. The sentinel (a bare completion
+/// timestamp, not user data) is only cleared once quarantine has actually
+/// succeeded.
+Future<void> _quarantineDamagedTarget({
+  required File targetFile,
+  required File sentinel,
+  required DatabaseFileRenamer renamer,
+}) async {
+  try {
+    await _quarantineDatabaseFiles(targetFile, renamer: renamer);
+  } catch (e, s) {
+    unawaited(Sentry.captureException(e, stackTrace: s));
+    return;
+  }
+  if (await sentinel.exists()) await sentinel.delete();
 }
 
 /// A prior call completed the whole sequence; the target is authoritative
