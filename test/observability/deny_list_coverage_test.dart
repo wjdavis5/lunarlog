@@ -189,6 +189,12 @@ const Map<String, String> _waivedKeys = {
   'key': "AppSettings' setting-name key, not content (the paired 'value' "
       "column IS deny-listed, via the 'value' stem)",
   'tz': 'IANA time zone name, not content',
+
+  // Per-profile display-unit preferences (Issue #255): closed-set
+  // presentation enums ('celsius'/'fahrenheit', 'kg'/'lb') — they say how
+  // to render a measurement, never the measurement itself.
+  'bbt_unit': "display-unit preference enum ('celsius'/'fahrenheit'), not content",
+  'weight_unit': "display-unit preference enum ('kg'/'lb'), not content",
 };
 
 void main() {

@@ -141,8 +141,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 15 — `cursor_profile_guardians` on `sync_state` (Issue #525): a
   ///   persisted pull cursor for `profile_guardians`, which previously
   ///   paged from version 0 every cycle.
+  /// * 16 — `bbt_unit` + `weight_unit` on `profiles` (Issue #255, the
+  ///   per-profile display-unit preferences for numeric measurements).
+  ///   Presentation only: each `observations` row keeps the unit it was
+  ///   entered/imported in; the client converts at read time.
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -190,7 +194,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `care_notes.profile_id_index`, `visit_prep_items.profile_id_index`.
   /// Issue #220 adds `day_entries.pms`. Issue #186 adds `health_sync_state`,
   /// `observations.exported_to_platform_at`. Issue #525 adds
-  /// `sync_state.cursor_profile_guardians`.
+  /// `sync_state.cursor_profile_guardians`. Issue #255 adds
+  /// `profiles.bbt_unit`, `profiles.weight_unit`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -326,6 +331,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV14(m, from);
     // Issue #525's v15 step, same shape again.
     await _upgradeToV15(m, from);
+    // Issue #255's v16 step, same shape again.
+    await _upgradeToV16(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -488,6 +495,25 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await m.addColumn(syncState, syncState.cursorProfileGuardians);
         await migrationStepHook?.call('sync_state.cursor_profile_guardians');
       }
+    });
+  }
+
+  /// The v16 upgrade step (Issue #255): `bbt_unit` + `weight_unit` on
+  /// `profiles` — the per-profile display-unit preferences for numeric
+  /// measurements. `profiles` has existed since v1 on every real device, so
+  /// the addColumns are always safe regardless of `from`; the columns' own
+  /// defaults (`'celsius'`/`'kg'`) back-fill every already-stored row,
+  /// exactly like the server migration's `add column ... not null default`.
+  /// Presentation only — each `observations` row keeps the unit it was
+  /// entered/imported in (`observations.unit`); the client converts at read
+  /// time (`lib/domain/models/measurement_unit.dart`).
+  Future<void> _upgradeToV16(Migrator m, int from) async {
+    if (from >= 16) return;
+    await transaction(() async {
+      await m.addColumn(profiles, profiles.bbtUnit);
+      await migrationStepHook?.call('profiles.bbt_unit');
+      await m.addColumn(profiles, profiles.weightUnit);
+      await migrationStepHook?.call('profiles.weight_unit');
     });
   }
 

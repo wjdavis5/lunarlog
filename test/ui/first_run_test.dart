@@ -24,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -158,6 +159,8 @@ class ThrowingProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit? bbtUnit,
+    WeightUnit? weightUnit,
   }) {
     createCalls++;
     if (failures > 0) {
@@ -1034,6 +1037,8 @@ class _GatedProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit? bbtUnit,
+    WeightUnit? weightUnit,
   }) async {
     createCalls++;
     final completer = Completer<void>();

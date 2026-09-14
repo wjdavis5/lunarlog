@@ -3,6 +3,7 @@ library;
 
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -28,6 +29,8 @@ class DriftProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit = BbtUnit.celsius,
+    WeightUnit weightUnit = WeightUnit.kg,
   }) =>
       _storage
           .upsertProfile(
@@ -35,6 +38,8 @@ class DriftProfilesRepository implements ProfilesRepository {
             isMinor: isMinor,
             mode: mode.toDb(),
             sortOrder: sortOrder,
+            bbtUnit: bbtUnit.toDb(),
+            weightUnit: weightUnit.toDb(),
             birthYear: birthYear,
             relationship: relationship?.toDb(),
             lastPeriodStart: lastPeriodStart?.iso,
@@ -61,6 +66,8 @@ class DriftProfilesRepository implements ProfilesRepository {
       lastPeriodStart: profile.lastPeriodStart?.iso,
       typicalCycleLengthDays: profile.typicalCycleLengthDays,
       typicalPeriodLengthDays: profile.typicalPeriodLengthDays,
+      bbtUnit: profile.bbtUnit.toDb(),
+      weightUnit: profile.weightUnit.toDb(),
     ));
   }
 
@@ -99,6 +106,8 @@ class DriftProfilesRepository implements ProfilesRepository {
       lastPeriodStart: row.lastPeriodStart,
       typicalCycleLengthDays: row.typicalCycleLengthDays,
       typicalPeriodLengthDays: row.typicalPeriodLengthDays,
+      bbtUnit: row.bbtUnit,
+      weightUnit: row.weightUnit,
     );
   }
 

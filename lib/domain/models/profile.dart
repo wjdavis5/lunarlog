@@ -5,6 +5,7 @@
 library;
 
 import 'local_date.dart';
+import 'measurement_unit.dart';
 import 'profile_mode.dart';
 import 'profile_relationship.dart';
 
@@ -26,6 +27,8 @@ class Profile {
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
+    this.bbtUnit = BbtUnit.celsius,
+    this.weightUnit = WeightUnit.kg,
   });
 
   /// Storage-assigned ULID (empty on unsaved, client-created models).
@@ -98,6 +101,17 @@ class Profile {
   /// (Issue #218). Same treatment as [typicalCycleLengthDays].
   final int? typicalPeriodLengthDays;
 
+  /// Per-profile BBT display unit (Issue #255): how a stored basal body
+  /// temperature renders, independent of the unit any individual
+  /// `observations` value was entered or imported in (each row carries its
+  /// own `unit`). Presentation only — nothing converts stored values when
+  /// this changes.
+  final BbtUnit bbtUnit;
+
+  /// Per-profile weight display unit (Issue #255). Same contract as
+  /// [bbtUnit], for weight rows.
+  final WeightUnit weightUnit;
+
   static const Object _unset = Object();
 
   /// Resolves a `copyWith` sentinel-typed parameter: an unpassed argument
@@ -126,6 +140,8 @@ class Profile {
     Object? lastPeriodStart = _unset,
     Object? typicalCycleLengthDays = _unset,
     Object? typicalPeriodLengthDays = _unset,
+    BbtUnit? bbtUnit,
+    WeightUnit? weightUnit,
   }) =>
       Profile(
         id: id ?? this.id,
@@ -148,6 +164,8 @@ class Profile {
             typicalCycleLengthDays, this.typicalCycleLengthDays),
         typicalPeriodLengthDays: _resolveNullable(
             typicalPeriodLengthDays, this.typicalPeriodLengthDays),
+        bbtUnit: bbtUnit ?? this.bbtUnit,
+        weightUnit: weightUnit ?? this.weightUnit,
       );
 
   /// Identity-ish fields: what a row's primary key and headline attributes
@@ -166,13 +184,26 @@ class Profile {
       other.updatedAt == updatedAt &&
       other.archivedAt == archivedAt &&
       other.deletedAt == deletedAt &&
+      _sameSubjectMetadata(other) &&
+      other.lastPeriodStart == lastPeriodStart &&
+      other.typicalCycleLengthDays == typicalCycleLengthDays &&
+      other.typicalPeriodLengthDays == typicalPeriodLengthDays &&
+      _sameMeasurementUnits(other);
+
+  /// Split from [_sameProfileDetails] (the [Observation]
+  /// `_sameValue`/`_sameProvenance` pattern) so neither method's
+  /// cyclomatic complexity - and so its CRAP score - grows past the gate
+  /// as optional fields are added.
+  bool _sameSubjectMetadata(Profile other) =>
       other.birthYear == birthYear &&
       other.relationship == relationship &&
       other.transferredAt == transferredAt &&
-      other.transferredToUserId == transferredToUserId &&
-      other.lastPeriodStart == lastPeriodStart &&
-      other.typicalCycleLengthDays == typicalCycleLengthDays &&
-      other.typicalPeriodLengthDays == typicalPeriodLengthDays;
+      other.transferredToUserId == transferredToUserId;
+
+  /// Issue #255's two display-unit preferences, split out for the same
+  /// reason as [_sameSubjectMetadata].
+  bool _sameMeasurementUnits(Profile other) =>
+      other.bbtUnit == bbtUnit && other.weightUnit == weightUnit;
 
   @override
   bool operator ==(Object other) =>
@@ -199,6 +230,8 @@ class Profile {
         lastPeriodStart,
         typicalCycleLengthDays,
         typicalPeriodLengthDays,
+        bbtUnit,
+        weightUnit,
       );
 
   @override
