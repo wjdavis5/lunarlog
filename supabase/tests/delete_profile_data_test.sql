@@ -22,10 +22,15 @@
 --      byte-identical. Not idempotent: a second call raises.
 --   E. p_source variant: exact-match per-table scope (Issue #159
 --      provenance), authority-checked and source-validated, profile and
---      guardians surviving, full purge still available afterwards.
+--      guardians surviving, full purge still available afterwards. Issue
+--      #595: the matched day_entries/observations now TOMBSTONE (payload
+--      cleared, row survives) rather than hard-delete, so a co-guardian's
+--      device learns of the removal via the ordinary incremental pull;
+--      import_jobs is unchanged (still a hard delete - bookkeeping, no
+--      health content/PII).
 
 begin;
-select plan(85);
+select plan(89);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated, service_role;
@@ -626,30 +631,60 @@ select is(
   pg_temp.snap('source_result'),
   jsonb_build_object('source', 'healthkit', 'day_entries', 2, 'observations', 0, 'import_jobs', 1),
   'E: healthkit purge counts: two entries, one import job, zero DIRECT observations '
-  '(the apple_health observation dies via the day_entries cascade, not this filter)'
+  '(the apple_health observation is tombstoned via the day_entries cascade, not this filter - Issue #595)'
 );
 
-select is((select count(*) from public.day_entries where profile_id = tests.ulid(5)), 2::bigint,
-  'E: only the two healthkit day_entries are gone');
+-- Issue #595: the two healthkit day_entries TOMBSTONE rather than
+-- hard-delete - the row count stays at 4 (nothing physically removed), but
+-- only the two non-healthkit entries remain LIVE.
+select is((select count(*) from public.day_entries where profile_id = tests.ulid(5)), 4::bigint,
+  'E: all four day_entries still exist as rows - the two healthkit ones are tombstoned, not hard-deleted (Issue #595)');
 select is(
   (select count(*) from public.day_entries
-    where profile_id = tests.ulid(5) and source = 'manual'),
-  1::bigint,
-  'E: the manually-logged entry survives'
+    where profile_id = tests.ulid(5) and deleted_at is null),
+  2::bigint,
+  'E: only two day_entries remain LIVE after the healthkit source purge'
+);
+select is(
+  (select bool_and(flow = 'none' and note is null and tags = '[]'::jsonb and not pms)
+     from public.day_entries
+    where profile_id = tests.ulid(5) and source = 'healthkit'),
+  true,
+  'E: the tombstoned healthkit entries carry no payload'
 );
 select is(
   (select count(*) from public.day_entries
-    where profile_id = tests.ulid(5) and source = 'clue_import'),
+    where profile_id = tests.ulid(5) and source = 'manual' and deleted_at is null),
   1::bigint,
-  'E: the other-source (clue_import) entry survives'
+  'E: the manually-logged entry survives, live'
 );
-select is((select count(*) from public.observations where profile_id = tests.ulid(5)), 1::bigint,
-  'E: the apple_health observation on a deleted healthkit entry cascaded away');
+select is(
+  (select count(*) from public.day_entries
+    where profile_id = tests.ulid(5) and source = 'clue_import' and deleted_at is null),
+  1::bigint,
+  'E: the other-source (clue_import) entry survives, live'
+);
+-- Issue #595: the apple_health observation riding the tombstoned healthkit
+-- entry is itself tombstoned via cascade_day_entry_tombstone_to_observations
+-- (an AFTER UPDATE trigger), not hard-deleted - the row count stays at 2.
+select is((select count(*) from public.observations where profile_id = tests.ulid(5)), 2::bigint,
+  'E: both observations still exist as rows - the apple_health one is tombstoned via the day_entries cascade, not hard-deleted (Issue #595)');
 select is(
   (select count(*) from public.observations
-    where profile_id = tests.ulid(5) and source = 'manual'),
+    where profile_id = tests.ulid(5) and deleted_at is null),
   1::bigint,
-  'E: the manual observation on the surviving entry survives'
+  'E: only the manual observation remains LIVE'
+);
+select is(
+  (select deleted_at is not null from public.observations where id = tests.ulid(510)),
+  true,
+  'E: the apple_health observation on the tombstoned healthkit entry is itself tombstoned, via the cascade'
+);
+select is(
+  (select count(*) from public.observations
+    where profile_id = tests.ulid(5) and source = 'manual' and deleted_at is null),
+  1::bigint,
+  'E: the manual observation on the surviving entry survives, live'
 );
 select is((select count(*) from public.import_jobs where profile_id = tests.ulid(5)), 1::bigint,
   'E: only the healthkit import job is gone');

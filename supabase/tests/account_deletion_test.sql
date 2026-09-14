@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(79);
+select plan(84);
 
 create temp table snap (name text primary key, v jsonb);
 -- Issue #167: section 12 below is the first place in this file that reads a
@@ -971,6 +971,89 @@ select is(
   (select count(*) from public.prediction_connections where owner_user_id = tests.get_supabase_uid('user_s')),
   1::bigint,
   'Issue #499: user S''s unrelated prediction connection survives'
+);
+
+select tests.clear_authentication();
+
+-- ---------------------------------------------------------------------------
+-- 15. Issue #596: a former co-guardian can still read the owner's
+--     deleted_profiles row after the owner's auth.users row is actually
+--     gone (a REAL cascade via tests.delete_supabase_user(), not merely a
+--     call to delete_account_data() in isolation - unlike section 3's AE2
+--     coverage above, which never removes the auth.users row and so could
+--     never have caught a gap here). Also confirms the documented flip
+--     side: the per-table tombstones delete_account_data() just wrote are
+--     THEMSELVES cascade-hard-deleted by that same auth.users removal (via
+--     profiles.user_id -> auth.users on delete cascade, then
+--     day_entries.profile_id -> profiles on delete cascade) - which is
+--     exactly why deleted_profiles is the client's sole cross-
+--     account-deletion signal (its own CONTRACT section says so - see
+--     20260913013000_deleted_profiles_tombstone_purge.sql), not a per-table
+--     tombstone diff. See 20260915090000_deletion_tombstones_bundle.sql's
+--     header for the full investigation - deleted_profiles carries no
+--     foreign key to auth.users or profiles at all, so nothing cascades
+--     into it, and its RLS policy checks only the guardian_user_ids array
+--     snapshotted at purge time, independent of profile_guardians surviving.
+-- ---------------------------------------------------------------------------
+
+select tests.create_supabase_user('user_t'); -- owner, deleted for real
+select tests.create_supabase_user('user_u'); -- co-guardian, survives
+
+select tests.authenticate_as('user_t');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(8), 'Riley T', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(80), tests.ulid(8), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+
+select public.create_guardian_invitation(
+  tests.ulid(8), 'co_parent', 'U',
+  repeat('71', 32), 48
+);
+select tests.authenticate_as('user_u');
+select public.accept_guardian_invitation(
+  repeat('71', 32), 'U'
+);
+
+-- T deletes: the RPC first (as the Edge Function does), then the auth.users
+-- row for real - the exact order the delete-account Edge Function runs in
+-- (KTD4). Clear authentication before the real auth.users delete, mirroring
+-- section 8's H fixture above (production runs this via auth.admin.deleteUser
+-- on GoTrue's own service connection, which carries no JWT claims).
+select tests.authenticate_as('user_t');
+select public.delete_account_data();
+select tests.clear_authentication();
+select tests.delete_supabase_user('user_t');
+
+select is(
+  (select count(*) from public.profiles where id = tests.ulid(8)),
+  0::bigint,
+  '#596: the profile row itself is hard-gone once the owner''s auth.users row is deleted - the cascade the issue describes'
+);
+select is(
+  (select count(*) from public.day_entries where profile_id = tests.ulid(8)),
+  0::bigint,
+  '#596: its day_entries are hard-gone too, cascaded via the profiles delete - the per-table tombstone never reached a co-guardian''s pull'
+);
+
+-- Read as the co-guardian (not service_role), to prove RLS itself - not
+-- merely the row's existence - survives the owner's account being gone.
+select tests.authenticate_as('user_u');
+select is(
+  (select count(*) from public.deleted_profiles where profile_id = tests.ulid(8)),
+  1::bigint,
+  '#596: the co-guardian can still read the deleted_profiles row after the owner''s auth.users row is gone'
+);
+select is(
+  (select tests.get_supabase_uid('user_u') = any(guardian_user_ids)
+     from public.deleted_profiles where profile_id = tests.ulid(8)),
+  true,
+  '#596: the co-guardian is recorded in guardian_user_ids, which is what authorizes the read above'
+);
+select is(
+  (select count(*) from public.profile_guardians where profile_id = tests.ulid(8)),
+  0::bigint,
+  '#596: profile_guardians for this profile is gone too (cascaded via the profiles delete) - '
+  'deleted_profiles'' RLS deliberately does not depend on it surviving'
 );
 
 select tests.clear_authentication();
