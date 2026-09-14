@@ -397,6 +397,27 @@ void main() {
       expect(l10n.birthControlCondom, 'Condom');
       expect(l10n.birthControlOther, 'Other');
     });
+
+    // Issue #602: the four `InlineError`/`AsyncSnapshotView` "Could not
+    // load …" strings #587 introduced as inline literals, moved to ARB.
+    // Screen-reader live regions (`InlineError`'s `Semantics(liveRegion:
+    // true)`), so exact copy parity matters the same way it does above.
+    testWidgets('load-failure InlineError messages', (tester) async {
+      final l10n = await pumpL10n(tester);
+      expect(
+        l10n.cyclePredictionLoadError,
+        'Could not load the cycle estimate.',
+      );
+      expect(l10n.cycleHistoryLoadError, 'Could not load cycle history.');
+      expect(
+        l10n.overviewEstimateLoadError,
+        'Could not load your cycle estimate.',
+      );
+      expect(
+        l10n.activityFeedLoadError,
+        'Could not load the activity feed.',
+      );
+    });
   });
 
   group('confidence-tier copy (issue #218): the four localized labels and '

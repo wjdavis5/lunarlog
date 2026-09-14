@@ -659,7 +659,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     // Issue #362: a recently expired invitation renders as a distinct row
     // state - an `Expired` subtitle (never a negative countdown) with a
     // Resend action that re-opens the existing invite flow, then reloads.
-    if (invite.isExpired) {
+    if (invite.isExpiredAt(DateTime.now().toUtc())) {
       return ListTile(
         key: ValueKey('pending-invite-${invite.invitationId}'),
         leading: const Icon(Icons.mail_outline),

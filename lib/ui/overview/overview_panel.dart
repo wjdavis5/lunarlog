@@ -415,7 +415,7 @@ class _OverviewPanelState extends State<OverviewPanel>
       builder: (context, snapshot) {
         return AsyncSnapshotView<CyclePrediction>(
           snapshot: snapshot,
-          errorMessage: 'Could not load your cycle estimate.',
+          errorMessage: AppLocalizations.of(context).overviewEstimateLoadError,
           onRetry: _retryPredictions,
           builder: (context, prediction) =>
               _overviewBody(context, prediction, availability),

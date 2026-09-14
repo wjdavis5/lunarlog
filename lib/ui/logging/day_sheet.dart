@@ -60,6 +60,8 @@ import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
+import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -236,27 +238,32 @@ class _DaySheetState extends State<DaySheet> {
   late final Set<String> _tags;
   late final TextEditingController _noteController;
   bool _busy = false;
-  bool _saveFailed = false;
   bool _deleteFailed = false;
 
-  /// Autosave state (#198): a change is pending ([_dirty]) with its
-  /// composed entry ([_pendingEntry]); the debounce timer ([_saveDebounce])
-  /// writes it after [kDaySheetAutosaveDelay]. A write in flight sets
-  /// [_saving]; its success shows the transient [_showSaved] confirmation,
-  /// its failure sets [_saveFailed] and restores [_dirty] (the pending
-  /// state is never dropped).
-  bool _dirty = false;
-  DayEntry? _pendingEntry;
+  /// Autosave state (#198, issue #601): every change of "is a save pending,
+  /// in flight, just succeeded, or failed" lives in one
+  /// [DaySheetSaveState] — see `lib/domain/logging/day_sheet_save_state.dart`
+  /// for the sealed hierarchy and the pure transition functions this class
+  /// drives. This field is the only thing they operate on; everything else
+  /// here (the debounce [Timer], the "Saved" banner's own timer, the actual
+  /// repository write) is a side effect the widget layers on top.
+  DaySheetSaveState _saveState = const DaySheetIdle();
   Timer? _saveDebounce;
   Timer? _savedIndicatorTimer;
-  bool _saving = false;
-  bool _showSaved = false;
   String? _persistedEntryId;
 
-  /// Set when a write was already in flight as another flush arrived; the
-  /// running write re-runs the autosave on completion so the newer state is
-  /// never dropped (last-writer-wins stays last-*editor*-wins).
-  bool _saveQueued = false;
+  /// The Future of whichever repository write is running right now, if
+  /// any (issue #601's LLA-003 audit finding) — set only for the exact
+  /// duration of the `saveDayEntryWithObservations` call [_performAutosave]
+  /// is currently awaiting, tracked outside [_saveState] since it is an
+  /// awaitable side effect, not state. [_delete] awaits this (when
+  /// non-null) before ever calling `widget.repository.delete` itself, so
+  /// an already in-flight write can never complete *after* the delete and
+  /// silently resurrect the row via its own upsert (`deletedAt: null`).
+  /// Transitioning [_saveState] to [DaySheetDeleting] *before* that await
+  /// is what actually closes the race, not this field alone — see
+  /// [DaySheetDeleting]'s own doc.
+  Future<void>? _inFlightWrite;
 
   /// True once the user explicitly confirmed discarding a failed save —
   /// the only state in which dismissal drops pending changes on purpose.
@@ -397,80 +404,89 @@ class _DaySheetState extends State<DaySheet> {
   void dispose() {
     _saveDebounce?.cancel();
     _savedIndicatorTimer?.cancel();
-    if (_dirty && !_discardUnsaved) {
-      if (_saving) {
-        // Issue #546: a `_performAutosave` write is already in flight (its
-        // own `await` still pending when dismissal raced the debounce).
-        // Firing a second, concurrent write here for the same entry would
-        // race it — two writes to the same row with no ordering guarantee
-        // between them. Queue instead, the same signal
-        // `_performAutosave`'s own re-entrancy guard sets
-        // (`if (_saving) { _saveQueued = true; return; }`): its
-        // continuation runs once the in-flight write completes regardless
-        // of `mounted` (`widget`/`_observationsRepository` stay valid to
-        // read), and now correctly fires — `_onAutosaveSuccess` resets
-        // `_saving` even once the sheet has gone, which it did not before
-        // this issue's fix, so this queued flag used to never get acted on
-        // and the edit was silently dropped.
-        _saveQueued = true;
-      } else {
-        // Belt-and-braces flush (#198): normal dismissal flushes via the
-        // PopScope callback while still mounted; this covers a teardown
-        // that bypassed a pop. The entry is composed before the controller
-        // dies; the write itself is fire-and-forget — there is no sheet
-        // left to render a failure into, and the PopScope guard has
-        // already handled the interactive failure case above it. The
-        // spotting sync (#247) rides along so the persisted entry and its
-        // observation row can never disagree about whether the day had
-        // spotting.
-        final pending = _pendingEntry;
-        final repository = widget.repository;
-        final observations = _observationsRepository;
-        if (pending != null) {
-          // Set the field directly, not via `_setAutosaveState` — calling
-          // `setState` synchronously from inside `dispose()` itself
-          // crashes (the `Element` is already `defunct` by the time a
-          // State's own `dispose()` body runs, regardless of what
-          // `mounted` reports); the deferred `finally` below runs later,
-          // once `mounted` is genuinely false, so `_setAutosaveState`
-          // there correctly skips `setState`.
-          _saving = true;
-          scheduleMicrotask(() async {
-            try {
-              final (toUpsert, toDelete) = await _computeObservationMutations(
-                pending,
-                observations,
-              );
-              await repository.saveDayEntryWithObservations(
-                entry: pending,
-                observationsToUpsert: toUpsert,
-                observationIdsToDelete: toDelete,
-              );
-            } catch (error, stackTrace) {
-              // Issue #546: this used to be a bare `catch (_) {}` — the
-              // operator's edit could be silently lost (DB locked during a
-              // sync apply, disk full, closing the DB during a reset)
-              // with nothing, UI or telemetry, ever saying so. There is
-              // no sheet left to show a retry banner in, so this is
-              // observability only, not recovery — captured the same way
-              // every other data-layer failure in this codebase is.
-              unawaited(Sentry.captureException(error, stackTrace: stackTrace));
-            } finally {
-              _setAutosaveState(saving: false);
-            }
-          });
-        }
-      }
-    }
+    if (!_discardUnsaved) _applyDisposeAction(daySheetDisposeAction(_saveState));
     _noteController.dispose();
     super.dispose();
+  }
+
+  /// Executes the pure decision [daySheetDisposeAction] computed — kept out
+  /// of [dispose] itself so that method's own cyclomatic complexity (the
+  /// CRAP gate flagged it, issue #601 review) stays low; see
+  /// [DaySheetDisposeAction]'s own doc in `day_sheet_save_state.dart` for
+  /// the reasoning behind each case, carried forward from the inline
+  /// `switch` this replaces.
+  void _applyDisposeAction(DaySheetDisposeAction action) {
+    switch (action) {
+      case DaySheetDisposeFlush(:final pending):
+        _flushOnDispose(pending);
+      case DaySheetDisposeRetrigger(:final nextState):
+        // Its continuation runs once the in-flight write completes
+        // regardless of `mounted` (`widget`/`_observationsRepository` stay
+        // valid to read), and correctly fires even post-dispose —
+        // `daySheetSettleWrite` is pure state, never gated on `mounted`
+        // itself, so this queued edit is never silently dropped (#546).
+        _saveState = nextState;
+      case DaySheetDisposeNoop():
+        break;
+    }
+  }
+
+  /// Belt-and-braces flush (#198) for a teardown that bypassed the normal
+  /// dismissal flush ([_onSheetPop], which runs while still mounted): the
+  /// entry is composed before the controller dies; the write itself is
+  /// fire-and-forget — there is no sheet left to render a failure into, and
+  /// the [PopScope] guard has already handled the interactive failure case.
+  /// The spotting/pain sync rides along so the persisted entry and its
+  /// observation rows can never disagree. Never called while a write is
+  /// already in flight ([dispose]'s own switch routes that case to
+  /// [daySheetRequestRetrigger] instead), so this never races a concurrent
+  /// write for the same entry (issue #546).
+  void _flushOnDispose(DayEntry pending) {
+    final repository = widget.repository;
+    final observations = _observationsRepository;
+    // Set the field directly, not via `_updateSaveState` — calling
+    // `setState` synchronously from inside `dispose()` itself crashes (the
+    // `Element` is already `defunct` by the time a State's own `dispose()`
+    // body runs, regardless of what `mounted` reports); the deferred
+    // `finally` below runs later, once `mounted` is genuinely false, so
+    // nothing here ever calls `setState`.
+    _saveState = DaySheetSaving(pending);
+    scheduleMicrotask(() async {
+      try {
+        final mutations = await _computeObservationMutations(
+          pending,
+          observations,
+        );
+        await repository.saveDayEntryWithObservations(
+          entry: pending,
+          observationsToUpsert: mutations.toUpsert,
+          observationIdsToDelete: mutations.toDelete,
+        );
+      } catch (error, stackTrace) {
+        // Issue #546: this used to be a bare `catch (_) {}` — the
+        // operator's edit could be silently lost (DB locked during a
+        // sync apply, disk full, closing the DB during a reset)
+        // with nothing, UI or telemetry, ever saying so. There is
+        // no sheet left to show a retry banner in, so this is
+        // observability only, not recovery — captured the same way
+        // every other data-layer failure in this codebase is.
+        unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      } finally {
+        // Nothing reads `_saveState` again once this State is unreachable
+        // (the microtask closure above is the only remaining reference to
+        // `this`) — restored to `DaySheetDirty` rather than `DaySheetIdle`
+        // only to mirror the old fields' literal end values exactly
+        // (`_saving = false` via `_setAutosaveState`, `_dirty`/
+        // `_pendingEntry` left untouched by this path either way).
+        _saveState = DaySheetDirty(pending);
+      }
+    });
   }
 
   /// Records a pending change and re-arms the autosave debounce (#198).
   void _markDirty() {
     if (widget.readOnly || widget.date.isAfter(widget.today)) return;
-    _dirty = true;
-    _pendingEntry = _composeEntry();
+    _saveState = daySheetMarkDirty(_saveState, _composeEntry());
     _saveDebounce?.cancel();
     _saveDebounce = Timer(kDaySheetAutosaveDelay, _performAutosave);
   }
@@ -478,7 +494,7 @@ class _DaySheetState extends State<DaySheet> {
   /// Snapshots the current editing state into the entry the next write
   /// will persist — called synchronously on change and before any await,
   /// never from a disposed context (the note controller must be alive).
-  /// The flow written is [_resolveEffectiveFlow]'s (#247): spotting's
+  /// The flow written is [resolveEffectiveFlow]'s (#247): spotting's
   /// presence/absence is expressed in the entry's `flow` exactly the way
   /// #335's explicit Save did, on every debounced write.
   DayEntry _composeEntry() {
@@ -490,7 +506,12 @@ class _DaySheetState extends State<DaySheet> {
       profileId: widget.profileId,
       localDate: widget.date,
       tz: tz,
-      flow: _resolveEffectiveFlow(),
+      flow: resolveEffectiveFlow(
+        spotting: _spotting,
+        flow: _flow,
+        hadSpottingOnLoad: _hadSpottingOnLoad,
+        flowExplicitlySet: _flowExplicitlySet,
+      ),
       tags: _tags.toList(),
       note: note.isEmpty ? null : note,
       // Issue #220: the first-class PMS marker rides the entry itself.
@@ -507,46 +528,56 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   /// The debounced autosave write (#198). Also the Retry handler for a
-  /// failed write. Never closes the sheet.
+  /// failed write ([daySheetBeginSave] treats [DaySheetFailed] the same as
+  /// [DaySheetDirty] — see its own doc). Never closes the sheet.
   Future<void> _performAutosave() async {
     _saveDebounce?.cancel();
     _saveDebounce = null;
-    if (_saving) {
-      // A write is in flight (e.g. dismissal flushed while one ran); queue
-      // this attempt so its completion re-runs with the latest state.
-      _saveQueued = true;
+    if (_saveState is DaySheetSaving) {
+      // A write is in flight (e.g. the debounce timer refired, or
+      // dismissal flushed while one ran); mark it for retrigger so its
+      // completion re-runs with the latest state, per [daySheetSettleWrite].
+      _saveState = daySheetRequestRetrigger(_saveState);
       return;
     }
-    final pending = _pendingEntry;
-    if (!_dirty || pending == null) return;
-    _dirty = false; // Optimistic; restored below on failure.
-    _setAutosaveState(saving: true);
-    final saved = await _writePending(pending);
-    if (saved) _onAutosaveSuccess();
-    if (_saveQueued) {
-      _saveQueued = false;
-      if (_dirty) unawaited(_performAutosave());
+    final started = daySheetBeginSave(_saveState);
+    // Idle, Saved, or a terminal Deleting/Deleted (issue #601 LLA-003):
+    // nothing may start.
+    if (started == null) return;
+    _updateSaveState(started); // Optimistic; failure restores below.
+    final writeFuture = _writePending(started.inFlight);
+    // Issue #601 LLA-003: published for the exact duration of this write
+    // so `_delete` can await it -- see `_inFlightWrite`'s own doc.
+    _inFlightWrite = writeFuture;
+    final saved = await writeFuture;
+    _inFlightWrite = null;
+    final (settled, retrigger) =
+        daySheetSettleWrite(_saveState, succeeded: saved);
+    if (saved) {
+      _onAutosaveSuccess(settled);
+    } else {
+      _updateSaveState(settled);
     }
+    if (retrigger) unawaited(_performAutosave());
   }
 
-  /// Updates the autosave state. Issue #546: `_saving`/`_saveFailed`
-  /// always update, even once the sheet has gone (a dismissal-time flush
-  /// outlives the widget that started it) — `_performAutosave`'s
-  /// re-entrancy guard (`if (_saving) { _saveQueued = true; return; }`)
-  /// and [dispose]'s own flush both read `_saving` to decide whether a
-  /// write is already in flight, and that must stay accurate whether or
-  /// not the sheet is still mounted. Only the `setState` rebuild — which
-  /// would throw once the widget is gone — is skipped while unmounted.
-  void _setAutosaveState({required bool saving, bool failed = false}) {
-    _saving = saving;
-    _saveFailed = failed;
+  /// Updates [_saveState]. Issue #546: the field always updates, even once
+  /// the sheet has gone (a dismissal-time flush outlives the widget that
+  /// started it) — [_performAutosave]'s reentrancy check and [dispose]'s
+  /// own switch both read `_saveState` to decide whether a write is
+  /// already in flight, and that must stay accurate whether or not the
+  /// sheet is still mounted. Only the `setState` rebuild — which would
+  /// throw once the widget is gone — is skipped while unmounted.
+  void _updateSaveState(DaySheetSaveState next) {
+    _saveState = next;
     if (!mounted) return;
     setState(() {});
   }
 
-  /// Persists [pending] and its child observations atomically (Issue #471);
-  /// on failure restores the pending state (the sheet keeps every entered
-  /// value) and raises the inline retry error.
+  /// Persists [pending] and its child observations atomically (Issue #471).
+  /// Pure I/O — never touches [_saveState] itself; [_performAutosave]
+  /// settles the state uniformly for both outcomes via
+  /// [daySheetSettleWrite].
   Future<bool> _writePending(DayEntry pending) async {
     // Captured while every caller is still mounted: the write below may
     // complete after this sheet has gone (a dismissal-time flush), and
@@ -559,14 +590,14 @@ class _DaySheetState extends State<DaySheet> {
       // does not recognise (`_unrecognisedTags`). That code is preserved,
       // not silently re-validated and rejected, on every autosave.
       validateTagCodes(_sessionSelectedTags);
-      final (toUpsert, toDelete) = await _computeObservationMutations(
+      final mutations = await _computeObservationMutations(
         pending,
         observations,
       );
       final saved = await widget.repository.saveDayEntryWithObservations(
         entry: pending,
-        observationsToUpsert: toUpsert,
-        observationIdsToDelete: toDelete,
+        observationsToUpsert: mutations.toUpsert,
+        observationIdsToDelete: mutations.toDelete,
       );
       _persistedEntryId = saved.id;
       return true;
@@ -578,49 +609,38 @@ class _DaySheetState extends State<DaySheet> {
       // its real type rather than rendering the same generic "save
       // failed" banner with no way to tell the two apart.
       unawaited(Sentry.captureException(error, stackTrace: stackTrace));
-      _dirty = true;
-      _setAutosaveState(saving: false, failed: true);
       return false;
     } catch (error, stackTrace) {
       unawaited(Sentry.captureException(error, stackTrace: stackTrace));
-      _dirty = true;
-      _setAutosaveState(saving: false, failed: true);
       return false;
     }
   }
 
-  /// Post-success bookkeeping: clear the pending entry, latch the offline
-  /// acknowledgement messenger (issue #182 AC8 — it is shown when the sheet
-  /// is dismissed, not now, because an open modal sheet's barrier hides a
-  /// SnackBar), and show the transient "Saved" micro-confirmation.
-  void _onAutosaveSuccess() {
-    // Issue #546: only clear `_pendingEntry` when nothing has changed since
-    // the write that just succeeded started (`!_dirty`) — an edit made
-    // while that write was in flight (`_markDirty` re-set `_dirty` and
-    // `_pendingEntry` after this call's own `_performAutosave` had already
-    // snapshotted the old value into `pending`) must survive so
-    // `_performAutosave`'s queued continuation (`if (_saveQueued) {
-    // _saveQueued = false; if (_dirty) unawaited(_performAutosave()); }`,
-    // or `dispose`'s own `_saveQueued = true` when a write was already in
-    // flight) has something real to write. Unconditionally nulling it here
-    // silently dropped that edit: the continuation's `_performAutosave`
-    // would immediately return on `pending == null`.
-    if (!_dirty) _pendingEntry = null;
-    // Issue #546: through `_setAutosaveState` so `_saving` resets even
-    // once the sheet has gone — this used to be a bare `setState(() =>
-    // _saving = false)` guarded by the same `if (!mounted) return` below,
-    // so a dismissal-time success left `_saving` permanently stuck `true`:
-    // `_performAutosave`'s own re-entrancy guard (`if (_saving) {
-    // _saveQueued = true; return; }`) would then queue a later edit
-    // forever without ever actually writing it.
-    _setAutosaveState(saving: false);
+  /// Post-success bookkeeping: [settled] is already computed (by
+  /// [daySheetSettleWrite] in [_performAutosave]) — this applies it, latches
+  /// the offline acknowledgement messenger (issue #182 AC8 — it is shown
+  /// when the sheet is dismissed, not now, because an open modal sheet's
+  /// barrier hides a SnackBar), and arms the transient "Saved"
+  /// micro-confirmation's own clear timer whenever [settled] actually is
+  /// [DaySheetSaved] (see that class's doc for the one case it is not: a
+  /// further edit already arrived and is not yet due its own retry).
+  void _onAutosaveSuccess(DaySheetSaveState settled) {
+    // Issue #546: through `_updateSaveState` so the field resets even once
+    // the sheet has gone — a dismissal-time success leaving it permanently
+    // stuck on `DaySheetSaving` would make [_performAutosave]'s own
+    // reentrancy check queue a later edit forever without ever actually
+    // writing it.
+    _updateSaveState(settled);
     if (!mounted) return;
     _offlineAckMessenger ??= _offlineConfirmationMessenger(context);
-    _savedIndicatorTimer?.cancel();
-    setState(() => _showSaved = true);
-    _savedIndicatorTimer = Timer(kDaySheetSavedIndicatorDuration, () {
-      if (mounted) setState(() => _showSaved = false);
-    });
+    if (settled is DaySheetSaved) {
+      _savedIndicatorTimer?.cancel();
+      _savedIndicatorTimer = Timer(kDaySheetSavedIndicatorDuration, () {
+        if (mounted && _saveState is DaySheetSaved) {
+          setState(() => _saveState = const DaySheetIdle());
+        }
+      });
+    }
   }
 
   /// Issue #247: the day sheet doesn't otherwise load `observations` rows
@@ -673,122 +693,17 @@ class _DaySheetState extends State<DaySheet> {
     });
   }
 
-  /// The `flow` value actually written by every autosave compose (#247,
-  /// #335's `_resolveEffectiveFlow` verbatim): selecting "Spotting" on a
-  /// day with no other flow chosen is still a positive fact about the day,
-  /// not "unlogged" — it is raised to notBleeding. A day already logged at
-  /// a real bleed level keeps that level; spotting is recorded alongside
-  /// it as its own observation, never overwriting a chosen flow.
-  ///
-  /// Review fix (blocking): the mirror image — unchecking Spotting on a
-  /// day whose only signal *was* spotting reverts `flow` back to
-  /// [FlowLevel.none] rather than leaving the previously-derived
-  /// [FlowLevel.notBleeding] behind as if it had been asserted on
-  /// purpose. Guarded to fire only when the user never touched a flow
-  /// chip this session ([_flowExplicitlySet]) — tapping "Not bleeding"
-  /// (even alongside spotting) is a deliberate, independent assertion
-  /// that survives unchecking spotting.
-  FlowLevel _resolveEffectiveFlow() {
-    if (_spotting && _flow == FlowLevel.none) return FlowLevel.notBleeding;
-    final revertToNone =
-        _hadSpottingOnLoad &&
-        !_spotting &&
-        !_flowExplicitlySet &&
-        _flow == FlowLevel.notBleeding;
-    return revertToNone ? FlowLevel.none : _flow;
-  }
-
-  void _computeSpottingMutations({
-    required List<Observation> existingObs,
-    required String targetId,
-    required String tz,
-    required List<Observation> toUpsert,
-    required List<String> toDelete,
-  }) {
-    final existingSpotting = [
-      for (final o in existingObs)
-        if (o.category == 'spotting') o,
-    ];
-    if (!_spotting) {
-      for (final o in existingSpotting) {
-        toDelete.add(o.id);
-      }
-    } else if (existingSpotting.isEmpty) {
-      toUpsert.add(
-        Observation(
-          id: '',
-          dayEntryId: targetId,
-          profileId: widget.profileId,
-          localDate: widget.date,
-          tz: tz,
-          category: 'spotting',
-          code: 'spotting',
-          updatedAt: DateTime.now().toUtc(),
-        ),
-      );
-    }
-  }
-
-  void _computePainMutations({
-    required List<Observation> existingObs,
-    required String targetId,
-    required String tz,
-    required List<Observation> toUpsert,
-    required List<String> toDelete,
-  }) {
-    if (_painIntensity.isEmpty) return;
-    final existingPain = [
-      for (final o in existingObs)
-        if (o.category == 'pain') o,
-    ];
-    for (final entry in _painIntensity.entries) {
-      final intensity = entry.value;
-      final matchingPainRows = [
-        for (final o in existingPain)
-          if (o.code == entry.key) o,
-      ];
-      if (intensity == null) {
-        for (final o in matchingPainRows) {
-          if (o.intensity != null) toDelete.add(o.id);
-        }
-        continue;
-      }
-      if (matchingPainRows.isNotEmpty) {
-        final row = matchingPainRows.first;
-        if (row.intensity != intensity) {
-          toUpsert.add(
-            row.copyWith(
-              intensity: intensity,
-              updatedAt: DateTime.now().toUtc(),
-            ),
-          );
-        }
-        continue;
-      }
-      toUpsert.add(
-        Observation(
-          id: '',
-          dayEntryId: targetId,
-          profileId: widget.profileId,
-          localDate: widget.date,
-          tz: tz,
-          category: 'pain',
-          code: entry.key,
-          intensity: intensity,
-          updatedAt: DateTime.now().toUtc(),
-        ),
-      );
-    }
-  }
-
-  /// Computes the required observation mutations (upserts and deletes) for
-  /// child observations (spotting and graded pain intensity) to be committed
-  /// atomically alongside [pending] (Issue #471).
-  Future<(List<Observation>, List<String>)> _computeObservationMutations(
+  /// Fetches the target day entry's already-persisted observation rows and
+  /// delegates to [computeObservationMutations] (issue #601 — moved to
+  /// `lib/domain/logging/day_sheet_reconciliation.dart`, pure) for the
+  /// spotting (#247) and graded pain-intensity (#256) upserts/deletes to
+  /// commit atomically alongside [pending] (Issue #471). The repository
+  /// fetch is the one impure half that has to stay here.
+  Future<ObservationMutations> _computeObservationMutations(
     DayEntry pending,
     ObservationsRepository? observations,
   ) async {
-    if (observations == null) return (const <Observation>[], const <String>[]);
+    if (observations == null) return const ObservationMutations();
     final targetId =
         _persistedEntryId ??
         (pending.id.isNotEmpty ? pending.id : (widget.existing?.id ?? ''));
@@ -796,23 +711,16 @@ class _DaySheetState extends State<DaySheet> {
     if (targetId.isNotEmpty) {
       existingObs = await observations.listForDayEntry(targetId);
     }
-    final toUpsert = <Observation>[];
-    final toDelete = <String>[];
-    _computeSpottingMutations(
-      existingObs: existingObs,
-      targetId: targetId,
+    return computeObservationMutations(
+      existingObservations: existingObs,
+      spotting: _spotting,
+      painIntensity: _painIntensity,
+      targetDayEntryId: targetId,
+      profileId: widget.profileId,
+      date: widget.date,
       tz: pending.tz,
-      toUpsert: toUpsert,
-      toDelete: toDelete,
+      updatedAt: DateTime.now().toUtc(),
     );
-    _computePainMutations(
-      existingObs: existingObs,
-      targetId: targetId,
-      tz: pending.tz,
-      toUpsert: toUpsert,
-      toDelete: toDelete,
-    );
-    return (toUpsert, toDelete);
   }
 
   /// Issue #182 AC8: captured before the sheet goes away (the sheet's own
@@ -859,16 +767,36 @@ class _DaySheetState extends State<DaySheet> {
     );
     if (confirmed != true) return;
     LLHaptics.destructive();
-    // A delete must never be resurrected by a still-pending autosave: drop
-    // any debounce in flight before tombstoning (#198).
+    // Issue #601 LLA-003 audit finding: a delete must never be undone by
+    // an autosave -- neither a not-yet-started queued edit (dropped
+    // outright below: deleting supersedes it) nor an already in-flight
+    // write completing *after* this point and resurrecting the row via
+    // its own upsert (`deletedAt: null`). Cancel the debounce (nothing
+    // not-yet-started may begin), then transition to [DaySheetDeleting]
+    // -- a terminal state [daySheetMarkDirty]/[daySheetBeginSave] both
+    // refuse to act on -- *before* awaiting whatever write is already in
+    // flight: that ordering is what makes this the actual fix, not merely
+    // documentation. Once [_saveState] reads [DaySheetDeleting], that
+    // write's own eventual [daySheetSettleWrite] call finds `state is!
+    // DaySheetSaving` and silently drops its result instead of applying
+    // or retriggering it (see [DaySheetDeleting]'s own doc for the full
+    // reasoning).
     _saveDebounce?.cancel();
     _saveDebounce = null;
-    _dirty = false;
-    _pendingEntry = null;
+    final inFlight = _inFlightWrite;
+    _saveState = const DaySheetDeleting();
     setState(() {
       _busy = true;
       _deleteFailed = false;
     });
+    if (inFlight != null) {
+      // Whatever that write's own outcome, deletion proceeds regardless --
+      // it must not get stuck behind, or be derailed by, a save that is
+      // about to be superseded anyway. `_writePending` already reports
+      // (and Sentry-captures) its own failures; nothing further to do
+      // with them here.
+      await inFlight.catchError((_) {});
+    }
     try {
       await widget.repository.delete(widget.profileId, widget.date);
     } catch (_) {
@@ -876,10 +804,18 @@ class _DaySheetState extends State<DaySheet> {
         setState(() {
           _busy = false;
           _deleteFailed = true;
+          // Deletion did not go through. Nothing was pending before
+          // [DaySheetDeleting] (it discarded any queued edit outright,
+          // matching the pre-#601 code's own unconditional drop on every
+          // delete attempt, successful or not), so Idle -- not a stuck
+          // terminal state -- is what lets a further edit or another
+          // delete attempt work normally again.
+          _saveState = const DaySheetIdle();
         });
       }
       return;
     }
+    _saveState = const DaySheetDeleted();
     if (mounted) {
       // A latched offline acknowledgement is about the *saved* entry — the
       // entry is now deleted, so it must not fire as the sheet leaves.
@@ -894,13 +830,19 @@ class _DaySheetState extends State<DaySheet> {
   /// to close without an explicit discard ([_confirmDiscardWhileFailed]).
   void _onSheetPop(bool didPop, Object? result) {
     if (!didPop) {
-      if (_saveFailed && !_discardUnsaved) {
+      if (_saveState is DaySheetFailed && !_discardUnsaved) {
         unawaited(_confirmDiscardWhileFailed());
       }
       return;
     }
-    final flushPending = _dirty && !_discardUnsaved;
-    // Computed before the flush clears `_dirty`: an offline-looking flush
+    // Dirty or Failed both carry unsaved content (mirrors the old `_dirty`,
+    // which failure also set) — PopScope's own `canPop` above means Failed
+    // only reaches here once `_discardUnsaved` is already true, so this is
+    // belt-and-braces for that case too, not just Dirty's normal one.
+    final flushPending =
+        (_saveState is DaySheetDirty || _saveState is DaySheetFailed) &&
+            !_discardUnsaved;
+    // Computed before the flush settles the state: an offline-looking flush
     // earns the same "Saved on this device · will sync" acknowledgement a
     // completed save already latched in `_offlineAckMessenger`.
     final messenger =
@@ -950,11 +892,14 @@ class _DaySheetState extends State<DaySheet> {
     if (discard != true || !mounted) return;
     _saveDebounce?.cancel();
     _saveDebounce = null;
+    // Only reachable with `_saveState is DaySheetFailed` (the only state
+    // that ever triggers this dialog, via `_onSheetPop`'s `!didPop`
+    // branch) — nothing is in flight, so it is always safe to go straight
+    // to Idle.
     setState(() {
       _discardUnsaved = true;
-      _dirty = false;
+      _saveState = const DaySheetIdle();
     });
-    _pendingEntry = null;
     // The user just chose to drop unsaved changes — a parting "Saved on
     // this device" acknowledgement would be a lie about this dismissal.
     _offlineAckMessenger = null;
@@ -977,7 +922,7 @@ class _DaySheetState extends State<DaySheet> {
     return PopScope(
       // Only the failure-pending state refuses dismissal (#198); a normal
       // autosaved dismissal closes without ceremony.
-      canPop: !_saveFailed || _discardUnsaved,
+      canPop: _saveState is! DaySheetFailed || _discardUnsaved,
       onPopInvokedWithResult: _onSheetPop,
       child: _sheetShell(child: body),
     );
@@ -1388,7 +1333,7 @@ class _DaySheetState extends State<DaySheet> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_saveFailed)
+        if (_saveState is DaySheetFailed)
           InlineError(
             key: const ValueKey('save-error'),
             message: l10n.daySheetSaveError,
@@ -1429,7 +1374,7 @@ class _DaySheetState extends State<DaySheet> {
   /// succeeds, and nothing when idle.
   Widget _autosaveStatusSlot(ThemeData theme) {
     final Widget content;
-    if (_saving) {
+    if (_saveState is DaySheetSaving) {
       content = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1445,7 +1390,7 @@ class _DaySheetState extends State<DaySheet> {
           ),
         ],
       );
-    } else if (_showSaved) {
+    } else if (_saveState is DaySheetSaved) {
       content = Row(
         key: const ValueKey('autosave-saved'),
         mainAxisSize: MainAxisSize.min,

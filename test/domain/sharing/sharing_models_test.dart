@@ -178,7 +178,12 @@ void main() {
       expect(invite() == 'not an invite', isFalse);
     });
 
-    test('isExpired derives from expiresAt vs the current UTC time', () {
+    test('isExpiredAt derives from expiresAt vs the supplied clock reading', () {
+      // Issue #304: `isExpired` (a getter reading `DateTime.now()` itself)
+      // became `isExpiredAt(DateTime now)` so `lib/domain` never reads the
+      // wall clock -- this test pins its own reference instant instead of
+      // racing the real one.
+      final reference = DateTime.utc(2026, 1, 2, 12);
       PendingInvite withExpiry(DateTime expiresAt) => PendingInvite(
             invitationId: 'inv-1',
             profileId: 'p-1',
@@ -188,13 +193,13 @@ void main() {
             expiresAt: expiresAt,
           );
       expect(
-        withExpiry(DateTime.now().toUtc().add(const Duration(hours: 1)))
-            .isExpired,
+        withExpiry(reference.add(const Duration(hours: 1)))
+            .isExpiredAt(reference),
         isFalse,
       );
       expect(
-        withExpiry(DateTime.now().toUtc().subtract(const Duration(hours: 1)))
-            .isExpired,
+        withExpiry(reference.subtract(const Duration(hours: 1)))
+            .isExpiredAt(reference),
         isTrue,
       );
     });

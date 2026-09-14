@@ -91,9 +91,13 @@ class PendingInvite {
   final DateTime createdAt;
   final DateTime expiresAt;
 
-  /// Whether this invitation has aged past [expiresAt] against the current
-  /// UTC time (issue #362). Derived locally - no new server column.
-  bool get isExpired => !expiresAt.isAfter(DateTime.now().toUtc());
+  /// Whether this invitation has aged past [expiresAt] against [now]
+  /// (issue #362). Derived locally - no new server column. Takes [now]
+  /// explicitly (issue #304 clock-seam audit) rather than reading
+  /// `DateTime.now()` itself: `lib/domain` stays pure of wall-clock reads,
+  /// and every caller already has its own "now" to pass -- see
+  /// `pending_invite_badge.dart`/`manage_guardians_screen.dart`.
+  bool isExpiredAt(DateTime now) => !expiresAt.isAfter(now);
 
   @override
   bool operator ==(Object other) =>

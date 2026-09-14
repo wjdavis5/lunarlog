@@ -612,4 +612,57 @@ void main() {
       await db.close();
     });
   });
+
+  group('clock seam (issue #304)', () {
+    // Proves the injected todayProvider actually drives what renders,
+    // rather than merely being accepted and ignored (the exact bug #299
+    // fixed for this widget before this issue existed to audit it).
+    // Deliberately compares two fixture "today"s against each other, not
+    // one fixture against the real wall clock: kSteadyStarts' open cycle
+    // (started Aug 5, 2026) reads `unusuallyLongCycle` only once "today"
+    // is more than kMaxOpenCycleDays (60) days past that start, and
+    // `computePrediction` forces the tier to `irregular` in that case
+    // (`lib/domain/prediction/prediction.dart`). If CycleHistorySection
+    // silently stopped forwarding `todayProvider` to
+    // `CycleHistoryService.watch` (falling back to the real wall clock for
+    // both pumps below), both would render the same confidence -- whatever
+    // the real wall clock happens to compute -- rather than differing the
+    // way this test expects.
+    testWidgets(
+        'the same history reads a different confidence tier for two '
+        'different injected "today"s', (tester) async {
+      final within = await pumpHistory(
+        tester,
+        today: aug30, // 25 days past the Aug 5 open-cycle start.
+        starts: kSteadyStarts,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('history-confidence')),
+          matching: find.text('High confidence'),
+        ),
+        findsOneWidget,
+        reason: '25 days open is well under the 60-day unusually-long '
+            'threshold',
+      );
+      await disposeHistory(tester, within);
+
+      final beyond = await pumpHistory(
+        tester,
+        today: LocalDate(2026, 11, 1), // 88 days past the same start.
+        starts: kSteadyStarts,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('history-confidence')),
+          matching: find.text('Irregular'),
+        ),
+        findsOneWidget,
+        reason: '88 days open crosses the 60-day threshold -- this can '
+            'only differ from the pump above if todayProvider actually '
+            'reached CycleHistoryService.watch',
+      );
+      await disposeHistory(tester, beyond);
+    });
+  });
 }

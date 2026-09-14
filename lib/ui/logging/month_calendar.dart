@@ -1140,7 +1140,7 @@ class _MonthCalendarState extends State<MonthCalendar>
           return Center(
             child: InlineError(
               key: const ValueKey('calendar-prediction-error'),
-              message: 'Could not load the cycle estimate.',
+              message: AppLocalizations.of(context).cyclePredictionLoadError,
               onRetry: () => setState(_rewatchPrediction),
             ),
           );
@@ -1177,7 +1177,7 @@ class _MonthCalendarState extends State<MonthCalendar>
           return Center(
             child: InlineError(
               key: const ValueKey('calendar-history-error'),
-              message: 'Could not load cycle history.',
+              message: AppLocalizations.of(context).cycleHistoryLoadError,
               onRetry: () => setState(_rewatchPrediction),
             ),
           );
