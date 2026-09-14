@@ -27,16 +27,17 @@ void main() {
     'sensitive',
   ];
 
-  test('taxonomy has exactly 108 codes across 31 categories', () {
-    expect(kTagTaxonomy, hasLength(108));
-    // Codes exist for the 21 attested categories; the 10 unverified ones
-    // (kUnverifiedTagCategories) deliberately carry none — see their own
-    // test below.
-    expect(kTagTaxonomy.map((t) => t.category).toSet(), hasLength(21));
+  test('taxonomy has exactly 113 codes across 31 categories', () {
+    expect(kTagTaxonomy, hasLength(113));
+    // Codes exist for the 22 attested categories (Issue #456 moved
+    // `hotFlashes` from unverified to attested); the 9 remaining
+    // unverified ones (kUnverifiedTagCategories) deliberately carry none
+    // — see their own test below.
+    expect(kTagTaxonomy.map((t) => t.category).toSet(), hasLength(22));
     expect(TagCategory.values, hasLength(31));
     expect(
       kTagTaxonomy.map((t) => t.code).toSet(),
-      hasLength(108),
+      hasLength(113),
       reason: 'codes must be unique',
     );
   });
@@ -289,12 +290,26 @@ void main() {
     expect(() => validateTagCodes(['cravings', 'chocolate']), returnsNormally);
   });
 
+  test('hot_flashes carries the issue #456 attested code set', () {
+    Iterable<String> codes(TagCategory c) =>
+        kTagTaxonomy.where((t) => t.category == c).map((t) => t.code);
+
+    expect(codes(TagCategory.hotFlashes).toSet(), {
+      'hot_flashes',
+      'night_sweats',
+      'brain_fog',
+      'hrt',
+      'vaginal_dryness',
+    });
+    expect(isValidTagCode('hot_flashes'), isTrue);
+    expect(tagByCode('hrt')!.display, 'HRT');
+  });
+
   test('unverified categories exist in the enum but carry no codes', () {
-    expect(kUnverifiedTagCategories, hasLength(10));
+    expect(kUnverifiedTagCategories, hasLength(9));
     expect(kUnverifiedTagCategories.toSet(), {
       TagCategory.sleepQuality,
       TagCategory.breastsChest,
-      TagCategory.hotFlashes,
       TagCategory.urine,
       TagCategory.vulvaVagina,
       // Issue #251's three: pms (presence-based; the presence marker

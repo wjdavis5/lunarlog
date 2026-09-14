@@ -312,3 +312,27 @@ are category-qualified codes (`cold_flu_medication` /
 as the Pain category. The `appointments` and `supplements` categories
 ship no codes yet (option sets unverified — `kUnverifiedTagCategories`),
 so they add no rows here.
+
+## Issue #456's `hot_flashes` taxonomy — local decisions (2026-09)
+
+Issue #249 added `hot_flashes` as a top-level category with no attested
+option set (Clue's own category is named "Hot flashes/perimenopause" —
+`docs/import/clue-mapping.md`'s "no export type" list). Issue #456 adds
+five codes to it: `hot_flashes`, `night_sweats`, `brain_fog`, `hrt`, and
+`vaginal_dryness`. Same rule as every section above: no SNOMED CT
+concept fetch-verified in this pass, so each is an explicit local
+decision.
+
+**Attestation gap, recorded rather than papered over:** Clue's own
+support/marketing copy says Clue Perimenopause shipped "14 brand-new
+tracking options ... such as hot flashes, night sweats, brain fog, HRT
+and vaginal dryness" (`helloclue.com/articles/menopause/introducing-clue-
+perimenopause`; `support.helloclue.com/hc/en-us/articles/
+13059487439261`, which returned HTTP 403 to this pass's fetcher). Only
+those five are named in any source this pass could reach — the remaining
+~9 of the 14 are not enumerated anywhere publicly accessible found
+during this pass. Per this file's own no-guessed-codes rule (and the
+`kUnverifiedTagCategories` precedent above), the other ~9 are **not**
+invented; `hot_flashes` ships with only the five attested codes and can
+grow the same way `collection_method`/`exercise` did once a real Clue
+export or an accessible copy of the support article pins the rest.

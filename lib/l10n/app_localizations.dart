@@ -568,6 +568,30 @@ abstract class AppLocalizations {
   /// **'Unverified — pin before shipping'**
   String get daySheetUnverifiedPin;
 
+  /// Issue #234: visible hint text in CategoryPicker's search field above the tag chip grid.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get daySheetTagSearchHint;
+
+  /// Issue #234: screen-reader label for CategoryPicker's search field (distinct from the shorter visible hint).
+  ///
+  /// In en, this message translates to:
+  /// **'Search tags'**
+  String get daySheetTagSearchSemanticsLabel;
+
+  /// Issue #234: tooltip/semantics for the button that clears CategoryPicker's search text.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear search'**
+  String get daySheetTagSearchClearTooltip;
+
+  /// Issue #234: heading above CategoryPicker's Recent row, seeded from the profile's most-used tags.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent'**
+  String get daySheetTagRecentLabel;
+
   /// Read-only day sheet body when the day has no entry.
   ///
   /// In en, this message translates to:
