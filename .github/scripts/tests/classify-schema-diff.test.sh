@@ -68,6 +68,11 @@ assert_real "a drop/create pair for two DIFFERENT trigger names is not treated a
   "REAL: DROP TRIGGER"
 
 # --- the narrow pg_net-in-public exception (issue #194, #513) -----------
+# Issue #194's own pg_net relocation is deferred (production's pg_net is
+# supabase_admin-owned and confirmed non-relocatable -- see the migration
+# and check-advisor-gate.sh for the full story), so this exception stays
+# the single pre-existing shape rather than widening for a relocation that
+# has not happened.
 
 assert_noise "CREATE EXTENSION pg_net WITH SCHEMA public, quoted, is the one allowed shape" \
   'create extension if not exists "pg_net" with schema "public";'

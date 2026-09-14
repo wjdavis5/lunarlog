@@ -32,6 +32,13 @@ function trigger_name(stmt,    tmp, parts, count) {
 # statement is the local shadow image lacking pg_net, not real drift --
 # unquoted, quoted, or case-varied, but ONLY this extension in ONLY this
 # schema. Anything else (pg_cron, a different schema, ...) still fails.
+# Issue #194 own PR deferred the actual relocation (production pg_net is
+# supabase_admin-owned and confirmed non-relocatable -- see that migration
+# and supabase-migrate.yml advisor-gate step for the full rationale, and
+# check-advisor-gate.sh for how the advisor finding itself is handled
+# instead), so pg_net is expected to still be in `public` on every project
+# this reaches for the foreseeable future -- this exception is not stale,
+# just still pending its own follow-up.
 function is_shadow_missing_pg_net(stmt,    t) {
   t = tolower(stmt)
   gsub(/"/, "", t)
