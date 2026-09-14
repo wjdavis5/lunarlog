@@ -1,8 +1,13 @@
-/// Tests for issue #133's forward-forecast derivation (U1): cycle
-/// chaining off the active estimate, tier degradation, spread growth,
-/// horizon coverage, and the per-date cells the calendar renders — band
-/// days, first-cycle-only numerals, fixed-offset badges, and the
-/// past-stays-factual clamp.
+/// Tests for issue #133's forward-forecast derivation, rebuilt for issue
+/// #300 (calendar forecast consumes the engine's `ActivePrediction.forecast`
+/// instead of its own curve): [deriveForecast] is now a thin adapter, so
+/// these tests prove the adapter's own job — re-indexing, horizon
+/// truncation, and each cycle's own fertile window — while deferring the
+/// confidence-degradation/spread-widening curve itself to
+/// `prediction_test.dart`'s coverage of `ActivePrediction.forecast` (the
+/// single place that curve now lives). `forecastDayCells`'s per-date
+/// rendering rules are otherwise unchanged by #300 and still fully covered
+/// here.
 ///
 /// Issue #143: each [ForecastCycle]'s own fertile window and its
 /// degradation in step with [ForecastCycle.tier], plus [ForecastDayCell
@@ -13,7 +18,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
-import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/fertile_window.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/pms.dart';
@@ -58,96 +62,103 @@ DayEntry _bleed(String profileId, LocalDate date) => DayEntry(
     entries: entries,
     today: today,
   );
-  final history = deriveCycleHistoryFromEntries(entries: entries, today: today);
   final active = prediction as ActivePrediction;
   return (
-    deriveForecast(
-      prediction: active,
-      history: history,
-      today: today,
-      horizonMonths: horizonMonths,
-    ),
+    deriveForecast(prediction: active, today: today, horizonMonths: horizonMonths),
     active,
   );
 }
 
 void main() {
   group('deriveForecast', () {
-    test('chains cycles off the estimate by the mean cycle length', () {
+    test('the first cycle equals the active estimate itself -- start and '
+        'tier both (issue #300 AC: the calendar and the overview headline '
+        'can never disagree, because both trace back to the same '
+        'ActivePrediction.forecast.first)', () {
       final (cycles, active) = _steadyForecast(
         _d(2026, 8, 30),
         kForecastHorizonMonths,
       );
-      expect(active.estimatedNextStart, _d(2026, 9, 4));
-      expect(cycles.first.start, _d(2026, 9, 4));
+      expect(cycles.first.start, active.estimatedNextStart);
+      expect(cycles.first.tier, active.tier);
+      expect(cycles.first.index, 0);
+    });
+
+    test('every cycle mirrors the engine''s own ActivePrediction.forecast '
+        'entry -- start, tier, spread, and period length are read, never '
+        're-derived', () {
+      final (cycles, active) = _steadyForecast(
+        _d(2026, 8, 30),
+        kForecastHorizonMonths,
+      );
+      expect(cycles, isNotEmpty);
+      expect(cycles.length, lessThanOrEqualTo(active.forecast.length));
       for (var i = 0; i < cycles.length; i++) {
-        expect(cycles[i].index, i);
-        expect(
-          cycles[i].start,
-          _d(2026, 9, 4).addDays(30 * i),
-          reason: 'cycle $i start',
-        );
+        final predicted = active.forecast[i];
+        expect(cycles[i].index, i, reason: 'cycle $i index (0-based)');
+        expect(cycles[i].index, predicted.cycleIndex - 1,
+            reason: 'cycle $i re-indexes the engine''s 1-based cycleIndex');
+        expect(cycles[i].start, predicted.start, reason: 'cycle $i start');
+        expect(cycles[i].tier, predicted.tier, reason: 'cycle $i tier');
+        expect(cycles[i].spreadDays, predicted.spreadDays.round(),
+            reason: 'cycle $i spreadDays');
+        expect(cycles[i].periodLengthDays, predicted.estimatedPeriodLengthDays,
+            reason: 'cycle $i periodLengthDays');
       }
     });
 
-    test('bleed length comes from the mean episode length', () {
+    test('lengthDays is the constant chaining step every cycle shares '
+        '(rounded meanCycleLengthDays), the same value the engine chains '
+        'PredictedCycle.start by', () {
+      final (cycles, active) = _steadyForecast(
+        _d(2026, 8, 30),
+        kForecastHorizonMonths,
+      );
+      final expected = active.meanCycleLengthDays.round();
+      for (final cycle in cycles) {
+        expect(cycle.lengthDays, expected);
+      }
+      expect(cycles.first.lengthDays, 30);
+    });
+
+    test('bleed length comes from the engine''s own estimated period '
+        'length', () {
       final (cycles, _) = _steadyForecast(
         _d(2026, 8, 30),
         kForecastHorizonMonths,
       );
       expect(cycles.first.periodLengthDays, 4);
       expect(cycles.first.end, _d(2026, 9, 7));
-      expect(
-        cycles.first.lengthDays,
-        30,
-        reason: 'full cycle length is the chaining step',
-      );
     });
 
-    test('covers the whole navigable horizon and no further', () {
-      final (cycles, _) = _steadyForecast(
+    test('covers at most the engine''s fixed forecast window (issue #300: '
+        'kPredictionWindowCycles = 12, not the pre-#300 unbounded-until-'
+        'horizon chain) -- a 12-month horizon over 30-day steady cycles '
+        'used to need 13 cycles; the engine now caps the forecast at 12, '
+        'so this fixture is truncated to the engine''s own cap rather than '
+        'the navigable horizon', () {
+      final (cycles, active) = _steadyForecast(
         _d(2026, 8, 30),
         kForecastHorizonMonths,
       );
-      // Today Aug 2026 + 12 months → horizon ends 2027-08-31. Starts are
-      // Sep 4 2026 + 30k; the last one at or before the horizon is
-      // k = 12 (Aug 30 2027), so 13 cycles.
-      expect(cycles.length, 13);
-      expect(cycles.last.start, _d(2027, 8, 30));
-      expect(cycles.last.start.isAfter(_d(2027, 8, 31)), isFalse);
-      expect(
-        cycles.last.start.addDays(30).isAfter(_d(2027, 8, 31)),
-        isTrue,
-        reason: 'the next cycle would pass the horizon',
-      );
+      expect(active.forecast.length, 12,
+          reason: 'the engine always emits kPredictionWindowCycles cycles');
+      expect(cycles.length, 12,
+          reason: 'every engine cycle here starts before the 12-month '
+              'horizon ends, so none is truncated by the horizon -- the '
+              'engine''s own fixed cap is what bounds this list');
+      expect(cycles.last.start, active.forecast.last.start);
     });
 
-    test('a shorter horizon derives fewer cycles', () {
+    test('a shorter horizon still truncates below the engine''s own cap', () {
       final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 2);
-      // Horizon ends 2026-10-31: starts Sep 4, Oct 4 → 2 cycles.
+      // Horizon ends 2026-10-31: starts Sep 4, Oct 4 -> 2 cycles.
       expect(cycles.length, 2);
+      expect(cycles.last.start, _d(2026, 10, 4));
     });
 
-    test('cycle 0 keeps the history tier; later cycles step down', () {
-      final (cycles, _) = _steadyForecast(
-        _d(2026, 8, 30),
-        kForecastHorizonMonths,
-      );
-      expect(
-        cycles.first.tier,
-        CycleConfidence.high,
-        reason: 'steady history reads high',
-      );
-      for (var i = 1; i < cycles.length; i++) {
-        expect(
-          cycles[i].tier,
-          CycleConfidence.learning,
-          reason: 'cycle $i compounds the uncertainty',
-        );
-      }
-    });
-
-    test('irregular histories never upgrade with distance', () {
+    test('irregular histories never upgrade with distance (the engine''s '
+        'own tier-stepping floors at irregular, same as before #300)', () {
       // Lengths 65, 90, 95, 100 (outliers) then 28, 28, 28: valid ratio
       // 3/7 ≈ 0.43, under the engine's 0.5 threshold — reads irregular;
       // every cycle in the forecast stays irregular.
@@ -166,110 +177,48 @@ void main() {
           for (var i = 0; i < 4; i++) _bleed('p', start.addDays(i)),
       ];
       final today = _d(2026, 8, 30);
-      final history = deriveCycleHistoryFromEntries(
+      final active = computePredictionFromEntries(
         entries: entries,
         today: today,
-      );
-      expect(history.confidence, CycleConfidence.irregular);
+      ) as ActivePrediction;
+      expect(active.tier, CycleConfidence.irregular);
       final cycles = deriveForecast(
-        prediction: computePredictionFromEntries(
-          entries: entries,
-          today: today,
-        ) as ActivePrediction,
-        history: history,
+        prediction: active,
         today: today,
         horizonMonths: 1,
       );
+      expect(cycles, isNotEmpty);
       for (final cycle in cycles) {
         expect(cycle.tier, CycleConfidence.irregular);
       }
     });
 
-    test('spread widens one day per cycle out', () {
-      final (cycles, _) = _steadyForecast(
-        _d(2026, 8, 30),
-        kForecastHorizonMonths,
-      );
-      expect(cycles.first.spreadDays, 0, reason: 'steady history, no spread');
-      expect(cycles[5].spreadDays, 5);
-      expect(cycles.last.spreadDays, 12);
-    });
-
-    test('variation feeds the base spread', () {
-      // Lengths 28, 28, 34 → variation 6, mean 30: spread = 6 + index.
-      final starts = [
-        _d(2026, 1, 5),
-        _d(2026, 2, 2),
-        _d(2026, 3, 2),
-        _d(2026, 4, 5),
-      ];
-      final entries = [
-        for (final start in starts)
-          for (var i = 0; i < 4; i++) _bleed('p', start.addDays(i)),
-      ];
-      final today = _d(2026, 4, 7);
-      final history = deriveCycleHistoryFromEntries(
-        entries: entries,
-        today: today,
-      );
-      expect(history.variationDays, 6);
-      final cycles = deriveForecast(
-        prediction: computePredictionFromEntries(
-          entries: entries,
-          today: today,
-        ) as ActivePrediction,
-        history: history,
-        today: today,
-        horizonMonths: 2,
-      );
-      expect(cycles.first.spreadDays, 6);
-      expect(cycles[1].spreadDays, 7);
-    });
-
-    test('a degenerate zero-day mean derives nothing (defensive guard)', () {
+    test('a degenerate zero-length engine forecast derives nothing '
+        '(defensive: the engine itself never emits a zero-length forecast '
+        'for a real ActivePrediction, but a hand-built fixture with an '
+        'empty forecast list must not crash the adapter)', () {
       final prediction = ActivePrediction(
         today: _d(2026, 8, 30),
         lastEpisodeStart: _d(2026, 8, 5),
         estimatedNextStart: _d(2026, 9, 4),
         originalEstimatedNextStart: _d(2026, 9, 4),
         averagedCycleLengths: const [30, 30, 30],
-        meanCycleLengthDays: 0,
+        meanCycleLengthDays: 30,
         cycleDay: 26,
         duringEpisode: false,
         completedCycleCount: 5,
         validCycleCount: 5,
+        forecast: const [],
       );
       expect(
-        deriveForecast(
-          prediction: prediction,
-          history: deriveCycleHistory(
-            episodes: const [],
-            today: _d(2026, 8, 30),
-          ),
-          today: _d(2026, 8, 30),
-        ),
+        deriveForecast(prediction: prediction, today: _d(2026, 8, 30)),
         isEmpty,
       );
     });
 
-    test('degradeForecastTier steps high down once and floors the rest', () {
-      expect(
-        degradeForecastTier(CycleConfidence.high),
-        CycleConfidence.learning,
-      );
-      expect(
-        degradeForecastTier(CycleConfidence.learning),
-        CycleConfidence.learning,
-      );
-      expect(
-        degradeForecastTier(CycleConfidence.irregular),
-        CycleConfidence.irregular,
-      );
-    });
-
-    test('each cycle carries its own fertile window, at that cycle\'s own '
-        '(degrading) tier — issue #143', () {
-      final (cycles, _) = _steadyForecast(
+    test('each cycle carries its own fertile window, at that cycle''s own '
+        'engine-computed tier — issue #143', () {
+      final (cycles, active) = _steadyForecast(
         _d(2026, 8, 30),
         kForecastHorizonMonths,
       );
@@ -286,14 +235,15 @@ void main() {
       expect(cycles.first.fertileWindow!.windowEnd, expectedFirst.windowEnd);
       expect(cycles.first.fertileWindow!.tier, CycleConfidence.high);
 
-      // Cycle 1: start Oct 4, already stepped down to learning — its
-      // fertile window must carry that same degraded tier, not cycle 0's.
-      expect(cycles[1].start, _d(2026, 10, 4));
-      expect(cycles[1].tier, CycleConfidence.learning);
-      expect(cycles[1].fertileWindow!.tier, CycleConfidence.learning);
+      // Cycle 1: its fertile window carries whatever tier the engine gave
+      // that cycle (read from active.forecast, never hand-assumed) -- the
+      // fertile window's own tier must always track its owning cycle's
+      // tier, whatever that engine-computed value is.
+      expect(cycles[1].start, active.forecast[1].start);
+      expect(cycles[1].fertileWindow!.tier, cycles[1].tier);
       expect(
         cycles[1].fertileWindow!.estimatedOvulation,
-        _d(2026, 10, 4).addDays(-kDefaultLutealPhaseDays),
+        cycles[1].start.addDays(-kDefaultLutealPhaseDays),
       );
     });
 
@@ -313,10 +263,25 @@ void main() {
         validCycleCount: 0,
         tier: CycleConfidence.high,
         basis: PredictionBasis.regimenSchedule,
+        forecast: [
+          PredictedCycle(
+            cycleIndex: 1,
+            start: _d(2026, 1, 29),
+            estimatedPeriodLengthDays: 5,
+            tier: CycleConfidence.high,
+            spreadDays: 0,
+          ),
+          PredictedCycle(
+            cycleIndex: 2,
+            start: _d(2026, 2, 26),
+            estimatedPeriodLengthDays: 5,
+            tier: CycleConfidence.high,
+            spreadDays: 0,
+          ),
+        ],
       );
       final cycles = deriveForecast(
         prediction: prediction,
-        history: deriveCycleHistory(episodes: const [], today: _d(2026, 1, 15)),
         today: _d(2026, 1, 15),
         horizonMonths: 2,
       );
@@ -361,13 +326,14 @@ void main() {
       );
     });
 
-    test('later cycles carry bands only, at the degraded tier', () {
+    test('later cycles carry bands only, at that cycle''s own '
+        'engine-computed tier', () {
       final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 2);
       final cells = forecastDayCells(cycles: cycles, today: _d(2026, 8, 30));
       final cell = cells[_d(2026, 10, 5).iso]!;
       expect(cell.predictedBleed, isTrue);
       expect(cell.cycleDayNumber, isNull);
-      expect(cell.tier, CycleConfidence.learning);
+      expect(cell.tier, cycles[1].tier);
       expect(cell.cycleIndex, 1);
     });
 
@@ -456,10 +422,6 @@ void main() {
       expect(prediction.estimatedNextStart, _d(2026, 5, 24));
       final cycles = deriveForecast(
         prediction: prediction,
-        history: deriveCycleHistoryFromEntries(
-          entries: entries,
-          today: today,
-        ),
         today: today,
         horizonMonths: 1,
       );
@@ -492,7 +454,7 @@ void main() {
       );
     });
 
-    test('fertile window marks each cycle\'s own days, at that cycle\'s '
+    test('fertile window marks each cycle''s own days, at that cycle''s '
         'own tier — issue #143', () {
       // horizonMonths 3 reaches cycle 2 (Nov 3) — cycle 1's own fertile
       // window (Sep 15-21) sits inside cycle 0's full 30-day numeral span
@@ -505,7 +467,6 @@ void main() {
       final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 3);
       final cells = forecastDayCells(cycles: cycles, today: _d(2026, 8, 30));
       expect(cycles[2].start, _d(2026, 11, 3));
-      expect(cycles[2].tier, CycleConfidence.learning);
 
       // Cycle 0's own fertile window (ovulation Aug 21, band Aug 16-22)
       // falls entirely before today (Aug 30) — past stays factual, so none
@@ -519,7 +480,7 @@ void main() {
         final day = _d(2026, 10, 15).addDays(i);
         final cell = cells[day.iso]!;
         expect(cell.fertileWindow, isTrue, reason: day.iso);
-        expect(cell.tier, CycleConfidence.learning, reason: day.iso);
+        expect(cell.tier, cycles[2].tier, reason: day.iso);
         expect(cell.cycleIndex, 2, reason: day.iso);
         expect(
           cell.predictedBleed,
@@ -537,15 +498,14 @@ void main() {
         "when it lands on a date cycle 0's numeral span already claimed — "
         'the contested overlap case (issue #143 review), not the '
         'uncontested cycle-2 case above', () {
-      // horizonMonths 2 -> cycles 0 (Sep 4, high) and 1 (Oct 4, learning).
+      // horizonMonths 2 -> cycles 0 (Sep 4) and 1 (Oct 4).
       // Cycle 1's own fertile window (ovulation Sep 20, band Sep 15-21)
       // sits inside cycle 0's full 30-day numeral span (Sep 4 - Oct 3,
       // since index-0 walks its whole length) — so those cells already
-      // exist (numeral, no band, `tier: high`, `cycleIndex: 0`) before the
+      // exist (numeral, no band, cycle 0's own tier/index) before the
       // fertile-marking pass ever reaches them.
       final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 2);
       expect(cycles[1].start, _d(2026, 10, 4));
-      expect(cycles[1].tier, CycleConfidence.learning);
       expect(cycles[1].fertileWindow!.windowStart, _d(2026, 9, 15));
       expect(cycles[1].fertileWindow!.windowEnd, _d(2026, 9, 21));
 
@@ -556,13 +516,12 @@ void main() {
         expect(cell.fertileWindow, isTrue, reason: day.iso);
         // The cell's general tier/cycleIndex still belong to cycle 0's
         // numeral span (unchanged by the fertile pass) --
-        expect(cell.tier, CycleConfidence.high, reason: day.iso);
+        expect(cell.tier, cycles[0].tier, reason: day.iso);
         expect(cell.cycleIndex, 0, reason: day.iso);
         expect(cell.cycleDayNumber, isNotNull, reason: day.iso);
         // -- but the FERTILE-specific fields correctly carry cycle 1's own
-        // (degraded) tier/index, not cycle 0's, which is the fix under
-        // test.
-        expect(cell.fertileTier, CycleConfidence.learning, reason: day.iso);
+        // tier/index, not cycle 0's, which is the fix under test.
+        expect(cell.fertileTier, cycles[1].tier, reason: day.iso);
         expect(cell.fertileCycleIndex, 1, reason: day.iso);
       }
     });

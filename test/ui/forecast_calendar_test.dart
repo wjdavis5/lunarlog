@@ -22,9 +22,9 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
-import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -979,6 +979,51 @@ void main() {
         ),
         'Wednesday, August 5, not logged, read-only',
       );
+    });
+
+    // Issue #300 AC: "the calendar's first predicted cycle equals the
+    // overview's headline estimate for every fixture in
+    // test/ui/forecast_calendar_test.dart". Pure-Dart (no DB/widget pump
+    // needed): builds the same ActivePrediction the widget harness's
+    // pumpForecast() would (from the same fixtures this file already
+    // defines) and asserts deriveForecast's first cycle agrees with it --
+    // both now trace back to the exact same ActivePrediction.forecast.first
+    // (see forecast.dart's #300 doc comment), which is what makes the
+    // calendar and OverviewPanel's headline estimate/tier agree instead of
+    // silently diverging.
+    test('the calendar\'s first predicted cycle matches the '
+        'ActivePrediction headline (start and tier) for every '
+        'ActivePrediction-yielding fixture in this file', () {
+      List<DayEntry> entriesFor(List<LocalDate> starts, {int bleedDays = 4}) => [
+            for (final start in starts)
+              for (var i = 0; i < bleedDays; i++)
+                DayEntry(
+                  id: '',
+                  profileId: 'p',
+                  localDate: start.addDays(i),
+                  tz: 'America/Chicago',
+                  flow: FlowLevel.medium,
+                  updatedAt: DateTime.utc(2026, 1, 1),
+                ),
+          ];
+
+      for (final starts in [kSteadyStarts, kIrregularStarts, kPausedStarts]) {
+        final prediction = computePredictionFromEntries(
+          entries: entriesFor(starts),
+          today: kToday,
+        );
+        expect(
+          prediction,
+          isA<ActivePrediction>(),
+          reason: 'fixture yields an ActivePrediction, not NotEnoughHistory',
+        );
+        final active = prediction as ActivePrediction;
+        final cycles = deriveForecast(prediction: active, today: kToday);
+        expect(cycles.first.start, active.estimatedNextStart,
+            reason: 'the headline estimate date');
+        expect(cycles.first.tier, active.tier,
+            reason: 'the headline confidence tier');
+      }
     });
   });
 

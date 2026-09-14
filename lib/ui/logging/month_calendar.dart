@@ -605,8 +605,10 @@ class _MonthCalendarState extends State<MonthCalendar>
 
   /// Issue #550: memoises the `(byIso, cycles, forecastByIso, pmsBandActive,
   /// activeLayers)` compute path — [deriveForecast]/[forecastDayCells] walk
-  /// up to `kForecastMaxCycles × cycleLength` days, and [defaultLayerTags]
-  /// scans every windowed entry — so a `setState` whose inputs didn't
+  /// up to the engine's fixed forecast-window cycle count (`prediction.dart`'s
+  /// `kPredictionWindowCycles`, issue #300) times cycleLength days, and
+  /// [defaultLayerTags] scans every windowed entry — so a `setState` whose
+  /// inputs didn't
   /// change (the legend toggle, the layers panel expand/collapse,
   /// `onPageChanged`'s own re-render of the *other* page) doesn't re-run
   /// any of it. [_ensureComputed] is the only writer; everything else reads
@@ -667,8 +669,14 @@ class _MonthCalendarState extends State<MonthCalendar>
 
     final byIso = {for (final entry in entries) entry.localDate.iso: entry};
     final estimateActive = prediction is ActivePrediction;
+    // Issue #300: deriveForecast no longer takes history -- it now reads
+    // ActivePrediction.forecast directly (the engine's own single
+    // degradation curve), so the caller-computed CycleHistoryView is no
+    // longer part of the forecast derivation itself (still threaded
+    // through this method's own memoisation key below, unrelated to this
+    // call).
     final cycles = estimateActive
-        ? deriveForecast(prediction: prediction, history: history, today: today)
+        ? deriveForecast(prediction: prediction, today: today)
         : const <ForecastCycle>[];
     // Issue #220: the PMS band is data-driven — the estimate's own
     // 6-cycle averages anchored before the next predicted start, or null
