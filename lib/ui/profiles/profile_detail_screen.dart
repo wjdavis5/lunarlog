@@ -171,6 +171,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     profileId: widget.profile.id,
                     readOnly: widget.readOnly,
                     mode: widget.profile.mode,
+                    trackingPreferences: widget.profile.trackingPreferences,
+                    isMinor: widget.profile.isMinor,
                     todayProvider: widget.todayProvider,
                     timezoneProvider: widget.timezoneProvider,
                     guardiansRepository: guardiansRepository,
@@ -228,6 +230,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     return OverviewPanel(
       profileId: widget.profile.id,
       mode: widget.profile.mode,
+      trackingPreferences: widget.profile.trackingPreferences,
+      isMinor: widget.profile.isMinor,
       todayProvider: widget.todayProvider,
       readOnly: widget.readOnly,
       timezoneProvider: widget.timezoneProvider,

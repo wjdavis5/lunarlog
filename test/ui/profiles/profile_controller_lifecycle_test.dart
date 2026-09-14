@@ -12,6 +12,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -241,6 +242,13 @@ class _ManualProfilesRepository implements ProfilesRepository {
     BbtUnit bbtUnit = BbtUnit.celsius,
     WeightUnit weightUnit = WeightUnit.kg,
   }) =>
+      throw UnimplementedError('not exercised in the lifecycle tests');
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+    String id,
+    TrackingPreferences? preferences,
+  ) =>
       throw UnimplementedError('not exercised in the lifecycle tests');
 
   @override

@@ -8,6 +8,7 @@ import 'local_date.dart';
 import 'measurement_unit.dart';
 import 'profile_mode.dart';
 import 'profile_relationship.dart';
+import '../logging/tracking_preferences.dart';
 
 class Profile {
   Profile({
@@ -27,6 +28,7 @@ class Profile {
     this.lastPeriodStart,
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
+    this.trackingPreferences,
     this.bbtUnit = BbtUnit.celsius,
     this.weightUnit = WeightUnit.kg,
   });
@@ -101,6 +103,17 @@ class Profile {
   /// (Issue #218). Same treatment as [typicalCycleLengthDays].
   final int? typicalPeriodLengthDays;
 
+  /// The profile's curated tracking categories (Issue #259): which
+  /// categories the day sheet surfaces and in what order, synced so
+  /// co-guardians see the same set (AC1/AC6). Null means never customized
+  /// — every category resolves to its default (enabled, taxonomy order)
+  /// except the minor-hidden set on an [isMinor] profile; see
+  /// `resolveTrackingCategories` in
+  /// `lib/domain/logging/tracking_preferences.dart`. Presentation
+  /// curation only: hiding a category never deletes or hides
+  /// already-logged entries for it (AC3), and this field is never
+  /// consulted by any authorization path.
+  final TrackingPreferences? trackingPreferences;
   /// Per-profile BBT display unit (Issue #255): how a stored basal body
   /// temperature renders, independent of the unit any individual
   /// `observations` value was entered or imported in (each row carries its
@@ -140,6 +153,7 @@ class Profile {
     Object? lastPeriodStart = _unset,
     Object? typicalCycleLengthDays = _unset,
     Object? typicalPeriodLengthDays = _unset,
+    Object? trackingPreferences = _unset,
     BbtUnit? bbtUnit,
     WeightUnit? weightUnit,
   }) =>
@@ -164,6 +178,8 @@ class Profile {
             typicalCycleLengthDays, this.typicalCycleLengthDays),
         typicalPeriodLengthDays: _resolveNullable(
             typicalPeriodLengthDays, this.typicalPeriodLengthDays),
+        trackingPreferences:
+            _resolveNullable(trackingPreferences, this.trackingPreferences),
         bbtUnit: bbtUnit ?? this.bbtUnit,
         weightUnit: weightUnit ?? this.weightUnit,
       );
@@ -185,9 +201,7 @@ class Profile {
       other.archivedAt == archivedAt &&
       other.deletedAt == deletedAt &&
       _sameSubjectMetadata(other) &&
-      other.lastPeriodStart == lastPeriodStart &&
-      other.typicalCycleLengthDays == typicalCycleLengthDays &&
-      other.typicalPeriodLengthDays == typicalPeriodLengthDays &&
+      _sameProfileCuration(other) &&
       _sameMeasurementUnits(other);
 
   /// Split from [_sameProfileDetails] (the [Observation]
@@ -200,6 +214,17 @@ class Profile {
       other.transferredAt == transferredAt &&
       other.transferredToUserId == transferredToUserId;
 
+  /// Cycle facts (#218) and the tracking-preferences document (#259):
+  /// split from [_sameProfileDetails] for the same reason that method was
+  /// split from [_sameProfileIdentity] - the merge of #376's
+  /// transferred_to_user_id and #259's tracking_preferences pushed the
+  /// single details method over the CRAP gate's complexity floor.
+  bool _sameProfileCuration(Profile other) =>
+      other.lastPeriodStart == lastPeriodStart &&
+      other.typicalCycleLengthDays == typicalCycleLengthDays &&
+      other.typicalPeriodLengthDays == typicalPeriodLengthDays &&
+      other.trackingPreferences == trackingPreferences;
+
   /// Issue #255's two display-unit preferences, split out for the same
   /// reason as [_sameSubjectMetadata].
   bool _sameMeasurementUnits(Profile other) =>
@@ -210,7 +235,8 @@ class Profile {
       identical(this, other) ||
       other is Profile &&
           _sameProfileIdentity(other) &&
-          _sameProfileDetails(other);
+          _sameProfileDetails(other) &&
+          _sameProfileCuration(other);
 
   @override
   int get hashCode => Object.hash(
@@ -230,6 +256,7 @@ class Profile {
         lastPeriodStart,
         typicalCycleLengthDays,
         typicalPeriodLengthDays,
+        trackingPreferences,
         bbtUnit,
         weightUnit,
       );

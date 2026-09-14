@@ -156,6 +156,8 @@ class _AppShellState extends State<AppShell> {
           OverviewPanel(
             profileId: widget.profile.id,
             mode: widget.profile.mode,
+            trackingPreferences: widget.profile.trackingPreferences,
+            isMinor: widget.profile.isMinor,
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
@@ -166,6 +168,8 @@ class _AppShellState extends State<AppShell> {
           MonthCalendar(
             profileId: widget.profile.id,
             mode: widget.profile.mode,
+            trackingPreferences: widget.profile.trackingPreferences,
+            isMinor: widget.profile.isMinor,
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
@@ -246,6 +250,8 @@ class _AppShellState extends State<AppShell> {
               ? TodayLogFab(
                   profileId: widget.profile.id,
                   mode: widget.profile.mode,
+                  trackingPreferences: widget.profile.trackingPreferences,
+                  isMinor: widget.profile.isMinor,
                   todayProvider: widget.todayProvider,
                   timezoneProvider: widget.timezoneProvider,
                   guardiansRepository: guardiansRepository,

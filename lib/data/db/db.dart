@@ -146,7 +146,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   Presentation only: each `observations` row keeps the unit it was
   ///   entered/imported in; the client converts at read time.
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
+  /// * 17 — `tracking_preferences` on `profiles` (Issue #259, the synced
+  ///   curated-tracking-categories document: which categories the day
+  ///   sheet surfaces and in what order, shared by every guardian).
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -195,7 +198,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// Issue #220 adds `day_entries.pms`. Issue #186 adds `health_sync_state`,
   /// `observations.exported_to_platform_at`. Issue #525 adds
   /// `sync_state.cursor_profile_guardians`. Issue #255 adds
-  /// `profiles.bbt_unit`, `profiles.weight_unit`.
+  /// `profiles.bbt_unit`, `profiles.weight_unit`. Issue #259 adds
+  /// `profiles.tracking_preferences`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -325,7 +329,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV11(m, from);
     // Issue #220's v12 step, same shape again.
     await _upgradeToV12(m, from);
-    // Issue #296's v13 step, same shape again.
+    // Issue #296's and Issue #255's v13 columns, one step block (both
+    // bumps are v13 — main's #376 and this branch's #255 landed as
+    // competing v13s, woven into a single upgrade step).
     await _upgradeToV13(m, from);
     // Issue #186's v14 step, same shape again.
     await _upgradeToV14(m, from);
@@ -333,6 +339,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV15(m, from);
     // Issue #255's v16 step, same shape again.
     await _upgradeToV16(m, from);
+    // Issue #259's v17 step, same shape again.
+    await _upgradeToV17(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -514,6 +522,21 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await migrationStepHook?.call('profiles.bbt_unit');
       await m.addColumn(profiles, profiles.weightUnit);
       await migrationStepHook?.call('profiles.weight_unit');
+    });
+  }
+
+  /// The v17 upgrade step (Issue #259): `tracking_preferences` on
+  /// `profiles` — the synced tracking-preferences document. `profiles` has
+  /// existed since v1 on every real device, so the addColumn is always safe
+  /// regardless of `from`; the column is nullable with no default, so every
+  /// existing row reads as "never customized" — the all-defaults state —
+  /// until the profile's guardians curate it (the server migration adds the
+  /// same-shaped jsonb column the same way).
+  Future<void> _upgradeToV17(Migrator m, int from) async {
+    if (from >= 17) return;
+    await transaction(() async {
+      await m.addColumn(profiles, profiles.trackingPreferences);
+      await migrationStepHook?.call('profiles.tracking_preferences');
     });
   }
 
