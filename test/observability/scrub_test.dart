@@ -1291,6 +1291,89 @@ void main() {
       expect(out.data, {'provider': 'google', 'code': 'canceled', 'category': 'x'});
     });
   });
+
+  group('Issue #640/LLA-082: Storage URL path scrubbing', () {
+    // Fabricated ids shaped like SupabaseFeedbackService._attachAndUpdate's
+    // `<uid>/<ticketId>/<uuid>.<ext>` object path — a v4 uid, a v4 ticket
+    // id, and a v4 generated object-name uuid, none of them real.
+    const feedbackUid = '11111111-1111-4111-8111-111111111111';
+    const feedbackTicketId = '22222222-2222-4222-8222-222222222222';
+    const feedbackObjectId = '33333333-3333-4333-8333-333333333333';
+    const storagePath = 'storage/v1/object/feedback-attachments/'
+        '$feedbackUid/$feedbackTicketId/$feedbackObjectId.png';
+    const storageUrl = 'https://x.supabase.co/$storagePath?token=$_apikey';
+
+    test('scrubUrl redacts every UUID-shaped segment in a Storage object '
+        'path and still cuts the query string', () {
+      final out = scrubUrl(storageUrl);
+      expect(out, isNot(contains(feedbackUid)));
+      expect(out, isNot(contains(feedbackTicketId)));
+      expect(out, isNot(contains(feedbackObjectId)));
+      expect(out, isNot(contains('?')));
+      expect(out, isNot(contains(_apikey)));
+      expect(
+        out,
+        'https://x.supabase.co/storage/v1/object/feedback-attachments/'
+        '<id>/<id>/<id>.png',
+      );
+    });
+
+    test('scrubUrl leaves a UUID-free URL untouched apart from the query',
+        () {
+      expect(scrubUrl(_url), 'https://x.supabase.co/rest/v1/day_entries');
+    });
+
+    test('an event request URL pointing at a Storage object drops the '
+        'account and ticket uuids', () {
+      final out = scrubEvent(SentryEvent(
+        request: SentryRequest(url: storageUrl, method: 'POST'),
+      ))!;
+      expect(out.request!.url, isNot(contains(feedbackUid)));
+      expect(out.request!.url, isNot(contains(feedbackTicketId)));
+      final json = _json(out);
+      expect(json, isNot(contains(feedbackUid)));
+      expect(json, isNot(contains(feedbackTicketId)));
+      expect(json, isNot(contains(feedbackObjectId)));
+    });
+
+    test('an http breadcrumb for a Storage upload drops the account and '
+        'ticket uuids', () {
+      final out = scrubBreadcrumb(Breadcrumb.http(
+        url: Uri.parse(storageUrl),
+        method: 'POST',
+        statusCode: 200,
+      ))!;
+      expect(out.data!['url'], isNot(contains(feedbackUid)));
+      expect(out.data!['url'], isNot(contains(feedbackTicketId)));
+      expect(out.data!['url'], isNot(contains(feedbackObjectId)));
+      expect(jsonEncode(out.toJson()), isNot(contains(feedbackUid)));
+    });
+
+    test('a span data[url] for a Storage upload drops the account and '
+        'ticket uuids', () async {
+      final options = SentryOptions(dsn: 'https://public@o0.ingest.sentry.io/1')
+        ..tracesSampleRate = 1.0
+        ..transport = _NoopTransport();
+      SentryTransaction? captured;
+      options.beforeSendTransaction = (transaction, hint) {
+        captured = transaction;
+        return null;
+      };
+      final hub = Hub(options);
+      final tracer =
+          hub.startTransaction('SettingsScreen', 'navigation', bindToScope: false);
+      final span = tracer.startChild('http.client');
+      span.setData('url', storageUrl);
+      await span.finish();
+      await tracer.finish();
+      final out = scrubTransaction(captured!)!;
+      final url = out.spans.single.data['url'] as String;
+      expect(url, isNot(contains(feedbackUid)));
+      expect(url, isNot(contains(feedbackTicketId)));
+      expect(url, isNot(contains(feedbackObjectId)));
+      expect(url, isNot(contains('?')));
+    });
+  });
 }
 
 class _NoopTransport implements Transport {
