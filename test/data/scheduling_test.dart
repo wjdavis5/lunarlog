@@ -16,11 +16,13 @@ import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/prediction/pms.dart';
 
 ActivePrediction _prediction({
   required LocalDate today,
   required LocalDate estimatedNextStart,
   List<PredictedCycle> forecast = const [],
+  PmsEstimate? pms,
 }) {
   final lastStart = estimatedNextStart.addDays(-28);
   final cycleDay = today.difference(lastStart) + 1;
@@ -36,6 +38,26 @@ ActivePrediction _prediction({
     completedCycleCount: 4,
     validCycleCount: 4,
     forecast: forecast,
+    pms: pms,
+  );
+}
+
+/// A [PmsEstimate] whose predicted band starts [daysBeforePeriod] days
+/// before [estimatedNextStart] (Issue #634, LLA-068's fixtures) — the
+/// averages themselves are irrelevant to the reminder-planning tests, only
+/// [PmsEstimate.predictedStart] is.
+PmsEstimate _pmsEstimate({
+  required LocalDate estimatedNextStart,
+  required int daysBeforePeriod,
+}) {
+  final predictedStart = estimatedNextStart.addDays(-daysBeforePeriod);
+  return PmsEstimate(
+    meanOnsetDaysBeforeNextPeriod: daysBeforePeriod.toDouble(),
+    meanLengthDays: 3,
+    usableIntervalCount: kMinPmsIntervalsForPrediction,
+    tier: CycleConfidence.high,
+    predictedStart: predictedStart,
+    predictedEnd: predictedStart.addDays(2),
   );
 }
 
@@ -320,27 +342,84 @@ void main() {
           reason: 'estimate - 5, not the default - 2');
     });
 
-    test('PMS-watch plans at its own lead days when enabled', () {
+    test('PMS-watch plans at its own lead days, anchored on the predicted '
+        'PMS start rather than the period estimate (Issue #634, LLA-068)',
+        () {
       final estimate = today.addDays(10);
+      // The period is estimated for +10; PMS is predicted to start 5 days
+      // before that, at +5 — not the period estimate itself. `upcoming`
+      // is turned off so its own (different-anchor, same-lead) fire date
+      // can never coincidentally coalesce with — and so mask — pms's.
       final plan = planReminders(
         today: today,
-        predictions: {'p1': _prediction(today: today, estimatedNextStart: estimate)},
+        predictions: {
+          'p1': _prediction(
+            today: today,
+            estimatedNextStart: estimate,
+            pms: _pmsEstimate(estimatedNextStart: estimate, daysBeforePeriod: 5),
+          ),
+        },
         configs: {
           'p1': ReminderConfig.standard.copyWith(
+            upcoming: ReminderTypeConfig(enabled: false, timeOfDayMinutes: 9 * 60),
             pms: ReminderTypeConfig(
-                enabled: true, leadDays: 6, timeOfDayMinutes: 19 * 60),
+                enabled: true, leadDays: 2, timeOfDayMinutes: 19 * 60),
           ),
         },
       );
       final pms = plan.where((r) => r.kind == ReminderKind.pms).single;
-      expect(pms.fireOn, today.addDays(4));
+      // predictedStart (today+5) minus the 2-day lead, NOT
+      // estimatedNextStart (today+10) minus the lead (which would be
+      // today+8).
+      expect(pms.fireOn, today.addDays(3));
       expect(pms.timeOfDayMinutes, 19 * 60);
-      // The default upcoming (lead 2) plans beside it, not coalesced
-      // (different days).
-      expect(
-        plan.where((r) => r.kind == ReminderKind.upcoming).single.fireOn,
-        today.addDays(8),
+    });
+
+    test('PMS-watch plans nothing when no PMS estimate exists yet, even '
+        'though a period estimate does (Issue #634, LLA-068)', () {
+      final estimate = today.addDays(10);
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          // No `pms:` — mirrors a profile with fewer than
+          // kMinPmsIntervalsForPrediction usable logged PMS intervals.
+          'p1': _prediction(today: today, estimatedNextStart: estimate),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            pms: ReminderTypeConfig(
+                enabled: true, leadDays: 2, timeOfDayMinutes: 19 * 60),
+          ),
+        },
       );
+      expect(plan.where((r) => r.kind == ReminderKind.pms), isEmpty,
+          reason: 'anchoring on an absent PMS estimate must never fall '
+              'back to the period estimate');
+    });
+
+    test('PMS-watch plans nothing once the predicted PMS start (minus '
+        'lead) has already passed, even while the period estimate is '
+        'still ahead (Issue #634, LLA-068)', () {
+      final estimate = today.addDays(10);
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(
+            today: today,
+            estimatedNextStart: estimate,
+            // PMS predicted to start today: with a 2-day lead the fire
+            // moment (today - 2) is already past.
+            pms: _pmsEstimate(estimatedNextStart: estimate, daysBeforePeriod: 10),
+          ),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            pms: ReminderTypeConfig(
+                enabled: true, leadDays: 2, timeOfDayMinutes: 19 * 60),
+          ),
+        },
+      );
+      expect(plan.where((r) => r.kind == ReminderKind.pms), isEmpty);
     });
 
     test('the daily log nudge plans a bounded forward window, '
@@ -1162,6 +1241,51 @@ void main() {
       expect(plan, isEmpty, reason: 'stopped today means not in effect');
     });
 
+    test('a known future stop date trims pre-armed pill occurrences that '
+        'would otherwise land after it (Issue #634, LLA-072)', () {
+      // Stops in 3 days: only today/+1/+2 are still in effect within the
+      // pill's kBirthControlPillPreArmDays (7) window.
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (
+            method: 'pill',
+            startedOn: today.addDays(-30).iso,
+            stoppedOn: today.addDays(3).iso,
+          ),
+        },
+      );
+      expect(plan.map((r) => r.fireOn).toList(),
+          [today, today.addDays(1), today.addDays(2)],
+          reason: 'no pre-armed pill reminder may fall on or after the '
+              'known stop date, even though the method is still in effect '
+              'today');
+    });
+
+    test('a known future stop date trims pre-armed anchored (patch/ring/'
+        'shot) occurrences that would otherwise land after it (Issue #634, '
+        'LLA-072)', () {
+      // Weekly patch, due today (n=1); would otherwise pre-arm today,
+      // +7, +14 — the stop date at +10 rules out the third.
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (
+            method: 'patch',
+            startedOn: today.addDays(-7).iso,
+            stoppedOn: today.addDays(10).iso,
+          ),
+        },
+      );
+      expect(plan.map((r) => r.fireOn).toList(), [today, today.addDays(7)],
+          reason: 'the +14 occurrence falls on/after the known stop date '
+              'and must not pre-arm');
+    });
+
     test('changing the recorded method re-routes the reminder: nothing '
         'stale survives a replan', () {
       final onPill = planReminders(
@@ -1258,6 +1382,84 @@ void main() {
         },
       );
       expect(plan, isEmpty);
+    });
+  });
+
+  group('activeProfileIds gates every planner input (Issue #634, LLA-098)',
+      () {
+    test('a stored config for an id outside the active set plans nothing',
+        () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {
+          'gone': ReminderConfig.standard.copyWith(
+            log: ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+        activeProfileIds: const {},
+      );
+      expect(plan, isEmpty,
+          reason: 'a config left over for a profile no longer active must '
+              'never plan a reminder');
+    });
+
+    test('a birth-control row for an id outside the active set plans '
+        'nothing', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {
+          'gone': ReminderConfig.standard.copyWith(
+            birthControlPill: ReminderTypeConfig(
+                enabled: true, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+        birthControlModes: {
+          'gone': (method: 'pill', startedOn: null, stoppedOn: null),
+        },
+        activeProfileIds: const {},
+      );
+      expect(plan, isEmpty);
+    });
+
+    test('a prediction for an id outside the active set plans nothing',
+        () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'gone': _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        activeProfileIds: const {},
+      );
+      expect(plan, isEmpty);
+    });
+
+    test('an id inside the active set still plans normally', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: today.addDays(10)),
+        },
+        activeProfileIds: const {'p1'},
+      );
+      expect(plan, isNotEmpty);
+    });
+
+    test('omitting activeProfileIds (null) keeps the unfiltered pre-#634 '
+        'behaviour', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {},
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            log: ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+      );
+      expect(plan, isNotEmpty,
+          reason: 'callers that never pass an authoritative active set '
+              '(this file\'s own tests included) are unaffected');
     });
   });
 }

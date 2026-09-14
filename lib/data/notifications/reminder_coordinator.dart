@@ -138,6 +138,31 @@ class ReminderCoordinator with WidgetsBindingObserver {
   final Map<String, ProfileMode> _modes = {};
   Timer? _replanTimer;
   int _permissionProbeGeneration = 0;
+
+  /// Stamped on every [replan] entry (Issue #634, LLA-097): whichever pass
+  /// last incremented this is the only one still allowed to apply its
+  /// plan. A pass whose own reads (stored config, snoozes, statistic
+  /// baselines) take long enough for a fresher pass to start and finish
+  /// first sees a mismatch at its own pre-scheduler-call check and returns
+  /// without ever reaching the scheduler — the same generation-guard shape
+  /// [_permissionProbeGeneration] already uses for the resume/permission
+  /// probe (also the root cause behind #655's flaky test: two passes
+  /// racing to decide the coordinator's next scheduler call).
+  int _replanGeneration = 0;
+
+  /// The most recently started [replan] call — tracked so [dispose] can
+  /// drain it (Issue #634, LLA-097) rather than returning while a
+  /// pre-teardown pass (and whatever it has already queued onto
+  /// [_schedulerQueue]) is still in flight.
+  Future<void>? _activeReplan;
+
+  /// Serializes every call into [_scheduler] (Issue #634, LLA-097): two
+  /// replans that overlap (a fast profile edit racing a debounced resume)
+  /// queue their `rescheduleAll`/`cancelAll` calls one after another
+  /// instead of ever letting two such calls run concurrently against the
+  /// plugin, which could otherwise let an older pass's write land after a
+  /// newer one's and leave a stale reminder pending.
+  Future<void> _schedulerQueue = Future<void>.value();
   bool _started = false;
   bool _disposed = false;
 
@@ -239,6 +264,27 @@ class ReminderCoordinator with WidgetsBindingObserver {
     _replanTimer = Timer(replanDebounce, () => unawaited(replan()));
   }
 
+  /// Serializes one call into [_scheduler] behind whatever is already
+  /// queued (Issue #634, LLA-097). Errors are swallowed only on the
+  /// queue's own continuation chain, never on the future handed back to
+  /// [action]'s caller, so a failed pass cannot wedge every later one.
+  ///
+  /// Rechecks [_disposed] at the moment this queued action actually gets
+  /// its turn — not just when it was enqueued — so an action that was
+  /// already queued behind another when [dispose] ran still can never
+  /// touch the scheduler once torn down: this is the single choke point
+  /// every caller (the "denied" branch and the main plan both) funnels
+  /// through, so neither needs its own extra disposed check right before
+  /// enqueueing.
+  Future<void> _runOnSchedulerQueue(Future<void> Function() action) {
+    final result = _schedulerQueue.then((_) {
+      if (_disposed) return Future<void>.value();
+      return action();
+    });
+    _schedulerQueue = result.catchError((Object _) {});
+    return result;
+  }
+
   /// The only writer of availability: keeps the local mirror [replan]
   /// reads in step with the sink the UI renders. The sink is write-only
   /// (it is a `lib/domain` contract), so the mirror is how the coordinator
@@ -248,11 +294,28 @@ class ReminderCoordinator with WidgetsBindingObserver {
     _permissionState.update(next);
   }
 
+  /// Public replan entry point. Every call (whether from the debounce
+  /// timer or a direct test call) is tracked in [_activeReplan] so
+  /// [dispose] can drain it (Issue #634, LLA-097) — the tracking wrapper
+  /// is kept separate from [_runReplan] so the generation/staleness logic
+  /// below stays its own small method.
   @visibleForTesting
-  Future<void> replan() async {
+  Future<void> replan() {
+    final result = _runReplan();
+    _activeReplan = result;
+    return result;
+  }
+
+  Future<void> _runReplan() async {
     if (_disposed) return;
+    // Issue #634, LLA-097: stamps this pass so a superseded one (a newer
+    // replan already started before this one finished its own reads)
+    // never applies its now-stale plan — see the checks below, each
+    // placed right before the point this pass would otherwise reach the
+    // scheduler.
+    final generation = ++_replanGeneration;
     if (_availability == NotificationAvailability.denied) {
-      await _scheduler.cancelAll();
+      await _runOnSchedulerQueue(_scheduler.cancelAll);
       return;
     }
     // Issue #136: the stored per-profile configs and late snoozes are
@@ -269,23 +332,30 @@ class ReminderCoordinator with WidgetsBindingObserver {
       lateSnoozes = await localSettings.loadLateSnoozes();
       statisticSignals = await _detectStatisticChanges(localSettings);
     }
-    await _scheduler.rescheduleAll(
-      planReminders(
-        today: today(),
-        predictions: Map.of(_latest),
-        presets: {
-          for (final entry in _modes.entries)
-            entry.key: reminderPresetFor(entry.value),
-        },
-        configs: configs,
-        lateSnoozes: lateSnoozes,
-        statisticChangeSignals: statisticSignals,
-        // Issue #183: the birth-control row watcher's last-observed
-        // state. An empty map (no watcher wired, or no rows yet) plans
-        // no adherence reminders.
-        birthControlModes: Map.of(_birthControlStates),
-      ),
+    if (_disposed || generation != _replanGeneration) return;
+    final plan = planReminders(
+      today: today(),
+      predictions: Map.of(_latest),
+      presets: {
+        for (final entry in _modes.entries)
+          entry.key: reminderPresetFor(entry.value),
+      },
+      configs: configs,
+      lateSnoozes: lateSnoozes,
+      statisticChangeSignals: statisticSignals,
+      // Issue #183: the birth-control row watcher's last-observed
+      // state. An empty map (no watcher wired, or no rows yet) plans
+      // no adherence reminders.
+      birthControlModes: Map.of(_birthControlStates),
+      // Issue #634, LLA-098: `_modes` is pruned to exactly the currently
+      // active profile ids in `_onProfilesChanged`, so it is this
+      // coordinator's own authoritative active set — a stored config row
+      // or birth-control state left over for an archived/removed profile
+      // (neither is deleted just because the profile leaves the active
+      // stream) can then never plan a reminder.
+      activeProfileIds: _modes.keys.toSet(),
     );
+    await _runOnSchedulerQueue(() => _scheduler.rescheduleAll(plan));
   }
 
   /// The `cycleStatisticChange` detection pass (Issue #178): compares each
@@ -345,17 +415,54 @@ class ReminderCoordinator with WidgetsBindingObserver {
     if (_disposed || generation != _permissionProbeGeneration) return;
     _setAvailability(availability);
 
-    // Issue #169: re-resolve device timezone on resume instead of once at init.
+    // "At every app open": permission or the civil day may have changed.
+    // Scheduled immediately — before the timezone re-resolution below —
+    // so a slow platform-channel timezone lookup can never delay the
+    // permission-driven replan/cancellation this resume exists to run.
+    // (Issue #655: this ordering used to be reversed, with the replan
+    // gated behind the `await` on `_localTimeZoneProvider()` below; that
+    // unrelated platform-channel round trip is genuinely variable-latency
+    // in a headless test run, which is what made the "resume notices
+    // revoked permission and cancels reminders" test flaky on CI — the
+    // fixed-iteration `pumpEventQueue()` sometimes settled before that
+    // await resolved. Decoupling it removes the dependency entirely
+    // rather than papering over it with more pumps or a longer timeout.)
+    _scheduleReplan();
+    unawaited(_refreshTimeZone(generation));
+  }
+
+  /// Issue #169: re-resolve device timezone on resume instead of once at
+  /// init. Split out of [_refreshPermissionAndReplan] (Issue #655) so a
+  /// slow or hanging platform-channel timezone lookup can never delay the
+  /// permission-driven replan there — but a zone that actually turns out
+  /// to have changed still schedules its own replan below, so a real
+  /// travel case is never left stuck on the stale zone: the caller's own
+  /// unconditional replan may have already fired (and computed every fire
+  /// time from the old zone) before this slower probe resolves, especially
+  /// on a cold-start resume where the platform channel can plausibly
+  /// outlast [replanDebounce]. Calling [_scheduleReplan] again here either
+  /// coalesces into that not-yet-fired pass (still debounced) or — if it
+  /// already fired — schedules a correcting one; the generation stamp in
+  /// [_runReplan] means a slower, now-stale pass can never overwrite a
+  /// fresher one's plan regardless of which order they actually resolve
+  /// in. Skipped while denied: a denied replan only calls `cancelAll`,
+  /// which has no time-zone dependency, so re-triggering it here would
+  /// just be a second redundant `cancelAll` (exactly the double-call the
+  /// first version of this fix introduced and the coordinator test below
+  /// catches). Guarded on the same generation as the caller so a stale
+  /// resume's late-arriving answer can never overwrite `tz.local` after a
+  /// fresher probe already ran.
+  Future<void> _refreshTimeZone(int generation) async {
     try {
       final tzName = await _localTimeZoneProvider();
+      if (_disposed || generation != _permissionProbeGeneration) return;
       if (tz.local.name != tzName && isValidIanaTimeZone(tzName)) {
-        final loc = tz.getLocation(tzName);
-        tz.setLocalLocation(loc);
+        tz.setLocalLocation(tz.getLocation(tzName));
+        if (_availability != NotificationAvailability.denied) {
+          _scheduleReplan();
+        }
       }
     } catch (_) {}
-
-    // "At every app open": permissions or the civil day may have changed.
-    _scheduleReplan();
   }
 
   /// Issue #168: the overview hint's "Turn on reminders" tap. Same
@@ -399,5 +506,31 @@ class ReminderCoordinator with WidgetsBindingObserver {
       await sub.cancel();
     }
     _birthControlSubs.clear();
+    // Issue #634, LLA-097 (revised after PR #668's review round 2): this
+    // deliberately does NOT await [_activeReplan] or [_schedulerQueue].
+    // An earlier version of this method did, reasoning that it would
+    // "drain" whatever was in flight before returning — but an `await`
+    // here has no bound: a genuinely hung platform call (the scheduler's
+    // own plugin channel) would hang `dispose()` itself forever, and in
+    // practice it hung a *passing* scenario too — a widget test's
+    // `State.dispose()` runs inside `flutter_test`'s fake-async zone,
+    // where an already-resolved-in-principle Future can still sit
+    // unresolved until something pumps that zone again, which nothing in
+    // `LunarLogApp hands its coordinator teardown to onTeardown` did
+    // before handing the returned Future to `tester.runAsync`. A hung
+    // platform call must never be able to block app teardown either way.
+    //
+    // LLA-097's actual guarantee — no reschedule/cancel reaches the
+    // scheduler once disposed, and no stale generation's plan is ever
+    // applied — is enforced structurally instead, independent of whether
+    // anyone waits for it: [_runReplan] rechecks [_disposed] and its own
+    // generation before ever deciding to touch the scheduler, and
+    // [_runOnSchedulerQueue] rechecks [_disposed] again immediately
+    // before actually invoking the scheduler, right as a queued action
+    // gets its turn. Whatever was already in flight is left to finish
+    // (and self-invalidate) or fail on its own; there is no caller left
+    // to hand a late failure to, so it is swallowed here rather than
+    // becoming an unhandled zone error.
+    unawaited(_activeReplan?.catchError((_) {}));
   }
 }

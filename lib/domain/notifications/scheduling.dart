@@ -227,6 +227,16 @@ class PlannedReminder {
 /// statistic-change over the birth-control cadences over log-nudge). The
 /// result is sorted by fire date and capped at [kMaxPendingReminders],
 /// evicting in the same priority order.
+///
+/// [activeProfileIds] (Issue #634, LLA-098), when provided, is the
+/// authoritative active-profile-id set every other map is intersected
+/// against before planning: a stored [configs] row or [birthControlModes]
+/// entry for a profile that has since been archived or removed (per-device
+/// settings and the birth-control row watcher are never pruned just
+/// because a profile leaves the active set) can then never plan a
+/// reminder. Null (the default) keeps the unfiltered pre-#634 behaviour —
+/// every caller that doesn't track an authoritative active set (this
+/// file's own tests included) plans exactly as before.
 List<PlannedReminder> planReminders({
   required LocalDate today,
   required Map<String, ActivePrediction> predictions,
@@ -235,13 +245,16 @@ List<PlannedReminder> planReminders({
   Map<String, LocalDate> lateSnoozes = const {},
   Map<String, LocalDate> statisticChangeSignals = const {},
   Map<String, BirthControlState> birthControlModes = const {},
+  Set<String>? activeProfileIds,
 }) {
   final planned = <PlannedReminder>[];
   // The prediction-independent types plan even without a prediction (a
   // config entry can name a profile the prediction stream has nothing for
   // yet).
   final ids = {...predictions.keys, ...configs.keys, ...birthControlModes.keys};
-  for (final id in ids) {
+  final eligibleIds =
+      activeProfileIds == null ? ids : ids.intersection(activeProfileIds);
+  for (final id in eligibleIds) {
     final preset = presets[id] ?? ReminderPreset.all;
     final config = configs[id] ?? ReminderConfig.fromPreset(preset);
     planned.addAll(_planProfile(
@@ -443,6 +456,13 @@ List<PlannedReminder> _planBirthControl({
   if (!typeConfig.enabled) return const [];
   final cadenceDays = birthControlCadenceDays(method)!;
   final startedOn = _tryParseIso(state!.startedOn);
+  // Issue #634, LLA-072: a known stop date bounds every pre-armed
+  // occurrence below, not just today's in-effect check above — the method
+  // being in effect *today* says nothing about whether it is still in
+  // effect on a date several days or cadence-periods out.
+  final stoppedOn = _tryParseIso(state.stoppedOn);
+  bool inEffect(LocalDate date) =>
+      stoppedOn == null || date.compareTo(stoppedOn) < 0;
   if (kind == ReminderKind.birthControlPill) {
     // The pill needs no anchor: while the method is in effect every day
     // is a dose day, so the reminder pre-arms the same bounded daily
@@ -451,13 +471,14 @@ List<PlannedReminder> _planBirthControl({
     // startedOn ≤ today here).
     return [
       for (var i = 0; i < kBirthControlPillPreArmDays; i++)
-        _planOne(
-          profileId,
-          kind,
-          today.addDays(i),
-          typeConfig.timeOfDayMinutes,
-          config.quietHours,
-        ),
+        if (inEffect(today.addDays(i)))
+          _planOne(
+            profileId,
+            kind,
+            today.addDays(i),
+            typeConfig.timeOfDayMinutes,
+            config.quietHours,
+          ),
     ];
   }
   if (startedOn == null) {
@@ -474,13 +495,14 @@ List<PlannedReminder> _planBirthControl({
   if (firstN < 1) firstN = 1;
   return [
     for (var i = 0; i < kBirthControlPreArmOccurrences; i++)
-      _planOne(
-        profileId,
-        kind,
-        startedOn.addDays((firstN + i) * cadenceDays),
-        typeConfig.timeOfDayMinutes,
-        config.quietHours,
-      ),
+      if (inEffect(startedOn.addDays((firstN + i) * cadenceDays)))
+        _planOne(
+          profileId,
+          kind,
+          startedOn.addDays((firstN + i) * cadenceDays),
+          typeConfig.timeOfDayMinutes,
+          config.quietHours,
+        ),
   ];
 }
 
@@ -558,6 +580,12 @@ List<PlannedReminder> _planEstimateRelative({
     prediction: prediction,
     config: config,
   ));
+  planned.addAll(_planPmsWatch(
+    profileId: profileId,
+    today: today,
+    prediction: prediction,
+    config: config,
+  ));
   if (config.late.enabled && prediction.isLate && !snoozed) {
     for (var i = 0; i < kLatePreArmDays; i++) {
       planned.add(_planOne(
@@ -572,12 +600,16 @@ List<PlannedReminder> _planEstimateRelative({
   return planned;
 }
 
-/// The estimate-anchored kinds (Issue #136's upcoming and PMS-watch plus
-/// Issue #178's period-starting-soon): each fires at
-/// `estimatedNextStart − leadDays` when enabled and still ahead of
-/// [today]. Period-starting-soon anchors on the same estimate at its own,
-/// longer lead — a separate reminder, not a second lead time of the due
-/// one (Clue ships the two as independently configurable reminders).
+/// The period-estimate-anchored kinds (Issue #136's upcoming plus Issue
+/// #178's period-starting-soon): each fires at `estimatedNextStart −
+/// leadDays` when enabled and still ahead of [today]. Period-starting-soon
+/// anchors on the same estimate at its own, longer lead — a separate
+/// reminder, not a second lead time of the due one (Clue ships the two as
+/// independently configurable reminders).
+///
+/// PMS-watch is deliberately NOT here (Issue #634, LLA-068): it has its
+/// own anchor, [_planPmsWatch], on the *predicted PMS start*, never the
+/// period estimate.
 List<PlannedReminder> _planEstimateAnchored({
   required String profileId,
   required LocalDate today,
@@ -598,11 +630,6 @@ List<PlannedReminder> _planEstimateAnchored({
       config.periodStartingSoon
           .effectiveLeadDays(kPeriodStartingSoonDefaultLeadDays)
     ),
-    (
-      ReminderKind.pms,
-      config.pms,
-      config.pms.effectiveLeadDays(kPmsDefaultLeadDays)
-    ),
   ];
   for (final (kind, typeConfig, leadDays) in anchored) {
     final fireOn = estimate.addDays(-leadDays);
@@ -617,6 +644,37 @@ List<PlannedReminder> _planEstimateAnchored({
     }
   }
   return planned;
+}
+
+/// PMS-watch (Issue #178, widened by Issue #634's LLA-068 fix): anchored
+/// on the PMS estimate's own [PmsEstimate.predictedStart] — never on the
+/// period estimate `_planEstimateAnchored`'s siblings use. A profile with
+/// no PMS estimate yet (fewer than [kMinPmsIntervalsForPrediction] usable
+/// logged intervals, or no period estimate at all) plans nothing rather
+/// than falling back to the period-due date, which would silently relabel
+/// a "before PMS" promise as "before period".
+List<PlannedReminder> _planPmsWatch({
+  required String profileId,
+  required LocalDate today,
+  required ActivePrediction prediction,
+  required ReminderConfig config,
+}) {
+  final typeConfig = config.pms;
+  if (!typeConfig.enabled) return const [];
+  final pms = prediction.pms;
+  if (pms == null) return const [];
+  final leadDays = typeConfig.effectiveLeadDays(kPmsDefaultLeadDays);
+  final fireOn = pms.predictedStart.addDays(-leadDays);
+  if (fireOn.compareTo(today) <= 0) return const [];
+  return [
+    _planOne(
+      profileId,
+      ReminderKind.pms,
+      fireOn,
+      typeConfig.timeOfDayMinutes,
+      config.quietHours,
+    ),
+  ];
 }
 
 /// Issue #178 (Clue item 4): anchored to the next *still-ahead* fertile
