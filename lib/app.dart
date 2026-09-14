@@ -402,7 +402,17 @@ class _LunarLogAppState extends State<LunarLogApp>
     final coordinator = buildReminderCoordinator(
       scheduler: scheduler,
       permissionState: _permissionState,
-      activeProfiles: _profiles.watch(),
+      // Issue #634, LLA-098: `ProfilesRepository.watch()` deliberately
+      // includes archived profiles (other consumers filter for display in
+      // the UI — see that method's own doc comment), but the reminder
+      // coordinator's "active profiles" input must mean genuinely active:
+      // an archived profile must drop out of every prediction/birth-
+      // control subscription here, not just stop being newly configured.
+      activeProfiles:
+          _profiles.watch().map((profiles) => [
+                for (final profile in profiles)
+                  if (profile.archivedAt == null) profile,
+              ]),
       predictionFor: _prediction.watch,
       localSettings: configService,
       // Issue #183: the profile_modes birth-control row feeds the
