@@ -56,6 +56,7 @@ interface FakeDepsOverrides {
   markAppleRevokedResult?: boolean;
   listResult?: ListAttachmentsResult;
   removeResult?: boolean;
+  clearAttachmentPathsResult?: boolean;
   rehomeError?: unknown;
   deleteUserError?: unknown;
 }
@@ -86,6 +87,10 @@ function fakeDeps(overrides: FakeDepsOverrides = {}): { deps: DeleteAccountDeps;
     removeAttachmentPaths: async (paths) => {
       calls.push(`removeAttachmentPaths:${paths.join(",")}`);
       return overrides.removeResult === undefined ? true : overrides.removeResult;
+    },
+    clearAttachmentPaths: async (uid) => {
+      calls.push(`clearAttachmentPaths:${uid}`);
+      return overrides.clearAttachmentPathsResult === undefined ? true : overrides.clearAttachmentPathsResult;
     },
     deleteAccountData: async () => {
       calls.push("deleteAccountData");
@@ -224,6 +229,7 @@ Deno.test(
       "getUser",
       "getDeletionProgress:user-1",
       "listAttachmentPaths:user-1",
+      "clearAttachmentPaths:user-1",
       "deleteAccountData",
       "revokeApple:apple-sub-123",
       "markAppleRevoked:user-1:apple-sub-123",
@@ -255,6 +261,7 @@ Deno.test(
       "getUser",
       "getDeletionProgress:user-1",
       "listAttachmentPaths:user-1",
+      "clearAttachmentPaths:user-1",
       "deleteAccountData",
       "rehomeStrayDayEntries",
       "deleteUser",
@@ -410,6 +417,59 @@ Deno.test(
   },
 );
 
+// ---------------------------------------------------------------------------
+// Issue #599 (part 2): clearing feedback_tickets.attachment_paths is
+// fail-closed, and runs unconditionally - not only when this call's own
+// listing found objects to remove.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "#599: a clearAttachmentPaths failure (after a successful removal) fails the whole deletion closed, before " +
+    "any row is touched: 409 attachment_cleanup_failed, deleteAccountData/deleteUser never called",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      listResult: { ok: true, paths: ["user-1/t1/a.png"] },
+      clearAttachmentPathsResult: false,
+    });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 409);
+    const body = await response.json();
+    assertEquals(body.code, "attachment_cleanup_failed");
+    assertEquals(
+      calls,
+      ["getUser", "listAttachmentPaths:user-1", "removeAttachmentPaths:user-1/t1/a.png", "clearAttachmentPaths:user-1"],
+      "a clearAttachmentPaths failure must stop before deleteAccountData and deleteUser - nothing else touched",
+    );
+    assertEquals(calls.includes("deleteUser"), false, "the user must not be deleted after a failed attachment-paths clear");
+    assertEquals(calls.includes("deleteAccountData"), false, "no row deletion after a failed attachment-paths clear");
+  },
+);
+
+Deno.test(
+  "#599: clearAttachmentPaths runs even when this call's own listing found nothing to remove - a retry after a " +
+    "PRIOR attempt's successful removal but failed clear must not skip it",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      listResult: { ok: true, paths: [] },
+      clearAttachmentPathsResult: false,
+    });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 409);
+    const body = await response.json();
+    assertEquals(body.code, "attachment_cleanup_failed");
+    assertEquals(
+      calls,
+      ["getUser", "listAttachmentPaths:user-1", "clearAttachmentPaths:user-1"],
+      "clearAttachmentPaths must run (and its failure must stop the call), with removeAttachmentPaths never " +
+        "called at all - the exact call sequence above already proves that",
+    );
+  },
+);
+
 Deno.test(
   "no attachments to remove (empty prefix): removeAttachmentPaths is never called, and deletion still succeeds " +
     "with deleteUser still called",
@@ -423,8 +483,15 @@ Deno.test(
     assertEquals(body.ok, true);
     assertEquals(
       calls,
-      ["getUser", "listAttachmentPaths:user-1", "deleteAccountData", "rehomeStrayDayEntries", "deleteUser"],
-      "removeAttachmentPaths must not be called with an empty path list",
+      [
+        "getUser",
+        "listAttachmentPaths:user-1",
+        "clearAttachmentPaths:user-1",
+        "deleteAccountData",
+        "rehomeStrayDayEntries",
+        "deleteUser",
+      ],
+      "removeAttachmentPaths must not be called with an empty path list, but clearAttachmentPaths must run anyway (Issue #599)",
     );
   },
 );
@@ -445,6 +512,7 @@ Deno.test(
       "getUser",
       "listAttachmentPaths:uid-42",
       "removeAttachmentPaths:uid-42/t1/a.png,uid-42/t2/b.jpg",
+      "clearAttachmentPaths:uid-42",
       "deleteAccountData",
       "rehomeStrayDayEntries",
       "deleteUser",
@@ -465,7 +533,7 @@ Deno.test(
     assertEquals(response.status, 500);
     const body = await response.json();
     assertEquals(body.code, "unknown");
-    assertEquals(calls, ["getUser", "listAttachmentPaths:user-1", "deleteAccountData"]);
+    assertEquals(calls, ["getUser", "listAttachmentPaths:user-1", "clearAttachmentPaths:user-1", "deleteAccountData"]);
   },
 );
 
@@ -487,6 +555,7 @@ Deno.test(
       "getUser",
       "getDeletionProgress:user-1",
       "listAttachmentPaths:user-1",
+      "clearAttachmentPaths:user-1",
       "deleteAccountData",
       "revokeApple:apple-sub-1",
     ]);
@@ -512,7 +581,14 @@ Deno.test("a delete_user failure returns 500 delete_user_failed, after everythin
   assertEquals(response.status, 500);
   const body = await response.json();
   assertEquals(body.code, "delete_user_failed");
-  assertEquals(calls, ["getUser", "listAttachmentPaths:user-1", "deleteAccountData", "rehomeStrayDayEntries", "deleteUser"]);
+  assertEquals(calls, [
+    "getUser",
+    "listAttachmentPaths:user-1",
+    "clearAttachmentPaths:user-1",
+    "deleteAccountData",
+    "rehomeStrayDayEntries",
+    "deleteUser",
+  ]);
 });
 
 // ---------------------------------------------------------------------------
@@ -909,5 +985,67 @@ Deno.test(
 
     assertEquals(ok, false);
     assertEquals(upsertCalls.length, 2, "both the original attempt and its one retry must have run");
+  },
+);
+
+// ---------------------------------------------------------------------------
+// buildDeps: clearAttachmentPaths's production feedback_tickets wiring
+// (Issue #599, part 2).
+// ---------------------------------------------------------------------------
+
+/** A minimal fake Supabase client factory whose `.from("feedback_tickets")`
+ * exposes `.update(row).eq(column, value)`, resolving from `updateResult`
+ * and recording every (row, column, value) call it receives - mirroring
+ * `fakeDeletionProgressClientFactory`'s shape for `account_deletion_progress`
+ * above. */
+function fakeFeedbackTicketsClientFactory(
+  updateResult: { error: unknown },
+): { factory: SupabaseClientFactory; updateCalls: Array<{ row: Record<string, unknown>; column: string; value: unknown }> } {
+  const updateCalls: Array<{ row: Record<string, unknown>; column: string; value: unknown }> = [];
+  const client = {
+    from(table: string) {
+      if (table !== "feedback_tickets") {
+        throw new Error(`fakeFeedbackTicketsClientFactory: unexpected table ${table}`);
+      }
+      return {
+        update(row: Record<string, unknown>) {
+          return {
+            async eq(column: string, value: unknown) {
+              updateCalls.push({ row, column, value });
+              return { data: null, error: updateResult.error };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { factory: () => client, updateCalls };
+}
+
+Deno.test(
+  "buildDeps: clearAttachmentPaths updates feedback_tickets.attachment_paths to [] scoped to the caller's uid",
+  async () => {
+    const { factory, updateCalls } = fakeFeedbackTicketsClientFactory({ error: null });
+    const deps = buildDeps(fullEnv, factory);
+
+    const ok = await deps.clearAttachmentPaths("user-1", "Bearer caller-jwt");
+
+    assertEquals(ok, true);
+    assertEquals(updateCalls.length, 1);
+    assertEquals(updateCalls[0].row, { attachment_paths: [] });
+    assertEquals(updateCalls[0].column, "user_id");
+    assertEquals(updateCalls[0].value, "user-1");
+  },
+);
+
+Deno.test(
+  "buildDeps: clearAttachmentPaths reports false on an update failure",
+  async () => {
+    const { factory } = fakeFeedbackTicketsClientFactory({ error: { message: "update failed" } });
+    const deps = buildDeps(fullEnv, factory);
+
+    const ok = await deps.clearAttachmentPaths("user-1", "Bearer caller-jwt");
+
+    assertEquals(ok, false);
   },
 );

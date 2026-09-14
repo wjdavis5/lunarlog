@@ -207,6 +207,33 @@
 // `apple_revoke_failed` (Apple DID confirm the revocation here; only this
 // durability write failed) - before `deleteUser` is ever attempted.
 //
+// Issue #599 fix, part 2 (2026-09-15) - the Storage-attachment-ordering
+// residual (PR #664 only landed the markAppleRevoked half above): Issue
+// #243's round-2 fix deliberately keeps the feedback-attachments Storage
+// removal (Step 4) BEFORE the destructive RPC, so a Storage failure leaves
+// the whole account untouched and retryable. That is still the right
+// design (reversing it would reintroduce the exact orphaned-object problem
+// #243 fixed) - but it means a LATER step's failure (Apple revoke,
+// deleteUser) can leave a surviving account whose feedback_tickets rows
+// still list `attachment_paths` pointing at objects that no longer exist,
+// since D-25's `delete_account_data()` row deletion never ran. Step 4 now
+// clears `feedback_tickets.attachment_paths` (to `[]`) for every one of the
+// caller's own tickets immediately after Storage cleanup is confirmed
+// complete - using the caller's own user-scoped client and the
+// pre-existing owner-scoped `feedback_tickets_update` policy/column grant
+// (`20260906130000_feedback_tickets.sql`), no new RPC or grant needed. This
+// runs UNCONDITIONALLY, not only when this call itself found objects to
+// remove: a retry after a PRIOR attempt's Storage removal succeeded but
+// this same clear step then failed would otherwise see zero objects to
+// list (they are already gone) and, if the clear were skipped whenever
+// nothing was listed, would never revisit the stale references it left
+// behind. Fails closed with the same `attachment_cleanup_failed` code as
+// the listing/removal failures above (nothing else has run yet, so "nothing
+// was deleted" is still true) - a failure here leaves a stale-but-harmless
+// reference (the object really is gone; only the pointer to it survives)
+// and the whole call stays retryable, exactly like every other Step 4
+// failure.
+//
 // Never echoes Supabase/Apple error text, tokens, emails, or row content
 // into the response or the log: only a stable error `code`, an HTTP status,
 // and (server-side only) an error *type* or U1's row-count summary are ever
@@ -396,6 +423,13 @@ export interface DeleteAccountDeps {
    * batching internally. Resolves false on any removal failure. Never
    * called with an empty array. */
   removeAttachmentPaths(paths: string[]): Promise<boolean>;
+  /** Issue #599: clears `attachment_paths` (to `[]`) on every one of the
+   * caller's own `feedback_tickets` rows, run unconditionally once Storage
+   * cleanup for this call is confirmed complete (whether this call found
+   * zero objects or just finished removing some) - see the header comment
+   * for why this must not be skipped merely because this call's own
+   * listing was empty. Resolves false on any write failure. */
+  clearAttachmentPaths(uid: string, authHeader: string): Promise<boolean>;
   /** Runs `delete_account_data()` as the caller (user-scoped client, so
    * RLS/auth.uid() semantics hold) - the row-deletion half of account
    * deletion (U1). */
@@ -529,6 +563,24 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
       );
       return errorResponse("attachment_cleanup_failed", 409);
     }
+  }
+
+  // Issue #599 (part 2): Storage cleanup for this account is now confirmed
+  // complete - either nothing was ever there, or the removal above just
+  // succeeded. Clear feedback_tickets.attachment_paths for every one of the
+  // caller's own tickets so no surviving row can reference a deleted
+  // object, should a later step fail and leave the account (and its
+  // tickets) in place. Unconditional - not only when attachmentPaths.length
+  // > 0 - so a retry recovers a dangling reference left by a PRIOR attempt
+  // whose Storage removal succeeded but this clear step then failed: that
+  // retry's own listing legitimately finds zero objects and must not skip
+  // this step on that account.
+  const pathsCleared = await deps.clearAttachmentPaths(user.id, authHeader);
+  if (!pathsCleared) {
+    console.error(
+      "delete-account: clearing feedback_tickets.attachment_paths failed; nothing else touched, so the whole account stays untouched and retryable",
+    );
+    return errorResponse("attachment_cleanup_failed", 409);
   }
 
   // Step 5: the row deletion (U1), run as the caller.
@@ -870,6 +922,28 @@ export function buildDeps(env: DeleteAccountEnv, clientFactory: SupabaseClientFa
         }
       }
       return true;
+    },
+    clearAttachmentPaths: async (uid, authHeader) => {
+      // Issue #599: run as the caller (user-scoped client, RLS holds) via
+      // the pre-existing owner-scoped feedback_tickets_update policy and
+      // its attachment_paths column grant - no service-role bypass and no
+      // new RPC needed. Scoped to `uid` defensively; RLS already limits the
+      // write to the caller's own rows.
+      const userClient = clientFactory(supabaseUrl!, anonKey!, {
+        auth: { persistSession: false },
+        global: { headers: { Authorization: authHeader } },
+      });
+      try {
+        const { error } = await withTimeout(
+          userClient
+            .from("feedback_tickets")
+            .update({ attachment_paths: [] })
+            .eq("user_id", uid),
+        );
+        return !error;
+      } catch {
+        return false;
+      }
     },
     deleteAccountData: async (authHeader) => {
       const userClient = clientFactory(supabaseUrl!, anonKey!, {
