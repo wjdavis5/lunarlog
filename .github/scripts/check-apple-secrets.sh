@@ -32,18 +32,25 @@ set -euo pipefail
 #   present in the stdin JSON                 -> stdout `mode=reuse`, exit 0.
 #   Some/all unset, and at least one of the
 #   four names is ALSO absent from the
-#   project                                   -> `::error::` (stderr) naming
-#                                                 exactly which names are
-#                                                 missing, exit 1, no stdout.
+#   project                                   -> `::warning::` (stderr)
+#                                                 naming exactly which names
+#                                                 are missing, stdout
+#                                                 `mode=missing`, exit 0.
 #   stdin is not valid JSON (or `jq` itself
 #   is unavailable)                           -> `::error::` (stderr), exit 1.
 #
 # The caller captures stdout as the step's `mode` output and gates "Set
 # delete-account function secrets" on `mode == 'set'` -- `mode=reuse` means
 # the project's own secrets are trusted as-is and must not be overwritten by
-# a partial GitHub-secret set. Any `::notice::` for the reuse case is left to
-# the caller (this script's stdout must stay exactly one line on success, so
-# `mode_line="$(...)"` captures cleanly).
+# a partial GitHub-secret set. `mode=missing` used to be a hard failure, and
+# it failed every migrate run on main: no Apple credentials have ever been
+# provisioned, and production has no Apple-linked identities to revoke.
+# The function is still deployed either way. Without the secrets its Apple
+# revocation path fails closed at runtime (`_shared/apple_revoke.ts` returns
+# no config), so deploying current code is never worse than leaving stale code
+# live. The warning keeps the gap visible. Any `::notice::` for the reuse case
+# is left to the caller (this script's stdout must stay exactly one line on
+# success, so `mode_line="$(...)"` captures cleanly).
 #
 # `--output json` here is the legacy per-command `-o`/`--output` flag
 # (json/yaml/toml/table/csv/pretty/env), not the global `--output-format`
@@ -81,8 +88,9 @@ for name in $REQUIRED_NAMES; do
 done
 
 if [ -n "$missing" ]; then
-  echo "::error::Not all Apple secrets are set on the \`production\` environment, and the following are ALSO missing from the Supabase project's own secrets (checked via \`supabase secrets list\`):${missing}. The delete-account function cannot revoke an Apple identity without them (Issue #17 KTD3) -- add the missing one(s) above either as GitHub \`production\` environment secrets or directly on the Supabase project (\`supabase secrets set NAME=value --project-ref ...\`), then re-run. See AGENTS.md's 'Config & Credential Locations' for where each value comes from. This only blocks deploying delete-account -- migrations for unrelated supabase/** changes already pushed successfully above." >&2
-  exit 1
+  echo "::warning::Apple secrets missing from both the \`production\` environment and the Supabase project:${missing}. delete-account is still deployed, but it cannot revoke a Sign in with Apple identity until they are set (Issue #17 KTD3) -- its Apple path fails closed at runtime. Required before enabling Sign in with Apple in production: add them as GitHub \`production\` environment secrets (or \`supabase secrets set NAME=value --project-ref ...\`). See AGENTS.md's 'Config & Credential Locations'." >&2
+  echo "mode=missing"
+  exit 0
 fi
 
 echo "mode=reuse"

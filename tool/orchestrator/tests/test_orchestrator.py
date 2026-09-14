@@ -5,6 +5,7 @@ Run with: python -m unittest discover -s tool/orchestrator/tests
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -91,13 +92,13 @@ class CiWatchTests(unittest.TestCase):
         ]}
         self.assertEqual(ci_watch.failing_jobs(payload), ["Analyze", "iOS"])
 
-    def test_title_uses_short_sha(self):
-        self.assertEqual(ci_watch.issue_title("abcdef1234567890"), "CI failing on main at abcdef1")
+    def test_title_has_no_sha(self):
+        self.assertEqual(ci_watch.issue_title(), "CI failing on main")
 
     def test_title_uses_the_given_workflow_name(self):
         self.assertEqual(
-            ci_watch.issue_title("abcdef1234567890", "Supabase migrate"),
-            "Supabase migrate failing on main at abcdef1",
+            ci_watch.issue_title("Supabase migrate"),
+            "Supabase migrate failing on main",
         )
 
     def test_body_contains_marker_and_sha(self):
@@ -117,16 +118,47 @@ class CiWatchTests(unittest.TestCase):
             ci_watch.labels_for("Supabase Realtime reconciliation"), ["P1", "bug", "ops"]
         )
 
-    def test_find_existing_matches_full_sha_only(self):
+    def test_find_existing_reuses_the_open_issue_across_shas(self):
+        """A new failing SHA on the same workflow comments on the existing
+        open issue instead of opening a duplicate per merge."""
         issues = [
+            {"number": 2, "body": "no marker"},
             {
                 "number": 1,
                 "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('CI')}\nsha abcdef1234567890",
             },
-            {"number": 2, "body": "no marker"},
         ]
-        self.assertEqual(ci_watch.find_existing_number(issues, "abcdef1234567890"), 1)
-        self.assertIsNone(ci_watch.find_existing_number(issues, "deadbeef00000000"))
+        self.assertEqual(ci_watch.find_existing_number(issues), 1)
+        self.assertIsNone(ci_watch.find_existing_number([{"number": 2, "body": "no marker"}]))
+
+    def test_main_comments_on_existing_issue_for_a_new_sha(self):
+        env = {
+            "RUN_ID": "1",
+            "HEAD_SHA": "deadbeef00000000",
+            "RUN_URL": "https://run",
+            "GITHUB_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_BRANCH": "main",
+            "WORKFLOW_NAME": "Supabase migrate",
+        }
+        existing = [{
+            "number": 7,
+            "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('Supabase migrate')}\nsha abcdef1234567890",
+        }]
+
+        def fake_run(args, input_text=None):
+            if args[0] == "api":
+                return '{"jobs": []}'
+            if args[:2] == ["issue", "list"]:
+                return json.dumps(existing)
+            return ""
+
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(ci_watch, "_run", side_effect=fake_run) as run_mock:
+                self.assertEqual(ci_watch.main(), 0)
+        calls = [c.args[0] for c in run_mock.call_args_list]
+        self.assertIn(["issue", "comment", "7", "--body", "Still failing at `deadbeef00000000`.\n\nhttps://run"], calls)
+        self.assertFalse(any(c[:2] == ["issue", "create"] for c in calls))
 
     def test_is_trusted_source_accepts_the_repos_own_main(self):
         self.assertTrue(
@@ -180,10 +212,8 @@ class CiWatchTests(unittest.TestCase):
                 "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('CI')}\nsha abcdef1234567890",
             },
         ]
-        self.assertEqual(ci_watch.find_existing_number(issues, "abcdef1234567890", "CI"), 1)
-        self.assertIsNone(
-            ci_watch.find_existing_number(issues, "abcdef1234567890", "Supabase migrate")
-        )
+        self.assertEqual(ci_watch.find_existing_number(issues, "CI"), 1)
+        self.assertIsNone(ci_watch.find_existing_number(issues, "Supabase migrate"))
 
 
 if __name__ == "__main__":

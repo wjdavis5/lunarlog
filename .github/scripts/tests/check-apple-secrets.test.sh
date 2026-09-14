@@ -30,14 +30,18 @@ out="$(run_script "$ALL_FOUR_PRESENT_JSON")"
 assert_eq "no GitHub secrets but all four present on the project produces mode=reuse" \
   "mode=reuse" "$out"
 
-# --- some-missing-on-project: no GitHub secrets, project is missing one name -> fail ---
+# --- some-missing-on-project: no GitHub secrets, project is missing one name -> warn, mode=missing ---
 missing_one_json='[{"name":"APPLE_CLIENT_ID","value":"digest1"},{"name":"APPLE_KEY_ID","value":"digest2"},{"name":"APPLE_TEAM_ID","value":"digest4"}]'
 set +e
+std_out="$(run_script "$missing_one_json" 2>/dev/null)"
 err_out="$(run_script "$missing_one_json" 2>&1 1>/dev/null)"
 rc=$?
 set -e
-assert_eq "one name missing on the project exits non-zero" "1" "$rc"
-assert_contains "the error names the specific missing secret" "$err_out" "APPLE_PRIVATE_KEY"
+assert_eq "one name missing on the project exits zero (warn, not fail)" "0" "$rc"
+assert_eq "one name missing on the project produces mode=missing" "mode=missing" "$std_out"
+assert_contains "missing secrets produce a ::warning:: annotation" "$err_out" "::warning::"
+assert_not_contains "missing secrets no longer produce an ::error:: annotation" "$err_out" "::error::"
+assert_contains "the warning names the specific missing secret" "$err_out" "APPLE_PRIVATE_KEY"
 # The message must name only what's actually absent, not restate all four --
 # otherwise this couldn't distinguish "1 of 4 missing" from "0 of 4 missing"
 # by content alone.
@@ -50,10 +54,12 @@ assert_not_contains "the error does not also claim an already-present name (APPL
 
 # --- some-missing-on-project: partial GitHub secrets set too, project missing all four ---
 set +e
+std_out2="$(run_script '[]' APPLE_TEAM_ID=team 2>/dev/null)"
 err_out2="$(run_script '[]' APPLE_TEAM_ID=team 2>&1 1>/dev/null)"
 rc2=$?
 set -e
-assert_eq "empty project secrets with a partial GitHub set still exits non-zero" "1" "$rc2"
+assert_eq "empty project secrets with a partial GitHub set exits zero" "0" "$rc2"
+assert_eq "empty project secrets with a partial GitHub set produces mode=missing, never mode=set" "mode=missing" "$std_out2"
 assert_contains "the error names APPLE_KEY_ID as missing" "$err_out2" "APPLE_KEY_ID"
 assert_contains "the error names APPLE_CLIENT_ID as missing" "$err_out2" "APPLE_CLIENT_ID"
 assert_contains "the error names APPLE_PRIVATE_KEY as missing" "$err_out2" "APPLE_PRIVATE_KEY"

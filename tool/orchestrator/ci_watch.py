@@ -83,8 +83,12 @@ def workflow_marker(workflow_name: str) -> str:
     return f"<!-- workflow: {workflow_name} -->"
 
 
-def issue_title(head_sha: str, workflow_name: str = "CI") -> str:
-    return f"{workflow_name} failing on main at {short_sha(head_sha)}"
+def issue_title(workflow_name: str = "CI") -> str:
+    # One rolling issue per workflow, not per SHA: every merge to main is a new
+    # SHA, so a SHA in the title/dedupe key opened a fresh duplicate issue for
+    # each still-failing run (six "Supabase migrate failing on main at <sha>"
+    # issues in one day, all the same root cause).
+    return f"{workflow_name} failing on main"
 
 
 def labels_for(workflow_name: str) -> list[str]:
@@ -124,15 +128,15 @@ def issue_body(run_url: str, head_sha: str, jobs: list[str], workflow_name: str 
     return "\n".join(lines)
 
 
-def find_existing_number(issues: list[dict], head_sha: str, workflow_name: str = "CI") -> int | None:
-    """Match on the marker plus the full SHA plus the workflow marker, so a
-    different failing SHA on the same short prefix does not collide, and two
-    different workflows failing on the same SHA get their own issues instead
-    of one triage stream drowning the other."""
+def find_existing_number(issues: list[dict], workflow_name: str = "CI") -> int | None:
+    """Match on the watch marker plus the workflow marker only: any open
+    issue for this workflow absorbs further failures as comments, whatever
+    SHA they are at, while two different workflows still get their own
+    issues instead of one triage stream drowning the other."""
     marker = workflow_marker(workflow_name)
     for issue in issues:
         body = issue.get("body") or ""
-        if MARKER in body and head_sha in body and marker in body:
+        if MARKER in body and marker in body:
             return issue.get("number")
     return None
 
@@ -175,14 +179,14 @@ def main() -> int:
                 "--json", "number,body",
             ])
         )
-        number = find_existing_number(existing, head_sha, workflow_name)
+        number = find_existing_number(existing, workflow_name)
         if number:
             _run(["issue", "comment", str(number), "--body", f"Still failing at `{head_sha}`.\n\n{run_url}"])
             print(f"updated issue #{number}")
         else:
             args = [
                 "issue", "create",
-                "--title", issue_title(head_sha, workflow_name),
+                "--title", issue_title(workflow_name),
                 "--body", body,
             ]
             for label in labels_for(workflow_name):
