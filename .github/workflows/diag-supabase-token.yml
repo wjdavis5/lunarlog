@@ -1,0 +1,56 @@
+# TEMPORARY diagnostic for #513. Delete after use; never merge.
+# Prints only HTTP status codes (plus Supabase's error message for non-2xx)
+# for the Management API endpoints the Supabase migrate workflow needs, so we
+# can see exactly which permission the scoped SUPABASE_ACCESS_TOKEN lacks.
+# No response body is printed for a 2xx (those can contain API keys).
+name: diag-supabase-token
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/diag-supabase-token.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Management API permissions
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -u
+          if [ -z "${TOKEN:-}" ] || [ -z "${REF:-}" ]; then
+            echo "missing TOKEN or REF secret"; exit 1
+          fi
+          case "$TOKEN" in
+            sbp_fc*) echo "token kind: scoped (sbp_fc prefix)";;
+            sbp_*)   echo "token kind: classic (sbp_ prefix, not sbp_fc)";;
+            *)       echo "token kind: unrecognised prefix";;
+          esac
+          echo "ref length: ${#REF}"
+          probe() {
+            label="$1"; path="$2"
+            body_file="$(mktemp)"
+            code="$(curl -sS -o "$body_file" -w '%{http_code}' \
+              -H "Authorization: Bearer $TOKEN" \
+              "https://api.supabase.com$path")"
+            case "$code" in
+              2*) echo "$code  $label" ;;
+              *)  msg="$(head -c 300 "$body_file" | tr '\n' ' ')"
+                  echo "$code  $label  -> $msg" ;;
+            esac
+            rm -f "$body_file"
+          }
+          probe "organizations (Organizations read)"            "/v1/organizations"
+          probe "project details (Project Settings read)"       "/v1/projects/$REF"
+          probe "api-keys (API Keys read)"                      "/v1/projects/$REF/api-keys"
+          probe "api-keys?reveal=true (what supabase link calls)" "/v1/projects/$REF/api-keys?reveal=true"
+          probe "legacy api-keys"                                "/v1/projects/$REF/api-keys/legacy"
+          probe "functions list (Edge Functions read)"          "/v1/projects/$REF/functions"
+          probe "security advisors (Advisors read)"             "/v1/projects/$REF/advisors/security"
+          probe "pooler config (Connection Pooling read)"       "/v1/projects/$REF/config/database/pooler"
+          probe "postgrest config (Data API Config read)"       "/v1/projects/$REF/postgrest"
