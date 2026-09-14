@@ -359,7 +359,12 @@ select lives_ok(
 -- ---------------------------------------------------------------------------
 -- 14. Issue #567: owns_feedback_ticket(p_ticket_id, p_user_id) - the RLS
 --     helper feedback_replies_select/feedback_replies_insert both key on.
+--     Issue #636, LLA-056: this helper now only ever answers about the
+--     CALLING user (p_user_id must equal auth.uid()), so each self-check
+--     below authenticates as the user it is asking about - matching every
+--     real call site (every RLS policy already passes auth.uid()).
 -- ---------------------------------------------------------------------------
+select tests.authenticate_as('fb_c');
 select ok(
   (select public.owns_feedback_ticket(
     (select id from fb_c_ticket_1),
@@ -367,6 +372,7 @@ select ok(
   )),
   'Issue #567: owns_feedback_ticket is true for the ticket''s own owner'
 );
+select tests.authenticate_as('fb_b');
 select ok(
   not (select public.owns_feedback_ticket(
     (select id from fb_c_ticket_1),
@@ -374,6 +380,7 @@ select ok(
   )),
   'Issue #567: owns_feedback_ticket is false for a non-owner'
 );
+select tests.authenticate_as('fb_c');
 select ok(
   not (select public.owns_feedback_ticket(
     '00000000-0000-0000-0000-000000000000'::uuid,
