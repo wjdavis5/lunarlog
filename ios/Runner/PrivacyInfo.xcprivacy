@@ -18,9 +18,50 @@
 
 		No tracking, no advertising, no analytics beyond crash reports.
 
-		Required-reason API usage is declared by the underlying Flutter plugins
-		(e.g., flutter_secure_storage, shared_preferences, local_auth,
-		sentry_flutter) in their own privacy manifests.
+		Issue #265: required-reason API usage from the CocoaPod-delivered
+		Flutter plugins (e.g., flutter_secure_storage, shared_preferences,
+		local_auth, sentry_flutter) is declared in their own privacy
+		manifests, but pubspec.yaml's `sqlite3` dependency (no
+		`sqlite3_flutter_libs`, no ios/Podfile) is NOT one of those; its
+		Dart native-build hook downloads a precompiled `libsqlite3` dynamic
+		library from github.com/simolus3/sqlite3.dart's releases (the
+		`source: null` default branch of `SqliteBinary.forBuild` in the
+		package's own `hook/build.dart`/`lib/src/hook/compile/description.dart`,
+		confirmed by reading that source at pinned version 3.5.2) and bundles
+		it into Runner.app with no privacy manifest of its own, so any
+		required-reason API it calls must be declared HERE instead. Audited
+		against Apple's "Describing use of required reason API" documentation
+		(developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)
+		and cross-checked against multiple independent sources reproducing
+		its reason-code table, since that page is not fetchable as plain
+		text from this environment:
+		- File Timestamp (`NSPrivacyAccessedAPICategoryFileTimestamp`,
+		  reason C617.1, file metadata such as timestamps/size for files
+		  within the app container): SQLite's unix VFS (`os_unix.c`,
+		  `unixFileSize`) calls `fstat()` to read the database file's size
+		  on every open, a well-documented reason app binaries bundling
+		  SQLite need this category declared.
+		- User Defaults (`NSPrivacyAccessedAPICategoryUserDefaults`, reason
+		  CA92.1, app-exclusive UserDefaults access, not an App Group):
+		  AppDelegate.swift's `HealthKitChannelHandler` reads/writes
+		  `UserDefaults.standard` directly (the `boundProfileId` guard
+		  state, issue #173); this app's own Swift code, not a plugin.
+		- NOT declared: System Boot Time, Disk Space, Active Keyboards.
+		  No first-party code (AppDelegate.swift, including the HealthKit
+		  and notification handling) or Flutter/Dart code calls any of
+		  these, and the default SQLite build here (no custom VFS, no
+		  disk-space or low-space handling compiled in via the defines in
+		  the package's `hook/build.dart`) gives no reason to expect them
+		  either; but this was reasoned from source, not from Xcode's own
+		  "Generate Privacy Report" static analysis of the actual linked
+		  binary (unavailable from this non-macOS environment; there is no
+		  documented xcodebuild-only equivalent; see
+		  docs/ops/ios-privacy-manifest.md for the operator follow-up this
+		  leaves open).
+		flutter_local_notifications and FirebaseMessaging (both referenced
+		in AppDelegate.swift's comments) are CocoaPods and are assumed
+		covered by their own manifests per the existing "Flutter plugins"
+		note above; unaudited here, out of issue #265's scope.
 
 		Issue #156 added the com.apple.developer.healthkit entitlement; #173
 		landed the first-party HealthKit adapter and #193/#374 the opt-in,
@@ -89,6 +130,23 @@
 		</dict>
 	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

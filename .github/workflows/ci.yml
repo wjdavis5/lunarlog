@@ -86,6 +86,22 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/classify-schema-diff.test.sh
 
+      - name: Run check-auth-config tests
+        if: always()
+        run: bash .github/scripts/tests/check-auth-config.test.sh
+
+      # Issue #266: unlike the scripts above (proven only via their own
+      # unit tests here, then invoked for real elsewhere -- e.g.
+      # check-destructive-sql.sh against real migration files in
+      # supabase-migrate.yml), check-auth-config.sh's real job is to catch
+      # drift in *this* repo's own supabase/config.toml on every PR, not
+      # only inside the production-gated deploy workflow. No toolchain
+      # needed beyond bash, so it runs here rather than waiting for the
+      # `check`/`db-tests` jobs below.
+      - name: Check supabase/config.toml auth posture
+        if: always()
+        run: bash .github/scripts/check-auth-config.sh
+
       - name: Run tool/coord tests
         if: always()
         run: python3 -m unittest discover -s tool/coord/tests
