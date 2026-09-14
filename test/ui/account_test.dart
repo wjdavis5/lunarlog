@@ -2232,6 +2232,98 @@ void main() {
       expect(h.pushRemovalOrder, ['push-removed-all', 'reset']);
       await h.dispose();
     });
+
+    group('resetDevice reliability regardless of widget lifecycle '
+        '(Issue #638, LLA-004)', () {
+      testWidgets('a confirmed "sign out everywhere" still wipes the device '
+          'even if Settings unmounts before signOut(global) resolves', (
+        tester,
+      ) async {
+        // Issue #157 review fix (mirrors #325) — see the taller-viewport
+        // note on the earlier "Sign out everywhere" tests.
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final h = AccountHarness(tester);
+        await h.pump(seed: AccountHarness.seedOneProfile);
+        h.signIn();
+        h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+        await h.openSettings();
+        await h.settle();
+
+        h.auth.hold = Completer<void>();
+        await tester.tap(key('account-sign-out-everywhere'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-sign-out-everywhere-confirm'));
+        await pumpFew(tester); // signOut(global) is now in flight, held open
+
+        // Navigate away: Settings (and AccountSection with it) unmounts,
+        // but the DeviceResetCallback / RemoveAllPushRegistrationsCallback
+        // providers above it (mirroring the app root in production) do
+        // not — see AccountSection._reset's doc comment.
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsScreen), findsNothing);
+
+        h.auth.hold!.complete();
+        h.auth.hold = null;
+        await pumpFew(tester);
+        await h.settle();
+
+        expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+        expect(h.resets, 1,
+            reason: 'the data wipe must run for a confirmed "sign out '
+                'everywhere" even though the Settings route that started '
+                'it is already gone');
+        expect(h.pushRemovalOrder, ['push-removed-all', 'reset']);
+        await h.dispose();
+      });
+
+      testWidgets('a failed signOut(global) still wipes the device even if '
+          'Settings unmounts first — no snackbar since nothing is left to '
+          'show it', (tester) async {
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final h = AccountHarness(tester);
+        await h.pump(seed: AccountHarness.seedOneProfile);
+        h.signIn();
+        h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+        await h.openSettings();
+        await h.settle();
+
+        h.auth.hold = Completer<void>();
+        h.auth.nextFailure = const AuthNetworkFailure();
+        await tester.tap(key('account-sign-out-everywhere'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-sign-out-everywhere-confirm'));
+        await pumpFew(tester); // signOut(global) is now in flight, held open
+
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsScreen), findsNothing);
+
+        h.auth.hold!.complete();
+        h.auth.hold = null;
+        await pumpFew(tester);
+        await h.settle();
+
+        expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+        expect(h.resets, 1,
+            reason: 'the data wipe must still run on an AuthFailure even '
+                'though Settings is already gone by the time the failure '
+                'arrives');
+        expect(h.pushRemovalOrder, ['push-removed-all', 'reset']);
+        expect(tester.takeException(), isNull,
+            reason: 'the unmounted context must never be touched for the '
+                'failure snackbar');
+        await h.dispose();
+      });
+    });
   });
 
   group('no auth service', () {

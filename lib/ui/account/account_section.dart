@@ -628,7 +628,8 @@ class _AccountSectionState extends State<AccountSection> {
   /// root, and a pushed route would otherwise outlive its providers in
   /// harnesses that stub the reset.
   ///
-  /// [reset] may be passed in already resolved (Issue #17 P1 fix) for a
+  /// [reset] may be passed in already resolved (Issue #17 P1 fix, also
+  /// applied to the global sign-out path by Issue #638/LLA-004) for a
   /// caller that must read it from [context] *before* an async gap, so the
   /// actual data-wipe side effect still runs even if [context] is
   /// unmounted by the time this is called - only the UI navigation step is
@@ -731,6 +732,16 @@ class _AccountSectionState extends State<AccountSection> {
     );
     if (confirmed != true || !context.mounted) return;
     final auth = context.read<AuthController>();
+    final removeAllRegistrations =
+        context.read<RemoveAllPushRegistrationsCallback?>();
+    // Issue #638 (LLA-004): resolved here, before the awaits below, the
+    // same way _performDeletion resolves it for Issue #17 (see _reset's doc
+    // comment). Settings - and this widget - can unmount mid-flight because
+    // signing out navigates away, so the reset must not depend on [context]
+    // still being valid once signOut() and the push deregistration below
+    // have completed; only the UI feedback (the snackbar, _reset's own pop)
+    // stays gated on context.mounted.
+    final resetCallback = context.read<DeviceResetCallback?>();
     // #1/#9 (review fix): remove *every* device's push registration while
     // the session is still authenticated, before signOut() clears it - see
     // RemoveAllPushRegistrationsCallback's doc comment. This is the global
@@ -741,21 +752,29 @@ class _AccountSectionState extends State<AccountSection> {
     // (resetDevice) also attempts a single-device removal, but by then
     // signOut() has already cleared the session, so that attempt alone runs
     // as anon and is denied.
-    await context.read<RemoveAllPushRegistrationsCallback?>()?.call();
+    await removeAllRegistrations?.call();
     try {
       await auth.signOut(scope: AuthSignOutScope.global);
     } on AuthFailure catch (failure) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            '${authFailureCopy(AppLocalizations.of(context), failure)} '
-            'Other devices were not signed out.'),
-      ));
-      await _reset(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '${authFailureCopy(AppLocalizations.of(context), failure)} '
+              'Other devices were not signed out.'),
+        ));
+      }
+      // Always run, whether or not context is still mounted (Issue #638) -
+      // see _reset's doc comment: [resetCallback] was captured above, so the
+      // data wipe still happens even though the route that started this
+      // flow is gone; only _reset's own UI pop is gated internally.
+      // ignore: use_build_context_synchronously
+      await _reset(context, reset: resetCallback);
       return;
     }
-    if (!context.mounted) return;
-    await _reset(context);
+    // Same reasoning as the catch block above: always run regardless of
+    // context.mounted (Issue #638).
+    // ignore: use_build_context_synchronously
+    await _reset(context, reset: resetCallback);
   }
 
   /// Collects this device's profiles and their entries and hands them to
