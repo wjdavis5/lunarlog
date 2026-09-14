@@ -467,6 +467,44 @@ void main() {
       expect((await storage.readSyncState()).cursorCareNotes, 42);
     });
 
+    test(
+        'LLA-040 (issue #635): remote checked-state attribution converges '
+        'even when the boolean already matches the stored value', () async {
+      // Local was last checked by A.
+      expect(
+          await storage.applyRemoteVisitPrepItem(remoteItem('i-1',
+              isChecked: true,
+              checkedByUserId: 'user-a',
+              checkedAt: t0,
+              updatedAt: t0)),
+          isTrue);
+
+      // A missed uncheck-then-recheck happened elsewhere: the row now
+      // lands back on `isChecked: true`, but attributed to a different
+      // actor at a later, already-LWW-winning instant. This device's
+      // clock is well ahead of that remote stamp locally (t2), so the
+      // finding reproduces with a clock-ahead local device too.
+      clock.now = t2;
+      expect(
+          await storage.applyRemoteVisitPrepItem(remoteItem('i-1',
+              isChecked: true,
+              checkedByUserId: 'user-b',
+              checkedAt: t1,
+              updatedAt: t1)),
+          isTrue,
+          reason: 't1 is still newer than the stored t0, so remote wins '
+              'the per-id rule regardless of this device\'s own clock');
+
+      final stored =
+          (await storage.getVisitPrepItemsForProfile('p1')).single;
+      expect(stored.isChecked, isTrue);
+      expect(stored.checkedByUserId, 'user-b',
+          reason: 'the old heuristic preserved "user-a" forever because '
+              'isChecked never changed on this device — the remote row\'s '
+              'own attribution must win instead');
+      expect(stored.checkedAt, t1);
+    });
+
     test('applyRemoteRows lands both tables in one transaction', () async {
       await storage.applyRemoteRows([
         remoteNote('n-a', updatedAt: t1),

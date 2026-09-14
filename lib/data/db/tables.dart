@@ -195,6 +195,23 @@ class Profiles extends Table {
   TextColumn get weightUnit =>
       text().named('weight_unit').withDefault(const Constant('kg'))();
 
+  /// Device-local, never synced (LLA-041): the instant
+  /// `_tombstoneRevokedSharedProfile` last wiped this row for a guardian
+  /// revocation (or a server-side hard purge), or null if it has never
+  /// been evicted this way. Marks the local copy's `updated_at` as a
+  /// cache-eviction artifact rather than a genuine LWW competitor: the
+  /// wipe deliberately leaves `updated_at` untouched (so an unrevoked
+  /// re-share carrying the profile's original, never-bumped timestamp can
+  /// still tie/win normally), but that same choice means a row that was
+  /// *dirty* with an unpushed, clock-ahead edit at wipe time keeps an
+  /// `updated_at` no future authoritative delivery can ever beat under the
+  /// ordinary per-id rule. [_applyProfile] bypasses that rule entirely
+  /// while this is non-null — any remote delivery of the row wins
+  /// unconditionally — and clears it back to null the moment one lands, so
+  /// normal per-id LWW resumes from the restored value.
+  DateTimeColumn get accessRevokedAt =>
+      dateTime().named('access_revoked_at').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -299,6 +316,19 @@ class ProfileGuardians extends Table {
   DateTimeColumn get createdAt => dateTime().named('created_at')();
 
   DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  /// Server-owned, monotonic version stamped by the server's
+  /// `set_server_version` trigger on every insert/update (LLA-035): unlike
+  /// every other per-id table, this table's `updated_at` is directly
+  /// client-writable (`grant update (display_name, updated_at)` in
+  /// `20260904010000_multi_guardian_schema.sql`, needed so a guardian can
+  /// edit its own `display_name`), so an accepted guardian can stamp its
+  /// own membership row's `updated_at` arbitrarily far in the future and
+  /// permanently outrank a later, authoritative revocation under the
+  /// ordinary per-id rule. Membership convergence is ordered by this
+  /// column instead — see `conflict_rules.dart`'s `remoteWinsByVersion`.
+  IntColumn get serverVersion =>
+      integer().named('server_version').withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};

@@ -132,6 +132,28 @@ void main() {
     deletedAt: deletedAt,
   );
 
+  RemoteProfileGuardianRow remoteGuardian(
+    String id, {
+    required String profileId,
+    required String userId,
+    String role = 'caregiver',
+    required String status,
+    required DateTime updatedAt,
+    DateTime? createdAt,
+    int serverVersion = 0,
+  }) => RemoteProfileGuardianRow(
+    id: id,
+    profileId: profileId,
+    userId: userId,
+    role: role,
+    status: status,
+    displayName: null,
+    invitedBy: null,
+    createdAt: createdAt ?? updatedAt,
+    updatedAt: updatedAt,
+    serverVersion: serverVersion,
+  );
+
   group('local writes and dirty reads', () {
     test('upsertProfile / upsertDayEntry / softDelete* set dirty and bump '
         'local_rev; readDirty* includes tombstones', () async {
@@ -1005,6 +1027,10 @@ void main() {
       expect(winner.deletedAt, isNull);
       expect(winner.dirty, isTrue, reason: 'the merge must be pushed');
       expect(winner.localRev, 1);
+      expect(winner.updatedAt, newer.add(const Duration(milliseconds: 1)),
+          reason: 'LLA-038 (issue #639): a merge that leaves the remote row '
+              'the live survivor must be stamped strictly after the '
+              'server-known timestamp it arrived with, never tied to it');
 
       final loser = await entryById(p.id, local.id);
       expect(loser.deletedAt, newer);
@@ -1018,6 +1044,60 @@ void main() {
             'guarantee too',
       );
       expect(loser.dirty, isTrue, reason: 'a local loser must be pushed');
+    });
+
+    test(
+        'LLA-038 (issue #639): a replay of the exact pre-merge remote row '
+        'never wipes the tag union or re-clears dirty', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final local = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-09-16',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        tags: const ['cramps'],
+      );
+      await storage.markPushed(
+        table: SyncTable.dayEntries,
+        id: local.id,
+        localRevAtPush: local.localRev,
+      );
+
+      const remoteId = '01J0000000000000000000001P';
+      final newer = local.updatedAt.add(const Duration(minutes: 5));
+      final winningRemote = remoteEntry(
+        remoteId,
+        profileId: p.id,
+        localDate: '2026-09-16',
+        tags: const ['heavy_flow'],
+        updatedAt: newer,
+      );
+
+      // First delivery: the merge lands as expected.
+      await storage.applyRemoteDayEntry(winningRemote);
+      final merged = await entryById(p.id, remoteId);
+      expect(merged.tags, unorderedEquals(['cramps', 'heavy_flow']));
+      expect(merged.dirty, isTrue);
+
+      // A replay of the identical, still-unpushed-by-the-server row — a
+      // duplicate pull page, or the 24h reconcile's lookback window
+      // re-fetching a row it has already delivered. The local loser is
+      // long gone (tombstoned in the first apply), so a naive re-run of
+      // the same-date resolver would find no collision, reset tags to the
+      // wire-bare `remote.tags`, and clear `dirty` — silently discarding
+      // the merge. The bumped `updated_at` from the first apply must
+      // outrank this replay's unchanged, pre-merge stamp instead.
+      final replayed = await storage.applyRemoteDayEntry(winningRemote);
+      expect(replayed, isFalse,
+          reason: 'the replay must lose to the already-merged local row, '
+              'not re-run the resolver against it');
+
+      final afterReplay = await entryById(p.id, remoteId);
+      expect(afterReplay.tags, unorderedEquals(['cramps', 'heavy_flow']),
+          reason: 'the tag union must survive an exact-timestamp replay');
+      expect(afterReplay.dirty, isTrue,
+          reason: 'the pending merge must still be queued for push after '
+              'the replay');
     });
 
     test('a remote tombstone for a date with a live local row never '
@@ -1699,26 +1779,6 @@ void main() {
   });
 
   group('revocation wipe (issue #532)', () {
-    RemoteProfileGuardianRow remoteGuardian(
-      String id, {
-      required String profileId,
-      required String userId,
-      String role = 'caregiver',
-      required String status,
-      required DateTime updatedAt,
-      DateTime? createdAt,
-    }) => RemoteProfileGuardianRow(
-      id: id,
-      profileId: profileId,
-      userId: userId,
-      role: role,
-      status: status,
-      displayName: null,
-      invitedBy: null,
-      createdAt: createdAt ?? updatedAt,
-      updatedAt: updatedAt,
-    );
-
     /// Every table in `tables.dart` carrying a `profile_id` column,
     /// discovered from the live schema rather than hand-copied — so a new
     /// profile-scoped table added later shows up here automatically.
@@ -1851,6 +1911,151 @@ void main() {
       // Nothing wiped here is left dirty — the wipe must never be pushed
       // back to the server that already knows about the revocation.
       expect(await storage.dirtyCount(), 0);
+    });
+  });
+
+  group('membership and checklist convergence (issue #635)', () {
+    test(
+        'LLA-035: a revoked membership with a higher server_version wins '
+        'even though its updated_at trails a forged future timestamp',
+        () async {
+      const uid = 'user-a';
+      await storage.writeSyncState(
+        kDefaultSyncState.copyWith(boundUserId: const Value(uid)),
+      );
+      final p = await storage.upsertProfile(
+        displayName: 'Shared',
+        isMinor: false,
+      );
+
+      // The membership lands normally first (server_version 1).
+      await storage.applyRemoteRows([
+        remoteGuardian(
+          'g-1',
+          profileId: p.id,
+          userId: uid,
+          role: 'co_parent',
+          status: 'accepted',
+          updatedAt: t0,
+          serverVersion: 1,
+        ),
+      ]);
+
+      // The accepted co-parent PATCHes their own row's `updated_at` far
+      // into the future directly (allowed by the server's column grant —
+      // see conflict_rules.dart) — a real write, so server_version still
+      // advances forward with it.
+      final forgedFuture = DateTime.utc(2100, 1, 1);
+      await storage.applyRemoteRows([
+        remoteGuardian(
+          'g-1',
+          profileId: p.id,
+          userId: uid,
+          role: 'co_parent',
+          status: 'accepted',
+          updatedAt: forgedFuture,
+          serverVersion: 5,
+        ),
+      ]);
+      expect(
+        (await storage.getGuardiansForProfile(p.id))
+            .firstWhere((g) => g.id == 'g-1')
+            .updatedAt,
+        forgedFuture,
+      );
+
+      // The primary revokes at real server time — its `updated_at` is far
+      // behind the forged future stamp, but its `server_version` is higher.
+      final revokedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        remoteGuardian(
+          'g-1',
+          profileId: p.id,
+          userId: uid,
+          role: 'co_parent',
+          status: 'revoked',
+          updatedAt: revokedAt,
+          serverVersion: 6,
+        ),
+      ]);
+
+      final guardian = (await storage.getGuardiansForProfile(p.id))
+          .firstWhere((g) => g.id == 'g-1');
+      expect(guardian.status, 'revoked',
+          reason: 'a per-id-by-time rule would have kept "accepted" here '
+              'forever — server_version must decide instead');
+      expect(guardian.serverVersion, 6);
+      expect(await storage.getProfile(p.id), isNull,
+          reason: 'R5: the revocation must still tombstone the shared '
+              'profile once it actually applies');
+    });
+
+    test(
+        'LLA-041: a re-share restores a profile a revocation wiped while '
+        'it was dirty with an unpushed, clock-ahead edit', () async {
+      const uid = 'user-a';
+      await storage.writeSyncState(
+        kDefaultSyncState.copyWith(boundUserId: const Value(uid)),
+      );
+      final p = await storage.upsertProfile(
+        displayName: 'Shared',
+        isMinor: false,
+      );
+      // A prior sync already landed the server's own copy at t0.
+      await storage.applyRemoteProfile(
+          remoteProfile(p.id, displayName: 'Shared', updatedAt: t0));
+
+      // A local edit runs while this device's clock is well ahead of the
+      // server — and is never pushed (the revocation below reaches this
+      // device first).
+      final clockAheadEdit = t0.add(const Duration(days: 30));
+      final edited = await storage.upsertProfile(
+        id: p.id,
+        displayName: 'Shared (edited locally)',
+        isMinor: false,
+        updatedAt: clockAheadEdit,
+      );
+      expect(edited.dirty, isTrue);
+      expect(edited.updatedAt, clockAheadEdit);
+
+      // Revocation arrives with a real "now" timestamp, far behind the
+      // dirty edit's clock-ahead stamp.
+      final revokedAt = t0.add(const Duration(hours: 1));
+      await storage.applyRemoteRows([
+        remoteGuardian(
+          'g-1',
+          profileId: p.id,
+          userId: uid,
+          status: 'revoked',
+          updatedAt: revokedAt,
+        ),
+      ]);
+      expect(await storage.getProfile(p.id), isNull,
+          reason: 'wiped by the revocation');
+
+      // Re-share: the primary re-invites and a pull delivers the profile's
+      // real server row again, still carrying its original t0 timestamp
+      // (neither revoke_guardian nor accept_guardian_invitation bumps
+      // profiles.updated_at) — far behind the wiped row's stale, unpushed
+      // clockAheadEdit stamp.
+      final restored = await storage.applyRemoteProfile(
+          remoteProfile(p.id, displayName: 'Shared', updatedAt: t0));
+      expect(restored, isTrue,
+          reason: 'LLA-041: a stale, unpushed local updated_at must never '
+              'keep a revocation wipe from being un-tombstoned by a real '
+              're-share');
+
+      final profile = await storage.getProfile(p.id);
+      expect(profile, isNotNull);
+      expect(profile!.displayName, 'Shared');
+      expect(profile.dirty, isFalse);
+
+      // The eviction marker is cleared, so ordinary per-id LWW resumes:
+      // an older remote row no longer beats this restored one for free.
+      final stale = await storage.applyRemoteProfile(remoteProfile(p.id,
+          displayName: 'Stale', updatedAt: t0.subtract(const Duration(days: 1))));
+      expect(stale, isFalse);
+      expect((await storage.getProfile(p.id))!.displayName, 'Shared');
     });
   });
 

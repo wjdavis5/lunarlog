@@ -272,7 +272,19 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       {required bool onlyExisting}) async {
     final local = await _profileOrNull(remote.id);
     if (local == null && onlyExisting) return false;
+    // LLA-041: a row `_tombstoneRevokedSharedProfile` wiped for a guardian
+    // revocation carries `accessRevokedAt` non-null and, deliberately, an
+    // untouched `updated_at` — which, for a row that was dirty with an
+    // unpushed clock-ahead edit at wipe time, can be newer than any
+    // timestamp the server will ever deliver for it again. The ordinary
+    // per-id rule would then keep the wiped row forever and a later
+    // re-share could never restore it. Bypass that rule entirely while the
+    // marker is set: any remote delivery — live or tombstoned — wins
+    // unconditionally, and the write below always clears the marker, so
+    // normal per-id LWW resumes from the restored value.
+    final bypassLww = local?.accessRevokedAt != null;
     if (local != null &&
+        !bypassLww &&
         !remoteWinsById(
             localUpdatedAt: local.updatedAt,
             remoteUpdatedAt: remote.updatedAt)) {
@@ -328,6 +340,11 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         lastPeriodStart: Value(remote.lastPeriodStart),
         typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
         typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
+        // LLA-041: any remote delivery reaching this write — including the
+        // bypass path above — is a genuine server value, so the eviction
+        // marker (if any) is cleared and ordinary per-id LWW resumes for
+        // whatever comes next.
+        accessRevokedAt: const Value(null),
       ),
     );
     return true;
@@ -358,10 +375,15 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           ..where((t) => t.id.equals(remote.id)))
         .getSingleOrNull();
 
+    // LLA-035: ordered by the server-owned `server_version`, not
+    // `updated_at` — this table's `updated_at` is directly client-writable
+    // (see `remoteWinsByVersion`'s doc comment), so a per-id-by-time rule
+    // here would let an accepted guardian's forged future timestamp
+    // permanently outrank a later, authoritative revocation.
     if (existing != null &&
-        !remoteWinsById(
-            localUpdatedAt: existing.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
+        !remoteWinsByVersion(
+            localServerVersion: existing.serverVersion,
+            remoteServerVersion: remote.serverVersion)) {
       return false;
     }
 
@@ -388,6 +410,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             invitedBy: Value(remote.invitedBy),
             createdAt: remote.createdAt.toUtc(),
             updatedAt: remote.updatedAt.toUtc(),
+            serverVersion: Value(remote.serverVersion),
           ),
         );
     return true;
@@ -441,6 +464,16 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// protect here (a later remote row still overwrites this reset row
   /// outright under [_applyProfileMode]'s per-id LWW rule), so it is left
   /// alone for the same reason the others are.
+  ///
+  /// LLA-041 (issue #635): leaving `updated_at` untouched only makes the
+  /// *clean* re-share case above work — a row that was dirty with an
+  /// unpushed, clock-ahead edit at wipe time keeps that same too-new
+  /// `updated_at`, which then permanently outranks the server's real value
+  /// too. `profiles.accessRevokedAt` is stamped here precisely to cover
+  /// that gap: [_applyProfile] bypasses the per-id rule entirely while it
+  /// is set, so any later delivery of this profile id restores it
+  /// unconditionally rather than losing to a stale local timestamp that
+  /// was never a legitimate LWW competitor in the first place.
   Future<void> _tombstoneRevokedSharedProfile(
       String profileId, DateTime revokedAt) async {
     final stamp = revokedAt.toUtc();
@@ -516,6 +549,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           displayName: const Value(''),
           deletedAt: Value(stamp),
           dirty: const Value(false),
+          // LLA-041: marks this row's `updated_at` as a cache-eviction
+          // artifact rather than a genuine LWW competitor — see
+          // [_applyProfile]'s bypass and this method's doc comment.
+          accessRevokedAt: Value(stamp),
         ));
   }
 
@@ -1057,24 +1094,30 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
 
   /// The redacted payload columns for a visit-prep item row: the cleared
   /// state for a tombstone (mirroring the server's
-  /// `visit_prep_items_tombstone_payload_check`); the remote values as-is
-  /// for a live row whose check state transitioned; the *stored* check
-  /// stamp for a live row whose check state did not transition (a text
-  /// edit on a co-guardian's checked item must not silently re-stamp who
-  /// checked it — the sync_push CASE mirror).
+  /// `visit_prep_items_tombstone_payload_check`); otherwise the remote
+  /// values as-is, attribution stamps included.
+  ///
+  /// LLA-040 (issue #635): this used to preserve the *stored* check stamp
+  /// whenever `remote.isChecked == local.isChecked`, reasoning that an
+  /// unchanged boolean meant no real check-state transition happened — a
+  /// mirror of the `sync_push` RPC's own CASE logic, which keeps the
+  /// stored `checked_by_user_id`/`checked_at` server-side when a *push*
+  /// doesn't actually change `is_checked` (so a co-guardian's text-only
+  /// edit is never mis-attributed as a new check). That reasoning does not
+  /// carry over to this side: [remote] has already won the per-id LWW
+  /// check at the call site by the time this runs, so it already reflects
+  /// whatever the server's own CASE logic decided — including a genuine
+  /// remote uncheck-then-recheck that lands back on the same boolean this
+  /// device last saw, with a new actor and stamp. Re-deriving "did the
+  /// check state transition" from the *local* row's boolean cannot tell
+  /// that apart from a no-op push, so it kept the old device's stamp
+  /// forever once two peers' booleans coincidentally matched. The
+  /// authoritative stamp is always the one the already-validated remote
+  /// row carries.
   ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt})
-      _visitPrepItemPayload(
-          RemoteVisitPrepItemRow remote, bool tombstone, VisitPrepItemData? local) {
+      _visitPrepItemPayload(RemoteVisitPrepItemRow remote, bool tombstone) {
     if (tombstone) {
       return (body: '', isChecked: false, checkedByUserId: null, checkedAt: null);
-    }
-    if (local != null && remote.isChecked == local.isChecked) {
-      return (
-        body: remote.body,
-        isChecked: remote.isChecked,
-        checkedByUserId: local.checkedByUserId,
-        checkedAt: local.checkedAt,
-      );
     }
     return (
       body: remote.body,
@@ -1102,14 +1145,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       parentProfileId: (r) => r.profileId,
       entityLabel: 'visit prep item',
       remoteId: remote.id,
-      // _visitPrepItemPayload needs `local` (the checked-state transition
-      // rule), so it is computed inside each callback rather than once up
-      // front — the insert path passes null, matching the "no local row"
-      // case _visitPrepItemPayload already handles.
       insert: (r) => _insertVisitPrepItem(
-          r, _visitPrepItemPayload(r, tombstone, null), updatedAt, deletedAt),
+          r, _visitPrepItemPayload(r, tombstone), updatedAt, deletedAt),
       update: (r, local) => _updateVisitPrepItem(r, local,
-          _visitPrepItemPayload(r, tombstone, local), updatedAt, deletedAt),
+          _visitPrepItemPayload(r, tombstone), updatedAt, deletedAt),
     );
   }
 
@@ -1198,6 +1237,12 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// stays visible on the activity feed. Tags never record an event (they
   /// are unioned, not discarded) and identical payloads never do (nothing
   /// was lost).
+  ///
+  /// LLA-038 (issue #639): when [remote] survives with a real tag union
+  /// (`dirty` true), the returned `updated_at` is `remote.updatedAt` plus
+  /// one millisecond, never left tied to it — see the inline comment where
+  /// that bump happens for why a tied stamp silently loses the merge to a
+  /// replay or a declined equal-timestamp push.
   Future<(DateTime, DateTime?, List<String>, bool)> _resolveSameDateConflicts(
       RemoteDayEntryRow remote, DateTime updatedAt) async {
     DateTime? deletedAt;
@@ -1268,7 +1313,28 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       }
     }
     final hasNewTags = !_tagsEqual(tags, remote.tags);
-    return (updatedAt, deletedAt, tags, hasNewTags && deletedAt == null);
+    final dirty = hasNewTags && deletedAt == null;
+    if (dirty) {
+      // LLA-038 (issue #639): a merge that leaves [remote] itself the live
+      // survivor must be stamped strictly after `remote.updatedAt` — the
+      // value the server already has stored for this id — never left tied
+      // to it. Tied, two failure modes converge: (1) a replay of the exact
+      // same pre-merge row (a duplicate pull page, or the 24h reconcile's
+      // lookback) ties `remoteWinsById` and re-runs this resolution, but by
+      // then `other` is already tombstoned — no merge is recomputed, and
+      // the union this branch just wrote is silently replaced by the
+      // server's bare `remote.tags` with `dirty` cleared, discarding it for
+      // good; (2) even without a replay, `sync_push`'s day_entries
+      // acceptance rule (`v_accept`) only takes a *live* row strictly newer
+      // than what it already has stored — an equal-timestamp push of the
+      // merged tags is declined forever. The local-loser tombstone branch
+      // above needs no such bump: a tombstone pushed at an equal timestamp
+      // is the one case `sync_push` accepts on a tie (KTD5), and its own
+      // stamped `updated_at` (the winner's) already sits at or after
+      // anything the server holds for that loser id.
+      updatedAt = updatedAt.add(const Duration(milliseconds: 1));
+    }
+    return (updatedAt, deletedAt, tags, dirty);
   }
 
   /// Records one device-local merge outcome (issue #124, AC4) when — and
