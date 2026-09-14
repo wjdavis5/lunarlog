@@ -134,6 +134,41 @@ class SupabaseSharingService implements SharingService {
   }
 
   @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) async {
+    final tokenHash = sha256.convert(utf8.encode(rawToken)).toString();
+
+    try {
+      final res = await client.rpc<dynamic>(
+        'preview_guardian_invitation',
+        params: {'p_token_hash': tokenHash},
+      );
+
+      // The RPC's uniform "not available" result (Issue #594): a wrong,
+      // expired, revoked, or already-accepted token all return SQL null
+      // here, indistinguishable from one another by design.
+      if (res == null) return null;
+
+      if (res is! Map) {
+        throw const SharingFailure.other();
+      }
+
+      final profileDisplayName = res['profile_display_name'] as String;
+      final roleStr = res['role'] as String;
+      // Issue #540's fail-closed pattern, same as acceptInvite above.
+      final role = GuardianRole.fromDb(roleStr) ?? GuardianRole.viewer;
+      final expiresAt = DateTime.parse(res['expires_at'] as String).toUtc();
+
+      return InvitePreview(
+        profileDisplayName: profileDisplayName,
+        role: role,
+        expiresAt: expiresAt,
+      );
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  @override
   Future<void> revokeGuardian({
     required String profileId,
     required String targetUserId,

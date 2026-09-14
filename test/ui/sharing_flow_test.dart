@@ -73,6 +73,29 @@ class FakeSharingService implements SharingService {
         );
   }
 
+  /// Issue #594: null by default (the "not available" state), matching
+  /// [previewInvite]'s uniform-null contract - a test opts into the
+  /// "ready" state by scripting a value.
+  InvitePreview? scriptedPreview;
+  Object? scriptedPreviewError;
+  final previewCalls = <String>[];
+
+  /// Lets a test observe the loading state mid-flight, mirroring
+  /// [revokeHold] above - set before pumping, then complete once the
+  /// test has asserted the loading indicator shows.
+  Completer<void>? previewHold;
+
+  @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) async {
+    previewCalls.add(rawToken);
+    final hold = previewHold;
+    if (hold != null) await hold.future;
+    if (scriptedPreviewError != null) {
+      throw scriptedPreviewError!;
+    }
+    return scriptedPreview;
+  }
+
   Object? scriptedRevokeError;
 
   /// #544: lets a test observe the busy state mid-flight — set before the
@@ -222,6 +245,10 @@ class _ThrowingSharingService implements SharingService {
     required String rawToken,
     String? displayName,
   }) => throw UnimplementedError('not exercised by these tests');
+
+  @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) =>
+      throw UnimplementedError('not exercised by these tests');
 
   @override
   Future<void> revokeGuardian({
@@ -488,6 +515,140 @@ void main() {
           'this device.',
         ),
         findsOneWidget,
+      );
+    });
+
+    // Issue #594: the pre-accept preview RPC and its four client states.
+    group('pre-accept preview (Issue #594)', () {
+      Finder previewKey(String value) => find.byKey(ValueKey(value));
+
+      testWidgets('shows a loading indicator before the preview resolves', (
+        tester,
+      ) async {
+        final service = FakeSharingService()..previewHold = Completer<void>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: AcceptInviteSheet(
+                rawToken: 'test-raw-token',
+                sharingService: service,
+              ),
+            ),
+          ),
+        );
+
+        expect(previewKey('accept-invite-preview-loading'), findsOneWidget);
+        expect(previewKey('accept-invite-preview-ready'), findsNothing);
+        expect(previewKey('accept-invite-preview-unavailable'), findsNothing);
+        expect(previewKey('accept-invite-preview-error'), findsNothing);
+
+        service.previewHold!.complete();
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets(
+        'a live preview replaces the neutral copy with the profile name '
+        'and role',
+        (tester) async {
+          final service = FakeSharingService()
+            ..scriptedPreview = InvitePreview(
+              profileDisplayName: 'Riley',
+              role: GuardianRole.caregiver,
+              expiresAt: DateTime.utc(2026, 9, 20),
+            );
+
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: AcceptInviteSheet(
+                  rawToken: 'preview-token',
+                  sharingService: service,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(service.previewCalls, ['preview-token']);
+          expect(previewKey('accept-invite-preview-ready'), findsOneWidget);
+          expect(find.textContaining('Riley'), findsOneWidget);
+          expect(
+            find.text(
+              "You've been invited to a shared profile in LunarLog. "
+              'Accepting will sync its cycle calendar and health logs to '
+              'this device.',
+            ),
+            findsNothing,
+            reason: 'the personalized sentence replaces the neutral one',
+          );
+        },
+      );
+
+      testWidgets(
+        'a null preview (uniform not-available) shows the unavailable '
+        'note and leaves Accept usable',
+        (tester) async {
+          final service = FakeSharingService()..scriptedPreview = null;
+          AcceptedInviteResult? accepted;
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: AcceptInviteSheet(
+                  rawToken: 'dead-token',
+                  sharingService: service,
+                  onAccepted: (r) => accepted = r,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(previewKey('accept-invite-preview-unavailable'), findsOneWidget);
+          expect(previewKey('accept-invite-preview-error'), findsNothing);
+          expect(previewKey('accept-invite-preview-ready'), findsNothing);
+
+          await tester.tap(find.text('Accept & Sync'));
+          await tester.pumpAndSettle();
+          expect(service.previewCalls, ['dead-token']);
+          expect(accepted, isNotNull,
+              reason: 'the not-available preview never blocks Accept');
+        },
+      );
+
+      testWidgets(
+        'a preview fetch failure shows the error note and leaves Accept '
+        'usable',
+        (tester) async {
+          final service = FakeSharingService()
+            ..scriptedPreviewError = const SharingFailure.network();
+          AcceptedInviteResult? accepted;
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: AcceptInviteSheet(
+                  rawToken: 'test-raw-token',
+                  sharingService: service,
+                  onAccepted: (r) => accepted = r,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(previewKey('accept-invite-preview-error'), findsOneWidget);
+          expect(previewKey('accept-invite-preview-unavailable'), findsNothing);
+          expect(previewKey('accept-invite-preview-ready'), findsNothing);
+
+          await tester.tap(find.text('Accept & Sync'));
+          await tester.pumpAndSettle();
+          expect(accepted, isNotNull,
+              reason: 'accept still succeeds despite the preview failure');
+        },
       );
     });
   });
@@ -2085,6 +2246,50 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
       });
+
+      testWidgets(
+        'LLA-005: a session arriving while the pushed SignInScreen is on '
+        'screen pops the sign-in screen, not the invite sheet it just '
+        'presented',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+          );
+
+          await tester.tap(find.text('Sign In'));
+          await tester.pumpAndSettle();
+          expect(find.byType(SignInScreen), findsOneWidget);
+
+          // A session arrives while SignInScreen is on top (a magic link
+          // opened on this device, or any provider's early event) - both
+          // the app-level listener (presents the sheet) and SignInScreen's
+          // own listener (pops itself) react to the same notification.
+          auth.emit(
+            AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-dad'),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byType(SignInScreen),
+            findsNothing,
+            reason: 'the sign-in screen must be the one popped',
+          );
+          expect(
+            find.text('Join Shared Profile'),
+            findsOneWidget,
+            reason: 'the invite sheet must still be showing',
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
     });
 
     testWidgets('links without a code are ignored', (tester) async {
@@ -2233,6 +2438,43 @@ void main() {
 
         expect(find.byType(ClaimProfileSheet), findsOneWidget);
         expect(find.byType(AcceptInviteSheet), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      },
+    );
+
+    testWidgets(
+      'LLA-005: a session arriving while SignInScreen is pushed for a '
+      'latched claim link pops the sign-in screen, not the claim sheet',
+      (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+        final transferService = FakeOwnershipTransferService();
+
+        await pumpAppWithInvite(
+          tester,
+          auth,
+          ownershipTransferService: transferService,
+          initialInviteCode: 'cold-claim-token',
+          initialInviteProfileId: 'p-1',
+          initialInviteKind: 'claim',
+        );
+
+        await tester.tap(find.text('Sign In'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SignInScreen), findsOneWidget);
+
+        auth.emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-child'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SignInScreen), findsNothing,
+            reason: 'the sign-in screen must be the one popped');
+        expect(find.byType(ClaimProfileSheet), findsOneWidget,
+            reason: 'the claim sheet must still be showing');
+
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
       },

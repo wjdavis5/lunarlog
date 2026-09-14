@@ -38,6 +38,9 @@ class _StubSharingService implements SharingService {
       );
 
   @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) async => null;
+
+  @override
   Future<void> revokeGuardian({
     required String profileId,
     required String targetUserId,

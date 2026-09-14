@@ -87,10 +87,16 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _code = TextEditingController();
   bool _createMode = false;
   bool _busy = false;
   String? _error;
   String? _info;
+
+  /// LLA-006 (#2 U4): revealed once a magic-link send succeeds, or on
+  /// init when [SettingsKeys.awaitingMagicLinkEmail] is already set (a
+  /// code sent before an app restart) — see [_loadPendingMagicLink].
+  bool _showCodeField = false;
 
   /// The controller this state listens to for link-delivered sessions
   /// (#2 U3; KTD4).
@@ -110,6 +116,33 @@ class _SignInScreenState extends State<SignInScreen> {
 
   bool get _showPasskeys => widget.showPasskeys ?? AppConfig.hasPasskeys;
 
+  /// #2 U4: the verify-code button stays disabled until the field holds a
+  /// plausible code, mirroring the password-length guard on this same
+  /// screen — Supabase OTPs are 6 digits, so a slightly wider 6-10 band
+  /// tolerates a copy-pasted code with surrounding whitespace trimmed.
+  bool get _codeLooksValid => RegExp(r'^\d{6,10}$').hasMatch(_code.text.trim());
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPendingMagicLink(context.read<SettingsStore>()));
+  }
+
+  /// #2 U4: a magic-link/code request already sent before a restart (or
+  /// before this screen was last disposed) leaves its email latched in
+  /// [SettingsKeys.awaitingMagicLinkEmail] — same lifecycle as
+  /// [SettingsKeys.awaitingConfirmationEmail] (`_createAccount`). Reading
+  /// it back here pre-fills the email and reveals the code field so a
+  /// code already sitting in the inbox can be entered without resending.
+  Future<void> _loadPendingMagicLink(SettingsStore settings) async {
+    final pending = await settings.get(SettingsKeys.awaitingMagicLinkEmail);
+    if (!mounted || pending == null || pending.isEmpty) return;
+    setState(() {
+      _email.text = pending;
+      _showCodeField = true;
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -126,6 +159,7 @@ class _SignInScreenState extends State<SignInScreen> {
     _auth = null;
     _email.dispose();
     _password.dispose();
+    _code.dispose();
     super.dispose();
   }
 
@@ -269,6 +303,39 @@ class _SignInScreenState extends State<SignInScreen> {
           case NativeSignInCancelled():
             break;
         }
+      });
+
+  /// LLA-006 (#2 U4): sends a passwordless link/code for the typed email
+  /// in the screen's current mode, latches [SettingsKeys.
+  /// awaitingMagicLinkEmail] the same way [_createAccount] latches
+  /// `awaitingConfirmationEmail`, and reveals the code field. No explicit
+  /// completion here — a link opened on this device arrives through
+  /// [_onAuthChanged] like any other link-delivered session (#2 U3); the
+  /// code field is the same-device alternative to that link.
+  Future<void> _sendMagicLink() => _run(() async {
+        final auth = context.read<AuthController>();
+        final settings = context.read<SettingsStore>();
+        final email = _email.text.trim();
+        await auth.sendMagicLink(email: email, createAccount: _createMode);
+        await settings.set(SettingsKeys.awaitingMagicLinkEmail, email);
+        if (mounted) {
+          setState(() {
+            _showCodeField = true;
+            _info = 'Check your email for a sign-in link or code.';
+          });
+        }
+      });
+
+  /// The same-device counterpart of [_sendMagicLink]: completes through
+  /// [_signedIn] directly, matching [_apple]/[_google]/[_passkey], since a
+  /// verified code produces a session on this device with no link to open.
+  Future<void> _verifyCode() => _run(() async {
+        final auth = context.read<AuthController>();
+        await auth.verifyEmailCode(
+          email: _email.text.trim(),
+          code: _code.text.trim(),
+        );
+        _signedIn();
       });
 
   /// The first-run explainer above everything else, embedded mode only
@@ -420,6 +487,62 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
       ];
 
+  /// LLA-006 (#2 U4): the passwordless entry point, reachable from the
+  /// same screen as the password form and providers rather than being a
+  /// service with no caller. `or`-divided like [_buildProviderButtons],
+  /// and always shown (unlike the providers, passwordless has no
+  /// build-config gate) — button copy follows [_createMode] the same way
+  /// [_buildPrimaryActionButton] does.
+  List<Widget> _buildMagicLinkSection() => [
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text('or'),
+              ),
+              Expanded(child: Divider()),
+            ],
+          ),
+        ),
+        OutlinedButton(
+          key: const ValueKey('auth-magic-link'),
+          onPressed: _busy ? null : _sendMagicLink,
+          child: Text(_createMode
+              ? 'Email me a link to create my account'
+              : 'Email me a sign-in link'),
+        ),
+        ..._buildCodeField(),
+      ];
+
+  /// The revealed half of [_buildMagicLinkSection]: a numeric code field
+  /// plus its verify button, disabled until the field holds a plausible
+  /// code ([_codeLooksValid]).
+  List<Widget> _buildCodeField() => [
+        if (_showCodeField) ...[
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('auth-code'),
+            controller: _code,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Code from the email',
+              hintText: '6-10 digits',
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            key: const ValueKey('auth-verify-code'),
+            onPressed: _busy || !_codeLooksValid ? null : _verifyCode,
+            child: const Text('Sign in with code'),
+          ),
+        ],
+      ];
+
   List<Widget> _buildEmbeddedFooter() {
     if (!widget.embedded) return const [];
     final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
@@ -465,6 +588,7 @@ class _SignInScreenState extends State<SignInScreen> {
           ..._buildPrimaryActionButton(),
           const SizedBox(height: 8),
           ..._buildModeAndForgotSection(),
+          ..._buildMagicLinkSection(),
           ..._buildEmbeddedFooter(),
         ],
       ),

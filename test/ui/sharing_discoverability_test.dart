@@ -79,6 +79,10 @@ class FakeSharing126 implements SharingService {
       throw UnimplementedError('not exercised by issue #126 tests');
 
   @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) =>
+      throw UnimplementedError('not exercised by issue #126 tests');
+
+  @override
   Future<void> revokeGuardian({
     required String profileId,
     required String targetUserId,

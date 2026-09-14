@@ -88,6 +88,10 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// the operator to continue into first-run profile creation in offline mode.
   bool _restoreBypassed = false;
 
+  /// Guards against scheduling duplicate warm-recovery pop microtasks
+  /// across consecutive builds (LLA-007).
+  bool _consumingRecoveryPop = false;
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ProfileController>();
@@ -96,6 +100,7 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     final sync = Provider.of<SyncStatusController?>(context);
     _maybeConsumeLaunchPayload(gate, controller);
     _maybeShowLinkFailure(gate, auth);
+    _maybeSurfaceRecovery(auth, gate);
     if (!controller.loaded) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -155,6 +160,33 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
       return const PasswordRecoveryScreen();
     }
     return null;
+  }
+
+  /// LLA-007: [_recoveryScreen] only changes what *this* widget renders,
+  /// but this widget is the app's home/root route (see `app.dart`'s
+  /// `onGenerateRoute`) — any route pushed above it (Settings, sign-in,
+  /// a profile detail screen, ...) keeps covering it, so a recovery link
+  /// that arrives "warm" (the app already running, not a cold start) has
+  /// its screen change underneath whatever the operator already had open,
+  /// invisible until they manually navigate all the way back. Once the
+  /// same gate [_recoveryScreen] itself checks admits recovery, this pops
+  /// every pushed route back to home so the recovery step is
+  /// navigator-wide, not just root-wide. Deferred off the build path,
+  /// mirroring [_maybeShowLinkFailure] — `Navigator.pop` cannot run
+  /// during build — and guarded the same way against scheduling more
+  /// than one pop per build cycle.
+  void _maybeSurfaceRecovery(AuthController? auth, GateController? gate) {
+    final showingRecovery =
+        auth != null && auth.pendingRecovery && (gate == null || gate.unlocked);
+    if (!showingRecovery || _consumingRecoveryPop) return;
+    final navigator = Navigator.of(context);
+    if (!navigator.canPop()) return;
+    _consumingRecoveryPop = true;
+    scheduleMicrotask(() {
+      _consumingRecoveryPop = false;
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    });
   }
 
   /// The U6 sync-status screens (account mismatch, upload consent,
