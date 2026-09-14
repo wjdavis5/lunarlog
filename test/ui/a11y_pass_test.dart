@@ -253,6 +253,10 @@ class _NoInvitesSharingService implements SharingService {
   }) => throw UnimplementedError();
 
   @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) =>
+      throw UnimplementedError();
+
+  @override
   Future<InviteCancellation> cancelInvite(String invitationId) =>
       throw UnimplementedError();
 

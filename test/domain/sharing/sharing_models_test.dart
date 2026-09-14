@@ -89,6 +89,58 @@ void main() {
     });
   });
 
+  group('InvitePreview equality and hashCode (Issue #594)', () {
+    final expiresAt = DateTime.utc(2026, 9, 20);
+    final preview1 = InvitePreview(
+      profileDisplayName: 'Riley',
+      role: GuardianRole.caregiver,
+      expiresAt: expiresAt,
+    );
+    final preview2 = InvitePreview(
+      profileDisplayName: 'Riley',
+      role: GuardianRole.caregiver,
+      expiresAt: expiresAt,
+    );
+
+    test('identical and equal instances compare equal', () {
+      expect(preview1, preview1);
+      expect(preview1, preview2);
+      expect(preview1.hashCode, preview2.hashCode);
+    });
+
+    test('differing fields compare unequal', () {
+      expect(
+        preview1,
+        isNot(InvitePreview(
+          profileDisplayName: 'Someone Else',
+          role: GuardianRole.caregiver,
+          expiresAt: expiresAt,
+        )),
+      );
+      expect(
+        preview1,
+        isNot(InvitePreview(
+          profileDisplayName: 'Riley',
+          role: GuardianRole.viewer,
+          expiresAt: expiresAt,
+        )),
+      );
+      expect(
+        preview1,
+        isNot(InvitePreview(
+          profileDisplayName: 'Riley',
+          role: GuardianRole.caregiver,
+          expiresAt: expiresAt.add(const Duration(hours: 1)),
+        )),
+      );
+    });
+
+    test('different type is not equal', () {
+      // ignore: unrelated_type_equality_checks
+      expect(preview1 == 'not a preview', isFalse);
+    });
+  });
+
   group('PendingInvite equality and hashCode', () {
     final now = DateTime.utc(2026, 9, 6);
     final expires = DateTime.utc(2026, 9, 8);

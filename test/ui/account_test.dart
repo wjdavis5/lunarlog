@@ -490,6 +490,136 @@ void main() {
 
   });
 
+  group('passwordless email and code (LLA-006, #2 U4)', () {
+    testWidgets(
+      'the magic-link button is reachable with no build-config gate, and '
+      'the code field is hidden until a link has been sent',
+      (tester) async {
+        await pumpStandalone(tester);
+        expect(key('auth-magic-link'), findsOneWidget);
+        expect(key('auth-code'), findsNothing);
+        expect(key('auth-verify-code'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'tapping it sends for the trimmed email in sign-in mode '
+      '(createAccount: false), latches the pending email, and reveals the '
+      'code field',
+      (tester) async {
+        final s = await pumpStandalone(tester);
+        await tester.enterText(key('auth-email'), '  a@b.c  ');
+        await tester.tap(key('auth-magic-link'));
+        await tester.pumpAndSettle();
+
+        expect(s.auth.magicLinkCalls.single,
+            (email: 'a@b.c', createAccount: false));
+        expect(
+          await s.settings.get(SettingsKeys.awaitingMagicLinkEmail),
+          'a@b.c',
+        );
+        expect(key('auth-code'), findsOneWidget);
+        expect(key('auth-verify-code'), findsOneWidget);
+        expect(
+          find.text('Check your email for a sign-in link or code.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('create mode passes createAccount: true', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'new@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.magicLinkCalls.single,
+          (email: 'new@b.c', createAccount: true));
+    });
+
+    testWidgets(
+      'the verify-code button stays disabled below 6 digits, accepts a '
+      '6-digit code, and calls verifyEmailCode',
+      (tester) async {
+        final s = await pumpStandalone(tester);
+        await tester.enterText(key('auth-email'), 'a@b.c');
+        await tester.tap(key('auth-magic-link'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(key('auth-code'), '12345');
+        await tester.pump();
+        expect(
+          tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNull,
+          reason: '5 digits is not enough',
+        );
+        expect(s.auth.codeCalls, isEmpty);
+
+        await tester.enterText(key('auth-code'), '123456');
+        await tester.pump();
+        expect(
+          tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNotNull,
+        );
+
+        await tester.tap(key('auth-verify-code'));
+        await tester.pumpAndSettle();
+        expect(s.auth.codeCalls.single, (email: 'a@b.c', code: '123456'));
+        expect(s.controller.signedIn, isTrue);
+      },
+    );
+
+    testWidgets('an 8-digit code is also accepted', (tester) async {
+      await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(key('auth-code'), '12345678');
+      await tester.pump();
+      expect(
+        tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('invalidCode shows its copy under auth-error', (
+      tester,
+    ) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-code'), '000000');
+      await tester.pump();
+
+      s.auth.nextFailure = const AuthFailure.invalidCode();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(key('auth-error'), findsOneWidget);
+    });
+
+    testWidgets(
+      'opening the screen with a pending magic-link email pre-fills it '
+      'and reveals the code field without sending a new request',
+      (tester) async {
+        final s = await pumpStandalone(
+          tester,
+          seed: {SettingsKeys.awaitingMagicLinkEmail: 'a@b.c'},
+        );
+
+        expect(
+          tester.widget<TextField>(key('auth-email')).controller!.text,
+          'a@b.c',
+        );
+        expect(key('auth-code'), findsOneWidget);
+        expect(s.auth.magicLinkCalls, isEmpty);
+      },
+    );
+  });
+
   group('passkey sign-in (#30 U4; AE1, AE2, AE3)', () {
     testWidgets('AE1: showPasskeys false and the null default (empty '
         'config) render no passkey button; true renders it', (tester) async {
@@ -722,6 +852,36 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
     });
+
+    testWidgets(
+      'LLA-007: a warm recovery link pops a pushed Settings screen so the '
+      'recovery step is visible immediately, not hidden underneath it',
+      (tester) async {
+        final h = AccountHarness(tester);
+        await h.pump(seed: AccountHarness.seedOneProfile);
+        expect(find.text('Alice'), findsOneWidget);
+
+        await h.openSettings();
+        expect(find.byType(SettingsScreen), findsOneWidget);
+        expect(key('recovery-new-password'), findsNothing);
+
+        // A warm link: the recovery latch flips on while Settings is still
+        // the top-most pushed route (no gate in this harness, so recovery
+        // is admitted immediately - matches gate == null above).
+        h.auth.latchRecovery();
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byType(SettingsScreen),
+          findsNothing,
+          reason: 'the pushed route must be popped, not left covering '
+              'recovery underneath it (LLA-007)',
+        );
+        expect(key('recovery-new-password'), findsOneWidget);
+
+        await h.dispose();
+      },
+    );
   });
 
   group('first run (AS1, F1, F3, AE13)', () {
@@ -744,6 +904,10 @@ void main() {
 
       expect(key('auth-email'), findsOneWidget, reason: 'account step');
       expect(find.text('Create profile'), findsNothing);
+      // LLA-006 added the passwordless section below the password form,
+      // pushing "Not now" below the fold on this test surface.
+      await tester.ensureVisible(key('first-run-not-now'));
+      await tester.pump();
       await tester.tap(key('first-run-not-now'));
       await tester.pumpAndSettle();
       expect(key('auth-email'), findsNothing);

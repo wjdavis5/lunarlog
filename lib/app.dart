@@ -843,12 +843,37 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// device) retires the device-local "awaiting confirmation" note, and
   /// the passwordless "sign-in email sent" note with it (#2 U4; KTD3).
   /// A latched invite code (R9) is presented once the session exists.
+  ///
+  /// LLA-005: `_authController` is built in [initState] (`_initAuthController`),
+  /// before any screen the operator later navigates to (in particular
+  /// [SignInScreen], pushed from [_goToSignInForPendingInvite]) registers
+  /// its own listener on the same controller — so this listener always
+  /// runs first inside one `notifyListeners()` call. Presenting the sheet
+  /// synchronously here used to push it onto the navigator *before*
+  /// `SignInScreen`'s own listener called `Navigator.of(context)
+  /// .maybePop()`, which then popped the just-presented sheet (now the
+  /// top-most route) instead of the sign-in screen underneath it — the
+  /// invitation the recipient just triggered disappeared as soon as it
+  /// appeared. A `scheduleMicrotask` deferral is not enough: `maybePop()`
+  /// only *requests* removal from `Navigator`'s route history — its actual
+  /// flush is itself scheduled for later in the microtask queue, so a
+  /// same-batch microtask still races it, and pushing the sheet in the
+  /// middle of that in-flight pop can leave `SignInScreen`'s route stuck
+  /// (observed directly: still present after `pumpAndSettle()`). Waiting
+  /// for the next built frame instead ([WidgetsBinding.addPostFrameCallback])
+  /// guarantees the pop has been fully flushed by the time the sheet is
+  /// presented, so it is pushed onto whatever route is genuinely on top.
   void _onAuthChanged() {
     if (_authController?.signedIn ?? false) {
       _clearAwaitingConfirmation();
       final code = _pendingInviteCode;
       if (code != null) {
-        _presentSheet(code, _profileIdOfPendingInvite, _pendingInviteKind);
+        final profileId = _profileIdOfPendingInvite;
+        final kind = _pendingInviteKind;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _presentSheet(code, profileId, kind);
+        });
       }
     }
   }

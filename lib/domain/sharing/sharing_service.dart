@@ -138,6 +138,36 @@ enum InviteCancellation {
       };
 }
 
+/// Issue #594: a pre-accept preview of an invitation, so the accept sheet
+/// isn't blind consent - the profile's display name and the offered role,
+/// for a still-live, unexpired, un-accepted, un-revoked invitation. Never
+/// carries a profile id, other guardians, or anything else the server's
+/// `preview_guardian_invitation` RPC doesn't return (R6/enumeration - see
+/// that migration's header for the full server-side rationale).
+@immutable
+class InvitePreview {
+  const InvitePreview({
+    required this.profileDisplayName,
+    required this.role,
+    required this.expiresAt,
+  });
+
+  final String profileDisplayName;
+  final GuardianRole role;
+  final DateTime expiresAt;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is InvitePreview &&
+          other.profileDisplayName == profileDisplayName &&
+          other.role == role &&
+          other.expiresAt == expiresAt;
+
+  @override
+  int get hashCode => Object.hash(profileDisplayName, role, expiresAt);
+}
+
 /// Result returned upon accepting an invitation.
 @immutable
 class AcceptedInviteResult {
@@ -248,6 +278,15 @@ abstract interface class SharingService {
     required String rawToken,
     String? displayName,
   });
+
+  /// Previews an invitation before redeeming it (Issue #594) - the
+  /// profile's display name and offered role, read-only and never
+  /// mutating membership. Returns null for every state that isn't a
+  /// live, unexpired, un-accepted, un-revoked invitation (a wrong token,
+  /// one already redeemed elsewhere, one that expired, or one revoked) -
+  /// deliberately uniform, so a caller can never use this to distinguish
+  /// *why* a token isn't previewable (R6/enumeration).
+  Future<InvitePreview?> previewInvite({required String rawToken});
 
   /// Revokes an active guardian or removes oneself.
   Future<void> revokeGuardian({

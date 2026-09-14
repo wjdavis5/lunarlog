@@ -34,6 +34,7 @@ import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
@@ -1234,6 +1235,40 @@ void main() {
       expect(find.text('Connect to cycle predictions'), findsOneWidget);
       await unmountApp(tester);
     });
+
+    testWidgets(
+      'LLA-005: a session arriving while SignInScreen is pushed for a '
+      'latched prediction link pops the sign-in screen, not the '
+      'prediction sheet',
+      (tester) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+
+        await pumpApp(
+          tester,
+          auth,
+          initialInviteCode: 'cold-prediction-token',
+          initialInviteKind: 'prediction',
+        );
+
+        await tester.tap(find.text('Sign In'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SignInScreen), findsOneWidget);
+
+        auth.emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-dad'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SignInScreen), findsNothing,
+            reason: 'the sign-in screen must be the one popped');
+        expect(find.text('Connect to cycle predictions'), findsOneWidget,
+            reason: 'the prediction sheet must still be showing');
+
+        await unmountApp(tester);
+      },
+    );
 
     testWidgets('without a PredictionConnectionService the code is ignored', (
       tester,
