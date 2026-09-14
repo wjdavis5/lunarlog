@@ -164,9 +164,10 @@ void main() {
 
     // Issue #529: a built projection always carries a confidence tier
     // (ActivePrediction.tier is non-nullable), so this model's own
-    // toJson() also carries confidenceTierKey — the server allowlist
-    // itself is untouched (asserted separately below); the wire payload
-    // actually sent to upsert_prediction_projection strips this key (see
+    // toJson() also carries confidenceTierKey. Issue #593 allowlisted the
+    // key server-side too, so this is now also the exact wire payload
+    // `SupabasePredictionConnectionService.publishProjection` sends to
+    // `upsert_prediction_projection` — no strip (see
     // supabase_prediction_connection_service_test.dart).
     expect(
       json.keys.toSet(),

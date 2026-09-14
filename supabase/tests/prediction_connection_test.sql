@@ -16,7 +16,7 @@
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(133);
+select plan(136);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -435,6 +435,45 @@ select is(
   public.get_prediction_projection(tests.ulid(901)),
   '{"generated_at":"2026-09-07","period_days":["2026-09-09","2026-09-10"],"fertile_days":["2026-09-21","2026-09-22"],"ovulation_days":["2026-09-22"],"pms_days":["2026-09-02","2026-09-03"]}'::jsonb,
   'the recipient reads back exactly the derived phases (the RPC return shape is the AC''s inspection surface)');
+
+-- Issue #593: confidence_tier joined the allowlist as an optional,
+-- nullable, enum-checked key
+-- (20260915140000_prediction_projection_confidence_tier.sql).
+select throws_ok(
+  format($$select public.upsert_prediction_projection(%L,
+    '{"generated_at":"2026-09-07","confidence_tier":"guessing"}'::jsonb)$$,
+    tests.ulid(901)),
+  '22023', null,
+  'confidence_tier must be one of the known confidence tiers');
+select public.upsert_prediction_projection(
+  tests.ulid(901),
+  jsonb_build_object(
+    'generated_at', '2026-09-07',
+    'period_days', jsonb_build_array('2026-09-09', '2026-09-10'),
+    'fertile_days', jsonb_build_array('2026-09-21', '2026-09-22'),
+    'ovulation_days', jsonb_build_array('2026-09-22'),
+    'pms_days', jsonb_build_array('2026-09-02', '2026-09-03'),
+    'confidence_tier', 'learning'));
+select is(
+  public.get_prediction_projection(tests.ulid(901)) ->> 'confidence_tier',
+  'learning',
+  'confidence_tier round-trips through the recipient read path once published');
+
+-- An older snapshot -- the exact 5-key payload published before #593 --
+-- still validates and reads back, with confidence_tier simply absent
+-- (never null, never rejected).
+select public.upsert_prediction_projection(
+  tests.ulid(901),
+  jsonb_build_object(
+    'generated_at', '2026-09-07',
+    'period_days', jsonb_build_array('2026-09-09', '2026-09-10'),
+    'fertile_days', jsonb_build_array('2026-09-21', '2026-09-22'),
+    'ovulation_days', jsonb_build_array('2026-09-22'),
+    'pms_days', jsonb_build_array('2026-09-02', '2026-09-03')));
+select is(
+  public.get_prediction_projection(tests.ulid(901)) ? 'confidence_tier',
+  false,
+  'an older, pre-#593-shaped snapshot still validates, with confidence_tier simply absent from the read-back');
 
 select tests.authenticate_as('dad');
 select is(
