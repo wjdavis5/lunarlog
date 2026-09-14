@@ -1,4 +1,7 @@
--- Migration: 20260913023000_sync_push_observation_reparent.sql
+-- Migration: 20260914010000_sync_push_observation_reparent.sql (renamed from
+-- an original `20260913023000_` prefix so it sorts after both the
+-- account-deletion migration main gained at `20260913022000` and this PR's
+-- own timestamp-policy migration -- Migration Flow item 7).
 --
 -- Issue #639 · LLA-036 (P1): "Same-date identity convergence deletes
 -- nonconflicting observations". sync_push re-emitted from the
@@ -787,7 +790,7 @@ begin
             v_flow := 'none';
             -- Issue #220: same clearing on the losing incoming row.
             v_pms := false;
-            -- Issue #641 LLA-036 (incoming-loses direction): the incoming
+            -- Issue #639 LLA-036 (incoming-loses direction): the incoming
             -- row is about to be stored as a tombstone below. If it was an
             -- already-stored live row, its observations must be reparented
             -- onto the surviving v_other BEFORE that tombstone's cascade

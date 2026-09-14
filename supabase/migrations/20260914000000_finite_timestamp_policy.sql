@@ -1,4 +1,9 @@
--- Migration: 20260913022000_finite_timestamp_policy.sql
+-- Migration: 20260914000000_finite_timestamp_policy.sql (renamed from an
+-- original `20260913022000_` prefix: main gained
+-- `20260913022000_account_deletion_transfers_and_connections.sql` (#499, via
+-- PR #603) after this branch was cut -- an identical schema_migrations
+-- version prefix is a primary-key collision, and Migration Flow item 7
+-- requires sorting after whatever is already on main at merge time).
 --
 -- Issue #641 · LLA-058 (P2): "Alternate writes accept future and nonfinite
 -- timestamps". The RPC-side +5-minute future ceiling (#566) only guards
