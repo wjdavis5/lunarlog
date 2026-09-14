@@ -56,11 +56,15 @@ name: Supabase migrate
 # missing Apple key. Periodic reconciliation between deploys runs weekly
 # via .github/workflows/supabase-reconcile.yml (Issue #453).
 #
-# The "Check for schema drift" step (issue #163 / D-19, D-21) runs
-# `supabase db diff --linked --schema public` and fails the job on any
-# non-empty output -- this is what would have caught an out-of-band Studio
-# change (or a migration applied outside this workflow) before it went
-# unnoticed. The "Database advisor gate" step (also issue #163) runs
+# The "Check for schema drift" step (issue #163 / D-19, D-21, #513) runs
+# `supabase db diff --linked --schema public --use-migra`. The CLI's
+# default engine re-emits every CREATE OR REPLACE FUNCTION even when
+# byte-identical to its migration and missed a real change migra caught
+# correctly, so migra is pinned explicitly. `classify-schema-diff.sh`
+# splits the diff into statements and warns (not fails) only on function
+# re-emission and a matched trigger DROP/CREATE pair; any other statement
+# fails the job, as does a non-zero `db diff` exit. The "Database advisor
+# gate" step (also issue #163) runs
 # `supabase db advisors --linked --type security --fail-on error`, a
 # CI-enforced replacement for the old manual "check the Supabase MCP
 # get_advisors output before approving" step -- the CLI has had a `db
@@ -424,36 +428,46 @@ jobs:
           echo "Recorded delete-account deployment evidence: source sha256 $hash (deployment id $deployment_id)."
 
       - name: Check for schema drift
-        # Issue #163 / D-19: catches a schema change made out-of-band (a
-        # Studio edit, a manual `psql`, or a migration applied outside this
-        # workflow) that supabase/migrations does not account for. `db diff`
-        # itself does not set a non-zero exit code on a non-empty diff, so
-        # this step captures the output and fails explicitly. Runs last,
-        # after every deploy step above (issue #163 review): a false
-        # positive here can only report on an already-completed deploy, it
-        # can never block one -- putting it earlier would risk failing an
-        # unrelated function deploy over a drift finding that has nothing
-        # to do with it.
-        #
-        # LLA-111: `if:` used to be the GitHub Actions default -- run only
-        # when every preceding step in the job succeeded. That meant an
-        # unrelated failure anywhere above (push-dispatch or Apple secrets
-        # not configured yet, a function deploy hiccup) silently skipped
-        # this drift check even though the migration push itself, and
-        # whatever DID deploy, already went live -- exactly the change this
-        # step exists to independently verify, left unverified on a run
-        # that's already red for an unrelated reason. It now runs whenever
-        # `supabase link` itself succeeded (steps.link.outcome, set above),
-        # independent of every step in between.
+        # Issue #163 / D-19, #513: runs last (steps.link.outcome, LLA-111 --
+        # see the dry-run job's own comment) so a false positive here can
+        # only report on an already-live deploy, never block one. Prints
+        # any non-empty diff in a `::group::` (schema SQL, not a secret),
+        # then classify-schema-diff.sh decides fail vs. warn per statement
+        # -- see the header comment above. A non-zero `db diff` exit is a
+        # connectivity/auth failure, not a finding, and fails outright.
         if: always() && steps.link.outcome == 'success'
         run: |
-          diff_output="$(supabase db diff --linked --schema public)"
-          if [ -n "$diff_output" ]; then
-            echo "::error::supabase db diff --linked --schema public found a non-empty diff between supabase/migrations and the linked project's public schema. This means something changed the live schema outside of a tracked migration file (a Studio edit, a manual psql session, or an out-of-band db push). Add a migration under supabase/migrations that captures the drift, or if the drift itself is a mistake, revert it on the project directly, then re-run this workflow."
-            echo "$diff_output"
+          set +e
+          diff_output="$(supabase db diff --linked --schema public --use-migra --output-format text)"
+          diff_exit=$?
+          set -e
+
+          if [ "$diff_exit" -ne 0 ]; then
+            echo "::error::supabase db diff --linked --schema public --use-migra exited $diff_exit -- it could not complete the comparison (a connectivity or auth problem, not a schema finding). See the command output above."
             exit 1
           fi
-          echo "No schema drift detected between supabase/migrations and the linked project's public schema."
+
+          if [ -z "$diff_output" ]; then
+            echo "No schema drift detected between supabase/migrations and the linked project's public schema."
+            exit 0
+          fi
+
+          echo "::group::Schema drift diff (supabase db diff --linked --schema public --use-migra)"
+          echo "$diff_output"
+          echo "::endgroup::"
+
+          set +e
+          real="$(printf '%s\n' "$diff_output" | bash .github/scripts/classify-schema-diff.sh)"
+          classify_exit=$?
+          set -e
+
+          if [ "$classify_exit" -eq 0 ]; then
+            echo "::warning::Non-empty diff, but every statement is known re-emission noise (unchanged CREATE OR REPLACE FUNCTION / a matched trigger drop+create pair) -- see the group above."
+          else
+            echo "::error::Schema drift beyond known noise -- add a migration under supabase/migrations to capture it, or revert it on the project directly."
+            printf '%s\n' "$real"
+            exit 1
+          fi
 
       - name: Database advisor gate
         # Issue #163 / D-19: a CI-enforced replacement for the old "check
