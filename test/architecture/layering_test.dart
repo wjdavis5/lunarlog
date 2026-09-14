@@ -125,9 +125,13 @@ void _expectNoOffendersAmong(
 ) {
   expect(files, isNotEmpty, reason: 'scanned zero files — check the path');
 
+  // Issue #658: normalise to posix separators for reporting too, so an
+  // offender list printed on Windows reads the same (`lib/data/x.dart`) as
+  // it does in CI, rather than `lib\data\x.dart`.
   final offenders = [
     for (final file in files)
-      if (violates(file.readAsStringSync(), file.path)) file.path,
+      if (violates(file.readAsStringSync(), file.path))
+        file.path.replaceAll(r'\', '/'),
   ];
   expect(offenders, isEmpty,
       reason: '$rule, but these files do:\n${offenders.join('\n')}');
@@ -195,8 +199,15 @@ void main() {
         'no lib/*.dart file depends on lib/ui, except the two documented '
         'composition-root widgets', () {
       const composesTheUiTreeItself = {'lib/app.dart', 'lib/app_root.dart'};
+      // Issue #658: `File.path` from `Directory.listSync()` is
+      // backslash-separated on Windows (`lib\app.dart`), so comparing it
+      // directly against the posix-style allowlist above never matched and
+      // both composition-root widgets were reported as offenders on every
+      // Windows run. Normalise to posix separators first, same as
+      // `_resolve` already does for relative-import targets.
       final files = _bareLibDartFiles()
-          .where((f) => !composesTheUiTreeItself.contains(f.path))
+          .where((f) =>
+              !composesTheUiTreeItself.contains(f.path.replaceAll(r'\', '/')))
           .toList();
       _expectNoOffendersAmong(files, dependsOnUiLayer,
           'a bare lib/*.dart file must not depend on lib/ui');

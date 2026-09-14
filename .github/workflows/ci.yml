@@ -690,3 +690,78 @@ jobs:
           if [ -n "${SIM_UDID:-}" ]; then
             xcrun simctl shutdown "$SIM_UDID" || true
           fi
+
+  ci-required-checks:
+    # Issue #651: the "Main" ruleset's required_status_checks are pinned to
+    # the individual job `name:` strings above. Any rename or restructure of
+    # those jobs orphans every open PR until it's rebased -- the newly-named
+    # checks never satisfy the old required names, and the merge conflict a
+    # rebase produces suppresses the merge ref, so the new checks can't even
+    # run in the meantime. This exact mechanism produced the 2026-09-13
+    # backlog (#577, #644).
+    #
+    # This job aggregates every job the ruleset currently requires (every
+    # name in its required_status_checks list except "iOS Simulator tests",
+    # which the ruleset does not require) behind one name-stable check. Once
+    # the ruleset is switched to require only this job's name, a future job
+    # rename/split never needs a ruleset edit again -- only this job's own
+    # `needs:` list has to track it. See the PR that introduced this job for
+    # the exact ruleset change to make after merge.
+    #
+    # Deliberately not named `ci-gate`: that job id/name is already used by
+    # ios-release.yml and play-store-release.yml for a different thing (the
+    # release-time poll of check-ci-gate.sh against these same job names,
+    # issue #498). Keeping the names distinct avoids two unrelated check
+    # runs both reading "ci-gate" in the GitHub UI.
+    name: CI required checks
+    # Must run even when a needed job failed or was skipped -- otherwise a
+    # failed dependency would make this job (and the check it reports) never
+    # run at all, and a *missing* required check does not fail a PR the same
+    # way an explicitly failed one does.
+    if: always()
+    needs:
+      - release-guards
+      - release-guards-macos
+      - check
+      - test
+      - quality-gate
+      - edge-functions
+      - db-tests
+      - android
+      - ios
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report required job results
+        if: always()
+        run: |
+          echo "release-guards: ${{ needs.release-guards.result }}"
+          echo "release-guards-macos: ${{ needs.release-guards-macos.result }}"
+          echo "check: ${{ needs.check.result }}"
+          echo "test: ${{ needs.test.result }}"
+          echo "quality-gate: ${{ needs.quality-gate.result }}"
+          echo "edge-functions: ${{ needs.edge-functions.result }}"
+          echo "db-tests: ${{ needs.db-tests.result }}"
+          echo "android: ${{ needs.android.result }}"
+          echo "ios: ${{ needs.ios.result }}"
+
+      # No job here declares a job-level `if:` (no path filters or similar
+      # conditional skip in this workflow as of #651), so every needed job
+      # is expected to actually run and succeed -- a "skipped" result is
+      # therefore treated as a failure, not a pass, the same as "failure" or
+      # "cancelled". This condition is the whole gate: it fires (and this
+      # step fails) unless every needed job's result is exactly "success".
+      - name: Fail unless every required job succeeded
+        if: |
+          needs.release-guards.result != 'success' ||
+          needs.release-guards-macos.result != 'success' ||
+          needs.check.result != 'success' ||
+          needs.test.result != 'success' ||
+          needs.quality-gate.result != 'success' ||
+          needs.edge-functions.result != 'success' ||
+          needs.db-tests.result != 'success' ||
+          needs.android.result != 'success' ||
+          needs.ios.result != 'success'
+        run: |
+          echo "::error::One or more required jobs did not succeed (see the 'Report required job results' step above for each job's result). Failing the rollup check."
+          exit 1
