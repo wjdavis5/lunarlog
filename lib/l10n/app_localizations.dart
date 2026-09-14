@@ -586,6 +586,24 @@ abstract class AppLocalizations {
   /// **'Tags'**
   String get daySheetTagsLabel;
 
+  /// Issue #642, LLA-011: heading above the spotting marker in the read-only day sheet, mirroring daySheetPmsGroup's own label+value shape (the value line reuses flowLevelSpotting, the same 'Spotting' string the editable chip already shows).
+  ///
+  /// In en, this message translates to:
+  /// **'Spotting'**
+  String get daySheetSpottingGroup;
+
+  /// Issue #642, LLA-011: shown in the read-only day sheet while spotting/pain-intensity (child `observations` rows, not on the day entry itself) are still loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading additional details…'**
+  String get daySheetChildObservationsLoading;
+
+  /// Issue #642, LLA-011: shown in the read-only day sheet when loading spotting/pain-intensity (child `observations` rows) fails. No exception detail, matching this file's other failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load additional details.'**
+  String get daySheetChildObservationsError;
+
   /// Placeholder shown for an empty note in the read-only day sheet.
   ///
   /// In en, this message translates to:

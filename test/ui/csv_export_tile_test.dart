@@ -77,6 +77,7 @@ class FakeProfilesRepository implements ProfilesRepository {
 
 class FakeDayEntriesRepository implements DayEntriesRepository {
   Map<String, List<DayEntry>> entriesByProfile = const {};
+  final Map<String, StreamController<bool>> _hasEntriesControllers = {};
 
   @override
   Future<List<DayEntry>> listForProfile(String profileId) async =>
@@ -85,6 +86,32 @@ class FakeDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<bool> hasAnyEntries(String profileId) async =>
       (entriesByProfile[profileId] ?? const []).isNotEmpty;
+
+  /// Reactive counterpart of [hasAnyEntries] (issue #642, LLA-010),
+  /// independently controllable via [setHasEntries] so a test can push a
+  /// change without a real write path — the same bounded, per-profile
+  /// existence stream `EntryExistenceWatchMixin` observes.
+  @override
+  Stream<bool> watchHasAnyEntries(String profileId) async* {
+    yield (entriesByProfile[profileId] ?? const []).isNotEmpty;
+    yield* _controllerFor(profileId).stream;
+  }
+
+  /// Pushes a new existence value for [profileId] — LLA-010's own seam:
+  /// changes entry existence with no corresponding `profiles` stream tick,
+  /// the exact case the pre-#642 tile derived `hasEntries` from and so
+  /// missed.
+  void setHasEntries(String profileId, bool value) {
+    entriesByProfile = {
+      ...entriesByProfile,
+      profileId: value ? [_entry('e-$profileId', profileId)] : const [],
+    };
+    _controllerFor(profileId).add(value);
+  }
+
+  StreamController<bool> _controllerFor(String profileId) =>
+      _hasEntriesControllers.putIfAbsent(
+          profileId, () => StreamController<bool>.broadcast());
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -242,6 +269,67 @@ void main() {
       profiles.setProfiles([_profile('p1')]);
       await tester.pumpAndSettle();
       expect(key('csv-export-tile'), findsOneWidget);
+    });
+
+    testWidgets(
+        'entry existence is its own bounded stream, independent of the '
+        'profiles stream ticking, and the tile stays reactive across an '
+        'IndexedStack tab switch (issue #642, LLA-010)', (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1', displayName: 'Riley')]);
+      final dayEntries = FakeDayEntriesRepository();
+      final activeIndex = ValueNotifier<int>(0);
+      addTearDown(profiles.dispose);
+      addTearDown(activeIndex.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              Provider<ProfilesRepository>.value(value: profiles),
+              Provider<DayEntriesRepository>.value(value: dayEntries),
+              Provider<ObservationsRepository>.value(value: FakeObservationsRepository()),
+              Provider<SettingsStore>.value(value: FakeSettingsStore()),
+            ],
+            child: Scaffold(
+              // A real IndexedStack, mirroring the app shell's own retained
+              // tabs (`lib/ui/components/app_shell.dart`): every child stays
+              // mounted regardless of which index is showing.
+              body: ValueListenableBuilder<int>(
+                valueListenable: activeIndex,
+                builder: (context, index, _) => IndexedStack(
+                  index: index,
+                  children: const [
+                    CsvExportTile(),
+                    SizedBox.shrink(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<ListTile>(key('csv-export-tile')).enabled, isFalse);
+
+      // Switch away and back through the IndexedStack — CsvExportTile's
+      // State stays mounted the whole time (never rebuilt from scratch).
+      activeIndex.value = 1;
+      await tester.pump();
+      activeIndex.value = 0;
+      await tester.pump();
+
+      // Zero -> one, with no `profiles` stream re-emission at all — only
+      // the bounded per-profile existence stream. The pre-#642 tile
+      // derived `hasEntries` solely from a `profiles` tick and would have
+      // stayed disabled here.
+      dayEntries.setHasEntries('p1', true);
+      await tester.pump();
+      expect(tester.widget<ListTile>(key('csv-export-tile')).enabled, isTrue);
+
+      // One -> zero, the same way.
+      dayEntries.setHasEntries('p1', false);
+      await tester.pump();
+      expect(tester.widget<ListTile>(key('csv-export-tile')).enabled, isFalse);
     });
   });
 

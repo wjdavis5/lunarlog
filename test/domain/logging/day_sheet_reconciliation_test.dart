@@ -374,4 +374,79 @@ void main() {
       expect(mutations.toDelete, isEmpty);
     });
   });
+
+  group('gradedPainIntensitiesFrom (issue #642 review, CRAP gate split of '
+      '_loadExistingPainIntensity)', () {
+    test('empty input yields an empty map', () {
+      expect(gradedPainIntensitiesFrom(const []), isEmpty);
+    });
+
+    test('a single graded pain row surfaces under its code', () {
+      final result = gradedPainIntensitiesFrom([
+        _painObs('o1', 'cramps', intensity: 3),
+      ]);
+      expect(result, {'cramps': 3});
+    });
+
+    test('a non-pain category row is ignored even if it carries an '
+        'intensity value', () {
+      final nonPain = Observation(
+        id: 'o1',
+        dayEntryId: 'e1',
+        profileId: 'p1',
+        localDate: _date,
+        tz: 'UTC',
+        category: 'energy',
+        code: 'cramps',
+        intensity: 3,
+        updatedAt: _now,
+      );
+      expect(gradedPainIntensitiesFrom([nonPain]), isEmpty);
+    });
+
+    test('a pain row with no code is ignored', () {
+      final noCode = Observation(
+        id: 'o1',
+        dayEntryId: 'e1',
+        profileId: 'p1',
+        localDate: _date,
+        tz: 'UTC',
+        category: 'pain',
+        intensity: 3,
+        updatedAt: _now,
+      );
+      expect(gradedPainIntensitiesFrom([noCode]), isEmpty);
+    });
+
+    test('an ungraded pain row (no intensity) is ignored, never a null '
+        'entry', () {
+      expect(
+        gradedPainIntensitiesFrom([_painObs('o1', 'cramps')]),
+        isEmpty,
+      );
+    });
+
+    test('several codes each keep their own grade', () {
+      final result = gradedPainIntensitiesFrom([
+        _painObs('o1', 'cramps', intensity: 2),
+        _painObs('o2', 'backache', intensity: 4),
+      ]);
+      expect(result, {'cramps': 2, 'backache': 4});
+    });
+
+    test('several rows sharing one code keep the highest intensity, '
+        'regardless of list order', () {
+      final ascending = gradedPainIntensitiesFrom([
+        _painObs('o1', 'cramps', intensity: 2),
+        _painObs('o2', 'cramps', intensity: 4),
+      ]);
+      expect(ascending, {'cramps': 4});
+
+      final descending = gradedPainIntensitiesFrom([
+        _painObs('o1', 'cramps', intensity: 4),
+        _painObs('o2', 'cramps', intensity: 2),
+      ]);
+      expect(descending, {'cramps': 4});
+    });
+  });
 }

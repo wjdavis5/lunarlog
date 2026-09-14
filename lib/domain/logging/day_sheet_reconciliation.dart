@@ -218,3 +218,29 @@ ObservationMutations computeObservationMutations({
         updatedAt: updatedAt,
       ),
     );
+
+/// Reduces [observations] to one highest graded pain intensity per taxonomy
+/// code (issue #642 review, CRAP gate split of
+/// `_DaySheetState._loadExistingPainIntensity`): the pure decode/merge half
+/// — filtering to live `category: 'pain'` rows that carry both a
+/// [Observation.code] and a non-null [Observation.intensity], then, when
+/// several already-persisted rows share one code (possible in imported
+/// data; the day sheet's own local writes resolve one row per code so this
+/// never diverges for entries this app created), keeping the highest
+/// intensity — the severity reading a caregiver alert would act on. A code
+/// with no graded row at all is simply absent from the result, never a
+/// `null` entry.
+Map<String, int> gradedPainIntensitiesFrom(List<Observation> observations) {
+  final result = <String, int>{};
+  for (final observation in observations) {
+    if (observation.category != 'pain') continue;
+    final code = observation.code;
+    final intensity = observation.intensity;
+    if (code == null || intensity == null) continue;
+    final current = result[code];
+    if (current == null || intensity > current) {
+      result[code] = intensity;
+    }
+  }
+  return result;
+}

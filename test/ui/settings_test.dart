@@ -54,6 +54,9 @@ class _FakeDayEntriesRepository implements DayEntriesRepository {
   Future<bool> hasAnyEntries(String profileId) async => false;
 
   @override
+  Stream<bool> watchHasAnyEntries(String profileId) => Stream.value(false);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

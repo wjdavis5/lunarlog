@@ -296,6 +296,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetTagsLabel => 'Tags';
 
   @override
+  String get daySheetSpottingGroup => 'Spotting';
+
+  @override
+  String get daySheetChildObservationsLoading => 'Loading additional details…';
+
+  @override
+  String get daySheetChildObservationsError =>
+      'Could not load additional details.';
+
+  @override
   String get daySheetNoNote => 'No note';
 
   @override

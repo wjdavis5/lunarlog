@@ -651,6 +651,39 @@ void main() {
         },
       );
     });
+
+    testWidgets(
+        'renders with no overflow at 320×568, 200% text scale, and a '
+        'keyboard-sized bottom inset (issue #642, LLA-012)', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(2.0),
+              viewInsets: const EdgeInsets.only(bottom: 260),
+            ),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: AcceptInviteSheet(
+              rawToken: 'test-raw-token',
+              sharingService: sharingService,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(AcceptInviteSheet), findsOneWidget);
+    });
   });
 
   group('ManageGuardiansScreen', () {

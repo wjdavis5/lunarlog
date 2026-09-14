@@ -376,6 +376,10 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   Future<bool> hasAnyEntries(String profileId) async => seeded.isNotEmpty;
 
   @override
+  Stream<bool> watchHasAnyEntries(String profileId) =>
+      Stream.value(seeded.isNotEmpty);
+
+  @override
   Stream<List<DayEntry>> watchForProfile(
     String profileId, {
     LocalDate? from,
