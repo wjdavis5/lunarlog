@@ -73,14 +73,37 @@ class _AttachmentFieldState extends State<AttachmentField> {
     return picked;
   }
 
+  /// Sequences the three steps of an attach attempt, each responsible for
+  /// its own disposed-state (LLA-009) and gate-generation guards: confirm
+  /// consent, run the picker, then apply the pick. Split out of one method
+  /// (round-8 review, CRAP: the two `mounted` guards this issue added
+  /// pushed the combined method's complexity over the gate's threshold)
+  /// with behavior kept identical — same checks, same order, same copy.
   Future<void> _addScreenshot() async {
     // Captured before the first `await` (the consent dialog itself is not a
     // gate-suppressed system-UI window), so this is a synchronous
-    // `BuildContext` read rather than one crossing an async gap. Compared
-    // again once the picker resolves — see the comment at that check.
+    // `BuildContext` read rather than one crossing an async gap, and passed
+    // through to `_pickImage` so a gate re-lock spanning either await —
+    // the dialog's or the picker's own — is still caught by its generation
+    // comparison, exactly as before this method was split.
     final gate = context.read<GateController?>();
     final generation = gate?.generation;
 
+    if (!await _confirmConsent()) return;
+
+    final picked = await _pickImage(gate, generation);
+    if (picked == null) return;
+
+    _attachPicked(picked);
+  }
+
+  /// Shows the consent dialog and reports whether `_addScreenshot` should
+  /// continue. False covers every stopping reason: the operator
+  /// cancelled/dismissed it, or this widget was disposed while it was open
+  /// (LLA-009) — checked via `mounted` since the dialog itself is not a
+  /// gate-suppressed system-UI window, so disposal here does not depend on
+  /// the gate's generation changing (contrast `_pickImage`'s guard below).
+  Future<bool> _confirmConsent() async {
     final consented = await showDialog<bool>(
       context: context,
       routeSettings: const RouteSettings(name: kRouteAttachmentConsentDialog),
@@ -104,14 +127,25 @@ class _AttachmentFieldState extends State<AttachmentField> {
         ],
       ),
     );
-    if (consented != true) return;
+    if (!mounted) return false;
+    return consented == true;
+  }
 
-    // Mirrors the generation guard `unlock()`/`reauthenticate()` run on their
-    // own credential prompts (`app_lifecycle.dart`'s `GateController`): if
-    // the system-UI deadline fires and re-locks the gate while the platform
-    // picker is still open, `_duringSystemUi` still lets the pick resolve,
-    // but its result belongs to a session the gate already closed and must
-    // not be stored into the form behind the (now re-locked) screen.
+  /// Runs the platform picker (inside the gate's system-UI suppression when
+  /// a gate is in scope) and returns the picked attachment, or null when
+  /// the result must be discarded: the operator cancelled, this widget was
+  /// disposed while the picker was open (LLA-009), or the pick belongs to a
+  /// different gate generation than [generation] — [gate] and [generation]
+  /// are `_addScreenshot`'s pre-dialog snapshot, passed in rather than
+  /// re-read here, so a re-lock spanning the dialog's own await is still
+  /// caught, not only one spanning this method's. Mirrors the generation
+  /// guard `unlock()`/`reauthenticate()` run on their own credential
+  /// prompts (`app_lifecycle.dart`'s `GateController`): if the system-UI
+  /// deadline fires and re-locks the gate while the platform picker is
+  /// still open, `_duringSystemUi` still lets the pick resolve, but its
+  /// result belongs to a session the gate already closed and must not be
+  /// stored into the form behind the (now re-locked) screen.
+  Future<FeedbackAttachment?> _pickImage(GateController? gate, int? generation) async {
     FeedbackAttachment? picked;
     try {
       picked = await _duringSystemUi(widget.source.pickImage);
@@ -120,13 +154,24 @@ class _AttachmentFieldState extends State<AttachmentField> {
       // its bytes (#207). Same recoverable copy as the post-read cap in
       // `_validate`, which stays as the guard for sources that bypass the
       // pre-read check.
-      if (gate != null && gate.generation != generation) return;
+      if (!mounted) return null;
+      if (gate != null && gate.generation != generation) return null;
       _rejectWith('That image is too large. Choose one under 5 MB.');
-      return;
+      return null;
     }
-    if (gate != null && gate.generation != generation) return;
-    if (picked == null) return;
+    // LLA-009: the picker await is the long-lived one (it can hold open for
+    // as long as the operator takes), so this is the continuation most
+    // likely to fire after disposal — guarded the same way as the dialog
+    // continuation in `_confirmConsent`, ahead of the generation check
+    // (which only covers the gate-suppressed case).
+    if (!mounted) return null;
+    if (gate != null && gate.generation != generation) return null;
+    return picked;
+  }
 
+  /// Applies the client-side caps to [picked] and, if it passes, stores it
+  /// as the current attachment and reports it to the caller.
+  void _attachPicked(FeedbackAttachment picked) {
     final validated = _validate(picked);
     if (validated == null) return;
 
