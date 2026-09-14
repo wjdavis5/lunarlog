@@ -171,6 +171,35 @@ void main() {
       expect(p.tier, CycleConfidence.high);
       expect(p.spreadDays, 0);
       expect(p.averagedCycleLengths, isEmpty);
+      expect(p.basis, PredictionBasis.regimenSchedule,
+          reason: 'Issue LLA-064: a pack schedule carries no ovulatory '
+              'signal — fertile-window consumers must check this');
+    });
+
+    test(
+        'Issue LLA-071: a future-dated logged bleed is never selected as the '
+        'withdrawal-bleed anchor', () {
+      final withoutFuture = computePrediction(
+        episodes: episodesFromStarts([d(2026, 2, 1)]),
+        today: d(2026, 2, 10),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.patch,
+          startedOn: LocalDate(2026, 1, 1),
+        ),
+      ) as ActivePrediction;
+
+      final withFuture = computePrediction(
+        episodes: episodesFromStarts([d(2026, 2, 1), d(2026, 2, 25)]),
+        today: d(2026, 2, 10),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.patch,
+          startedOn: LocalDate(2026, 1, 1),
+        ),
+      ) as ActivePrediction;
+
+      expect(withFuture.lastEpisodeStart, withoutFuture.lastEpisodeStart);
+      expect(withFuture.estimatedNextStart, withoutFuture.estimatedNextStart);
+      expect(withFuture.cycleDay, greaterThan(0));
     });
 
     test('patch anchors on the most recent bleed logged on/after the start',

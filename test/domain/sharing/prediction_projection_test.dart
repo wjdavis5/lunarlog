@@ -12,7 +12,11 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 
-ActivePrediction _prediction(LocalDate today, {PmsEstimate? pms}) {
+ActivePrediction _prediction(
+  LocalDate today, {
+  PmsEstimate? pms,
+  PredictionBasis basis = PredictionBasis.statistical,
+}) {
   // 28-day cycles, 4-day bleed, next start 10 days out; today is mid-luteal
   // and not bleeding.
   const cycle = 28;
@@ -44,6 +48,7 @@ ActivePrediction _prediction(LocalDate today, {PmsEstimate? pms}) {
     tier: CycleConfidence.high,
     forecast: forecast,
     pms: pms,
+    basis: basis,
   );
 }
 
@@ -65,6 +70,25 @@ void main() {
       reason: 'the sharer is not mid-episode, so every period day is '
           'strictly forecast (KTD3 forward-only)',
     );
+  });
+
+  test(
+      'Issue LLA-064: a regimen-schedule (pack-driven) prediction shares no '
+      'fertile/ovulation days, but its period days are unaffected', () {
+    final statistical = buildPredictionProjection(_prediction(today));
+    final regimen = buildPredictionProjection(
+      _prediction(today, basis: PredictionBasis.regimenSchedule),
+    );
+
+    expect(regimen.fertileDays, isEmpty);
+    expect(regimen.ovulationDays, isEmpty);
+    expect(statistical.fertileDays, isNotEmpty,
+        reason: 'sanity check: the statistical fixture does derive fertile '
+            'days, so the regimen case above is a real gate, not a fluke '
+            'of the fixture');
+    expect(regimen.periodDays, statistical.periodDays,
+        reason: 'the prediction basis only gates fertility derivation, '
+            'never the period-day forecast itself');
   });
 
   test('current open episode days are included while duringEpisode', () {

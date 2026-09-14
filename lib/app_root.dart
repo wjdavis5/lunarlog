@@ -224,6 +224,7 @@ class LunarLogRoot extends StatefulWidget {
     this.isWeb = kIsWeb,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
+    this.dateTicker,
   });
 
   final AppGate gate;
@@ -334,6 +335,16 @@ class LunarLogRoot extends StatefulWidget {
 
   final Duration inactivityTimeout;
   final InactivityTimerFactory inactivityTimerFactory;
+
+  /// Issue LLA-070: the prediction service's civil-date-rollover ticker.
+  /// Null (the default, used by every test that constructs [LunarLogRoot]
+  /// directly) keeps `CyclePredictionService`'s own timer-free default —
+  /// a `Stream.periodic` would otherwise fail `flutter_test`'s
+  /// zero-pending-timers check for any such test that never explicitly
+  /// unmounts before the test ends. `main.dart` passes
+  /// `dateRolloverTicker` here for the actual running app, which is
+  /// guaranteed to be disposed through real app lifecycle instead.
+  final Stream<void> Function()? dateTicker;
 
   @override
   State<LunarLogRoot> createState() => LunarLogRootState();
@@ -478,6 +489,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       // The shell owns the platform default scheduler; build it here, with
       // the settings store, rather than constructing a throwaway in main.
       buildDefaultScheduler: widget.buildDefaultScheduler,
+      dateTicker: widget.dateTicker,
     );
   }
 

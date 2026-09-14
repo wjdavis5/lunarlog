@@ -28,7 +28,7 @@ import '../models/local_date.dart';
 import 'cycle_history.dart';
 import 'fertile_window.dart';
 import 'pms.dart' show PmsEstimate;
-import 'prediction.dart' show ActivePrediction;
+import 'prediction.dart' show ActivePrediction, PredictionBasis;
 
 /// The forward calendar navigates this many months past the current one
 /// (R1). Forecast cycles are derived far enough to cover the end of that
@@ -104,8 +104,10 @@ class ForecastCycle {
   /// [start] minus the assumed luteal-phase length, at this cycle's own
   /// [tier] — the ovulation this window describes precedes [start] (it
   /// belongs to the cycle *ending* in this predicted period, not the one
-  /// starting from it).
-  final FertileWindowEstimate fertileWindow;
+  /// starting from it). Null for a [PredictionBasis.regimenSchedule]
+  /// prediction (issue LLA-064) — a pack-driven withdrawal-bleed schedule
+  /// carries no ovulatory signal, so nothing here is derived from it.
+  final FertileWindowEstimate? fertileWindow;
 
   /// Estimated last bleed day of this cycle's band (inclusive).
   LocalDate get end => start.addDays(periodLengthDays - 1);
@@ -226,6 +228,12 @@ List<ForecastCycle> deriveForecast({
   final baseSpread = history.variationDays ?? 0;
   final horizonEnd = _endOfHorizonMonth(today, horizonMonths);
 
+  // Issue LLA-064: a regimen-schedule (pack-driven withdrawal-bleed)
+  // prediction carries no ovulatory signal — see [PredictionBasis]'s own
+  // doc comment. No cycle in this forecast gets a fertile window.
+  final suppressFertileWindow =
+      prediction.basis == PredictionBasis.regimenSchedule;
+
   final cycles = <ForecastCycle>[];
   var start = prediction.estimatedNextStart;
   while (!start.isAfter(horizonEnd) && cycles.length < kForecastMaxCycles) {
@@ -244,7 +252,9 @@ List<ForecastCycle> deriveForecast({
         // degrading) tier — the same [fertileWindowFor] core
         // [estimateFertileWindow] uses for the live estimate, so the two
         // call sites can never drift onto different formulas.
-        fertileWindow: fertileWindowFor(start: start, tier: tier),
+        fertileWindow: suppressFertileWindow
+            ? null
+            : fertileWindowFor(start: start, tier: tier),
       ),
     );
     start = start.addDays(step);
@@ -365,8 +375,10 @@ void _markFertileWindows(
   LocalDate today,
 ) {
   for (final cycle in cycles) {
-    var date = cycle.fertileWindow.windowStart;
-    while (!date.isAfter(cycle.fertileWindow.windowEnd)) {
+    final fertileWindow = cycle.fertileWindow;
+    if (fertileWindow == null) continue;
+    var date = fertileWindow.windowStart;
+    while (!date.isAfter(fertileWindow.windowEnd)) {
       _markBadge(
         cells,
         date,

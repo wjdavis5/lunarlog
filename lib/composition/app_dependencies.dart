@@ -222,6 +222,16 @@ AppDependencies buildAppDependencies({
   String? Function()? currentUserIdProvider,
   bool pushEnabled = false,
   bool buildDefaultScheduler = false,
+  // Issue LLA-070: null (the default here, and LunarLogRoot's own default
+  // too) keeps CyclePredictionService's own timer-free default (tick
+  // once, never again) -- the right choice for both
+  // LunarLogApp.withCollaborators (`@visibleForTesting`, still this same
+  // factory) and every test that constructs LunarLogRoot directly. Only
+  // `main.dart` -- the real app's actual entry point, whose widget tree
+  // is guaranteed to be disposed through real app lifecycle rather than a
+  // test that may never unmount it -- passes `dateRolloverTicker`
+  // explicitly, threaded through LunarLogRoot.dateTicker.
+  Stream<void> Function()? dateTicker,
 }) {
   final storage = db.storage;
   final profiles = DriftProfilesRepository(storage);
@@ -328,6 +338,7 @@ AppDependencies buildAppDependencies({
       lifecycleModeFor: (profileId) => profileModes
           .watch(profileId)
           .map((row) => row?.mode ?? LifecycleMode.tracking),
+      dateTicker: dateTicker,
     ),
     cycleHistory: CycleHistoryService(
       dayEntries,

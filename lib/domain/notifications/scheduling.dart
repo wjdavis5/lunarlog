@@ -692,6 +692,10 @@ List<PlannedReminder> _planFertileWindowSoon({
 }) {
   final typeConfig = config.fertileWindowSoon;
   if (!typeConfig.enabled) return const [];
+  // Issue LLA-064: a regimen-schedule (pack-driven withdrawal-bleed)
+  // prediction carries no ovulatory signal — see [PredictionBasis]'s own
+  // doc comment — so no fertile-window reminder is ever planned from one.
+  if (prediction.basis == PredictionBasis.regimenSchedule) return const [];
   final fertileLead =
       typeConfig.effectiveLeadDays(kFertileWindowSoonDefaultLeadDays);
   for (final cycle in prediction.forecast) {

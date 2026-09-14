@@ -136,6 +136,9 @@ class _FakePredictionConnection151 implements PredictionConnectionService {
     required String profileId,
     required PredictionProjection projection,
   }) async {}
+
+  @override
+  Future<void> retractProjection({required String profileId}) async {}
 }
 
 PendingInvite _invite(

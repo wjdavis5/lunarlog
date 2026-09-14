@@ -702,6 +702,136 @@ void main() {
     });
 
     test(
+        'Issue LLA-070: a civil-date rollover recomputes with NO data '
+        'emission at all -- only the injected date ticker fires, proving a '
+        'long-lived subscription is not otherwise stuck until the next '
+        'entries/settings change (a fake, fully test-controlled ticker, '
+        'never a real timer or sleep)', () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final ticker = StreamController<void>();
+      addTearDown(ticker.close);
+      final memoised = CyclePredictionService(stub, dateTicker: () => ticker.stream);
+
+      var currentToday = today;
+      final seen = <CyclePrediction>[];
+      final sub =
+          memoised.watch('p', today: () => currentToday).listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final entries = [
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+      ];
+      // Both the entries stream and the injected ticker must fire once
+      // before the first combined emission -- matching every other
+      // combine source's "replay on listen" convention, which the fake
+      // ticker here does not get for free (unlike the real one).
+      ticker.add(null);
+      stub.emit(entries);
+      await pumpEventQueue();
+      expect(seen, hasLength(1));
+
+      // The civil date advances; NEITHER entries NOR settings emit
+      // anything -- only the ticker fires.
+      currentToday = today.addDays(1);
+      ticker.add(null);
+      await pumpEventQueue();
+
+      expect(seen, hasLength(2));
+      expect(identical(seen[0], seen[1]), isFalse,
+          reason: 'the tick alone, with no data emission whatsoever, must '
+              'still recompute against the new today');
+    });
+
+    test(
+        'a tick with today unchanged still re-emits (combineLatest fires on '
+        'every source event) but reuses the cached prediction instance -- '
+        'the #197 memo, not the ticker, is what keeps a same-day tick from '
+        'wasting a real recompute', () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final ticker = StreamController<void>();
+      addTearDown(ticker.close);
+      final memoised = CyclePredictionService(stub, dateTicker: () => ticker.stream);
+
+      final seen = <CyclePrediction>[];
+      final sub = memoised.watch('p', today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final entries = [
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+      ];
+      ticker.add(null);
+      stub.emit(entries);
+      await pumpEventQueue();
+      expect(seen, hasLength(1));
+
+      ticker.add(null); // same today, no entries/settings change
+      await pumpEventQueue();
+
+      expect(seen, hasLength(2));
+      expect(identical(seen[0], seen[1]), isTrue,
+          reason: 'nothing about the memo key actually changed');
+    });
+
+    test(
+        'Issue LLA-070 (review round 1): CyclePredictionService.watch wired '
+        'to the REAL dateRolloverTicker does not re-emit at all on repeated '
+        'same-day polls -- only a genuine date change reaches the combine, '
+        'so ReminderCoordinator (and both publishers) never replan/republish '
+        'on every poll', () async {
+      final stub = _StubDayEntriesRepository();
+      addTearDown(stub.close);
+      final polls = StreamController<void>();
+      addTearDown(polls.close);
+      var currentToday = today;
+      final memoised = CyclePredictionService(
+        stub,
+        dateTicker: () => dateRolloverTicker(
+          today: () => currentToday,
+          ticks: polls.stream,
+        ),
+      );
+
+      final seen = <CyclePrediction>[];
+      final sub =
+          memoised.watch('p', today: () => currentToday).listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final entries = [
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+      ];
+      stub.emit(entries);
+      await pumpEventQueue();
+      expect(seen, hasLength(1));
+
+      // Several same-day polls: dateRolloverTicker itself must swallow
+      // these -- no additional emission reaches watch()'s combine at all,
+      // let alone a recompute.
+      polls.add(null);
+      polls.add(null);
+      polls.add(null);
+      await pumpEventQueue();
+      expect(seen, hasLength(1),
+          reason: 'a same-day poll must never reach the prediction stream');
+
+      // The civil day actually rolls over.
+      currentToday = today.addDays(1);
+      polls.add(null);
+      await pumpEventQueue();
+
+      expect(seen, hasLength(2),
+          reason: 'a genuine date change still recomputes');
+      expect(identical(seen[0], seen[1]), isFalse);
+
+      // Further same-day polls after the rollover: still nothing extra.
+      polls.add(null);
+      polls.add(null);
+      await pumpEventQueue();
+      expect(seen, hasLength(2));
+    });
+
+    test(
         'issue #225: emits PredictionsDisabled when predictions are disabled '
         'in settings, and restores prediction when re-enabled without data loss',
         () async {
@@ -748,6 +878,65 @@ void main() {
       expect(seen.last, isA<ActivePrediction>());
       final restored = seen.last as ActivePrediction;
       expect(restored.meanCycleLengthDays, 28);
+    });
+  });
+
+  group('dateRolloverTicker (issue LLA-070, review round 1)', () {
+    test(
+        'many polls that all land on the same day emit only the initial '
+        'tick; a poll that crosses midnight emits again', () async {
+      final polls = StreamController<void>();
+      addTearDown(polls.close);
+      var currentToday = LocalDate(2026, 5, 1);
+      var tickCount = 0;
+      final sub = dateRolloverTicker(
+        today: () => currentToday,
+        ticks: polls.stream,
+      ).listen((_) => tickCount++);
+      addTearDown(sub.cancel);
+
+      await pumpEventQueue();
+      expect(tickCount, 1, reason: 'the immediate initial tick');
+
+      // Many polls, still the same day: no re-tick.
+      polls.add(null);
+      polls.add(null);
+      polls.add(null);
+      await pumpEventQueue();
+      expect(tickCount, 1,
+          reason: 'same-day polls must never produce a second tick');
+
+      // The civil day rolls over.
+      currentToday = currentToday.addDays(1);
+      polls.add(null);
+      await pumpEventQueue();
+      expect(tickCount, 2, reason: 'a genuine date change ticks again');
+
+      // Further same-day polls after the rollover: still nothing extra.
+      polls.add(null);
+      polls.add(null);
+      await pumpEventQueue();
+      expect(tickCount, 2);
+
+      // A second rollover ticks a third time.
+      currentToday = currentToday.addDays(1);
+      polls.add(null);
+      await pumpEventQueue();
+      expect(tickCount, 3);
+    });
+
+    test('with no ticks stream injected, the default real Stream.periodic '
+        'is used but this test never waits on it -- only the immediate '
+        'tick is observed here, proving the default does not block',
+        () async {
+      var tickCount = 0;
+      final sub = dateRolloverTicker(
+        today: () => LocalDate(2026, 5, 1),
+      ).listen((_) => tickCount++);
+      addTearDown(sub.cancel);
+
+      await pumpEventQueue();
+      expect(tickCount, 1);
     });
   });
 }

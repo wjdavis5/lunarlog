@@ -18,6 +18,7 @@ LocalDate _d(int y, int m, int day) => LocalDate(y, m, day);
 ActivePrediction _prediction({
   required LocalDate estimatedNextStart,
   CycleConfidence tier = CycleConfidence.high,
+  PredictionBasis basis = PredictionBasis.statistical,
 }) {
   return ActivePrediction(
     today: _d(2026, 8, 1),
@@ -31,6 +32,7 @@ ActivePrediction _prediction({
     completedCycleCount: 6,
     validCycleCount: 6,
     tier: tier,
+    basis: basis,
   );
 }
 
@@ -46,6 +48,7 @@ ActivePrediction _predictionWithForecast({
   required LocalDate today,
   required List<PredictedCycle> forecast,
   CycleConfidence tier = CycleConfidence.high,
+  PredictionBasis basis = PredictionBasis.statistical,
 }) {
   return ActivePrediction(
     today: today,
@@ -60,6 +63,7 @@ ActivePrediction _predictionWithForecast({
     validCycleCount: 6,
     tier: tier,
     forecast: forecast,
+    basis: basis,
   );
 }
 
@@ -67,6 +71,16 @@ void main() {
   group('estimateFertileWindow', () {
     test('null prediction -> null (the NotEnoughHistory case)', () {
       expect(estimateFertileWindow(null), isNull);
+    });
+
+    test(
+        'Issue LLA-064: a regimen-schedule (pack-driven) prediction -> null '
+        '— a withdrawal-bleed pack cadence carries no ovulatory signal', () {
+      final prediction = _prediction(
+        estimatedNextStart: _d(2026, 8, 29),
+        basis: PredictionBasis.regimenSchedule,
+      );
+      expect(estimateFertileWindow(prediction), isNull);
     });
 
     test('default 14-day luteal phase: ovulation and window boundaries', () {
@@ -158,6 +172,25 @@ void main() {
   group('currentFertileWindow (issue #143 review)', () {
     test('null prediction -> null (the NotEnoughHistory case)', () {
       expect(currentFertileWindow(null), isNull);
+    });
+
+    test(
+        'Issue LLA-064: a regimen-schedule (pack-driven) prediction -> null, '
+        'even with a non-empty forecast', () {
+      final prediction = _predictionWithForecast(
+        today: _d(2026, 8, 20),
+        forecast: [
+          PredictedCycle(
+            cycleIndex: 1,
+            start: LocalDate(2026, 9, 4),
+            estimatedPeriodLengthDays: 4,
+            tier: CycleConfidence.high,
+            spreadDays: 0,
+          ),
+        ],
+        basis: PredictionBasis.regimenSchedule,
+      );
+      expect(currentFertileWindow(prediction), isNull);
     });
 
     test("the first forecast cycle's window, when it has not passed", () {

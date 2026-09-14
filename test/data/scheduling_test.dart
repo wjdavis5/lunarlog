@@ -23,6 +23,7 @@ ActivePrediction _prediction({
   required LocalDate estimatedNextStart,
   List<PredictedCycle> forecast = const [],
   PmsEstimate? pms,
+  PredictionBasis basis = PredictionBasis.statistical,
 }) {
   final lastStart = estimatedNextStart.addDays(-28);
   final cycleDay = today.difference(lastStart) + 1;
@@ -39,6 +40,7 @@ ActivePrediction _prediction({
     validCycleCount: 4,
     forecast: forecast,
     pms: pms,
+    basis: basis,
   );
 }
 
@@ -910,6 +912,32 @@ void main() {
         plan.where((r) => r.kind == ReminderKind.fertileWindowSoon).single.fireOn,
         today.addDays(4),
         reason: 'window start 25 − 19 = +6, minus the 2-day lead',
+      );
+    });
+
+    test(
+        'Issue LLA-064: fertileWindowSoon never fires for a regimen-schedule '
+        '(pack-driven) prediction, even with a populated forecast', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(
+            today: today,
+            estimatedNextStart: today.addDays(25),
+            forecast: forecastFrom(today.addDays(25)),
+            basis: PredictionBasis.regimenSchedule,
+          ),
+        },
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            fertileWindowSoon: ReminderTypeConfig(
+                enabled: true, leadDays: 2, timeOfDayMinutes: 9 * 60),
+          ),
+        },
+      );
+      expect(
+        plan.where((r) => r.kind == ReminderKind.fertileWindowSoon),
+        isEmpty,
       );
     });
 

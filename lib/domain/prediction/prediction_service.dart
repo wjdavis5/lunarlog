@@ -51,6 +51,8 @@
 /// profile resolves as [LifecycleMode.tracking].
 library;
 
+import 'dart:async';
+
 import '../birth_control.dart';
 import '../models/day_entry.dart';
 import '../models/lifecycle_mode.dart';
@@ -199,17 +201,112 @@ class _PredictionMemo {
   }
 }
 
+/// Issue LLA-070: ticks immediately, then re-ticks only when [today]
+/// (re-read on every [ticks] event) reports a civil date different from
+/// the last one seen — never on every poll. [ticks] defaults to a real
+/// `Stream.periodic([pollInterval])`; tests inject a fully controlled
+/// stream and a mutable [today] instead, so this is testable with no real
+/// timer/sleep at all (see `prediction_service_test.dart`'s own tests).
+///
+/// This is the REAL, production seam that actually closes the finding (a
+/// long-lived app process must recompute across a civil-date rollover
+/// with no data emission) — [CyclePredictionService.watch] folds it into
+/// its combine.
+///
+/// **Review round 1 fix:** the first version of this ticker re-emitted on
+/// every single poll regardless of whether the date had actually changed,
+/// which propagated all the way through `combineLatest3` into every
+/// prediction consumer once a minute — most importantly
+/// `ReminderCoordinator`, which replans (and reschedules every pending
+/// local notification via `rescheduleAll`) on every prediction emission,
+/// so that shape was 1,440 needless replans a day per profile. Comparing
+/// [today] against the last-seen date here, once, is what the rest of the
+/// pipeline relies on to never see a same-day tick at all — no separate
+/// suppression is needed downstream (`CyclePredictionService`'s own
+/// `#197` memo already collapses a same-content recompute to the same
+/// cached instance when it *does* run, but with this fix a same-day tick
+/// no longer reaches that combine to trigger one in the first place).
+///
+/// Deliberately **not** [CyclePredictionService]'s own default: a
+/// `Stream.periodic` keeps a live platform [Timer] running for as long as
+/// anything is subscribed, and the many unit/widget tests that construct
+/// a [CyclePredictionService] (or the app shell) directly — never
+/// disposing it through any app-level teardown — would otherwise fail
+/// `flutter_test`'s zero-pending-timers check. `main.dart` (by way of
+/// `LunarLogRoot.dateTicker`/`buildAppDependencies`) wires this in
+/// explicitly for the actual running app; every other caller gets
+/// [CyclePredictionService.new]'s tick-once default instead, matching
+/// every other combine source's "replay current value on listen"
+/// convention with no timer at all.
+///
+/// Built on a plain [StreamController] with explicit `onListen`/`onCancel`
+/// (the same shape `combine_latest.dart`'s combinators use) rather than an
+/// `async*` generator's `await for` on [ticks]: cancelling the *outer*
+/// subscription of an `async*` function does not propagate into an inner
+/// stream it is currently awaiting via `await for` — the generator (and
+/// this function's caller) would hang forever waiting for [ticks]' next
+/// event or close, since [ticks] (a real `Stream.periodic` in production)
+/// never naturally does either. Constructing the controller directly and
+/// cancelling [ticks]' own subscription in `onCancel` is what makes this
+/// function's stream actually stop when its listener does.
+Stream<void> dateRolloverTicker({
+  Duration pollInterval = const Duration(minutes: 1),
+  LocalDate Function() today = LocalDate.today,
+  Stream<void>? ticks,
+}) {
+  late final StreamController<void> controller;
+  StreamSubscription<void>? pollSub;
+  LocalDate? lastDate;
+
+  controller = StreamController<void>(
+    onListen: () {
+      lastDate = today();
+      controller.add(null);
+      final polls = ticks ?? Stream<void>.periodic(pollInterval, (_) {});
+      pollSub = polls.listen(
+        (_) {
+          final current = today();
+          if (current == lastDate) return;
+          lastDate = current;
+          controller.add(null);
+        },
+        onError: controller.addError,
+        onDone: () => unawaited(controller.close()),
+      );
+    },
+    onCancel: () => pollSub?.cancel(),
+  );
+  return controller.stream;
+}
+
+/// [CyclePredictionService]'s own default [CyclePredictionService.new]
+/// `dateTicker`: ticks exactly once, immediately, and never again — no
+/// platform [Timer] of any kind, so every existing caller that never
+/// passes `dateTicker` keeps behaving exactly as before issue LLA-070.
+/// Satisfies [combineLatest3]'s "every source must emit once" requirement
+/// without ever contributing a *second* tick; only [dateRolloverTicker]
+/// (opted into explicitly, see its own doc comment) actually closes the
+/// civil-date-rollover gap.
+Stream<void> _tickOnceDateTicker() => Stream<void>.value(null);
+
 class CyclePredictionService {
   /// [cycleOverrides] (issue #568 (b)) is forwarded to [CycleExclusionList]
   /// unchanged — see that class's doc comment for why it is optional and
-  /// what a null value keeps.
+  /// what a null value keeps. [dateTicker] (issue LLA-070) is the seam
+  /// [watch] merges into its combine to recompute across a civil-date
+  /// rollover with no data emission; defaults to [_tickOnceDateTicker]
+  /// (no timer at all — see its own doc comment for why). The composition
+  /// root passes [dateRolloverTicker] explicitly for the real running app;
+  /// tests that exercise the rollover itself inject a fully controlled
+  /// stream of their own — never a real timer/sleep.
   CyclePredictionService(this._dayEntries,
       {SettingsStore? settings,
       CycleOverridesRepository? cycleOverrides,
       ProfilesRepository? profiles,
       Stream<BirthControlState?> Function(String profileId)?
           birthControlStateFor,
-      Stream<LifecycleMode> Function(String profileId)? lifecycleModeFor})
+      Stream<LifecycleMode> Function(String profileId)? lifecycleModeFor,
+      Stream<void> Function()? dateTicker})
       : _settings = settings,
         _exclusions = settings == null
             ? null
@@ -222,7 +319,8 @@ class CyclePredictionService {
         // ignore: prefer_initializing_formals
         _birthControlStateFor = birthControlStateFor,
         // ignore: prefer_initializing_formals
-        _lifecycleModeFor = lifecycleModeFor;
+        _lifecycleModeFor = lifecycleModeFor,
+        _dateTicker = dateTicker ?? _tickOnceDateTicker;
 
   final DayEntriesRepository _dayEntries;
   final SettingsStore? _settings;
@@ -248,6 +346,12 @@ class CyclePredictionService {
   /// keeps the exact pre-#528 behavior — every profile resolves as
   /// [LifecycleMode.tracking].
   final Stream<LifecycleMode> Function(String profileId)? _lifecycleModeFor;
+
+  /// Issue LLA-070: the date-rollover ticker [watch] folds into its
+  /// combine. Defaults to [_tickOnceDateTicker]; see [dateRolloverTicker]'s
+  /// doc comment for the real (production) ticker and why it is not the
+  /// default here.
+  final Stream<void> Function() _dateTicker;
 
   /// Recomputed on every emission of the profile's day-entry stream and,
   /// when a settings store is wired, of the profile's omission-list key —
@@ -302,8 +406,18 @@ class CyclePredictionService {
                 latest.$1.$4,
               ));
     }
-    return combineLatest2(withExclusions, _predictionsEnabledFor(profileId))
-        .map((latest) {
+    // Issue LLA-070: the date ticker joins the combine purely as a trigger
+    // -- its own value is never read -- so a tick re-runs this map with a
+    // fresh todayOf() even when entries/settings/facts/mode/enabled are
+    // all unchanged. The #197 memo below still gates the actual
+    // recomputation on todayOf() having genuinely changed, so a tick that
+    // lands mid-day (today unchanged) is a no-op past the memo check, not
+    // a wasted recompute.
+    return combineLatest3(
+      withExclusions,
+      _predictionsEnabledFor(profileId),
+      _dateTicker(),
+    ).map((latest) {
       final enabled = latest.$2;
       if (!enabled) return const PredictionsDisabled();
       final data = latest.$1;
