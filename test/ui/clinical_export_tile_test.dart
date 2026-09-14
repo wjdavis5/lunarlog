@@ -16,9 +16,11 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
 import 'package:provider/provider.dart';
@@ -97,12 +99,58 @@ class FakeObservationsRepository implements ObservationsRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Minimal in-memory [SettingsStore] (Issue #612, LLA-067) — just enough to
+/// back a real [CycleExclusionList] in its device-local mode (no
+/// [CycleOverridesRepository]), so a widget test can seed a cycle-start
+/// omission without a Drift store.
+class FakeSettingsStore implements SettingsStore {
+  final Map<String, String> _values = {};
+
+  @override
+  Future<String?> get(String key) async => _values[key];
+
+  @override
+  Future<void> set(String key, String value) async => _values[key] = value;
+
+  @override
+  Stream<String?> watch(String key) => Stream.value(_values[key]);
+}
+
+/// Five ~28-day period starts, the last gap widened to 56 days (Issue #612,
+/// LLA-067's own repro numbers: "28, 28, 28, 56") — three completed cycles
+/// long enough on their own to clear [kMinCompletedValidCycles] once the
+/// outlier is excluded from averages, mirroring
+/// `test/domain/export/fhir_bundle_test.dart`'s `_cycleHistory` shape.
+List<DayEntry> _cycleHistoryWithOutlier(String profileId) {
+  final starts = [
+    LocalDate(2026, 1, 1),
+    LocalDate(2026, 1, 29),
+    LocalDate(2026, 2, 26),
+    LocalDate(2026, 3, 26),
+    LocalDate(2026, 5, 21), // 56 days after 2026-03-26
+  ];
+  var n = 0;
+  return [
+    for (final start in starts)
+      for (var day = 0; day < 3; day++)
+        DayEntry(
+          id: 'outlier-e${n++}',
+          profileId: profileId,
+          localDate: start.addDays(day),
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          updatedAt: DateTime.utc(2026, 1, 2),
+        ),
+  ];
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   required FakeProfilesRepository profiles,
   FakeDayEntriesRepository? dayEntries,
   FakeObservationsRepository? observations,
   FhirExportCollaborator? exportFhir,
+  CycleExclusionList? cycleExclusions,
 }) async {
   addTearDown(profiles.dispose);
   await tester.pumpWidget(
@@ -117,6 +165,13 @@ Future<void> _pump(
           // The tree-provided FHIR writer the tile reads before falling back
           // to the injected collaborator (mirrors `lib/app.dart`).
           Provider<FhirBundleWriter>.value(value: const PlatformFhirBundleWriter()),
+          // Issue #612, LLA-067: same seam `lib/app.dart` wires
+          // (`Provider<CycleExclusionList>.value`). Only provided when a
+          // test actually needs it — the "no collaborator at all" fail-open
+          // path is exercised by every other test in this file leaving it
+          // unset.
+          if (cycleExclusions != null)
+            Provider<CycleExclusionList>.value(value: cycleExclusions),
         ],
         child: Scaffold(
           body: ClinicalExportTile(exportFhir: exportFhir),
@@ -338,6 +393,52 @@ void main() {
       expect(
         tester.widget<InlineError>(key('clinical-export-fhir-error')).message,
         kClinicalExportFailureCopy,
+      );
+    });
+
+    testWidgets(
+        'a cycle the operator explicitly excluded from averages is honored '
+        'in the exported cycle-length statistic — not silently recomputed '
+        'over every logged cycle (Issue #612, LLA-067)', (tester) async {
+      Map<String, Object?>? capturedBundle;
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      final dayEntries = FakeDayEntriesRepository()
+        ..entriesByProfile = {'p1': _cycleHistoryWithOutlier('p1')};
+      final settings = FakeSettingsStore();
+      // The 56-day outlier cycle starts 2026-03-26 (see
+      // `_cycleHistoryWithOutlier`'s own doc comment: three 28-day cycles
+      // then one widened to 56) — omitting it leaves three 28-day cycles,
+      // exactly clearing kMinCompletedValidCycles.
+      await settings.set(
+        omittedCyclesSettingKey('p1'),
+        encodeOmittedCycles({LocalDate(2026, 3, 26)}),
+      );
+      final exclusions = CycleExclusionList(settings);
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        cycleExclusions: exclusions,
+        exportFhir: ({required bundle, required exportedAt}) async {
+          capturedBundle = bundle;
+        },
+      );
+
+      await tester.tap(key('clinical-export-fhir'));
+      await tester.pumpAndSettle();
+
+      expect(capturedBundle, isNotNull);
+      final entries = (capturedBundle!['entry'] as List).cast<Map>();
+      final lengthObs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r.containsKey('valueQuantity'));
+      expect(
+        (lengthObs['valueQuantity'] as Map)['value'],
+        28,
+        reason: 'the excluded 56-day cycle must not pull the exported mean '
+            'up to 35 — the same average the history list/overview panel '
+            'would show for this profile once that cycle is omitted',
       );
     });
 

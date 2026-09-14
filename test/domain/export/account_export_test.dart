@@ -6,6 +6,9 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
+import 'package:lunarlog/domain/import/account_import.dart' show kMaxImportFileBytes;
+import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -35,6 +38,7 @@ Profile _profile(
   LocalDate? lastPeriodStart,
   int? typicalCycleLengthDays,
   int? typicalPeriodLengthDays,
+  TrackingPreferences? trackingPreferences,
 }) =>
     Profile(
       id: id,
@@ -52,6 +56,7 @@ Profile _profile(
       lastPeriodStart: lastPeriodStart,
       typicalCycleLengthDays: typicalCycleLengthDays,
       typicalPeriodLengthDays: typicalPeriodLengthDays,
+      trackingPreferences: trackingPreferences,
     );
 
 DayEntry _entry(
@@ -424,8 +429,9 @@ void main() {
   group(
       'portable state: subject metadata, profileMode, cycleOverrides '
       '(Issue #140 review, LLA-084, export v9)', () {
-    test('schema version was bumped to 9 for the new keys', () {
-      expect(kAccountExportSchemaVersion, 9);
+    test('schema version was bumped to 9 for the new keys (since moved to '
+        '10 for profiles[].trackingPreferences, Issue #648)', () {
+      expect(kAccountExportSchemaVersion, 10);
     });
 
     test('each exported profile carries its subject metadata and '
@@ -552,6 +558,53 @@ void main() {
       final p1 = (doc['profiles'] as List)[0] as Map;
       expect(p1['profileMode'], isNull);
       expect(p1['cycleOverrides'], isEmpty);
+    });
+  });
+
+  group('tracking preferences (Issue #648, export v10)', () {
+    test('a customized profile carries its trackingPreferences document, '
+        'decoded (not doubly-encoded text), and an uncustomized profile '
+        'exports null', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile(
+            'p-1',
+            trackingPreferences: TrackingPreferences({
+              'mood': const TrackingCategoryPreference(
+                  enabled: false, sortOrder: 2),
+              'sex_life': const TrackingCategoryPreference(
+                  enabled: true, sortOrder: 0),
+            }),
+          ),
+          _profile('p-2'),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final p1Prefs = (profiles[0] as Map)['trackingPreferences'] as Map;
+      expect(p1Prefs['mood'], {'enabled': false, 'sort_order': 2});
+      expect(p1Prefs['sex_life'], {'enabled': true, 'sort_order': 0});
+      expect((profiles[1] as Map)['trackingPreferences'], isNull);
+      expect(() => jsonEncode(doc), returnsNormally);
+    });
+
+    test('an explicitly empty (cleared-to-defaults) document exports as an '
+        'empty object, distinguishable from never-customized null', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile('p-1', trackingPreferences: const TrackingPreferences.empty()),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final p1 = (doc['profiles'] as List)[0] as Map;
+      expect(p1['trackingPreferences'], isA<Map>());
+      expect((p1['trackingPreferences'] as Map).isEmpty, isTrue);
     });
   });
 
@@ -908,6 +961,43 @@ void main() {
       final profile = (doc['profiles'] as List).single as Map;
       expect(profile['careNotes'], isEmpty);
       expect(profile['visitPrepItems'], isEmpty);
+    });
+  });
+
+  group('import ceiling vs export size (Issue #626, LLA-095)', () {
+    test('kMaxImportFileBytes comfortably exceeds a legitimate worst-case '
+        'export — five profiles, ten years of daily maxed-out entries each '
+        '(the repro that exceeded the old 32 MiB ceiling: "28,28,28,56" is '
+        'a different #612 finding; this is LLA-095\'s own numbers)', () {
+      final maxNote = 'n' * kMaxNoteLength;
+      final maxTags = [for (var i = 0; i < kMaxTagCount; i++) 't$i'.padRight(kMaxTagLength, 'x')];
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-01-01', note: maxNote, tags: maxTags)],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final entries = ((doc['profiles'] as List).single as Map)['dayEntries'] as List;
+      final maxEntryBytes = utf8.encode(jsonEncode(entries.single)).length;
+
+      // The issue's own repro: five profiles, ten years of daily entries
+      // (3650 days) each at every field's own maximum length.
+      const profileCount = 5;
+      const entriesPerProfile = 3650;
+      final worstCaseEntriesBytes = maxEntryBytes * profileCount * entriesPerProfile;
+
+      expect(worstCaseEntriesBytes, greaterThan(32 * 1024 * 1024),
+          reason: 'sanity check: this is exactly the scenario that used to '
+              'exceed the OLD 32 MiB ceiling — if this assertion ever '
+              'fails, the repro itself has stopped reproducing the defect');
+      expect(worstCaseEntriesBytes, lessThan(kMaxImportFileBytes),
+          reason: 'a household that respects every one of this app\'s own '
+              'row bounds must never produce a backup this app itself '
+              'cannot restore (LLA-095) — dayEntries alone must fit '
+              'comfortably under the import ceiling, leaving headroom for '
+              'observations/cycleOverrides/profile metadata on top');
     });
   });
 }

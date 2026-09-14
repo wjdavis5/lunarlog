@@ -78,7 +78,7 @@ Each tag-derived Observation's id is a deterministic UUID v5 hash of
 the same day entry, the same guarantee the flow-day and `observations`-row
 Observations already had (see "Determinism" below).
 
-## `Observation` value shape (#157 review fix)
+## `Observation` value shape (#157 review fix; Issue #612 LLA-088)
 
 A symptom `Observation` (from either source above) carries, when present
 on the underlying row:
@@ -92,6 +92,20 @@ on the underlying row:
   still valid FHIR, never a guessed UCUM code.
 - `valueText` is **never** emitted, under any circumstance — see
   "Exclusion policy" below.
+
+**`value[x]` is 0..1 (Issue #612, LLA-088).** FHIR R4 allows at most one
+`value[x]` choice on an `Observation`
+(`hl7.org/fhir/R4/observation.html`: "Actual result" [0..1]) — a row
+carrying both `intensity` and `valueNum` can never emit `valueInteger` AND
+`valueQuantity` as top-level siblings without producing an invalid
+resource. Only `valueNum` (the more clinically precise, measured fact)
+becomes the top-level `value[x]` in that case; `intensity` is never
+dropped — it moves into a single-entry `component` (the same FHIR
+mechanism a blood-pressure Observation uses for its systolic/diastolic
+pair), coded with the new local `intensity` code below. The common,
+single-value case (only one of the two set on the row — true for every
+production write path today) is unaffected: that value still goes
+straight onto the top level, exactly as before this fix.
 
 ## Patient resource: display name only
 
@@ -244,6 +258,12 @@ for both URIs and why they're separate.
   `kSystemLunarlogLocal` — still the tag system's URI, since a
   self-report marker is not a competing taxonomy the way flow levels
   are): see "Self-reported" above.
+- **`intensity`** (Issue #612, LLA-088; the `component.code` when a row
+  carries both a numeric value and a coded severity — see "`Observation`
+  value shape" above; system `kSystemLunarlogLocal`): no verified
+  LOINC/SNOMED code represents a bare "symptom intensity" axis
+  independent of the concept it's rating, so this is an explicit local
+  decision, the same treatment as `self-reported` above.
 
 ## Determinism
 

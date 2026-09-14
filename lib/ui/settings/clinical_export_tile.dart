@@ -28,6 +28,7 @@ import '../../domain/export/fhir_bundle.dart';
 import '../../domain/export/fhir_bundle_writer.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile.dart';
+import '../../domain/prediction/cycle_history.dart' show CycleExclusionList;
 import '../../domain/prediction/prediction.dart';
 import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/observations_repository.dart';
@@ -243,6 +244,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
     if (_exporting) return;
     // Read before the first `await` below (`use_build_context_synchronously`).
     final fhirWriter = context.read<FhirBundleWriter>();
+    final exclusions = context.read<CycleExclusionList?>();
     setState(() {
       _exporting = true;
       _error = null;
@@ -253,9 +255,11 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
       final dayEntries = await entriesRepo.listForProfile(profile.id);
       final observations = await observationsRepo.listForProfile(profile.id);
       final exportedAt = DateTime.now().toUtc();
+      final omittedCycleStarts = await _omittedCycleStartsFor(exclusions, profile.id);
       final prediction = computePredictionFromEntries(
         entries: dayEntries,
         today: LocalDate.today(),
+        omittedCycleStarts: omittedCycleStarts,
       );
       final bundle = buildFhirDocumentBundle(
         profile: profile,
@@ -276,5 +280,23 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// Issue #648 review / LLA-067: the same cycle-start exclusion set the
+  /// history list and overview panel already honor (`CycleExclusionList`,
+  /// synced via `cycle_overrides` since issue #568 (b)) — without this, the
+  /// clinical export's own cycle-length/last-menstrual-period statistics
+  /// silently recomputed from every logged cycle, including ones the
+  /// operator explicitly excluded, so the exported document could disagree
+  /// with the very averages the app's own UI displays for the same profile.
+  /// A null [exclusions] (no collaborator wired — a test, or unconfigured
+  /// build) degrades to "nothing excluded", the same fail-open default
+  /// every other optional collaborator in this codebase uses.
+  static Future<Set<LocalDate>> _omittedCycleStartsFor(
+    CycleExclusionList? exclusions,
+    String profileId,
+  ) async {
+    if (exclusions == null) return const {};
+    return exclusions.load(profileId);
   }
 }

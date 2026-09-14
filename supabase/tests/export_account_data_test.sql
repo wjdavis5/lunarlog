@@ -3,7 +3,7 @@
 -- create_supabase_user / authenticate_as handshake and the pg_temp snapshot
 -- idiom already established in account_deletion_test.sql.
 begin;
-select plan(73);
+select plan(74);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -111,8 +111,12 @@ select tests.clear_authentication();
 -- ---------------------------------------------------------------------------
 
 select tests.authenticate_as('user_a');
-insert into public.profiles (id, display_name, is_minor, sort_order, birth_year, relationship, created_at, updated_at)
-values (tests.ulid(1), 'Riley A', true, 0, 2015, 'daughter', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+-- Issue #648: a curated tracking_preferences document on the owned profile
+-- exercises the new export projection line end to end.
+insert into public.profiles (id, display_name, is_minor, sort_order, birth_year, relationship, tracking_preferences, created_at, updated_at)
+values (tests.ulid(1), 'Riley A', true, 0, 2015, 'daughter',
+        '{"mood": {"enabled": false, "sort_order": 1}}'::jsonb,
+        '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select public.create_guardian_invitation(
   tests.ulid(1), 'co_parent', 'B',
@@ -293,6 +297,12 @@ select is(
   pg_temp.profile_by_id(pg_temp.snap('a_result'), tests.ulid(1)) ->> 'owned',
   'true',
   'A: owned profile is marked owned = true'
+);
+
+select is(
+  pg_temp.profile_by_id(pg_temp.snap('a_result'), tests.ulid(1)) -> 'tracking_preferences',
+  '{"mood": {"enabled": false, "sort_order": 1}}'::jsonb,
+  'A: owned profile carries its curated tracking_preferences document (Issue #648)'
 );
 
 select is(

@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -739,6 +740,66 @@ void main() {
     });
   });
 
+  group('parseAccountImport — trackingPreferences (Issue #648, import v10)',
+      () {
+    test('an absent trackingPreferences key parses to null (an older '
+        'export)', () {
+      final raw = _rawDocument(profiles: [_rawProfile(_p1)]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      expect(profile.trackingPreferences, isNull);
+    });
+
+    test('a well-formed trackingPreferences document round-trips through '
+        'parsing', () {
+      final raw = _rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'trackingPreferences': {
+            'mood': {'enabled': false, 'sort_order': 2},
+          },
+        },
+      ]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      final prefs = profile.trackingPreferences;
+      expect(prefs, isNotNull);
+      expect(prefs!.entries['mood']?.enabled, isFalse);
+      expect(prefs.entries['mood']?.sortOrder, 2);
+    });
+
+    test('a non-object trackingPreferences value is rejected outright — not '
+        'a shape a genuine export could ever produce', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'trackingPreferences': 'not-an-object'},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a malformed entry inside an otherwise well-formed document '
+        'degrades tolerantly (dropped, category resolves to default) rather '
+        'than rejecting the whole file — the same degrade the sync engine '
+        'already gives a corrupt document off the wire', () {
+      final raw = _rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'trackingPreferences': {
+            'mood': {'enabled': false, 'sort_order': 2},
+            'garbage': {'enabled': 'not-a-bool', 'sort_order': 1},
+          },
+        },
+      ]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      expect(profile.trackingPreferences!.entries.containsKey('garbage'),
+          isFalse);
+      expect(profile.trackingPreferences!.entries['mood']?.enabled, isFalse);
+    });
+  });
+
   group('parseAccountImport — id validation (Issue #140 review round 2, '
       'item 1)', () {
     test('a non-ULID profile id ("riley") is rejected', () {
@@ -1289,6 +1350,38 @@ void main() {
       expect(profilePlan.outcome, ProfileImportOutcome.matched);
       expect(profilePlan.birthYear, isNull);
       expect(profilePlan.profileMode, isNull);
+    });
+
+    test('a created profile carries the file\'s trackingPreferences through '
+        'to the plan; a MATCHED profile never does (Issue #648, same '
+        'create-only treatment as profileMode)', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'trackingPreferences': {
+            'mood': {'enabled': false, 'sort_order': 2},
+          },
+        },
+      ]))) as AccountImportParsed)
+          .document;
+
+      final createdPlan = planImport(
+        document: document,
+        existingProfiles: const [],
+        writeBlockReason: _neverBlocked,
+      );
+      final TrackingPreferences? created =
+          createdPlan.profiles.single.trackingPreferences;
+      expect(createdPlan.profiles.single.outcome, ProfileImportOutcome.created);
+      expect(created?.entries['mood']?.enabled, isFalse);
+
+      final matchedPlan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        writeBlockReason: _neverBlocked,
+      );
+      expect(matchedPlan.profiles.single.outcome, ProfileImportOutcome.matched);
+      expect(matchedPlan.profiles.single.trackingPreferences, isNull);
     });
 
     test('cycleOverrides are additive for a CREATED profile: two distinct '

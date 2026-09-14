@@ -9,6 +9,7 @@ import 'package:lunarlog/domain/export/csv_export_writer.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -21,12 +22,20 @@ import 'package:provider/provider.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
 
-Profile _profile(String id, {String displayName = 'Riley', DateTime? archivedAt}) =>
+Profile _profile(
+  String id, {
+  String displayName = 'Riley',
+  DateTime? archivedAt,
+  BbtUnit bbtUnit = BbtUnit.celsius,
+  WeightUnit weightUnit = WeightUnit.kg,
+}) =>
     Profile(
       id: id,
       displayName: displayName,
       isMinor: false,
       archivedAt: archivedAt,
+      bbtUnit: bbtUnit,
+      weightUnit: weightUnit,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
     );
@@ -262,8 +271,59 @@ void main() {
 
       expect(capturedCycles, contains('cycle_number,start_date,end_date'));
       expect(capturedCycles, contains('1,2026-04-01'));
-      expect(capturedDailyLog, contains('date,flow,pms,tags,pain_intensity,spotting,notes,bbt,weight'));
-      expect(capturedDailyLog, contains('2026-04-01,medium,false,,,false,,,'));
+      expect(capturedDailyLog,
+          contains('date,flow,pms,tags,pain_intensity,spotting,notes,bbt,bbt_unit,weight,weight_unit'));
+      expect(capturedDailyLog, contains('2026-04-01,medium,false,,,false,,,,,'));
+    });
+
+    testWidgets(
+        "the profile's own display-unit preference reaches the CSV builder "
+        '(Issue #612, LLA-093): a pound-display profile normalizes a '
+        'kilogram-logged weight row into pounds', (tester) async {
+      String? capturedDailyLog;
+
+      final profiles = FakeProfilesRepository([
+        _profile('p1', displayName: 'Riley', weightUnit: WeightUnit.lb),
+      ]);
+      final dayEntries = FakeDayEntriesRepository()
+        ..entriesByProfile = {
+          'p1': [_entry('e1', 'p1', date: LocalDate(2026, 4, 1))],
+        };
+      final observations = FakeObservationsRepository()
+        ..observationsByProfile = {
+          'p1': [
+            Observation(
+              id: 'o1',
+              dayEntryId: 'e1',
+              profileId: 'p1',
+              localDate: LocalDate(2026, 4, 1),
+              tz: 'UTC',
+              category: 'weight',
+              valueNum: 61.0, // ~134.5 lb
+              unit: 'kg',
+              updatedAt: DateTime.utc(2026, 4, 1),
+            ),
+          ],
+        };
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          capturedDailyLog = dailyLogCsv;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+
+      final lines = capturedDailyLog!.split('\r\n');
+      final fields = lines[1].split(',');
+      // bbt, bbt_unit, weight, weight_unit are the last four columns.
+      expect(double.parse(fields[9]), closeTo(134.5, 0.1));
+      expect(fields[10], 'lb');
     });
 
     testWidgets('single profile: uses CsvExportWriter when no collaborator injected', (tester) async {

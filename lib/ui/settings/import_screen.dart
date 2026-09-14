@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/import_file_cap.dart' show ImportFileTooLargeException;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
@@ -102,9 +103,7 @@ class _ImportScreenState extends State<ImportScreen> {
   Future<void> _pickAndPlan() async {
     setState(() => _error = null);
     try {
-      final read =
-          widget.pickFile?.read ?? context.read<ImportFileReader>().read;
-      final bytes = await read();
+      final bytes = await _readPickedFileCapped();
       if (bytes == null || !mounted) return;
       final parsed = await _parse(bytes);
       // A second `mounted` re-check (`_parse` is itself an `await` gap,
@@ -113,7 +112,7 @@ class _ImportScreenState extends State<ImportScreen> {
       if (!mounted) return;
       switch (parsed) {
         case AccountImportParseFailed(:final error):
-          setState(() => _error = error.message);
+          _showImportError(error.message);
         case AccountImportParsed(:final document):
           // Only reached (and only reads `context` here) once bytes were
           // actually picked and this state is still mounted — cancelling
@@ -129,10 +128,42 @@ class _ImportScreenState extends State<ImportScreen> {
       // function's own doc comment) — this is a last-resort backstop for
       // anything else a bad file or a picker failure could still throw,
       // so this screen never surfaces an unhandled exception instead of
-      // `InlineError`.
+      // `InlineError`. [ImportFileTooLargeException] never reaches here —
+      // [_readPickedFileCapped] catches it distinctly (Issue #626,
+      // LLA-089's size cap is a picker-only failure mode, never something
+      // `_parse`/`_buildPlan` below could throw).
       debugPrint('lunarlog import: pick/parse failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = kImportApplyFailureCopy);
+      _showImportError(kImportApplyFailureCopy);
     }
+  }
+
+  /// Reads the picked file's bytes via the injected/tree-provided
+  /// [ImportFileReader] (Issue #626, LLA-089's stream-capped picker). Null
+  /// means either the operator cancelled the picker, or the file was
+  /// rejected as too large — the latter already shows the friendly
+  /// [ImportFileTooLargeException.message] via [_showImportError] before
+  /// returning, so [_pickAndPlan] only ever has to check for null, not
+  /// which of the two happened.
+  Future<Uint8List?> _readPickedFileCapped() async {
+    final read = widget.pickFile?.read ?? context.read<ImportFileReader>().read;
+    try {
+      return await read();
+    } on ImportFileTooLargeException catch (error) {
+      // Issue #626, LLA-089: the picker now rejects an oversized file
+      // before reading it into memory at all, via a typed exception rather
+      // than `parseAccountImport`'s own post-hoc `bytes.length` check — the
+      // operator still sees the identical friendly copy either way
+      // ([ImportFileTooLargeException.message] is the same sentence).
+      debugPrint('lunarlog import: picked file exceeds the size cap');
+      _showImportError(error.message);
+      return null;
+    }
+  }
+
+  /// Shows [message] as the pick step's inline error, mounted-guarded like
+  /// every other `setState` this screen makes from inside an `await` gap.
+  void _showImportError(String message) {
+    if (mounted) setState(() => _error = message);
   }
 
   /// Parses [bytes] inline, or off the UI isolate via [compute] once the

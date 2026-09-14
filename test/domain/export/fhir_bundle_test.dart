@@ -430,8 +430,52 @@ void main() {
       expect(coding['code'], 'bbt:reading');
     });
 
-    test('intensity carries as valueInteger, valueNum+unit as valueQuantity '
-        '(UCUM code when known), never valueText (#157 review fix)', () {
+    test('intensity-only carries as top-level valueInteger, no component '
+        '(#157 review fix)', () {
+      final bundle = build(obs: [
+        _observation('o1', 'day-01', profile.id, '2026-04-01',
+            category: 'pain', code: 'cramps', intensity: 4),
+      ]);
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final obs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Observation' && r.containsKey('valueInteger'));
+      expect(obs['valueInteger'], 4);
+      expect(obs.containsKey('valueQuantity'), isFalse);
+      expect(obs.containsKey('component'), isFalse);
+    });
+
+    test('valueNum+unit carries as top-level valueQuantity (UCUM code when '
+        'known), never valueText (#157 review fix)', () {
+      final bundle = build(obs: [
+        _observation('o1', 'day-01', profile.id, '2026-04-01',
+            category: 'bbt',
+            code: 'reading',
+            valueNum: 37.2,
+            unit: 'celsius',
+            valueText: 'secret free text should never appear'),
+      ]);
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final obs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Observation' && r.containsKey('valueQuantity'));
+      final quantity = obs['valueQuantity'] as Map;
+      expect(quantity['value'], 37.2);
+      expect(quantity['unit'], 'celsius');
+      expect(quantity['system'], 'http://unitsofmeasure.org');
+      expect(quantity['code'], 'Cel');
+      expect(obs.containsKey('valueInteger'), isFalse);
+      expect(obs.containsKey('valueText'), isFalse);
+      expect(
+        _allStrings(bundle)
+            .any((s) => s.contains('secret free text should never appear')),
+        isFalse,
+      );
+    });
+
+    test('intensity AND valueNum on the same row (Issue #612, LLA-088): '
+        'FHIR R4 value[x] is 0..1, so only valueQuantity goes on the top '
+        'level — intensity is never dropped, it moves into a component', () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
             category: 'pain',
@@ -448,18 +492,74 @@ void main() {
               r['resourceType'] == 'Observation' &&
               !r.containsKey('valueCodeableConcept') &&
               !r.containsKey('valueDateTime'));
-      expect(obs['valueInteger'], 4);
+      // Exactly one top-level value[x] key.
+      expect(obs.containsKey('valueInteger'), isFalse,
+          reason: 'FHIR R4 value[x] is 0..1 — valueQuantity is the primary '
+              'value here, not a sibling valueInteger');
       final quantity = obs['valueQuantity'] as Map;
       expect(quantity['value'], 37.2);
       expect(quantity['unit'], 'celsius');
       expect(quantity['system'], 'http://unitsofmeasure.org');
       expect(quantity['code'], 'Cel');
+      // The intensity is preserved, not silently dropped — as a component.
+      final components = obs['component'] as List;
+      expect(components, hasLength(1));
+      final component = components.single as Map;
+      expect(component['valueInteger'], 4);
+      final componentCodings = (component['code'] as Map)['coding'] as List;
+      expect(componentCodings, hasLength(1));
+      expect((componentCodings.single as Map)['system'], kSystemLunarlogLocal);
+      expect((componentCodings.single as Map)['code'], 'intensity');
       expect(obs.containsKey('valueText'), isFalse);
       expect(
         _allStrings(bundle)
             .any((s) => s.contains('secret free text should never appear')),
         isFalse,
       );
+    });
+
+    test('every Observation in the Bundle carries at most one value[x] key '
+        '(FHIR R4 invariant — Issue #612, LLA-088)', () {
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01'),
+          _entry('day-02', profile.id, '2026-04-02'),
+        ],
+        obs: [
+          _observation('o1', 'day-01', profile.id, '2026-04-01',
+              category: 'pain',
+              code: 'cramps',
+              intensity: 4,
+              valueNum: 37.2,
+              unit: 'celsius'),
+          _observation('o2', 'day-02', profile.id, '2026-04-02',
+              category: 'bbt', code: 'reading', valueNum: 36.5, unit: 'celsius'),
+        ],
+      );
+      const valueXKeys = [
+        'valueQuantity',
+        'valueCodeableConcept',
+        'valueString',
+        'valueBoolean',
+        'valueInteger',
+        'valueRange',
+        'valueRatio',
+        'valueSampledData',
+        'valueTime',
+        'valueDateTime',
+        'valuePeriod',
+      ];
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final observations = entries
+          .map((e) => e['resource'] as Map)
+          .where((r) => r['resourceType'] == 'Observation');
+      expect(observations, isNotEmpty);
+      for (final obs in observations) {
+        final present = valueXKeys.where(obs.containsKey).toList();
+        expect(present.length, lessThanOrEqualTo(1),
+            reason: 'Observation ${obs['id'] ?? obs['code']} carries more '
+                'than one value[x] key: $present');
+      }
     });
 
     test('an unknown unit degrades to a plain unit string, no guessed UCUM '
