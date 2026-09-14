@@ -57,6 +57,16 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
   /// the Overview tab until the operator switches profiles.
   String? _overviewLaunchId;
 
+  /// LLA-008: a monotonic counter, incremented once per successfully-routed
+  /// launch payload (not per profile) -- distinguishes "the same profile
+  /// was named by *another* notification" from "nothing new happened",
+  /// which `_overviewLaunchId` alone cannot (it only ever holds one
+  /// value). [AppShell.launchToken] reads this only when the active
+  /// profile still matches `_overviewLaunchId`, and resets to Today on
+  /// every value change -- including a same-profile relaunch, which a
+  /// profile-id-only comparison would miss entirely.
+  int _overviewLaunchSeq = 0;
+
   /// Guards against scheduling duplicate consumption microtasks while the
   /// payload is still set across consecutive builds.
   String? _consuming;
@@ -199,7 +209,8 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     // view, still pushed explicitly from the picker.
     return AppShell(
       profile: active,
-      resetToTodayOnProfileSwitch: active.id == _overviewLaunchId,
+      launchToken:
+          active.id == _overviewLaunchId ? _overviewLaunchSeq : null,
     );
   }
 
@@ -213,6 +224,12 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
     // Deferred: mutates controller/notifyListeners, which cannot happen
     // during build.
     scheduleMicrotask(() {
+      // LLA-008: reset the guard first, mirroring _maybeShowLinkFailure's
+      // "reset first so a *later* one can show again" pattern -- without
+      // this, _consuming stuck at this profile id for the rest of this
+      // State's lifetime (it was never reset anywhere), silently dropping
+      // every later notification tap that named the *same* profile.
+      _consuming = null;
       if (!mounted) return;
       gate!.clearPendingLaunchProfileId();
       final exists =
@@ -221,7 +238,10 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
         // Unknown or archived id: fall through to the normal home decision.
         return;
       }
-      setState(() => _overviewLaunchId = pending);
+      setState(() {
+        _overviewLaunchId = pending;
+        _overviewLaunchSeq++;
+      });
       unawaited(controller.selectProfile(pending));
     });
   }

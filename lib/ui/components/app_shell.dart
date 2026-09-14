@@ -74,7 +74,7 @@ class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.profile,
-    this.resetToTodayOnProfileSwitch = false,
+    this.launchToken,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
   });
@@ -82,18 +82,28 @@ class AppShell extends StatefulWidget {
   final Profile profile;
 
   /// U7 launch-payload seam (`lib/ui/profiles/profile_home_gate.dart`'s
-  /// `_overviewLaunchId`, unchanged): true when this shell mounted because
-  /// a notification named this profile. Today is already the shell's
-  /// default/first tab regardless (issue #182), so this only matters on an
-  /// in-place profile *switch* (see [_AppShellState.didUpdateWidget]) --
-  /// without it, an operator who was on the Calendar tab for the previous
-  /// profile would stay there for the profile the notification named,
-  /// rather than landing on that profile's Today tab as U7 intends. Issue
-  /// #313 follow-up: renamed from `initiallyShowOverview`, a name left over
-  /// from the pre-#182 `ProfileDetailScreen` seam this replaced -- it never
-  /// affects this shell's *initial* tab (always Today), only whether a
-  /// later in-place profile switch resets back to it.
-  final bool resetToTodayOnProfileSwitch;
+  /// `_overviewLaunchSeq`): non-null, and a fresh value, exactly when this
+  /// rebuild is routing a notification tap to this profile. Today is
+  /// already the shell's default/first tab regardless (issue #182), so
+  /// this only matters for an in-place reset back to it (see
+  /// [_AppShellState.didUpdateWidget]) -- without it, an operator who was
+  /// on the Calendar tab would stay there for the profile the notification
+  /// named, rather than landing on that profile's Today tab as U7 intends.
+  ///
+  /// LLA-008 (issue #623): a plain `bool` here could only ever distinguish
+  /// "this profile" from "not this profile" -- it could not tell "another
+  /// notification just named the profile that is *already* active" from
+  /// "nothing new happened", so a second tap on the same child's alert
+  /// while already viewing them silently failed to reset the tab. Every
+  /// value from [ProfileHomeGate]'s monotonic counter is distinct, so
+  /// [_AppShellState.didUpdateWidget] resets on every genuinely new launch,
+  /// same-profile relaunches included, not only on a profile switch.
+  ///
+  /// Issue #313 follow-up: renamed from `initiallyShowOverview`, a name
+  /// left over from the pre-#182 `ProfileDetailScreen` seam this replaced
+  /// -- it never affects this shell's *initial* tab (always Today), only
+  /// whether an in-place rebuild resets back to it.
+  final int? launchToken;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -121,13 +131,15 @@ class _AppShellState extends State<AppShell> {
   @override
   void didUpdateWidget(AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // The widget is recreated in place when the active profile changes (the
-    // home gate swaps it at the same tree position), so this State survives
-    // -- same shape as the pre-#182 ProfileDetailScreen seam this replaces.
-    // An ordinary profile switch keeps the operator's current tab; only the
-    // U7 launch payload forces the new profile open on Today.
-    if (widget.profile.id != oldWidget.profile.id &&
-        widget.resetToTodayOnProfileSwitch) {
+    // The widget is recreated in place whenever the home gate rebuilds (a
+    // profile switch included), so this State survives -- same shape as
+    // the pre-#182 ProfileDetailScreen seam this replaces. An ordinary
+    // profile switch keeps the operator's current tab; only a genuinely
+    // new launch-payload token forces Today -- LLA-008 (issue #623): a
+    // same-profile relaunch carries a new token with no profile.id change
+    // at all, so the reset can no longer be gated on that id changing.
+    final token = widget.launchToken;
+    if (token != null && token != oldWidget.launchToken) {
       _tab = AppTab.today;
     }
   }

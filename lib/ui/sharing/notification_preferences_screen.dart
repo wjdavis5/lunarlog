@@ -44,21 +44,54 @@ class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
   CaregiverAlertPreferences _prefs = CaregiverAlertPreferences.off;
   bool _loaded = false;
+  // LLA-083: an initial-load failure (as opposed to a save failure, which
+  // `_timeZoneError`/the snackbar already cover) used to be swallowed --
+  // `_loaded` stayed false forever and the screen spun. This makes that
+  // failure an explicit, retryable state instead.
+  bool _loadFailed = false;
   StreamSubscription<CaregiverAlertPreferences>? _sub;
   NotificationPreferencesInvalidTimeZoneFailure? _timeZoneError;
 
   @override
   void initState() {
     super.initState();
+    _subscribe();
+  }
+
+  /// Starts (or restarts, for a retry) watching preferences. The service's
+  /// `watchFor` fetches fresh on every call (LLA-083), so re-invoking this
+  /// after canceling the previous subscription is a genuine reload, not a
+  /// no-op replay of a stale value.
+  void _subscribe() {
     _sub = widget.preferencesService
         .watchFor(widget.profile.id)
-        .listen((prefs) {
-      if (!mounted) return;
-      setState(() {
-        _prefs = prefs;
-        _loaded = true;
-      });
+        .listen(_onPrefsLoaded, onError: _onLoadError);
+  }
+
+  void _onPrefsLoaded(CaregiverAlertPreferences prefs) {
+    if (!mounted) return;
+    setState(() {
+      _prefs = prefs;
+      _loaded = true;
+      _loadFailed = false;
     });
+  }
+
+  void _onLoadError(Object error) {
+    if (!mounted) return;
+    setState(() => _loadFailed = true);
+  }
+
+  /// Synchronous, matching `activity_feed_screen.dart`'s `_retryFeed`
+  /// precedent: the old subscription's `cancel()` need not be awaited
+  /// before starting the new one -- it stops delivering to `_sub` the
+  /// instant it is called, and awaiting it here left `pumpAndSettle` (whose
+  /// loop only waits out a *scheduled frame*, not an arbitrary unrelated
+  /// Future) free to return before the retry's own fetch had run.
+  void _retryLoad() {
+    unawaited(_sub?.cancel());
+    setState(() => _loadFailed = false);
+    _subscribe();
   }
 
   @override
@@ -275,133 +308,177 @@ class _NotificationPreferencesScreenState
 
   @override
   Widget build(BuildContext context) {
-    final prefs = _prefs;
-    final quietHours = prefs.quietHours;
     return Scaffold(
       appBar: AppBar(title: const Text('Notifications')),
-      body: !_loaded
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    key: const ValueKey('discretion-copy'),
-                    'Alerts never show what was logged - just a generic '
-                    'reminder to open Lunarlog.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-                SwitchListTile(
-                  key: const ValueKey('alert-on-log-toggle'),
-                  title:
-                      Text('Notify me when ${widget.profile.displayName} logs an entry'),
-                  value: prefs.alertOnLog,
-                  onChanged: _setAlertOnLog,
-                ),
-                SwitchListTile(
-                  key: const ValueKey('alert-cycle-start-only-toggle'),
-                  title: const Text('Only notify on cycle start'),
-                  value: prefs.alertOnLog && prefs.alertOnCycleStartOnly,
-                  onChanged: prefs.alertOnLog
-                      ? (value) =>
-                          _apply((p) => p.copyWith(alertOnCycleStartOnly: value))
-                      : null,
-                ),
-                SwitchListTile(
-                  key: const ValueKey('alert-high-severity-toggle'),
-                  title: const Text('Notify on high-severity days'),
-                  value: prefs.alertOnLog && prefs.alertOnHighSeverity,
-                  onChanged: prefs.alertOnLog
-                      ? (value) =>
-                          _apply((p) => p.copyWith(alertOnHighSeverity: value))
-                      : null,
-                ),
-                ..._deliverySection(prefs),
-                ListTile(
-                  key: const ValueKey('missed-entry-threshold-tile'),
-                  title: const Text('Missed-entry reminder'),
-                  subtitle: const Text(
-                      'Check in when no entry has been logged for a while'),
-                  trailing: DropdownButton<MissedEntryThreshold>(
-                    key: const ValueKey('missed-entry-threshold-dropdown'),
-                    value: prefs.missedEntryThreshold,
-                    onChanged: (value) {
-                      if (value != null) {
-                        unawaited(
-                            _apply((p) => p.copyWith(missedEntryThreshold: value)));
-                      }
-                    },
-                    items: const [
-                      DropdownMenuItem(
-                          value: MissedEntryThreshold.off, child: Text('Off')),
-                      DropdownMenuItem(
-                          value: MissedEntryThreshold.oneDay,
-                          child: Text('1 day')),
-                      DropdownMenuItem(
-                          value: MissedEntryThreshold.twoDays,
-                          child: Text('2 days')),
-                      DropdownMenuItem(
-                          value: MissedEntryThreshold.threeDays,
-                          child: Text('3 days')),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                ListTile(
-                  key: const ValueKey('quiet-hours-start-tile'),
-                  title: const Text('Quiet hours start'),
-                  trailing: Text(
-                    quietHours == null
-                        ? 'Off'
-                        : _formatMinutes(quietHours.startMinutes),
-                  ),
-                  onTap: () => _pickTime(isStart: true),
-                ),
-                ListTile(
-                  key: const ValueKey('quiet-hours-end-tile'),
-                  title: const Text('Quiet hours end'),
-                  trailing: Text(
-                    quietHours == null
-                        ? 'Off'
-                        : _formatMinutes(quietHours.endMinutes),
-                  ),
-                  onTap: () => _pickTime(isStart: false),
-                ),
-                if (quietHours != null)
-                  ListTile(
-                    key: const ValueKey('clear-quiet-hours-tile'),
-                    title: const Text('Clear quiet hours'),
-                    onTap: () => _apply((p) => p.copyWith(
-                          clearQuietHours: true,
-                          clearTimeZone: true,
-                        )),
-                  ),
-                if (_timeZoneError != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        InlineError(
-                          key: const ValueKey('timezone-inline-error'),
-                          message: notificationPreferencesFailureCopy(
-                              AppLocalizations.of(context), _timeZoneError!),
-                          onRetry: _retrySave,
-                        ),
-                        TextButton(
-                          key: const ValueKey('timezone-fallback-button'),
-                          onPressed: _confirmSaveWithoutTimeZone,
-                          child: const Text('Save without time zone'),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
+      body: _buildBody(context),
     );
+  }
+
+  /// Review fix (CRAP gate): the three-way load-state selection this
+  /// screen's body always started with -- pulled out of [build] so that
+  /// method stays a single Scaffold construction and every branch below
+  /// gets its own small, independently-measured method instead of all of
+  /// them counting against one large one.
+  Widget _buildBody(BuildContext context) {
+    if (!_loaded && _loadFailed) {
+      return Center(
+        child: InlineError(
+          key: const ValueKey('load-error'),
+          message: 'Could not load your notification settings.',
+          onRetry: _retryLoad,
+        ),
+      );
+    }
+    if (!_loaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return _buildSettingsList(context);
+  }
+
+  Widget _buildSettingsList(BuildContext context) {
+    final prefs = _prefs;
+    return ListView(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            key: const ValueKey('discretion-copy'),
+            'Alerts never show what was logged - just a generic '
+            'reminder to open Lunarlog.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        SwitchListTile(
+          key: const ValueKey('alert-on-log-toggle'),
+          title:
+              Text('Notify me when ${widget.profile.displayName} logs an entry'),
+          value: prefs.alertOnLog,
+          onChanged: _setAlertOnLog,
+        ),
+        SwitchListTile(
+          key: const ValueKey('alert-cycle-start-only-toggle'),
+          title: const Text('Only notify on cycle start'),
+          value: prefs.alertOnLog && prefs.alertOnCycleStartOnly,
+          onChanged: prefs.alertOnLog
+              ? (value) =>
+                  _apply((p) => p.copyWith(alertOnCycleStartOnly: value))
+              : null,
+        ),
+        SwitchListTile(
+          key: const ValueKey('alert-high-severity-toggle'),
+          title: const Text('Notify on high-severity days'),
+          value: prefs.alertOnLog && prefs.alertOnHighSeverity,
+          onChanged: prefs.alertOnLog
+              ? (value) =>
+                  _apply((p) => p.copyWith(alertOnHighSeverity: value))
+              : null,
+        ),
+        ..._deliverySection(prefs),
+        ListTile(
+          key: const ValueKey('missed-entry-threshold-tile'),
+          title: const Text('Missed-entry reminder'),
+          subtitle: const Text(
+              'Check in when no entry has been logged for a while'),
+          trailing: DropdownButton<MissedEntryThreshold>(
+            key: const ValueKey('missed-entry-threshold-dropdown'),
+            value: prefs.missedEntryThreshold,
+            onChanged: (value) {
+              if (value != null) {
+                unawaited(
+                    _apply((p) => p.copyWith(missedEntryThreshold: value)));
+              }
+            },
+            items: const [
+              DropdownMenuItem(
+                  value: MissedEntryThreshold.off, child: Text('Off')),
+              DropdownMenuItem(
+                  value: MissedEntryThreshold.oneDay,
+                  child: Text('1 day')),
+              DropdownMenuItem(
+                  value: MissedEntryThreshold.twoDays,
+                  child: Text('2 days')),
+              DropdownMenuItem(
+                  value: MissedEntryThreshold.threeDays,
+                  child: Text('3 days')),
+            ],
+          ),
+        ),
+        const Divider(),
+        ..._quietHoursSection(prefs.quietHours),
+        ..._timeZoneErrorSection(context),
+      ],
+    );
+  }
+
+  /// The quiet-hours start/end tiles plus the "Clear quiet hours" tile
+  /// that only appears once a window is set. Split out of
+  /// [_buildSettingsList] (review fix, CRAP gate) -- its two label
+  /// ternaries and one conditional tile are exactly the kind of small,
+  /// self-contained branching this file's own convention asks to be its
+  /// own method rather than adding to a larger one.
+  List<Widget> _quietHoursSection(QuietHours? quietHours) => [
+        ListTile(
+          key: const ValueKey('quiet-hours-start-tile'),
+          title: const Text('Quiet hours start'),
+          trailing: Text(
+            quietHours == null
+                ? 'Off'
+                : _formatMinutes(quietHours.startMinutes),
+          ),
+          onTap: () => _pickTime(isStart: true),
+        ),
+        ListTile(
+          key: const ValueKey('quiet-hours-end-tile'),
+          title: const Text('Quiet hours end'),
+          trailing: Text(
+            quietHours == null
+                ? 'Off'
+                : _formatMinutes(quietHours.endMinutes),
+          ),
+          onTap: () => _pickTime(isStart: false),
+        ),
+        if (quietHours != null)
+          ListTile(
+            key: const ValueKey('clear-quiet-hours-tile'),
+            title: const Text('Clear quiet hours'),
+            onTap: () => _apply((p) => p.copyWith(
+                  clearQuietHours: true,
+                  clearTimeZone: true,
+                )),
+          ),
+      ];
+
+  /// The inline time-zone-fallback error block, present only while
+  /// [_timeZoneError] is set. Split out of [_buildSettingsList] (review
+  /// fix, CRAP gate) for the same reason as [_quietHoursSection] --
+  /// returns no widgets at all rather than null, so the caller can spread
+  /// it straight into the ListView's children like every other section.
+  List<Widget> _timeZoneErrorSection(BuildContext context) {
+    final error = _timeZoneError;
+    if (error == null) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 8,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InlineError(
+              key: const ValueKey('timezone-inline-error'),
+              message: notificationPreferencesFailureCopy(
+                  AppLocalizations.of(context), error),
+              onRetry: _retrySave,
+            ),
+            TextButton(
+              key: const ValueKey('timezone-fallback-button'),
+              onPressed: _confirmSaveWithoutTimeZone,
+              child: const Text('Save without time zone'),
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 }

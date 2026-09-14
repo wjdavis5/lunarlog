@@ -12,6 +12,7 @@ import { assertEquals } from "jsr:@std/assert@1";
 import {
   buildDeps,
   handlePushDispatch,
+  type DispatchResolution,
   type OutboxRow,
   type PushDeviceRow,
   type PushDispatchDeps,
@@ -42,6 +43,13 @@ interface FakeState {
   disabledDevices: string[];
   sendCalls: unknown[];
   sendResult: (message: unknown, call: number) => { ok: true } | { ok: false; reason: string };
+  /** Issue #630: defaults to "send" (a no-op recheck) for every existing
+   * test above that predates the recheck and has no reason to care about
+   * it. */
+  resolveResult: (outboxId: string) => DispatchResolution;
+  cancelled: Array<{ id: string; claimedAt: string }>;
+  deferred: Array<{ id: string; claimedAt: string; deliverAfter: string }>;
+  retried: Array<{ id: string; claimedAt: string }>;
 }
 
 function fakeDeps(state: Partial<FakeState> = {}): PushDispatchDeps & FakeState {
@@ -54,6 +62,10 @@ function fakeDeps(state: Partial<FakeState> = {}): PushDispatchDeps & FakeState 
     disabledDevices: [],
     sendCalls: [],
     sendResult: state.sendResult ?? (() => ({ ok: true })),
+    resolveResult: state.resolveResult ?? (() => ({ action: "send" })),
+    cancelled: [],
+    deferred: [],
+    retried: [],
   };
 
   return {
@@ -70,6 +82,16 @@ function fakeDeps(state: Partial<FakeState> = {}): PushDispatchDeps & FakeState 
     },
     releaseClaim: async (id, claimedAt, errorKind) => {
       s.released.push({ id, claimedAt, errorKind });
+    },
+    resolveDispatch: async (outboxId) => s.resolveResult(outboxId),
+    cancelRow: async (outboxId, claimedAt) => {
+      s.cancelled.push({ id: outboxId, claimedAt });
+    },
+    deferClaim: async (id, claimedAt, deliverAfter) => {
+      s.deferred.push({ id, claimedAt, deliverAfter });
+    },
+    releaseForRetry: async (id, claimedAt) => {
+      s.retried.push({ id, claimedAt });
     },
     disableDevice: async (deviceId) => {
       s.disabledDevices.push(deviceId);
@@ -102,6 +124,18 @@ function fakeDeps(state: Partial<FakeState> = {}): PushDispatchDeps & FakeState 
     },
     get sendResult() {
       return s.sendResult;
+    },
+    get resolveResult() {
+      return s.resolveResult;
+    },
+    get cancelled() {
+      return s.cancelled;
+    },
+    get deferred() {
+      return s.deferred;
+    },
+    get retried() {
+      return s.retried;
     },
   };
 }
@@ -294,6 +328,121 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
+// Issue #630: revalidating a claimed row before it reaches a device.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "LLA-074: a row resolveDispatch reports revoked is cancelled, not sent, and never touches a device",
+  async () => {
+    const deps = fakeDeps({
+      rows: [row()],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+      resolveResult: () => ({ action: "cancel", reason: "revoked" }),
+    });
+
+    const result = await handlePushDispatch(deps);
+
+    assertEquals(deps.sendCalls.length, 0, "a cancelled row must never reach a device");
+    assertEquals(deps.cancelled, [{ id: "row-1", claimedAt: PAST }]);
+    assertEquals(deps.sent.length, 0);
+    assertEquals(deps.released.length, 0);
+    assertEquals(result.processed, 1, "a cancelled row still counts as handled for this batch");
+  },
+);
+
+Deno.test(
+  "LLA-076: a row resolveDispatch reports preference_off (the kind was turned off since enqueue) is cancelled",
+  async () => {
+    const deps = fakeDeps({
+      rows: [row({ kind: "high_severity" })],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+      resolveResult: () => ({ action: "cancel", reason: "preference_off" }),
+    });
+
+    await handlePushDispatch(deps);
+
+    assertEquals(deps.sendCalls.length, 0);
+    assertEquals(deps.cancelled, [{ id: "row-1", claimedAt: PAST }]);
+  },
+);
+
+Deno.test(
+  "LLA-075: a row resolveDispatch reports defer (quiet hours re-opened) is deferred, not sent, and not " +
+    "counted as a failed attempt",
+  async () => {
+    const deferUntil = new Date(Date.now() + 3600_000).toISOString();
+    const deps = fakeDeps({
+      rows: [row({ claimed_at: PAST })],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+      resolveResult: () => ({ action: "defer", deliverAfter: deferUntil }),
+    });
+
+    await handlePushDispatch(deps);
+
+    assertEquals(deps.sendCalls.length, 0, "a deferred row must never reach a device");
+    assertEquals(deps.deferred, [{ id: "row-1", claimedAt: PAST, deliverAfter: deferUntil }]);
+    assertEquals(deps.released.length, 0, "a defer is not a failed attempt -- releaseClaim must not be called");
+    assertEquals(deps.sent.length, 0);
+  },
+);
+
+Deno.test("a row resolveDispatch reports still eligible (send) proceeds exactly as before #630", async () => {
+  const deps = fakeDeps({
+    rows: [row()],
+    devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+    resolveResult: () => ({ action: "send" }),
+  });
+
+  await handlePushDispatch(deps);
+
+  assertEquals(deps.sendCalls.length, 1);
+  assertEquals(deps.sent, ["row-1"]);
+  assertEquals(deps.cancelled.length, 0);
+  assertEquals(deps.deferred.length, 0);
+});
+
+Deno.test(
+  "review fix: a row resolveDispatch reports retry (the recheck itself errored) fails closed -- never sent, " +
+    "released with no attempts increment",
+  async () => {
+    const deps = fakeDeps({
+      rows: [row({ claimed_at: PAST })],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+      resolveResult: () => ({ action: "retry" }),
+    });
+
+    const result = await handlePushDispatch(deps);
+
+    assertEquals(deps.sendCalls.length, 0, "a retry must never reach a device -- this is the check that " +
+      "enforces revocation/opt-out/quiet hours, so an unanswerable recheck must not default to send");
+    assertEquals(deps.retried, [{ id: "row-1", claimedAt: PAST }]);
+    assertEquals(deps.sent.length, 0);
+    assertEquals(deps.cancelled.length, 0);
+    assertEquals(deps.deferred.length, 0);
+    assertEquals(deps.released.length, 0, "a failed recheck is not a delivery failure -- releaseClaim's " +
+      "attempts bookkeeping must not be touched");
+    assertEquals(result.processed, 1);
+  },
+);
+
+Deno.test(
+  "review fix: an unrecognised resolveDispatch action string is treated the same as retry, not send",
+  async () => {
+    const deps = fakeDeps({
+      rows: [row({ claimed_at: PAST })],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+      // deno-lint-ignore no-explicit-any
+      resolveResult: () => ({ action: "some_future_action" }) as any,
+    });
+
+    await handlePushDispatch(deps);
+
+    assertEquals(deps.sendCalls.length, 0, "an unrecognised action must never be treated as send");
+    assertEquals(deps.retried, [{ id: "row-1", claimedAt: PAST }]);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // buildDeps: the production claim/release wiring against a fake Supabase
 // client that really enforces WHERE-clause filtering.
 // ---------------------------------------------------------------------------
@@ -307,6 +456,7 @@ Deno.test(
 function fakeClientFactory(
   rows: Array<Record<string, unknown>>,
   deliveries: Array<Record<string, unknown>> = [],
+  resolveDispatchResponses: Record<string, { action: string; reason?: string; deliver_after?: string }> = {},
 ): SupabaseClientFactory {
   function makeSelectBuilder(source: Array<Record<string, unknown>>) {
     const filters: Array<(row: Record<string, unknown>) => boolean> = [];
@@ -386,6 +536,25 @@ function fakeClientFactory(
     notification_outbox_deliveries: deliveries,
   };
 
+  function makeDeleteBuilder(source: Array<Record<string, unknown>>) {
+    const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+    const builder = {
+      eq(column: string, value: unknown) {
+        filters.push((r) => r[column] === value);
+        return builder;
+      },
+      then(onFulfilled: (value: { error: null }) => unknown) {
+        const matched = source.filter((r) => filters.every((f) => f(r)));
+        for (const m of matched) {
+          const idx = source.indexOf(m);
+          if (idx >= 0) source.splice(idx, 1);
+        }
+        return Promise.resolve({ error: null }).then(onFulfilled);
+      },
+    };
+    return builder;
+  }
+
   const client = {
     from(table: string) {
       const source = tables[table] ?? [];
@@ -404,9 +573,16 @@ function fakeClientFactory(
           else deliveries.push({ ...record });
           return Promise.resolve({ error: null });
         },
+        delete() {
+          return makeDeleteBuilder(source);
+        },
       };
     },
     rpc(name: string, args: Record<string, unknown>) {
+      if (name === "resolve_notification_outbox_dispatch") {
+        const response = resolveDispatchResponses[args.p_id as string] ?? { action: "send" };
+        return Promise.resolve({ data: response, error: null });
+      }
       if (name !== "release_notification_outbox_claim") {
         throw new Error(`fakeClientFactory: unexpected rpc ${name}`);
       }
@@ -544,3 +720,164 @@ Deno.test("#526 (a): deliveredDeviceIds/recordDelivery round-trip through the pr
 
   assertEquals([...(await deps.deliveredDeviceIds("row-1"))], ["device-1"]);
 });
+
+// ---------------------------------------------------------------------------
+// Issue #630: resolveDispatch/cancelRow/deferClaim production wiring.
+// ---------------------------------------------------------------------------
+
+Deno.test("resolveDispatch: interprets a cancel response from resolve_notification_outbox_dispatch", async () => {
+  const rows = [{ id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged" }];
+  const deps = buildDeps(
+    fullEnv,
+    fakeClientFactory(rows, [], { "row-1": { action: "cancel", reason: "revoked" } }),
+  );
+
+  const resolution = await deps.resolveDispatch("row-1");
+
+  assertEquals(resolution, { action: "cancel", reason: "revoked" });
+});
+
+Deno.test("resolveDispatch: interprets a defer response, carrying deliver_after through as deliverAfter", async () => {
+  const deferUntil = new Date(Date.now() + 3600_000).toISOString();
+  const rows = [{ id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged" }];
+  const deps = buildDeps(
+    fullEnv,
+    fakeClientFactory(rows, [], { "row-1": { action: "defer", deliver_after: deferUntil } }),
+  );
+
+  const resolution = await deps.resolveDispatch("row-1");
+
+  assertEquals(resolution, { action: "defer", deliverAfter: deferUntil });
+});
+
+Deno.test(
+  "review fix: resolveDispatch: an RPC error fails closed to retry, never send -- this is the check that " +
+    "enforces revocation/opt-out/quiet hours",
+  async () => {
+    const rows = [{ id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged" }];
+    const client = fakeClientFactory(rows)("url", "key");
+    const erroringClient = {
+      ...client,
+      rpc: (name: string, args: Record<string, unknown>) =>
+        name === "resolve_notification_outbox_dispatch"
+          ? Promise.resolve({ data: null, error: { message: "connection reset" } })
+          : client.rpc(name, args),
+    };
+    const deps = buildDeps(fullEnv, () => erroringClient);
+
+    const originalError = console.error;
+    console.error = () => {};
+    let resolution;
+    try {
+      resolution = await deps.resolveDispatch("row-1");
+    } finally {
+      console.error = originalError;
+    }
+
+    assertEquals(resolution, { action: "retry" });
+  },
+);
+
+Deno.test(
+  "review fix: resolveDispatch: an unrecognised action string fails closed to retry, never send",
+  async () => {
+    const rows = [{ id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged" }];
+    const deps = buildDeps(
+      fullEnv,
+      fakeClientFactory(rows, [], { "row-1": { action: "some_future_action" } }),
+    );
+
+    const originalError = console.error;
+    console.error = () => {};
+    let resolution;
+    try {
+      resolution = await deps.resolveDispatch("row-1");
+    } finally {
+      console.error = originalError;
+    }
+
+    assertEquals(resolution, { action: "retry" });
+  },
+);
+
+Deno.test("cancelRow: deletes the outbox row via the production client when claimed_at matches", async () => {
+  const past = new Date(Date.now() - 60_000).toISOString();
+  const rows = [{ id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged", claimed_at: past }];
+  const deps = buildDeps(fullEnv, fakeClientFactory(rows));
+
+  await deps.cancelRow("row-1", past);
+
+  assertEquals(rows.length, 0, "a cancelled row must be removed, not merely marked");
+});
+
+Deno.test(
+  "review fix: cancelRow is pinned to claimed_at -- a stale token must not delete a row a different drain " +
+    "has since re-claimed",
+  async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const rows = [{ id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged", claimed_at: past }];
+    const deps = buildDeps(fullEnv, fakeClientFactory(rows));
+
+    await deps.cancelRow("row-1", new Date(0).toISOString());
+
+    assertEquals(rows.length, 1, "a mismatched claimed_at token must not delete the row");
+  },
+);
+
+Deno.test(
+  "review fix: releaseForRetry clears claimed_at, requires a matching token, and never touches attempts",
+  async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const rows = [
+      {
+        id: "row-1",
+        profile_id: "p1",
+        recipient_user_id: "u1",
+        kind: "logged",
+        claimed_at: past as string | null,
+        attempts: 3,
+      },
+    ];
+    const deps = buildDeps(fullEnv, fakeClientFactory(rows));
+
+    // A stale token must not match.
+    await deps.releaseForRetry("row-1", new Date(0).toISOString());
+    assertEquals(rows[0].claimed_at, past);
+    assertEquals(rows[0].attempts, 3);
+
+    await deps.releaseForRetry("row-1", past);
+    assertEquals(rows[0].claimed_at, null);
+    assertEquals(rows[0].attempts, 3, "releaseForRetry must never increment attempts");
+  },
+);
+
+Deno.test(
+  "deferClaim: clears claimed_at and sets deliver_after, requiring the matching claimed_at token, without " +
+    "touching attempts",
+  async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const rows = [
+      {
+        id: "row-1",
+        profile_id: "p1",
+        recipient_user_id: "u1",
+        kind: "logged",
+        claimed_at: past as string | null,
+        deliver_after: past,
+        attempts: 2,
+      },
+    ];
+    const deps = buildDeps(fullEnv, fakeClientFactory(rows));
+
+    // A stale token must not match, mirroring releaseClaim's own
+    // optimistic-lock semantics.
+    await deps.deferClaim("row-1", new Date(0).toISOString(), future);
+    assertEquals(rows[0].claimed_at, past);
+
+    await deps.deferClaim("row-1", past, future);
+    assertEquals(rows[0].claimed_at, null);
+    assertEquals(rows[0].deliver_after, future);
+    assertEquals(rows[0].attempts, 2, "a defer is not a failed attempt");
+  },
+);

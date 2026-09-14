@@ -690,6 +690,105 @@ void main() {
     });
   });
 
+  group('issue #623 (LLA-008): every launch-payload event is routed, not '
+      'deduplicated for the profile\'s whole lifetime', () {
+    testWidgets(
+        'a notification naming the profile that is already active still '
+        'resets the tab to Today', (tester) async {
+      final h = Harness(tester);
+      final gate = GateController(gate: _NoLockGate());
+      addTearDown(gate.dispose);
+
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final alice =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.lastActiveProfile, alice.id);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<GateController>.value(
+          value: gate,
+          child: LunarLogApp.withCollaborators(
+              db: h.db, authService: h.auth, syncEngine: h.engine),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MonthCalendar), findsOneWidget);
+
+      // Alice is already the active profile -- a plain `profile.id`
+      // comparison (the pre-fix `resetToTodayOnProfileSwitch` shape) never
+      // changes here, so AppShell's didUpdateWidget never saw a reason to
+      // reset. A fresh launch token must still force Today.
+      gate.setPendingLaunchProfileId(alice.id);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MonthCalendar), findsNothing,
+          reason: 'a same-active-profile relaunch must still reset to '
+              'Today -- LLA-008');
+      final navBar =
+          tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, AppTab.today.index);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a repeat notification for a profile is not silently dropped by the '
+        'consumption guard', (tester) async {
+      final h = Harness(tester);
+      final gate = GateController(gate: _NoLockGate());
+      addTearDown(gate.dispose);
+
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final alice =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      final bob = await profiles.create(displayName: 'Bob', isMinor: false);
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.lastActiveProfile, alice.id);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<GateController>.value(
+          value: gate,
+          child: LunarLogApp.withCollaborators(
+              db: h.db, authService: h.auth, syncEngine: h.engine),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // First launch for Bob: consumed, switches to Bob.
+      gate.setPendingLaunchProfileId(bob.id);
+      await tester.pumpAndSettle();
+      expect(find.text('Bob'), findsOneWidget);
+
+      // The operator switches back to Alice by hand (not a notification)
+      // and moves off Today, exactly like the finding's repro.
+      final controller =
+          tester.element(find.byType(NavigationBar)).read<ProfileController>();
+      await controller.selectProfile(alice.id);
+      await tester.pumpAndSettle();
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.byType(MonthCalendar), findsOneWidget);
+
+      // A second notification for the *same* profile (Bob) that the first
+      // one already named: pre-fix, `_consuming` was left permanently set
+      // to Bob's id after the first consumption, so this was silently
+      // dropped and the app stayed on Alice/Calendar forever.
+      gate.setPendingLaunchProfileId(bob.id);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bob'), findsOneWidget,
+          reason: 'the second Bob notification must still be routed -- '
+              'LLA-008');
+      expect(find.byType(MonthCalendar), findsNothing,
+          reason: 'and it resets to Today like any other launch payload');
+      await h.dispose();
+    });
+  });
+
   group(
       'issue #313 review: the Activity Feed action re-watches the feed on '
       'an in-place profile switch', () {

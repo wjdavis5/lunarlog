@@ -30,14 +30,23 @@ class SupabaseNotificationPreferencesService
 
   @override
   Stream<CaregiverAlertPreferences> watchFor(String profileId) {
-    final isNew = !_controllers.containsKey(profileId);
+    // LLA-083: the controller is cached per profileId and outlives any one
+    // screen visit, so gating the fetch on "first time this controller was
+    // created" (the old `isNew` check) meant a screen that closed (its
+    // `StreamSubscription.cancel()` dropping the listener count to zero)
+    // and reopened later attached to the same broadcast controller with no
+    // replay and no new fetch -- `_loaded` never turned true again and the
+    // screen spun forever. Every call now fetches, matching
+    // `FakeNotificationPreferencesService.watchFor`'s existing "always
+    // fetch on watch" contract and the interface doc's "Emits the stored
+    // preferences ... Re-emits after a successful save": a watcher is
+    // entitled to a fresh read every time it starts watching, not only the
+    // very first time anyone did.
     final controller = _controllers.putIfAbsent(
       profileId,
       () => StreamController<CaregiverAlertPreferences>.broadcast(),
     );
-    if (isNew) {
-      unawaited(_loadInto(profileId, controller));
-    }
+    unawaited(_loadInto(profileId, controller));
     return controller.stream;
   }
 
@@ -48,10 +57,13 @@ class SupabaseNotificationPreferencesService
     try {
       final prefs = await _fetch(profileId);
       if (!controller.isClosed) controller.add(prefs);
-    } catch (_) {
-      // Best-effort initial load; a save() (or a future retry) can still
-      // populate the stream. The screen shows the all-off default until
-      // then rather than an error state for a read that never blocks R4.
+    } catch (error) {
+      // LLA-083: a swallowed failure left the screen with no data and no
+      // error -- an explicit retryable load state needs the stream to
+      // surface the failure, not hide it. `_fetch` throws only mapped
+      // `NotificationPreferencesFailure`s (or a plain unauthorized one it
+      // raises directly), so this never leaks a raw provider error.
+      if (!controller.isClosed) controller.addError(error);
     }
   }
 

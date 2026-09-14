@@ -6,7 +6,7 @@
 -- themselves, and the legacy `intensity IS NULL` = "no severity recorded"
 -- semantics.
 begin;
-select plan(62);
+select plan(63);
 
 -- Issue #125 added a coalescing window to the immediate alert path: one
 -- push per (recipient, profile, kind) per alert_coalesce_window() (30
@@ -103,6 +103,16 @@ update public.notification_preferences
    set alert_on_log = false, alert_on_cycle_start_only = true, alert_on_high_severity = true
  where user_id = tests.get_supabase_uid('dad_a') and profile_id = tests.ulid(401);
 
+-- LLA-076 (issue #630): cancel_outbox_on_preference_off() fires the
+-- instant alert_on_log transitions to false, immediately cancelling
+-- dad's already-queued unsent row above -- a queued notification is no
+-- more deliverable than a not-yet-queued one once the master switch is
+-- off. Every count below in this group is baselined from 0, not 1, from
+-- this point forward.
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 0::bigint,
+  'LLA-076: turning alert_on_log off immediately cancels dad''s already-queued unsent row'
+);
+
 select tests.authenticate_as('mom_a');
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
@@ -110,7 +120,7 @@ values
   (tests.ulid(411), tests.ulid(401), '2026-09-02', 'UTC', 'heavy', now(),
    tests.get_supabase_uid('mom_a'), tests.get_supabase_uid('mom_a'));
 
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 1::bigint,
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 0::bigint,
   'A guardian with alert_on_log false gets nothing even when the other flags are true');
 
 -- Restore dad to the baseline (alert_on_log only) and give sitter the same,
@@ -132,7 +142,7 @@ values
   (tests.ulid(412), tests.ulid(401), '2026-09-03', 'UTC', 'light', now(),
    tests.get_supabase_uid('dad_a'), tests.get_supabase_uid('dad_a'));
 
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 1::bigint,
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 0::bigint,
   'A guardian who is also the writer gets no row for their own write');
 
 -- Two eligible guardians on one profile produce exactly two rows, one each.
@@ -143,7 +153,7 @@ values
   (tests.ulid(413), tests.ulid(401), '2026-09-04', 'UTC', 'none', now(),
    tests.get_supabase_uid('mom_a'), tests.get_supabase_uid('mom_a'));
 
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 2::bigint,
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 1::bigint,
   'Two eligible guardians: dad gets his row');
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a')), 2::bigint,
   'Two eligible guardians: sitter gets her row');
@@ -162,13 +172,13 @@ values
 -- rather than merely stopping growth.
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a')), 0::bigint,
   'A revoked guardian produces no row');
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 3::bigint,
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 2::bigint,
   'A still-accepted guardian keeps receiving rows');
 
 -- A tombstoned update produces no row.
 update public.day_entries set deleted_at = now() where id = tests.ulid(414);
 
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 3::bigint,
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 2::bigint,
   'A tombstoned (deleted_at set) update produces no row');
 
 -- Updating an existing (non-bleed, non-boundary) entry produces a row for an
@@ -182,7 +192,7 @@ update public.notification_preferences
 select tests.authenticate_as('mom_a');
 update public.day_entries set note = 'updated note' where id = tests.ulid(410);
 
-select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 3::bigint,
+select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 2::bigint,
   'Updating a non-boundary entry produces no row for a cycle_start_only guardian');
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a')), 0::bigint,
   'A revoked guardian (sitter) still gets nothing on this later update');

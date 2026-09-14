@@ -160,13 +160,25 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     // them (Darwin); Android carries the same actions per-notification in
     // [rescheduleAll]. Generic words only — no health detail (KTD7).
     // (DarwinNotificationAction.plain is a factory, not const.)
+    // LLA-028 (issue #623): every action opts into `.foreground`. None of
+    // these buttons carries a background handler
+    // (`onDidReceiveBackgroundNotificationResponse` is never registered,
+    // deliberately -- a period-start/spotting write belongs on the
+    // gate-aware executor `reminder_action_executor.dart` reaches, which
+    // needs a running, unlocked app, not a background isolate), so without
+    // this option a tap on a background/terminated app's action silently
+    // did nothing on iOS: a plain action never launches the app.
+    const darwinForeground = {DarwinNotificationActionOption.foreground};
     final darwinActions = [
       DarwinNotificationAction.plain(
-          kReminderActionStarted, kReminderActionStartedLabel),
+          kReminderActionStarted, kReminderActionStartedLabel,
+          options: darwinForeground),
       DarwinNotificationAction.plain(
-          kReminderActionSpotting, kReminderActionSpottingLabel),
+          kReminderActionSpotting, kReminderActionSpottingLabel,
+          options: darwinForeground),
       DarwinNotificationAction.plain(
-          kReminderActionNotYet, kReminderActionNotYetLabel),
+          kReminderActionNotYet, kReminderActionNotYetLabel,
+          options: darwinForeground),
     ];
     final reminderCategory = DarwinNotificationCategory(
       kReminderCategoryId,
@@ -397,14 +409,27 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
             // visibility is a user OS setting — generic content is the only
             // app-controlled iOS control (KTD7).
             visibility: NotificationVisibility.secret,
+            // LLA-028 (issue #623): `showsUserInterface: true` on every
+            // action -- the default (`false`) selects Android's
+            // background-delivery path, which requires
+            // `onDidReceiveBackgroundNotificationResponse` (a top-level
+            // entry-point function running in a separate isolate, no
+            // Activity context) to be registered; it never is, since the
+            // gate-aware executor these actions must route through
+            // (`reminder_action_executor.dart`) needs a running, unlocked
+            // app. Without this flag every tap was silently dropped
+            // whenever the app was not already in the foreground.
             actions: hasActions
                 ? const [
                     AndroidNotificationAction(
-                        kReminderActionStarted, kReminderActionStartedLabel),
+                        kReminderActionStarted, kReminderActionStartedLabel,
+                        showsUserInterface: true),
                     AndroidNotificationAction(kReminderActionSpotting,
-                        kReminderActionSpottingLabel),
+                        kReminderActionSpottingLabel,
+                        showsUserInterface: true),
                     AndroidNotificationAction(kReminderActionNotYet,
-                        kReminderActionNotYetLabel),
+                        kReminderActionNotYetLabel,
+                        showsUserInterface: true),
                   ]
                 : null,
           ),

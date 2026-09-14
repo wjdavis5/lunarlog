@@ -55,6 +55,30 @@ class _FailingOnceService implements NotificationPreferencesService {
   }
 }
 
+/// LLA-083 (issue #624): the *initial* watch fails once, then subsequent
+/// watches (a retry, or a reopened screen) delegate normally -- lets a test
+/// assert both the error state and that retrying actually recovers.
+class _WatchFailingOnceService implements NotificationPreferencesService {
+  _WatchFailingOnceService(this._delegate);
+  final FakeNotificationPreferencesService _delegate;
+  bool _failed = false;
+
+  @override
+  Stream<CaregiverAlertPreferences> watchFor(String profileId) {
+    if (!_failed) {
+      _failed = true;
+      return Stream<CaregiverAlertPreferences>.error(
+        const NotificationPreferencesFailure.network(),
+      );
+    }
+    return _delegate.watchFor(profileId);
+  }
+
+  @override
+  Future<void> save(String profileId, CaregiverAlertPreferences prefs) =>
+      _delegate.save(profileId, prefs);
+}
+
 class _TimeZoneFailingService implements NotificationPreferencesService {
   _TimeZoneFailingService(this._delegate, {this.failCount = 1});
   final FakeNotificationPreferencesService _delegate;
@@ -473,5 +497,36 @@ void main() {
     expect(find.byKey(const ValueKey('timezone-inline-error')), findsNothing);
     expect(delegate.stored['profile-1']?.timeZone, isNull);
     expect(delegate.stored['profile-1']?.quietHours, isNotNull);
+  });
+
+  testWidgets(
+      'an initial load failure shows a retryable error instead of spinning '
+      'forever (LLA-083, issue #624)', (tester) async {
+    final delegate = FakeNotificationPreferencesService()
+      ..seed('profile-1', const CaregiverAlertPreferences(alertOnLog: true));
+    final service = _WatchFailingOnceService(delegate);
+
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('load-error')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byKey(const ValueKey('alert-on-log-toggle')), findsNothing);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('load-error')), findsNothing);
+    final alertOnLog = tester.widget<SwitchListTile>(
+      find.byKey(const ValueKey('alert-on-log-toggle')),
+    );
+    expect(alertOnLog.value, isTrue);
   });
 }
