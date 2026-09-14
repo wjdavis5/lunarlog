@@ -204,6 +204,9 @@ class ThrowingProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> delete(String id) => _inner.delete(id);
+
+  @override
+  Future<void> applyServerPurge(String id) => _inner.applyServerPurge(id);
 }
 
 void main() {
@@ -1086,5 +1089,8 @@ class _GatedProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> delete(String id) => _inner.delete(id);
+
+  @override
+  Future<void> applyServerPurge(String id) => _inner.applyServerPurge(id);
 }
 

@@ -61,6 +61,19 @@ abstract interface class ProfilesRepository {
   /// Tombstones the profile (soft delete; never row removal).
   Future<void> delete(String id);
 
+  /// Applies the LOCAL side effect of a server-side hard purge (Issue #472,
+  /// `delete_profile_data()`'s full-purge branch): tombstones the profile
+  /// and every dependent child row on this device, reusing exactly the
+  /// same wipe an ordinary sync pull applies for a `deleted_profiles` row
+  /// (Issue #522) or a guardian-revocation cascade (R5) — never a separate,
+  /// parallel local-cleanup path. Call this only after the corresponding
+  /// server RPC has already succeeded; it never itself talks to the
+  /// network, and it must never run on a failed or offline RPC call. Safe
+  /// to call more than once (idempotent, matching the reused wipe) — a
+  /// later delivery of the real `deleted_profiles` row re-applies the same
+  /// wipe harmlessly.
+  Future<void> applyServerPurge(String id);
+
   /// Writes (or clears) the profile's tracking-preferences document
   /// (Issue #259): [preferences] is the curated set the day sheet reads,
   /// or null to clear back to "never customized". Touches only that

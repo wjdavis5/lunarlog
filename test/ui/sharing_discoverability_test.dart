@@ -119,6 +119,9 @@ class _FakePredictionConnection151 implements PredictionConnectionService {
   Future<void> revokeConnection({required String connectionId}) async {}
 
   @override
+  Future<void> leaveConnection({required String connectionId}) async {}
+
+  @override
   Future<ActivePredictionConnection?> getActiveConnection(
           {required String profileId}) async =>
       null;

@@ -314,6 +314,14 @@ abstract interface class PredictionConnectionService {
   /// returns nothing.
   Future<void> revokeConnection({required String connectionId});
 
+  /// Ends the connection from the RECIPIENT's side (issue #462): only the
+  /// connection's own accepted recipient may call this successfully — the
+  /// sharer, a guardian, or an unrelated account is refused. Idempotent;
+  /// reaches the identical terminal state and projection cleanup as
+  /// [revokeConnection], so the sharer's device sees the connection end the
+  /// same way either side ending it looks.
+  Future<void> leaveConnection({required String connectionId});
+
   /// The sharer's live (pending or active) connection for [profileId], or
   /// null. Read on demand from the server — never synced locally.
   Future<ActivePredictionConnection?> getActiveConnection({

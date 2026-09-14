@@ -135,6 +135,26 @@ const String kRoutePredictionCalendarScreen = 'PredictionCalendarScreen';
 /// the kind=prediction counterpart of AcceptInviteSheet.
 const String kRouteAcceptPredictionConnectionSheet =
     'AcceptPredictionConnectionSheet';
+
+/// `lib/ui/sharing/prediction_connections_screen.dart` (issue #462) -- the
+/// recipient's own "Stop receiving" confirm dialog.
+const String kRouteStopReceivingPredictionsDialog =
+    'StopReceivingPredictionsDialog';
+
+/// `lib/ui/sharing/manage_guardians_screen.dart` (issue #472) -- the first
+/// step of the primary guardian's double-confirmation "Delete profile
+/// permanently" flow.
+const String kRouteDeleteProfileDialog = 'DeleteProfileDialog';
+
+/// `lib/ui/sharing/manage_guardians_screen.dart` (issue #472) -- the
+/// second, final step of the same flow (U2 Approach 2b: distinct from the
+/// first step, since each explains a different consequence).
+const String kRouteDeleteProfileFinalConfirmDialog =
+    'DeleteProfileFinalConfirmDialog';
+
+/// `lib/ui/settings/your_data_section.dart` (issue #472) -- "Purge imported
+/// data": picks a profile and an import source, then confirms.
+const String kRoutePurgeImportedDataDialog = 'PurgeImportedDataDialog';
 /// `lib/ui/settings/reminder_settings_screen.dart` (Issue #136) — the
 /// per-profile local reminder configuration, pushed from Settings.
 const String kRouteReminderSettingsScreen = 'ReminderSettingsScreen';
@@ -196,6 +216,10 @@ const Set<String> kSentryRouteNames = {
   kRoutePredictionConnectionsScreen,
   kRoutePredictionCalendarScreen,
   kRouteAcceptPredictionConnectionSheet,
+  kRouteStopReceivingPredictionsDialog,
+  kRouteDeleteProfileDialog,
+  kRouteDeleteProfileFinalConfirmDialog,
+  kRoutePurgeImportedDataDialog,
   kRouteReminderSettingsScreen,
   kRouteHelpLibraryScreen,
   kRouteHelpCardSheet,

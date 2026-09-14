@@ -124,6 +124,18 @@ class SupabasePredictionConnectionService
   }
 
   @override
+  Future<void> leaveConnection({required String connectionId}) async {
+    try {
+      await client.rpc<dynamic>(
+        'leave_prediction_connection',
+        params: {'p_connection_id': connectionId},
+      );
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  @override
   Future<ActivePredictionConnection?> getActiveConnection({
     required String profileId,
   }) async {

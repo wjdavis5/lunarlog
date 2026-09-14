@@ -14,6 +14,7 @@ import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../observability/route_names.dart';
+import '../components/destructive_button.dart';
 import '../components/inline_error.dart';
 import '../l10n/dates.dart' as dates;
 import '../routes.dart';
@@ -40,6 +41,11 @@ class PredictionConnectionsScreen extends StatefulWidget {
 class _PredictionConnectionsScreenState
     extends State<PredictionConnectionsScreen> {
   late Future<List<IncomingPredictionConnection>> _connectionsFuture;
+
+  /// Issue #462: per-row busy guard so a "Stop receiving" tap disables
+  /// itself while its own RPC is in flight, mirroring `ManageGuardiansScreen
+  /// `'s `_revokingUserIds` pattern.
+  final Set<String> _leavingConnectionIds = {};
 
   @override
   void initState() {
@@ -111,6 +117,67 @@ class _PredictionConnectionsScreenState
         ),
       ),
     );
+  }
+
+  /// Issue #462: the recipient's own "Stop receiving" action — a
+  /// confirm-then-call flow calling [PredictionConnectionService
+  /// .leaveConnection] rather than [PredictionConnectionService
+  /// .revokeConnection] (the sharer/primary-guardian path), reaching the
+  /// identical terminal state server-side.
+  Future<void> _stopReceiving(IncomingPredictionConnection connection) async {
+    if (_leavingConnectionIds.contains(connection.connectionId)) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      routeSettings:
+          const RouteSettings(name: kRouteStopReceivingPredictionsDialog),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Stop receiving these predictions?'),
+        content: const SingleChildScrollView(
+          child: Text(
+            "You will stop seeing this profile's shared cycle calendar. "
+            'The sharer can invite you again at any time.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          DestructiveButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Stop receiving'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _leavingConnectionIds.add(connection.connectionId));
+    try {
+      await widget.service.leaveConnection(
+        connectionId: connection.connectionId,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stopped receiving predictions')),
+        );
+        _load();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not stop receiving. Check connection.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(
+          () => _leavingConnectionIds.remove(connection.connectionId),
+        );
+      }
+    }
   }
 
   void _showRedeemFailure(
@@ -196,6 +263,8 @@ class _PredictionConnectionsScreenState
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final connection = connections[index];
+              final leaving =
+                  _leavingConnectionIds.contains(connection.connectionId);
               return ListTile(
                 key: ValueKey('prediction-connection-${connection.profileId}'),
                 leading: const Icon(Icons.calendar_month),
@@ -204,7 +273,32 @@ class _PredictionConnectionsScreenState
                   'Shared ${_formatDate(context, connection.acceptedAt)} • '
                   'phases only',
                 ),
-                trailing: const Icon(Icons.chevron_right),
+                // Issue #462: "Stop receiving" sits beside the disclosure
+                // chevron rather than replacing it — the row itself still
+                // navigates to the calendar.
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    leaving
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : IconButton(
+                            key: ValueKey(
+                              'stop-receiving-${connection.connectionId}',
+                            ),
+                            icon: const Icon(Icons.link_off),
+                            tooltip: 'Stop receiving',
+                            onPressed: () => _stopReceiving(connection),
+                          ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
                 onTap: () => Navigator.of(context).push(
                   buildNamedRoute<void>(
                     name: kRoutePredictionCalendarScreen,

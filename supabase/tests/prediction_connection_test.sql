@@ -12,11 +12,15 @@
 -- transaction; a guardian revocation kills the connection too; Realtime
 -- publication revert), and the recipient's total isolation from raw data
 -- (no profile_guardians row, no day_entries/profiles visibility, no
--- direct write on either new table, token_hash unreadable).
+-- direct write on either new table, token_hash unreadable), and (Issue
+-- #462, section 11) the recipient's own `leave_prediction_connection` path
+-- -- only the accepted recipient may call it, a non-party (sharer
+-- included) is refused, an unknown id raises not found, and it reaches the
+-- identical terminal state and projection GC as a sharer revoke.
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(136);
+select plan(147);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -1036,6 +1040,10 @@ select throws_ok(
   '42501', 'authentication required',
   'revoke requires a session');
 select throws_ok(
+  format($$select public.leave_prediction_connection('00000000-0000-0000-0000-000000000000'::uuid)$$),
+  '42501', 'authentication required',
+  'leave requires a session');
+select throws_ok(
   format($$select public.upsert_prediction_projection(%L, '{"generated_at":"2026-09-07"}'::jsonb)$$,
     tests.ulid(901)),
   '42501', 'authentication required',
@@ -1044,6 +1052,93 @@ select throws_ok(
   format($$select public.get_prediction_projection(%L)$$, tests.ulid(901)),
   '42501', 'authentication required',
   'read requires a session');
+
+-- ---------------------------------------------------------------------------
+-- 11. Issue #462: leave_prediction_connection -- the recipient's own end.
+--     A fresh profile (P903, dad's) isolates this section from P1/P2/P5/
+--     P6's own state; 'nanny' is a fixture user already created above, free
+--     by this point since section 8's revoked-connection scenario for her
+--     is long since settled.
+-- ---------------------------------------------------------------------------
+select tests.clear_authentication();
+select tests.authenticate_as('dad');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(903), 'Leave Fixture', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_prediction_connection(
+  tests.ulid(903), pg_temp.token(601), 'Nanny', 72);
+
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(601));
+
+insert into r select 'conn_601_id',
+  jsonb_build_object('id',
+    (select id::text from public.prediction_connections
+      where profile_id = tests.ulid(903)
+        and recipient_user_id = tests.get_supabase_uid('nanny')));
+
+-- A real published snapshot, so the GC assertion below actually proves
+-- something got deleted rather than observing an already-empty table.
+select tests.authenticate_as('dad');
+select public.upsert_prediction_projection(
+  tests.ulid(903), '{"generated_at":"2026-09-07","period_days":["2026-09-07"]}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(903)),
+  1::bigint, 'fixture: a projection is published before leave');
+
+select tests.authenticate_as('stranger');
+select throws_ok(
+  format($$select public.leave_prediction_connection(%L::uuid)$$,
+    (select v ->> 'id' from r where name = 'conn_601_id')),
+  '42501', 'only the connection''s recipient can leave it',
+  'a non-party cannot leave the connection');
+
+select tests.authenticate_as('dad');
+select throws_ok(
+  format($$select public.leave_prediction_connection(%L::uuid)$$,
+    (select v ->> 'id' from r where name = 'conn_601_id')),
+  '42501', 'only the connection''s recipient can leave it',
+  'the sharer cannot end the connection via leave_prediction_connection');
+
+select tests.authenticate_as('nanny');
+select throws_ok(
+  format($$select public.leave_prediction_connection('00000000-0000-0000-0000-000000000000'::uuid)$$),
+  'P0002', 'prediction connection not found',
+  'an unknown connection id raises not found');
+
+-- From here on, every leave_prediction_connection call reuses the id
+-- captured in r BEFORE revocation, rather than re-querying
+-- prediction_connections by (profile_id, recipient_user_id): the SELECT
+-- policy's recipient branch requires `revoked_at is null`, so once the
+-- connection is revoked, nanny's own RLS-scoped view of it disappears --
+-- exactly like the row vanishing from her Shared-with-me list client-side
+-- (`listIncomingConnections`'s own `recipient_user_id = uid` filter
+-- reflects the identical policy). Re-querying that way past this point
+-- would silently resolve to null and mask what's actually being proven.
+select is(
+  public.leave_prediction_connection(
+    (select v ->> 'id' from r where name = 'conn_601_id')::uuid),
+  true, 'the recipient can leave the connection');
+select is(
+  pg_temp.conn_revoked(pg_temp.token(601)),
+  true, 'leaving stamps revoked_at');
+select is(
+  pg_temp.proj_count_for(tests.ulid(903)),
+  0::bigint, 'leaving deleted the profile''s published snapshot (same GC trigger as revoke)');
+select is(
+  public.get_prediction_projection(tests.ulid(903)),
+  null, 'the ex-recipient''s own next fetch already returns null');
+
+select tests.authenticate_as('dad');
+select is(
+  public.get_prediction_projection(tests.ulid(903)),
+  null, 'the sharer sees no live projection either -- nothing survives the leave');
+
+select tests.authenticate_as('nanny');
+select is(
+  public.leave_prediction_connection(
+    (select v ->> 'id' from r where name = 'conn_601_id')::uuid),
+  true, 'leaving is idempotent on an already-revoked connection');
 
 rollback;
 

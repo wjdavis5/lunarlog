@@ -210,6 +210,38 @@ void main() {
     });
   });
 
+  group('leaveConnection', () {
+    test('calls leave_prediction_connection (issue #462)', () async {
+      final client = makeClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(req.url.path, '/rest/v1/rpc/leave_prediction_connection');
+        expect(body['p_connection_id'], 'conn-2');
+        return http.Response('true', 200);
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await service.leaveConnection(connectionId: 'conn-2');
+    });
+
+    test('a non-recipient refusal maps to unauthorized', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message': "only the connection's recipient can leave it",
+            'code': '42501',
+          }),
+          400,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await expectLater(
+        service.leaveConnection(connectionId: 'conn-2'),
+        throwsA(const PredictionConnectionFailure.unauthorized()),
+      );
+    });
+  });
+
   group('fetchProjection', () {
     test('parses the derived-only payload and never anything else',
         () async {

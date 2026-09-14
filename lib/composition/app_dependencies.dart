@@ -41,6 +41,7 @@ import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
 import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/notifications/supabase_reminder_window_remote.dart';
+import 'package:lunarlog/data/profiles/supabase_profile_erasure_service.dart';
 import 'package:lunarlog/data/repositories/drift_account_export_snapshot_repository.dart';
 import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
@@ -77,6 +78,7 @@ import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
@@ -136,6 +138,7 @@ class AppDependencies {
     this.accountDeletionService,
     this.ownershipTransferService,
     this.predictionConnectionService,
+    this.profileErasureService,
     this.notificationPreferencesService,
     this.accountExportRemoteSource,
     this.reminderWindowUpsert,
@@ -184,6 +187,12 @@ class AppDependencies {
   final AccountDeletionService? accountDeletionService;
   final OwnershipTransferService? ownershipTransferService;
   final PredictionConnectionService? predictionConnectionService;
+
+  /// Issue #472: the `delete_profile_data` RPC seam — "Delete profile
+  /// permanently" and "Purge imported data". Null on the unconfigured-build
+  /// posture (R26), same gate as [predictionConnectionService].
+  final ProfileErasureService? profileErasureService;
+
   final NotificationPreferencesService? notificationPreferencesService;
   final AccountExportRemoteSource? accountExportRemoteSource;
 
@@ -215,6 +224,7 @@ AppDependencies buildAppDependencies({
   AccountDeletionService? accountDeletionService,
   OwnershipTransferService? ownershipTransferService,
   PredictionConnectionService? predictionConnectionService,
+  ProfileErasureService? profileErasureService,
   NotificationPreferencesService? notificationPreferencesService,
   AccountExportRemoteSource? accountExportRemoteSource,
   ReminderWindowRemote? reminderWindowUpsert,
@@ -375,6 +385,15 @@ AppDependencies buildAppDependencies({
       predictionConnectionService,
       cloudEnabled,
       () => SupabasePredictionConnectionService(client: client!),
+    ),
+    profileErasureService: _resolve(
+      profileErasureService,
+      cloudEnabled,
+      () => SupabaseProfileErasureService(
+        client: client!,
+        profiles: profiles,
+        syncEngine: syncEngine,
+      ),
     ),
     notificationPreferencesService: _resolve(
       notificationPreferencesService,

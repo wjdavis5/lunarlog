@@ -54,6 +54,7 @@ import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
 import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
+import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
@@ -123,6 +124,7 @@ class LunarLogApp extends StatefulWidget {
     AccountDeletionService? accountDeletionService,
     OwnershipTransferService? ownershipTransferService,
     PredictionConnectionService? predictionConnectionService,
+    ProfileErasureService? profileErasureService,
     NotificationPreferencesService? notificationPreferencesService,
     AccountExportRemoteSource? accountExportRemoteSource,
     ReminderWindowRemote? reminderWindowUpsert,
@@ -149,6 +151,7 @@ class LunarLogApp extends StatefulWidget {
           accountDeletionService: accountDeletionService,
           ownershipTransferService: ownershipTransferService,
           predictionConnectionService: predictionConnectionService,
+          profileErasureService: profileErasureService,
           notificationPreferencesService: notificationPreferencesService,
           accountExportRemoteSource: accountExportRemoteSource,
           reminderWindowUpsert: reminderWindowUpsert,
@@ -997,6 +1000,9 @@ class _LunarLogAppState extends State<LunarLogApp>
         if (_deps.predictionConnectionService != null)
           Provider<PredictionConnectionService>.value(
               value: _deps.predictionConnectionService!),
+        if (_deps.profileErasureService != null)
+          Provider<ProfileErasureService>.value(
+              value: _deps.profileErasureService!),
         if (_predictionProjectionPublisher != null)
           Provider<PredictionProjectionPublisher>.value(
               value: _predictionProjectionPublisher!),
