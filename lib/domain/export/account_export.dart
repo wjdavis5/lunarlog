@@ -37,6 +37,7 @@ import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
 import '../models/observation.dart';
 import '../models/profile.dart';
+import '../logging/tracking_preferences.dart';
 import '../models/visit_prep_item.dart';
 import '../repositories/profile_modes_repository.dart' show ProfileLifecycleMode;
 import 'account_export_remote_source.dart';
@@ -83,8 +84,19 @@ import 'account_export_remote_source.dart';
 /// silently transfer onto a different device or account. A reader of an
 /// old (v8) export treats every new key's absence the same way the v3/v6
 /// precedent already established: "not yet collected," not "this profile
-/// has none of this."
-const int kAccountExportSchemaVersion = 9;
+/// has none of this." v10 (Issue #648, mirroring #255's same-day
+/// precedent for a synced profile preference column) adds
+/// `profiles[].trackingPreferences` (Issue #259's per-profile "which
+/// tracking categories the day sheet surfaces" document) — omitted from
+/// v9 on the mistaken premise that it belonged with the R9
+/// device-credential exclusions above; it is ordinary synced profile
+/// metadata like `bbtUnit`/`weightUnit`, not a device-specific consent.
+/// `null` means never customized (the [TrackingPreferences] lazy-default
+/// contract — see its own doc comment), the same "absent means not yet
+/// collected/customized" reading the v3/v6/v8 precedents already
+/// established. A reader of an old (v9) export treats the key's absence
+/// identically.
+const int kAccountExportSchemaVersion = 10;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -182,6 +194,12 @@ Map<String, Object?> _exportProfile(
     // `_exportProfileMode`'s doc comment covers the deliberate
     // health_sync_consent exclusion).
     'profileMode': _exportProfileMode(profileMode),
+    // Issue #648 (kAccountExportSchemaVersion v10): the #259 per-profile
+    // tracking-preferences document — decoded, matching `observations[].raw`'s
+    // treatment (the wire/storage form is JSON text; export wants the
+    // decoded object, not a doubly-encoded string). `null` means never
+    // customized (see this file's v10 doc comment above).
+    'trackingPreferences': _exportTrackingPreferences(profile.trackingPreferences),
     'cycleOverrides': [
       for (final override in sortedCycleOverrides) _exportCycleOverride(override),
     ],
@@ -220,6 +238,25 @@ Map<String, Object?>? _exportProfileMode(ProfileLifecycleMode? mode) {
     'birthControlMethod': mode.birthControlMethod,
     'birthControlStartedOn': mode.birthControlStartedOn,
     'birthControlStoppedOn': mode.birthControlStoppedOn,
+  };
+}
+
+/// `null` when the profile's tracking-preferences document was never
+/// customized (Issue #648) — the same lazy-default contract
+/// [TrackingPreferences] itself documents. Keeps the inner shape
+/// (`{category: {enabled, sort_order}}`, `sort_order` stays snake_case)
+/// identical to the sync wire's own decoded form — `account_import.dart`'s
+/// reader reconstructs a [TrackingPreferences] straight from this object
+/// via [TrackingPreferences.fromJsonText] (re-encoded), the same tolerant
+/// parse the sync engine already gives a malformed entry.
+Map<String, Object?>? _exportTrackingPreferences(TrackingPreferences? prefs) {
+  if (prefs == null) return null;
+  return {
+    for (final entry in prefs.entries.entries)
+      entry.key: {
+        'enabled': entry.value.enabled,
+        'sort_order': entry.value.sortOrder,
+      },
   };
 }
 

@@ -139,11 +139,13 @@ const String kSystemLunarlogLocalFlow =
 /// Where the local codings this file (as opposed to
 /// clinical_terminology.dart's tag codings) introduces are documented:
 /// flow-level codings (on [kSystemLunarlogLocalFlow]), the generic
-/// per-`Observation`-row fallback coding, and the self-reported
-/// `Provenance.activity` coding (both still on [kSystemLunarlogLocal] —
-/// #157 review fix only split flow levels out into their own system,
-/// since only flow levels are a genuinely distinct concept space from
-/// tags; "self-reported" is a marker, not a competing taxonomy, and the
+/// per-`Observation`-row fallback coding, the self-reported
+/// `Provenance.activity` coding, and the `intensity` component coding
+/// (Issue #612, LLA-088 — see [_intensityComponent]) — the latter three
+/// still on [kSystemLunarlogLocal] (#157 review fix only split flow
+/// levels out into their own system, since only flow levels are a
+/// genuinely distinct concept space from tags; "self-reported" and
+/// "intensity" are both markers, not competing taxonomies, and the
 /// generic observation-row fallback already keys off `category:code`
 /// rather than colliding with a real tag code).
 const String kFhirExportLocalCodeDocPath =
@@ -486,19 +488,71 @@ Map<String, Object?> _symptomObservation(
       'code': {'coding': _symptomCodings(observation)},
       'subject': {'reference': patientRef},
       'effectiveDateTime': observation.localDate.iso,
-      // #157 review fix: `intensity` -> `valueInteger`, `valueNum`+`unit`
-      // -> `valueQuantity`. [Observation.valueText] is never emitted (see
-      // this file's "Exclusion policy" doc note) — a free-text escape
-      // hatch is exactly the kind of field this export excludes.
-      if (observation.intensity != null) 'valueInteger': observation.intensity,
-      if (observation.valueNum != null)
-        'valueQuantity': _valueQuantity(observation.valueNum!, observation.unit),
+      // #157 review fix, LLA-088 (Issue #612): `intensity` -> `valueInteger`,
+      // `valueNum`+`unit` -> `valueQuantity` — but FHIR R4's `value[x]` is
+      // 0..1 (hl7.org/fhir/R4/observation.html: "Actual result", cardinality
+      // 0..1), so a row carrying BOTH (a coded severity alongside a numeric
+      // measurement on the same observation row) can never emit both as
+      // top-level `value[x]` siblings without producing an invalid
+      // Observation. See [_symptomObservationValue]'s doc comment for the
+      // primary-value-plus-component resolution.
+      ..._symptomObservationValue(observation),
       'performer': [
         {'reference': patientRef},
       ],
       'note': [
         {'text': kSelfReportedNoteText},
       ],
+    };
+
+/// Resolves [observation]'s `value[x]` (at most one key, R4's 0..1
+/// cardinality) plus an optional `component` array (Issue #612, LLA-088).
+///
+/// - Neither [Observation.intensity] nor [Observation.valueNum]: no keys at
+///   all (unchanged from before this fix).
+/// - Exactly one of the two: that one becomes the top-level `value[x]`,
+///   exactly as before this fix — the common case (a coded-severity symptom
+///   row, or a numeric measurement row like BBT/weight) never gains a
+///   `component` array it didn't have before.
+/// - Both present (an edge case the domain model's generic row shape
+///   permits, even though no production write path logs both today): the
+///   numeric measurement is the more clinically precise fact and becomes
+///   the top-level `valueQuantity`; the coded severity is never dropped —
+///   it moves into a single-entry `component`, FHIR's own mechanism for a
+///   secondary value alongside a primary one (e.g. a blood-pressure
+///   Observation's systolic/diastolic components), with its own `code`
+///   ([kSystemLunarlogLocalIntensity]) and `valueInteger`.
+Map<String, Object?> _symptomObservationValue(Observation observation) {
+  final intensity = observation.intensity;
+  final valueNum = observation.valueNum;
+  if (valueNum == null) {
+    return intensity == null ? const {} : {'valueInteger': intensity};
+  }
+  final valueQuantity = {'valueQuantity': _valueQuantity(valueNum, observation.unit)};
+  if (intensity == null) return valueQuantity;
+  return {
+    ...valueQuantity,
+    'component': [_intensityComponent(intensity)],
+  };
+}
+
+/// A local coding for the severity/intensity axis (Issue #612, LLA-088) —
+/// no verified LOINC/SNOMED code for a bare "intensity" concept is carried
+/// in `clinical_terminology.dart`'s table, so this follows that file's own
+/// documented fallback: an explicit [kSystemLunarlogLocal] coding rather
+/// than a guessed clinical code (this file's "Coding discipline" doc note).
+Map<String, Object?> _intensityComponent(int intensity) => {
+      'code': {
+        'coding': [
+          _coding(const ClinicalCode(
+            system: kSystemLunarlogLocal,
+            code: 'intensity',
+            display: 'Symptom intensity',
+            provenanceUrl: kFhirExportLocalCodeDocPath,
+          )),
+        ],
+      },
+      'valueInteger': intensity,
     };
 
 /// UCUM unit codes for the closed `Observation.unit` set

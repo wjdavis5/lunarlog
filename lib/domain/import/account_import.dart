@@ -52,6 +52,7 @@ import 'package:meta/meta.dart' show visibleForTesting;
 
 import '../export/account_export.dart' show kAccountExportSchemaVersion;
 import '../limits.dart';
+import '../logging/tracking_preferences.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
 import '../models/flow_level.dart';
@@ -69,9 +70,49 @@ import '../util/timezone.dart' show isValidIanaTimeZone;
 /// Byte cap on a picked import file, checked before any JSON decoding
 /// (Issue #140 review): a hostile or corrupted file with an enormous byte
 /// count would otherwise be handed straight to `jsonDecode`, which has no
-/// size limit of its own. 32 MiB is generous for a real device's export
-/// (JSON text, not media) while still bounding worst-case memory use.
-const int kMaxImportFileBytes = 32 * 1024 * 1024;
+/// size limit of its own.
+///
+/// **256 MiB (Issue #626, LLA-095 — widened from the original 32 MiB).**
+/// The old 32 MiB figure was picked as "generous for a real device's
+/// export" without actually computing a worst-case size, and a genuine,
+/// bound-respecting household backup can exceed it: five profiles with ten
+/// years of daily history (3650 entries each) at [kMaxNoteLength]/
+/// [kMaxTagCount]/[kMaxTagLength]'s own maximums serializes to roughly
+/// 80 MiB for `dayEntries` alone (`test/domain/export/account_export_test
+/// .dart`'s "kMaxImportFileBytes comfortably exceeds a legitimate
+/// worst-case export" pins the actual measured figure against this
+/// constant, so a future field addition that grows the per-entry JSON
+/// shape re-proves the headroom rather than silently eroding it) — before
+/// `observations`/`cycleOverrides`/profile metadata are even counted. A
+/// backup that legitimately respects every one of this app's own row
+/// bounds must never become unrestorable on the very same app (LLA-095's
+/// core complaint) — see this file's own doc comment's "an entry a
+/// genuine export could never have produced" standard, which an
+/// artificially tight ceiling would violate for a real household's real
+/// data. 256 MiB leaves roughly 3x headroom over that ~80 MiB entries-only
+/// figure for the remaining sections while staying a firm, documented,
+/// finite bound: [readCappedBytes]
+/// (`lib/domain/import/import_file_cap.dart`, Issue #626 LLA-089) is what
+/// actually keeps memory use bounded during the read itself now, streamed
+/// and checked chunk-by-chunk rather than a single `readAsBytes()`
+/// allocation — this constant is the ceiling that reads stream up to and
+/// then stop at, not the sole guard against an oversized file the way it
+/// was before LLA-089.
+const int kMaxImportFileBytes = 256 * 1024 * 1024;
+
+/// The exact sentence shown for a file over [kMaxImportFileBytes] —
+/// factored out (Issue #626, LLA-089) so
+/// `lib/domain/import/import_file_cap.dart`'s `ImportFileTooLargeException`
+/// (thrown by the platform picker's own preflight/streaming cap, before a
+/// byte of an oversized file is ever buffered) shows the operator
+/// identical copy to [parseAccountImport]'s own post-hoc `bytes.length`
+/// check below — a defense-in-depth backstop that stays in place for any
+/// caller handing it bytes some other way (every existing unit test
+/// included).
+String importFileTooLargeMessage() {
+  final maxMib = kMaxImportFileBytes ~/ (1024 * 1024);
+  return 'This file is larger than lunarlog can import ($maxMib MiB max).';
+}
 
 /// Accepted `schemaVersion` range (Issue #140): every version
 /// `lib/domain/export/account_export.dart` has ever shipped, up to and
@@ -264,6 +305,7 @@ class ImportedProfile {
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
     this.profileMode,
+    this.trackingPreferences,
     this.dayEntries = const [],
     this.observations = const [],
     this.cycleOverrides = const [],
@@ -324,6 +366,16 @@ class ImportedProfile {
   /// file carries none (an older export, or a profile that never had a
   /// `profile_modes` row). Same create-only treatment as [mode] above.
   final ProfileLifecycleMode? profileMode;
+
+  /// Issue #648 (kAccountExportSchemaVersion v10): the #259 per-profile
+  /// tracking-preferences document, already reconstructed from the file's
+  /// decoded object via [TrackingPreferences.fromJsonText] (the same
+  /// tolerant parse the sync engine gives a malformed entry — see that
+  /// class's own doc comment). Null when the file carries no key (an older
+  /// export) or an explicitly null value (never customized). Only
+  /// consulted for a *created* profile, exactly like [profileMode] above —
+  /// a *matched* profile keeps its own stored document untouched.
+  final TrackingPreferences? trackingPreferences;
 
   final List<ImportedDayEntry> dayEntries;
   final List<ImportedObservation> observations;
@@ -411,10 +463,8 @@ class _ImportFormatException implements Exception {
 /// file.
 AccountImportParseResult parseAccountImport(List<int> bytes) {
   if (bytes.length > kMaxImportFileBytes) {
-    final maxMib = kMaxImportFileBytes ~/ (1024 * 1024);
     return AccountImportParseFailed(
-        AccountImportError('This file is larger than lunarlog can import '
-            '($maxMib MiB max).'));
+        AccountImportError(importFileTooLargeMessage()));
   }
   try {
     final decoded = jsonDecode(utf8.decode(bytes));
@@ -548,6 +598,8 @@ ImportedProfile _parseProfile(Object? raw) {
     typicalPeriodLengthDays: _parseBoundedInt(raw['typicalPeriodLengthDays'],
         min: 1, max: 60, context: '$context typicalPeriodLengthDays'),
     profileMode: _parseProfileMode(raw['profileMode'], context: context),
+    trackingPreferences:
+        _parseTrackingPreferences(raw['trackingPreferences'], context: context),
     dayEntries: dayEntries,
     observations: observations,
     cycleOverrides: cycleOverrides,
@@ -693,6 +745,28 @@ ProfileLifecycleMode? _parseProfileMode(Object? raw, {required String context}) 
             context: '$modeContext birthControlStoppedOn')
         ?.iso,
   );
+}
+
+/// Validates `trackingPreferences` (Issue #648, kAccountExportSchemaVersion
+/// v10): null (absent key — an older export, or a profile that never
+/// customized it) passes through unchanged. A present value must be a JSON
+/// object — anything else (a string, a number, an array) is not a shape a
+/// genuine export could ever produce and rejects the whole document, the
+/// same closed-shape treatment [_parseProfileMode] gives its own object.
+/// The object's own entries are deliberately parsed by
+/// [TrackingPreferences.fromJsonText] rather than by bespoke validation
+/// here: that class already documents itself as UI curation, never health
+/// content, and tolerantly drops a malformed entry (resolving to that
+/// category's default) instead of failing — the same degrade the sync
+/// engine already gives a corrupt document off the wire, so an import file
+/// gets no stricter a contract than a sync pull already does for the exact
+/// same field.
+TrackingPreferences? _parseTrackingPreferences(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  if (raw is! Map<String, Object?>) {
+    throw _ImportFormatException('$context has an invalid trackingPreferences.');
+  }
+  return TrackingPreferences.fromJsonText(jsonEncode(raw));
 }
 
 /// A `profiles[].cycleOverrides[]` element (Issue #140 review, LLA-084) —
@@ -1289,6 +1363,7 @@ class ProfilePlan {
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
     this.profileMode,
+    this.trackingPreferences,
     this.entries = const [],
     this.observations = const [],
     this.cycleOverrides = const [],
@@ -1320,6 +1395,11 @@ class ProfilePlan {
   final int? typicalCycleLengthDays;
   final int? typicalPeriodLengthDays;
   final ProfileLifecycleMode? profileMode;
+
+  /// Issue #648: same create-only treatment as [profileMode] above — a
+  /// *matched* profile keeps its own stored tracking-preferences document
+  /// untouched.
+  final TrackingPreferences? trackingPreferences;
 
   final List<DayEntryPlan> entries;
   final List<ObservationPlan> observations;
@@ -1702,6 +1782,7 @@ ProfilePlan _planProfile(
       typicalCycleLengthDays: imported.typicalCycleLengthDays,
       typicalPeriodLengthDays: imported.typicalPeriodLengthDays,
       profileMode: imported.profileMode,
+      trackingPreferences: imported.trackingPreferences,
       entries: _planEntries(imported.dayEntries, const []),
       observations: _planObservations(imported.observations, const []),
       cycleOverrides: _planCycleOverrides(imported.cycleOverrides, const []),

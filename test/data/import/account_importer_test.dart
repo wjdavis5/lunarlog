@@ -490,6 +490,56 @@ void main() {
               'profile');
     });
 
+    test('a created profile writes its trackingPreferences document '
+        '(Issue #648)', () async {
+      final document = _parse(_document(profiles: [
+        {
+          ..._rawProfile(_fileP1),
+          'trackingPreferences': {
+            'mood': {'enabled': false, 'sort_order': 2},
+          },
+        },
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      await coordinator().apply(plan);
+
+      final created = (await profiles.list()).single;
+      expect(created.trackingPreferences, isNotNull);
+      expect(created.trackingPreferences!.entries['mood']?.enabled, isFalse);
+      expect(created.trackingPreferences!.entries['mood']?.sortOrder, 2);
+    });
+
+    test('a MATCHED profile keeps its own stored trackingPreferences — the '
+        "file's document is never applied over it (Issue #648, same "
+        'create-only treatment as profileMode)', () async {
+      final existingProfile = await profiles.create(displayName: 'Riley', isMinor: true);
+      await storage.upsertProfile(
+        id: existingProfile.id,
+        displayName: existingProfile.displayName,
+        isMinor: existingProfile.isMinor,
+        trackingPreferences: '{"mood":{"enabled":true,"sort_order":0}}',
+      );
+
+      final document = _parse(_document(profiles: [
+        {
+          ..._rawProfile(existingProfile.id),
+          'trackingPreferences': {
+            'mood': {'enabled': false, 'sort_order': 9},
+          },
+        },
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      await coordinator().apply(plan);
+
+      final matched = (await profiles.list()).single;
+      expect(matched.trackingPreferences!.entries['mood']?.enabled, isTrue,
+          reason:
+              "the file's trackingPreferences is never applied to a matched "
+              'profile');
+    });
+
     test('cycleOverrides are additive for both a created and a matched '
         'profile, and a colliding file id under the SAME profile is never '
         'reused (mirrors the LLA-086 observation-id-conflict fix)',

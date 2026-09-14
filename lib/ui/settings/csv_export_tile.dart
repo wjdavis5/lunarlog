@@ -206,6 +206,12 @@ class _CsvExportTileState extends State<CsvExportTile> {
       final dailyLogCsv = buildDailyLogCsv(
         entries: dayEntries,
         observations: observations,
+        // Issue #612, LLA-093: normalize bbt/weight to the profile's own
+        // display-unit preference, the same numbers the app's own UI would
+        // show for this profile (once that reading path itself exists —
+        // see `measurement_unit.dart`'s doc comment).
+        bbtUnit: profile.bbtUnit,
+        weightUnit: profile.weightUnit,
       );
 
       final collaborator = widget.exportCsv;

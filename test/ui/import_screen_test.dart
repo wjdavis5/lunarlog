@@ -17,6 +17,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/import_file_cap.dart' show ImportFileTooLargeException;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -240,6 +241,29 @@ void main() {
           matching: find.byType(Text),
         )).data,
         kImportApplyFailureCopy,
+      );
+    });
+
+    testWidgets(
+        'an oversized-file rejection from the picker (Issue #626, LLA-089) '
+        'surfaces the same friendly copy parseAccountImport itself would '
+        "have shown — not the generic picker-failure copy above, and not an "
+        'unhandled exception', (tester) async {
+      await _pump(
+        tester,
+        pickFile: _FakeReader(
+            () async => throw const ImportFileTooLargeException()),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+
+      expect(key('import-pick-error'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.descendant(
+          of: key('import-pick-error'),
+          matching: find.byType(Text),
+        )).data,
+        const ImportFileTooLargeException().message,
       );
     });
   });

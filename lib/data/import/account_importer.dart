@@ -109,6 +109,11 @@ class DriftAccountImporter implements AccountImporter {
       lastPeriodStart: plan.lastPeriodStart?.iso,
       typicalCycleLengthDays: plan.typicalCycleLengthDays,
       typicalPeriodLengthDays: plan.typicalPeriodLengthDays,
+      // Issue #648: same create-only, absent-means-null treatment as
+      // birthYear/relationship/etc above — a matched profile keeps its own
+      // stored document untouched (`_resolveProfileId` never reaches here
+      // for a match).
+      trackingPreferences: plan.trackingPreferences?.toJsonText(),
     );
     await _applyProfileMode(created.id, plan.profileMode);
     return created.id;
