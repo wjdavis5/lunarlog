@@ -1,6 +1,7 @@
 import Flutter
 import HealthKit
 import UIKit
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -8,6 +9,19 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Issue #623 (LLA-029): explicitly install this delegate before the
+    // base implementation (and GeneratedPluginRegistrant, in
+    // didInitializeImplicitFlutterEngine below) run. FlutterAppDelegate's
+    // superclass conforms to UNUserNotificationCenterDelegate --
+    // forwarding foreground presentation and notification-response
+    // callbacks to registered plugins, flutter_local_notifications
+    // included -- but never assigns itself as the *current* delegate; that
+    // single slot is otherwise left for this app's Firebase Messaging
+    // plugin to claim first for its own remote-notification handling,
+    // which does not forward local-notification callbacks on to Flutter.
+    // Without this, no local reminder tap (Issue #136's action buttons
+    // included) and no foreground presentation ever reaches the Dart side.
+    UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

@@ -132,6 +132,50 @@ void main() {
 
       expect(prefs, CaregiverAlertPreferences.off);
     });
+
+    test(
+        'a second watch after the first unsubscribed re-fetches instead of '
+        'hanging forever (LLA-083)', () async {
+      var getCount = 0;
+      final client = makeClient((req) async {
+        if (req.method == 'GET') getCount++;
+        return http.Response('null', 200);
+      });
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      // First visit: subscribe, receive the value, then unsubscribe --
+      // exactly what a screen's dispose() does. Before the fix, the
+      // per-profile broadcast controller this indirectly creates was
+      // reused with no re-fetch on the next watchFor call.
+      final first = await service.watchFor(_profileId).first;
+      expect(first, CaregiverAlertPreferences.off);
+      expect(getCount, 1);
+
+      // Second visit (e.g. the screen reopened): must fetch again, not
+      // silently reuse the first controller's one-time emission.
+      final second = await service.watchFor(_profileId).first;
+      expect(second, CaregiverAlertPreferences.off);
+      expect(getCount, 2,
+          reason: 'the pre-fix bug: a reopened screen never re-fetched, so '
+              'a second subscriber received nothing and spun forever');
+    });
+
+    test(
+        'an initial load failure is surfaced as a stream error rather than '
+        'silently swallowed (LLA-083)', () async {
+      final client = makeClient((req) async => http.Response(
+            jsonEncode({'message': 'permission denied for table', 'code': '42501'}),
+            403,
+          ));
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      await expectLater(
+        service.watchFor(_profileId).first,
+        throwsA(isA<NotificationPreferencesUnauthorizedFailure>()),
+      );
+    });
   });
 
   group('save', () {

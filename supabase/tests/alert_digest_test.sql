@@ -12,7 +12,7 @@
 -- so every live trigger insert shares one frozen now(), which makes
 -- "inside the window" deterministic without waiting out a real 30 minutes.
 begin;
-select plan(43);
+select plan(45);
 
 create function pg_temp.count_rows(p_profile text, p_recipient uuid, p_kind text, p_state text)
 returns bigint
@@ -226,14 +226,31 @@ update public.notification_preferences
    set log_cadence = 'off'
  where user_id = tests.get_supabase_uid('dad_2') and profile_id = tests.ulid(602);
 
+-- LLA-076 (issue #630): cancel_outbox_on_preference_off() fires the
+-- instant log_cadence transitions to off, immediately cancelling dad's 3
+-- already-held 'logged' rows -- a held row is exactly as unsent as a
+-- not-yet-queued one, so it is exactly as cancellable. This is the fix's
+-- whole point, not a regression of this test's original property.
+select is(
+  pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), 'logged', 'held'),
+  0::bigint,
+  'LLA-076: turning log_cadence off immediately cancels the 3 already-held logged rows'
+);
+select is(
+  pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), 'cycle_start', 'immediate'),
+  1::bigint,
+  'LLA-076: the unrelated cycle_start row survives the log_cadence-off cancellation'
+);
+
 select tests.authenticate_as('mom_2');
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6024), tests.ulid(602), '2026-09-11', 'UTC', 'none', now());
 
 select is(
   pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), null, 'any'),
-  4::bigint,
-  'off cadence suppresses routine events for that kind (dad still has only his 3 held + 1 immediate cycle_start)'
+  1::bigint,
+  'off cadence suppresses routine events for that kind: after the LLA-076 cancellation above, dad has only '
+  || 'his 1 immediate cycle_start row left, and the post-off event enqueues no new logged row either'
 );
 
 -- ---------------------------------------------------------------------------

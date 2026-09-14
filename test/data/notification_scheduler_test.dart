@@ -10,6 +10,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -545,6 +546,87 @@ void main() {
       final availability = await scheduler.requestPermission();
 
       expect(availability, NotificationAvailability.denied);
+    });
+  });
+
+  group('Reminder action delivery (Issue #623, LLA-028)', () {
+    test(
+        'Darwin reminder actions carry the foreground option so a tap '
+        'launches the app instead of requiring an unregistered background '
+        'handler', () async {
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+
+      await scheduler.initialize();
+
+      final initCall = calls.singleWhere((c) => c.method == 'initialize');
+      final categories =
+          (initCall.arguments as Map)['notificationCategories'] as List;
+      final category = categories.single as Map;
+      expect(category['identifier'], kReminderCategoryId);
+      final actions = category['actions'] as List;
+      expect(actions, hasLength(3));
+      for (final action in actions) {
+        final options = (action as Map)['options'] as List;
+        expect(
+          options,
+          contains(DarwinNotificationActionOption.foreground.value),
+          reason: '${action['identifier']} must open the app in the '
+              'foreground -- there is no background callback registered '
+              'to handle it otherwise',
+        );
+      }
+    });
+
+    test(
+        'Android reminder actions request the foreground UI instead of '
+        'the unconfigured background-delivery default', () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.upcoming,
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final platformSpecifics =
+          (scheduleCall.arguments as Map)['platformSpecifics'] as Map;
+      final actions = platformSpecifics['actions'] as List;
+      expect(actions, hasLength(3));
+      for (final action in actions) {
+        expect(
+          (action as Map)['showsUserInterface'],
+          isTrue,
+          reason: 'the default (false) selects a background delivery path '
+              'that needs onDidReceiveBackgroundNotificationResponse, '
+              'which is never registered',
+        );
+      }
+    });
+
+    test(
+        'a reminder kind with no actions (Issue #178) schedules with no '
+        'action list on Android', () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.log,
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final platformSpecifics =
+          (scheduleCall.arguments as Map)['platformSpecifics'] as Map;
+      expect(platformSpecifics['actions'], isNull);
     });
   });
 }
