@@ -3,14 +3,9 @@
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
-| 208 | feat/208-flutter-pin | ../lunarlog-wt/208-flutter-pin | 2026-09-10T06:20Z | — | coding |
-| 264 | feat/264-delete-profile-rpc | ../lunarlog-wt/264-delete-profile-rpc | 2026-09-10T05:30Z | — | coding |
-| 255 | feat/255-numeric-measurements | ../lunarlog-wt/255-numeric-measurements | 2026-09-10T03:00Z | — | coding |
-| 259 | feat/259-tracking-prefs | ../lunarlog-wt/259-tracking-prefs | 2026-09-10T03:00Z | — | coding |
-| 218 | feat/218-provisional-seeding | ../lunarlog-wt/218-provisional-seeding | 2026-09-09T14:35Z | — | coding (domain/data side; #216 owns the form) |
-| 242 | fix/242-ownership-token-hash-unreadable | ../lunarlog-wt/242-ownership-token-hash-unreadable | 2026-09-09T00:05Z | — | coding |
-| 125 | feat/125-alert-digest | ../lunarlog-wt/125-alert-digest | 2026-09-08T23:10Z | — | coding |
-| 132 | feat/132-cycle-history | ../lunarlog-wt/132-cycle-history | 2026-09-08T22:20Z | — | coding |
+| 710 | claude-orch/710-seed-test-account | .worktrees/claude-orch/710-seed-test-account | 2026-09-14 (see log) | — | coding |
+
+(Session resumed 2026-09-14 after a multi-day gap: the 2026-09-10 fleet rows — #208, #264, #255, #259, #218, #242, #125, #132 and the #234/#257/#266/#265/#211/#252/#183/#260 wave — all resolved while this session was down; GitHub issue/PR state is ground truth, their rows are dropped rather than back-filled. No open PR currently carries `owner:claude-orch`.)
 
 ## Done this session
 | issue | PR | merged at |
