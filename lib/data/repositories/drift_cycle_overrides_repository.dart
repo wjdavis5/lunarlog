@@ -7,12 +7,21 @@ library;
 
 import 'package:lunarlog/data/db/db.dart' show CycleOverrideData;
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/repositories/cycle_overrides_repository.dart';
+
+import 'mappers.dart';
 
 class DriftCycleOverridesRepository implements CycleOverridesRepository {
   DriftCycleOverridesRepository(this._storage);
 
   final LunarLogStorage _storage;
+
+  @override
+  Future<List<domain.CycleOverride>> listForProfile(String profileId) async => [
+        for (final row in await _storage.getCycleOverridesForProfile(profileId))
+          cycleOverrideToDomain(row),
+      ];
 
   @override
   Future<Set<String>> excludedCycleStarts(String profileId) async {

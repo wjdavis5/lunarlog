@@ -42,13 +42,15 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
-import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
-import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -240,8 +242,12 @@ class _YourDataSectionState extends State<YourDataSection> {
     });
     try {
       final profilesRepo = context.read<ProfilesRepository>();
-      final entriesRepo = context.read<DayEntriesRepository>();
-      final observationsRepo = context.read<ObservationsRepository>();
+      // Issue #140 review, LLA-094: entries/observations (plus, LLA-084,
+      // profileMode/cycleOverrides) are read together per profile through
+      // this one coherent snapshot seam, not as separate, independently-
+      // timed repository calls — see `AccountExportSnapshotRepository`'s
+      // own doc comment for the orphan-observation gap that closes.
+      final snapshotRepo = context.read<AccountExportSnapshotRepository>();
       final careContentRepo = context.read<CareContentRepository>();
       // Read before the first `await` below (not after -
       // `use_build_context_synchronously`), same as `AccountSection`'s
@@ -254,11 +260,14 @@ class _YourDataSectionState extends State<YourDataSection> {
       final observationsByProfile = <String, List<Observation>>{};
       final careNotesByProfile = <String, List<CareNote>>{};
       final visitPrepByProfile = <String, List<VisitPrepItem>>{};
+      final profileModesByProfile = <String, ProfileLifecycleMode?>{};
+      final cycleOverridesByProfile = <String, List<CycleOverride>>{};
       for (final profile in profiles) {
-        entriesByProfile[profile.id] =
-            await entriesRepo.listForProfile(profile.id);
-        observationsByProfile[profile.id] =
-            await observationsRepo.listForProfile(profile.id);
+        final snapshot = await snapshotRepo.forProfile(profile.id);
+        entriesByProfile[profile.id] = snapshot.entries;
+        observationsByProfile[profile.id] = snapshot.observations;
+        profileModesByProfile[profile.id] = snapshot.profileMode;
+        cycleOverridesByProfile[profile.id] = snapshot.cycleOverrides;
         careNotesByProfile[profile.id] =
             await careContentRepo.listCareNotes(profile.id);
         visitPrepByProfile[profile.id] =
@@ -271,6 +280,8 @@ class _YourDataSectionState extends State<YourDataSection> {
         observationsByProfile: observationsByProfile,
         careNotesByProfile: careNotesByProfile,
         visitPrepByProfile: visitPrepByProfile,
+        profileModesByProfile: profileModesByProfile,
+        cycleOverridesByProfile: cycleOverridesByProfile,
         appVersion: kAppVersionForExport,
       );
     } catch (error) {

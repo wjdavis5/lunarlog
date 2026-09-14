@@ -8,10 +8,13 @@ library;
 
 import '../../domain/export/account_export_writer.dart';
 import '../../domain/models/care_note.dart';
+import '../../domain/models/cycle_override.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/visit_prep_item.dart';
+import '../../domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 
 /// The app's version string as carried into an export document (Issue #17
 /// U5/U6). Kept in step with `pubspec.yaml`'s `version:` by hand - `lib/ui`
@@ -33,6 +36,8 @@ typedef ExportAccountCollaborator = Future<void> Function({
   Map<String, List<Observation>> observationsByProfile,
   Map<String, List<CareNote>> careNotesByProfile,
   Map<String, List<VisitPrepItem>> visitPrepByProfile,
+  Map<String, ProfileLifecycleMode?> profileModesByProfile,
+  Map<String, List<CycleOverride>> cycleOverridesByProfile,
   required String appVersion,
 });
 
@@ -44,7 +49,8 @@ typedef ExportAccountCollaborator = Future<void> Function({
 /// [ExportAccountCollaborator] with an optional `observationsByProfile`
 /// parameter (default `const {}`), so existing test doubles only need that
 /// parameter declared, not necessarily used. Issue #128 widens it the same
-/// way with `careNotesByProfile`/`visitPrepByProfile`.
+/// way with `careNotesByProfile`/`visitPrepByProfile`; Issue #140 review
+/// (LLA-084) with `profileModesByProfile`/`cycleOverridesByProfile`.
 ExportAccountCollaborator defaultExportAccountCollaborator(
   AccountExportWriter writer,
 ) =>
@@ -54,6 +60,8 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
       Map<String, List<Observation>> observationsByProfile = const {},
       Map<String, List<CareNote>> careNotesByProfile = const {},
       Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
+      Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
+      Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
       required String appVersion,
     }) =>
         writer.exportAndShare(
@@ -62,5 +70,7 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
           observationsByProfile: observationsByProfile,
           careNotesByProfile: careNotesByProfile,
           visitPrepByProfile: visitPrepByProfile,
+          profileModesByProfile: profileModesByProfile,
+          cycleOverridesByProfile: cycleOverridesByProfile,
           appVersion: appVersion,
         );

@@ -10,12 +10,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 
 Map<String, Object?> _rawDayEntry(
   String id,
@@ -72,6 +75,7 @@ Map<String, Object?> _rawProfile(
   String displayName = 'Riley',
   List<Map<String, Object?>> dayEntries = const [],
   List<Map<String, Object?>> observations = const [],
+  List<Map<String, Object?>> cycleOverrides = const [],
 }) =>
     {
       'id': id,
@@ -84,6 +88,23 @@ Map<String, Object?> _rawProfile(
       'updatedAt': '2026-01-01T00:00:00.000Z',
       'dayEntries': dayEntries,
       'observations': observations,
+      'cycleOverrides': cycleOverrides,
+    };
+
+/// A `profiles[].cycleOverrides[]` element (Issue #140 review, LLA-084).
+Map<String, Object?> _rawCycleOverride(
+  String id,
+  String cycleStartDate, {
+  bool excludedFromAverage = false,
+  bool manualStart = false,
+  String? noteId,
+}) =>
+    {
+      'id': id,
+      'cycleStartDate': cycleStartDate,
+      'excludedFromAverage': excludedFromAverage,
+      'manualStart': manualStart,
+      'noteId': noteId,
     };
 
 Map<String, Object?> _rawDocument({
@@ -164,6 +185,7 @@ const String _e2 = '00000000000000000000000012';
 const String _e3 = '00000000000000000000000013';
 const String _o1 = '00000000000000000000000021';
 const String _o2 = '00000000000000000000000022';
+const String _co1 = '00000000000000000000000031';
 String _obsId(int i) => (900000 + i).toString().padLeft(26, '0');
 
 void main() {
@@ -345,6 +367,23 @@ void main() {
           _rawObservation(_o1, '2026-01-05', intensity: 99),
         ]),
       ])));
+      expect(result, isA<AccountImportParseFailed>());
+    });
+
+    test(
+        'a nonfinite valueNum literal (e.g. 1e400, which overflows to '
+        'Infinity) is rejected (Issue #140 review, LLA-092)', () {
+      // jsonEncode cannot itself serialize Infinity/NaN -- `1e400` has to be
+      // spliced into the JSON text as a bare numeral, exactly as an
+      // untrusted file would carry it, rather than round-tripped through a
+      // Dart double (which would throw building the fixture, not exercise
+      // the parser under test).
+      final encoded = jsonEncode(_rawDocument(profiles: [
+        _rawProfile(_p1, observations: [_rawObservation(_o1, '2026-01-05')]),
+      ]));
+      final poisoned = encoded.replaceFirst('"valueNum":null', '"valueNum":1e400');
+      expect(poisoned, isNot(encoded)); // the splice actually matched
+      final result = parseAccountImport(utf8.encode(poisoned));
       expect(result, isA<AccountImportParseFailed>());
     });
 
@@ -540,6 +579,166 @@ void main() {
     });
   });
 
+  group('parseAccountImport — portable state validation (Issue #140 '
+      'review, LLA-084)', () {
+    test('an out-of-range birthYear is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'birthYear': 1800},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an unrecognised relationship is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'relationship': 'stranger'},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an out-of-range typicalCycleLengthDays is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'typicalCycleLengthDays': 400},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an out-of-range typicalPeriodLengthDays is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'typicalPeriodLengthDays': 90},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a malformed lastPeriodStart is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'lastPeriodStart': 'not-a-date'},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an unrecognised profileMode.mode is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'profileMode': {'mode': 'not-a-mode'},
+        },
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an over-length profileMode.birthControlMethod is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'profileMode': {
+            'mode': 'tracking',
+            'birthControlMethod': 'x' * (kMaxBirthControlMethodLength + 1),
+          },
+        },
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a malformed profileMode.birthControlStartedOn is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'profileMode': {'mode': 'tracking', 'birthControlStartedOn': 'nope'},
+        },
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a non-ULID cycle override id is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, cycleOverrides: [
+          {..._rawCycleOverride('not-a-ulid', '2026-01-01')},
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a malformed cycleStartDate is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, cycleOverrides: [
+          _rawCycleOverride(_co1, 'not-a-date'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an over-length cycle override noteId is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, cycleOverrides: [
+          _rawCycleOverride(_co1, '2026-01-01',
+              noteId: 'x' * (kMaxCycleOverrideNoteIdLength + 1)),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('two cycle overrides sharing an id in one profile are rejected',
+        () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, cycleOverrides: [
+          _rawCycleOverride(_co1, '2026-01-01'),
+          _rawCycleOverride(_co1, '2026-02-01'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('the same cycle override id under two DIFFERENT profiles is fine '
+        '— the composite (id, profile_id) key means this is not a '
+        'collision', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, cycleOverrides: [_rawCycleOverride(_co1, '2026-01-01')]),
+        _rawProfile(_p2, cycleOverrides: [_rawCycleOverride(_co1, '2026-01-01')]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParsed>());
+    });
+
+    test('a well-formed profile carries every new field through parsing',
+        () {
+      final raw = _rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1, cycleOverrides: [
+            _rawCycleOverride(_co1, '2026-01-01',
+                excludedFromAverage: true, manualStart: true, noteId: 'n1'),
+          ]),
+          'birthYear': 2012,
+          'relationship': 'daughter',
+          'lastPeriodStart': '2026-08-01',
+          'typicalCycleLengthDays': 28,
+          'typicalPeriodLengthDays': 5,
+          'profileMode': {
+            'mode': 'conceive',
+            'birthControlMethod': 'pill',
+            'birthControlStartedOn': '2026-06-01',
+            'birthControlStoppedOn': null,
+          },
+        },
+      ]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      expect(profile.birthYear, 2012);
+      expect(profile.relationship, ProfileRelationship.daughter);
+      expect(profile.lastPeriodStart?.iso, '2026-08-01');
+      expect(profile.typicalCycleLengthDays, 28);
+      expect(profile.typicalPeriodLengthDays, 5);
+      expect(profile.profileMode?.mode, LifecycleMode.conceive);
+      expect(profile.profileMode?.birthControlMethod, 'pill');
+      expect(profile.profileMode?.birthControlStartedOn, '2026-06-01');
+      expect(profile.profileMode?.birthControlStoppedOn, isNull);
+      expect(profile.cycleOverrides, hasLength(1));
+      expect(profile.cycleOverrides.single.cycleStartDate.iso, '2026-01-01');
+      expect(profile.cycleOverrides.single.excludedFromAverage, isTrue);
+      expect(profile.cycleOverrides.single.manualStart, isTrue);
+      expect(profile.cycleOverrides.single.noteId, 'n1');
+    });
+  });
+
   group('parseAccountImport — id validation (Issue #140 review round 2, '
       'item 1)', () {
     test('a non-ULID profile id ("riley") is rejected', () {
@@ -722,8 +921,7 @@ void main() {
     });
   });
 
-  group('parseAccountImport — importId (Issue #140 review round 2, item 4)',
-      () {
+  group('parseAccountImport — importId (Issue #140 review, LLA-087)', () {
     test('a malformed importId is dropped (null), never rejects the '
         'document', () {
       final raw = _rawDocument(profiles: [
@@ -737,9 +935,14 @@ void main() {
       expect(document.profiles.single.dayEntries.single.importId, isNull);
     });
 
-    test('a well-formed UUID importId round-trips (alongside explicit file '
-        'provenance — a manual/null entry always nulls importId regardless, '
-        'per the item 7 fallback)', () {
+    // Issue #140 review, LLA-087: a well-formed UUID importId is NEVER
+    // round-tripped, unlike source/sourceId — it points at an import_jobs
+    // row on the EXPORTING device/account, which a restore has no reason to
+    // expect still exists. Round-tripping it risked a later sync_push
+    // rejection (day_entries_import_id_fkey) against a job that was never,
+    // and cannot be, restored alongside the entry.
+    test('a well-formed UUID importId is always cleared, even alongside '
+        'explicit file provenance', () {
       const uuid = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
       final raw = _rawDocument(profiles: [
         _rawProfile(_p1, dayEntries: [
@@ -753,7 +956,24 @@ void main() {
       ]);
       final result = parseAccountImport(_bytes(raw));
       final document = (result as AccountImportParsed).document;
-      expect(document.profiles.single.dayEntries.single.importId, uuid);
+      final entry = document.profiles.single.dayEntries.single;
+      expect(entry.importId, isNull);
+      // source/sourceId are the portable identity and still round-trip.
+      expect(entry.source, 'clue_import');
+      expect(entry.sourceId, 'clue-abc');
+    });
+
+    test('a manual/null entry always nulls importId regardless (the item 7 '
+        'fallback)', () {
+      const uuid = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          {..._rawDayEntry(_e1, '2026-01-05'), 'importId': uuid},
+        ]),
+      ]);
+      final result = parseAccountImport(_bytes(raw));
+      final document = (result as AccountImportParsed).document;
+      expect(document.profiles.single.dayEntries.single.importId, isNull);
     });
   });
 
@@ -1014,6 +1234,122 @@ void main() {
     });
   });
 
+  group('planImport — portable state (Issue #140 review, LLA-084)', () {
+    test('a created profile carries the file\'s subject metadata and '
+        'profileMode through to the plan', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'birthYear': 2012,
+          'relationship': 'daughter',
+          'lastPeriodStart': '2026-08-01',
+          'typicalCycleLengthDays': 28,
+          'typicalPeriodLengthDays': 5,
+          'profileMode': {'mode': 'conceive', 'birthControlMethod': 'pill'},
+        },
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: const [],
+        writeBlockReason: _neverBlocked,
+      );
+
+      final profilePlan = plan.profiles.single;
+      expect(profilePlan.outcome, ProfileImportOutcome.created);
+      expect(profilePlan.birthYear, 2012);
+      expect(profilePlan.relationship, ProfileRelationship.daughter);
+      expect(profilePlan.lastPeriodStart?.iso, '2026-08-01');
+      expect(profilePlan.typicalCycleLengthDays, 28);
+      expect(profilePlan.typicalPeriodLengthDays, 5);
+      expect(profilePlan.profileMode?.mode, LifecycleMode.conceive);
+      expect(profilePlan.profileMode?.birthControlMethod, 'pill');
+    });
+
+    test('a MATCHED profile never carries the file\'s subject metadata or '
+        'profileMode — only a created profile does, mirroring mode/'
+        'bbtUnit/weightUnit\'s own create-only treatment', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        {
+          ..._rawProfile(_p1),
+          'birthYear': 2012,
+          'profileMode': {'mode': 'conceive'},
+        },
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        writeBlockReason: _neverBlocked,
+      );
+
+      final profilePlan = plan.profiles.single;
+      expect(profilePlan.outcome, ProfileImportOutcome.matched);
+      expect(profilePlan.birthYear, isNull);
+      expect(profilePlan.profileMode, isNull);
+    });
+
+    test('cycleOverrides are additive for a CREATED profile: two distinct '
+        'dates both add', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, cycleOverrides: [
+          _rawCycleOverride(_co1, '2026-01-01'),
+          _rawCycleOverride('00000000000000000000000032', '2026-02-01'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: const [],
+        writeBlockReason: _neverBlocked,
+      );
+
+      final overridePlans = plan.profiles.single.cycleOverrides;
+      expect(overridePlans, hasLength(2));
+      expect(overridePlans.every((o) => o.outcome == CycleOverrideImportOutcome.add),
+          isTrue);
+      expect(plan.summary.cycleOverridesAdded, 2);
+      expect(plan.summary.cycleOverridesSkipped, 0);
+    });
+
+    test('cycleOverrides are additive for a MATCHED profile too — unlike '
+        'subject metadata/profileMode, this is not create-only', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, cycleOverrides: [
+          _rawCycleOverride(_co1, '2026-01-01'), // collides with existing
+          _rawCycleOverride('00000000000000000000000032', '2026-02-01'), // new
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final existingOverride = CycleOverride(
+        id: 'local-co-1',
+        profileId: _p1,
+        cycleStartDate: '2026-01-01',
+        excludedFromAverage: true,
+      );
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingCycleOverridesByProfileId: {
+          _p1: [existingOverride],
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      final overridePlans = plan.profiles.single.cycleOverrides;
+      expect(overridePlans[0].outcome, CycleOverrideImportOutcome.skip,
+          reason: 'a live override already occupies 2026-01-01');
+      expect(overridePlans[1].outcome, CycleOverrideImportOutcome.add);
+      expect(plan.summary.cycleOverridesAdded, 1);
+      expect(plan.summary.cycleOverridesSkipped, 1);
+    });
+  });
+
   group('planImport — day entry merge policy', () {
     test('no existing entry at that date: added verbatim with file-import '
         'provenance', () {
@@ -1099,6 +1435,37 @@ void main() {
 
       expect(plan.profiles.single.entries.single.note, 'from file');
     });
+
+    test(
+        'existingUpdatedAt carries the merge target\'s snapshot; an add '
+        'carries none (Issue #140 review, LLA-085)', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+          _rawDayEntry(_e2, '2026-01-06'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final existing = _entry('local1', _p1, '2026-01-05');
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingEntriesByProfileId: {
+          _p1: [existing],
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      final byDate = {
+        for (final e in plan.profiles.single.entries) e.localDate.iso: e,
+      };
+      expect(byDate['2026-01-05']!.outcome, DayEntryImportOutcome.merge);
+      expect(byDate['2026-01-05']!.existingUpdatedAt, existing.updatedAt);
+      expect(byDate['2026-01-06']!.outcome, DayEntryImportOutcome.add);
+      expect(byDate['2026-01-06']!.existingUpdatedAt, isNull);
+    });
   });
 
   group('planImport — observation dedup', () {
@@ -1181,6 +1548,128 @@ void main() {
 
       expect(plan.profiles.single.observations.single.outcome,
           ObservationImportOutcome.add);
+    });
+  });
+
+  group(
+      'planImport — per-day observation cap (Issue #140 review, LLA-091)',
+      () {
+    /// [n] pre-existing, distinct (by code) live observations on
+    /// [isoDate] for [_p1] — enough to probe the [kMaxObservationsPerDay]
+    /// boundary without a colliding (date, category, code) key ever
+    /// masking the cap decision.
+    List<Observation> liveObservations(int n, String isoDate) => [
+          for (var i = 0; i < n; i++)
+            _observation('local-o$i', _p1, isoDate, code: 'code-$i'),
+        ];
+
+    test('199 existing + 1 distinct new: added (right at the cap)', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+        ], observations: [
+          _rawObservation(_o1, '2026-01-05', category: 'pain', code: 'new'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingObservationsByProfileId: {
+          _p1: liveObservations(kMaxObservationsPerDay - 1, '2026-01-05'),
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      expect(plan.profiles.single.observations.single.outcome,
+          ObservationImportOutcome.add);
+      expect(plan.summary.observationsAdded, 1);
+      expect(plan.summary.observationsSkipped, 0);
+    });
+
+    test('200 existing + 1 distinct new: skipped (would exceed the cap)', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+        ], observations: [
+          _rawObservation(_o1, '2026-01-05', category: 'pain', code: 'new'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingObservationsByProfileId: {
+          _p1: liveObservations(kMaxObservationsPerDay, '2026-01-05'),
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      expect(plan.profiles.single.observations.single.outcome,
+          ObservationImportOutcome.skip);
+      expect(plan.summary.observationsAdded, 0);
+      expect(plan.summary.observationsSkipped, 1);
+    });
+
+    test(
+        '200 existing + 1 duplicate new: still skipped for the ordinary '
+        'dedup reason, not double-counted against the cap', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+        ], observations: [
+          _rawObservation(_o1, '2026-01-05', category: 'pain', code: 'code-0'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingObservationsByProfileId: {
+          _p1: liveObservations(kMaxObservationsPerDay, '2026-01-05'),
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      expect(plan.profiles.single.observations.single.outcome,
+          ObservationImportOutcome.skip);
+      expect(plan.summary.observationsSkipped, 1);
+    });
+
+    test(
+        'two distinct new rows on an already-full day: only the cap gap is '
+        'filled, the rest skip against each other within the same document',
+        () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+        ], observations: [
+          _rawObservation(_o1, '2026-01-05', category: 'pain', code: 'new-1'),
+          _rawObservation(_o2, '2026-01-05', category: 'pain', code: 'new-2'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingObservationsByProfileId: {
+          _p1: liveObservations(kMaxObservationsPerDay - 1, '2026-01-05'),
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      final outcomes =
+          plan.profiles.single.observations.map((o) => o.outcome).toList();
+      expect(outcomes, [
+        ObservationImportOutcome.add,
+        ObservationImportOutcome.skip,
+      ]);
+      expect(plan.summary.observationsAdded, 1);
+      expect(plan.summary.observationsSkipped, 1);
     });
   });
 

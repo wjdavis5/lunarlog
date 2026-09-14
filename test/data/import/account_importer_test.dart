@@ -15,6 +15,7 @@ import 'package:lunarlog/data/db/db.dart' hide Profile;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart' as dbtables show FlowLevel;
 import 'package:lunarlog/data/import/account_importer.dart';
+import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -48,6 +49,7 @@ Map<String, Object?> _rawProfile(
   String id, {
   List<Map<String, Object?>> dayEntries = const [],
   List<Map<String, Object?>> observations = const [],
+  List<Map<String, Object?>> cycleOverrides = const [],
 }) =>
     {
       'id': id,
@@ -60,6 +62,23 @@ Map<String, Object?> _rawProfile(
       'updatedAt': '2026-01-01T00:00:00.000Z',
       'dayEntries': dayEntries,
       'observations': observations,
+      'cycleOverrides': cycleOverrides,
+    };
+
+/// A `profiles[].cycleOverrides[]` element (Issue #140 review, LLA-084).
+Map<String, Object?> _rawCycleOverride(
+  String id,
+  String cycleStartDate, {
+  bool excludedFromAverage = false,
+  bool manualStart = false,
+  String? noteId,
+}) =>
+    {
+      'id': id,
+      'cycleStartDate': cycleStartDate,
+      'excludedFromAverage': excludedFromAverage,
+      'manualStart': manualStart,
+      'noteId': noteId,
     };
 
 Map<String, Object?> _rawDayEntry(
@@ -108,6 +127,7 @@ Map<String, Object?> _rawObservation(String id, String localDate) => {
 const String _e1 = '00000000000000000000000011';
 const String _o1 = '00000000000000000000000021';
 const String _fileP1 = '00000000000000000000000031';
+const String _co1 = '00000000000000000000000041';
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -117,6 +137,7 @@ void main() {
   late DriftProfilesRepository profiles;
   late DriftDayEntriesRepository entries;
   late DriftObservationsRepository observations;
+  late DriftCycleOverridesRepository cycleOverrides;
 
   setUp(() {
     db = LunarLogDatabase(NativeDatabase.memory());
@@ -124,6 +145,7 @@ void main() {
     profiles = DriftProfilesRepository(storage);
     entries = DriftDayEntriesRepository(storage);
     observations = DriftObservationsRepository(storage);
+    cycleOverrides = DriftCycleOverridesRepository(storage);
   });
 
   tearDown(() => db.close());
@@ -137,6 +159,7 @@ void main() {
         dayEntriesRepository: entries,
         observationsRepository: observations,
         storage: storage,
+        cycleOverridesRepository: cycleOverrides,
         guardiansForProfile: guardiansForProfile,
         currentUserId: currentUserId,
       );
@@ -396,6 +419,210 @@ void main() {
     });
   });
 
+  group('AccountImportCoordinator — portable state (Issue #140 review, '
+      'LLA-084)', () {
+    test('a created profile writes its subject metadata and profileMode',
+        () async {
+      final document = _parse(_document(profiles: [
+        {
+          ..._rawProfile(_fileP1),
+          'birthYear': 2012,
+          'relationship': 'daughter',
+          'lastPeriodStart': '2026-08-01',
+          'typicalCycleLengthDays': 28,
+          'typicalPeriodLengthDays': 5,
+          'profileMode': {
+            'mode': 'conceive',
+            'birthControlMethod': 'pill',
+            'birthControlStartedOn': '2026-06-01',
+          },
+        },
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      await coordinator().apply(plan);
+
+      final created = (await profiles.list()).single;
+      expect(created.birthYear, 2012);
+      expect(created.relationship?.toDb(), 'daughter');
+      expect(created.lastPeriodStart?.iso, '2026-08-01');
+      expect(created.typicalCycleLengthDays, 28);
+      expect(created.typicalPeriodLengthDays, 5);
+
+      final mode = await storage.getProfileMode(created.id);
+      expect(mode, isNotNull);
+      expect(mode!.mode, 'conceive');
+      expect(mode.birthControlMethod, 'pill');
+      expect(mode.birthControlStartedOn, '2026-06-01');
+    });
+
+    test('a MATCHED profile keeps its own stored subject metadata and '
+        'profileMode — the file\'s values are never applied over them',
+        () async {
+      final existingProfile = await profiles.create(
+        displayName: 'Riley',
+        isMinor: true,
+        birthYear: 2010,
+      );
+      await storage.upsertProfileMode(
+        profileId: existingProfile.id,
+        mode: 'tracking',
+      );
+
+      final document = _parse(_document(profiles: [
+        {
+          ..._rawProfile(existingProfile.id),
+          'birthYear': 1999,
+          'profileMode': {'mode': 'conceive'},
+        },
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      await coordinator().apply(plan);
+
+      final matched = (await profiles.list()).single;
+      expect(matched.birthYear, 2010,
+          reason: 'the file\'s birthYear is never applied to a matched '
+              'profile');
+      final mode = await storage.getProfileMode(existingProfile.id);
+      expect(mode!.mode, 'tracking',
+          reason: 'the file\'s profileMode is never applied to a matched '
+              'profile');
+    });
+
+    test('cycleOverrides are additive for both a created and a matched '
+        'profile, and a colliding file id under the SAME profile is never '
+        'reused (mirrors the LLA-086 observation-id-conflict fix)',
+        () async {
+      final existingProfile = await profiles.create(displayName: 'Riley', isMinor: true);
+      final localOverride = await storage.upsertCycleOverride(
+        profileId: existingProfile.id,
+        cycleStartDate: '2026-01-01',
+        excludedFromAverage: true,
+      );
+      // The file's own cycle override id already belongs to a DIFFERENT
+      // local row (a different cycleStartDate) under the SAME profile —
+      // reusing it would move localOverride onto the file's date instead
+      // of adding a genuinely new row.
+      final document = _parse(_document(profiles: [
+        _rawProfile(existingProfile.id, cycleOverrides: [
+          _rawCycleOverride(localOverride.id, '2026-03-01',
+              excludedFromAverage: true),
+          _rawCycleOverride(_co1, '2026-01-01'), // collides by date -> skip
+        ]),
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      final overridePlans = plan.profiles.single.cycleOverrides;
+      expect(overridePlans[0].outcome, CycleOverrideImportOutcome.add);
+      expect(overridePlans[1].outcome, CycleOverrideImportOutcome.skip);
+
+      await coordinator().apply(plan);
+
+      final all = await cycleOverrides.listForProfile(existingProfile.id);
+      expect(all, hasLength(2),
+          reason: 'the file row landed as a genuinely new row, not a move '
+              'of the existing one');
+      final untouched = all.singleWhere((o) => o.id == localOverride.id);
+      expect(untouched.cycleStartDate, '2026-01-01',
+          reason: 'the existing override is never silently moved despite '
+              'the file row sharing its raw id');
+      final added = all.singleWhere((o) => o.id != localOverride.id);
+      expect(added.cycleStartDate, '2026-03-01');
+    });
+  });
+
+  group('AccountImportCoordinator — stale merge detection (Issue #140 '
+      'review, LLA-085)', () {
+    test('a concurrent edit landing after buildPlan aborts apply entirely, '
+        'writing nothing from the whole plan — not just the stale entry',
+        () async {
+      final existingProfile =
+          await profiles.create(displayName: 'Riley', isMinor: true);
+      await storage.upsertDayEntry(
+        profileId: existingProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        flow: dbtables.FlowLevel.light,
+        note: 'noteA',
+      );
+
+      final document = _parse(_document(profiles: [
+        // A second, brand-new profile in the SAME plan -- proves a stale
+        // merge aborts the whole transaction, not just its own profile.
+        // A distinct entry id: ids must be unique across the WHOLE
+        // document, not just within one profile.
+        _rawProfile(_fileP1, dayEntries: [
+          _rawDayEntry('00000000000000000000000099', '2026-02-01'),
+        ]),
+        _rawProfile(existingProfile.id, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05', flow: 'heavy'),
+        ]),
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      final mergePlan = plan.profiles
+          .singleWhere((p) => p.fileProfileId == existingProfile.id)
+          .entries
+          .single;
+      expect(mergePlan.outcome, DayEntryImportOutcome.merge);
+      expect(mergePlan.existingUpdatedAt, isNotNull);
+
+      // A "concurrent sync" lands on the SAME row after buildPlan already
+      // read it -- note changes to noteC, with a fresh updated_at, exactly
+      // the LLA-085 repro ("remote sync changes it to C while dialog
+      // open").
+      await storage.upsertDayEntry(
+        profileId: existingProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        flow: dbtables.FlowLevel.light,
+        note: 'noteC',
+      );
+
+      await expectLater(
+        coordinator().apply(plan),
+        throwsA(isA<StaleImportPlanException>()),
+      );
+
+      // The concurrent edit survives untouched -- the stale plan's merged
+      // value (which would have reverted to noteA under a fresh timestamp)
+      // was never applied.
+      final stillStored =
+          (await entries.listForProfile(existingProfile.id)).single;
+      expect(stillStored.note, 'noteC');
+      expect(stillStored.flow, FlowLevel.light);
+
+      // The whole transaction rolled back -- the OTHER, unrelated profile
+      // in the same plan was never created either.
+      expect(await profiles.list(), hasLength(1));
+    });
+
+    test('a merge whose target is unchanged since buildPlan applies '
+        'normally', () async {
+      final existingProfile =
+          await profiles.create(displayName: 'Riley', isMinor: true);
+      await storage.upsertDayEntry(
+        profileId: existingProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        flow: dbtables.FlowLevel.light,
+      );
+
+      final document = _parse(_document(profiles: [
+        _rawProfile(existingProfile.id, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05', flow: 'heavy'),
+        ]),
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      final summary = await coordinator().apply(plan);
+      expect(summary.entriesMerged, 1);
+      final merged = (await entries.listForProfile(existingProfile.id)).single;
+      expect(merged.flow, FlowLevel.heavy);
+    });
+  });
+
   group('AccountImportCoordinator — dedup by provenance triple (Issue #140 '
       'review, item 5)', () {
     test('import, delete the day, re-import: the original row id is '
@@ -506,6 +733,120 @@ void main() {
               'adopted for a merge');
       expect(merged.id, isNot(_e1));
       expect(merged.flow, FlowLevel.heavy);
+    });
+  });
+
+  group(
+      'AccountImportCoordinator — observation id conflict (Issue #140 '
+      'review, LLA-086)', () {
+    test(
+        'a stored observation whose code changed since backup shares no '
+        'semantic key with the file row despite sharing its id — planImport '
+        'calls it "add", but the id is not reused: the existing row is '
+        'never silently overwritten', () async {
+      final existingProfile =
+          await profiles.create(displayName: 'Riley', isMinor: true);
+      await storage.upsertDayEntry(
+        id: 'de1',
+        profileId: existingProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        flow: dbtables.FlowLevel.light,
+      );
+      // The file's own observation id, X, already belongs to a LIVE local
+      // observation — but with a different code, so it shares no semantic
+      // (date, category, code) key with the file's row.
+      final existingObs = await storage.upsertObservation(
+        id: _o1,
+        dayEntryId: 'de1',
+        profileId: existingProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        category: 'mood',
+        code: 'happy',
+      );
+
+      final document = _parse(_document(profiles: [
+        _rawProfile(existingProfile.id, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+        ], observations: [
+          {..._rawObservation(_o1, '2026-01-05'), 'category': 'mood', 'code': 'sad'},
+        ]),
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      expect(plan.profiles.single.observations.single.outcome,
+          ObservationImportOutcome.add,
+          reason: 'no existing row at (date, mood, sad) — planImport\'s '
+              'semantic dedup alone sees this as a fresh add');
+
+      await coordinator().apply(plan);
+
+      final all = await observations.listForProfile(existingProfile.id);
+      expect(all, hasLength(2),
+          reason: 'the file row landed as a genuinely new row, not an '
+              'overwrite of the existing one');
+
+      final untouched = all.singleWhere((o) => o.id == _o1);
+      expect(untouched.category, 'mood');
+      expect(untouched.code, 'happy',
+          reason: 'the existing observation X is never silently '
+              'overwritten despite the file row sharing its raw id');
+
+      final added = all.singleWhere((o) => o.id != _o1);
+      expect(added.category, 'mood');
+      expect(added.code, 'sad');
+      expect(added.id, isNot(_o1),
+          reason: 'the colliding file id is never reused — a fresh id is '
+              'minted instead');
+      // Sanity: the file id really was a syntactically valid ULID (the
+      // conflict, not the format, is what routes this to a fresh id).
+      expect(existingObs.id, _o1);
+    });
+
+    test('the same colliding id under a DIFFERENT profile still gets a '
+        'fresh id, not the file\'s own', () async {
+      final profileA = await profiles.create(displayName: 'A', isMinor: true);
+      final profileB = await profiles.create(displayName: 'B', isMinor: true);
+      await storage.upsertDayEntry(
+        id: 'de-a',
+        profileId: profileA.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        flow: dbtables.FlowLevel.light,
+      );
+      await storage.upsertObservation(
+        id: _o1,
+        dayEntryId: 'de-a',
+        profileId: profileA.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        category: 'mood',
+        code: 'happy',
+      );
+
+      final document = _parse(_document(profiles: [
+        _rawProfile(profileB.id, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+        ], observations: [
+          _rawObservation(_o1, '2026-01-05'),
+        ]),
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      await coordinator().apply(plan);
+
+      final profileAObs = await observations.listForProfile(profileA.id);
+      expect(profileAObs.single.id, _o1);
+      expect(profileAObs.single.category, 'mood',
+          reason: 'profile A\'s own observation is untouched by profile '
+              'B\'s import');
+
+      final profileBObs = await observations.listForProfile(profileB.id);
+      expect(profileBObs, hasLength(1));
+      expect(profileBObs.single.id, isNot(_o1),
+          reason: 'an id already claimed by ANOTHER profile\'s row is '
+              'never reused either');
     });
   });
 

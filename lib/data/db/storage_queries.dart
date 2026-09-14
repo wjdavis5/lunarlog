@@ -116,6 +116,17 @@ mixin LunarLogStorageQueries {
   /// observation synthesised, without a full-profile scan.
   Future<DayEntry?> getDayEntryById(String id) => _dayEntryOrNull(id);
 
+  /// The observation row for [id], live or tombstoned (any profile), or
+  /// null if no such row exists. Issue #140 review, LLA-086: the
+  /// importer's own id-conflict check — reusing an imported file's own
+  /// observation id for a fresh `add` is only safe when nothing already
+  /// occupies it, never just because `planImport`'s semantic (profileId,
+  /// localDate, category, code) key found no collision (a stored
+  /// observation's category/code can change since an earlier backup was
+  /// taken, sharing no semantic key with the file's row despite sharing
+  /// its raw id).
+  Future<Observation?> getObservationById(String id) => _observationOrNull(id);
+
   /// The day entry (live OR tombstoned) for (profileId, source, sourceId),
   /// or null when none exists — Issue #140 review, item 5: an importer must
   /// dedup against this exact triple, including tombstones, before
@@ -245,6 +256,19 @@ mixin LunarLogStorageQueries {
       (db.select(db.profileModes)
             ..where((t) => t.profileId.equals(profileId)))
           .watchSingleOrNull();
+
+  /// The cycle override row for the composite key (Issue #140 review,
+  /// LLA-084: the importer's own id-conflict check, mirroring
+  /// [getObservationById]'s role for observations) — [id]/[profileId], live
+  /// or tombstoned, or null if no such row exists. `cycle_overrides` keys
+  /// by `(id, profile_id)` (not `id` alone, unlike day_entries/
+  /// observations), so reusing the file's own id for a NEW override under
+  /// this exact profile is only unsafe when this composite pair already
+  /// exists — a different profile holding the same raw id is a distinct
+  /// row by construction, not a conflict.
+  Future<CycleOverrideData?> getCycleOverrideById(
+          String id, String profileId) =>
+      _cycleOverrideOrNull(id, profileId);
 
   /// A profile's manual cycle corrections — UI reads (default) filter
   /// tombstones; `includeTombstones: true` gives full-fidelity reads for

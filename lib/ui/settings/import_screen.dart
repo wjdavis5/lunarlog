@@ -39,6 +39,15 @@ import 'package:provider/provider.dart';
 const String kImportApplyFailureCopy =
     'Could not finish the import. Nothing was written — please try again.';
 
+/// Shown when [StaleImportPlanException] aborts a confirm (Issue #140
+/// review, LLA-085): distinct from [kImportApplyFailureCopy] because
+/// retrying with the SAME plan would just fail the same way again — the
+/// screen resets to the pick step instead so a fresh [_buildPlan] rebuilds
+/// against the now-current state.
+const String kImportStalePlanCopy =
+    'Your data changed while this was open. Please choose the file again '
+    'to include the latest changes.';
+
 /// Shown on the preview step when [ImportPlan.sharesWithOtherGuardians] is
 /// true (Issue #140 review, item 10): importing into a matched profile
 /// writes rows straight to the local store, which the sync engine then
@@ -166,6 +175,20 @@ class _ImportScreenState extends State<ImportScreen> {
     try {
       final summary = await _coordinator(context).apply(plan);
       if (mounted) setState(() => _result = summary);
+    } on StaleImportPlanException {
+      // Issue #140 review, LLA-085: back to the pick step entirely, not
+      // just clearing `_plan` — `_document`/`_preview` were built from the
+      // same now-stale read, and a fresh pick re-parses and re-plans
+      // against current state end to end.
+      debugPrint('lunarlog import: apply aborted, stale plan');
+      if (mounted) {
+        setState(() {
+          _document = null;
+          _preview = null;
+          _plan = null;
+          _error = kImportStalePlanCopy;
+        });
+      }
     } catch (error) {
       debugPrint('lunarlog import: apply failed (${error.runtimeType})');
       if (mounted) setState(() => _error = kImportApplyFailureCopy);

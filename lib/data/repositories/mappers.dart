@@ -6,6 +6,7 @@ library;
 import 'package:lunarlog/data/db/db.dart' as db;
 import 'package:lunarlog/data/db/tables.dart' as db;
 import 'package:lunarlog/domain/models/care_note.dart' as domain;
+import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
@@ -164,6 +165,22 @@ domain.CareNote careNoteToDomain(db.CareNoteData row) => domain.CareNote(
       deletedAt: row.deletedAt,
       loggedByUserId: row.loggedByUserId,
       lastModifiedByUserId: row.lastModifiedByUserId,
+    );
+
+/// Issue #188: drift-row -> domain [domain.CycleOverride]. Issue #140
+/// review, LLA-084: used by `DriftCycleOverridesRepository.listForProfile`
+/// so account export can carry the full-fidelity row (id, manualStart,
+/// noteId included), not just the excluded-from-average boolean.
+domain.CycleOverride cycleOverrideToDomain(db.CycleOverrideData row) =>
+    domain.CycleOverride(
+      id: row.id,
+      profileId: row.profileId,
+      cycleStartDate: row.cycleStartDate,
+      excludedFromAverage: row.excludedFromAverage,
+      manualStart: row.manualStart,
+      noteId: row.noteId,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
     );
 
 /// Issue #128: drift-row -> domain [domain.VisitPrepItem]. Mirrors

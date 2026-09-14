@@ -28,10 +28,13 @@ import '../../domain/export/account_export.dart';
 import '../../domain/export/account_export_remote_source.dart';
 import '../../domain/export/account_export_writer.dart';
 import '../../domain/models/care_note.dart';
+import '../../domain/models/cycle_override.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/visit_prep_item.dart';
+import '../../domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 
 class PlatformAccountExportWriter implements AccountExportWriter {
   const PlatformAccountExportWriter({this.remoteSource});
@@ -49,6 +52,8 @@ class PlatformAccountExportWriter implements AccountExportWriter {
     Map<String, List<Observation>> observationsByProfile = const {},
     Map<String, List<CareNote>> careNotesByProfile = const {},
     Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
+    Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
+    Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
     required String appVersion,
   }) async {
     final exportedAt = DateTime.now().toUtc();
@@ -58,6 +63,8 @@ class PlatformAccountExportWriter implements AccountExportWriter {
       observationsByProfile: observationsByProfile,
       careNotesByProfile: careNotesByProfile,
       visitPrepByProfile: visitPrepByProfile,
+      profileModesByProfile: profileModesByProfile,
+      cycleOverridesByProfile: cycleOverridesByProfile,
       exportedAt: exportedAt,
       appVersion: appVersion,
       remoteSource: remoteSource,

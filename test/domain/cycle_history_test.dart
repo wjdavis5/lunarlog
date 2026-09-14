@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
@@ -603,6 +604,21 @@ class FakeCycleOverridesRepository implements CycleOverridesRepository {
         profileId,
         () => StreamController<Set<String>>.broadcast(onListen: () {}),
       );
+
+  /// Not exercised by this file's own scenarios (a device-local-omission
+  /// migration test, not an export test) — synthesises a minimal
+  /// [CycleOverride] per excluded date so the interface contract still
+  /// holds for any future caller.
+  @override
+  Future<List<CycleOverride>> listForProfile(String profileId) async => [
+        for (final date in _excluded[profileId] ?? const <String>{})
+          CycleOverride(
+            id: date,
+            profileId: profileId,
+            cycleStartDate: date,
+            excludedFromAverage: true,
+          ),
+      ];
 
   @override
   Future<Set<String>> excludedCycleStarts(String profileId) async =>

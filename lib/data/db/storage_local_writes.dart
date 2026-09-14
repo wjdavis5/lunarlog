@@ -145,6 +145,7 @@ _DayEntryProvenance _resolvedProvenanceForUpdate({
 void _validateObservation({
   required String category,
   String? code,
+  double? valueNum,
   String? valueText,
   String? unit,
   String? sourceId,
@@ -156,6 +157,16 @@ void _validateObservation({
         'must be 1-$kMaxObservationCategoryLength characters');
   }
   _boundedOrThrow(code, kMaxObservationCodeLength, 'code');
+  // Issue #140 review, LLA-092: a NaN/Infinity value_num persists cleanly
+  // here (sqlite has no numeric-range CHECK to catch it) and only fails
+  // much later and far away, when `row_codec.dart`'s `encodeObservation`
+  // tries to `jsonEncode` it for an unrelated sync push -- rejecting it at
+  // the write boundary means a bad value can never reach storage in the
+  // first place, from any writer (import, a future manual entry path, or
+  // this store's own bulk seam), not only the one caught at parse time.
+  if (valueNum != null && !valueNum.isFinite) {
+    throw ArgumentError.value(valueNum, 'valueNum', 'must be a finite number');
+  }
   _boundedOrThrow(valueText, kMaxObservationValueTextLength, 'valueText');
   _boundedOrThrow(unit, kMaxObservationUnitLength, 'unit');
   _boundedOrThrow(sourceId, kMaxObservationSourceIdLength, 'sourceId');
@@ -561,6 +572,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       _validateObservation(
         category: obs.category,
         code: obs.code,
+        valueNum: obs.valueNum,
         valueText: obs.valueText,
         unit: obs.unit,
         sourceId: obs.sourceId,
@@ -745,15 +757,34 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     if (entries.isEmpty && observations.isEmpty) return [];
     return db.transaction(() async {
       final written = <DayEntry>[];
+      // Issue #140 review, LLA-044: incoming entry id -> the id it was
+      // actually persisted under. Populated only when [_writeBulkDayEntry]'s
+      // own local-parent fallback fires (an incoming id matching no stored
+      // row, but a LIVE row already at (profileId, localDate) -- that live
+      // row's id is reused instead) -- an entry written under its own id
+      // never needs remapping.
+      final parentIdRemap = <String, String>{};
       for (final entry in entries) {
-        written.add(await _writeBulkDayEntry(entry));
+        final row = await _writeBulkDayEntry(entry);
+        if (row.id != entry.id) parentIdRemap[entry.id] = row.id;
+        written.add(row);
       }
       for (final observation in observations) {
+        // Issue #140 review, LLA-044: an observation's dayEntryId is
+        // whatever the CALLER'S batch called its parent by -- remap it onto
+        // the parent's actually-persisted id (above) before writing, or the
+        // FK below would point at a row that was never inserted (the
+        // fallback path wrote under a different, pre-existing row's id
+        // instead) and this write would fail. A dayEntryId this batch never
+        // remapped belongs to an entry outside it (already stored), so it
+        // is used as-is.
+        final dayEntryId =
+            parentIdRemap[observation.dayEntryId] ?? observation.dayEntryId;
         // [_validateBulkObservation] already rejected a null/empty
         // category above, so this `!` never fails here.
         await _writeObservation(
           id: observation.id,
-          dayEntryId: observation.dayEntryId,
+          dayEntryId: dayEntryId,
           profileId: observation.profileId,
           localDate: observation.localDate,
           observedAt: observation.observedAt,
@@ -794,6 +825,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     _validateObservation(
       category: observation.category ?? '',
       code: observation.code,
+      valueNum: observation.valueNum,
       valueText: observation.valueText,
       unit: observation.unit,
       sourceId: observation.sourceId,
@@ -930,6 +962,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     _validateObservation(
       category: category,
       code: code,
+      valueNum: valueNum,
       valueText: valueText,
       unit: unit,
       sourceId: sourceId,

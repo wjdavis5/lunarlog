@@ -138,6 +138,21 @@ void main() {
       );
     });
 
+    test(
+        'throws invalidNumber for a nonfinite value_num rather than letting '
+        'jsonEncode crash on the push body (Issue #140 review, LLA-092)',
+        () {
+      for (final value in [double.nan, double.infinity, double.negativeInfinity]) {
+        final row = _observation(valueNum: value);
+        expect(
+          () => encodeObservation(row),
+          throwsA(isA<RowCodecError>()
+              .having((e) => e.kind, 'kind', RowCodecErrorKind.invalidNumber)
+              .having((e) => e.field, 'field', 'value_num')),
+        );
+      }
+    });
+
     test('decodes stored JSON-text raw to a JSON value on the wire, not a '
         'doubly-encoded string', () {
       final json = encodeObservation(

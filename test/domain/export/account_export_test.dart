@@ -7,13 +7,16 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 
 import '../../support/fake_account_export_remote_source.dart';
@@ -27,6 +30,11 @@ Profile _profile(
   WeightUnit weightUnit = WeightUnit.kg,
   int sortOrder = 0,
   DateTime? archivedAt,
+  int? birthYear,
+  ProfileRelationship? relationship,
+  LocalDate? lastPeriodStart,
+  int? typicalCycleLengthDays,
+  int? typicalPeriodLengthDays,
 }) =>
     Profile(
       id: id,
@@ -39,6 +47,11 @@ Profile _profile(
       archivedAt: archivedAt,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 2),
+      birthYear: birthYear,
+      relationship: relationship,
+      lastPeriodStart: lastPeriodStart,
+      typicalCycleLengthDays: typicalCycleLengthDays,
+      typicalPeriodLengthDays: typicalPeriodLengthDays,
     );
 
 DayEntry _entry(
@@ -405,6 +418,140 @@ void main() {
       expect((profiles[0] as Map)['weightUnit'], 'kg');
       expect((profiles[1] as Map)['bbtUnit'], 'fahrenheit');
       expect((profiles[1] as Map)['weightUnit'], 'lb');
+    });
+  });
+
+  group(
+      'portable state: subject metadata, profileMode, cycleOverrides '
+      '(Issue #140 review, LLA-084, export v9)', () {
+    test('schema version was bumped to 9 for the new keys', () {
+      expect(kAccountExportSchemaVersion, 9);
+    });
+
+    test('each exported profile carries its subject metadata and '
+        'onboarding cycle facts', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile(
+            'p-1',
+            birthYear: 2012,
+            relationship: ProfileRelationship.daughter,
+            lastPeriodStart: LocalDate.fromIso('2026-08-01'),
+            typicalCycleLengthDays: 28,
+            typicalPeriodLengthDays: 5,
+          ),
+          _profile('p-2'),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final p1 = profiles[0] as Map;
+      expect(p1['birthYear'], 2012);
+      expect(p1['relationship'], 'daughter');
+      expect(p1['lastPeriodStart'], '2026-08-01');
+      expect(p1['typicalCycleLengthDays'], 28);
+      expect(p1['typicalPeriodLengthDays'], 5);
+
+      final p2 = profiles[1] as Map;
+      expect(p2['birthYear'], isNull);
+      expect(p2['relationship'], isNull);
+      expect(p2['lastPeriodStart'], isNull);
+      expect(p2['typicalCycleLengthDays'], isNull);
+      expect(p2['typicalPeriodLengthDays'], isNull);
+    });
+
+    test('profileMode is null when no profile_modes row was ever written, '
+        'and never carries a health_sync_consent key even when a row '
+        'exists', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1'), _profile('p-2')],
+        entriesByProfile: const {},
+        profileModesByProfile: {
+          'p-1': (
+            mode: LifecycleMode.conceive,
+            birthControlMethod: 'pill',
+            birthControlStartedOn: '2026-06-01',
+            birthControlStoppedOn: null,
+          ),
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final p1Mode = (profiles[0] as Map)['profileMode'] as Map;
+      expect(p1Mode['mode'], 'conceive');
+      expect(p1Mode['birthControlMethod'], 'pill');
+      expect(p1Mode['birthControlStartedOn'], '2026-06-01');
+      expect(p1Mode['birthControlStoppedOn'], isNull);
+      // Device-specific, safety-sensitive consent is deliberately never
+      // exported (this file's R9 boundary) -- there is no key for it at
+      // all, not even a false/null placeholder.
+      expect(p1Mode.containsKey('healthSyncConsent'), isFalse);
+      expect(p1Mode.containsKey('health_sync_consent'), isFalse);
+
+      expect((profiles[1] as Map)['profileMode'], isNull);
+    });
+
+    test('cycleOverrides round-trips full fidelity (id, manualStart, '
+        'noteId), not just the excluded flag, sorted by cycleStartDate',
+        () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        cycleOverridesByProfile: {
+          'p-1': [
+            CycleOverride(
+              id: 'co-2',
+              profileId: 'p-1',
+              cycleStartDate: '2026-08-01',
+              excludedFromAverage: false,
+              manualStart: true,
+              noteId: 'note-1',
+              updatedAt: DateTime.utc(2026, 8, 1),
+            ),
+            CycleOverride(
+              id: 'co-1',
+              profileId: 'p-1',
+              cycleStartDate: '2026-07-01',
+              excludedFromAverage: true,
+              updatedAt: DateTime.utc(2026, 7, 1),
+            ),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final overrides = (profiles[0] as Map)['cycleOverrides'] as List;
+      expect(overrides, hasLength(2));
+      // Sorted by cycleStartDate, not input order.
+      expect((overrides[0] as Map)['cycleStartDate'], '2026-07-01');
+      expect((overrides[0] as Map)['id'], 'co-1');
+      expect((overrides[0] as Map)['excludedFromAverage'], isTrue);
+      expect((overrides[0] as Map)['manualStart'], isFalse);
+      expect((overrides[0] as Map)['noteId'], isNull);
+      expect((overrides[1] as Map)['cycleStartDate'], '2026-08-01');
+      expect((overrides[1] as Map)['id'], 'co-2');
+      expect((overrides[1] as Map)['manualStart'], isTrue);
+      expect((overrides[1] as Map)['noteId'], 'note-1');
+    });
+
+    test('a profile with none of the new state exports empty/null '
+        'defaults, never throwing', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final p1 = (doc['profiles'] as List)[0] as Map;
+      expect(p1['profileMode'], isNull);
+      expect(p1['cycleOverrides'], isEmpty);
     });
   });
 

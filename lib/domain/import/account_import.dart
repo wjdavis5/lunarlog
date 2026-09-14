@@ -52,14 +52,18 @@ import 'package:meta/meta.dart' show visibleForTesting;
 
 import '../export/account_export.dart' show kAccountExportSchemaVersion;
 import '../limits.dart';
+import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
 import '../models/flow_level.dart';
+import '../models/lifecycle_mode.dart';
 import '../models/local_date.dart';
 import '../models/measurement_unit.dart';
 import '../models/observation.dart';
 import '../models/profile.dart';
 import '../models/profile_guardian.dart';
 import '../models/profile_mode.dart';
+import '../models/profile_relationship.dart';
+import '../repositories/profile_modes_repository.dart' show ProfileLifecycleMode;
 import '../util/timezone.dart' show isValidIanaTimeZone;
 
 /// Byte cap on a picked import file, checked before any JSON decoding
@@ -90,15 +94,6 @@ const int kAccountImportMaxSchemaVersion = kAccountExportSchemaVersion;
 /// which throws `RowCodecError(invalidId)` for anything else — a permanent,
 /// silent sync outage rather than a clean import-time rejection.
 final RegExp _validUlid = RegExp(r'^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}$');
-
-/// A conservative superset of RFC 4122 UUID text (8-4-4-4-12 hex, any
-/// version/variant nibble) — Issue #140 review round 2, item 4:
-/// `day_entries.import_id` is a Postgres `uuid` column and `sync_push`
-/// casts the wire value with `::uuid`, so a malformed `importId` must never
-/// reach that cast. Deliberately lenient about version/variant bits (this
-/// is a format check, not a spec-compliance check).
-final RegExp _validUuid = RegExp(
-    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
 
 /// Caps how much of a raw, untrusted file value ever lands in a rejection
 /// message (Issue #140 review round 2, item 5): `AccountImportError.message`
@@ -136,6 +131,22 @@ class AccountImportError {
 
   @override
   String toString() => 'AccountImportError: $message';
+}
+
+/// Thrown by an [AccountImporter] implementation instead of writing when a
+/// merge target's stored state no longer matches the snapshot [planImport]
+/// merged against (Issue #140 review, LLA-085) — see
+/// [DayEntryPlan.existingUpdatedAt]'s doc comment for the staleness this
+/// guards against. Every write already inside the same transaction is
+/// rolled back with it, so a caller sees either a fully-applied plan or
+/// nothing at all, never a partial one. Callers should discard the stale
+/// [ImportPlan] and rebuild it (re-run the coordinator's `buildPlan`)
+/// rather than retry `apply` with the same plan.
+class StaleImportPlanException implements Exception {
+  const StaleImportPlanException();
+
+  @override
+  String toString() => 'StaleImportPlanException';
 }
 
 /// A `profiles[].dayEntries[]` element straight out of the parsed
@@ -247,8 +258,15 @@ class ImportedProfile {
     this.updatedAt,
     this.bbtUnit,
     this.weightUnit,
+    this.birthYear,
+    this.relationship,
+    this.lastPeriodStart,
+    this.typicalCycleLengthDays,
+    this.typicalPeriodLengthDays,
+    this.profileMode,
     this.dayEntries = const [],
     this.observations = const [],
+    this.cycleOverrides = const [],
   });
 
   /// The id this profile carried in the exporting device's store — the
@@ -290,8 +308,51 @@ class ImportedProfile {
   final String? bbtUnit;
   final String? weightUnit;
 
+  /// Issue #140 review, LLA-084 (kAccountExportSchemaVersion v9): profile
+  /// subject metadata and onboarding-collected cycle facts — already
+  /// validated at parse time; a malformed value rejects the whole document
+  /// (this file's own doc comment). Only consulted for a *created*
+  /// profile, exactly like [mode]/[bbtUnit]/[weightUnit] above — a
+  /// *matched* profile keeps its own stored facts untouched.
+  final int? birthYear;
+  final ProfileRelationship? relationship;
+  final LocalDate? lastPeriodStart;
+  final int? typicalCycleLengthDays;
+  final int? typicalPeriodLengthDays;
+
+  /// The #188 life-stage mode plus birth-control state, or null when the
+  /// file carries none (an older export, or a profile that never had a
+  /// `profile_modes` row). Same create-only treatment as [mode] above.
+  final ProfileLifecycleMode? profileMode;
+
   final List<ImportedDayEntry> dayEntries;
   final List<ImportedObservation> observations;
+
+  /// Every live manual cycle correction the file carries (Issue #140
+  /// review, LLA-084) — additive for both a created AND a matched profile
+  /// (see [_planCycleOverrides]'s doc comment), unlike [profileMode] and
+  /// the subject-metadata fields above.
+  final List<ImportedCycleOverride> cycleOverrides;
+}
+
+/// A `profiles[].cycleOverrides[]` element straight out of the parsed
+/// document (Issue #140 review, LLA-084) — mirrors [ImportedObservation]'s
+/// shape: the file's own values, not yet compared against anything stored
+/// locally.
+class ImportedCycleOverride {
+  const ImportedCycleOverride({
+    required this.id,
+    required this.cycleStartDate,
+    this.excludedFromAverage = false,
+    this.manualStart = false,
+    this.noteId,
+  });
+
+  final String id;
+  final LocalDate cycleStartDate;
+  final bool excludedFromAverage;
+  final bool manualStart;
+  final String? noteId;
 }
 
 /// A fully parsed, structurally and boundedly valid export document
@@ -446,8 +507,10 @@ ImportedProfile _parseProfile(Object? raw) {
     throw _ImportFormatException('A profile entry is not an object.');
   }
   final id = _requireUlid(raw['id'], what: 'A profile id');
+  final context = 'Profile $id';
   final dayEntriesJson = raw['dayEntries'];
   final observationsJson = raw['observations'];
+  final cycleOverridesJson = raw['cycleOverrides'];
   final dayEntries = [
     for (final e in dayEntriesJson is List ? dayEntriesJson : const [])
       _parseDayEntry(e, profileId: id),
@@ -456,23 +519,38 @@ ImportedProfile _parseProfile(Object? raw) {
     for (final o in observationsJson is List ? observationsJson : const [])
       _parseObservation(o, profileId: id),
   ];
+  final cycleOverrides = [
+    for (final o in cycleOverridesJson is List ? cycleOverridesJson : const [])
+      _parseCycleOverride(o, profileId: id),
+  ];
   _rejectDuplicateEntryDates(dayEntries, profileId: id);
   _rejectDuplicateProvenance(dayEntries, profileId: id);
   _rejectOrphanObservations(observations, dayEntries, profileId: id);
   _rejectExcessiveObservationsPerDay(observations, profileId: id);
+  _rejectDuplicateCycleOverrideIds(cycleOverrides, profileId: id);
   return ImportedProfile(
     id: id,
     displayName: _profileDisplayName(raw['displayName']),
     isMinor: raw['isMinor'] == true,
-    mode: _parseMode(raw['mode'], context: 'Profile $id'),
-    bbtUnit: _parseBbtUnit(raw['bbtUnit'], context: 'Profile $id'),
-    weightUnit: _parseWeightUnit(raw['weightUnit'], context: 'Profile $id'),
+    mode: _parseMode(raw['mode'], context: context),
+    bbtUnit: _parseBbtUnit(raw['bbtUnit'], context: context),
+    weightUnit: _parseWeightUnit(raw['weightUnit'], context: context),
     sortOrder: raw['sortOrder'] is int ? raw['sortOrder'] as int : 0,
     archivedAt: DateTime.tryParse('${raw['archivedAt']}'),
     createdAt: DateTime.tryParse('${raw['createdAt']}'),
     updatedAt: DateTime.tryParse('${raw['updatedAt']}'),
+    // Issue #140 review, LLA-084 (kAccountExportSchemaVersion v9).
+    birthYear: _parseBirthYear(raw['birthYear'], context: context),
+    relationship: _parseRelationship(raw['relationship'], context: context),
+    lastPeriodStart: _parseOptionalLocalDate(raw['lastPeriodStart'], context: '$context lastPeriodStart'),
+    typicalCycleLengthDays: _parseBoundedInt(raw['typicalCycleLengthDays'],
+        min: 1, max: 365, context: '$context typicalCycleLengthDays'),
+    typicalPeriodLengthDays: _parseBoundedInt(raw['typicalPeriodLengthDays'],
+        min: 1, max: 60, context: '$context typicalPeriodLengthDays'),
+    profileMode: _parseProfileMode(raw['profileMode'], context: context),
     dayEntries: dayEntries,
     observations: observations,
+    cycleOverrides: cycleOverrides,
   );
 }
 
@@ -537,6 +615,124 @@ String? _parseWeightUnit(Object? raw, {required String context}) {
         '$context has an unrecognised weightUnit ("${_truncateForMessage(raw)}").');
   }
   return raw;
+}
+
+/// `birthYear` mirrors `profiles_birth_year_check` (Issue #140 review,
+/// LLA-084): null (absent — every export before v9) passes through
+/// unchanged; an out-of-range or non-integer value rejects the document,
+/// the same closed-bound treatment [_parseBoundedInt] gives the cycle-fact
+/// fields below.
+int? _parseBirthYear(Object? raw, {required String context}) =>
+    _parseBoundedInt(raw, min: 1900, max: 2200, context: '$context birthYear');
+
+/// [raw] as an int within [min]-[max] inclusive, or null when absent —
+/// shared by [_parseBirthYear] and the two onboarding cycle-fact fields
+/// (mirrors `profiles_typical_cycle_length_days_check`/
+/// `profiles_typical_period_length_days_check`).
+int? _parseBoundedInt(Object? raw, {required int min, required int max, required String context}) {
+  if (raw == null) return null;
+  if (raw is! int || raw < min || raw > max) {
+    throw _ImportFormatException('$context is invalid.');
+  }
+  return raw;
+}
+
+/// Validates `relationship` against [ProfileRelationship]'s closed set
+/// (Issue #140 review, LLA-084) — unlike `ProfileRelationship.fromDb`'s own
+/// degrade-to-null leniency (appropriate for a value this app or the
+/// server already accepted), an untrusted import file carrying an
+/// unrecognised relationship is rejected outright, the [_parseMode]
+/// treatment. Null (absent key) passes through unchanged.
+ProfileRelationship? _parseRelationship(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  if (raw is! String) {
+    throw _ImportFormatException('$context has an invalid relationship.');
+  }
+  final parsed = ProfileRelationship.fromDb(raw);
+  if (parsed == null) {
+    throw _ImportFormatException(
+        '$context has an unrecognised relationship ("${_truncateForMessage(raw)}").');
+  }
+  return parsed;
+}
+
+/// [_parseLocalDate], but null (absent key) passes through unchanged
+/// instead of rejecting — for the optional date fields (`lastPeriodStart`,
+/// the birth-control effective dates) a genuine export may simply never
+/// have populated.
+LocalDate? _parseOptionalLocalDate(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  return _parseLocalDate(raw, context: context);
+}
+
+/// Validates `profileMode` (Issue #140 review, LLA-084): the #188
+/// life-stage mode (closed set, same strict treatment as [_parseMode])
+/// plus the birth-control method (bounded, deliberately not a closed set —
+/// see `kMaxBirthControlMethodLength`'s own doc comment) and its two
+/// effective dates. Null (absent key — no `profile_modes` row on the
+/// exporting device, or an older export) passes through unchanged.
+ProfileLifecycleMode? _parseProfileMode(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  if (raw is! Map<String, Object?>) {
+    throw _ImportFormatException('$context has an invalid profileMode.');
+  }
+  final modeContext = '$context profileMode';
+  final rawMode = raw['mode'];
+  if (rawMode is! String || !LifecycleMode.values.any((m) => m.toDb() == rawMode)) {
+    throw _ImportFormatException(
+        '$modeContext has an unrecognised mode ("${_truncateForMessage('$rawMode')}").');
+  }
+  return (
+    mode: LifecycleMode.values.firstWhere((m) => m.toDb() == rawMode),
+    birthControlMethod: _boundedString(raw['birthControlMethod'],
+        kMaxBirthControlMethodLength, context: '$modeContext birthControlMethod'),
+    birthControlStartedOn: _parseOptionalLocalDate(raw['birthControlStartedOn'],
+            context: '$modeContext birthControlStartedOn')
+        ?.iso,
+    birthControlStoppedOn: _parseOptionalLocalDate(raw['birthControlStoppedOn'],
+            context: '$modeContext birthControlStoppedOn')
+        ?.iso,
+  );
+}
+
+/// A `profiles[].cycleOverrides[]` element (Issue #140 review, LLA-084) —
+/// mirrors [_parseObservation]'s shape.
+ImportedCycleOverride _parseCycleOverride(Object? raw, {required String profileId}) {
+  if (raw is! Map<String, Object?>) {
+    throw _ImportFormatException(
+        'A cycle override for profile $profileId is not an object.');
+  }
+  final id = _requireUlid(raw['id'],
+      what: 'A cycle override for profile $profileId');
+  final context = 'cycle override $id';
+  return ImportedCycleOverride(
+    id: id,
+    cycleStartDate: _parseLocalDate(raw['cycleStartDate'], context: context),
+    excludedFromAverage: raw['excludedFromAverage'] == true,
+    manualStart: raw['manualStart'] == true,
+    noteId: _boundedString(raw['noteId'], kMaxCycleOverrideNoteIdLength,
+        context: '$context noteId'),
+  );
+}
+
+/// Rejects a profile carrying two cycle overrides with the same id (Issue
+/// #140 review, LLA-084) — a genuine export can never repeat one, the
+/// [_rejectDuplicateIds] precedent applied per-profile (cycle_overrides'
+/// composite `(id, profile_id)` key means a DIFFERENT profile sharing the
+/// same raw id is not a conflict at all, so this stays scoped to one
+/// profile rather than joining that whole-document check).
+void _rejectDuplicateCycleOverrideIds(
+  List<ImportedCycleOverride> overrides, {
+  required String profileId,
+}) {
+  final seen = <String>{};
+  for (final o in overrides) {
+    if (!seen.add(o.id)) {
+      throw _ImportFormatException(
+          'Profile $profileId has more than one cycle override with id '
+          '(${_truncateForMessage(o.id)}).');
+    }
+  }
 }
 
 /// Rejects a profile carrying more than one day entry for the same civil
@@ -697,10 +893,18 @@ _DayEntryProvenance _dayEntryProvenance(
   final source = DayEntrySource.fromDb(rawSource as String?);
   final sourceId = _boundedString(raw['sourceId'], kMaxDayEntrySourceIdLength,
       context: '$context sourceId');
-  final importId = _uuidOrNull(raw['importId']);
+  // Issue #140 review, LLA-087: the file's `importId` is never round-tripped
+  // — it points at an `import_jobs` row on the EXPORTING device/account,
+  // which a restore has no reason to expect still exists (a different
+  // account entirely, or the same account after that job — or the whole
+  // account — was deleted). `source`/`sourceId` are the portable "this came
+  // from Clue" identity and still round-trip; only the account-scoped job
+  // FK is cleared, so a later `sync_push` of a restored row is never
+  // rejected by `day_entries_import_id_fkey` pointing at a job that was
+  // never, and cannot be, restored alongside it.
   final hasFileProvenance = source != DayEntrySource.manual || sourceId != null;
   if (hasFileProvenance) {
-    return (source: source.toDb(), sourceId: sourceId, importId: importId);
+    return (source: source.toDb(), sourceId: sourceId, importId: null);
   }
   return (source: DayEntrySource.fileImport.toDb(), sourceId: entryId, importId: null);
 }
@@ -818,7 +1022,7 @@ ImportedObservation _parseObservation(Object? raw,
     category: category,
     code: _boundedString(raw['code'], kMaxObservationCodeLength,
         context: '$context code'),
-    valueNum: raw['valueNum'] is num ? (raw['valueNum'] as num).toDouble() : null,
+    valueNum: _finiteNumOrThrow(raw['valueNum'], context: '$context value'),
     valueText: _boundedString(raw['valueText'], kMaxObservationValueTextLength,
         context: '$context value'),
     unit: _boundedString(raw['unit'], kMaxObservationUnitLength,
@@ -827,6 +1031,28 @@ ImportedObservation _parseObservation(Object? raw,
     excluded: raw['excluded'] == true,
     raw: _encodedRawOrNull(raw['raw']),
   );
+}
+
+/// [raw] as a finite double, or null when absent — Issue #140 review,
+/// LLA-092: `jsonDecode` happily parses an out-of-range numeric literal
+/// (e.g. `1e400`) into `double.infinity` rather than failing, so `raw is
+/// num` alone (the pre-fix check) let a nonfinite value straight through.
+/// A genuine export from this app can never contain NaN/Infinity — Dart's
+/// own `jsonEncode` cannot even serialize one — so this is exactly the
+/// kind of value this file's own doc comment says to treat as tampering or
+/// corruption: reject the whole document rather than store a value that
+/// would later throw when `row_codec.dart`'s `encodeObservation` tries to
+/// serialize it for a sync push, poisoning an unrelated, much later batch.
+double? _finiteNumOrThrow(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  if (raw is! num) {
+    throw _ImportFormatException('$context is invalid.');
+  }
+  final value = raw.toDouble();
+  if (!value.isFinite) {
+    throw _ImportFormatException('$context is not a finite number.');
+  }
+  return value;
 }
 
 int? _parseIntensity(Object? raw, {required String context}) {
@@ -844,17 +1070,6 @@ String? _boundedString(Object? value, int max, {required String context}) {
   if (value is! String || value.length > max) {
     throw _ImportFormatException('$context is invalid.');
   }
-  return value;
-}
-
-/// [value] when it is a syntactically valid UUID string, else null — never
-/// a rejection (Issue #140 review round 2, item 4): unlike an `id` (item
-/// 1) or a duplicate provenance pair (item 2), a malformed `importId` is
-/// dropped rather than failing the whole document, since it is
-/// provenance-only bookkeeping (Issue #159), not identity — the document
-/// otherwise imports normally.
-String? _uuidOrNull(Object? value) {
-  if (value is! String || !_validUuid.hasMatch(value)) return null;
   return value;
 }
 
@@ -975,6 +1190,7 @@ class DayEntryPlan {
     required this.importId,
     this.noteDiscarded = false,
     this.fileId,
+    this.existingUpdatedAt,
   });
 
   final DayEntryImportOutcome outcome;
@@ -1011,6 +1227,22 @@ class DayEntryPlan {
   /// instead of each minting their own and later colliding — see this
   /// decision's trade-off note in `docs/import/clue-mapping.md`.
   final String? fileId;
+
+  /// The `updated_at` [planImport] read on the existing row this merge was
+  /// computed against — null for [DayEntryImportOutcome.add] (nothing to
+  /// go stale against) and for a device that skips the check entirely.
+  /// Issue #140 review, LLA-085: a merge's [flow]/[tags]/[note]/[pms] are
+  /// already resolved (`_higherFlow`, `_mergeTags`, ...) against whatever
+  /// the existing row held AT PLANNING TIME — if a concurrent sync lands a
+  /// newer edit on that same row while the confirm dialog sits open,
+  /// applying this plan's stale merged values would silently overwrite the
+  /// newer edit with a fresh timestamp, even though nothing here was ever
+  /// re-read. `AccountImporter.apply` re-reads the live row inside its own
+  /// transaction and compares its `updated_at` against this snapshot
+  /// before writing, aborting the whole import (nothing written, by the
+  /// same all-or-nothing transaction guarantee this file's own doc comment
+  /// already promises) rather than silently applying it.
+  final DateTime? existingUpdatedAt;
 }
 
 /// Whether an observation is a new row or left alone because one already
@@ -1022,6 +1254,19 @@ class ObservationPlan {
 
   final ObservationImportOutcome outcome;
   final ImportedObservation imported;
+}
+
+/// Whether a cycle override is a new row or left alone because a live one
+/// already exists at the same `cycleStartDate` (Issue #140 review,
+/// LLA-084) — mirrors [ObservationImportOutcome]'s shape, keyed by date
+/// alone rather than a (date, category, code) triple.
+enum CycleOverrideImportOutcome { add, skip }
+
+class CycleOverridePlan {
+  const CycleOverridePlan({required this.outcome, required this.imported});
+
+  final CycleOverrideImportOutcome outcome;
+  final ImportedCycleOverride imported;
 }
 
 /// What happened to one `profiles[]` entry.
@@ -1038,8 +1283,15 @@ class ProfilePlan {
     this.weightUnit,
     this.isMinor = false,
     this.sortOrder = 0,
+    this.birthYear,
+    this.relationship,
+    this.lastPeriodStart,
+    this.typicalCycleLengthDays,
+    this.typicalPeriodLengthDays,
+    this.profileMode,
     this.entries = const [],
     this.observations = const [],
+    this.cycleOverrides = const [],
     this.hasOtherGuardians = false,
     this.restoredFromTombstone = false,
   });
@@ -1058,8 +1310,23 @@ class ProfilePlan {
   final String? weightUnit;
   final bool isMinor;
   final int sortOrder;
+
+  /// Issue #140 review, LLA-084: subject metadata and onboarding cycle
+  /// facts, plus the life-stage mode/birth-control state — same
+  /// create-only treatment as [mode]/[bbtUnit]/[weightUnit] above.
+  final int? birthYear;
+  final ProfileRelationship? relationship;
+  final LocalDate? lastPeriodStart;
+  final int? typicalCycleLengthDays;
+  final int? typicalPeriodLengthDays;
+  final ProfileLifecycleMode? profileMode;
+
   final List<DayEntryPlan> entries;
   final List<ObservationPlan> observations;
+
+  /// Issue #140 review, LLA-084: additive for both a created AND a matched
+  /// profile — see [_planCycleOverrides]'s doc comment.
+  final List<CycleOverridePlan> cycleOverrides;
 
   /// Whether this *matched* profile has an accepted guardian other than
   /// the importing session's own user (Issue #140 review, item 10) — false
@@ -1105,6 +1372,8 @@ class ImportPlanSummary {
     required this.skippedProfiles,
     this.notesDiscarded = 0,
     this.profilesRestored = 0,
+    this.cycleOverridesAdded = 0,
+    this.cycleOverridesSkipped = 0,
   });
 
   final int profilesCreated;
@@ -1114,6 +1383,11 @@ class ImportPlanSummary {
   final int observationsAdded;
   final int observationsSkipped;
   final List<SkippedProfileReason> skippedProfiles;
+
+  /// Issue #140 review, LLA-084: mirrors [observationsAdded]/
+  /// [observationsSkipped]'s shape for cycle overrides.
+  final int cycleOverridesAdded;
+  final int cycleOverridesSkipped;
 
   /// Merged entries where a non-empty file note was dropped because the
   /// existing row already had one (Issue #140 review, item 9) — report
@@ -1132,6 +1406,7 @@ class ImportPlanSummary {
     final counts = _profileOutcomeCounts(profiles);
     final entryCounts = _entryOutcomeCounts(profiles);
     final observationCounts = _observationOutcomeCounts(profiles);
+    final cycleOverrideCounts = _cycleOverrideOutcomeCounts(profiles);
     return ImportPlanSummary(
       profilesCreated: counts.created,
       profilesMatched: counts.matched,
@@ -1141,6 +1416,8 @@ class ImportPlanSummary {
       observationsSkipped: observationCounts.skipped,
       notesDiscarded: entryCounts.notesDiscarded,
       profilesRestored: counts.restored,
+      cycleOverridesAdded: cycleOverrideCounts.added,
+      cycleOverridesSkipped: cycleOverrideCounts.skipped,
       skippedProfiles: [
         for (final p in profiles)
           if (p.outcome == ProfileImportOutcome.skipped)
@@ -1196,6 +1473,23 @@ _ObservationCounts _observationOutcomeCounts(List<ProfilePlan> profiles) {
   for (final p in profiles) {
     for (final o in p.observations) {
       if (o.outcome == ObservationImportOutcome.add) {
+        added++;
+      } else {
+        skipped++;
+      }
+    }
+  }
+  return (added: added, skipped: skipped);
+}
+
+typedef _CycleOverrideCounts = ({int added, int skipped});
+
+_CycleOverrideCounts _cycleOverrideOutcomeCounts(List<ProfilePlan> profiles) {
+  var added = 0;
+  var skipped = 0;
+  for (final p in profiles) {
+    for (final o in p.cycleOverrides) {
+      if (o.outcome == CycleOverrideImportOutcome.add) {
         added++;
       } else {
         skipped++;
@@ -1279,6 +1573,9 @@ DayEntryPlan _planDayEntry(ImportedDayEntry imported, DayEntry? existing) {
     sourceId: existing.sourceId,
     importId: existing.importId,
     noteDiscarded: _noteDiscarded(existing.note, imported.note),
+    // Issue #140 review, LLA-085: the snapshot this merge was computed
+    // against — see [DayEntryPlan.existingUpdatedAt]'s doc comment.
+    existingUpdatedAt: existing.updatedAt,
   );
 }
 
@@ -1300,12 +1597,68 @@ List<ObservationPlan> _planObservations(
   final existingKeys = {
     for (final o in existing) _observationKey(o.localDate.iso, o.category, o.code),
   };
+  final liveCountByDate = <String, int>{};
+  for (final o in existing) {
+    liveCountByDate.update(o.localDate.iso, (n) => n + 1, ifAbsent: () => 1);
+  }
+  return [
+    for (final o in imported) _planObservation(o, existingKeys, liveCountByDate),
+  ];
+}
+
+/// Decides one imported observation's outcome against the profile's
+/// current live state: `skip` when an identical (date, category, code)
+/// already exists (the pre-existing dedup rule), OR when the day it lands
+/// on is already at [kMaxObservationsPerDay] live observations (Issue #140
+/// review, LLA-091) — mirroring the same per-(profile, local_date) cap
+/// `sync_push` enforces server-side (a `CHECK` cannot count sibling rows,
+/// so this client-side check, like the file-level one in
+/// [_rejectExcessiveObservationsPerDay], is the only chance to catch it
+/// before writing); without this, a restore onto a day already at the cap
+/// locally succeeds and only ever surfaces as a later, unrelated sync
+/// failure once the write is pushed. [liveCountByDate] is mutated in place
+/// so several file rows landing `add` on the SAME day within one document
+/// also count against each other, not just against what the profile
+/// already had stored before this import started.
+ObservationPlan _planObservation(
+  ImportedObservation imported,
+  Set<String> existingKeys,
+  Map<String, int> liveCountByDate,
+) {
+  final date = imported.localDate.iso;
+  final key = _observationKey(date, imported.category, imported.code);
+  final atCap = (liveCountByDate[date] ?? 0) >= kMaxObservationsPerDay;
+  final outcome = existingKeys.contains(key) || atCap
+      ? ObservationImportOutcome.skip
+      : ObservationImportOutcome.add;
+  if (outcome == ObservationImportOutcome.add) {
+    liveCountByDate[date] = (liveCountByDate[date] ?? 0) + 1;
+  }
+  return ObservationPlan(outcome: outcome, imported: imported);
+}
+
+/// Decides every imported cycle override's outcome for one profile (Issue
+/// #140 review, LLA-084): `add` when nothing live already occupies its
+/// `cycleStartDate`, `skip` otherwise. Deliberately additive for BOTH a
+/// created and a matched profile — unlike [profileMode]/[birthYear]/etc,
+/// which only ever apply to a freshly created profile, a cycle override is
+/// a dated record like a day entry or observation, and the same "restore
+/// adds what's missing, never overwrites" policy applies to it. Keyed by
+/// date alone (not an id) since `cycleStartDate` is the override's real
+/// identity — two file rows sharing one date are the same boundary, and
+/// [seen] (starting from every EXISTING live date) also dedupes a batch
+/// against itself, mirroring [_planObservation]'s [liveCountByDate].
+List<CycleOverridePlan> _planCycleOverrides(
+  List<ImportedCycleOverride> imported,
+  List<CycleOverride> existing,
+) {
+  final seen = {for (final o in existing) o.cycleStartDate};
   return [
     for (final o in imported)
-      ObservationPlan(
-        outcome: existingKeys.contains(_observationKey(o.localDate.iso, o.category, o.code))
-            ? ObservationImportOutcome.skip
-            : ObservationImportOutcome.add,
+      CycleOverridePlan(
+        outcome: seen.add(o.cycleStartDate.iso)
+            ? CycleOverrideImportOutcome.add
+            : CycleOverrideImportOutcome.skip,
         imported: o,
       ),
   ];
@@ -1317,6 +1670,7 @@ ProfilePlan _planProfile(
   Profile? tombstoned,
   List<DayEntry> existingEntries,
   List<Observation> existingObservations,
+  List<CycleOverride> existingCycleOverrides,
   String? Function(Profile existingProfile) writeBlockReason,
   bool Function(Profile existingProfile) hasOtherGuardians,
 ) {
@@ -1340,8 +1694,17 @@ ProfilePlan _planProfile(
       weightUnit: imported.weightUnit,
       isMinor: imported.isMinor,
       sortOrder: imported.sortOrder,
+      // Issue #140 review, LLA-084: only ever consulted on create, exactly
+      // like mode/bbtUnit/weightUnit above.
+      birthYear: imported.birthYear,
+      relationship: imported.relationship,
+      lastPeriodStart: imported.lastPeriodStart,
+      typicalCycleLengthDays: imported.typicalCycleLengthDays,
+      typicalPeriodLengthDays: imported.typicalPeriodLengthDays,
+      profileMode: imported.profileMode,
       entries: _planEntries(imported.dayEntries, const []),
       observations: _planObservations(imported.observations, const []),
+      cycleOverrides: _planCycleOverrides(imported.cycleOverrides, const []),
     );
   }
   final blockReason = writeBlockReason(target);
@@ -1363,6 +1726,8 @@ ProfilePlan _planProfile(
     outcome: ProfileImportOutcome.matched,
     entries: _planEntries(imported.dayEntries, existingEntries),
     observations: _planObservations(imported.observations, existingObservations),
+    cycleOverrides:
+        _planCycleOverrides(imported.cycleOverrides, existingCycleOverrides),
     hasOtherGuardians: hasOtherGuardians(target),
     restoredFromTombstone: existing == null,
   );
@@ -1402,6 +1767,10 @@ ImportPlan planImport({
   Map<String, Profile> tombstonedProfilesById = const {},
   Map<String, List<DayEntry>> existingEntriesByProfileId = const {},
   Map<String, List<Observation>> existingObservationsByProfileId = const {},
+  // Issue #140 review, LLA-084: same "matched-profile-only" contract as
+  // the two maps above — needed only for a profile id appearing in both
+  // [document] and [existingProfiles].
+  Map<String, List<CycleOverride>> existingCycleOverridesByProfileId = const {},
   required String? Function(Profile existingProfile) writeBlockReason,
   bool Function(Profile existingProfile) hasOtherGuardians = _noOtherGuardians,
 }) {
@@ -1414,6 +1783,7 @@ ImportPlan planImport({
         tombstonedProfilesById[imported.id],
         existingEntriesByProfileId[imported.id] ?? const [],
         existingObservationsByProfileId[imported.id] ?? const [],
+        existingCycleOverridesByProfileId[imported.id] ?? const [],
         writeBlockReason,
         hasOtherGuardians,
       ),
