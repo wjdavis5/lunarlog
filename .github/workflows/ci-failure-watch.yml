@@ -44,4 +44,12 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          # LLA-114: the `branches: [main]` filter above matches on
+          # head_branch alone, which a fork controls (its own default
+          # branch is usually also named "main") -- ci_watch.py's
+          # is_trusted_source re-validates that this run's code actually
+          # came from this repository's own main, not a fork's
+          # identically-named branch, before ever filing an issue.
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: python3 tool/orchestrator/ci_watch.py

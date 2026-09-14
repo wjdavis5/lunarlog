@@ -161,6 +161,91 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'health_channel.dart/health_channel_codec.dart — same treatment '
         'as google_sign_in_client.dart.',
   ),
+
+  // LLA-106: these eight files were never excluded because they were never
+  // *visible* as a gap before -- a file lcov has no SF: record for at all
+  // simply dropped out of both gates' denominators silently (the defect
+  // LLA-106 fixes; see coverage_inventory.dart). Making that failure loud
+  // is what surfaced them: each is either a compile-time conditional-export
+  // branch that the native/VM `flutter test` target structurally never
+  // selects (same shape as startup_native.dart's own exclusion above, just
+  // the *other* branch of the same `if (dart.library.ffi) ... if
+  // (dart.library.js_interop) ...` conditional exports -- native gets
+  // selected, so `_unsupported.dart`/`_web.dart` never do), or the app
+  // entry point / Supabase bootstrap wiring that only ever runs for real
+  // inside a launched app.
+  const CoverageExclusion(
+    'lib/data/db/factory_unsupported.dart',
+    'The `if (dart.library.ffi) ... if (dart.library.js_interop) ...` '
+        'branch of lib/data/db/platform_factory.dart\'s conditional export '
+        '(neither native nor web) -- flutter test\'s native/VM target '
+        'always resolves dart.library.ffi true and selects native_db.dart '
+        'instead, so this file structurally never loads. One line: '
+        'throws UnsupportedError, nothing to unit test in isolation.',
+  ),
+  const CoverageExclusion(
+    'lib/data/db/web_db.dart',
+    'The web branch of lib/data/db/platform_factory.dart\'s conditional '
+        'export -- flutter test\'s native/VM target resolves '
+        'dart.library.ffi true and selects native_db.dart, so this file '
+        'never loads (same reasoning as factory_unsupported.dart above). '
+        'Wraps drift\'s WasmDatabase/IndexedDB wiring, which cannot run '
+        'under flutter test regardless.',
+  ),
+  const CoverageExclusion(
+    'lib/startup/gate/gate_unsupported.dart',
+    'The neither-native-nor-web branch of lib/startup/gate/gate.dart\'s '
+        'conditional export -- same reasoning as '
+        'lib/data/db/factory_unsupported.dart above: flutter test\'s '
+        'native/VM target always selects local_auth_gate.dart instead, so '
+        'this one-line UnsupportedError throw never loads.',
+  ),
+  const CoverageExclusion(
+    'lib/startup/gate/web_gate.dart',
+    'The web branch of lib/startup/gate/gate.dart\'s conditional export -- '
+        'flutter test\'s native/VM target selects local_auth_gate.dart '
+        'instead, so this file never loads (same reasoning as '
+        'lib/data/db/web_db.dart above). A no-op gate with no browser '
+        'storage to exercise under flutter test regardless.',
+  ),
+  const CoverageExclusion(
+    'lib/startup/startup_unsupported.dart',
+    'The neither-native-nor-web branch of lib/startup/startup.dart\'s '
+        'conditional export -- same reasoning as gate_unsupported.dart '
+        'above: flutter test\'s native/VM target always selects '
+        'startup_native.dart instead, so these three one-line '
+        'UnsupportedError throws never load.',
+  ),
+  const CoverageExclusion(
+    'lib/startup/startup_web.dart',
+    'The web branch of lib/startup/startup.dart\'s conditional export -- '
+        'flutter test\'s native/VM target selects startup_native.dart '
+        'instead, so this file never loads (same reasoning as web_gate.dart '
+        'above). Wraps web_db.dart\'s WASM/IndexedDB wiring, which cannot '
+        'run under flutter test regardless.',
+  ),
+  const CoverageExclusion(
+    'lib/main.dart',
+    'The app entry point: runApp, runWithSentry, and the real '
+        'AppLinksSource/notification-scheduler/gate wiring, none of which '
+        'a widget test ever calls main() to reach -- every test pumps a '
+        'widget tree directly instead, same as any Flutter app\'s '
+        'main.dart. No test in this suite imports it, so it carries no '
+        'lcov record at all rather than a partial one.',
+  ),
+  const CoverageExclusion(
+    'lib/startup/supabase_bootstrap.dart',
+    'bootstrapSupabase wires together Supabase.initialize (a real '
+        'plugin/network call) with GoTrueAuthGateway and AppLinksSource, '
+        'both already excluded above (lib/data/auth/auth_gateway.dart) as '
+        '100% platform adapters that cannot run under flutter test; this '
+        'file is one level up from that same boundary and inherits the '
+        'same limitation. Its one plain branch '
+        '(`if (!AppConfig.hasSupabase) return null;`) is too trivial to '
+        'warrant extracting into its own tested function the way '
+        'buildFirebaseOptions() was pulled out of '
+        'firebase_push_token_source.dart.',
+  ),
 ];
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');

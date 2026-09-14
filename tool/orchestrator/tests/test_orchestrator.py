@@ -9,6 +9,7 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -126,6 +127,49 @@ class CiWatchTests(unittest.TestCase):
         ]
         self.assertEqual(ci_watch.find_existing_number(issues, "abcdef1234567890"), 1)
         self.assertIsNone(ci_watch.find_existing_number(issues, "deadbeef00000000"))
+
+    def test_is_trusted_source_accepts_the_repos_own_main(self):
+        self.assertTrue(
+            ci_watch.is_trusted_source("wjdavis5/lunarlog", "wjdavis5/lunarlog", "main")
+        )
+
+    def test_is_trusted_source_rejects_a_fork_branch_named_main(self):
+        """LLA-114: a PR opened straight from a fork's own "main" branch
+        must not be mistaken for this repository's own main failing --
+        head_repository differs from repo even though head_branch matches."""
+        self.assertFalse(
+            ci_watch.is_trusted_source("wjdavis5/lunarlog", "someforker/lunarlog", "main")
+        )
+
+    def test_is_trusted_source_rejects_a_non_main_branch_even_from_this_repo(self):
+        self.assertFalse(
+            ci_watch.is_trusted_source(
+                "wjdavis5/lunarlog", "wjdavis5/lunarlog", "some-feature-branch"
+            )
+        )
+
+    def test_is_trusted_source_rejects_missing_fields(self):
+        self.assertFalse(ci_watch.is_trusted_source("wjdavis5/lunarlog", "", "main"))
+        self.assertFalse(ci_watch.is_trusted_source("wjdavis5/lunarlog", "wjdavis5/lunarlog", ""))
+        self.assertFalse(ci_watch.is_trusted_source("", "wjdavis5/lunarlog", "main"))
+
+    def test_main_skips_filing_for_an_untrusted_fork_run(self):
+        """End-to-end LLA-114 regression: main() must return 0 without
+        shelling out to `gh` at all -- a fork's own "main" branch failing
+        must never touch the issue tracker."""
+        env = {
+            "RUN_ID": "1",
+            "HEAD_SHA": "abcdef1234567890",
+            "RUN_URL": "https://run",
+            "GITHUB_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_REPOSITORY": "someforker/lunarlog",
+            "HEAD_BRANCH": "main",
+            "WORKFLOW_NAME": "CI",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(ci_watch, "_run") as run_mock:
+                self.assertEqual(ci_watch.main(), 0)
+                run_mock.assert_not_called()
 
     def test_find_existing_scopes_by_workflow(self):
         """Two different workflows failing on the same SHA must not collide
