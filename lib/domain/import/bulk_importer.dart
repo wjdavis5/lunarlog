@@ -86,7 +86,12 @@ class BulkImportRow {
 }
 
 /// One row `bulk_import_entries` declined, with its 0-based position in
-/// the chunk that carried it and the server's plain-text reason.
+/// the FULL input list passed to [BulkImporter.importEntries] (Issue #140
+/// review, LLA-045) — `SupabaseBulkImporter` (`lib/data/import/
+/// supabase_bulk_importer.dart`) offsets the RPC's own per-chunk
+/// `row_index` back onto that list before this reaches a caller, so a
+/// rejection past the first chunk still names the row that actually
+/// caused it — and the server's plain-text reason.
 @immutable
 class BulkImportRejectedRow {
   const BulkImportRejectedRow({required this.rowIndex, required this.reason});

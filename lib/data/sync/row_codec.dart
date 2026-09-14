@@ -104,6 +104,14 @@ enum RowCodecErrorKind {
   /// `profiles.tracking_preferences` (Issue #259) does not parse as a JSON
   /// object on either direction of the codec.
   invalidTrackingPreferences,
+
+  /// A numeric field holds a non-finite value (NaN or +/-Infinity) — Issue
+  /// #140 review, LLA-092: `dart:convert`'s `jsonEncode` cannot serialize
+  /// one at all (it throws `UnsupportedError`), so this is the codec's own
+  /// chance to fail with a typed, attributable error naming the offending
+  /// row/field instead of a bare encoder crash surfacing far from — and
+  /// long after — whatever local write actually let the value in.
+  invalidNumber,
 }
 
 /// Typed codec failure. Deliberately carries no payload: the table, the
@@ -418,6 +426,16 @@ JsonRow encodeObservation(Observation row) {
   if (!_isoDate.hasMatch(row.localDate)) {
     throw const RowCodecError(RowCodecErrorKind.invalidDate,
         table: table, field: 'local_date');
+  }
+  // Issue #140 review, LLA-092: a nonfinite value_num (NaN/Infinity) can
+  // reach this far only if it slipped past every write-time guard — an
+  // older row from before the storage-layer check landed, say — but
+  // `jsonEncode`ing one for the push body below would throw an untyped
+  // `UnsupportedError` instead of this codec's own typed [RowCodecError],
+  // so it is checked explicitly rather than left to fail downstream.
+  if (row.valueNum != null && !row.valueNum!.isFinite) {
+    throw const RowCodecError(RowCodecErrorKind.invalidNumber,
+        table: table, field: 'value_num');
   }
   return {
     'id': row.id,

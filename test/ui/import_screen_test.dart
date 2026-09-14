@@ -359,6 +359,41 @@ void main() {
       );
       expect(key('import-result-summary'), findsNothing);
     });
+
+    testWidgets(
+        'a stale-plan apply resets all the way to the pick step with its '
+        'own copy, not the generic apply-failure one (Issue #140 review, '
+        'LLA-085)', (tester) async {
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => _validBytes()),
+        coordinator: _FakeCoordinator(
+          storage,
+          planResult: _plan(),
+          applyError: const StaleImportPlanException(),
+        ),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      expect(key('import-preview-summary'), findsOneWidget);
+
+      await tester.tap(key('import-preview-confirm'));
+      await tester.pumpAndSettle();
+
+      // Back on the pick step entirely, not left on preview with an inline
+      // error (a rebuilt plan needs a fresh pick+parse+plan, not a retry of
+      // apply against the same now-known-stale plan).
+      expect(key('import-pick-button'), findsOneWidget);
+      expect(key('import-preview-summary'), findsNothing);
+      expect(key('import-pick-error'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.descendant(
+          of: key('import-pick-error'),
+          matching: find.byType(Text),
+        )).data,
+        kImportStalePlanCopy,
+      );
+    });
   });
 
   group('result step', () {

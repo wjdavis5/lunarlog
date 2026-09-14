@@ -194,6 +194,53 @@ void main() {
       ]);
     });
 
+    test(
+        'a rejection in the second chunk is offset onto the full input list '
+        '(Issue #140 review, LLA-045)', () async {
+      var rpcCalls = 0;
+      client = makeClient((request) async {
+        if (request.method == 'POST' && request.url.path == '/rest/v1/import_jobs') {
+          return json({'id': jobId});
+        }
+        if (request.url.path == '/rest/v1/rpc/bulk_import_entries') {
+          rpcCalls++;
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          final rows = body['p_rows'] as List;
+          return json({
+            'inserted': rows.length,
+            'updated': 0,
+            'revived': 0,
+            // The second chunk's own row 0 is declined -- the RPC itself
+            // only ever knows its position within the chunk it validated.
+            'rejected': rpcCalls == 2
+                ? [
+                    {'row_index': 0, 'reason': 'flow is not a known level'}
+                  ]
+                : [],
+          });
+        }
+        return empty();
+      });
+      await signIn(client!, testUid);
+      requests.clear();
+
+      final rows = [for (var i = 0; i < 2001; i++) row(i)];
+      final result = await SupabaseBulkImporter(client!).importEntries(
+        profileId: profileId,
+        source: 'clue_import',
+        rows: rows,
+      );
+
+      // Without the offset fix this would misreport rowIndex 0 -- the same
+      // slot as some entirely different row in the FIRST chunk -- instead
+      // of row 2000, the row that actually caused the rejection.
+      expect(result.rejected, [
+        const BulkImportRejectedRow(
+            rowIndex: kBulkImportMaxRowsPerChunk,
+            reason: 'flow is not a known level'),
+      ]);
+    });
+
     test('an empty row list still creates and completes the job', () async {
       client = makeClient((request) async {
         if (request.method == 'POST' && request.url.path == '/rest/v1/import_jobs') {

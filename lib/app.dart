@@ -44,6 +44,7 @@ import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -250,6 +251,13 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final OnboardingCycleAnswersRecorder _onboardingCycleAnswers;
   late final DeviceDiagnosticsCollector _deviceDiagnostics;
   late final AccountExportWriter _accountExportWriter;
+
+  /// Issue #140 review, LLA-084/LLA-094: the coherent point-in-time export
+  /// read (entries/observations/profileMode/cycleOverrides together, one
+  /// transaction) both export call sites (`YourDataSection`,
+  /// `AccountSection`'s "Export first") read through instead of separate,
+  /// independently-timed repository calls.
+  late final AccountExportSnapshotRepository _exportSnapshot;
   late final FhirBundleWriter _fhirBundleWriter;
   late final CsvExportWriter _csvExportWriter;
   late final AttachmentSource _attachmentSource;
@@ -321,6 +329,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // prediction (and re-derives whenever the facts are edited).
     _prediction = _deps.prediction;
     _profileModes = _deps.profileModes;
+    _exportSnapshot = _deps.exportSnapshot;
     _cycleHistory = _deps.cycleHistory;
     _cycleExclusions = _deps.cycleExclusions;
     _permissionState = NotificationPermissionState(
@@ -947,6 +956,8 @@ class _LunarLogAppState extends State<LunarLogApp>
             value: _onboardingCycleAnswers),
         Provider<DeviceDiagnosticsCollector>.value(value: _deviceDiagnostics),
         Provider<AccountExportWriter>.value(value: _accountExportWriter),
+        Provider<AccountExportSnapshotRepository>.value(
+            value: _exportSnapshot),
         Provider<FhirBundleWriter>.value(value: _fhirBundleWriter),
         Provider<CsvExportWriter>.value(value: _csvExportWriter),
         Provider<AttachmentSource>.value(value: _attachmentSource),

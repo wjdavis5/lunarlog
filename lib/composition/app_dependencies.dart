@@ -41,6 +41,7 @@ import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/notifications/supabase_notification_preferences_service.dart';
 import 'package:lunarlog/data/notifications/supabase_push_device_registry.dart';
 import 'package:lunarlog/data/notifications/supabase_reminder_window_remote.dart';
+import 'package:lunarlog/data/repositories/drift_account_export_snapshot_repository.dart';
 import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
@@ -76,6 +77,7 @@ import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -121,6 +123,7 @@ class AppDependencies {
     required this.fhirBundleWriter,
     required this.csvExportWriter,
     required this.attachmentSource,
+    required this.exportSnapshot,
     required this.importFileReader,
     required this.accountImportCoordinator,
     required this.prediction,
@@ -164,6 +167,10 @@ class AppDependencies {
   final FhirBundleWriter fhirBundleWriter;
   final CsvExportWriter csvExportWriter;
   final AttachmentSource attachmentSource;
+
+  /// Issue #140 review, LLA-084/LLA-094: the coherent point-in-time export
+  /// read — see `AccountExportSnapshotRepository`'s own doc comment.
+  final AccountExportSnapshotRepository exportSnapshot;
   final ImportFileReader importFileReader;
   final AccountImportCoordinator accountImportCoordinator;
   final CyclePredictionService prediction;
@@ -281,12 +288,20 @@ AppDependencies buildAppDependencies({
     fhirBundleWriter: const PlatformFhirBundleWriter(),
     csvExportWriter: const PlatformCsvExportWriter(),
     attachmentSource: ImagePickerAttachmentSource(),
+    exportSnapshot: DriftAccountExportSnapshotRepository(
+      storage: storage,
+      entriesRepository: dayEntries,
+      observationsRepository: observations,
+      profileModesRepository: profileModes,
+      cycleOverridesRepository: cycleOverrides,
+    ),
     importFileReader: const PickImportFileReader(),
     accountImportCoordinator: DriftAccountImportCoordinator(
       profilesRepository: profiles,
       dayEntriesRepository: dayEntries,
       observationsRepository: observations,
       storage: storage,
+      cycleOverridesRepository: cycleOverrides,
       guardiansForProfile: profileGuardians.getForProfile,
       currentUserIdProvider: currentUserIdProvider,
       importer: accountImporter,

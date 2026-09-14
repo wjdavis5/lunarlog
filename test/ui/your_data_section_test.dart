@@ -12,14 +12,18 @@ import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
@@ -199,6 +203,27 @@ AuthController _passwordRecovery() {
   return controller;
 }
 
+/// Issue #140 review, LLA-094: [YourDataSection._export] reads entries/
+/// observations through this one coherent seam now — delegates straight to
+/// the SAME fakes every prior "what gets threaded through" regression
+/// guard already pins; profileMode/cycleOverrides are outside this file's
+/// own test scope (LLA-084 coverage lives in `account_importer_test.dart`/
+/// `account_export_test.dart`).
+class _FakeExportSnapshotRepository implements AccountExportSnapshotRepository {
+  _FakeExportSnapshotRepository(this._entries, this._observations);
+
+  final DayEntriesRepository _entries;
+  final ObservationsRepository _observations;
+
+  @override
+  Future<AccountExportSnapshot> forProfile(String profileId) async => (
+        entries: await _entries.listForProfile(profileId),
+        observations: await _observations.listForProfile(profileId),
+        profileMode: null,
+        cycleOverrides: const <CycleOverride>[],
+      );
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   required FakeProfilesRepository profiles,
@@ -210,17 +235,25 @@ Future<void> _pump(
   AuthController? auth,
 }) async {
   addTearDown(profiles.dispose);
+  final resolvedDayEntries = dayEntries ?? FakeDayEntriesRepository();
+  final resolvedObservations = observations ?? FakeObservationsRepository();
   await tester.pumpWidget(
     MaterialApp(
       home: MultiProvider(
         providers: [
           Provider<ProfilesRepository>.value(value: profiles),
-          Provider<DayEntriesRepository>.value(
-              value: dayEntries ?? FakeDayEntriesRepository()),
-          Provider<ObservationsRepository>.value(
-              value: observations ?? FakeObservationsRepository()),
+          Provider<DayEntriesRepository>.value(value: resolvedDayEntries),
+          Provider<ObservationsRepository>.value(value: resolvedObservations),
           Provider<CareContentRepository>.value(
               value: careContent ?? FakeCareContentRepository()),
+          // Issue #140 review, LLA-094: `_export` reads entries/
+          // observations through this coherent snapshot seam now, backed
+          // by the SAME fakes above so every prior "what gets threaded
+          // through" assertion still holds.
+          Provider<AccountExportSnapshotRepository>.value(
+            value: _FakeExportSnapshotRepository(
+                resolvedDayEntries, resolvedObservations),
+          ),
           // The tree-provided export writer the section reads before
           // falling back to the injected collaborator (mirrors
           // `lib/app.dart`).
@@ -258,6 +291,8 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -308,6 +343,8 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -402,6 +439,8 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -475,6 +514,10 @@ void main() {
               Provider<ProfilesRepository>.value(value: profiles),
               Provider<DayEntriesRepository>.value(value: FakeDayEntriesRepository()),
               Provider<ObservationsRepository>.value(value: FakeObservationsRepository()),
+              Provider<AccountExportSnapshotRepository>.value(
+                value: _FakeExportSnapshotRepository(
+                    FakeDayEntriesRepository(), FakeObservationsRepository()),
+              ),
             ],
             child: const Scaffold(
               body: YourDataSection(showImport: false),

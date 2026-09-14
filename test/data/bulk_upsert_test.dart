@@ -58,6 +58,7 @@ Observation bulkObservation({
   required String localDate,
   String? category = 'pain',
   String? code = 'migraine',
+  double? valueNum,
   String profileId = 'p1',
   DateTime? updatedAt,
 }) =>
@@ -69,6 +70,7 @@ Observation bulkObservation({
       tz: 'UTC',
       category: category,
       code: code,
+      valueNum: valueNum,
       excluded: false,
       source: 'manual',
       updatedAt: updatedAt ?? DateTime.utc(2026, 9, 1, 8),
@@ -296,6 +298,49 @@ void main() {
       expect(written.single.id, 'existing-1');
     });
 
+    test(
+        'the local-parent fallback remaps a child observation onto the '
+        'actually-persisted parent id (Issue #140 review, LLA-044)',
+        () async {
+      await storage.upsertDayEntry(
+        id: 'existing-2',
+        profileId: 'p1',
+        localDate: '2026-06-03',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        updatedAt: t0,
+      );
+
+      // The incoming entry's own id ('reimport-2') matches no stored row,
+      // so [_writeBulkDayEntry]'s local-parent fallback resolves it onto
+      // the LIVE row already at (p1, 2026-06-03) -- 'existing-2' -- rather
+      // than inserting a second row for that date. The observation in the
+      // same batch points at the entry by its INCOMING id; without
+      // remapping it, the write below would target a day_entries row that
+      // was never inserted under that id.
+      final written = await storage.bulkUpsertDayEntries(
+        [
+          bulkEntry(
+              id: 'reimport-2', localDate: '2026-06-03', flow: FlowLevel.heavy),
+        ],
+        observations: [
+          bulkObservation(
+              id: 'child-obs-1',
+              dayEntryId: 'reimport-2',
+              localDate: '2026-06-03'),
+        ],
+      );
+
+      expect(written.single.id, 'existing-2');
+      final observations =
+          await storage.getObservationsForDayEntry('existing-2');
+      expect(observations, hasLength(1));
+      expect(observations.single.id, 'child-obs-1');
+      expect(observations.single.dayEntryId, 'existing-2');
+      // Never written under the batch's own (non-persisted) parent id.
+      expect(await storage.getObservationsForDayEntry('reimport-2'), isEmpty);
+    });
+
     test('bulk update by an existing id bumps strictly after the stored stamp',
         () async {
       await storage.upsertDayEntry(
@@ -348,6 +393,26 @@ void main() {
       );
       expect(await storage.getDayEntries(profileId: 'p1'), isEmpty);
       expect(await storage.getObservationsForDayEntry('cat-e1'), isEmpty);
+    });
+
+    test(
+        'a nonfinite observation valueNum fails the batch (Issue #140 '
+        'review, LLA-092)', () async {
+      await expectLater(
+        storage.bulkUpsertDayEntries(
+          [bulkEntry(id: 'num-e1', localDate: '2026-05-04')],
+          observations: [
+            bulkObservation(
+                id: 'num-o1',
+                dayEntryId: 'num-e1',
+                localDate: '2026-05-04',
+                valueNum: double.infinity),
+          ],
+        ),
+        throwsArgumentError,
+      );
+      expect(await storage.getDayEntries(profileId: 'p1'), isEmpty);
+      expect(await storage.getObservationsForDayEntry('num-e1'), isEmpty);
     });
 
     test('provenance round-trips through the bulk path', () async {

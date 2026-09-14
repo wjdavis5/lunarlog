@@ -16,14 +16,18 @@ import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
@@ -203,6 +207,27 @@ AuthorizationCredentialAppleID _appleCredential(String code) =>
       state: null,
     );
 
+/// Issue #140 review, LLA-094: [AccountSection._runExport] reads entries/
+/// observations through this one coherent seam now — delegates straight to
+/// the harness's own fakes so every prior "what gets threaded through"
+/// regression-guard still holds; profileMode/cycleOverrides are outside
+/// this file's own test scope (LLA-084 coverage lives in
+/// `account_importer_test.dart`/`account_export_test.dart`).
+class _HarnessExportSnapshotRepository implements AccountExportSnapshotRepository {
+  _HarnessExportSnapshotRepository(this._entries, this._observations);
+
+  final DayEntriesRepository _entries;
+  final ObservationsRepository _observations;
+
+  @override
+  Future<AccountExportSnapshot> forProfile(String profileId) async => (
+        entries: await _entries.listForProfile(profileId),
+        observations: await _observations.listForProfile(profileId),
+        profileMode: null,
+        cycleOverrides: const <CycleOverride>[],
+      );
+}
+
 class DeletionHarness {
   DeletionHarness({
     List<String> providers = const ['email'],
@@ -276,6 +301,18 @@ class DeletionHarness {
             Provider<DayEntriesRepository>.value(value: dayEntriesRepository),
             Provider<ObservationsRepository>.value(value: observationsRepository),
             Provider<CareContentRepository>.value(value: careContentRepository),
+            // Issue #140 review, LLA-094: `_runExport` reads entries/
+            // observations through this coherent snapshot seam now, not the
+            // two repos above directly — still backed by the SAME fakes, so
+            // this harness's "pins the observationsRepo.listForProfile call"
+            // regression-guard (see the field doc comment above) still
+            // holds.
+            Provider<AccountExportSnapshotRepository>.value(
+              value: _HarnessExportSnapshotRepository(
+                dayEntriesRepository,
+                observationsRepository,
+              ),
+            ),
             // The tree-provided export writer `_runExport` reads before
             // falling back to the injected collaborator (mirrors
             // `lib/app.dart`).
@@ -391,6 +428,8 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -427,6 +466,8 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -476,6 +517,8 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -508,6 +551,8 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           required appVersion,
         }) async {
           await exportHold.future;

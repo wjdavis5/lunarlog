@@ -141,4 +141,41 @@ void main() {
         .softDeleteCycleOverride(id: created.id, profileId: profileId);
     expect(await overrides.excludedCycleStarts(profileId), isEmpty);
   });
+
+  group('listForProfile (Issue #140 review, LLA-084)', () {
+    test('returns every live override with full fidelity — id, '
+        'manualStart, noteId included, not just the excluded flag',
+        () async {
+      final created = await db.storage.upsertCycleOverride(
+        profileId: profileId,
+        cycleStartDate: '2026-01-01',
+        excludedFromAverage: true,
+        manualStart: true,
+        noteId: 'note-1',
+      );
+
+      final result = await overrides.listForProfile(profileId);
+      expect(result, hasLength(1));
+      expect(result.single.id, created.id);
+      expect(result.single.profileId, profileId);
+      expect(result.single.cycleStartDate, '2026-01-01');
+      expect(result.single.excludedFromAverage, isTrue);
+      expect(result.single.manualStart, isTrue);
+      expect(result.single.noteId, 'note-1');
+    });
+
+    test('excludes a tombstoned override', () async {
+      final created = await db.storage.upsertCycleOverride(
+        profileId: profileId,
+        cycleStartDate: '2026-01-01',
+      );
+      await db.storage
+          .softDeleteCycleOverride(id: created.id, profileId: profileId);
+      expect(await overrides.listForProfile(profileId), isEmpty);
+    });
+
+    test('is empty for a profile with no overrides', () async {
+      expect(await overrides.listForProfile(profileId), isEmpty);
+    });
+  });
 }

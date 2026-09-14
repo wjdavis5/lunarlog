@@ -213,6 +213,24 @@ void main() {
       );
     });
 
+    test('throws for a nonfinite valueNum (Issue #140 review, LLA-092)',
+        () async {
+      final dayEntryId = await entryId();
+      for (final value in [double.nan, double.infinity, double.negativeInfinity]) {
+        expect(
+          () => storage.upsertObservation(
+            dayEntryId: dayEntryId,
+            profileId: 'p1',
+            localDate: '2026-09-01',
+            tz: 'UTC',
+            category: 'temperature',
+            valueNum: value,
+          ),
+          throwsArgumentError,
+        );
+      }
+    });
+
     test('throws for a code over the length bound', () async {
       final dayEntryId = await entryId();
       expect(
