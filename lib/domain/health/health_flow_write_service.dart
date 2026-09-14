@@ -20,6 +20,7 @@ class HealthFlowSyncReport {
     this.samplesWritten = 0,
     this.periodRecordsWritten = 0,
     this.daysWithoutSample = 0,
+    this.samplesReconciled = 0,
   });
 
   /// Whether a live bound profile was found to sync at all. `false` means
@@ -50,6 +51,16 @@ class HealthFlowSyncReport {
   /// `notBleeding`), or to a skipped duplicate (spotting on a day whose
   /// own flow already carries the intensity).
   final int daysWithoutSample;
+
+  /// Issue #619, LLA-024: of [daysWithoutSample], how many issued a
+  /// `deleteRecords` call for their own record id — reconciling away a
+  /// sample a PRIOR pass may have written under that same id, for a day
+  /// that has since been edited to no sample (e.g. an exported bleeding
+  /// day changed to `notBleeding`). Deleting an id with no matching store
+  /// sample is a documented no-op, so this call is issued unconditionally
+  /// for every eligible no-write day rather than only when a prior write
+  /// is known to have happened.
+  final int samplesReconciled;
 }
 
 abstract interface class HealthFlowWriteService {

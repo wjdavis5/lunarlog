@@ -20,11 +20,16 @@
 ///
 /// *Guard args* (every guarded method): `profileId`, `signedInUserId?`,
 /// `ownerUserId?`, `isMinor`, `birthYear?`, `transferredAtMs?`,
-/// `minorBindingAllowed`. They are exactly
+/// `transferredToUserId?`, `minorBindingAllowed`. They are exactly
 /// `HealthSyncBinding._evaluate`'s inputs (#153's guard) — the native
 /// handler re-evaluates the mirrored predicate from them plus its own
 /// natively-stored binding before touching any health API; see
 /// `lib/domain/health/health_platform.dart`'s library doc.
+/// `transferredToUserId` (Issue #619, LLA-031) closes a native/Dart
+/// defense-in-depth gap: without it, a native guard could not verify the
+/// minor-transfer exception's target-account leg
+/// (`HealthSyncBinding._minorTransferExceptionHolds`'s `target ==
+/// signedInUserId` check) at all, only that *some* transfer had happened.
 ///
 /// *Day args*: `startMs`, `endMs` (inclusive, next local midnight − 1 s),
 /// `endExclusiveMs` (next local midnight), `instantMs` (local midnight),
@@ -76,6 +81,39 @@ abstract final class HealthChannelMethods {
   static const deleteRecords = 'deleteRecords';
 }
 
+/// The canonical Apple SDK raw integer for each [HealthFlowValue], per
+/// `HKCategoryValueVaginalBleeding` (iOS 18+) and the deprecated
+/// `HKCategoryValueMenstrualFlow` it replaced — identical raw values on
+/// both: `unspecified` = 1, `light` = 2, `medium` = 3, `heavy` = 4.
+/// `HKCategoryValue.notApplicable` = 0 is a *different*, shared
+/// "no intensity" value used by types like `intermenstrualBleeding` — this
+/// enum's `unspecified` is never that. Confusing the two (declaring
+/// `unspecified = 0`) is exactly the off-by-one Issue #619's LLA-021
+/// found and fixed in `ios/Runner/AppDelegate.swift`'s
+/// `MenstrualFlowRawValue`.
+///
+/// **This is the single source of truth `AppDelegate.swift`'s
+/// `MenstrualFlowRawValue` enum must match — Dart has no mechanism to
+/// assert Swift's actual raw values at test time.** `ios/RunnerTests/`
+/// exists as a Swift XCTest target, but nothing in
+/// `.github/workflows/ci.yml` runs `xcodebuild test` against it (the
+/// "iOS Simulator tests" job runs Flutter integration tests instead), so
+/// there is no automated cross-language check at all. Until that changes,
+/// `test/data/health/health_flow_value_apple_raw_test.dart` pins this
+/// table's own literals and completeness so a native reimplementation of
+/// the flow enum has an explicit, reviewed reference to diff against.
+/// Values verified against the Apple SDK via Microsoft Learn's
+/// `HKCategoryValueMenstrualFlow`/`HKCategoryValueVaginalBleeding`
+/// references (dotnet/macios bindings generated directly from Apple's own
+/// headers), not from memory — see the introducing PR's description for
+/// the exact sources.
+const Map<HealthFlowValue, int> kHealthFlowValueAppleRawValue = {
+  HealthFlowValue.unspecified: 1,
+  HealthFlowValue.light: 2,
+  HealthFlowValue.medium: 3,
+  HealthFlowValue.heavy: 4,
+};
+
 /// Parses a result string into the typed [HealthPlatformResult]. Total:
 /// never throws; an unrecognized string becomes
 /// `HealthPlatformResult.failed` (a protocol error — e.g. a newer native
@@ -125,6 +163,7 @@ Map<String, Object?> encodeGuardArgs(
         'isMinor': facts.profile.isMinor,
         'birthYear': facts.profile.birthYear,
         'transferredAtMs': facts.profile.transferredAt?.millisecondsSinceEpoch,
+        'transferredToUserId': facts.profile.transferredToUserId,
         'minorBindingAllowed': minorBindingAllowed,
       };
 

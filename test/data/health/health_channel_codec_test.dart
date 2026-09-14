@@ -18,6 +18,7 @@ Profile _profile({
   bool isMinor = false,
   int? birthYear = 1990,
   DateTime? transferredAt,
+  String? transferredToUserId,
 }) =>
     Profile(
       id: id,
@@ -25,6 +26,7 @@ Profile _profile({
       isMinor: isMinor,
       birthYear: birthYear,
       transferredAt: transferredAt,
+      transferredToUserId: transferredToUserId,
       createdAt: DateTime.utc(2026),
       updatedAt: DateTime.utc(2026),
     );
@@ -37,7 +39,10 @@ void main() {
       final transferredAt = DateTime.utc(2026, 1, 15, 9, 30);
       final args = encodeGuardArgs(
         HealthGuardFacts(
-          profile: _profile(transferredAt: transferredAt),
+          profile: _profile(
+            transferredAt: transferredAt,
+            transferredToUserId: 'u1',
+          ),
           signedInUserId: 'u1',
           ownerUserId: 'u1',
         ),
@@ -50,6 +55,7 @@ void main() {
         'isMinor': false,
         'birthYear': 1990,
         'transferredAtMs': transferredAt.millisecondsSinceEpoch,
+        'transferredToUserId': 'u1',
         'minorBindingAllowed': false,
       });
     });
@@ -67,6 +73,7 @@ void main() {
       expect(args['ownerUserId'], isNull);
       expect(args['birthYear'], isNull);
       expect(args['transferredAtMs'], isNull);
+      expect(args['transferredToUserId'], isNull);
       expect(args['isMinor'], isFalse);
       expect(args['minorBindingAllowed'], isTrue);
     });

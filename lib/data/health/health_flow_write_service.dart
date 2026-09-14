@@ -7,7 +7,8 @@
 ///   Settings (`SettingsKeys.healthStoreProfileId`), and nothing is
 ///   requested from the OS health store until the first sync pass asks for
 ///   write authorization (stamping the grant instant). Off is the default.
-/// * **One-way** — this file only ever calls write methods on
+/// * **One-way** — this file only ever calls write (or, since Issue #619's
+///   LLA-024, delete-by-own-record-id reconciliation) methods on
 ///   [HealthPlatformStore]; no read/query API exists on the port in this
 ///   issue, and no entry is ever created or modified from health-store
 ///   data. Entries the app itself imported *from* a health store
@@ -147,9 +148,10 @@ class _PendingPeriodWrite {
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
 
-/// Accumulates one pass's write plan: days mapped to no sample are
-/// counted, everything else joins [pending], and period episodes join
-/// [pendingPeriods].
+/// Accumulates one pass's write plan: every day (whatever it maps to,
+/// [HealthFlowNoWrite] included since Issue #619's LLA-024 — see [add])
+/// joins [pending], days mapped to no sample are additionally counted in
+/// [withoutSample], and period episodes join [pendingPeriods].
 class _Batch {
   final List<_PendingWrite> pending = [];
   final List<_PendingPeriodWrite> pendingPeriods = [];
@@ -160,6 +162,18 @@ class _Batch {
     switch (plan) {
       case HealthFlowNoWrite():
         withoutSample++;
+        // Issue #619, LLA-024: also queued as a write-loop item so a day
+        // edited FROM an exportable value TO no sample reconciles away
+        // whatever sample a prior pass wrote under this same recordId —
+        // see _writeFlowRecords's HealthFlowNoWrite branch.
+        pending.add(_PendingWrite(
+          date: date,
+          tzName: tzName,
+          plan: plan,
+          cycleStart: false,
+          recordId: recordId,
+          updatedAt: updatedAt,
+        ));
       case HealthFlowMenstrualSample():
         pending.add(_PendingWrite(
           date: date,
@@ -288,6 +302,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       samplesWritten: outcome.written,
       periodRecordsWritten: outcome.periodRecordsWritten,
       daysWithoutSample: batch.withoutSample,
+      samplesReconciled: outcome.reconciled,
     );
   }
 
@@ -448,6 +463,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   Future<
       ({
         int written,
+        int reconciled,
         int periodRecordsWritten,
         HealthPlatformResult? failure,
         DateTime? newest,
@@ -460,6 +476,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final periods = await _writePeriodRecords(pendingPeriods, facts);
     return (
       written: flow.written,
+      reconciled: flow.reconciled,
       periodRecordsWritten: periods.written,
       failure: flow.failure ?? periods.failure,
       newest: _latest(flow.newest, periods.newest),
@@ -505,9 +522,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// [_authorityDrift] detects the pass's authority has changed underneath
   /// it (Issue #620, LLA-023) — a drift found on day N means every day
   /// after N is written under the same now-invalid authority too.
+  ///
+  /// Issue #619, LLA-024: a [HealthFlowNoWrite] item is not merely skipped
+  /// — it issues [HealthPlatformStore.deleteRecords] for its own
+  /// [_PendingWrite.recordId], reconciling away whatever sample a PRIOR
+  /// pass may have written under that exact id for a day that has since
+  /// been edited to no sample (e.g. bleeding edited to `notBleeding`). An
+  /// id with no matching store sample is a documented no-op delete, so
+  /// this is issued unconditionally rather than only when a prior write is
+  /// known to have happened — see [_resolveNoWriteOutcome].
   Future<
       ({
         int written,
+        int reconciled,
         HealthPlatformResult? failure,
         DateTime? newest,
       })> _writeFlowRecords(
@@ -515,6 +542,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     HealthGuardFacts facts,
   ) async {
     var written = 0;
+    var reconciled = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
     for (final write in pending) {
@@ -527,40 +555,71 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       if (current == null || write.updatedAt.isAfter(current)) {
         newest = write.updatedAt;
       }
-      final HealthPlatformResult result;
-      switch (write.plan) {
-        case HealthFlowMenstrualSample(:final value):
-          result = await _platform.writeMenstrualFlow(
-            HealthMenstrualFlowWrite(
-              facts: facts,
-              date: write.date,
-              tzName: write.tzName,
-              flow: value,
-              cycleStart: write.cycleStart,
-              recordId: write.recordId,
-              recordVersionMs: write.recordVersionMs,
-            ),
-          );
-        case HealthFlowIntermenstrualMarker():
-          result = await _platform.writeIntermenstrualBleeding(
-            HealthIntermenstrualBleedingWrite(
-              facts: facts,
-              date: write.date,
-              tzName: write.tzName,
-              recordId: write.recordId,
-              recordVersionMs: write.recordVersionMs,
-            ),
-          );
-        case HealthFlowNoWrite():
-          continue;
-      }
-      if (result is HealthPlatformAllowed) {
-        written++;
-      } else {
+      final result = await _resolveNoWriteOutcome(write, facts) ??
+          await _sendSample(write, facts);
+      if (result is! HealthPlatformAllowed) {
         failure ??= result;
+      } else if (write.plan is HealthFlowNoWrite) {
+        reconciled++;
+      } else {
+        written++;
       }
     }
-    return (written: written, failure: failure, newest: newest);
+    return (
+      written: written,
+      reconciled: reconciled,
+      failure: failure,
+      newest: newest,
+    );
+  }
+
+  /// [write]'s reconciliation delete when its plan is [HealthFlowNoWrite],
+  /// or null for every other plan (the caller then sends the sample
+  /// itself via [_sendSample]). Split out purely to keep
+  /// [_writeFlowRecords]'s own CRAP score under the quality gate.
+  Future<HealthPlatformResult?> _resolveNoWriteOutcome(
+    _PendingWrite write,
+    HealthGuardFacts facts,
+  ) async {
+    if (write.plan is! HealthFlowNoWrite) return null;
+    return _platform.deleteRecords(facts, [write.recordId]);
+  }
+
+  /// Sends [write]'s menstrual-flow or intermenstrual-bleeding sample.
+  /// Never called for a [HealthFlowNoWrite] plan — [_resolveNoWriteOutcome]
+  /// handles that case first.
+  Future<HealthPlatformResult> _sendSample(
+    _PendingWrite write,
+    HealthGuardFacts facts,
+  ) {
+    switch (write.plan) {
+      case HealthFlowMenstrualSample(:final value):
+        return _platform.writeMenstrualFlow(
+          HealthMenstrualFlowWrite(
+            facts: facts,
+            date: write.date,
+            tzName: write.tzName,
+            flow: value,
+            cycleStart: write.cycleStart,
+            recordId: write.recordId,
+            recordVersionMs: write.recordVersionMs,
+          ),
+        );
+      case HealthFlowIntermenstrualMarker():
+        return _platform.writeIntermenstrualBleeding(
+          HealthIntermenstrualBleedingWrite(
+            facts: facts,
+            date: write.date,
+            tzName: write.tzName,
+            recordId: write.recordId,
+            recordVersionMs: write.recordVersionMs,
+          ),
+        );
+      case HealthFlowNoWrite():
+        throw StateError(
+          'unreachable: _resolveNoWriteOutcome handles HealthFlowNoWrite',
+        );
+    }
   }
 
   /// The later of [a] and [b], or the non-null one when only one is set.

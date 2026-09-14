@@ -107,9 +107,11 @@ class _FakePlatform implements HealthPlatformStore {
   final List<HealthMenstrualFlowWrite> flowWrites = [];
   final List<HealthIntermenstrualBleedingWrite> markerWrites = [];
   final List<HealthMenstrualPeriodWrite> periodWrites = [];
+  final List<List<String>> deleteCalls = [];
   int bindCalls = 0;
   int authCalls = 0;
   int unbindCalls = 0;
+  HealthPlatformResult deleteResult = const HealthPlatformAllowed();
 
   HealthPlatformResult _nextWriteResult() => writeResults.isEmpty
       ? const HealthPlatformAllowed()
@@ -167,8 +169,10 @@ class _FakePlatform implements HealthPlatformStore {
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,
     List<String> recordIds,
-  ) async =>
-      const HealthPlatformAllowed();
+  ) async {
+    deleteCalls.add(List.of(recordIds));
+    return deleteResult;
+  }
 }
 
 class _FakeProfiles implements ProfilesRepository {
@@ -513,7 +517,9 @@ void main() {
       expect(write.flow, HealthFlowValue.heavy);
     });
 
-    test('none and notBleeding produce no sample', () async {
+    test('none and notBleeding produce no sample, and each issues a '
+        'reconciliation delete for its own recordId (issue #619, LLA-024)',
+        () async {
       final grant = DateTime.utc(2026, 6, 1, 12);
       await seedGranted(grant);
       dayEntries.entries = [
@@ -529,6 +535,70 @@ void main() {
       expect(report.daysWithoutSample, 2);
       expect(platform.flowWrites, isEmpty);
       expect(platform.markerWrites, isEmpty);
+      // A day that was never exported has no matching store sample, so
+      // this delete is a documented no-op — issued unconditionally rather
+      // than only when a prior export is known to have happened (see
+      // _resolveNoWriteOutcome's doc comment).
+      expect(report.samplesReconciled, 2);
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-02'],
+        ['entry-2026-06-03'],
+      ]);
+    });
+
+    test(
+        'issue #619, LLA-024: a day exported as bleeding then edited to '
+        'notBleeding reconciles away the prior sample by its own recordId',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      // First pass: an exportable day is actually written to the store.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      final service = buildService();
+      final firstReport = await service.syncNow();
+      expect(firstReport.samplesWritten, 1);
+      expect(platform.flowWrites.single.recordId, 'entry-2026-06-02');
+
+      // Second pass: the SAME entry is edited to notBleeding after the
+      // first pass's cursor — pre-#619 fix, the writer silently skipped
+      // this instead of reconciling the now-stale sample it had written.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.notBleeding,
+            grant.add(const Duration(hours: 3))),
+      ];
+      final secondReport = await service.syncNow();
+
+      expect(secondReport.samplesWritten, 0);
+      expect(secondReport.samplesReconciled, 1);
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-02']
+      ]);
+    });
+
+    test(
+        'issue #619, LLA-024: a refused reconciliation delete blocks the '
+        'pass and leaves the cursor for a retry, like any other failure',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      platform.deleteResult =
+          const HealthPlatformResult.failed('store unavailable');
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.none,
+            grant.add(const Duration(hours: 1))),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformFailed>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'a failed reconciliation must not advance the cursor',
+      );
     });
 
     test('superHeavy is written as heavy (the documented collapse)',

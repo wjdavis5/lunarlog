@@ -520,7 +520,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     final coordinator = buildHealthSyncTombstoneCoordinator(
       settings: _settings,
       profiles: _profiles,
-      dayEntries: _dayEntries,
+      tombstoneSource: _deps.healthSyncTombstoneSource,
       guardiansForProfile: _profileGuardians.getForProfile,
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
     );
