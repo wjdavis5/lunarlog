@@ -32,6 +32,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart'
@@ -235,6 +236,11 @@ Future<Harness> pumpLogging(
   // Issue #90: forwarded to [loggingProviders] so the R6 profile-switch
   // rebuild can reuse the same gated instance.
   ProfileGuardiansRepository? guardiansRepositoryOverride,
+  // Issue #457: the profile's BBT/weight display-unit preferences,
+  // forwarded through `ProfileDetailScreen` -> `MonthCalendar` -> `DaySheet`
+  // exactly like `mode` above.
+  BbtUnit bbtUnit = BbtUnit.celsius,
+  WeightUnit weightUnit = WeightUnit.kg,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -248,6 +254,8 @@ Future<Harness> pumpLogging(
     displayName: 'Alice',
     isMinor: false,
     mode: mode,
+    bbtUnit: bbtUnit,
+    weightUnit: weightUnit,
   );
   if (seed != null) {
     await seed(db, profile.id);
@@ -1588,6 +1596,318 @@ void main() {
         reason:
             'an autosave the operator directed at something else never '
             'touches a graded row they did not',
+      );
+      await disposeLogging(tester, h);
+    });
+  });
+
+  group('BBT and weight measurement entry (Issue #457)', () {
+    testWidgets('entering a BBT and weight value writes manual observation '
+        'rows in the canonical (profile display) unit', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.7');
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-field')),
+        '61.2',
+      );
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final rows = await h.observations.listForDayEntry(saved!.id);
+      final bbtRow = rows.singleWhere((o) => o.category == 'bbt');
+      final weightRow = rows.singleWhere((o) => o.category == 'weight');
+      expect(bbtRow.valueNum, 36.7);
+      expect(bbtRow.unit, 'celsius');
+      expect(bbtRow.source, ObservationSource.manual);
+      expect(bbtRow.excluded, isFalse);
+      expect(weightRow.valueNum, 61.2);
+      expect(weightRow.unit, 'kg');
+      expect(weightRow.source, ObservationSource.manual);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('editing an existing value updates the same row rather than '
+        'creating a second one', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final firstId = (await h.observations.listForDayEntry(saved!.id))
+          .singleWhere((o) => o.category == 'bbt')
+          .id;
+
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.9');
+      await pumpAutosave(tester);
+      final rows = await h.observations.listForDayEntry(saved.id);
+      final bbtRows = [for (final o in rows) if (o.category == 'bbt') o];
+      expect(bbtRows, hasLength(1));
+      expect(bbtRows.single.id, firstId);
+      expect(bbtRows.single.valueNum, 36.9);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('clearing the field deletes the observation row', (
+      tester,
+    ) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .where((o) => o.category == 'bbt'),
+        isNotEmpty,
+      );
+
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '');
+      await pumpAutosave(tester);
+      expect(
+        (await h.observations.listForDayEntry(saved.id))
+            .where((o) => o.category == 'bbt'),
+        isEmpty,
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a value outside the sanity range shows an inline error and '
+        'writes nothing', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('bbt-field')),
+        '99.9', // way outside the 34.0-42.0C sanity range
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('bbt-error')), findsOneWidget);
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .where((o) => o.category == 'bbt'),
+        isEmpty,
+        reason: 'an invalid entry must never reach a write',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('unparsable text shows an inline error and writes nothing', (
+      tester,
+    ) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-field')),
+        'abc',
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('weight-error')), findsOneWidget);
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .where((o) => o.category == 'weight'),
+        isEmpty,
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('an invalid keystroke never corrupts an already-valid, '
+        'already-saved value', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+
+      // Now type something invalid without clearing first.
+      await tester.enterText(
+        find.byKey(const ValueKey('bbt-field')),
+        '36.5x',
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('bbt-error')), findsOneWidget);
+      await pumpAutosave(tester);
+
+      final row = (await h.observations.listForDayEntry(saved!.id))
+          .singleWhere((o) => o.category == 'bbt');
+      expect(
+        row.valueNum,
+        36.5,
+        reason: 'the invalid keystroke must not have reached a write',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('the exclude toggle marks the reading excluded without '
+        'deleting it, and Include reverses it', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+
+      expect(find.byKey(const ValueKey('bbt-exclude-toggle')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('bbt-exclude-toggle')));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      var row = (await h.observations.listForDayEntry(saved!.id))
+          .singleWhere((o) => o.category == 'bbt');
+      expect(row.excluded, isTrue);
+      expect(row.valueNum, 36.5, reason: 'excluding never deletes the value');
+
+      await tester.tap(find.byKey(const ValueKey('bbt-exclude-toggle')));
+      await pumpAutosave(tester);
+      row = (await h.observations.listForDayEntry(saved.id))
+          .singleWhere((o) => o.category == 'bbt');
+      expect(row.excluded, isFalse);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('unit conversion round trip: a value entered while the '
+        'profile displays Fahrenheit/lb is stored in that unit, and '
+        'reopening the sheet displays it converted back correctly', (
+      tester,
+    ) async {
+      final h = await pumpLogging(
+        tester,
+        bbtUnit: BbtUnit.fahrenheit,
+        weightUnit: WeightUnit.lb,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '98.1');
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-field')),
+        '135',
+      );
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final rows = await h.observations.listForDayEntry(saved!.id);
+      expect(rows.singleWhere((o) => o.category == 'bbt').unit, 'fahrenheit');
+      expect(rows.singleWhere((o) => o.category == 'weight').unit, 'lb');
+
+      await dismissDaySheet(tester);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('bbt-field')))
+            .controller!
+            .text,
+        '98.1',
+        reason: 'round-trips through Celsius storage and back to display',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('weight-field')))
+            .controller!
+            .text,
+        '135',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a Celsius-stored value displays converted when the profile '
+        'later switches to Fahrenheit display', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        bbtUnit: BbtUnit.fahrenheit,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage)
+              .save(entryFor(profileId, kToday, flow: FlowLevel.none));
+          final entry =
+              await DriftDayEntriesRepository(db.storage).find(profileId, kToday);
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry!.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              category: 'bbt',
+              valueNum: 36.72,
+              unit: 'celsius',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('bbt-field')))
+            .controller!
+            .text,
+        '98.1',
+        reason: 'the stored Celsius value converts to the display unit',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a viewer/archived (read-only) profile shows the logged '
+        'values as plain text, with no field to edit them through', (
+      tester,
+    ) async {
+      final h = await pumpLogging(
+        tester,
+        readOnly: true,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage)
+              .save(entryFor(profileId, kToday, flow: FlowLevel.none));
+          final entry =
+              await DriftDayEntriesRepository(db.storage).find(profileId, kToday);
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry!.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              category: 'bbt',
+              valueNum: 36.5,
+              unit: 'celsius',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('bbt-field')),
+        findsNothing,
+        reason: 'read-only sheets render no editable field at all',
+      );
+      expect(find.text('36.5'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('bbt-exclude-toggle')),
+        findsNothing,
+        reason: 'no edit affordance in a read-only sheet',
       );
       await disposeLogging(tester, h);
     });
@@ -3607,6 +3927,9 @@ group('tracking preferences read path (Issue #259)', () {
       for (final category in TagCategory.values)
         if (category != TagCategory.feelings)
           careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+      // Issue #457: the standalone "Measurements" (BBT/weight) heading
+      // always renders last, after every curated/taxonomy category.
+      'Measurements',
     ];
     expect(headers.skip(2).toList(), taxonomyOrder,
         reason: 'headers are [date, Flow, then the resolved categories]; '
@@ -3624,6 +3947,9 @@ group('tracking preferences read path (Issue #259)', () {
     final expected = [
       for (final category in TagCategory.values)
         careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+      // Issue #457: the standalone "Measurements" heading always renders
+      // last.
+      'Measurements',
     ];
     expect(headers.skip(2).toList(), expected);
     // Derived, not hardcoded: the taxonomy grows as categories land
@@ -3650,10 +3976,14 @@ group('tracking preferences read path (Issue #259)', () {
     expect(
         headers.skip(2).length,
         TagCategory.values
-            .where((c) =>
-                !kMinorDefaultHiddenTrackingCategories.contains(c.wireName))
-            .length,
-        reason: 'exactly the minor-hidden set is removed');
+                .where((c) =>
+                    !kMinorDefaultHiddenTrackingCategories.contains(c.wireName))
+                .length +
+            // Issue #457: the standalone "Measurements" heading always
+            // renders, regardless of tracking-preference curation.
+            1,
+        reason: 'exactly the minor-hidden set is removed, plus the '
+            'standalone Measurements heading');
   });
 
   testWidgets('a minor profile with an explicit enable renders the '

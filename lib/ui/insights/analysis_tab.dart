@@ -63,9 +63,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../domain/episodes/episodes.dart';
+import '../../domain/insights/bbt_chart.dart' as bbt;
 import '../../domain/insights/cycle_insights_calculator.dart';
 import '../../domain/models/day_entry.dart';
+import '../../domain/models/measurement_unit.dart';
+import '../../domain/models/observation.dart';
 import '../../domain/repositories/day_entries_repository.dart';
+import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
 import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
@@ -80,6 +84,7 @@ import '../components/empty_state.dart';
 import '../components/predictions_disabled_card.dart';
 import '../components/predictions_suppressed_card.dart';
 import '../help/help_card_view.dart';
+import 'bbt_chart.dart';
 
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
@@ -102,10 +107,23 @@ class AnalysisTab extends StatefulWidget {
     this.readOnly = false,
     this.guardiansRepository,
     this.dayEntriesRepository,
+    this.observationsRepository,
+    this.bbtUnit = BbtUnit.celsius,
   });
 
   final String profileId;
   final DayEntriesRepository? dayEntriesRepository;
+
+  /// Source of this profile's BBT readings for the chart (Issue #245);
+  /// falls back to `context.read<ObservationsRepository?>()` like
+  /// [dayEntriesRepository] does for entries — null in a tree with no
+  /// observations repository wired renders the chart's empty state rather
+  /// than throwing.
+  final ObservationsRepository? observationsRepository;
+
+  /// Per-profile BBT display unit (Issue #457/#245): governs only the
+  /// chart's caption text — every plotted value is already Celsius.
+  final BbtUnit bbtUnit;
 
   /// The profile's care mode (issue #131): selects the headline-stat
   /// vocabulary below, same as [OverviewPanel].
@@ -156,6 +174,12 @@ class _AnalysisTabState extends State<AnalysisTab>
   List<ProfileGuardian> _guardians = const [];
   List<DayEntry> _entries = const [];
 
+  /// Issue #245: this profile's live observations, refetched on every
+  /// entries-stream tick — see [_watchEntries]'s doc for why that keeps
+  /// this current without [ObservationsRepository] needing a `watch()` of
+  /// its own.
+  List<Observation> _observations = const [];
+
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
   @override
@@ -199,7 +223,23 @@ class _AnalysisTabState extends State<AnalysisTab>
     ) {
       if (!mounted) return;
       setState(() => _entries = entries);
+      // Issue #245: [ObservationsRepository] has no `watch()` of its own
+      // (Issue #240's read surface is one-shot reads only), but every
+      // BBT/weight autosave also writes this same day's `DayEntry` in the
+      // same atomic call (`saveDayEntryWithObservations`), so refetching
+      // here on every entries tick keeps the BBT chart's data live without
+      // adding a new repository method for this one chart.
+      unawaited(_refetchObservations());
     });
+  }
+
+  Future<void> _refetchObservations() async {
+    final repository = widget.observationsRepository ??
+        context.read<ObservationsRepository?>();
+    if (repository == null) return;
+    final observations = await repository.listForProfile(widget.profileId);
+    if (!mounted) return;
+    setState(() => _observations = observations);
   }
 
   @override
@@ -219,6 +259,9 @@ class _AnalysisTabState extends State<AnalysisTab>
     // collaborator.
     if (oldWidget.guardiansRepository != widget.guardiansRepository) {
       _watchGuardians();
+    }
+    if (oldWidget.observationsRepository != widget.observationsRepository) {
+      unawaited(_refetchObservations());
     }
     if (oldWidget.todayProvider != widget.todayProvider) {
       _predictions = _service.watch(
@@ -312,7 +355,45 @@ class _AnalysisTabState extends State<AnalysisTab>
       ],
       const SizedBox(height: 16),
       SymptomTrendsSection(report: report),
+      const SizedBox(height: 16),
+      _bbtChartCard(context, episodes),
     ];
+  }
+
+  /// Issue #245: the BBT chart card — data shaping is
+  /// [bbt.deriveBbtChartData] (pure, `lib/domain/insights/bbt_chart.dart`),
+  /// reusing the exact same [episodes] this method already derived for
+  /// [CycleInsightsCalculator] above, so the chart's cycle-day axis is the
+  /// same cycle boundaries the rest of this tab shows. Renders in every
+  /// care mode and regardless of [prediction]'s state (unlike the headline
+  /// stats card) — a profile can have logged BBT with too little cycle
+  /// history for a prediction yet, and the chart's own honest empty state
+  /// (issue #245 AC3) already covers "no data" without needing the
+  /// prediction gate above to also cover it.
+  Widget _bbtChartCard(BuildContext context, List<Episode> episodes) {
+    final theme = Theme.of(context);
+    final data = bbt.deriveBbtChartData(
+      episodes: episodes,
+      observations: _observations,
+    );
+    return Card(
+      key: const ValueKey('analysis-bbt-chart-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(LLSpace.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'BBT by cycle day',
+              key: const ValueKey('analysis-bbt-chart-title'),
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: LLSpace.space2),
+            BbtChart(data: data, displayUnit: widget.bbtUnit),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _statsCard(BuildContext context, ActivePrediction prediction) {

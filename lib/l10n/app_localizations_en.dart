@@ -1082,4 +1082,56 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get daySheetMeasurementsHeading => 'Measurements';
+
+  @override
+  String daySheetBbtFieldLabel(String unit) {
+    return 'BBT ($unit)';
+  }
+
+  @override
+  String daySheetWeightFieldLabel(String unit) {
+    return 'Weight ($unit)';
+  }
+
+  @override
+  String daySheetBbtRangeError(String min, String max) {
+    return 'Enter a BBT between $min and $max';
+  }
+
+  @override
+  String daySheetWeightRangeError(String min, String max) {
+    return 'Enter a weight between $min and $max';
+  }
+
+  @override
+  String get daySheetMeasurementInvalidNumber => 'Enter a number';
+
+  @override
+  String get daySheetMeasurementExcludeLabel => 'Exclude from charts';
+
+  @override
+  String get daySheetMeasurementIncludeLabel => 'Include in charts';
+
+  @override
+  String get daySheetBbtGroup => 'BBT';
+
+  @override
+  String get daySheetWeightGroup => 'Weight';
+
+  @override
+  String get settingsMeasurementUnitsTitle => 'Measurement units';
+
+  @override
+  String settingsMeasurementUnitsProfileTitle(String profileName) {
+    return 'Measurement units ($profileName)';
+  }
+
+  @override
+  String get settingsMeasurementUnitsBbtLabel => 'BBT unit';
+
+  @override
+  String get settingsMeasurementUnitsWeightLabel => 'Weight unit';
 }

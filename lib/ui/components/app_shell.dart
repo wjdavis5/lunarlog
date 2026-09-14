@@ -185,6 +185,8 @@ class _AppShellState extends State<AppShell> {
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
+            bbtUnit: widget.profile.bbtUnit,
+            weightUnit: widget.profile.weightUnit,
           ),
         ),
       AppTab.insights => AnalysisTab(
@@ -192,6 +194,7 @@ class _AppShellState extends State<AppShell> {
           mode: widget.profile.mode,
           todayProvider: widget.todayProvider,
           guardiansRepository: guardiansRepository,
+          bbtUnit: widget.profile.bbtUnit,
         ),
       AppTab.more => const SettingsScreen(),
     };
@@ -267,6 +270,8 @@ class _AppShellState extends State<AppShell> {
                   todayProvider: widget.todayProvider,
                   timezoneProvider: widget.timezoneProvider,
                   guardiansRepository: guardiansRepository,
+                  bbtUnit: widget.profile.bbtUnit,
+                  weightUnit: widget.profile.weightUnit,
                 )
               : null,
           bottomNavigationBar: NavigationBar(

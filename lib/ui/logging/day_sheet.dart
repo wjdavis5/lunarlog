@@ -66,6 +66,8 @@ import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
+import 'package:lunarlog/domain/models/measurement_validation.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -105,6 +107,24 @@ String daySheetDateLabel(LocalDate date, LocalDate today) {
   // Thin bridge onto #160's shared helper: LocalDate -> civil DateTime.
   DateTime civil(LocalDate d) => DateTime(d.year, d.month, d.day);
   return dates.relativeDayLabel(civil(date), civil(today));
+}
+
+/// Issue #457: formats a BBT/weight value for display in a text field or an
+/// inline error — up to two decimal places, with trailing zeros trimmed
+/// (`36.7` and `61` render as themselves, never `36.70` or `61.00`), so a
+/// converted value (e.g. Celsius-to-Fahrenheit) never shows more spurious
+/// precision than a person would type by hand. Public so the day sheet's
+/// seeding, its own validation-error copy, and this file's tests all share
+/// one formatting rule.
+String formatMeasurementValue(double value) {
+  final rounded = (value * 100).roundToDouble() / 100;
+  var text = rounded.toStringAsFixed(2);
+  if (text.endsWith('.00')) {
+    text = rounded.toStringAsFixed(0);
+  } else if (text.endsWith('0')) {
+    text = rounded.toStringAsFixed(1);
+  }
+  return text;
 }
 
 /// The flow levels the chip row offers (issue #247): the deprecated
@@ -189,6 +209,8 @@ class DaySheet extends StatefulWidget {
     this.timezoneProvider,
     this.currentUserId,
     this.guardians = const [],
+    this.bbtUnit = BbtUnit.celsius,
+    this.weightUnit = WeightUnit.kg,
   });
 
   final DayEntriesRepository repository;
@@ -228,6 +250,18 @@ class DaySheet extends StatefulWidget {
 
   final String? currentUserId;
   final List<ProfileGuardian> guardians;
+
+  /// Per-profile BBT display unit (Issue #457, storage per #255): the day
+  /// sheet's BBT field reads and writes in this unit — a stored row in a
+  /// different unit (an imported Fahrenheit reading on a Celsius-display
+  /// profile) is converted for editing, and a save re-denominates the row
+  /// to this unit, mirroring `measurement_unit.dart`'s read-time-only
+  /// conversion contract.
+  final BbtUnit bbtUnit;
+
+  /// Per-profile weight display unit (Issue #457); same contract as
+  /// [bbtUnit].
+  final WeightUnit weightUnit;
 
   @override
   State<DaySheet> createState() => _DaySheetState();
@@ -338,6 +372,46 @@ class _DaySheetState extends State<DaySheet> {
     }
   }
 
+  /// Issue #457: BBT/weight text controllers. Seeded (like the note field)
+  /// from any already-persisted manual measurement, converted into
+  /// [DaySheet.bbtUnit]/[DaySheet.weightUnit] so the field always shows a
+  /// value in the profile's current display unit regardless of which unit
+  /// it was originally entered/imported in.
+  late final TextEditingController _bbtController;
+  late final TextEditingController _weightController;
+
+  /// The last value each field parsed as valid (or `null` for "cleared") —
+  /// what an autosave actually writes, as opposed to whatever text is
+  /// currently in the controller. Kept separate from the controller's raw
+  /// text so an in-progress invalid keystroke (an extra digit, a stray
+  /// letter, a still-out-of-range number) never overwrites — or deletes —
+  /// a previously valid, already-persisted value; see [_onBbtChanged]'s doc.
+  double? _bbtValue;
+  double? _weightValue;
+
+  /// Issue #457: BBT's per-point exclusion flag (A1-44), reused verbatim
+  /// for weight — "exclude this reading from charts" without deleting the
+  /// logged value itself.
+  bool _bbtExcluded = false;
+  bool _weightExcluded = false;
+
+  /// Non-null while the field's current text fails to parse or falls
+  /// outside [isValidBbt]/[isValidWeight]'s sanity range — rendered as an
+  /// [InlineError] under the field. Null the moment the text is empty
+  /// (a clear) or parses to a valid value.
+  String? _bbtError;
+  String? _weightError;
+
+  /// True only for the duration of [_loadExistingMeasurements]' programmatic
+  /// `TextEditingController.text` assignment — suppresses
+  /// [_onBbtChanged]/[_onWeightChanged], which would otherwise treat that
+  /// seed as a user edit and mark the sheet dirty on nothing more than
+  /// opening it (the note field avoids the same problem differently, by
+  /// setting its initial text before its listener is attached at all — not
+  /// available here since this seed arrives asynchronously, after
+  /// `initState` already attached both listeners).
+  bool _seedingMeasurements = false;
+
   /// Issue #220: the first-class PMS marker, tracked straight off the
   /// loaded entry (like flow and tags — it rides `DayEntry.pms` itself,
   /// not a child row).
@@ -419,11 +493,21 @@ class _DaySheetState extends State<DaySheet> {
     // is created with its initial text above, so the listener never fires
     // for the seeded value itself.
     _noteController.addListener(_markDirty);
+    // Issue #457: created empty here (never seeded with initial text the
+    // way the note field is) — any already-persisted value arrives
+    // asynchronously via `_loadExistingMeasurements` below, which sets the
+    // controller's text explicitly once it resolves, exactly like
+    // `_loadExistingSpotting`/`_loadExistingPainIntensity` seed their own
+    // state after an async repository read.
+    _bbtController = TextEditingController()..addListener(_onBbtChanged);
+    _weightController = TextEditingController()
+      ..addListener(_onWeightChanged);
     if (existing != null) {
       _childObservationsLoading = true;
       _childObservationsLoadsPending = 2;
       unawaited(_loadExistingSpotting(existing.id));
       unawaited(_loadExistingPainIntensity(existing.id));
+      unawaited(_loadExistingMeasurements(existing.id));
     }
   }
 
@@ -446,6 +530,8 @@ class _DaySheetState extends State<DaySheet> {
     _savedIndicatorTimer?.cancel();
     if (!_discardUnsaved) _applyDisposeAction(daySheetDisposeAction(_saveState));
     _noteController.dispose();
+    _bbtController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
@@ -750,6 +836,170 @@ class _DaySheetState extends State<DaySheet> {
     }
   }
 
+  /// Issue #457: seeds the BBT/weight fields from any already-persisted
+  /// **manual** measurement for [dayEntryId] — the same one-day-scoped read
+  /// [_loadExistingPainIntensity] uses. A row is converted from whatever
+  /// unit it is actually stored in into [DaySheet.bbtUnit]/
+  /// [DaySheet.weightUnit] so the field always displays in the profile's
+  /// current unit, mirroring `measurement_unit.dart`'s read-time-only
+  /// conversion contract; a manual row with no [Observation.valueNum] at
+  /// all (defensively unreachable — this app never writes one) is treated
+  /// as absent rather than seeding an empty/NaN field. Never adopts a
+  /// same-category row from another source (a wearable/imported value),
+  /// matching [computeMeasurementMutations]'s own write-side discipline —
+  /// that value still exists and still charts, it is simply not this
+  /// field's to show or edit.
+  Future<void> _loadExistingMeasurements(String dayEntryId) async {
+    final observations = await Provider.of<ObservationsRepository>(
+      context,
+      listen: false,
+    ).listForDayEntry(dayEntryId);
+    if (!mounted) return;
+    Observation? manualRowOf(String category) {
+      for (final o in observations) {
+        if (o.category == category &&
+            o.source == ObservationSource.manual &&
+            o.valueNum != null) {
+          return o;
+        }
+      }
+      return null;
+    }
+
+    final bbtRow = manualRowOf('bbt');
+    final weightRow = manualRowOf('weight');
+    if (bbtRow == null && weightRow == null) return;
+    setState(() {
+      _seedingMeasurements = true;
+      if (bbtRow != null) {
+        final displayValue = convertTemperature(
+          bbtRow.valueNum!,
+          from: BbtUnit.fromDb(bbtRow.unit),
+          to: widget.bbtUnit,
+        );
+        _bbtValue = displayValue;
+        _bbtExcluded = bbtRow.excluded;
+        _bbtController.text = formatMeasurementValue(displayValue);
+      }
+      if (weightRow != null) {
+        final displayValue = convertWeight(
+          weightRow.valueNum!,
+          from: WeightUnit.fromDb(weightRow.unit),
+          to: widget.weightUnit,
+        );
+        _weightValue = displayValue;
+        _weightExcluded = weightRow.excluded;
+        _weightController.text = formatMeasurementValue(displayValue);
+      }
+      _seedingMeasurements = false;
+    });
+  }
+
+  /// Issue #457: the day sheet's own listener for [_bbtController] —
+  /// mirrors the note field's "every keystroke re-arms the autosave
+  /// debounce" rule, with one difference: an invalid keystroke (unparsable,
+  /// or parseable but outside [isValidBbt]'s sanity range) sets
+  /// [_bbtError] for the inline error and returns *without* touching
+  /// [_bbtValue] or calling [_markDirty] — so a stray character typed while
+  /// editing an already-valid value can never itself delete or corrupt
+  /// that value's autosaved state. Correcting the text back to something
+  /// valid (or clearing it entirely, which is itself always valid — an
+  /// explicit "clear this reading") resumes autosaving normally. Suppressed
+  /// entirely while [_seedingMeasurements] is true (see that field's doc).
+  void _onBbtChanged() {
+    if (_seedingMeasurements) return;
+    final text = _bbtController.text.trim();
+    if (text.isEmpty) {
+      setState(() {
+        _bbtValue = null;
+        _bbtError = null;
+      });
+      _markDirty();
+      return;
+    }
+    final parsed = double.tryParse(text);
+    if (parsed == null) {
+      setState(
+        () => _bbtError = AppLocalizations.of(context)
+            .daySheetMeasurementInvalidNumber,
+      );
+      return;
+    }
+    if (!isValidBbt(parsed, widget.bbtUnit)) {
+      setState(() => _bbtError = _bbtRangeErrorText());
+      return;
+    }
+    setState(() {
+      _bbtValue = parsed;
+      _bbtError = null;
+    });
+    _markDirty();
+  }
+
+  /// Weight's mirror of [_onBbtChanged] — same contract throughout.
+  void _onWeightChanged() {
+    if (_seedingMeasurements) return;
+    final text = _weightController.text.trim();
+    if (text.isEmpty) {
+      setState(() {
+        _weightValue = null;
+        _weightError = null;
+      });
+      _markDirty();
+      return;
+    }
+    final parsed = double.tryParse(text);
+    if (parsed == null) {
+      setState(
+        () => _weightError = AppLocalizations.of(context)
+            .daySheetMeasurementInvalidNumber,
+      );
+      return;
+    }
+    if (!isValidWeight(parsed, widget.weightUnit)) {
+      setState(() => _weightError = _weightRangeErrorText());
+      return;
+    }
+    setState(() {
+      _weightValue = parsed;
+      _weightError = null;
+    });
+    _markDirty();
+  }
+
+  String _bbtRangeErrorText() {
+    final (min, max) = bbtRangeIn(widget.bbtUnit);
+    return AppLocalizations.of(context).daySheetBbtRangeError(
+      formatMeasurementValue(min),
+      formatMeasurementValue(max),
+    );
+  }
+
+  String _weightRangeErrorText() {
+    final (min, max) = weightRangeIn(widget.weightUnit);
+    return AppLocalizations.of(context).daySheetWeightRangeError(
+      formatMeasurementValue(min),
+      formatMeasurementValue(max),
+    );
+  }
+
+  /// Issue #457: BBT's per-point "exclude from charts" flag (A1-44), reused
+  /// for weight — toggling it never deletes or changes the logged value
+  /// itself, only whether the BBT chart (#245) plots this one point.
+  /// Disabled while there is no current value to exclude (rendered only
+  /// when [_bbtValue]/[_weightValue] is non-null — see [_measurementsSection]).
+  void _toggleBbtExcluded() {
+    LLHaptics.selection();
+    setState(() => _bbtExcluded = !_bbtExcluded);
+    _markDirty();
+  }
+
+  void _toggleWeightExcluded() {
+    LLHaptics.selection();
+    setState(() => _weightExcluded = !_weightExcluded);
+    _markDirty();
+  }
+
   /// Fetches the target day entry's already-persisted observation rows and
   /// delegates to [computeObservationMutations] (issue #601 — moved to
   /// `lib/domain/logging/day_sheet_reconciliation.dart`, pure) for the
@@ -772,6 +1022,16 @@ class _DaySheetState extends State<DaySheet> {
       existingObservations: existingObs,
       spotting: _spotting,
       painIntensity: _painIntensity,
+      // Issue #457: the BBT/weight fields' last-validated values, not the
+      // controllers' raw (possibly currently-invalid) text — see
+      // `_onBbtChanged`/`_onWeightChanged`'s own doc for why an in-progress
+      // invalid keystroke must never reach a write.
+      bbtValue: _bbtValue,
+      bbtUnit: widget.bbtUnit.toDb(),
+      bbtExcluded: _bbtExcluded,
+      weightValue: _weightValue,
+      weightUnit: widget.weightUnit.toDb(),
+      weightExcluded: _weightExcluded,
       targetDayEntryId: targetId,
       profileId: widget.profileId,
       date: widget.date,
@@ -1254,6 +1514,76 @@ class _DaySheetState extends State<DaySheet> {
     ),
   );
 
+  /// Issue #457: one numeric measurement field (BBT or weight) plus its
+  /// inline validation error and "exclude from charts" toggle — factored
+  /// out of [_editableBody] since it is rendered twice with only the
+  /// field-specific pieces differing (keeps [_editableBody]'s own CRAP
+  /// score low, the same reason [_painIntensityRow] is its own method).
+  /// The exclude toggle only renders once [value] is non-null — excluding
+  /// is meaningless with nothing logged to exclude — and mirrors
+  /// `CycleHistorySection`'s own Omit/Include text-button pair rather than
+  /// a checkbox, for the same "a short, explicit verb reads better than an
+  /// unlabelled box" reason.
+  Widget _measurementField({
+    required ThemeData theme,
+    required AppLocalizations l10n,
+    required String groupLabel,
+    required Key fieldKey,
+    required TextEditingController controller,
+    required String label,
+    required String? error,
+    required double? value,
+    required bool excluded,
+    required VoidCallback onToggleExcluded,
+    required Key excludeKey,
+    required Key errorKey,
+  }) {
+    final excludeLabel = excluded
+        ? l10n.daySheetMeasurementIncludeLabel
+        : l10n.daySheetMeasurementExcludeLabel;
+    return Padding(
+      padding: const EdgeInsets.only(top: LLSpace.space1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Semantics(
+                  label: '$groupLabel: $label',
+                  excludeSemantics: true,
+                  child: TextFormField(
+                    key: fieldKey,
+                    controller: controller,
+                    enabled: !_busy,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(labelText: label),
+                  ),
+                ),
+              ),
+              if (value != null)
+                groupedChipSemantics(
+                  group: groupLabel,
+                  label: excludeLabel,
+                  selected: excluded,
+                  onTap: _busy ? null : onToggleExcluded,
+                  child: TextButton(
+                    key: excludeKey,
+                    onPressed: _busy ? null : onToggleExcluded,
+                    child: Text(excludeLabel),
+                  ),
+                ),
+            ],
+          ),
+          if (error != null) InlineError(key: errorKey, message: error),
+        ],
+      ),
+    );
+  }
+
   Widget _editableBody() {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -1352,6 +1682,41 @@ class _DaySheetState extends State<DaySheet> {
                     for (final tag in _painIntensitySelectors)
                       _painIntensityRow(l10n, theme, tag),
                 ],
+                // Issue #457: BBT/weight, standalone like the PMS toggle —
+                // neither is a `TagCategory` (they are numeric, not
+                // chip-selected options), so this section sits outside the
+                // curated-categories loop above rather than inside it.
+                _sectionHeading(theme, l10n.daySheetMeasurementsHeading),
+                _measurementField(
+                  theme: theme,
+                  l10n: l10n,
+                  groupLabel: l10n.daySheetBbtGroup,
+                  fieldKey: const ValueKey('bbt-field'),
+                  controller: _bbtController,
+                  label: l10n.daySheetBbtFieldLabel(bbtUnitSymbol(widget.bbtUnit)),
+                  error: _bbtError,
+                  value: _bbtValue,
+                  excluded: _bbtExcluded,
+                  onToggleExcluded: _toggleBbtExcluded,
+                  excludeKey: const ValueKey('bbt-exclude-toggle'),
+                  errorKey: const ValueKey('bbt-error'),
+                ),
+                _measurementField(
+                  theme: theme,
+                  l10n: l10n,
+                  groupLabel: l10n.daySheetWeightGroup,
+                  fieldKey: const ValueKey('weight-field'),
+                  controller: _weightController,
+                  label: l10n.daySheetWeightFieldLabel(
+                    weightUnitSymbol(widget.weightUnit),
+                  ),
+                  error: _weightError,
+                  value: _weightValue,
+                  excluded: _weightExcluded,
+                  onToggleExcluded: _toggleWeightExcluded,
+                  excludeKey: const ValueKey('weight-exclude-toggle'),
+                  errorKey: const ValueKey('weight-error'),
+                ),
                 if (_unrecognisedTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
                 Padding(
@@ -1738,6 +2103,70 @@ class _DaySheetState extends State<DaySheet> {
             style: theme.textTheme.titleSmall,
           ),
       ],
+      // Issue #457: BBT/weight, read-only — seeded by
+      // `_loadExistingMeasurements` exactly like the editable sheet (that
+      // load is unconditional on `existing != null`, not gated on
+      // `widget.readOnly`), so a viewer or an archived profile still sees
+      // whatever was logged, just with no field to edit it through. Rendered
+      // alongside spotting/pain above rather than gated on
+      // [_childObservationsLoading]/[_childObservationsLoadFailed] (issue
+      // #642, LLA-011): those loaders cover exactly [_loadExistingSpotting]/
+      // [_loadExistingPainIntensity], and folding a third, independent
+      // async load (`_loadExistingMeasurements`) into that same
+      // loading/error gate is a bigger behavioural change than this method
+      // needs to make room for BBT/weight — the same transient-omission
+      // risk the LLA-011 fix closed for spotting/pain remains open for
+      // BBT/weight specifically, tracked as a follow-up rather than
+      // silently absorbed into this conflict resolution.
+      if (_bbtValue != null) ...[
+        const SizedBox(height: LLSpace.space3),
+        _readOnlyMeasurementRow(
+          theme,
+          label: l10n.daySheetBbtFieldLabel(bbtUnitSymbol(widget.bbtUnit)),
+          value: _bbtValue!,
+          excluded: _bbtExcluded,
+          l10n: l10n,
+        ),
+      ],
+      if (_weightValue != null) ...[
+        const SizedBox(height: LLSpace.space3),
+        _readOnlyMeasurementRow(
+          theme,
+          label: l10n.daySheetWeightFieldLabel(
+            weightUnitSymbol(widget.weightUnit),
+          ),
+          value: _weightValue!,
+          excluded: _weightExcluded,
+          l10n: l10n,
+        ),
+      ],
     ];
+  }
+
+  /// One read-only measurement row (Issue #457): label, formatted value,
+  /// and — when the reading was excluded — a small "(excluded from
+  /// charts)" caption, mirroring `CycleHistorySection`'s own "Excluded from
+  /// averages" subtitle treatment for an omitted cycle.
+  Widget _readOnlyMeasurementRow(
+    ThemeData theme, {
+    required String label,
+    required double value,
+    required bool excluded,
+    required AppLocalizations l10n,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.labelMedium),
+        Text(formatMeasurementValue(value), style: theme.textTheme.titleSmall),
+        if (excluded)
+          Text(
+            l10n.daySheetMeasurementExcludeLabel,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
   }
 }

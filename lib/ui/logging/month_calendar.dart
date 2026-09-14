@@ -48,6 +48,7 @@ import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
@@ -500,6 +501,8 @@ class MonthCalendar extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
     this.guardiansRepository,
+    this.bbtUnit = BbtUnit.celsius,
+    this.weightUnit = WeightUnit.kg,
   });
 
   final String profileId;
@@ -528,6 +531,11 @@ class MonthCalendar extends StatefulWidget {
   /// local-only use (no storage wired up), matching the previous
   /// ambient-provider lookup's own null fallback.
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// Per-profile BBT/weight display units (Issue #457), forwarded to
+  /// [DaySheet]. Presentation only.
+  final BbtUnit bbtUnit;
+  final WeightUnit weightUnit;
 
   @override
   State<MonthCalendar> createState() => _MonthCalendarState();
@@ -1059,6 +1067,8 @@ class _MonthCalendarState extends State<MonthCalendar>
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,
         guardians: _guardians,
+        bbtUnit: widget.bbtUnit,
+        weightUnit: widget.weightUnit,
       ),
     );
   }

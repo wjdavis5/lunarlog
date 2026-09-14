@@ -1929,6 +1929,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{{value} day} other{{value} days}}'**
   String daysValue(num count, String value);
+
+  /// Day-sheet section heading above the BBT and weight numeric-entry fields (Issue #457).
+  ///
+  /// In en, this message translates to:
+  /// **'Measurements'**
+  String get daySheetMeasurementsHeading;
+
+  /// Label (and accessibility label) for the day sheet's BBT text field (Issue #457); {unit} is the profile's current display-unit symbol ('°C'/'°F', from measurement_unit.dart's bbtUnitSymbol — a universal symbol, not itself translated).
+  ///
+  /// In en, this message translates to:
+  /// **'BBT ({unit})'**
+  String daySheetBbtFieldLabel(String unit);
+
+  /// Label (and accessibility label) for the day sheet's weight text field (Issue #457); {unit} is the profile's current display-unit symbol ('kg'/'lb').
+  ///
+  /// In en, this message translates to:
+  /// **'Weight ({unit})'**
+  String daySheetWeightFieldLabel(String unit);
+
+  /// Inline validation error under the BBT field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a BBT between {min} and {max}'**
+  String daySheetBbtRangeError(String min, String max);
+
+  /// Inline validation error under the weight field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a weight between {min} and {max}'**
+  String daySheetWeightRangeError(String min, String max);
+
+  /// Inline validation error under a measurement field when the entered text does not parse as a number at all (Issue #457).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a number'**
+  String get daySheetMeasurementInvalidNumber;
+
+  /// Label for the per-measurement exclusion toggle (Issue #457, the BBT per-point 'excluded' flag, A1-44) — used for both the BBT and weight fields, distinguished by the group name each toggle's own accessibility wrapper supplies.
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude from charts'**
+  String get daySheetMeasurementExcludeLabel;
+
+  /// The exclusion toggle's label once a measurement is already excluded (Issue #457) — tapping it un-excludes, mirroring the cycle-history list's own Omit/Include button pair.
+  ///
+  /// In en, this message translates to:
+  /// **'Include in charts'**
+  String get daySheetMeasurementIncludeLabel;
+
+  /// Accessibility group name for the BBT field and its exclude toggle (Issue #457), read by groupedChipSemantics-style wrappers alongside the control's own label.
+  ///
+  /// In en, this message translates to:
+  /// **'BBT'**
+  String get daySheetBbtGroup;
+
+  /// Accessibility group name for the weight field and its exclude toggle (Issue #457).
+  ///
+  /// In en, this message translates to:
+  /// **'Weight'**
+  String get daySheetWeightGroup;
+
+  /// Heading of the per-profile BBT/weight display-unit section in Settings when only one profile exists (Issue #457).
+  ///
+  /// In en, this message translates to:
+  /// **'Measurement units'**
+  String get settingsMeasurementUnitsTitle;
+
+  /// Heading of the measurement-units section in Settings for a specific profile, when more than one profile exists (Issue #457).
+  ///
+  /// In en, this message translates to:
+  /// **'Measurement units ({profileName})'**
+  String settingsMeasurementUnitsProfileTitle(String profileName);
+
+  /// Row label for the BBT display-unit selector in Settings (Issue #457).
+  ///
+  /// In en, this message translates to:
+  /// **'BBT unit'**
+  String get settingsMeasurementUnitsBbtLabel;
+
+  /// Row label for the weight display-unit selector in Settings (Issue #457).
+  ///
+  /// In en, this message translates to:
+  /// **'Weight unit'**
+  String get settingsMeasurementUnitsWeightLabel;
 }
 
 class _AppLocalizationsDelegate

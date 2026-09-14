@@ -94,3 +94,15 @@ double convertWeight(
     _ => value,
   };
 }
+
+/// Issue #457: the international symbol for [unit] ("°C"/"°F") — a
+/// universally understood unit symbol, not translated copy, so this is a
+/// plain function rather than an ARB string (mirrors [BbtUnit.toDb]'s own
+/// wire strings being English-invariant identifiers, never user-facing
+/// prose).
+String bbtUnitSymbol(BbtUnit unit) =>
+    unit == BbtUnit.celsius ? '°C' : '°F';
+
+/// The international symbol for [unit] ("kg"/"lb"); same rationale as
+/// [bbtUnitSymbol].
+String weightUnitSymbol(WeightUnit unit) => unit == WeightUnit.kg ? 'kg' : 'lb';

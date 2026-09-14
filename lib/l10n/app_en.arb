@@ -1329,5 +1329,78 @@
         "type": "String"
       }
     }
+  },
+  "daySheetMeasurementsHeading": "Measurements",
+  "@daySheetMeasurementsHeading": {
+    "description": "Day-sheet section heading above the BBT and weight numeric-entry fields (Issue #457)."
+  },
+  "daySheetBbtFieldLabel": "BBT ({unit})",
+  "@daySheetBbtFieldLabel": {
+    "description": "Label (and accessibility label) for the day sheet's BBT text field (Issue #457); {unit} is the profile's current display-unit symbol ('°C'/'°F', from measurement_unit.dart's bbtUnitSymbol — a universal symbol, not itself translated).",
+    "placeholders": {
+      "unit": {"type": "String"}
+    }
+  },
+  "daySheetWeightFieldLabel": "Weight ({unit})",
+  "@daySheetWeightFieldLabel": {
+    "description": "Label (and accessibility label) for the day sheet's weight text field (Issue #457); {unit} is the profile's current display-unit symbol ('kg'/'lb').",
+    "placeholders": {
+      "unit": {"type": "String"}
+    }
+  },
+  "daySheetBbtRangeError": "Enter a BBT between {min} and {max}",
+  "@daySheetBbtRangeError": {
+    "description": "Inline validation error under the BBT field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.",
+    "placeholders": {
+      "min": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "daySheetWeightRangeError": "Enter a weight between {min} and {max}",
+  "@daySheetWeightRangeError": {
+    "description": "Inline validation error under the weight field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.",
+    "placeholders": {
+      "min": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "daySheetMeasurementInvalidNumber": "Enter a number",
+  "@daySheetMeasurementInvalidNumber": {
+    "description": "Inline validation error under a measurement field when the entered text does not parse as a number at all (Issue #457)."
+  },
+  "daySheetMeasurementExcludeLabel": "Exclude from charts",
+  "@daySheetMeasurementExcludeLabel": {
+    "description": "Label for the per-measurement exclusion toggle (Issue #457, the BBT per-point 'excluded' flag, A1-44) — used for both the BBT and weight fields, distinguished by the group name each toggle's own accessibility wrapper supplies."
+  },
+  "daySheetMeasurementIncludeLabel": "Include in charts",
+  "@daySheetMeasurementIncludeLabel": {
+    "description": "The exclusion toggle's label once a measurement is already excluded (Issue #457) — tapping it un-excludes, mirroring the cycle-history list's own Omit/Include button pair."
+  },
+  "daySheetBbtGroup": "BBT",
+  "@daySheetBbtGroup": {
+    "description": "Accessibility group name for the BBT field and its exclude toggle (Issue #457), read by groupedChipSemantics-style wrappers alongside the control's own label."
+  },
+  "daySheetWeightGroup": "Weight",
+  "@daySheetWeightGroup": {
+    "description": "Accessibility group name for the weight field and its exclude toggle (Issue #457)."
+  },
+  "settingsMeasurementUnitsTitle": "Measurement units",
+  "@settingsMeasurementUnitsTitle": {
+    "description": "Heading of the per-profile BBT/weight display-unit section in Settings when only one profile exists (Issue #457)."
+  },
+  "settingsMeasurementUnitsProfileTitle": "Measurement units ({profileName})",
+  "@settingsMeasurementUnitsProfileTitle": {
+    "description": "Heading of the measurement-units section in Settings for a specific profile, when more than one profile exists (Issue #457).",
+    "placeholders": {
+      "profileName": {"type": "String"}
+    }
+  },
+  "settingsMeasurementUnitsBbtLabel": "BBT unit",
+  "@settingsMeasurementUnitsBbtLabel": {
+    "description": "Row label for the BBT display-unit selector in Settings (Issue #457)."
+  },
+  "settingsMeasurementUnitsWeightLabel": "Weight unit",
+  "@settingsMeasurementUnitsWeightLabel": {
+    "description": "Row label for the weight display-unit selector in Settings (Issue #457)."
   }
 }
