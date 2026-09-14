@@ -64,27 +64,56 @@ name: Supabase migrate
 # splits the diff into statements and warns (not fails) only on function
 # re-emission and a matched trigger DROP/CREATE pair; any other statement
 # fails the job, as does a non-zero `db diff` exit. The "Database advisor
-# gate" step (also issue #163) runs
-# `supabase db advisors --linked --type security --fail-on error`, a
-# CI-enforced replacement for the old manual "check the Supabase MCP
-# get_advisors output before approving" step -- the CLI has had a `db
-# advisors` subcommand since at least 2.116.0 (confirmed via `supabase db
-# --help`/`supabase db advisors --help` against the pinned version below),
-# so the MCP-only caveat that used to live in this comment no longer
-# applies. Both gates run LAST, after every other step in this job
-# (db push, the Realtime reconcile, both Edge Function deploys, and the
+# gate" step (also issue #163) runs `supabase db advisors --linked --type
+# security`, a CI-enforced replacement for the old manual "check the
+# Supabase MCP get_advisors output before approving" step -- the CLI has
+# had a `db advisors` subcommand since at least 2.116.0 (confirmed via
+# `supabase db --help`/`supabase db advisors --help` against the pinned
+# version below), so the MCP-only caveat that used to live in this comment
+# no longer applies. Both gates run LAST, after every other step in this
+# job (db push, the Realtime reconcile, both Edge Function deploys, and the
 # push-dispatch / Apple secret checks) -- issue #163 review: they can only
 # report on what's already live, they can never prevent it, so placing them
 # before the function deploys would let a false-positive drift or advisor
 # finding block an unrelated function deploy instead of just flagging it
-# after the fact. The advisor gate is pinned to --fail-on error rather than
-# warn because production currently carries tracked warn-level findings --
-# anon-executable SECURITY DEFINER functions (issue #158, in flight),
-# search_path and extension-in-public lints (issue #194), and the
-# dashboard-only leaked-password-protection setting -- and --fail-on warn
-# would fail every run until all three land. TODO(#163 follow-up): tighten
-# to --fail-on warn once #158, #194, and leaked-password protection are
-# done.
+# after the fact.
+#
+# Issue #454 tightened the advisor gate from --fail-on error to a
+# hand-rolled --fail-on warn equivalent, implemented in
+# `.github/scripts/check-advisor-gate.sh` (unit tested) rather than the
+# CLI's own --fail-on (which has no per-rule exclusion -- see the step
+# below for why). It used to be pinned to error-only because production
+# carried tracked warn-level findings that would have failed every run --
+# anon-executable SECURITY DEFINER functions (issue #158, since closed),
+# search_path lints on four functions (issue #194 -- two closed by this
+# same PR, two pre-existing functions outside its named scope left open;
+# see that migration and the PR description), pg_net's extension-in-public
+# lint (issue #194's OWN extension relocation is DEFERRED, not done -- see
+# below), and the dashboard-only leaked-password-protection setting.
+# `check-advisor-gate.sh` excludes exactly three narrow, named findings --
+# see its own header for the full rationale on each -- and every other
+# finding, including one this script has never seen before, still fails
+# the gate:
+#   * `authenticated_security_definer_function_executable`, which by
+#     design covers roughly 30 RPCs (the whole point of that RPC API is to
+#     be called by `authenticated`).
+#   * `extension_in_public`, only when it names `pg_net` specifically:
+#     production's pg_net is supabase_admin-owned and confirmed locally to
+#     be non-relocatable (`alter extension pg_net set schema ...` fails,
+#     SQLSTATE 0A000), and its `net` schema ACL was granted by
+#     supabase_admin to postgres, anon, authenticated, service_role, and
+#     supabase_functions_admin -- a `drop extension pg_net` inside an
+#     unattended migration risks either a permission failure (blocking
+#     every later migration) or losing those Supabase-managed grants on
+#     recreate, silently breaking push dispatch. This needs a
+#     Supabase-supported relocation path, not a plain migration -- deferred
+#     as a follow-up, tracked back on issue #194.
+#   * `auth_leaked_password_protection` -- a dashboard toggle no migration
+#     or workflow change can flip, confirmed OFF in production as of this
+#     PR, and already on the owner's manual post-deploy checklist (issue
+#     #694). Remove this exclusion once that checklist item is done --
+#     until then it is deliberately excluded here rather than left
+#     failing, since the owner already has it tracked elsewhere.
 #
 # LLA-111: "run LAST" used to also mean "run only if everything before them
 # succeeded" -- GitHub Actions' default per-step `if:`. That silently
@@ -470,24 +499,54 @@ jobs:
           fi
 
       - name: Database advisor gate
-        # Issue #163 / D-19: a CI-enforced replacement for the old "check
-        # the Supabase MCP get_advisors output before approving" manual
-        # step. Fails the job on any security-severity finding at error
-        # level (info-level lints are advisory noise, not a gate); narrowed
-        # to --type security because performance lints (e.g. an unindexed
-        # foreign key) are not a deploy blocker here. Pinned to --fail-on
-        # error rather than warn: production currently carries tracked
-        # warn-level findings -- anon-executable SECURITY DEFINER functions
-        # (issue #158, in flight), search_path and extension-in-public
-        # lints (issue #194), and the dashboard-only
-        # leaked-password-protection setting -- so --fail-on warn would fail
-        # every run until all three land. Runs last, after every deploy
-        # step above, for the same reason as the schema-drift check right
-        # before it: both gates can only report on what's already live,
-        # never prevent it, so placing them before the function deploys
-        # would turn a false positive into a blocked function deploy.
-        # TODO(#163 follow-up): tighten to --fail-on warn once #158, #194,
-        # and leaked-password protection are done.
+        # Issue #163 / D-19, tightened by issue #454: a CI-enforced
+        # replacement for the old "check the Supabase MCP get_advisors
+        # output before approving" manual step, now failing the job on any
+        # security-severity finding at WARN level or above (previously
+        # error-only -- see the header comment above for why that was
+        # pinned, and why #454 could finally tighten it). Narrowed to
+        # --type security because performance lints (e.g. an unindexed
+        # foreign key) are not a deploy blocker here. Runs last, after
+        # every deploy step above, for the same reason as the schema-drift
+        # check right before it: both gates can only report on what's
+        # already live, never prevent it, so placing them before the
+        # function deploys would turn a false positive into a blocked
+        # function deploy.
+        #
+        # `--fail-on` is deliberately NOT passed to `db advisors` itself
+        # (its own exit code would short-circuit before the exclusions
+        # below ever ran) -- this step's own exit code gates the job
+        # instead, via `.github/scripts/check-advisor-gate.sh` (unit
+        # tested: `.github/scripts/tests/check-advisor-gate.test.sh`, same
+        # pattern as the other stdin-JSON gate scripts in this repo) over
+        # `--output-format json`. That script excludes exactly three
+        # narrow, named findings -- see its own header for the full
+        # rationale on each:
+        #   * `authenticated_security_definer_function_executable` -- by
+        #     design, covers the intentional ~30-RPC set.
+        #   * `extension_in_public`, only when it names `pg_net`
+        #     specifically -- issue #194's relocation of pg_net is
+        #     deferred (production's pg_net is supabase_admin-owned and
+        #     non-relocatable, confirmed locally; a plain migration is not
+        #     a safe way to move it -- see #194 and the script header).
+        #   * `auth_leaked_password_protection` -- a dashboard-only Auth
+        #     setting, confirmed OFF in production, already on the owner's
+        #     manual post-deploy checklist (issue #694). Remove this
+        #     exclusion once that checklist item is done.
+        # Every OTHER finding at warn or above, INCLUDING a lint name this
+        # script has never seen before, still fails the gate exactly as
+        # before -- this fails closed by construction (see the script's own
+        # test suite), not by review discipline alone.
+        #
+        # `--level warn` is passed to `db advisors` itself so the CLI
+        # already omits INFO-level findings -- production carries 7
+        # by-design INFO-level `rls_enabled_no_policy` findings (RLS
+        # enabled with no policy, on purpose, for service-only tables) that
+        # this gate was never meant to fail on. `check-advisor-gate.sh`
+        # also drops any INFO-level finding on its own (defense in depth
+        # for the same input shape regardless of how it arrived), while
+        # still failing closed on a finding with no `level` field or an
+        # unrecognised level string -- see the script's own header.
         #
         # LLA-111: independently gated the same way as "Check for schema
         # drift" right above, and deliberately NOT conditioned on that
@@ -498,4 +557,11 @@ jobs:
         # database. Both post-deploy checks now run independently of each
         # other, gated only on `supabase link` having succeeded.
         if: always() && steps.link.outcome == 'success'
-        run: supabase db advisors --linked --type security --fail-on error --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+        run: |
+          set -euo pipefail
+
+          supabase db advisors --linked --type security --level warn --output-format json \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" > advisors.json
+          cat advisors.json
+
+          bash .github/scripts/check-advisor-gate.sh < advisors.json
